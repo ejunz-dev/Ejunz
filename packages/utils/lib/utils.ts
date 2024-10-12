@@ -1,4 +1,16 @@
-export function errorMessage(err: Error | string) {
+import Logger from 'reggol';
+import moment, { isMoment, Moment } from 'moment-timezone';
+
+Logger.levels.base = process.env.DEV ? 3 : 2;
+Logger.targets[0].showTime = 'dd hh:mm:ss';
+Logger.targets[0].label = {
+    align: 'right',
+    width: 9,
+    margin: 1,
+};
+
+export { Logger, moment };
+ function errorMessage(err: Error | string) {
     const t = typeof err === 'string' ? err : err.stack;
     const lines = t.split('\n')
         .filter((i) => !i.includes(' (node:') && !i.includes('(internal'));
