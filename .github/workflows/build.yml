@@ -28,6 +28,6 @@ jobs:
    
     - name: Publish
       if: ${{ github.event_name == 'push' }}
-      run: node -r @yijun-x/register build/publish.ts
+      run: node -r @ejunz/register build/publish.ts
       env:
         NODE_AUTH_TOKEN: ${{ secrets.EJUNZ }}
