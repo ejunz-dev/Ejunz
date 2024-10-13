@@ -9,11 +9,10 @@
     "preferUnplugged": true,
     "dependencies": {
         "@ejunz/register": "workspace:^",
-        "reggol": "^1.6.3",
         "moment-timezone": "^0.5.45",
+        "reggol": "^1.6.3",
         "search-query-parser": "^1.6.0",
         "systeminformation": "^5.23.5"
-
     },
     "devDependencies": {
         "@types/fs-extra": "^11.0.4"
