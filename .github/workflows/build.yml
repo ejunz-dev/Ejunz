@@ -39,7 +39,10 @@ jobs:
       if: "contains(github.event.head_commit.message, 'skip-cache')"
       run: |
         rm -rf node_modules yarn.lock **/tsconfig.tsbuildinfo
- 
+
+    - name: Install Yarn Globally
+      run: npm install -g yarn
+      
     - name: Config And Install
       run: |
         [[ ! -z "${{secrets.EJUNZ}}" ]] && echo "npmAuthToken: ${{secrets.EJUNZ}}" >> .yarnrc.yml
