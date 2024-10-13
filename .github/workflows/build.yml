@@ -67,9 +67,9 @@ jobs:
       run: node -v
         
   
-    - name: Check path
-      run: |
-          ls -l packages/ejun
+    # - name: Check path
+    #   run: |
+    #       ls -l packages/ejun
         
         
     - name: Publish
