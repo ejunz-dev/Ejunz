@@ -1,10 +1,10 @@
 
 
-interface IEjunZError {
-    new(...args: any[]): EjunZError
+interface IEjunzError {
+    new(...args: any[]): EjunzError
 }
 
-export class EjunZError extends Error {
+export class EjunzError extends Error {
     params: any[];
     code: number;
 
@@ -14,7 +14,7 @@ export class EjunZError extends Error {
     }
 
     msg() {
-        return 'EjunZError';
+        return 'EjunzError';
     }
 
     get message() {
@@ -22,7 +22,7 @@ export class EjunZError extends Error {
     }
 }
 
-const Err = (name: string, Class: IEjunZError, ...info: Array<(() => string) | string | number>) => {
+const Err = (name: string, Class: IEjunzError, ...info: Array<(() => string) | string | number>) => {
     let msg: () => string;
     let code: number;
     for (const item of info) {
@@ -35,7 +35,7 @@ const Err = (name: string, Class: IEjunZError, ...info: Array<(() => string) | s
         }
     }
    
-    return class EjunZError extends Class {
+    return class EjunzError extends Class {
         name = name;
         constructor(...args: any[]) {
             super(...args);
@@ -45,15 +45,15 @@ const Err = (name: string, Class: IEjunZError, ...info: Array<(() => string) | s
     };
 };
 
-export const UserFacingError = Err('UserFacingError', EjunZError, 'UserFacingError', 400);
-export const SystemError = Err('SystemError', EjunZError, 'SystemError', 500);
+export const UserFacingError = Err('UserFacingError', EjunzError, 'UserFacingError', 400);
+export const SystemError = Err('SystemError', EjunzError, 'SystemError', 500);
 
 export const BadRequestError = Err('BadRequestError', UserFacingError, 'BadRequestError', 400);
 export const ForbiddenError = Err('ForbiddenError', UserFacingError, 'ForbiddenError', 403);
 export const NotFoundError = Err('NotFoundError', UserFacingError, 'NotFoundError', 404);
 export const MethodNotAllowedError = Err('MethodNotAllowedError', UserFacingError, 'MethodNotAllowedError', 405);
 
-export const ValidationError = Err('ValidationError', ForbiddenError, function (this: EjunZError) {
+export const ValidationError = Err('ValidationError', ForbiddenError, function (this: EjunzError) {
     if (this.params.length === 3) {
         return this.params[1]
             ? 'Field {0} or {1} validation failed. ({2})'
