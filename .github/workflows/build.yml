@@ -1,0 +1,51 @@
+name: CI
+
+on:
+- push
+- pull_request
+
+env:
+  CI: true
+  YARN_ENABLE_IMMUTABLE_INSTALLS: 'false'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 2
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.17.0
+    - name: Get yarn cache directory path
+      id: yarn-cache-dir-path
+      run: echo "::set-output name=dir::$(yarn config get cacheFolder)"
+    - uses: actions/cache@v3
+      with:
+        path: |
+          ${{ steps.yarn-cache-dir-path.outputs.dir }}
+          yarn.lock
+          .cache
+          **/tsconfig.tsbuildinfo
+        key: cache-${{ github.ref }}-${{ github.sha }}
+        restore-keys: |
+          cache-${{ github.ref }}-
+          cache-
+    - name: Clear Cache
+      if: "contains(github.event.head_commit.message, 'skip-cache')"
+      run: |
+        rm -rf node_modules yarn.lock **/tsconfig.tsbuildinfo
+ 
+   
+    - name: Check Node.js version
+      run: node -v
+        
+    - name: Publish
+      if: ${{ github.event_name == 'push' }}
+      run: node -r @ejunz/register build/publish.ts
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.EJUNZ }}

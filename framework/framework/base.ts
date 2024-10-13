@@ -2,14 +2,14 @@ import { PassThrough } from 'stream';
 import type { Next } from 'koa';
 import { pick } from 'lodash';
 import {
-    EjunZRequest, EjunZResponse, KoaContext, serializer,
+    EjunzRequest, EjunzResponse, KoaContext, serializer,
 } from '@ejunz/framework';
 import { errorMessage } from '@ejunz/utils/lib/utils';
 import { SystemError, UserFacingError } from './error';
 
 export default (logger, xff, xhost) => async (ctx: KoaContext, next: Next) => {
     // Base Layer
-    const request: EjunZRequest = {
+    const request: EjunzRequest = {
         method: ctx.request.method.toLowerCase(),
         host: ctx.request.headers[xhost?.toLowerCase() || ''] as string || ctx.request.host,
         ip: (ctx.request.headers[xff?.toLowerCase() || ''] as string || ctx.request.ip).split(',')[0].trim(),
@@ -20,7 +20,7 @@ export default (logger, xff, xhost) => async (ctx: KoaContext, next: Next) => {
         json: (ctx.request.headers.accept || '').includes('application/json'),
         websocket: ctx.request.headers.upgrade === 'websocket',
     };
-    const response: EjunZResponse = {
+    const response: EjunzResponse = {
         body: {},
         type: '',
         status: null,
@@ -42,7 +42,7 @@ export default (logger, xff, xhost) => async (ctx: KoaContext, next: Next) => {
     const args = {
         ...ctx.params, ...ctx.query, ...ctx.request.body, __start: Date.now(),
     };
-    ctx.EjunZContext = { request, response, args } as any;
+    ctx.EjunzContext = { request, response, args } as any;
     try {
         await next();
         if (request.websocket) return;
@@ -52,7 +52,7 @@ export default (logger, xff, xhost) => async (ctx: KoaContext, next: Next) => {
             ctx.response.status = 500;
             return;
         }
-        const { UiContext, user } = ctx.EjunZContext;
+        const { UiContext, user } = ctx.EjunzContext;
         if (response.redirect) {
             response.body ||= {};
             response.body.url = response.redirect;

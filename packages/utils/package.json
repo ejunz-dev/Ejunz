@@ -1,0 +1,21 @@
+{
+    "name": "@ejunz/utils",
+    "version": "0.0.0",
+    "description": "ejunz utils",
+    "main": "lib/utils.ts",
+    "repository": "https://github.com/ejunz-dev/EjunZ.git",
+    "author": "Jacka10086 <i@jacka10086.me>",
+    "license": "AGPL-3.0-or-later",
+    "preferUnplugged": true,
+    "dependencies": {
+        "@ejunz/register": "workspace:^",
+        "reggol": "^1.6.3",
+        "moment-timezone": "^0.5.45",
+        "search-query-parser": "^1.6.0",
+        "systeminformation": "^5.23.5"
+
+    },
+    "devDependencies": {
+        "@types/fs-extra": "^11.0.4"
+    }
+}
