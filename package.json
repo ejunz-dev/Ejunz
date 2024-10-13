@@ -15,9 +15,5 @@
     "license": "AGPL-3.0-only",
     "devDependencies": {
         
-    },
-    "resolutions": {
-        "@cordisjs/logger": "0.3.2",
-        "reggol": "1.6.3"
     }
 }
