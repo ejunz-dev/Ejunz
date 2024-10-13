@@ -1,4 +1,30 @@
 
+
+
+
+
+  
+# Config Files
+/config.yaml
+/config.json
+yarn.lock
+pnpm-lock.yaml
+tsconfig.json
+tsconfig.*.json
+
+# Project Rules
+## Core
+packages/**/*.js
+!/build/*.js
+!**/bin/*.js
+!*.page.js
+!packages/register/index.js
+
+plugins/
+modules/
+
+
+
 # Config Files
 /config.yaml
 /config.json
@@ -9,4 +35,7 @@ tsconfig.*.json
 
 # Base
 node_modules/
+
+
+
 
