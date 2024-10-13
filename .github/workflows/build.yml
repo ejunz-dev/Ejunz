@@ -40,6 +40,15 @@ jobs:
       run: |
         rm -rf node_modules yarn.lock **/tsconfig.tsbuildinfo
  
+    - name: Config And Install
+      run: |
+        [[ ! -z "${{secrets.EJUNZ}}" ]] && echo "npmAuthToken: ${{secrets.EJUNZ}}" >> .yarnrc.yml
+        git config --global user.name jacka10086
+        git config --global user.email 496806255@qq.com
+        yarn
+        yarn dedupe
+      env:
+        LICENSE_KEY: ${{ secrets.MAXMIND_KEY }}
    
     - name: Check Node.js version
       run: node -v
