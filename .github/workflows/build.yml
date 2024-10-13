@@ -21,11 +21,6 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 20.17.0
-
-    - name: Install Yarn Globally
-      run: npm install -g yarn
-
-
     - name: Get yarn cache directory path
       id: yarn-cache-dir-path
       run: echo "::set-output name=dir::$(yarn config get cacheFolder)"
@@ -40,17 +35,11 @@ jobs:
         restore-keys: |
           cache-${{ github.ref }}-
           cache-
-    - name: Print workspace info
-      run: yarn workspaces info
-      
     - name: Clear Cache
       if: "contains(github.event.head_commit.message, 'skip-cache')"
       run: |
         rm -rf node_modules yarn.lock **/tsconfig.tsbuildinfo
-
-    
-
-      
+ 
     - name: Config And Install
       run: |
         [[ ! -z "${{secrets.EJUNZ}}" ]] && echo "npmAuthToken: ${{secrets.EJUNZ}}" >> .yarnrc.yml
@@ -64,19 +53,16 @@ jobs:
     - name: Verify .yarnrc.yml
       run: cat .yarnrc.yml
 
-  
+ 
 
     - name: Check Node.js version
       run: node -v
         
-  
-    - name: Check path
-      run: |
-          ls -l packages/ejun
+ 
         
         
     - name: Publish
       if: ${{ github.event_name == 'push' }}
-      run: node -r @ejunz/register build/publish.ts
+      run: node -r @yijun-x/register build/publish.ts
       env:
         NODE_AUTH_TOKEN: ${{ secrets.EJUNZ }}
