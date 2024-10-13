@@ -39,6 +39,12 @@ jobs:
       if: "contains(github.event.head_commit.message, 'skip-cache')"
       run: |
         rm -rf node_modules yarn.lock **/tsconfig.tsbuildinfo
+
+    - name: Install Yarn v4
+      uses: yarnpkg/berry/actions/setup@v1
+      with:
+          version: 4.0.2
+      
  
     - name: Config And Install
       run: |
@@ -49,7 +55,7 @@ jobs:
         yarn dedupe
       env:
         LICENSE_KEY: ${{ secrets.MAXMIND_KEY }}
-        
+
     - name: Verify .yarnrc.yml
       run: cat .yarnrc.yml
    
