@@ -24,7 +24,8 @@ jobs:
 
     - name: Install Yarn Globally
       run: npm install -g yarn
-      
+
+
     - name: Get yarn cache directory path
       id: yarn-cache-dir-path
       run: echo "::set-output name=dir::$(yarn config get cacheFolder)"
@@ -44,7 +45,9 @@ jobs:
       run: |
         rm -rf node_modules yarn.lock **/tsconfig.tsbuildinfo
 
-   
+    - name: Print workspace info
+      run: yarn workspaces info
+
       
     - name: Config And Install
       run: |
