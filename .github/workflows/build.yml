@@ -21,6 +21,10 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 20.17.0
+
+    - name: Install Yarn Globally
+      run: npm install -g yarn
+      
     - name: Get yarn cache directory path
       id: yarn-cache-dir-path
       run: echo "::set-output name=dir::$(yarn config get cacheFolder)"
@@ -40,8 +44,7 @@ jobs:
       run: |
         rm -rf node_modules yarn.lock **/tsconfig.tsbuildinfo
 
-    - name: Install Yarn Globally
-      run: npm install -g yarn
+   
       
     - name: Config And Install
       run: |
