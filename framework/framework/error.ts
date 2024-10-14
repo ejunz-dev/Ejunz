@@ -1,5 +1,3 @@
-
-
 interface IEjunzError {
     new(...args: any[]): EjunzError
 }

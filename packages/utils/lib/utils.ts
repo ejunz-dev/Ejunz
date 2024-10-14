@@ -1,5 +1,10 @@
-import Logger from 'reggol';
+import os from 'os';
+import path from 'path';
+import fs from 'fs-extra';
 import moment, { isMoment, Moment } from 'moment-timezone';
+import Logger from 'reggol';
+export * as yaml from 'js-yaml';
+export * as fs from 'fs-extra';
 
 Logger.levels.base = process.env.DEV ? 3 : 2;
 Logger.targets[0].showTime = 'dd hh:mm:ss';
@@ -39,4 +44,27 @@ export { Logger, moment };
     if (typeof err === 'string') return parsed;
     err.stack = parsed;
     return err;
+}
+export function findFileSync(pathname: string, doThrow: boolean | Error = true) {
+    if (fs.pathExistsSync(path.resolve(pathname))) return path.resolve(pathname);
+    if (fs.pathExistsSync(path.resolve(process.cwd(), pathname))) return path.resolve(process.cwd(), pathname);
+    if (fs.pathExistsSync(path.resolve(__dirname, pathname))) return path.resolve(__dirname, pathname);
+    try {
+        return require.resolve(pathname);
+    } catch (e) { }
+    if (pathname.includes('/')) {
+        const eles = pathname.split('/');
+        let pkg = eles.shift();
+        if (pkg.startsWith('@')) pkg = `${pkg}/${eles.shift()}`;
+        const rest = eles.join('/');
+        try {
+            const p = path.dirname(require.resolve(path.join(pkg, 'package.json')));
+            if (fs.statSync(path.resolve(p, rest))) return path.resolve(p, rest);
+        } catch (e) { }
+    }
+    if (fs.pathExistsSync(path.resolve(os.homedir(), pathname))) return path.resolve(os.homedir(), pathname);
+    if (fs.pathExistsSync(path.resolve(os.homedir(), '.ejunz', pathname))) return path.resolve(os.homedir(), '.ejunz', pathname);
+    if (fs.pathExistsSync(path.resolve(os.homedir(), '.config', 'ejunz', pathname))) return path.resolve(os.homedir(), '.config', 'ejunz', pathname);
+    if (doThrow) throw (typeof doThrow !== 'boolean' ? doThrow : new Error(`File ${pathname} not found`));
+    return null;
 }
