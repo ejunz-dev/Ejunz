@@ -9,7 +9,11 @@
     "preferUnplugged": true,
     "dependencies": {
         "@ejunz/register": "workspace:^",
+        "cac": "^6.7.14",
+        "fs-extra": "^11.2.0",
+        "js-yaml": "^4.1.0",
         "moment-timezone": "^0.5.45",
+        "mongodb": "^5.9.2",
         "reggol": "^1.6.3",
         "search-query-parser": "^1.6.0",
         "systeminformation": "^5.23.5"
