@@ -9,8 +9,8 @@
     ],
     "main": "package.json",
     "scripts": {
-        "start": "packages/ejunz/bin/ejunz.js",
-        "yijun": "./node_modules/.bin/ejunz"
+        "start": "packages/ejun/bin/ejun.js",
+        "yijun": "./node_modules/.bin/ejun"
     },
     "version": "0.0.0",
     "license": "AGPL-3.0-only",

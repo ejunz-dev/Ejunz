@@ -1,8 +1,27 @@
-
-
-
-
-
+# Built Files & Log
+.build/
+dist/
+*.cache
+.cache
+/build/*.js
+.cache/
+*.log
+*.js.map 
+*.tsbuildinfo
+*.ejunz
+.coverage
+coverage
+.nyc_output
+benchmark.json
+globalConfig.json
+*.out
+.clinic/
+.yarn/cache
+.yarn/build-state.yml
+.yarn/unplugged
+.yarn/sdks
+.yarn/install-state.gz
+.pnp.*
   
 # Config Files
 /config.yaml
@@ -23,19 +42,15 @@ packages/**/*.js
 plugins/
 modules/
 
-
-
-# Config Files
-/config.yaml
-/config.json
-yarn.lock
-pnpm-lock.yaml
-tsconfig.json
-tsconfig.*.json
+# Data files
+*.mmdb
 
 # Base
 node_modules/
+__*
+!__mocks__
+!.gitkeep
+*.local
 
-
-
-
+# Monokle
+.monokle
