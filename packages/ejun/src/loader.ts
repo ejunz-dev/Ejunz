@@ -19,9 +19,6 @@ logger.debug('%o', argv);
 process.on('unhandledRejection', logger.error);
 process.on('uncaughtException', logger.error);
 
-const EjunzPATH = [];
-
-
 export function resolveConfig(plugin: any, config: any) {
     if (config === false) return;
     if (config === true) config = undefined;
