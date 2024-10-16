@@ -1,6 +1,6 @@
 {
     "name": "ejun",
-    "version": "0.0.3",
+    "version": "0.0.4",
     "repository": "https://github.com/ejunz-dev/EjunZ.git",
     "author": "Jacka10086 <i@jacka10086.me>",
     "license": "AGPL-3.0-or-later",
@@ -34,6 +34,8 @@
         "lru-cache": "^10.4.3",
         "mime-types": "^2.1.35",
         "moment-timezone": "^0.5.45",
+        "mongodb": "^5.9.2",
+        "mongodb-uri": "^0.9.7",
         "nanoid": "^5.0.7",
         "nodemailer": "^6.9.15",
         "notp": "^2.0.3",

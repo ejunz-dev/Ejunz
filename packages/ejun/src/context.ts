@@ -1,8 +1,8 @@
 import * as cordis from 'cordis';
 import Schema from 'schemastery';
 import type { ServerEvents, WebService } from '@ejunz/framework';
-import type { DomainDoc, ModuleInterfaces } from './interface';
-import { inject } from './lib/ui';
+import type { DomainDoc, GeoIP, ModuleInterfaces } from './interface';
+// import { inject } from './lib/ui';
 import { Loader } from './loader';
 import type { EventMap } from './service/bus';
 import type { CheckService } from './service/check';
@@ -37,8 +37,9 @@ export interface Context extends cordis.Context, Pick<WebService, 'Route' | 'Con
     setImmediate: typeof setImmediate;
     addScript: typeof addScript;
     provideModule: typeof provideModule;
-    injectUI: typeof inject;
+    // injectUI: typeof inject;
     broadcast: Context['emit'];
+    geoip?: GeoIP;
 }
 
 export abstract class Service<T = any, C extends Context = Context> extends cordis.Service<T, C> {
@@ -57,7 +58,7 @@ export class ApiMixin extends Service {
     addScript = T(addScript);
     setImmediate = T(setImmediate, clearImmediate);
     provideModule = T(provideModule);
-    injectUI = T(inject);
+    // injectUI = T(inject);
     broadcast = (event: keyof EventMap, ...payload) => this.ctx.emit('bus/broadcast', event, payload);
     constructor(ctx) {
         super(ctx, '$api', true);
@@ -65,5 +66,21 @@ export class ApiMixin extends Service {
     }
 }
 
+export class Context extends cordis.Context {
+    domain?: DomainDoc;
 
+    constructor(config: {} = {}) {
+        super(config);
+        this.plugin(ApiMixin);
+    }
+}
 
+// const old = cordis.Registry.prototype.inject;
+// // cordis.Registry.prototype.using = old;
+// cordis.Registry.prototype.inject = function wrapper(...args) {
+//     if (typeof args[0] === 'string') {
+//         console.warn('old functionality of ctx.inject is deprecated. please use ctx.injectUI instead.');
+//         return T(inject).call(this, ...args as any) as any;
+//     }
+//     return old.call(this, ...args);
+// };
