@@ -7,7 +7,7 @@ import { Logger } from '../logger';
 import { load } from '../options';
 import db from '../service/db';
 import {
-    addon, handler, lib, locale, template,
+    handler, locale, template,
 } from './common'; // 移除 unused imports
 
 const argv = cac().parse();
@@ -82,14 +82,8 @@ export async function apply(ctx: Context) {
     await ctx.lifecycle.flush();
     */
 
-    // 加载 handler 和 script
-    const scriptDir = path.resolve(__dirname, '..', 'script');
-    for (const h of await fs.readdir(scriptDir)) {
-        ctx.loader.reloadPlugin(ctx, path.resolve(scriptDir, h), {}, `ejunz/script/${h.split('.')[0]}`);
-    }
+    // 移除 script 部分
 
-    await ctx.lifecycle.flush();
-    await script(pending, fail, ctx);
     await ctx.lifecycle.flush();
     await ctx.parallel('app/started');
 
