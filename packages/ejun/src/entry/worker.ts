@@ -1,5 +1,3 @@
-/* eslint-disable import/no-dynamic-require */
-/* eslint-disable no-await-in-loop */
 import os from 'os';
 import path from 'path';
 import cac from 'cac';
@@ -63,7 +61,7 @@ export async function apply(ctx: Context) {
     const handlerDir = path.resolve(__dirname, '..', 'handler');
     const handlers = await fs.readdir(handlerDir);
     for (const h of handlers.filter((i) => i.endsWith('.ts'))) {
-        ctx.loader.reloadPlugin(ctx, path.resolve(handlerDir, h), {}, `yijun/handler/${h.split('.')[0]}`);
+        ctx.loader.reloadPlugin(ctx, path.resolve(handlerDir, h), {}, `ejunz/handler/${h.split('.')[0]}`);
     }
     ctx.plugin(require('../service/migration').default);
     await handler(pending, fail, ctx);
@@ -71,7 +69,7 @@ export async function apply(ctx: Context) {
     await ctx.lifecycle.flush();
     const scriptDir = path.resolve(__dirname, '..', 'script');
     for (const h of await fs.readdir(scriptDir)) {
-        ctx.loader.reloadPlugin(ctx, path.resolve(scriptDir, h), {}, `yijun/script/${h.split('.')[0]}`);
+        ctx.loader.reloadPlugin(ctx, path.resolve(scriptDir, h), {}, `ejunz/script/${h.split('.')[0]}`);
     }
     await ctx.lifecycle.flush();
     await script(pending, fail, ctx);
@@ -80,7 +78,7 @@ export async function apply(ctx: Context) {
     if (process.env.NODE_APP_INSTANCE === '0') {
         await new Promise((resolve, reject) => {
             ctx.inject(['migration'], async (c) => {
-                c.migration.registerChannel('yijun', require('../upgrade').coreScripts);
+                c.migration.registerChannel('ejunz', require('../upgrade').coreScripts);
                 try {
                     await c.migration.doUpgrade();
                     resolve(null);
@@ -93,7 +91,6 @@ export async function apply(ctx: Context) {
     }
     for (const f of global.addons) {
         const dir = path.join(f, 'public');
-        // eslint-disable-next-line no-await-in-loop
         if (await fs.pathExists(dir)) await fs.copy(dir, path.join(os.homedir(), '.ejunz/static'));
     }
     await ctx.parallel('app/listen');
