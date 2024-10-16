@@ -1,6 +1,3 @@
-/* eslint-disable import/no-dynamic-require */
-/* eslint-disable no-await-in-loop */
-/* eslint-disable no-eval */
 import '../lib/index';
 
 import os from 'os';
@@ -9,7 +6,6 @@ import fs from 'fs-extra';
 import yaml from 'js-yaml';
 import { Context } from '../context';
 import { Logger } from '../logger';
-// import { PRIV } from '../model/builtin';
 import { unwrapExports } from '../utils';
 
 const logger = new Logger('common');
