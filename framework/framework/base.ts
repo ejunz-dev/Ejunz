@@ -2,7 +2,7 @@ import type { Next } from 'koa';
 import { pick } from 'lodash';
 import {
     EjunzRequest, EjunzResponse, KoaContext, serializer,
-} from '@ejunz/framework';
+} from '@ejunz/framework/';
 import { errorMessage } from '@ejunz/utils/lib/utils';
 import { SystemError, UserFacingError } from './error';
 
