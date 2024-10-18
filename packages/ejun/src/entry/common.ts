@@ -37,14 +37,12 @@ const getLoader = (type: LoadTask, filename: string) => async function loader(pe
             const name = type.replace(/^(.)/, (t) => t.toUpperCase());
             try {
                 const m = unwrapExports(require(p));
-                if (m.apply) ctx.loader.reloadPlugin(ctx, p, {});
-                else logger.info(`${name} init: %s`, i);
+                if (m.apply) {
+                    ctx.loader.reloadPlugin(ctx, p, {});
+                } else {
+                    logger.info(`${name} init: %s`, i);
+                }
             } catch (e) {
-                fail.push(i);
-                app.injectUI(
-                    'Notification', `${name} load fail: {0}`,
-                    { args: [i], type: 'warn' }, PRIV.PRIV_VIEW_SYSTEM_NOTIFICATION,
-                );
                 logger.info(`${name} load fail: %s`, i);
                 logger.error(e);
             }
@@ -64,30 +62,7 @@ export async function builtinModel(ctx: Context) {
     const models = await fs.readdir(modelDir);
     for (const t of models.filter((i) => i.endsWith('.ts'))) {
         const q = path.resolve(modelDir, t);
-        if ('apply' in require(q)) ctx.loader.reloadPlugin(ctx, q, {}, `yijun/model/${t.split('.')[0]}`);
-    }
-}
-
-export async function locale(pending: string[], fail: string[]) {
-    for (const i of pending) {
-        const p = locateFile(i, ['locale', 'locales']);
-        if (p && (await fs.stat(p)).isDirectory() && !fail.includes(i)) {
-            try {
-                const files = await fs.readdir(p);
-                for (const file of files) {
-                    const content = await fs.readFile(path.resolve(p, file), 'utf-8');
-                    const dict = yaml.load(content);
-                    if (typeof dict !== 'object' || !dict) throw new Error('Invalid locale file');
-                    app.i18n.load(file.split('.')[0], dict as any);
-                }
-                logger.info('Locale init: %s', i);
-            } catch (e) {
-                fail.push(i);
-                app.injectUI('Notification', 'Locale load fail: {0}', { args: [i], type: 'warn' }, PRIV.PRIV_VIEW_SYSTEM_NOTIFICATION);
-                logger.error('Locale Load Fail: %s', i);
-                logger.error(e);
-            }
-        }
+        if ('apply' in require(q)) ctx.loader.reloadPlugin(ctx, q, {}, `ejun/model/${t.split('.')[0]}`);
     }
 }
 
@@ -101,7 +76,6 @@ export async function setting(pending: string[], fail: string[], modelSetting: t
     for (const i of pending) {
         let p = path.resolve(i, 'setting.yaml');
         const t = i.split(path.sep);
-        // TODO: change this name setting to package name
         const name = t[t.length - 1];
         if (!fs.existsSync(p)) p = path.resolve(i, 'settings.yaml');
         if (fs.existsSync(p) && !fail.includes(i)) {
@@ -124,7 +98,6 @@ export async function setting(pending: string[], fail: string[], modelSetting: t
                 }
                 logger.info('Config load: %s', i);
             } catch (e) {
-                app.injectUI('Notification', 'Config load fail: {0}', { args: [i], type: 'warn' }, PRIV.PRIV_VIEW_SYSTEM_NOTIFICATION);
                 logger.error('Config Load Fail: %s', i);
                 logger.error(e);
             }
@@ -147,7 +120,6 @@ export async function template(pending: string[], fail: string[]) {
                 logger.info('Template init: %s', i);
             } catch (e) {
                 fail.push(i);
-                app.injectUI('Notification', 'Template load fail: {0}', { args: [i], type: 'warn' }, PRIV.PRIV_VIEW_SYSTEM_NOTIFICATION);
                 logger.error('Template Load Fail: %s', i);
                 logger.error(e);
             }
