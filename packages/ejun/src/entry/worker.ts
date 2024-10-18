@@ -7,7 +7,7 @@ import { Logger } from '../logger';
 import { load } from '../options';
 import db from '../service/db';
 import {
-    handler, template,
+    handler, 
 } from './common'; 
 const argv = cac().parse();
 const logger = new Logger('worker');
@@ -28,7 +28,6 @@ export async function apply(ctx: Context) {
     const pending = global.addons;
     const fail = [];
 
-    await template(pending, fail);
 
     // 启动数据库
     await db.start();
