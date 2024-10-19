@@ -18,7 +18,7 @@ class UserLoginHandler extends Handler {
 
         await udoc.checkPassword(password);
         
-        this.context.HydroContext.user = udoc;
+        this.context.EjunzContext.user = udoc;
         this.session.uid = udoc._id;
         this.response.redirect = '/';
     }
@@ -32,7 +32,7 @@ class UserLogoutHandler extends Handler {
     }
 
     async post({ domainId }) {
-        this.context.HydroContext.user = await user.getById(domainId, 0);
+        this.context.EjunzContext.user = await user.getById(domainId, 0);
         this.session.uid = 0;
         this.response.redirect = '/';
     }
@@ -52,7 +52,7 @@ export class UserRegisterHandler extends Handler {
         
         const uid = await user.create(uname, password, this.request.ip);
         
-        this.context.HydroContext.user = await user.getById(domainId, uid);
+        this.context.EjunzContext.user = await user.getById(domainId, uid);
         this.session.uid = uid;
         this.response.redirect = '/';
     }
