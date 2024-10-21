@@ -57,9 +57,10 @@ export class UserRegisterHandler extends Handler {
         this.response.redirect = '/';
     }
 }
-
 export async function apply(ctx: Context) {
-    ctx.Route('user_login', '/login', UserLoginHandler);
-    ctx.Route('user_register', '/register', UserRegisterHandler);
-    ctx.Route('user_logout', '/logout', UserLogoutHandler);
+    ctx.inject(['Route'], (Route: (name: string, path: string, handler: Function) => void) => {
+        ctx.Route('user_login', '/login', UserLoginHandler);
+        ctx.Route('user_register', '/register', UserRegisterHandler);
+        ctx.Route('user_logout', '/logout', UserLogoutHandler);
+    });
 }
