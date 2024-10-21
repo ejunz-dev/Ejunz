@@ -310,7 +310,7 @@ function executeMiddlewareStack(context: any, middlewares: { name: string, func:
     return dispatch(0);
 }
 
-interface WebServiceConfig {
+interface WebServiceConfig {w
     keys: string[];
     proxy: boolean;
     cors?: string;

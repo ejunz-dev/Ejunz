@@ -11,11 +11,11 @@ import type { ConnectionHandler, Handler } from './service/server';
 
 export interface Events<C extends Context = Context> extends cordis.Events<C>, EventMap, ServerEvents<Handler, ConnectionHandler> { }
 
-function addScript<K>(name: string, description: string, validate: Schema<K>, run: (args: K, report: any) => boolean | Promise<boolean>) {
-    if (global.Ejunz.script[name]) throw new Error(`duplicate script ${name} registered.`);
-    global.Ejunz.script[name] = { description, validate, run };
-    return () => delete global.Ejunz.script[name];
-}
+// function addScript<K>(name: string, description: string, validate: Schema<K>, run: (args: K, report: any) => boolean | Promise<boolean>) {
+//     if (global.Ejunz.script[name]) throw new Error(`duplicate script ${name} registered.`);
+//     global.Ejunz.script[name] = { description, validate, run };
+//     return () => delete global.Ejunz.script[name];
+// }
 
 function provideModule<T extends keyof ModuleInterfaces>(type: T, id: string, module: ModuleInterfaces[T]) {
     if (global.Ejunz.module[type][id]) throw new Error(`duplicate script ${type}/${id} registered.`);
@@ -33,9 +33,9 @@ export interface Context extends cordis.Context, Pick<WebService, 'Route' | 'Con
     // @ts-ignore
     [Context.events]: Events<this>;
     loader: Loader;
-    check: CheckService;
+    // check: CheckService;
     setImmediate: typeof setImmediate;
-    addScript: typeof addScript;
+    // addScript: typeof addScript;
     provideModule: typeof provideModule;
     // injectUI: typeof inject;
     broadcast: Context['emit'];
@@ -55,7 +55,7 @@ const T = <F extends (...args: any[]) => any>(origFunc: F, disposeFunc?) =>
     };
 
 export class ApiMixin extends Service {
-    addScript = T(addScript);
+    // addScript = T(addScript);
     setImmediate = T(setImmediate, clearImmediate);
     provideModule = T(provideModule);
     // injectUI = T(inject);
@@ -75,12 +75,12 @@ export class Context extends cordis.Context {
     }
 }
 
-// const old = cordis.Registry.prototype.inject;
-// // cordis.Registry.prototype.using = old;
-// cordis.Registry.prototype.inject = function wrapper(...args) {
-//     if (typeof args[0] === 'string') {
-//         console.warn('old functionality of ctx.inject is deprecated. please use ctx.injectUI instead.');
-//         return T(inject).call(this, ...args as any) as any;
-//     }
-//     return old.call(this, ...args);
-// };
+const old = cordis.Registry.prototype.inject;
+// cordis.Registry.prototype.using = old;
+cordis.Registry.prototype.inject = function wrapper(...args) {
+    if (typeof args[0] === 'string') {
+        console.warn('old functionality of ctx.inject is deprecated. please use ctx.injectUI instead.');
+        return T(inject).call(this, ...args as any) as any;
+    }
+    return old.call(this, ...args);
+};

@@ -5,14 +5,14 @@ import {
 import type { Handler, ServerEvents } from '@ejunz/framework';
 import pm2 from '@ejunz/utils/lib/locate-pm2';
 import { Context } from '../context';
-import type { ProblemSolutionHandler } from '../handler/problem';
+// import type { ProblemSolutionHandler } from '../handler/problem';
 import type { UserRegisterHandler } from '../handler/user';
 import type {
-    BaseUserDict, ContestBalloonDoc, DiscussionDoc, DomainDoc, FileInfo,
-    MessageDoc, ProblemDict, ProblemDoc, RecordDoc,
+    BaseUserDict, ContestBalloonDoc, DomainDoc, FileInfo,
+    MessageDoc,  RecordDoc,
     ScoreboardRow, Tdoc, TrainingDoc, User,
 } from '../interface';
-import type { DocType } from '../model/document';
+// import type { DocType } from '../model/document';
 
 export type Disposable = () => void;
 export type VoidReturn = Promise<any> | any;
@@ -131,7 +131,7 @@ export const emit = app.parallel.bind(app);
 export const bail = app.bail.bind(app);
 // For backward compatibility
 export const serial: any = app.parallel.bind(app);
-// export const broadcast = app.broadcast.bind(app);
+export const broadcast = app.broadcast.bind(app);
 
 global.Ejunz.service.bus = app as any;
 global.bus = app;
