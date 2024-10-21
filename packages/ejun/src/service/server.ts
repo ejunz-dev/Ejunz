@@ -12,9 +12,15 @@ import { Context } from '../context';
 import { PermissionError, PrivilegeError } from '../error';
 import type { DomainDoc } from '../interface';
 import { Logger } from '../logger';
+import { PERM, PRIV } from '../model/builtin';
+// import * as opcount from '../model/opcount';
+// import * as OplogModel from '../model/oplog';
+import * as system from '../model/system';
 import { builtinConfig } from '../settings';
 import db from './db';
-
+// import baseLayer from './layers/base';
+// import domainLayer from './layers/domain';
+// import userLayer from './layers/user';
 
 const argv = cac().parse();
 const ignoredLimit = `,${argv.options.ignoredLimit},`;
@@ -180,10 +186,10 @@ export async function apply(ctx: Context) {
             }));
         }
 
-        server.addServerLayer('domain', domainLayer);
-        server.addWSLayer('domain', domainLayer);
-        server.addLayer('base', baseLayer);
-        server.addLayer('user', userLayer);
+        // server.addServerLayer('domain', domainLayer);
+        // server.addWSLayer('domain', domainLayer);
+        // server.addLayer('base', baseLayer);
+        // server.addLayer('user', userLayer);
 
         server.handlerMixin({
             url(name: string, ...kwargsList: Record<string, any>[]) {
