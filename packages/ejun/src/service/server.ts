@@ -284,8 +284,8 @@ export async function apply(ctx: Context) {
                     icon: global.Ejunz.module.oauth[key].icon,
                     text: global.Ejunz.module.oauth[key].text,
                 }));
-            if (!h.noCheckPermView && !h.user.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN)) h.checkPerm(PERM.PERM_VIEW);
-            if (h.context.pendingError) throw h.context.pendingError;
+            // if (!h.noCheckPermView && !h.user.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN)) h.checkPerm(PERM.PERM_VIEW);
+            // if (h.context.pendingError) throw h.context.pendingError;
         });
 
         on('app/listen', () => {

@@ -47,24 +47,24 @@ export function folderSize(folderPath: string) {
     return size;
 }
 
-String.prototype.format = function formatStr(...args) {
-    let result = this;
-    if (args.length) {
-        if (args.length === 1 && typeof args[0] === 'object') {
-            const t = args[0];
-            for (const key in t) {
-                if (!key.startsWith('_') && t[key] !== undefined) {
-                    if (t._inspect && typeof t[key] === 'object') {
-                        t[key] = inspect(t[key], { colors: process?.stderr?.isTTY });
-                    }
-                    const reg = new RegExp(`(\\{${key}\\})`, 'g');
-                    result = result.replace(reg, t[key]);
-                }
-            }
-        } else return this.formatFromArray(args);
-    }
-    return result.toString();
-};
+// String.prototype.format = function formatStr(...args) {
+//     let result = this;
+//     if (args.length) {
+//         if (args.length === 1 && typeof args[0] === 'object') {
+//             const t = args[0];
+//             for (const key in t) {
+//                 if (!key.startsWith('_') && t[key] !== undefined) {
+//                     if (t._inspect && typeof t[key] === 'object') {
+//                         t[key] = inspect(t[key], { colors: process?.stderr?.isTTY });
+//                     }
+//                     const reg = new RegExp(`(\\{${key}\\})`, 'g');
+//                     result = result.replace(reg, t[key]);
+//                 }
+//             }
+//         } else return this.formatFromArray(args);
+//     }
+//     return result.toString();
+// };
 
 export function isClass(obj: any, strict = false): obj is new (...args: any) => any {
     if (typeof obj !== 'function') return false;
