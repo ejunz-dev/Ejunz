@@ -76,7 +76,7 @@ export class Context extends cordis.Context {
 }
 
 const old = cordis.Registry.prototype.inject;
-// cordis.Registry.prototype.using = old;
+cordis.Registry.prototype.using = old;
 cordis.Registry.prototype.inject = function wrapper(...args) {
     if (typeof args[0] === 'string') {
         console.warn('old functionality of ctx.inject is deprecated. please use ctx.injectUI instead.');

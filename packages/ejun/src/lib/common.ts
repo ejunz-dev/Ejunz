@@ -31,37 +31,37 @@ try {
     String.random = randomstring;
 } catch (e) { } // Cannot add property random, object is not extensible
 
-String.prototype.format ||= function formatStr(...args) {
-    let result = this;
-    if (args.length) {
-        if (args.length === 1 && typeof args[0] === 'object') {
-            const t = args[0];
-            for (const key in t) {
-                if (!key.startsWith('_') && t[key] !== undefined) {
-                    const reg = new RegExp(`(\\{${key}\\})`, 'g');
-                    result = result.replace(reg, t[key]);
-                }
-            }
-        } else return this.formatFromArray(args);
-    }
-    return result;
-};
+// String.prototype.format ||= function formatStr(...args) {
+//     let result = this;
+//     if (args.length) {
+//         if (args.length === 1 && typeof args[0] === 'object') {
+//             const t = args[0];
+//             for (const key in t) {
+//                 if (!key.startsWith('_') && t[key] !== undefined) {
+//                     const reg = new RegExp(`(\\{${key}\\})`, 'g');
+//                     result = result.replace(reg, t[key]);
+//                 }
+//             }
+//         } else return this.formatFromArray(args);
+//     }
+//     return result;
+// };
 
-String.prototype.formatFromArray = function formatStr(args) {
-    let result = this;
-    for (let i = 0; i < args.length; i++) {
-        if (args[i] !== undefined) {
-            const reg = new RegExp(`(\\{)${i}(\\})`, 'g');
-            result = result.replace(reg, args[i]);
-        }
-    }
-    return result;
-};
+// String.prototype.formatFromArray = function formatStr(args) {
+//     let result = this;
+//     for (let i = 0; i < args.length; i++) {
+//         if (args[i] !== undefined) {
+//             const reg = new RegExp(`(\\{)${i}(\\})`, 'g');
+//             result = result.replace(reg, args[i]);
+//         }
+//     }
+//     return result;
+// };
 
-String.prototype.rawformat = function rawFormat(object) {
-    const res = this.split('{@}');
-    return [res[0], object, res[1]].join();
-};
+// String.prototype.rawformat = function rawFormat(object) {
+//     const res = this.split('{@}');
+//     return [res[0], object, res[1]].join();
+// };
 
 Array.isDiff = function isDiff(a, b) {
     if (a.length !== b.length) return true;
@@ -74,25 +74,25 @@ Array.isDiff = function isDiff(a, b) {
 };
 
 // @ts-ignore
-Date.prototype.format = function formatDate(fmt = '%Y-%m-%d %H:%M:%S') {
-    let m = this.getMonth() + 1;
-    if (m < 10) m = `0${m}`;
-    let d = this.getDate();
-    if (d < 10) d = `0${d}`;
-    let H = this.getHours();
-    if (H < 10) H = `0${H}`;
-    let M = this.getMinutes();
-    if (M < 10) M = `0${M}`;
-    let S = this.getSeconds();
-    if (S < 10) S = `0${S}`;
-    return fmt
-        .replace('%Y', this.getFullYear())
-        .replace('%m', m)
-        .replace('%d', d)
-        .replace('%H', H)
-        .replace('%M', M)
-        .replace('%S', S);
-};
+// Date.prototype.format = function formatDate(fmt = '%Y-%m-%d %H:%M:%S') {
+//     let m = this.getMonth() + 1;
+//     if (m < 10) m = `0${m}`;
+//     let d = this.getDate();
+//     if (d < 10) d = `0${d}`;
+//     let H = this.getHours();
+//     if (H < 10) H = `0${H}`;
+//     let M = this.getMinutes();
+//     if (M < 10) M = `0${M}`;
+//     let S = this.getSeconds();
+//     if (S < 10) S = `0${S}`;
+//     return fmt
+//         .replace('%Y', this.getFullYear())
+//         .replace('%m', m)
+//         .replace('%d', d)
+//         .replace('%H', H)
+//         .replace('%M', M)
+//         .replace('%S', S);
+// };
 
 Math.sum = function sum(...args) {
     let s = 0;
