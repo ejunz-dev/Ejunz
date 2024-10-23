@@ -11,6 +11,7 @@
     "scripts": {
         "debug": "node --trace-warnings --async-stack-traces --trace-deprecation packages/ejun/bin/ejun --debug --template",
         "build:watch": "node build/prepare.js && tsc -b --watch",
+        "build:ui:dev": "node packages/ui-default/build --iconfont && node --trace-deprecation packages/ui-default/build --dev",
         "start": "packages/ejun/bin/ejun.js",
         "ejun": "./node_modules/.bin/ejun"
     },
