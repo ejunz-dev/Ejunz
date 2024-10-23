@@ -13,7 +13,7 @@ import { PermissionError, PrivilegeError } from '../error';
 import type { DomainDoc } from '../interface';
 import { Logger } from '../logger';
 import { PERM, PRIV } from '../model/builtin';
-// import * as opcount from '../model/opcount';
+import * as opcount from '../model/opcount';
 // import * as OplogModel from '../model/oplog';
 import * as system from '../model/system';
 import { builtinConfig } from '../settings';
