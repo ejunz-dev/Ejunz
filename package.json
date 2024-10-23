@@ -9,8 +9,10 @@
     ],
     "main": "package.json",
     "scripts": {
+        "debug": "node --trace-warnings --async-stack-traces --trace-deprecation packages/ejun/bin/ejun --debug --template",
+        "build:watch": "node build/prepare.js && tsc -b --watch",
         "start": "packages/ejun/bin/ejun.js",
-        "yijun": "./node_modules/.bin/ejun"
+        "ejun": "./node_modules/.bin/ejun"
     },
     "version": "0.0.0",
     "license": "AGPL-3.0-only",
