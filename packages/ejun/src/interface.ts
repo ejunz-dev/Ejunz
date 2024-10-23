@@ -736,7 +736,7 @@ export interface Model {
     // document: Omit<typeof import('./model/document'), 'apply'>,
     // domain: typeof import('./model/domain').default,
     // message: typeof import('./model/message').default,
-    // opcount: typeof import('./model/opcount'),
+    opcount: typeof import('./model/opcount'),
     // problem: typeof import('./model/problem').default,
     // record: typeof import('./model/record').default,
     setting: typeof import('./model/setting'),
