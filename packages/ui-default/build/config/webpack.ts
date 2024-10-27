@@ -101,7 +101,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
     devtool: env.production ? 'source-map' : false,
     entry: {
       [`ejunz-${version}`]: './entry.js',
-      'sentry': './sentry.ts',
+      // 'sentry': './sentry.ts',
       'default.theme': './theme/default.js',
       'service-worker': './service-worker.ts',
     },
@@ -284,19 +284,19 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
           { from: `${dirname(require.resolve('monaco-themes/package.json'))}/themes`, to: 'monaco/themes/' },
         ],
       }),
-      sentryWebpackPlugin({
-        authToken: process.env.SENTRY_AUTH_TOKEN,
-        org: 'ejunz-dev',
-        project: 'ejunz-web',
-        url: 'https://sentry.ejunz.ac',
-        sourcemaps: {
-          rewriteSources: (source) => source.replace('@ejunz/ui-default/../../node_modules/', ''),
-        },
-        release: createSentryRelease ? {
-          name: `ejunz-web@${version}`,
-          uploadLegacySourcemaps: root('public'),
-        } : {},
-      }),
+      // sentryWebpackPlugin({
+      //   authToken: process.env.SENTRY_AUTH_TOKEN,
+      //   org: 'ejunz-dev',
+      //   project: 'ejunz-web',
+      //   url: 'https://sentry.ejunz.ac',
+      //   sourcemaps: {
+      //     rewriteSources: (source) => source.replace('@ejunz/ui-default/../../node_modules/', ''),
+      //   },
+      //   release: createSentryRelease ? {
+      //     name: `ejunz-web@${version}`,
+      //     uploadLegacySourcemaps: root('public'),
+      //   } : {},
+      // }),
       new webpack.DefinePlugin({
         'process.env.VERSION': JSON.stringify(require('@ejunz/ui-default/package.json').version),
       }),
