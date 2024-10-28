@@ -6,6 +6,9 @@
     "license": "AGPL-3.0",
     "main": "index.ts",
     "preferUnplugged": true,
+    "ejunz": {
+        "cli": false
+    },
     "devDependencies": {
         "@blueprintjs/core": "^5.12.0",
         "@cordisjs/core": "3.17.3",
