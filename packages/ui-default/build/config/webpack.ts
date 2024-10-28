@@ -76,18 +76,18 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
     };
   }
 
-  function stylusLoader() {
-    return {
-      loader: 'stylus-loader',
-      options: {
-        stylusOptions: {
-          preferPathResolver: 'webpack',
-          use: [require('rupture')()],
-          import: ['~vj/common/common.inc.styl'],
-        },
-      },
-    };
-  }
+  // function stylusLoader() {
+  //   return {
+  //     loader: 'stylus-loader',
+  //     options: {
+  //       stylusOptions: {
+  //         preferPathResolver: 'webpack',
+  //         use: [require('rupture')()],
+  //         import: ['~vj/common/common.inc.styl'],
+  //       },
+  //     },
+  //   };
+  // }
 
   const config: import('webpack').Configuration = {
     // bail: !env.production,
@@ -102,7 +102,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
     entry: {
       [`ejunz-${version}`]: './entry.js',
       // 'sentry': './sentry.ts',
-      'default.theme': './theme/default.js',
+      // 'default.theme': './theme/default.js',
       'service-worker': './service-worker.ts',
     },
     cache: {
@@ -199,7 +199,8 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
         },
         {
           test: /\.styl$/,
-          use: [extractCssLoader(), cssLoader(), postcssLoader(), stylusLoader()],
+          use: [extractCssLoader(), cssLoader(), postcssLoader(), // stylusLoader()],
+          ],
         },
         {
           test: /\.css$/,
@@ -276,8 +277,8 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
       new webpack.IgnorePlugin({ resourceRegExp: /(^\.\/locale$)/ }),
       new CopyWebpackPlugin({
         patterns: [
-          { from: root('static') },
-          { from: root('components/navigation/nav-logo-small_dark.png'), to: 'components/navigation/nav-logo-small_dark.png' },
+          // { from: root('static') },
+          // { from: root('components/navigation/nav-logo-small_dark.png'), to: 'components/navigation/nav-logo-small_dark.png' },
           { from: root(`${dirname(require.resolve('streamsaver/package.json'))}/mitm.html`), to: 'streamsaver/mitm.html' },
           { from: root(`${dirname(require.resolve('streamsaver/package.json'))}/sw.js`), to: 'streamsaver/sw.js' },
           { from: root(`${dirname(require.resolve('graphiql/package.json'))}/graphiql.min.css`), to: 'graphiql.min.css' },

@@ -1,6 +1,9 @@
 {
     "name": "ejun",
     "version": "0.2.0",
+    "bin": "bin/ejun.js",
+    "main": "src/plugin-api",
+    "module": "src/plugin-api",
     "repository": "https://github.com/ejunz-dev/EjunZ.git",
     "author": "Jacka10086 <i@jacka10086.me>",
     "license": "AGPL-3.0-or-later",
