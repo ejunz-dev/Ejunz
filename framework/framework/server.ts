@@ -378,7 +378,7 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
             });
         }
         if (this.config.upload) {
-            const uploadDir = join(tmpdir(), 'hydro', 'upload', process.env.NODE_APP_INSTANCE || '0');
+            const uploadDir = join(tmpdir(), 'ejunz', 'upload', process.env.NODE_APP_INSTANCE || '0');
             fs.ensureDirSync(uploadDir);
             logger.debug('Using upload dir: %s', uploadDir);
             this.server.use(Body({

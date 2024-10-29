@@ -734,7 +734,7 @@ export interface Model {
     // contest: typeof import('./model/contest'),
     // discussion: typeof import('./model/discussion'),
     // document: Omit<typeof import('./model/document'), 'apply'>,
-    // domain: typeof import('./model/domain').default,
+    domain: typeof import('./model/domain').default,
     // message: typeof import('./model/message').default,
     opcount: typeof import('./model/opcount'),
     // problem: typeof import('./model/problem').default,
@@ -778,22 +778,22 @@ export interface ProblemSearchOptions {
 
 export type ProblemSearch = (domainId: string, q: string, options?: ProblemSearchOptions) => Promise<ProblemSearchResponse>;
 
-// export interface Lib extends Record<string, any> {
-//     difficulty: typeof import('./lib/difficulty').default;
-//     buildContent: typeof import('./lib/content').buildContent;
-//     mail: typeof import('./lib/mail');
-//     rating: typeof import('./lib/rating').default;
-//     testdataConfig: typeof import('./lib/testdataConfig');
-//     problemSearch: ProblemSearch;
-// }
+export interface Lib extends Record<string, any> {
+    // difficulty: typeof import('./lib/difficulty').default;
+    buildContent: typeof import('./lib/content').buildContent;
+    // mail: typeof import('./lib/mail');
+    // rating: typeof import('./lib/rating').default;
+    // testdataConfig: typeof import('./lib/testdataConfig');
+    problemSearch: ProblemSearch;
+}
 
-// export type UIInjectableFields = 'ProblemAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel';
-// export interface UI {
-//     template: Record<string, string>,
-//     nodes: Record<UIInjectableFields, any[]>,
-//     getNodes: typeof import('./lib/ui').getNodes,
-//     inject: typeof import('./lib/ui').inject,
-// }
+export type UIInjectableFields = 'ProblemAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel';
+export interface UI {
+    template: Record<string, string>,
+    nodes: Record<UIInjectableFields, any[]>,
+    getNodes: typeof import('./lib/ui').getNodes,
+    inject: typeof import('./lib/ui').inject,
+}
 
 export interface ModuleInterfaces {
     oauth: {
@@ -811,9 +811,9 @@ export interface EjunzGlobal {
     model: Model;
     script: Record<string, Script>;
     service: EjunzService;
-    // lib: Lib;
+    lib: Lib;
     module: { [K in keyof ModuleInterfaces]: Record<string, ModuleInterfaces[K]> };
-    // ui: UI;
+    ui: UI;
     error: typeof import('./error');
     Logger: typeof import('./logger').Logger;
     logger: typeof import('./logger').logger;
