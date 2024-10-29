@@ -87,10 +87,13 @@ export class Handler extends HandlerOriginal {
     }
 
     async onerror(error: EjunzError) {
+        // 强制初始化默认值
+        this.user = this.user || { _id: 'unknown', uname: 'anonymous' };
+        this.domain = this.domain || { _id: 'default' };
+    
         error.msg ||= () => error.message;
         if (error instanceof UserFacingError && !process.env.DEV) error.stack = '';
         if (!(error instanceof NotFoundError) && !('nolog' in error)) {
-            // eslint-disable-next-line max-len
             logger.error(`User: ${this.user._id}(${this.user.uname}) ${this.request.method}: /d/${this.domain._id}${this.request.path}`, error.msg(), error.params);
             if (error.stack) logger.error(error.stack);
         }
