@@ -136,7 +136,7 @@ export function apply(ctx: Context) {
       SettingModel.Setting('setting_display', 'showTimeAgo', true, 'boolean', 'Enable Time Ago'),
     );
   });
-  if (process.env.HYDRO_CLI) return;
+  if (process.env.EJUNZ_CLI) return;
   ctx.Route('wiki_help', '/wiki/help', WikiHelpHandler);
   ctx.Route('wiki_about', '/wiki/about', WikiAboutHandler);
   ctx.Route('set_theme', '/set_theme/:theme', SetThemeHandler);

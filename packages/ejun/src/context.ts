@@ -2,7 +2,7 @@ import * as cordis from 'cordis';
 import Schema from 'schemastery';
 import type { ServerEvents, WebService } from '@ejunz/framework';
 import type { DomainDoc, GeoIP, ModuleInterfaces } from './interface';
-// import { inject } from './lib/ui';
+import { inject } from './lib/ui';
 import { Loader } from './loader';
 import type { EventMap } from './service/bus';
 import type { CheckService } from './service/check';
@@ -37,7 +37,7 @@ export interface Context extends cordis.Context, Pick<WebService, 'Route' | 'Con
     setImmediate: typeof setImmediate;
     // addScript: typeof addScript;
     provideModule: typeof provideModule;
-    // injectUI: typeof inject;
+    injectUI: typeof inject;
     broadcast: Context['emit'];
     geoip?: GeoIP;
 }
@@ -58,7 +58,7 @@ export class ApiMixin extends Service {
     // addScript = T(addScript);
     setImmediate = T(setImmediate, clearImmediate);
     provideModule = T(provideModule);
-    // injectUI = T(inject);
+    injectUI = T(inject);
     broadcast = (event: keyof EventMap, ...payload) => this.ctx.emit('bus/broadcast', event, payload);
     constructor(ctx) {
         super(ctx, '$api', true);

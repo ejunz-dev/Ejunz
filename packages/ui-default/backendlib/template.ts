@@ -10,9 +10,10 @@ import path from 'path';
 import markdown from './markdown';
 import { ensureTag, xss } from './markdown-it-xss';
 import * as misc from './misc';
-console.log("Starting the script...");
-console.log("Checking global.Ejunz:", global.Ejunz);
-console.log("Checking global.Ejunz.ui.template:", global.Ejunz?.ui?.template);
+// console.log("Starting the script...");
+// console.log("Checking global.Ejunz:", global.Ejunz);
+// console.log("Checking global.Ejunz.ui.template:", global.Ejunz?.ui?.template);
+// console.log("Checking global.Ejunz.ui.template:", global.Ejunz.ui?.template);
 
 const argv = require('cac')().parse();
 
@@ -22,35 +23,35 @@ else template = findFileSync(template);
 
 class Loader extends nunjucks.Loader {
   getSource(name) {
-    console.log("Attempting to load template:", name);
-    
-    const src = global.Ejunz.ui.template?.[name];
-    console.log("Global template source:", src ? "Found" : "Not Found");
-
-    let fullpath = null;
-    const p = path.resolve(template, name);
-    if (fs.existsSync(p)) {
-      fullpath = p;
-      console.log("Template found at path:", fullpath);
-    } else {
-      console.log("Template not found at path:", p);
-    }
-
-    if (fullpath) {
-      return {
-        src: fs.readFileSync(fullpath, 'utf-8'),
-        path: fullpath,
-        noCache: true,
-      };
-    } else if (src) {
+    const src = global.Ejunz.ui.template[name];
+    const ref = global.Ejunz.ui.template[`${name}.source`];
+    if (!process.env.DEV) {
+      if (!src) throw new Error(`Cannot get template ${name}`);
       return {
         src,
         path: name,
-        noCache: true,
+        noCache: false,
       };
-    } else {
+    }
+    let fullpath = null;
+    const p = path.resolve(template, name);
+    if (fs.existsSync(p)) fullpath = p;
+    if (!fullpath && ref && fs.existsSync(ref)) fullpath = ref;
+    if (!fullpath) {
+      if (src) {
+        return {
+          src,
+          path: name,
+          noCache: true,
+        };
+      }
       throw new Error(`Cannot get template ${name}`);
     }
+    return {
+      src: fs.readFileSync(fullpath, 'utf-8'),
+      path: fullpath,
+      noCache: true,
+    };
   }
 }
 
@@ -84,7 +85,7 @@ class Nunjucks extends nunjucks.Environment {
     this.addFilter('bitand', (self, val) => self & val);
     this.addFilter('toString', (self) => (typeof self === 'string' ? self : JSON.stringify(self, replacer)));
     this.addFilter('content', (content, language, html) => {
-      let s = '';
+      let s: any = '';
       try {
         s = JSON.parse(content);
       } catch {
@@ -101,7 +102,7 @@ class Nunjucks extends nunjucks.Environment {
       return ensureTag(html ? xss.process(s) : markdown.render(s));
     });
     this.addFilter('contentLang', (content) => {
-      let s = '';
+      let s: any = '';
       try {
         s = JSON.parse(content);
       } catch {
@@ -118,8 +119,7 @@ class Nunjucks extends nunjucks.Environment {
     });
   }
 }
-
-// Custom member lookup for nunjucks
+// @ts-ignore
 nunjucks.runtime.memberLookup = function memberLookup(obj, val) {
   if ((obj || {})._original) obj = obj._original;
   if (obj === undefined || obj === null) return undefined;
@@ -132,8 +132,8 @@ nunjucks.runtime.memberLookup = function memberLookup(obj, val) {
   }
   return obj[val];
 };
-
 const env = new Nunjucks();
+// eslint-disable-next-line no-eval
 env.addGlobal('eval', eval);
 env.addGlobal('Date', Date);
 env.addGlobal('Object', Object);
@@ -166,12 +166,20 @@ env.addGlobal('set', (obj, key, val) => {
 env.addGlobal('findSubModule', (prefix) => Object.keys(global.Ejunz.ui.template).filter((n) => n.startsWith(prefix)));
 env.addGlobal('templateExists', (name) => !!global.Ejunz.ui.template[name]);
 
-const render = (name, state) => new Promise((resolve, reject) => {
+const render = (name: string, state: any) => new Promise<string>((resolve, reject) => {
   env.render(name, {
     page_name: name.split('.')[0],
     ...state,
-    title: state.title || 'Default Title',
-    message: state.message || 'Default Message',
+    formatJudgeTexts: (texts) => texts.map((text) => {
+      if (typeof text === 'string') return text;
+      return state._(text.message).format(...text.params || []) + ((process.env.DEV && text.stack) ? `\n${text.stack}` : '');
+    }).join('\n'),
+    datetimeSpan: (arg0, arg1, arg2) => misc.datetimeSpan(arg0, arg1, arg2, state.handler.user?.timeZone),
+    ctx: state.handler?.ctx,
+    perm: PERM,
+    PRIV,
+    STATUS,
+    UiContext: state.handler?.UiContext || {},
   }, (err, res) => {
     if (err) reject(err);
     else resolve(res);
@@ -179,7 +187,7 @@ const render = (name, state) => new Promise((resolve, reject) => {
 });
 
 export const inject = ['server'];
-export async function apply(ctx) {
+export async function apply(ctx: Context) {
   ctx.server.registerRenderer('html', render);
   ctx.server.registerRenderer('yaml', render);
   ctx.server.registerRenderer('md', render);

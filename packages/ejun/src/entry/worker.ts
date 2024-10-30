@@ -9,8 +9,8 @@ import { Logger } from '../logger';
 import { load } from '../options';
 import db from '../service/db';
 import {
-    addon, builtinModel, handler, lib, model,
-    script, service
+    addon, builtinModel, handler, lib, locale, model,
+    script, service, setting, template,
 } from './common';
 
 const argv = cac().parse();
@@ -30,10 +30,10 @@ export async function apply(ctx: Context) {
     }
     const pending = global.addons;
     const fail = [];
-    // await Promise.all([
-    //     locale(pending, fail),
-    //     template(pending, fail),
-    // ]);
+    await Promise.all([
+        locale(pending, fail),
+        template(pending, fail),
+    ]);
     await db.start();
     await require('../settings').loadConfig();
     // const modelSystem = require('../model/system');

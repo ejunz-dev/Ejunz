@@ -5,6 +5,7 @@
     "author": "Jacka10086 <i@jacka10086.me>",
     "license": "AGPL-3.0",
     "main": "index.ts",
+    "types": "api.ts",
     "preferUnplugged": true,
     "ejunz": {
         "cli": false
