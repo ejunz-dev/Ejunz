@@ -137,6 +137,7 @@ export async function setting(pending: string[], fail: string[], modelSetting: t
 }
 
 export async function template(pending: string[], fail: string[]) {
+    
     for (const i of pending) {
         const p = locateFile(i, ['template', 'templates']);
         if (p && (await fs.stat(p)).isDirectory() && !fail.includes(i)) {
