@@ -144,7 +144,7 @@ export async function apply(ctx: Context) {
         xff: system.get('server.xff'),
         xhost: system.get('server.xhost'),
     });
-    if (process.env.HYDRO_CLI) return;
+    if (process.env.EJUNZ_CLI) return;
     ctx.inject(['server'], ({ server, on }) => {
         let endpoint = builtinConfig.file.endPoint;
         if (builtinConfig.file.type === 's3' && !builtinConfig.file.pathStyle) {
