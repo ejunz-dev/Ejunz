@@ -58,7 +58,7 @@ check.addChecker('Storage', async (ctx, log, warn, error) => {
 check.addChecker('System', async (ctx, log, warn) => {
     const platform = os.platform();
     if (platform !== 'linux') {
-        warn(`Hydro is running on ${platform}, suggest to use linux4.4+.`);
+        warn(`EJUNZ is running on ${platform}, suggest to use linux4.4+.`);
     }
 });
 check.addChecker('Mail', async (ctx, log, warn) => {
