@@ -36,8 +36,8 @@ export async function apply(ctx: Context) {
     ]);
     await db.start();
     await require('../settings').loadConfig();
-    // const modelSystem = require('../model/system');
-    // await modelSystem.runConfig();
+    const modelSystem = require('../model/system');
+    await modelSystem.runConfig();
     // const storage = require('../service/storage');
     // await storage.loadStorageService();
     // Make sure everything is ready and then start main entry
@@ -52,9 +52,9 @@ export async function apply(ctx: Context) {
     await lib(pending, fail, ctx);
     await ctx.lifecycle.flush();
 
-    // await setting(pending, fail, require('../model/setting'));
+    await setting(pending, fail, require('../model/setting'));
     // ctx.plugin(require('../service/monitor'));
-    // ctx.plugin(require('../service/check'));
+    ctx.plugin(require('../service/check'));
     await service(pending, fail, ctx);
     await builtinModel(ctx);
     await model(pending, fail, ctx);
@@ -77,20 +77,20 @@ export async function apply(ctx: Context) {
     await script(pending, fail, ctx);
     await ctx.lifecycle.flush();
     await ctx.parallel('app/started');
-    // if (process.env.NODE_APP_INSTANCE === '0') {
-    //     await new Promise((resolve, reject) => {
-    //         ctx.inject(['migration'], async (c) => {
-    //             c.migration.registerChannel('ejun', require('../upgrade').coreScripts);
-    //             try {
-    //                 await c.migration.doUpgrade();
-    //                 resolve(null);
-    //             } catch (e) {
-    //                 logger.error('Upgrade failed: %O', e);
-    //                 reject(e);
-    //             }
-    //         });
-    //     });
-    // }
+    if (process.env.NODE_APP_INSTANCE === '0') {
+        await new Promise((resolve, reject) => {
+            ctx.inject(['migration'], async (c) => {
+                c.migration.registerChannel('ejun', require('../upgrade').coreScripts);
+                try {
+                    await c.migration.doUpgrade();
+                    resolve(null);
+                } catch (e) {
+                    logger.error('Upgrade failed: %O', e);
+                    reject(e);
+                }
+            });
+        });
+    }
     for (const f of global.addons) {
         const dir = path.join(f, 'public');
         // eslint-disable-next-line no-await-in-loop
