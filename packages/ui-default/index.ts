@@ -150,19 +150,19 @@ export function apply(ctx: Context) {
       that.response.body = await markdown.render(that.response.body);
     }
   });
-  // ctx.on('handler/after', async (that) => {
-  //   that.UiContext.SWConfig = {
-  //     preload: SystemModel.get('ui-default.preload'),
-  //     hosts: [
-  //       `http://${that.request.host}`,
-  //       `https://${that.request.host}`,
-  //       SystemModel.get('server.url'),
-  //       SystemModel.get('server.cdn'),
-  //     ],
-  //     assets: ((SystemModel.get('ui-default.assets') || '').split(',')).filter((i) => i) || [],
-  //     domains: SystemModel.get('ui-default.domains') || [],
-  //   };
-  // });
+  ctx.on('handler/after', async (that) => {
+    that.UiContext.SWConfig = {
+      preload: SystemModel.get('ui-default.preload'),
+      hosts: [
+        `http://${that.request.host}`,
+        `https://${that.request.host}`,
+        SystemModel.get('server.url'),
+        SystemModel.get('server.cdn'),
+      ],
+      assets: ((SystemModel.get('ui-default.assets') || '').split(',')).filter((i) => i) || [],
+      domains: SystemModel.get('ui-default.domains') || [],
+    };
+  });
   ctx.plugin(require('./backendlib/template'));
   ctx.plugin(require('./backendlib/builder'));
 }

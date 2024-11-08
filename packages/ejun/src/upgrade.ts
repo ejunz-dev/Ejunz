@@ -13,7 +13,7 @@ import { PERM, PRIV, STATUS } from './model/builtin';
 // import * as discussion from './model/discussion';
 // import * as document from './model/document';
 import domain from './model/domain';
-// import MessageModel from './model/message';
+import MessageModel from './model/message';
 // import problem from './model/problem';
 // import RecordModel from './model/record';
 // import ScheduleModel from './model/schedule';
@@ -418,7 +418,7 @@ export const coreScripts: MigrationScript[] = [
             }
         });
         for (const uid of uids) {
-            await MessageModel.send(1, uid, '我们更新了客观题的配置格式，已有题目已自动转换，查看文档获得更多信息。', MessageModel.FLAG_UNREAD);
+            await MessageModel.send(1, uid, '1', MessageModel.FLAG_UNREAD);
         }
         return true;
     },

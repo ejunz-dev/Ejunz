@@ -18,9 +18,9 @@ import * as opcount from '../model/opcount';
 import * as system from '../model/system';
 import { builtinConfig } from '../settings';
 import db from './db';
-// import baseLayer from './layers/base';
-// import domainLayer from './layers/domain';
-// import userLayer from './layers/user';
+import baseLayer from './layers/base';
+import domainLayer from './layers/domain';
+import userLayer from './layers/user';
 
 const argv = cac().parse();
 const ignoredLimit = `,${argv.options.ignoredLimit},`;
@@ -87,13 +87,10 @@ export class Handler extends HandlerOriginal {
     }
 
     async onerror(error: EjunzError) {
-        // 强制初始化默认值
-        this.user = this.user || { _id: 'unknown', uname: 'anonymous' };
-        this.domain = this.domain || { _id: 'default' };
-    
         error.msg ||= () => error.message;
         if (error instanceof UserFacingError && !process.env.DEV) error.stack = '';
         if (!(error instanceof NotFoundError) && !('nolog' in error)) {
+            // eslint-disable-next-line max-len
             logger.error(`User: ${this.user._id}(${this.user.uname}) ${this.request.method}: /d/${this.domain._id}${this.request.path}`, error.msg(), error.params);
             if (error.stack) logger.error(error.stack);
         }
@@ -189,10 +186,10 @@ export async function apply(ctx: Context) {
             }));
         }
 
-        // server.addServerLayer('domain', domainLayer);
-        // server.addWSLayer('domain', domainLayer);
-        // server.addLayer('base', baseLayer);
-        // server.addLayer('user', userLayer);
+        server.addServerLayer('domain', domainLayer);
+        server.addWSLayer('domain', domainLayer);
+        server.addLayer('base', baseLayer);
+        server.addLayer('user', userLayer);
 
         server.handlerMixin({
             url(name: string, ...kwargsList: Record<string, any>[]) {
@@ -287,8 +284,8 @@ export async function apply(ctx: Context) {
                     icon: global.Ejunz.module.oauth[key].icon,
                     text: global.Ejunz.module.oauth[key].text,
                 }));
-            // if (!h.noCheckPermView && !h.user.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN)) h.checkPerm(PERM.PERM_VIEW);
-            // if (h.context.pendingError) throw h.context.pendingError;
+            if (!h.noCheckPermView && !h.user.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN)) h.checkPerm(PERM.PERM_VIEW);
+            if (h.context.pendingError) throw h.context.pendingError;
         });
 
         on('app/listen', () => {
