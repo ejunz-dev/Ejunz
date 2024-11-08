@@ -16,16 +16,16 @@ import avatar, { validate } from '../lib/avatar';
 // import { verifyTFA } from '../lib/verifyTFA';
 // import BlackListModel from '../model/blacklist';
 import { PERM, PRIV } from '../model/builtin';
-// import * as contest from '../model/contest';
-// import * as discussion from '../model/discussion';
+import * as contest from '../model/contest';
+import * as discussion from '../model/discussion';
 import domain from '../model/domain';
-// import message from '../model/message';
-// import ProblemModel from '../model/problem';
+import message from '../model/message';
+import ProblemModel from '../model/problem';
 import * as setting from '../model/setting';
 // import storage from '../model/storage';
 import * as system from '../model/system';
 import token from '../model/token';
-// import * as training from '../model/training';
+import * as training from '../model/training';
 import user from '../model/user';
 import {
     ConnectionHandler, Handler, param, query, requireSudo, subscribe, Types,
@@ -141,16 +141,59 @@ export class HomeHandler extends Handler {
         return [pdocs, psdict];
     }
 
-    getDiscussionNodes(domainId: string) {
-        return discussion.getNodes(domainId);
-    }
+    // getDiscussionNodes(domainId: string) {
+    //     return discussion.getNodes(domainId);
+    // }
 
-    async get() {
+    async get({ domainId }) {
+        console.log("Settings 对象结构:", this.ctx.setting);
+        const homepageConfig = this.ctx.setting.get('ejun.homepage');
+        console.log("Loaded homepageConfig:", homepageConfig);
+    
+        const info = yaml.load(homepageConfig) as any;
+        console.log("Parsed homepage info:", info);
+    
+        const contents = [];
+        for (const column of info) {
+            console.log("Processing column:", column);
+    
+            const tasks = [];
+            for (const name in column) {
+                if (name === 'width') continue;
+                const func = `get${camelCase(name).replace(/^[a-z]/, (i) => i.toUpperCase())}`;
+                console.log("Function name being called:", func);
+    
+                if (!this[func]) tasks.push([name, column[name]]);
+                else {
+                    tasks.push(
+                        this[func](domainId, column[name])
+                            .then((res) => [name, res])
+                            .catch((err) => ['error', err.message]),
+                    );
+                }
+            }
+    
+            const sections = await Promise.all(tasks);
+            console.log("Sections processed:", sections);
+    
+            contents.push({
+                width: column.width,
+                sections,
+            });
+            console.log("Current contents array:", contents);
+        }
+    
+        const udict = await user.getList(domainId, Array.from(this.uids));
+        console.log("User dictionary (udict):", udict);
+    
         this.response.template = 'main.html';
         this.response.body = {
-            title: 'Welcome to Home Page',
-            message: 'Hello from HomeHandler!',
+            contents,
+            udict,
+            domain: this.domain,
         };
+        console.log("Final response body:", this.response.body);
+            
     }
     
 }
