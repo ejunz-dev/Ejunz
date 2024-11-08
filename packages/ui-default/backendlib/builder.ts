@@ -83,39 +83,39 @@ export async function buildUI() {
       if (/\.lazy\.[jt]sx?$/.test(target)) lazyModules.push(join(publicPath, target));
     }
   }
-  // function addFile(name: string, content: string) {
-  //   vfs[name] = content;
-  //   hashes[name] = sha1(content).substring(0, 8);
-  //   logger.info('+ %s-%s: %s', name, hashes[name].substring(0, 6), size(content.length));
-  //   newFiles.push(name);
-  //   totalSize += content.length;
-  // }
-  // for (const m of lazyModules) {
-  //   const name = basename(m).split('.')[0];
-  //   const { outputFiles } = await build(`window.lazyModuleResolver['${name}'](require('${relative(tmp, m).replace(/\\/g, '\\\\')}'))`);
-  //   for (const file of outputFiles) {
-  //     addFile(basename(m).replace(/\.[tj]sx?$/, '.js'), file.text);
-  //   }
-  // }
-  // for (const lang in global.Ejunz.locales) {
-  //   if (!/^[a-zA-Z_]+$/.test(lang)) continue;
-  //   const str = `window.LOCALES=${JSON.stringify(global.Ejunz.locales[lang][Symbol.for('iterate')])};`;
-  //   addFile(`lang-${lang}.js`, str);
-  // }
-  // const entry = await build([
-  //   `window.lazyloadMetadata = ${JSON.stringify(hashes)};`,
-  //   `window.LANGS=${JSON.stringify(SettingModel.langs)};`,
-  //   ...entryPoints.map((i) => `import '${relative(tmp, i).replace(/\\/g, '\\\\')}';`),
-  // ].join('\n'));
-  // const pages = entry.outputFiles.filter((i) => i.path.endsWith('.js')).map((i) => i.text);
-  // addFile('entry.js', `window._hydroLoad=()=>{ ${pages.join('\n')} };`);
-  // UiContextBase.constantVersion = hashes['entry.js'];
-  // for (const key in vfs) {
-  //   if (newFiles.includes(key)) continue;
-  //   delete vfs[key];
-  //   delete hashes[key];
-  // }
-  // logger.success('UI addons built in %d ms (%s)', Date.now() - start, size(totalSize));
+  function addFile(name: string, content: string) {
+    vfs[name] = content;
+    hashes[name] = sha1(content).substring(0, 8);
+    logger.info('+ %s-%s: %s', name, hashes[name].substring(0, 6), size(content.length));
+    newFiles.push(name);
+    totalSize += content.length;
+  }
+  for (const m of lazyModules) {
+    const name = basename(m).split('.')[0];
+    const { outputFiles } = await build(`window.lazyModuleResolver['${name}'](require('${relative(tmp, m).replace(/\\/g, '\\\\')}'))`);
+    for (const file of outputFiles) {
+      addFile(basename(m).replace(/\.[tj]sx?$/, '.js'), file.text);
+    }
+  }
+  for (const lang in global.Ejunz.locales) {
+    if (!/^[a-zA-Z_]+$/.test(lang)) continue;
+    const str = `window.LOCALES=${JSON.stringify(global.Ejunz.locales[lang][Symbol.for('iterate')])};`;
+    addFile(`lang-${lang}.js`, str);
+  }
+  const entry = await build([
+    `window.lazyloadMetadata = ${JSON.stringify(hashes)};`,
+    `window.LANGS=${JSON.stringify(SettingModel.langs)};`,
+    ...entryPoints.map((i) => `import '${relative(tmp, i).replace(/\\/g, '\\\\')}';`),
+  ].join('\n'));
+  const pages = entry.outputFiles.filter((i) => i.path.endsWith('.js')).map((i) => i.text);
+  addFile('entry.js', `window._ejunzLoad=()=>{ ${pages.join('\n')} };`);
+  UiContextBase.constantVersion = hashes['entry.js'];
+  for (const key in vfs) {
+    if (newFiles.includes(key)) continue;
+    delete vfs[key];
+    delete hashes[key];
+  }
+  logger.success('UI addons built in %d ms (%s)', Date.now() - start, size(totalSize));
 }
 
 class UiConstantsHandler extends Handler {

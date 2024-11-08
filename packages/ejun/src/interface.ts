@@ -5,11 +5,11 @@ import type fs from 'fs';
 import type { Dictionary, NumericDictionary } from 'lodash';
 import type { Binary, FindCursor, ObjectId } from 'mongodb';
 import type { Context } from './context';
-// import type { DocStatusType } from './model/document';
-// import type { ProblemDoc } from './model/problem';
+import type { DocStatusType } from './model/document';
+import type { ProblemDoc } from './model/problem';
 import type { Handler } from './service/server';
 
-// type document = typeof import('./model/document');
+type document = typeof import('./model/document');
 
 export interface System {
     _id: string,
@@ -546,36 +546,36 @@ export interface ScoreboardConfig {
     lockAt?: Date;
 }
 
-// export interface ContestRule<T = any> {
-//     _originalRule?: Partial<ContestRule<T>>;
-//     TEXT: string;
-//     hidden?: boolean;
-//     check: (args: any) => any;
-//     statusSort: Record<string, 1 | -1>;
-//     submitAfterAccept: boolean;
-//     showScoreboard: (tdoc: Tdoc, now: Date) => boolean;
-//     showSelfRecord: (tdoc: Tdoc, now: Date) => boolean;
-//     showRecord: (tdoc: Tdoc, now: Date) => boolean;
-//     stat: (this: ContestRule<T>, tdoc: Tdoc, journal: any[]) => ContestStat & T;
-//     scoreboardHeader: (
-//         this: ContestRule<T>, config: ScoreboardConfig, _: (s: string) => string,
-//         tdoc: Tdoc, pdict: ProblemDict,
-//     ) => Promise<ScoreboardRow>;
-//     scoreboardRow: (
-//         this: ContestRule<T>, config: ScoreboardConfig, _: (s: string) => string,
-//         tdoc: Tdoc, pdict: ProblemDict, udoc: BaseUser, rank: number, tsdoc: ContestStat & T,
-//         meta?: any,
-//     ) => Promise<ScoreboardRow>;
-//     scoreboard: (
-//         this: ContestRule<T>, config: ScoreboardConfig, _: (s: string) => string,
-//         tdoc: Tdoc, pdict: ProblemDict, cursor: FindCursor<ContestStat & T>,
-//     ) => Promise<[board: ScoreboardRow[], udict: BaseUserDict]>;
-//     ranked: (tdoc: Tdoc, cursor: FindCursor<ContestStat & T>) => Promise<[number, ContestStat & T][]>;
-//     applyProjection: (tdoc: Tdoc, rdoc: RecordDoc, user: User) => RecordDoc;
-// }
+export interface ContestRule<T = any> {
+    _originalRule?: Partial<ContestRule<T>>;
+    TEXT: string;
+    hidden?: boolean;
+    check: (args: any) => any;
+    statusSort: Record<string, 1 | -1>;
+    submitAfterAccept: boolean;
+    showScoreboard: (tdoc: Tdoc, now: Date) => boolean;
+    showSelfRecord: (tdoc: Tdoc, now: Date) => boolean;
+    showRecord: (tdoc: Tdoc, now: Date) => boolean;
+    stat: (this: ContestRule<T>, tdoc: Tdoc, journal: any[]) => ContestStat & T;
+    scoreboardHeader: (
+        this: ContestRule<T>, config: ScoreboardConfig, _: (s: string) => string,
+        tdoc: Tdoc, pdict: ProblemDict,
+    ) => Promise<ScoreboardRow>;
+    scoreboardRow: (
+        this: ContestRule<T>, config: ScoreboardConfig, _: (s: string) => string,
+        tdoc: Tdoc, pdict: ProblemDict, udoc: BaseUser, rank: number, tsdoc: ContestStat & T,
+        meta?: any,
+    ) => Promise<ScoreboardRow>;
+    scoreboard: (
+        this: ContestRule<T>, config: ScoreboardConfig, _: (s: string) => string,
+        tdoc: Tdoc, pdict: ProblemDict, cursor: FindCursor<ContestStat & T>,
+    ) => Promise<[board: ScoreboardRow[], udict: BaseUserDict]>;
+    ranked: (tdoc: Tdoc, cursor: FindCursor<ContestStat & T>) => Promise<[number, ContestStat & T][]>;
+    applyProjection: (tdoc: Tdoc, rdoc: RecordDoc, user: User) => RecordDoc;
+}
 
-// export type ContestRules = Dictionary<ContestRule>;
-// export type ProblemImporter = (url: string, handler: any) => Promise<[ProblemDoc, fs.ReadStream?]> | [ProblemDoc, fs.ReadStream?];
+export type ContestRules = Dictionary<ContestRule>;
+export type ProblemImporter = (url: string, handler: any) => Promise<[ProblemDoc, fs.ReadStream?]> | [ProblemDoc, fs.ReadStream?];
 
 export interface Script {
     run: (args: any, report: Function) => any,
@@ -731,13 +731,13 @@ declare module './service/db' {
 export interface Model {
     // blacklist: typeof import('./model/blacklist').default,
     builtin: typeof import('./model/builtin'),
-    // contest: typeof import('./model/contest'),
-    // discussion: typeof import('./model/discussion'),
-    // document: Omit<typeof import('./model/document'), 'apply'>,
+    contest: typeof import('./model/contest'),
+    discussion: typeof import('./model/discussion'),
+    document: Omit<typeof import('./model/document'), 'apply'>,
     domain: typeof import('./model/domain').default,
-    // message: typeof import('./model/message').default,
+    message: typeof import('./model/message').default,
     opcount: typeof import('./model/opcount'),
-    // problem: typeof import('./model/problem').default,
+    problem: typeof import('./model/problem').default,
     // record: typeof import('./model/record').default,
     setting: typeof import('./model/setting'),
     // solution: typeof import('./model/solution').default,

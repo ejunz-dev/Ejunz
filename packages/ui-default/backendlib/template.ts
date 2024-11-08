@@ -10,10 +10,6 @@ import path from 'path';
 import markdown from './markdown';
 import { ensureTag, xss } from './markdown-it-xss';
 import * as misc from './misc';
-// console.log("Starting the script...");
-// console.log("Checking global.Ejunz:", global.Ejunz);
-// console.log("Checking global.Ejunz.ui.template:", global.Ejunz?.ui?.template);
-// console.log("Checking global.Ejunz.ui.template:", global.Ejunz.ui?.template);
 
 const argv = require('cac')().parse();
 
