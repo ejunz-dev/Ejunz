@@ -9,18 +9,18 @@ import { sleep } from '@ejunz/utils';
 import { buildContent } from './lib/content';
 import { Logger } from './logger';
 import { PERM, PRIV, STATUS } from './model/builtin';
-// import * as contest from './model/contest';
+import * as contest from './model/contest';
 // import * as discussion from './model/discussion';
-// import * as document from './model/document';
+import * as document from './model/document';
 import domain from './model/domain';
 import MessageModel from './model/message';
-// import problem from './model/problem';
+import problem from './model/problem';
 // import RecordModel from './model/record';
 // import ScheduleModel from './model/schedule';
 // import StorageModel from './model/storage';
 import * as system from './model/system';
 // import TaskModel from './model/task';
-// import * as training from './model/training';
+import * as training from './model/training';
 import user, { handleMailLower } from './model/user';
 import {
     iterateAllContest, iterateAllDomain, iterateAllProblem, iterateAllUser,

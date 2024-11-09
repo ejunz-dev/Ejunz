@@ -4,10 +4,10 @@ import type {
     DomainDoc, ProblemStatusDoc, RecordDoc,
     Tdoc, Udoc,
 } from './interface';
-// import * as contest from './model/contest';
-// import * as document from './model/document';
+import * as contest from './model/contest';
+import * as document from './model/document';
 import domain from './model/domain';
-// import problem, { Field, ProblemDoc } from './model/problem';
+import problem, { Field, ProblemDoc } from './model/problem';
 // import RecordModel from './model/record';
 import user from './model/user';
 

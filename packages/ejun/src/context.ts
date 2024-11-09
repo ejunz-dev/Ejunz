@@ -11,11 +11,11 @@ import type { ConnectionHandler, Handler } from './service/server';
 
 export interface Events<C extends Context = Context> extends cordis.Events<C>, EventMap, ServerEvents<Handler, ConnectionHandler> { }
 
-// function addScript<K>(name: string, description: string, validate: Schema<K>, run: (args: K, report: any) => boolean | Promise<boolean>) {
-//     if (global.Ejunz.script[name]) throw new Error(`duplicate script ${name} registered.`);
-//     global.Ejunz.script[name] = { description, validate, run };
-//     return () => delete global.Ejunz.script[name];
-// }
+function addScript<K>(name: string, description: string, validate: Schema<K>, run: (args: K, report: any) => boolean | Promise<boolean>) {
+    if (global.Ejunz.script[name]) throw new Error(`duplicate script ${name} registered.`);
+    global.Ejunz.script[name] = { description, validate, run };
+    return () => delete global.Ejunz.script[name];
+}
 
 function provideModule<T extends keyof ModuleInterfaces>(type: T, id: string, module: ModuleInterfaces[T]) {
     if (global.Ejunz.module[type][id]) throw new Error(`duplicate script ${type}/${id} registered.`);

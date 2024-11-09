@@ -12,7 +12,7 @@ import type {
     MessageDoc,  RecordDoc,
     ScoreboardRow, Tdoc, TrainingDoc, User,
 } from '../interface';
-// import type { DocType } from '../model/document';
+import type { DocType } from '../model/document';
 
 export type Disposable = () => void;
 export type VoidReturn = Promise<any> | any;
