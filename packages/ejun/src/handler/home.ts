@@ -146,25 +146,22 @@ export class HomeHandler extends Handler {
     }
 
     async get({ domainId }) {
-        console.log("Settings 对象结构:", this.ctx.setting);
         const homepageConfig = this.ctx.setting.get('ejun.homepage');
-        console.log("Loaded homepageConfig:", homepageConfig);
-    
         const info = yaml.load(homepageConfig) as any;
-        console.log("Parsed homepage info:", info);
-    
         const contents = [];
-        for (const column of info) {
-            console.log("Processing column:", column);
     
+        for (const column of info) {
             const tasks = [];
+    
             for (const name in column) {
                 if (name === 'width') continue;
                 const func = `get${camelCase(name).replace(/^[a-z]/, (i) => i.toUpperCase())}`;
-                console.log("Function name being called:", func);
-    
-                if (!this[func]) tasks.push([name, column[name]]);
-                else {
+                
+                console.log(`Processing section name: ${name}`);
+
+                if (!this[func]) {
+                    tasks.push([name, column[name]]);
+                } else {
                     tasks.push(
                         this[func](domainId, column[name])
                             .then((res) => [name, res])
@@ -173,30 +170,31 @@ export class HomeHandler extends Handler {
                 }
             }
     
+            // 等待所有任务完成
             const sections = await Promise.all(tasks);
-            console.log("Sections processed:", sections);
+            
+            // 打印每列中的 sections 数据
+            console.log("Processed sections for column:", JSON.stringify(sections, null, 2));
     
             contents.push({
                 width: column.width,
                 sections,
             });
-            console.log("Current contents array:", contents);
         }
     
         const udict = await user.getList(domainId, Array.from(this.uids));
-        console.log("User dictionary (udict):", udict);
-    
         this.response.template = 'main.html';
         this.response.body = {
             contents,
             udict,
             domain: this.domain,
         };
-        console.log("Final response body:", this.response.body);
-            
+        
+        // 打印完整的 contents 数据
+        console.log("Contents data with sections detail:", JSON.stringify(contents, null, 2));
     }
-    
-}
+}    
+
 
 let geoip: Context['geoip'] = null;
 class HomeSecurityHandler extends Handler {

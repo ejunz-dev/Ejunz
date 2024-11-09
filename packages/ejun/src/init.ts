@@ -6,7 +6,7 @@ if (!global.Ejunz) {
     global.Ejunz = {
         version: {
             node: process.version.split('v')[1],
-            yijun: require('ejun/package.json').version,
+            ejun: require('ejun/package.json').version,
         },
         handler: {},
         // @ts-ignore

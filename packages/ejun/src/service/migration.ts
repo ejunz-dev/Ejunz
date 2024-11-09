@@ -33,7 +33,7 @@ export default class MigrationService extends Service {
     async doUpgrade() {
         this.called = true;
         for (const channel in this.channels) {
-            const name = `db.ver${channel === 'yijun' ? '' : `-${channel}`}`;
+            const name = `db.ver${channel === 'ejun' ? '' : `-${channel}`}`;
             let dbVer = system.get(name) ?? 0;
             const scripts = this.channels[channel];
             const isFresh = !dbVer;
