@@ -141,9 +141,9 @@ export class HomeHandler extends Handler {
         return [pdocs, psdict];
     }
 
-    // getDiscussionNodes(domainId: string) {
-    //     return discussion.getNodes(domainId);
-    // }
+    getDiscussionNodes(domainId: string) {
+        return discussion.getNodes(domainId);
+    }
 
     async get({ domainId }) {
         console.log("Settings 对象结构:", this.ctx.setting);
