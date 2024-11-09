@@ -250,35 +250,35 @@ export interface Document {
     maintainer?: number[];
 }
 
-// declare module './model/problem' {
-//     // eslint-disable-next-line @typescript-eslint/no-shadow
-//     interface ProblemDoc {
-//         docType: document['TYPE_PROBLEM'];
-//         docId: number;
-//         pid: string;
-//         title: string;
-//         content: string;
-//         nSubmit: number;
-//         nAccept: number;
-//         tag: string[];
-//         data: FileInfo[];
-//         additional_file: FileInfo[];
-//         hidden?: boolean;
-//         html?: boolean;
-//         stats?: any;
-//         difficulty?: number;
-//         sort?: string;
-//         reference?: {
-//             domainId: string;
-//             pid: number;
-//         };
+declare module './model/problem' {
+    // eslint-disable-next-line @typescript-eslint/no-shadow
+    interface ProblemDoc {
+        docType: document['TYPE_PROBLEM'];
+        docId: number;
+        pid: string;
+        title: string;
+        content: string;
+        nSubmit: number;
+        nAccept: number;
+        tag: string[];
+        data: FileInfo[];
+        additional_file: FileInfo[];
+        hidden?: boolean;
+        html?: boolean;
+        stats?: any;
+        difficulty?: number;
+        sort?: string;
+        reference?: {
+            domainId: string;
+            pid: number;
+        };
 
-//         /** string (errormsg) */
-//         config: string | ProblemConfig;
-//     }
-// }
-// export type { ProblemDoc } from './model/problem';
-// export type ProblemDict = NumericDictionary<ProblemDoc>;
+        /** string (errormsg) */
+        config: string | ProblemConfig;
+    }
+}
+export type { ProblemDoc } from './model/problem';
+export type ProblemDict = NumericDictionary<ProblemDoc>;
 
 export interface StatusDocBase {
     _id: ObjectId,
