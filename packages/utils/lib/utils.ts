@@ -47,24 +47,24 @@ export function folderSize(folderPath: string) {
     return size;
 }
 
-// String.prototype.format = function formatStr(...args) {
-//     let result = this;
-//     if (args.length) {
-//         if (args.length === 1 && typeof args[0] === 'object') {
-//             const t = args[0];
-//             for (const key in t) {
-//                 if (!key.startsWith('_') && t[key] !== undefined) {
-//                     if (t._inspect && typeof t[key] === 'object') {
-//                         t[key] = inspect(t[key], { colors: process?.stderr?.isTTY });
-//                     }
-//                     const reg = new RegExp(`(\\{${key}\\})`, 'g');
-//                     result = result.replace(reg, t[key]);
-//                 }
-//             }
-//         } else return this.formatFromArray(args);
-//     }
-//     return result.toString();
-// };
+String.prototype.format = function formatStr(...args) {
+    let result = this;
+    if (args.length) {
+        if (args.length === 1 && typeof args[0] === 'object') {
+            const t = args[0];
+            for (const key in t) {
+                if (!key.startsWith('_') && t[key] !== undefined) {
+                    if (t._inspect && typeof t[key] === 'object') {
+                        t[key] = inspect(t[key], { colors: process?.stderr?.isTTY });
+                    }
+                    const reg = new RegExp(`(\\{${key}\\})`, 'g');
+                    result = result.replace(reg, t[key]);
+                }
+            }
+        } else return this.formatFromArray(args);
+    }
+    return result.toString();
+};
 
 export function isClass(obj: any, strict = false): obj is new (...args: any) => any {
     if (typeof obj !== 'function') return false;
@@ -160,10 +160,10 @@ export function errorMessage(err: Error | string) {
         }
     }
     const parsed = lines.join('\n')
-        .replace(/[A-Z]:\\.+\\@yijun-x\\/g, '@yijun-x\\')
-        .replace(/\/.+\/@yijun-x\//g, '\\')
-        .replace(/[A-Z]:\\.+\\yijun\\/g, 'yijun\\')
-        .replace(/\/.+\/yijun\//g, 'yijun/')
+        .replace(/[A-Z]:\\.+\\@ejunz\\/g, '@ejunz\\')
+        .replace(/\/.+\/@ejunz\//g, '\\')
+        .replace(/[A-Z]:\\.+\\ejun\\/g, 'ejun\\')
+        .replace(/\/.+\/ejun\//g, 'ejun/')
         .replace(/[A-Z]:\\.+\\node_modules\\/g, '')
         .replace(/\/.+\/node_modules\//g, '')
         .replace(/\\/g, '/');

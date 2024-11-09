@@ -33,9 +33,9 @@ export interface Context extends cordis.Context, Pick<WebService, 'Route' | 'Con
     // @ts-ignore
     [Context.events]: Events<this>;
     loader: Loader;
-    // check: CheckService;
+    check: CheckService;
     setImmediate: typeof setImmediate;
-    // addScript: typeof addScript;
+    addScript: typeof addScript;
     provideModule: typeof provideModule;
     injectUI: typeof inject;
     broadcast: Context['emit'];
@@ -55,7 +55,7 @@ const T = <F extends (...args: any[]) => any>(origFunc: F, disposeFunc?) =>
     };
 
 export class ApiMixin extends Service {
-    // addScript = T(addScript);
+    addScript = T(addScript);
     setImmediate = T(setImmediate, clearImmediate);
     provideModule = T(provideModule);
     injectUI = T(inject);

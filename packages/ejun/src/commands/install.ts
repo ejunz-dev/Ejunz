@@ -80,7 +80,7 @@ export function register(cli: CAC) {
         logger.info('Installing depedencies');
         if (!fs.existsSync(path.join(newAddonPath, 'package.json'))) throw new Error('Invalid plugin file');
         child.execSync('yarn --production', { stdio: 'inherit', cwd: newAddonPath });
-        child.execSync(`yijun addon add '${newAddonPath}'`);
+        child.execSync(`ejun addon add '${newAddonPath}'`);
         fs.writeFileSync(path.join(newAddonPath, '__metadata__'), JSON.stringify({
             src: _src,
             lastUpdate: Date.now(),
@@ -95,10 +95,10 @@ export function register(cli: CAC) {
         fs.ensureDirSync(addonDir);
         const plugins = fs.readdirSync(addonDir);
         if (!plugins.includes(name)) {
-            throw new Error(`Plugin ${name} not found or not installed with \`yijun install\`.`);
+            throw new Error(`Plugin ${name} not found or not installed with \`ejun install\`.`);
         }
         const newAddonPath = path.join(addonDir, name);
-        child.execSync(`yijun addon remove '${newAddonPath}'`, { stdio: 'inherit' });
+        child.execSync(`ejun addon remove '${newAddonPath}'`, { stdio: 'inherit' });
         fs.removeSync(newAddonPath);
         logger.success(`Successfully uninstalled ${name}.`);
     });
