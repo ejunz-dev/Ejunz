@@ -160,7 +160,11 @@ env.addGlobal('set', (obj, key, val) => {
   return '';
 });
 env.addGlobal('findSubModule', (prefix) => Object.keys(global.Ejunz.ui.template).filter((n) => n.startsWith(prefix)));
-env.addGlobal('templateExists', (name) => !!global.Ejunz.ui.template[name]);
+env.addGlobal('templateExists', (name) => {
+  const exists = !!global.Ejunz.ui.template[name];
+  console.log(`Template ${name} exists:`, exists);
+  return exists;
+});
 
 const render = (name: string, state: any) => new Promise<string>((resolve, reject) => {
   env.render(name, {

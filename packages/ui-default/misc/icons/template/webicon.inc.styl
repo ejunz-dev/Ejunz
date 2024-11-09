@@ -1,0 +1,5 @@
+$icon-font-name = 'ejunz-icons'
+
+{% for name, value in infoData %}
+${{prefix}}-{{ name }} = '{{ value.encodedCode }}'
+{%- endfor %}
