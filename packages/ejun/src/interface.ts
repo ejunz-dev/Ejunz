@@ -744,7 +744,7 @@ export interface Model {
     system: typeof import('./model/system'),
     // task: typeof import('./model/task').default,
     // schedule: typeof import('./model/schedule').default;
-    // oplog: typeof import('./model/oplog'),
+    oplog: typeof import('./model/oplog'),
     // token: typeof import('./model/token').default,
     // training: typeof import('./model/training'),
     user: typeof import('./model/user').default,
