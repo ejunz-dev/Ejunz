@@ -142,7 +142,7 @@ export class User {
     }
 
     async checkPassword(password: string) {
-        const h = global.ejunz.module.hash[this.hashType];
+        const h = global.Ejunz.module.hash[this.hashType];
         if (!h) throw new Error('Unknown hash method');
         const result = await h(password, this._salt, this);
         if (result !== true && result !== this._hash) {
