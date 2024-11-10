@@ -1,0 +1,19 @@
+{% extends "layout/home_base.html" %}
+{% block home_content %}
+{% if category == "account" %}
+  <div class="section" id="upload_avatar" data-heading-extract-to="#menu-item-home_account" style="nojs--hide">
+    <div class="section__header">
+      <h1 class="section__title" id="avatar" data-heading>{{ ('Avatar') }}</h1>
+    </div>
+    <div class="section__body typo">
+      <p>{{ ('You can also upload your avatar to Gravatar and it will be automatically updated here.')|safe }}</p>
+    </div>
+    <div class="section__body">
+      <img width="128px" height="128px" src="{{ avatarUrl(current.avatar, 128) }}" alt="{{ current.uname }}">
+      <div class="changeAvatar"></div>
+      <button class="change-avatar button rounded primary">{{ ('Change avatar') }}</button>
+    </div>
+  </div>
+{% endif %}
+
+{% endblock %}
