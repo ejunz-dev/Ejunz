@@ -5,7 +5,7 @@ import chalk from 'chalk';
 import fs from 'fs-extra';
 import { globbySync } from 'globby';
 import path from 'path';
-// import svgtofont from 'svgtofont';
+import svgtofont from 'svgtofont';
 import webpack, { Stats } from 'webpack';
 import WebpackDevServer from 'webpack-dev-server';
 import pkg from '../package.json';
@@ -99,23 +99,23 @@ async function main() {
   const dir = process.cwd();
   process.chdir(root());
   if (argv.options.iconfont) {
-    // await svgtofont({
-    //   src: root('misc/icons'),
-    //   dist: root('misc/.iconfont'),
-    //   styleTemplates: root('misc/icons/template'),
-    //   classNamePrefix: 'icon',
-    //   fontName: 'ejunz-icons',
-    //   css: true,
-    //   startUnicode: 0xea01,
-    //   svg2ttf: {
-    //     timestamp: 1577836800, // 2020-1-1
-    //   },
-    //   svgicons2svgfont: {
-    //     fontHeight: 1000,
-    //     descent: 6.25 / 100 * 1000,
-    //     normalize: true,
-    //   },
-    // });
+    await svgtofont({
+      src: root('misc/icons'),
+      dist: root('misc/.iconfont'),
+      styleTemplates: root('misc/icons/template'),
+      classNamePrefix: 'icon',
+      fontName: 'ejunz-icons',
+      css: true,
+      startUnicode: 0xea01,
+      svg2ttf: {
+        timestamp: 1577836800, // 2020-1-1
+      },
+      svgicons2svgfont: {
+        fontHeight: 1000,
+        descent: 6.25 / 100 * 1000,
+        normalize: true,
+      },
+    });
   } else {
     await runWebpack(argv.options as any);
     if (fs.existsSync('public/theme.css')) {

@@ -76,18 +76,18 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
     };
   }
 
-  // function stylusLoader() {
-  //   return {
-  //     loader: 'stylus-loader',
-  //     options: {
-  //       stylusOptions: {
-  //         preferPathResolver: 'webpack',
-  //         use: [require('rupture')()],
-  //         import: ['~vj/common/common.inc.styl'],
-  //       },
-  //     },
-  //   };
-  // }
+  function stylusLoader() {
+    return {
+      loader: 'stylus-loader',
+      options: {
+        stylusOptions: {
+          preferPathResolver: 'webpack',
+          use: [require('rupture')()],
+          import: ['~vj/common/common.inc.styl'],
+        },
+      },
+    };
+  }
 
   const config: import('webpack').Configuration = {
     // bail: !env.production,
@@ -101,8 +101,8 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
     devtool: env.production ? 'source-map' : false,
     entry: {
       [`ejunz-${version}`]: './entry.js',
-      // 'sentry': './sentry.ts',
-      // 'default.theme': './theme/default.js',
+      'sentry': './sentry.ts',
+      'default.theme': './theme/default.js',
       'service-worker': './service-worker.ts',
     },
     cache: {
@@ -199,8 +199,7 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
         },
         {
           test: /\.styl$/,
-          use: [extractCssLoader(), cssLoader(), postcssLoader(), // stylusLoader()],
-          ],
+          use: [extractCssLoader(), cssLoader(), postcssLoader(), stylusLoader()],
         },
         {
           test: /\.css$/,
@@ -277,34 +276,34 @@ export default async function (env: { watch?: boolean, production?: boolean, mea
       new webpack.IgnorePlugin({ resourceRegExp: /(^\.\/locale$)/ }),
       new CopyWebpackPlugin({
         patterns: [
-          // { from: root('static') },
-          // { from: root('components/navigation/nav-logo-small_dark.png'), to: 'components/navigation/nav-logo-small_dark.png' },
+          { from: root('static') },
+          { from: root('components/navigation/nav-logo-small_dark.png'), to: 'components/navigation/nav-logo-small_dark.png' },
           { from: root(`${dirname(require.resolve('streamsaver/package.json'))}/mitm.html`), to: 'streamsaver/mitm.html' },
           { from: root(`${dirname(require.resolve('streamsaver/package.json'))}/sw.js`), to: 'streamsaver/sw.js' },
           { from: root(`${dirname(require.resolve('graphiql/package.json'))}/graphiql.min.css`), to: 'graphiql.min.css' },
           { from: `${dirname(require.resolve('monaco-themes/package.json'))}/themes`, to: 'monaco/themes/' },
         ],
       }),
-      // sentryWebpackPlugin({
-      //   authToken: process.env.SENTRY_AUTH_TOKEN,
-      //   org: 'ejunz-dev',
-      //   project: 'ejunz-web',
-      //   url: 'https://sentry.ejunz.ac',
-      //   sourcemaps: {
-      //     rewriteSources: (source) => source.replace('@ejunz/ui-default/../../node_modules/', ''),
-      //   },
-      //   release: createSentryRelease ? {
-      //     name: `ejunz-web@${version}`,
-      //     uploadLegacySourcemaps: root('public'),
-      //   } : {},
-      // }),
+      sentryWebpackPlugin({
+        authToken: process.env.SENTRY_AUTH_TOKEN,
+        org: 'ejunz-dev',
+        project: 'ejunz-web',
+        url: 'https://sentry.ejunz.ac',
+        sourcemaps: {
+          rewriteSources: (source) => source.replace('@ejunz/ui-default/../../node_modules/', ''),
+        },
+        release: createSentryRelease ? {
+          name: `ejunz-web@${version}`,
+          uploadLegacySourcemaps: root('public'),
+        } : {},
+      }),
       new webpack.DefinePlugin({
         'process.env.VERSION': JSON.stringify(require('@ejunz/ui-default/package.json').version),
       }),
       new webpack.optimize.MinChunkSizePlugin({
         minChunkSize: 128000,
       }),
-      // new webpack.NormalModuleReplacementPlugin(/\/(vscode-)?nls\.js/, require.resolve('../../components/monaco/nls')),
+      new webpack.NormalModuleReplacementPlugin(/\/(vscode-)?nls\.js/, require.resolve('../../components/monaco/nls')),
       new webpack.NormalModuleReplacementPlugin(/^prettier[$/]/, root('../../modules/nop.ts')),
       new webpack.NormalModuleReplacementPlugin(/core-js\/stable/, root('__core-js.js')),
       new MonacoWebpackPlugin({
