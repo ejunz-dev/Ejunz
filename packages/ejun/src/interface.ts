@@ -738,7 +738,7 @@ export interface Model {
     message: typeof import('./model/message').default,
     opcount: typeof import('./model/opcount'),
     problem: typeof import('./model/problem').default,
-    // record: typeof import('./model/record').default,
+    record: typeof import('./model/record').default,
     setting: typeof import('./model/setting'),
     // solution: typeof import('./model/solution').default,
     system: typeof import('./model/system'),
@@ -749,7 +749,7 @@ export interface Model {
     // training: typeof import('./model/training'),
     user: typeof import('./model/user').default,
     // oauth: typeof import('./model/oauth').default,
-    // storage: typeof import('./model/storage').default,
+    storage: typeof import('./model/storage').default,
     // rp: typeof import('./script/rating').RpTypes,
 }
 
@@ -758,7 +758,7 @@ export interface EjunzService {
     bus: Context,
     db: typeof import('./service/db').default,
     server: typeof import('./service/server'),
-    // storage: typeof import('./service/storage').default,
+    storage: typeof import('./service/storage').default,
 }
 
 export interface GeoIP {
