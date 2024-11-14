@@ -12,6 +12,11 @@
         "debug": "node --trace-warnings --async-stack-traces --trace-deprecation packages/ejun/bin/ejun --debug --template",
         "build:watch": "node build/prepare.js && tsc -b --watch",
         "build:ui:dev": "node packages/ui-default/build --iconfont && node --trace-deprecation packages/ui-default/build --dev",
+        "build:ui": "node packages/ui-default/build --iconfont && node packages/ui-default/build",
+        "build:ui:iconfont": "node packages/ui-default/build --iconfont",
+        "build:ui:dev:https": "node packages/ui-default/build --iconfont && node --trace-deprecation packages/ui-default/build --dev --https",
+        "build:ui:production": "cross-env NODE_OPTIONS=--max_old_space_size=32000 node packages/ui-default/build --iconfont && node packages/ui-default/build --production",
+        "build:ui:production:webpack": "cross-env NODE_OPTIONS=--max_old_space_size=8192 node packages/ui-default/build --production",
         "start": "packages/ejun/bin/ejun.js",
         "ejun": "./node_modules/.bin/ejun"
     },
