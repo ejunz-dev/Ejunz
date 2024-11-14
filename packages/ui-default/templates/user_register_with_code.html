@@ -1,34 +1,34 @@
 {% extends "layout/immersive.html" %}
 {% block content %}
 <div class="immersive--content immersive--center">
-  <h1>{{ ('Sign Up') }}</h1>
+  <h1>{{ _('Sign Up') }}</h1>
   <form method="POST">
     <div>
       <label class="inverse material textbox">
-        {{ ('Email') }}
+        {{ _('Email') }}
         <input type="text" value="{{ mail }}" disabled>
       </label>
     </div>
     <div>
       <label class="inverse material textbox">
-        {{ ('Username') }}
+        {{ _('Username') }}
         <input name="uname" value="{{ username or '' }}" type="text" autofocus>
       </label>
     </div>
     <div>
       <label class="inverse material textbox">
-        {{ ('Password') }}
+        {{ _('Password') }}
         <input name="password" type="password">
       </label>
     </div>
     <div>
       <label class="inverse material textbox">
-        {{ ('Repeat Password') }}
+        {{ _('Repeat Password') }}
         <input name="verifyPassword" type="password">
       </label>
     </div>
     <div class="text-center">
-      <input type="submit" value="{{ ('user_register') }}" class="inverse expanded rounded primary button">
+      <input type="submit" value="{{ _('user_register') }}" class="inverse expanded rounded primary button">
     </div>
   </form>
 </div>

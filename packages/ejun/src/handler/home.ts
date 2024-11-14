@@ -22,7 +22,7 @@ import domain from '../model/domain';
 import message from '../model/message';
 import ProblemModel from '../model/problem';
 import * as setting from '../model/setting';
-// import storage from '../model/storage';
+import storage from '../model/storage';
 import * as system from '../model/system';
 import token from '../model/token';
 import * as training from '../model/training';
@@ -156,8 +156,6 @@ export class HomeHandler extends Handler {
             for (const name in column) {
                 if (name === 'width') continue;
                 const func = `get${camelCase(name).replace(/^[a-z]/, (i) => i.toUpperCase())}`;
-                
-                console.log(`Processing section name: ${name}`);
 
                 if (!this[func]) {
                     tasks.push([name, column[name]]);
@@ -173,9 +171,6 @@ export class HomeHandler extends Handler {
             // 等待所有任务完成
             const sections = await Promise.all(tasks);
             
-            // 打印每列中的 sections 数据
-            console.log("Processed sections for column:", JSON.stringify(sections, null, 2));
-    
             contents.push({
                 width: column.width,
                 sections,
@@ -190,8 +185,6 @@ export class HomeHandler extends Handler {
             domain: this.domain,
         };
         
-        // 打印完整的 contents 数据
-        console.log("Contents data with sections detail:", JSON.stringify(contents, null, 2));
     }
 }    
 
