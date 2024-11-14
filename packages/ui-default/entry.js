@@ -59,10 +59,17 @@ if (process.env.NODE_ENV === 'production' && UiContext.sentry_dsn) {
   document.body.appendChild(script);
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
-  Object.assign(window.UiContext, JSON.parse(window.UiContextNew));
-  Object.assign(window.UserContext, JSON.parse(window.UserContextNew));
-  window.EjunzExports = await import('./api');
-  await window._ejunzLoad();
-  await window.EjunzExports.initPageLoader();
-}, false);
+console.log("Script started");
+window.onload = async () => {
+  try {
+    Object.assign(window.UiContext, JSON.parse(window.UiContextNew || '{}'));
+    Object.assign(window.UserContext, JSON.parse(window.UserContextNew || '{}'));
+    window.EjunzExports = await import('./api');
+    console.log("EjunzExports:", window.EjunzExports);  // 验证导入内容
+    await window._ejunzLoad();
+    await window.EjunzExports.initPageLoader();
+  } catch (e) {
+    console.error("加载出现问题:", e);
+  }
+};
+

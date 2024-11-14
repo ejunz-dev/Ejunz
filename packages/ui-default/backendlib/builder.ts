@@ -69,6 +69,7 @@ const build = async (contents: string) => {
 
 export async function buildUI() {
   const start = Date.now();
+  logger.info("buildUI 函数开始执行");
   let totalSize = 0;
   const entryPoints: string[] = [];
   const lazyModules: string[] = [];
@@ -116,6 +117,9 @@ export async function buildUI() {
     delete hashes[key];
   }
   logger.success('UI addons built in %d ms (%s)', Date.now() - start, size(totalSize));
+  logger.info("buildUI 函数执行完成");
+  logger.info("当前的 vfs 内容:", vfs);
+
 }
 
 class UiConstantsHandler extends Handler {
@@ -125,17 +129,27 @@ class UiConstantsHandler extends Handler {
   async all(domainId: string, name: string) {
     this.response.type = 'application/javascript';
     name ||= 'entry.js';
-    if (!vfs[name]) throw new NotFoundError(name);
+    if (!vfs[name]) {
+      // 如果文件不存在，记录日志并抛出 NotFoundError
+      logger.error(`文件未找到: ${name}`);
+      throw new NotFoundError(name);
+    }
+
+    // 如果文件存在，记录日志并响应内容
+    logger.info(`正在提供文件: ${name}, 哈希: ${hashes[name]}, 大小: ${size(vfs[name].length)}`);
     this.response.addHeader('ETag', hashes[name]);
     this.response.body = vfs[name];
     this.response.addHeader('Cache-Control', 'public, max-age=86400');
   }
 }
 
+
 export async function apply(ctx: Context) {
+  logger.info('Registering UiConstantsHandler routes...');
   ctx.Route('constant', '/constant/:version', UiConstantsHandler);
   ctx.Route('constant', '/lazy/:version/:name', UiConstantsHandler);
   ctx.Route('constant', '/resource/:version/:name', UiConstantsHandler);
+  logger.info('Routes registered.');
   ctx.on('app/started', buildUI);
   const debouncedBuildUI = debounce(buildUI, 2000, { trailing: true });
   const triggerHotUpdate = (path?: string) => {

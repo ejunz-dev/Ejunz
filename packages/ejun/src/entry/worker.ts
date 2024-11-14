@@ -19,7 +19,7 @@ const tmpdir = path.resolve(os.tmpdir(), 'ejunz');
 
 export async function apply(ctx: Context) {
     fs.ensureDirSync(tmpdir);
-    // require('../lib/i18n');
+    require('../lib/i18n');
     require('../utils');
     require('../error');
     require('../service/bus').apply(ctx);
@@ -46,7 +46,7 @@ export async function apply(ctx: Context) {
     await ctx.lifecycle.flush();
     await require('../service/worker').apply(ctx);
     await require('../service/server').apply(ctx);
-    // await require('../service/api').apply(ctx);
+    await require('../service/api').apply(ctx);
     await ctx.lifecycle.flush();
     require('../lib/index');
     await lib(pending, fail, ctx);
