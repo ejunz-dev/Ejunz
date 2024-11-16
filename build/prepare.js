@@ -71,7 +71,7 @@ for (const name of ['plugins', 'modules']) {
 }
 
 const modules = [
-    'packages/yijun',
+    'packages/ejun',
     ...['packages', 'framework'].flatMap((i) => fs.readdirSync(path.resolve(process.cwd(), i)).map((j) => `${i}/${j}`)),
 ].filter((i) => !i.includes('/.') && !i.includes('ui-default')).filter((i) => fs.statSync(path.resolve(process.cwd(), i)).isDirectory());
 
