@@ -69,13 +69,14 @@ jobs:
     - name: Build And Lint
       run: |
             set -x
-            if [[ ${{ steps.ui-changed-files.outputs.any_changed }} == true ]] || [[ $(npm info @ejunz/ui-default version) != $(node -e 'console.log(require("./packages/ui-default/package.json").version)') ]]
+            if [[ $SOME_VARIABLE == true ]] || [[ $(npm info @ejunz/ui-default version) != $(node -e 'console.log(require("./packages/ui-default/package.json").version') ) ]]
             then
               yarn build:ui:iconfont
-              parallel --tty -j+0 yarn ::: lint:ci lint:ui:ci build build:ui:production:webpack test || true
+              parallel --tty -j+0 yarn :: lint:ci lint:ui:ci build build:ui:production:webpack test || true
             else
-              parallel --tty -j+0 yarn ::: lint:ci build test || true
+              parallel --tty -j+0 yarn :: lint:ci build test || true
             fi
+
         
         
     - name: Publish
