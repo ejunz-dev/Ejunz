@@ -10,6 +10,8 @@
     "main": "package.json",
     "scripts": {
         "debug": "node --trace-warnings --async-stack-traces --trace-deprecation packages/ejun/bin/ejun --debug --template",
+        "build": "node build/prepare.js && tsc -b --verbose",
+        "build:installer": "esbuild ./install/install.js --minify --format=cjs | base64",
         "build:watch": "node build/prepare.js && tsc -b --watch",
         "build:ui:dev": "node packages/ui-default/build --iconfont && node --trace-deprecation packages/ui-default/build --dev",
         "build:ui": "node packages/ui-default/build --iconfont && node packages/ui-default/build",
