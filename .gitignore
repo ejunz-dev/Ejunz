@@ -42,6 +42,7 @@ packages/**/*.js
 !packages/ui-default/**/*.js
 !packages/geoip/download.js
 !examples/**
+packages/ui-default/public
 packages/ui-default/misc/.iconfont
 packages/ui-default/static/locale
 plugins/
