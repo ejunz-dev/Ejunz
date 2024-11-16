@@ -1,5 +1,5 @@
 import { normalizeSubtasks, readSubtasksFromFiles } from '@ejunz/utils/lib/common';
-import type { SubtaskType } from 'yijun/src/interface';
+import type { SubtaskType } from 'ejun/src/interface';
 import $ from 'jquery';
 import yaml from 'js-yaml';
 import React from 'react';
