@@ -78,6 +78,8 @@ jobs:
           parallel --tty -j+0 yarn ::: build 
         fi
     
+      env:
+       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         
     - name: Check path
       run: |
