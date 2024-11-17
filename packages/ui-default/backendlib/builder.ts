@@ -118,7 +118,7 @@ export async function buildUI() {
   }
   logger.success('UI addons built in %d ms (%s)', Date.now() - start, size(totalSize));
   logger.info("buildUI 函数执行完成");
-  logger.info("当前的 vfs 内容:", vfs);
+ 
 
 }
 
