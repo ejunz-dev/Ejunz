@@ -9,9 +9,9 @@ import {
 import type { DomainDoc } from '../interface';
 import avatar from '../lib/avatar';
 import { PERM, PERMS_BY_FAMILY, PRIV } from '../model/builtin';
-// import * as discussion from '../model/discussion';
+import * as discussion from '../model/discussion';
 import domain from '../model/domain';
-// import * as oplog from '../model/oplog';
+import * as oplog from '../model/oplog';
 import { DOMAIN_SETTINGS, DOMAIN_SETTINGS_BY_KEY } from '../model/setting';
 import * as system from '../model/system';
 import user from '../model/user';

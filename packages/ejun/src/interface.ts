@@ -729,7 +729,7 @@ declare module './service/db' {
 }
 
 export interface Model {
-    // blacklist: typeof import('./model/blacklist').default,
+    blacklist: typeof import('./model/blacklist').default,
     builtin: typeof import('./model/builtin'),
     contest: typeof import('./model/contest'),
     discussion: typeof import('./model/discussion'),
@@ -742,8 +742,8 @@ export interface Model {
     setting: typeof import('./model/setting'),
     // solution: typeof import('./model/solution').default,
     system: typeof import('./model/system'),
-    // task: typeof import('./model/task').default,
-    // schedule: typeof import('./model/schedule').default;
+    task: typeof import('./model/task').default,
+    schedule: typeof import('./model/schedule').default;
     oplog: typeof import('./model/oplog'),
     // token: typeof import('./model/token').default,
     // training: typeof import('./model/training'),
@@ -823,7 +823,7 @@ export interface EjunzGlobal {
 declare global {
     namespace NodeJS {
         interface Global {
-            Ejunz: EjunzGlobal,
+            Ejunz: EjunzGlobal, 
             addons: string[],
         }
     }
