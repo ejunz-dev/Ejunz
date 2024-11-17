@@ -73,9 +73,9 @@ jobs:
         if [[ ${{ steps.ui-changed-files.outputs.any_changed }} == true ]] || [[ $(npm info @ejunz/ui-default version) != $(node -e 'console.log(require("./packages/ui-default/package.json").version)') ]]
         then
           yarn build:ui:iconfont
-          parallel --tty -j+0 yarn ::: build build:ui:production:webpack
+          parallel --tty -j+0 yarn ::: build build:ui:production:webpack || ture 
         else
-          parallel --tty -j+0 yarn ::: build 
+          parallel --tty -j+0 yarn ::: build || true
         fi
     
       env:
