@@ -1,6 +1,6 @@
 {
     "name": "ejun",
-    "version": "0.3.5",
+    "version": "0.3.6",
     "bin": "bin/ejun.js",
     "main": "src/plugin-api",
     "module": "src/plugin-api",
