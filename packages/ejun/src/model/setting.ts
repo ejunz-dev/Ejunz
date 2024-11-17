@@ -241,7 +241,7 @@ SystemSetting(
     Setting('setting_smtp', 'smtp.secure', false, 'boolean', 'smtp.secure', 'SSL'),
     Setting('setting_smtp', 'smtp.verify', true, 'boolean', 'smtp.verify', 'Verify register email'),
     Setting('setting_server', 'server.center', 'https://ejunz.ac/center', 'text', 'server.center', '', FLAG_HIDDEN),
-    Setting('setting_server', 'server.name', 'E junz', 'text', 'server.name', 'Server Name'),
+    Setting('setting_server', 'server.name', 'Ejunz', 'text', 'server.name', 'Server Name'),
     Setting('setting_server', 'server.url', '/', 'text', 'server.url', 'Server BaseURL'),
     Setting('setting_server', 'server.upload', '256m', 'text', 'server.upload', 'Max upload file size'),
     Setting('setting_server', 'server.cdn', '/', 'text', 'server.cdn', 'CDN Prefix'),
