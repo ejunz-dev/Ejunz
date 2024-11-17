@@ -461,31 +461,31 @@ export interface BlacklistDoc {
     expireAt: Date;
 }
 
-// // Discussion
-// export type { DiscussionDoc } from './model/discussion';
-// declare module './model/discussion' {
-//     interface DiscussionDoc {
-//         docType: document['TYPE_DISCUSSION'];
-//         docId: ObjectId;
-//         parentType: number;
-//         parentId: ObjectId | number | string;
-//         title: string;
-//         content: string;
-//         ip: string;
-//         pin: boolean;
-//         highlight: boolean;
-//         updateAt: Date;
-//         nReply: number;
-//         views: number;
-//         edited?: boolean;
-//         editor?: number;
-//         react: Record<string, number>;
-//         sort: number;
-//         lastRCount: number;
-//         lock?: boolean;
-//         hidden?: boolean;
-//     }
-// }
+// Discussion
+export type { DiscussionDoc } from './model/discussion';
+declare module './model/discussion' {
+    interface DiscussionDoc {
+        docType: document['TYPE_DISCUSSION'];
+        docId: ObjectId;
+        parentType: number;
+        parentId: ObjectId | number | string;
+        title: string;
+        content: string;
+        ip: string;
+        pin: boolean;
+        highlight: boolean;
+        updateAt: Date;
+        nReply: number;
+        views: number;
+        edited?: boolean;
+        editor?: number;
+        react: Record<string, number>;
+        sort: number;
+        lastRCount: number;
+        lock?: boolean;
+        hidden?: boolean;
+    }
+}
 
 export interface DiscussionReplyDoc extends Document {
     // docType: document['TYPE_DISCUSSION_REPLY'];
