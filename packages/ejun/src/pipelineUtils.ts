@@ -8,7 +8,7 @@ import * as contest from './model/contest';
 import * as document from './model/document';
 import domain from './model/domain';
 import problem, { Field, ProblemDoc } from './model/problem';
-// import RecordModel from './model/record';
+import RecordModel from './model/record';
 import user from './model/user';
 
 export async function iterateAllDomain(cb: (ddoc: DomainDoc, current?: number, total?: number) => Promise<any>) {
