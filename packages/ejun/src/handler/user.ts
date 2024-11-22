@@ -8,12 +8,12 @@ import {
     UserNotFoundError, ValidationError, VerifyPasswordError,
 } from '../error';
 import { TokenDoc, Udoc, User } from '../interface';
-// import avatar from '../lib/avatar';
-// import { sendMail } from '../lib/mail';
-// import { verifyTFA } from '../lib/verifyTFA';
+import avatar from '../lib/avatar';
+import { sendMail } from '../lib/mail';
+import { verifyTFA } from '../lib/verifyTFA';
 import BlackListModel from '../model/blacklist';
 import { PERM, PRIV, STATUS } from '../model/builtin';
-// import * as ContestModel from '../model/contest';
+import * as ContestModel from '../model/contest';
 import domain from '../model/domain';
 // import oauth from '../model/oauth';
 import * as oplog from '../model/oplog';
