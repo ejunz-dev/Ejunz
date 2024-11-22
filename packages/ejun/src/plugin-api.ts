@@ -16,7 +16,7 @@ export * as TrainingModel from './model/training';
 export * as OpcountModel from './model/opcount';
 export * as OplogModel from './model/oplog';
 export * as SettingModel from './model/setting';
-// export * as DiscussionModel from './model/discussion';
+export * as DiscussionModel from './model/discussion';
 export * as DocumentModel from './model/document';
 export { DocType } from './model/document';
 export * as BuiltinModel from './model/builtin';

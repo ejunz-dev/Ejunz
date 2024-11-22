@@ -1,3 +1,4 @@
+__id: zh_TW
 __langname: 正體中文
 '{0} comments': '{0} 條評論'
 '{0} discussions': '{0} 條討論'
@@ -17,9 +18,6 @@ __langname: 正體中文
 '↓ Update Time': '↓ 更新時間'
 'A domain ID cannot be changed after creation. It is supposed to be:': '創建後將無法更改 ID。ID 必須滿足以下條件：'
 'Current dataset: {0}': '當前測試資料: {0}'
-'Hello, {0}! You can click following link to active your new email of your {1} account:': 您好，{0}！您可以點選以下連結來啟用您 {1} 賬戶的新電子郵件地址：
-'Hello, {0}! You can click following link to reset the password of your {1} account:': 您好，{0}！您可以點選以下連結來重置您 {1} 賬戶的密碼：
-'Hello! You can click following link to sign up your {0} account:': 您好！您可以點選以下連結來註冊您的 {0} 賬戶：
 'No': 否
 'Solved {0} problems, RP: {1} (No. {2})': '解決了 {0} 道題目，RP: {1} (No. {2})'
 'Yes': 是
@@ -55,7 +53,6 @@ Bio: 個人簡介
 Boom!: 炸了！
 Browser: 瀏覽器
 Built-in: 內建
-By signing up a {0} universal account, you can submit code and join discussions in all online judging services provided by us.: 註冊一個 {0} 通用賬戶，您就可以在我們提供的所有線上評測服務上提交程式碼、參與討論。
 Calendar View: 日曆視圖
 Can be Extended For: 可延期
 Cancel Score: 取消成績
@@ -88,6 +85,7 @@ contest_detail_problem_submit: 遞交比賽程式碼
 contest_edit: 編輯比賽
 contest_main: 比賽
 contest_scoreboard: 比賽成績表
+contest: 比賽
 Contest: 比賽
 Create a contest: 創建一個比賽
 Create a Discussion: 創建一個討論
@@ -200,7 +198,7 @@ Hidden: 隱藏
 Hide all tags: 隱藏所有標籤
 Hide categorical tags: 隱藏分類標籤
 Highlight discussions: 高亮討論
-Highlight: 高亮討論
+Highlight: 高亮
 home_account: 賬戶設定
 home_domain_account: 當前域的設定
 home_domain_create: 創建域
@@ -275,6 +273,7 @@ New Email: 新電子郵件
 New Password: 新密碼
 New Training Plan: 新訓練計劃
 New: 創建
+No dataset at present.: 暫無測試資料。
 No discussion yet...: 目前沒有討論…
 No Permission to Attend Contest: 您沒有許可權參加比賽
 No Permission to Claim Homework: 您沒有權限認領功課
@@ -509,7 +508,6 @@ Username / UID: 使用者名或 UID
 Username: 使用者名
 Users with those roles will be removed from the domain.: 擁有這些角色的使用者將從此域中移除。
 Users: 使用者
-Using your {0} universal account: 使用您的 {0} 通用賬戶
 Valid for registered users who are not members of the domain: 對域外註冊使用者有效
 Valid for visitors: 對未登入的遊客有效
 View contest scoreboard: 檢視比賽成績表
@@ -541,6 +539,7 @@ WeChat: 微信
 What is domain?: 什麼是域?
 What's domain?: 什麼是域？
 Whether to show tags in the problem list.: 是否在題目列表中顯示題目的標籤。
+wiki_about: 關於
 Will be used as the domain icon.: 將被用作圖示。
 Without slashes or backslashes: 不含斜槓和反斜槓
 Write Your Comment: 發表您的評論

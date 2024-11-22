@@ -4,7 +4,7 @@ import * as cordis from 'cordis';
 import yaml from 'js-yaml';
 import { Dictionary } from 'lodash';
 import moment from 'moment-timezone';
-// import { LangConfig, parseLang } from '@ejunz/utils/lib/lang';
+import { LangConfig, parseLang } from '@ejunz/utils/lib/lang';
 import { retry } from '@ejunz/utils/lib/utils';
 import { Context, Service } from '../context';
 import { Setting as _Setting } from '../interface';
