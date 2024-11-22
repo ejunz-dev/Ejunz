@@ -1,6 +1,6 @@
 {
     "name": "@ejunz/utils",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "description": "ejunz utils",
     "main": "lib/utils.ts",
     "repository": "https://github.com/ejunz-dev/EjunZ.git",
