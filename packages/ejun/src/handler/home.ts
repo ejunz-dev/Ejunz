@@ -11,9 +11,9 @@ import {
 } from '../error';
 import { DomainDoc, MessageDoc, Setting } from '../interface';
 import avatar, { validate } from '../lib/avatar';
-// import * as mail from '../lib/mail';
-// import * as useragent from '../lib/useragent';
-// import { verifyTFA } from '../lib/verifyTFA';
+import * as mail from '../lib/mail';
+import * as useragent from '../lib/useragent';
+import { verifyTFA } from '../lib/verifyTFA';
 // import BlackListModel from '../model/blacklist';
 import { PERM, PRIV } from '../model/builtin';
 import * as contest from '../model/contest';
