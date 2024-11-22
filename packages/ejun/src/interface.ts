@@ -704,9 +704,9 @@ declare module './service/db' {
         'record': RecordDoc;
         'record.stat': RecordStatDoc;
         'document': any;
-        // 'document.status': StatusDocBase & {
-        //     [K in keyof DocStatusType]: { docType: K } & DocStatusType[K];
-        // }[keyof DocStatusType];
+        'document.status': StatusDocBase & {
+            [K in keyof DocStatusType]: { docType: K } & DocStatusType[K];
+        }[keyof DocStatusType];
         'discussion.history': DiscussionHistoryDoc;
         'user': Udoc;
         'user.preference': UserPreferenceDoc;
@@ -740,7 +740,7 @@ export interface Model {
     problem: typeof import('./model/problem').default,
     record: typeof import('./model/record').default,
     setting: typeof import('./model/setting'),
-    // solution: typeof import('./model/solution').default,
+    solution: typeof import('./model/solution').default,
     system: typeof import('./model/system'),
     task: typeof import('./model/task').default,
     schedule: typeof import('./model/schedule').default;
@@ -748,7 +748,7 @@ export interface Model {
     // token: typeof import('./model/token').default,
     // training: typeof import('./model/training'),
     user: typeof import('./model/user').default,
-    // oauth: typeof import('./model/oauth').default,
+    oauth: typeof import('./model/oauth').default,
     storage: typeof import('./model/storage').default,
     // rp: typeof import('./script/rating').RpTypes,
 }

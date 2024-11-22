@@ -5,7 +5,7 @@ import { Dictionary } from 'lodash';
 import { Context, Service } from '../context';
 import * as system from '../model/system';
 import db from './db';
-// import storage from './storage';
+import storage from './storage';
 
 type CheckItem = (context: any, log: Function, warn: Function, error: Function) => Promise<void>;
 
@@ -52,7 +52,7 @@ check.addChecker('Db', async (ctx, log, warn, error) => {
     }
 });
 check.addChecker('Storage', async (ctx, log, warn, error) => {
-    // const status = await storage.status();
+    const status = await storage.status();
     if (!status.status) error(`Connect to ${status.type} Storage ${status.bucket} Error: ${status.error}`);
 });
 check.addChecker('System', async (ctx, log, warn) => {
