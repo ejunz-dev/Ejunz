@@ -6,9 +6,9 @@
       <div class="section__body">
         <ul class="supplementary list">
           <li>
-            <a class="discussion-node-tag" href="{{ url('blog_main', uid=udoc._id) }}">
+            <a class="discussion-node-tag" href="{{ url('note_main', uid=udoc._id) }}">
               <span class="v-center icon icon-flag"></span>
-              {{ _("{0}'s blog").format(udoc.uname) }}
+              {{ _("{0}'s note").format(udoc.uname) }}
             </a>
           </li>
           <li><h2>{{ ddoc.title }}</h2></li>
@@ -24,7 +24,7 @@
       </div>
       <ul class="section__footer supplementary dot list">
       {% if handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) or handler.user.own(ddoc) %}
-        <li><a href="{{ url('blog_edit', uid=udoc._id, did=ddoc.docId) }}">
+        <li><a href="{{ url('note_edit', uid=udoc._id, did=ddoc.docId) }}">
           <span class="icon icon-edit"></span> {{ _('Edit') }}
         </a></li>
       {% endif %}
