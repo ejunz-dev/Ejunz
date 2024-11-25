@@ -129,7 +129,7 @@ export async function load(ctx: Context) {
     await addon(pending, fail, ctx);
     const scriptDir = path.resolve(__dirname, '..', 'script');
     for (const h of await fs.readdir(scriptDir)) {
-        ctx.loader.reloadPlugin(ctx, path.resolve(scriptDir, h), {}, `yijun/script/${h.split('.')[0]}`);
+        ctx.loader.reloadPlugin(ctx, path.resolve(scriptDir, h), {}, `ejun/script/${h.split('.')[0]}`);
     }
     await script(pending, fail, ctx);
     await ctx.lifecycle.flush();

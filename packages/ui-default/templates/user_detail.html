@@ -84,6 +84,16 @@
                   MOD
                 </span>
               {% endif %}
+              <!-- 插槽 -->
+              {% for item in ui.getNodes('ProfileHeaderContact') %}
+              <a class="profile-header__contact-item" 
+                href="{{ url(item.name, { uid: udoc._id }) }}" 
+                data-tooltip="{{ _(item.displayName or item.name) }}">
+                <span class="icon icon-comment--multiple"></span>
+              </a>
+              {% endfor %}
+
+
               </div>
             </div>
           </div>
