@@ -4,7 +4,7 @@
     "license": "MIT",
     "main": "react.yaml",
     "repository": "https://github.com/ejunz-dev/Ejunz.git",
-    "author": "Jacka10086 <jacka10086@yijun-x.online>",
+    "author": "Jacka10086 <jacka10086@ejun-x.online>",
     "dependencies": {
         "@stylistic/eslint-plugin": "^2.8.0",
         "@typescript-eslint/eslint-plugin": "^8.6.0",
