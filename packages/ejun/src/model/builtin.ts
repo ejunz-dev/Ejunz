@@ -1,10 +1,15 @@
 import {
     getScoreColor, STATUS, STATUS_CODES, STATUS_SHORT_TEXTS,
     STATUS_TEXTS, USER_GENDER_FEMALE, USER_GENDER_ICONS, USER_GENDER_MALE,
-    USER_GENDER_OTHER, USER_GENDER_RANGE, USER_GENDERS,
+    USER_GENDER_OTHER, USER_GENDER_RANGE, USER_GENDERS, 
 } from '@ejunz/utils/lib/status';
+import {
+   Logger
+} from '@ejunz/utils/lib/utils';
 
 export * from '@ejunz/utils/lib/status';
+
+const logger = new Logger('Permission');
 
 
 export const PERM = {
@@ -101,6 +106,7 @@ export const PERM = {
 
     PERM_NEVER: 1n << 60n,
 };
+
 
 export const Permission = (family: string, key: BigInt, desc: string) => ({ family, key, desc });
 
@@ -460,10 +466,38 @@ export const CATEGORIES = {
         '莫队',
     ],
 };
+export function registerPermission(family: string, key: bigint, desc: string) {
+    // 检查是否已经存在该权限
+    const exists = PERMS.some((perm) => perm.key === key);
+    if (exists) {
+        const existingPerm = PERMS.find((perm) => perm.key === key);
+        logger.warn(
+            `Permission key ${key.toString()} already exists in family "${existingPerm?.family}" with description "${existingPerm?.desc}". Skipping registration.`
+        );
+        return;
+    }
 
+
+    // 初始化 family 分类
+    if (!PERMS_BY_FAMILY[family]) {
+        PERMS_BY_FAMILY[family] = [];
+    }
+
+    // 创建权限对象
+    const permission = { family, key, desc };
+
+    // 添加到 PERMS 和 PERMS_BY_FAMILY
+    PERMS.push(permission);
+    PERMS_BY_FAMILY[family].push(permission);
+    logger.info(`Registered permission: family="${family}", key="${key.toString()}", desc="${desc}"`);
+}
+
+
+// 初始化全局对象
 global.Ejunz.model.builtin = {
     Permission,
     getScoreColor,
+    registerPermission,
     PERM,
     PERMS,
     PERMS_BY_FAMILY,
