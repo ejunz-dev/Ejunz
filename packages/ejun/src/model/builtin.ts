@@ -9,7 +9,7 @@ import {
 
 export * from '@ejunz/utils/lib/status';
 
-const logger = new Logger('Permission');
+const logger = new Logger('addon/PERM');
 
 
 export const PERM = {
