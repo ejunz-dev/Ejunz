@@ -1,7 +1,7 @@
 import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter,
     Handler, NumberKeys, ObjectId, OplogModel, paginate,
-    param, PRIV, Types, UserModel,
+    param, PRIV, Types, UserModel, PERM, PERMS_BY_FAMILY, Permission
 } from 'ejun';
 
 export const TYPE_BLOG: 80 = 80;
@@ -208,10 +208,29 @@ class BlogEditHandler extends BlogHandler {
 }
 
 export async function apply(ctx: Context) {
-    // 定义路由
-    ctx.Route('blog_main', '/blog/:uid', BlogUserHandler);
+    // 定义插件权限标识符
+    const PERM = {
+        PERM_VIEW_BLOG: 1n << 71n, // 查看博客权限
+        PERM_VIEW_BLOG_DETAILED: 1n << 72n, // 查看详细博客权限
+    };
+
+    // 动态注册权限
+    global.Ejunz.model.builtin.registerPermission(
+        'blog', 
+        PERM.PERM_VIEW_BLOG, 
+        'View blogs'
+    );
+
+    global.Ejunz.model.builtin.registerPermission(
+        'blog', 
+        PERM.PERM_VIEW_BLOG_DETAILED, 
+        'View detailed blogs'
+    );
+
+    // 定义路由并绑定权限
+    ctx.Route('blog_main', '/blog/:uid', BlogUserHandler, PERM.PERM_VIEW_BLOG);
     ctx.Route('blog_create', '/blog/:uid/create', BlogEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('blog_detail', '/blog/:uid/:did', BlogDetailHandler);
+    ctx.Route('blog_detail', '/blog/:uid/:did', BlogDetailHandler, PERM.PERM_VIEW_BLOG_DETAILED);
     ctx.Route('blog_edit', '/blog/:uid/:did/edit', BlogEditHandler, PRIV.PRIV_USER_PROFILE);
 
     // 注入到用户的 UserDropdown
@@ -227,7 +246,8 @@ export async function apply(ctx: Context) {
         displayName: 'Go Blog',
         uid: h.udoc._id.toString()
         
-    }));
+    }
+));
 
     // 加载多语言支持
     ctx.i18n.load('zh', {
