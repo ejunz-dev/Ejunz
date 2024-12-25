@@ -1,0 +1,33 @@
+<h1>{{ _('Welcome to the Question Generator!') }}</h1>
+
+{% if error %}
+<p style="color: red;">{{ error }}</p>
+{% endif %}
+
+<form method="POST" action="/question">
+    <label for="input_text">{{ _('Input Text') }}:</label>
+    <textarea id="input_text" name="input_text" required>{{ request.body.input_text or '' }}</textarea>
+
+    <label for="max_questions">{{ _('Max Questions') }}:</label>
+    <input type="number" id="max_questions" name="max_questions" required min="1" value="{{ request.body.max_questions or '' }}">
+
+    <button type="submit">{{ _('Submit') }}</button>
+</form>
+
+{% if questions %}
+<div id="result-container">
+    <h2>{{ _('Generated Questions') }}:</h2>
+    <pre id="result">
+{% for question in questions %}
+Question {{ loop.index }}: {{ question.question_statement }}
+Answer: {{ question.answer }}
+Options: 
+{% if question.options and question.options.length > 0 %}
+{{ question.options | join(', ') }}
+{% else %}
+No options provided
+{% endif %}
+{% endfor %}
+    </pre>
+</div>
+{% endif %}
