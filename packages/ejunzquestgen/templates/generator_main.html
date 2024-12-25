@@ -45,27 +45,32 @@
       <div class="section__body">
         {% if questions %}
         <h2>{{ _('Generated Questions') }}:</h2>
-        <ol>
-            {% for question in questions %}
-            <li style="margin-bottom: 20px;">
-              <strong>{{ _('Question') }} {{ loop.index }}:</strong> {{ question.question_statement }}
-              <ul>
-                {% for option in question.labeled_options %}
-                <li>
-                  <label>
-                    <span style="font-weight: bold;">{{ option.label }}.</span> {{ option.value }}
-                  </label>
-                </li>
-                {% endfor %}
-              </ul>              
-              {% if question.answer %}
-              <p style="color: green; font-weight: bold; margin-top: 5px;">
-                {{ _('Correct Answer') }}: {{ question.answer }}
-              </p>
-              {% endif %}
-            </li>
-            {% endfor %}            
-        </ol>
+        <button id="select-questions-btn" class="button" style="margin-bottom: 20px;">{{ _('Select Questions') }}</button>
+        <form id="staging-form" method="POST" action="/staging/push" style="display: none;">
+          <ol>
+              {% for question in questions %}
+              <li style="margin-bottom: 20px;">
+                <input type="checkbox" name="selected_questions" value="{{ question.id }}">
+                <strong>{{ _('Question') }} {{ loop.index }}:</strong> {{ question.question_statement }}
+                <ul>
+                  {% for option in question.labeled_options %}
+                  <li>
+                    <label>
+                      <span style="font-weight: bold;">{{ option.label }}.</span> {{ option.value }}
+                    </label>
+                  </li>
+                  {% endfor %}
+                </ul>              
+                {% if question.answer %}
+                <p style="color: green; font-weight: bold; margin-top: 5px;">
+                  {{ _('Correct Answer') }}: {{ question.answer }}
+                </p>
+                {% endif %}
+              </li>
+              {% endfor %}            
+          </ol>
+          <button type="submit" class="button" style="margin-top: 20px;">{{ _('Push to Staging') }}</button>
+        </form>
         {% else %}
         <p>{{ _('No questions generated yet. Submit text to generate quizzes!') }}</p>
         {% endif %}
@@ -73,4 +78,14 @@
     </div>
   </div>
 </div>
+
+<script>
+  const selectButton = document.getElementById('select-questions-btn');
+  const stagingForm = document.getElementById('staging-form');
+
+  selectButton.addEventListener('click', () => {
+    // 显示或隐藏多选框和提交按钮
+    stagingForm.style.display = stagingForm.style.display === 'none' ? 'block' : 'none';
+  });
+</script>
 {% endblock %}
