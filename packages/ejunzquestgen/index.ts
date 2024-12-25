@@ -25,9 +25,20 @@ function loadApiConfig() {
 
 class QuestionHandler extends Handler {
     async get() {
+        this.response.template = 'generator_detail.html';
+        this.response.body = {
+            message: 'Welcome to the Question Generator!',
+        };
+    }
+}
+
+
+class Question_MCQ_Handler extends Handler {
+    async get() {
         this.response.template = 'generator_main.html'; 
         this.response.body = {
             message: 'Welcome to the Question Generator!',
+            questions: null, 
         };
     }
 
@@ -40,6 +51,7 @@ class QuestionHandler extends Handler {
             this.response.body = {
                 error: 'Invalid input. Please provide valid input text and a positive number for max questions.',
                 message: 'Welcome to the Question Generator!',
+                questions: null, 
             };
             return;
         }
@@ -59,32 +71,38 @@ class QuestionHandler extends Handler {
             }
 
             const data = await response.json();
+
             this.response.template = 'generator_main.html';
             this.response.body = {
-                questions: data.questions,
-                message: 'Welcome to the Question Generator!',
+                questions: data.questions || [],
+                message: 'Questions generated successfully!',
             };
         } catch (error) {
+            // 错误处理
             this.response.template = 'generator_main.html';
             this.response.body = {
                 error: `Failed to generate questions: ${error.message}`,
                 message: 'Welcome to the Question Generator!',
+                questions: null,
             };
         }
     }
 }
 
-export async function apply(ctx: Context) {
-    ctx.Route('question_main', '/question', QuestionHandler, PRIV.PRIV_USER_PROFILE);
 
-    ctx.injectUI('UserDropdown', 'question_main', (handler) => ({
+export async function apply(ctx: Context) {
+    ctx.Route('generator_detail', '/questgen', QuestionHandler, PRIV.PRIV_USER_PROFILE )
+    ctx.Route('generator_main', '/questgen/mcq', Question_MCQ_Handler, PRIV.PRIV_USER_PROFILE);
+   
+
+    ctx.injectUI('UserDropdown', 'generator_detail', (handler) => ({
         icon: 'create',
         displayName: 'Question Generator',
         uid: handler.user._id.toString(),
     }), PRIV.PRIV_USER_PROFILE);
 
-    ctx.injectUI('Nav', 'question_main', () => ({
-        name: 'question_main',
+    ctx.injectUI('Nav', 'generator_detail', () => ({
+        name: 'generator_detail',
         displayName: 'Generator',
         args: {},
         checker: (handler) => handler.user.hasPriv(PRIV.PRIV_USER_PROFILE),
@@ -92,9 +110,9 @@ export async function apply(ctx: Context) {
 
     ctx.i18n.load('zh', {
         question: '生成器',
-        question_main: '生成器',
+        generator_detail: '生成器',
         'Question Generator': '生成器',
-        'Welcome to the Question Generator!': '欢迎使用题目生成器！',
+        'Welcome to the MCQ Question Generator!': '欢迎使用选择题生成器！',
         'Input Text': '输入文本',
         'Max Questions': '最多问题',
         'Generated Questions': '生成的问题',
@@ -104,7 +122,7 @@ export async function apply(ctx: Context) {
 
     ctx.i18n.load('en', {
         question: 'Generator',
-        question_main: 'Generator',
+        generator_detail: 'Generator',
         'Question Generator': 'Generator',
         'Welcome to the Question Generator!': 'Welcome to the Question Generator!',
         'Input Text': 'Input Text',
