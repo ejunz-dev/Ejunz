@@ -1,64 +1,74 @@
 {% extends "layout/basic.html" %}
 
 {% block content %}
-<div class="row">
-  <div class="medium-9 columns">
+<div class="row" style="display: flex; flex-wrap: wrap;">
+  <!-- Input and Settings Area (Left Side) -->
+  <div class="medium-6 columns" style="width: 50%; padding: 20px; border-right: 1px solid #ccc;">
     <div class="section">
       <div class="section__body">
-        <h1>{{ message }}</h1>
+        <h1>{{ _('Generate different quizzes using AI!') }}</h1>
         
         {% if error %}
         <p style="color: red;">{{ error }}</p>
         {% endif %}
-        
-        <!-- 表单提交 -->
-        <form method="POST" action="/questgen/mcq">
+
+        <!-- Input Form -->
+        <form id="generate-form" method="POST" action="/questgen/mcq">
           <label for="input_text">{{ _('Input Text') }}:</label>
-          <textarea id="input_text" name="input_text" required>{{ request.body.input_text or '' }}</textarea>
+          <textarea id="input_text" name="input_text" required style="width: 100%; height: 150px;">{{ request.body.input_text or '' }}</textarea>
 
-          <label for="max_questions">{{ _('Max Questions') }}:</label>
-          <input type="number" id="max_questions" name="max_questions" required min="1" value="{{ request.body.max_questions or '' }}">
+          <label for="question_type">{{ _('Question Type') }}:</label>
+          <select id="question_type" name="question_type" required style="width: 100%;">
+            <option value="MCQ">MCQ</option>
+            <option value="True/False">True/False</option>
+          </select>
 
-          <button type="submit" class="button">{{ _('Submit') }}</button>
+          <label for="max_questions">{{ _('Question Count') }}:</label>
+          <input type="number" id="max_questions" name="max_questions" required min="1" style="width: 100%;" value="{{ request.body.max_questions or '' }}">
+
+          <label for="difficulty">{{ _('Difficulty Level') }}:</label>
+          <select id="difficulty" name="difficulty" style="width: 100%;">
+            <option value="Easy">{{ _('Easy') }}</option>
+            <option value="Medium">{{ _('Medium') }}</option>
+            <option value="Hard">{{ _('Hard') }}</option>
+          </select>
+
+          <button type="submit" class="button" style="margin-top: 20px; width: 100%;">{{ _('Submit') }}</button>
         </form>
-
-        <!-- 生成的问题 -->
-        {% if questions %}
-        <div id="result-container" style="margin-top: 20px;">
-          <h2>{{ _('Generated Questions') }}:</h2>
-          <ul class="supplementary list">
-            {% for question in questions %}
-            <li>
-              <strong>{{ _('Question') }} {{ loop.index }}:</strong> {{ question.question_statement }}<br>
-              <strong>{{ _('Answer') }}:</strong> {{ question.answer }}<br>
-              <strong>{{ _('Options') }}:</strong>
-              {% if question.options and question.options.length > 0 %}
-                {{ question.options | join(', ') }}
-              {% else %}
-                {{ _('No options provided') }}
-              {% endif %}
-            </li>
-            {% endfor %}
-          </ul>
-        </div>
-        {% endif %}
       </div>
     </div>
   </div>
 
-  <div class="medium-3 columns">
-    <div class="section side">
-      <div class="profile__bg user-profile-bg--1"></div>
+  <!-- Question Display Area (Right Side) -->
+  <div class="medium-6 columns" style="width: 50%; padding: 20px;">
+    <div class="section">
       <div class="section__body">
-        <div class="media sidebar-user-profile">
-          <div class="media__left">
-            <img src="{{ avatarUrl(handler.user.avatar, 80) }}" width="80" height="80" class="medium user-profile-avatar">
-          </div>
-          <div class="media__body">
-            <p>{{ user.render_inline(handler.user, avatar=false, modbadge=false) }}</p>
-            <a href="{{ url('generator_main') }}" class="button small">{{ _('Go to Question Generator') }}</a>
-          </div>
-        </div>
+        {% if questions %}
+        <h2>{{ _('Generated Questions') }}:</h2>
+        <ol>
+            {% for question in questions %}
+            <li style="margin-bottom: 20px;">
+              <strong>{{ _('Question') }} {{ loop.index }}:</strong> {{ question.question_statement }}
+              <ul>
+                {% for option in question.labeled_options %}
+                <li>
+                  <label>
+                    <span style="font-weight: bold;">{{ option.label }}.</span> {{ option.value }}
+                  </label>
+                </li>
+                {% endfor %}
+              </ul>              
+              {% if question.answer %}
+              <p style="color: green; font-weight: bold; margin-top: 5px;">
+                {{ _('Correct Answer') }}: {{ question.answer }}
+              </p>
+              {% endif %}
+            </li>
+            {% endfor %}            
+        </ol>
+        {% else %}
+        <p>{{ _('No questions generated yet. Submit text to generate quizzes!') }}</p>
+        {% endif %}
       </div>
     </div>
   </div>
