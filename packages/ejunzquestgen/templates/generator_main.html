@@ -2,7 +2,7 @@
 
 {% block content %}
 <div class="row" style="display: flex; flex-wrap: wrap;">
-  <!-- Input and Settings Area (Left Side) -->
+  <!-- Input and Settings Area -->
   <div class="medium-6 columns" style="width: 50%; padding: 20px; border-right: 1px solid #ccc;">
     <div class="section">
       <div class="section__body">
@@ -39,38 +39,51 @@
     </div>
   </div>
 
-  <!-- Question Display Area (Right Side) -->
+  <!-- Question Display Area -->
   <div class="medium-6 columns" style="width: 50%; padding: 20px;">
     <div class="section">
       <div class="section__body">
         {% if questions %}
         <h2>{{ _('Generated Questions') }}:</h2>
-        <button id="select-questions-btn" class="button" style="margin-bottom: 20px;">{{ _('Select Questions') }}</button>
-        <form id="staging-form" method="POST" action="/staging/push" style="display: none;">
-          <ol>
-              {% for question in questions %}
-              <li style="margin-bottom: 20px;">
-                <input type="checkbox" name="selected_questions" value="{{ question.id }}">
-                <strong>{{ _('Question') }} {{ loop.index }}:</strong> {{ question.question_statement }}
-                <ul>
-                  {% for option in question.labeled_options %}
-                  <li>
-                    <label>
-                      <span style="font-weight: bold;">{{ option.label }}.</span> {{ option.value }}
-                    </label>
-                  </li>
-                  {% endfor %}
-                </ul>              
-                {% if question.answer %}
-                <p style="color: green; font-weight: bold; margin-top: 5px;">
-                  {{ _('Correct Answer') }}: {{ question.answer }}
-                </p>
-                {% endif %}
-              </li>
-              {% endfor %}            
-          </ol>
-          <button type="submit" class="button" style="margin-top: 20px;">{{ _('Push to Staging') }}</button>
+        
+        <!-- Form to Push All Questions to Staging -->
+        <form id="push-all-form" method="POST" action="/staging/push">
+          <input type="hidden" name="questions_payload" value="
+          [
+          {% for question in questions %}
+          {
+            'question_statement': '{{ question.question_statement }}',
+            'labeled_options': [
+              {% for option in question.labeled_options %}
+              { 'label': '{{ option.label }}', 'value': '{{ option.value }}' }{% if not loop.last %}, {% endif %}
+              {% endfor %}
+            ],
+            'answer': '{{ question.answer }}'
+          }{% if not loop.last %}, {% endif %}
+          {% endfor %}
+          ]">
+          <button type="submit" class="button" style="margin-top: 20px;">{{ _('Push All to Staging') }}</button>
         </form>
+
+        <ol>
+          {% for question in questions %}
+          <li style="margin-bottom: 20px;">
+            <strong>{{ _('Question') }} {{ loop.index }}:</strong> {{ question.question_statement }}
+            <ul>
+              {% for option in question.labeled_options %}
+              <li>
+                <span style="font-weight: bold;">{{ option.label }}.</span> {{ option.value }}
+              </li>
+              {% endfor %}
+            </ul>
+            {% if question.answer %}
+            <p style="color: green; font-weight: bold; margin-top: 5px;">
+              {{ _('Correct Answer') }}: {{ question.answer }}
+            </p>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ol>
         {% else %}
         <p>{{ _('No questions generated yet. Submit text to generate quizzes!') }}</p>
         {% endif %}
@@ -78,14 +91,4 @@
     </div>
   </div>
 </div>
-
-<script>
-  const selectButton = document.getElementById('select-questions-btn');
-  const stagingForm = document.getElementById('staging-form');
-
-  selectButton.addEventListener('click', () => {
-    // 显示或隐藏多选框和提交按钮
-    stagingForm.style.display = stagingForm.style.display === 'none' ? 'block' : 'none';
-  });
-</script>
 {% endblock %}
