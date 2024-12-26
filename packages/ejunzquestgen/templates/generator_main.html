@@ -48,20 +48,7 @@
         
         <!-- Form to Push All Questions to Staging -->
         <form id="push-all-form" method="POST" action="/staging/push">
-          <input type="hidden" name="questions_payload" value="
-          [
-          {% for question in questions %}
-          {
-            'question_statement': '{{ question.question_statement }}',
-            'labeled_options': [
-              {% for option in question.labeled_options %}
-              { 'label': '{{ option.label }}', 'value': '{{ option.value }}' }{% if not loop.last %}, {% endif %}
-              {% endfor %}
-            ],
-            'answer': '{{ question.answer }}'
-          }{% if not loop.last %}, {% endif %}
-          {% endfor %}
-          ]">
+            <input type="hidden" name="questions_payload" value="{{ questions | dump }}">
           <button type="submit" class="button" style="margin-top: 20px;">{{ _('Push All to Staging') }}</button>
         </form>
 
