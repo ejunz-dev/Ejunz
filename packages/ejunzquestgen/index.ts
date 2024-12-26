@@ -5,6 +5,7 @@ import {
 } from 'ejun';
 import fs from 'fs';
 import path from 'path';
+import { serializer } from '@ejunz/framework';
 
 declare module 'ejun' {
     interface DocType {
@@ -90,53 +91,63 @@ class QuestionHandler extends Handler {
     }
 }
 
-
 class Question_MCQ_Handler extends Handler {
     async get() {
-        this.response.template = 'generator_main.html'; 
+        this.response.template = 'generator_main.html';
         this.response.body = {
             message: 'Welcome to the Question Generator!',
-            questions: null, 
+            questions: null,
         };
     }
 
     async post() {
         const input_text = this.request.body.input_text?.trim();
         const max_questions = parseInt(this.request.body.max_questions, 10);
-
+    
         if (!input_text || isNaN(max_questions) || max_questions <= 0) {
             this.response.template = 'generator_main.html';
             this.response.body = {
                 error: 'Invalid input. Please provide valid input text and a positive number for max questions.',
                 message: 'Welcome to the Question Generator!',
-                questions: null, 
+                questions: null,
             };
             return;
         }
-
+    
         const apiUrl = loadApiConfig();
         const params = { input_text, max_questions };
-
+    
         try {
+            console.log('Sending request to API:', JSON.stringify(params, null, 2)); // 打印发送的请求
+    
             const response = await fetch(`${apiUrl}/generate-mcq`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(params),
             });
-
+    
             if (!response.ok) {
+                console.error(`API call failed with status: ${response.status}`);
                 throw new Error(`API call failed with status: ${response.status}`);
             }
-
+    
             const data = await response.json();
-
+            console.log('API Response:', JSON.stringify(data, null, 2)); // 打印完整响应
+    
+            if (!data.questions || !Array.isArray(data.questions)) {
+                throw new Error('Invalid response format from the API.');
+            }
+    
+            console.log('Rendered Questions JSON:', JSON.stringify(data.questions, null, 2)); // 打印问题的 JSON
+    
             this.response.template = 'generator_main.html';
             this.response.body = {
-                questions: data.questions || [],
+                questions: data.questions,
                 message: 'Questions generated successfully!',
             };
         } catch (error) {
-            // 错误处理
+            console.error('Error while generating questions:', error.message);
+    
             this.response.template = 'generator_main.html';
             this.response.body = {
                 error: `Failed to generate questions: ${error.message}`,
@@ -145,12 +156,14 @@ class Question_MCQ_Handler extends Handler {
             };
         }
     }
+    
 }
+
 class StagingPushHandler extends Handler {
     async post() {
         console.log('POST /staging/push triggered');
 
-        const payload = this.request.body.questions_payload;
+        let payload = this.request.body.questions_payload;
 
         if (!payload) {
             console.error('No questions payload provided.');
@@ -162,28 +175,36 @@ class StagingPushHandler extends Handler {
         console.log('Received payload:', payload);
 
         try {
-            // 解析 payload
-            const questions = typeof payload === 'string' ? JSON.parse(payload) : payload;
+            // 尝试解析 JSON
+            let questions;
+            if (typeof payload === 'string') {
+                // 安全替换并解析
+                try {
+                    questions = JSON.parse(payload.replace(/'/g, '"'));
+                } catch (parseError) {
+                    console.error('Invalid JSON format:', parseError.message);
+                    throw new Error('Payload contains invalid JSON.');
+                }
+            } else {
+                questions = payload;
+            }
+
             console.log('Parsed questions:', questions);
 
             const savedIds = [];
             for (const question of questions) {
                 if (!question.question_statement || !question.labeled_options || !question.answer) {
                     console.error('Invalid question format:', question);
-                    throw new Error('Invalid question format: Missing required fields.');
+                    throw new Error(
+                        'Invalid question format: Each question must include question_statement, labeled_options, and answer.'
+                    );
                 }
-
-                // 转换选项
-                const options = question.labeled_options.map((opt: any) => ({
-                    label: opt.label,
-                    value: opt.value,
-                }));
 
                 // 保存问题到数据库
                 const stagedId = await QuestionModel.add(
                     this.user._id,
                     question.question_statement,
-                    options,
+                    question.labeled_options,
                     question.answer
                 );
                 savedIds.push(stagedId);
@@ -200,6 +221,10 @@ class StagingPushHandler extends Handler {
         }
     }
 }
+
+
+
+
 
 
 export async function apply(ctx: Context) {
