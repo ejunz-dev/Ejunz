@@ -1,6 +1,64 @@
-import { Context, Handler, PRIV, param, Types } from 'ejun';
+import {
+    _, Context, DiscussionNotFoundError, DocumentModel, Filter,
+    Handler, NumberKeys, ObjectId, OplogModel, paginate,
+    param, PRIV, Types, UserModel, PERM, PERMS_BY_FAMILY, Permission
+} from 'ejun';
 import fs from 'fs';
 import path from 'path';
+
+declare module 'ejun' {
+    interface DocType {
+        [TYPE_QUESTION]: QuestionDoc;
+    }
+}
+
+export interface QuestionDoc {
+    docType: 91;
+    docId: ObjectId;
+    owner: number;
+    question_statement: string;
+    options: { label: string; value: string }[];
+    correct_answer: string;
+    createdAt: Date;
+}
+
+export const TYPE_QUESTION: 91 = 91;
+
+export class QuestionModel {
+    static async add(
+        owner: number,
+        question_statement: string,
+        options: { label: string; value: string }[],
+        correct_answer: string
+    ): Promise<ObjectId> {
+        const payload: Partial<QuestionDoc> = {
+            owner,
+            question_statement,
+            options,
+            correct_answer,
+            createdAt: new Date(),
+        };
+
+        // 将问题数据保存到数据库
+        const result = await DocumentModel.add(
+            'system',
+            JSON.stringify(payload), // 保存完整问题数据为字符串
+            payload.owner!,
+            TYPE_QUESTION, // 自定义的题目类型
+            null,
+            null,
+            null,
+            payload
+        );
+
+        return result;
+    }
+
+    static async getAll(owner: number): Promise<QuestionDoc[]> {
+        return DocumentModel.getMulti('system', TYPE_QUESTION, { owner }).toArray();
+    }
+}
+
 
 function loadApiConfig() {
     const configPath = path.resolve(require('os').homedir(), '.ejunz', 'apiConfig.json');
@@ -88,12 +146,67 @@ class Question_MCQ_Handler extends Handler {
         }
     }
 }
+class StagingPushHandler extends Handler {
+    async post() {
+        console.log('POST /staging/push triggered');
+
+        const payload = this.request.body.questions_payload;
+
+        if (!payload) {
+            console.error('No questions payload provided.');
+            this.response.status = 400;
+            this.response.body = { error: 'No questions payload provided.' };
+            return;
+        }
+
+        console.log('Received payload:', payload);
+
+        try {
+            // 解析 payload
+            const questions = typeof payload === 'string' ? JSON.parse(payload) : payload;
+            console.log('Parsed questions:', questions);
+
+            const savedIds = [];
+            for (const question of questions) {
+                if (!question.question_statement || !question.labeled_options || !question.answer) {
+                    console.error('Invalid question format:', question);
+                    throw new Error('Invalid question format: Missing required fields.');
+                }
+
+                // 转换选项
+                const options = question.labeled_options.map((opt: any) => ({
+                    label: opt.label,
+                    value: opt.value,
+                }));
+
+                // 保存问题到数据库
+                const stagedId = await QuestionModel.add(
+                    this.user._id,
+                    question.question_statement,
+                    options,
+                    question.answer
+                );
+                savedIds.push(stagedId);
+            }
+
+            console.log('Saved IDs:', savedIds);
+
+            this.response.status = 200;
+            this.response.body = { message: 'Questions pushed successfully.', savedIds };
+        } catch (error) {
+            console.error('Error while pushing questions:', error.message);
+            this.response.status = 500;
+            this.response.body = { error: `Failed to push questions: ${error.message}` };
+        }
+    }
+}
 
 
 export async function apply(ctx: Context) {
     ctx.Route('generator_detail', '/questgen', QuestionHandler, PRIV.PRIV_USER_PROFILE )
     ctx.Route('generator_main', '/questgen/mcq', Question_MCQ_Handler, PRIV.PRIV_USER_PROFILE);
-   
+    ctx.Route('staging_push', '/staging/push', StagingPushHandler); // 不指定权限
+
 
     ctx.injectUI('UserDropdown', 'generator_detail', (handler) => ({
         icon: 'create',
