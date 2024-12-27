@@ -7,8 +7,8 @@
       <div class="section__body">
         <h1>{{ _('Generate different quizzes using AI!') }}</h1>
         <ul>
-          <li><a href="/questgen/stage/list">{{ _('Staging Question Bank') }}</a></li>
-      </ul>
+          <li><a href="./stage/list">{{ _('Staging Question Bank') }}</a></li>
+        </ul>
         <!-- 显示错误或成功提示 -->
         {% if error %}
         <p style="color: red; font-weight: bold;">{{ error }}</p>
@@ -17,7 +17,8 @@
         {% endif %}
 
         <!-- Input Form -->
-        <form id="generate-form" method="POST" action="/questgen/mcq">
+        <form id="generate-form" method="POST" action="./mcq">
+          <input type="hidden" name="domainId" value="{{ domainId }}">
           <label for="input_text">{{ _('Input Text') }}:</label>
           <textarea id="input_text" name="input_text" required style="width: 100%; height: 150px;">{{ request.body.input_text or '' }}</textarea>
 
@@ -48,7 +49,7 @@
       <div class="section__body">
         {% if questions %}
         <h2>{{ _('Generated Questions') }}:</h2>
-        <form id="push-all-form" method="POST" action="/questgen/stage/push">
+        <form id="push-all-form" method="POST" action="./stage/push">
           <input type="hidden" name="questions_payload" value="{{ questions | json }}">
           <button type="submit" class="button" style="margin-top: 20px;">{{ _('Push All to Staging') }}</button>
         </form>

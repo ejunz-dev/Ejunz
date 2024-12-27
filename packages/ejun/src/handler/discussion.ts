@@ -68,6 +68,11 @@ class DiscussionMainHandler extends Handler {
     @param('page', Types.PositiveInt, true)
     @param('all', Types.Boolean)
     async get(domainId: string, page = 1, all = false) {
+        console.log('Resolved domainId:', domainId);
+    console.log('Request headers:', this.request.headers);
+    console.log('Request query:', this.request.query);
+    console.log('Context domain:', this.context.EjunzContext.domain);
+
         // Limit to known types
         const parentType = { $in: Object.keys(typeMapper).map((i) => typeMapper[i]) };
         all &&= this.user.hasPerm(PERM.PERM_MOD_BADGE);
