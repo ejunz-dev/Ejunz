@@ -175,14 +175,13 @@ class StagingPushHandler extends Handler {
         console.log('Received payload:', payload);
 
         try {
-            // 尝试解析 JSON
-            let questions;
+            // 解析 JSON 格式的 payload
+            let questions: any[];
             if (typeof payload === 'string') {
-                // 安全替换并解析
                 try {
-                    questions = JSON.parse(payload.replace(/'/g, '"'));
-                } catch (parseError) {
-                    console.error('Invalid JSON format:', parseError.message);
+                    questions = JSON.parse(payload); // 解析 JSON 字符串
+                } catch (error) {
+                    console.error('Invalid JSON format:', error.message);
                     throw new Error('Payload contains invalid JSON.');
                 }
             } else {
@@ -191,27 +190,39 @@ class StagingPushHandler extends Handler {
 
             console.log('Parsed questions:', questions);
 
-            const savedIds = [];
+            // 验证问题格式并存储到数据库
+            const savedIds: ObjectId[] = [];
             for (const question of questions) {
-                if (!question.question_statement || !question.labeled_options || !question.answer) {
+                if (
+                    !question.question_statement ||
+                    !Array.isArray(question.labeled_options) ||
+                    !question.answer
+                ) {
                     console.error('Invalid question format:', question);
                     throw new Error(
                         'Invalid question format: Each question must include question_statement, labeled_options, and answer.'
                     );
                 }
 
+                // 将选项映射到符合数据库的格式
+                const options = question.labeled_options.map((option: any) => ({
+                    label: option.label,
+                    value: option.value,
+                }));
+
                 // 保存问题到数据库
                 const stagedId = await QuestionModel.add(
-                    this.user._id,
-                    question.question_statement,
-                    question.labeled_options,
-                    question.answer
+                    this.user._id,               // 用户 ID
+                    question.question_statement, // 问题内容
+                    options,                     // 选项数组
+                    question.answer              // 正确答案
                 );
                 savedIds.push(stagedId);
             }
 
             console.log('Saved IDs:', savedIds);
 
+            // 返回成功响应
             this.response.status = 200;
             this.response.body = { message: 'Questions pushed successfully.', savedIds };
         } catch (error) {
@@ -221,6 +232,7 @@ class StagingPushHandler extends Handler {
         }
     }
 }
+
 
 
 
