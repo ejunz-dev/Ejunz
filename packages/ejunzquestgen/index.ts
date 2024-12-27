@@ -1,62 +1,106 @@
 import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter,
-    Handler, NumberKeys, ObjectId, OplogModel, paginate,
-    param, PRIV, Types, UserModel, PERM, PERMS_BY_FAMILY, Permission
+    Handler, NumberKeys, ObjectId, OplogModel, paginate,post, query, route, 
+    param, PRIV, Types, UserModel, PERM, PERMS_BY_FAMILY, Permission,  BadRequestError, PermissionError, NotFoundError
 } from 'ejun';
+import * as document from 'ejun/src/model/document';
 import fs from 'fs';
 import path from 'path';
-import { serializer } from '@ejunz/framework';
+import { Logger } from '@ejunz/utils/lib/utils';
+
+function sortable(source: string) {
+    return source.replace(/(\d+)/g, (str) => (str.length >= 6 ? str : ('0'.repeat(6 - str.length) + str)));
+}
+
+const logger = new Logger('question');
+
+export function buildProjection<T extends keyof QuestionDoc>(fields: readonly T[]): Projection<QuestionDoc> {
+    const o: Partial<Projection<QuestionDoc>> = {};
+    for (const k of fields) o[k] = true;
+    return o as Projection<QuestionDoc>;
+}
+
+
+
+export const TYPE_QUESTION: 91 = 91;
+
+export interface QuestionDoc {
+    _id: ObjectId;
+    docType: 91; // 问题的文档类型
+    domainId: string; // 文档所属域 ID
+    qid: string;
+    docId: ObjectId; // 文档唯一 ID
+    title: string;
+    tag: string[];
+    owner: number; // 创建者用户 ID
+    content: string; // 问题描述
+    options: { label: string; value: string }[]; // 选项列表
+    answer: string; // 正确答案
+    hidden?: boolean;
+    sort?: string;
+    difficulty?: number;
+        reference?: {
+            domainId: string;
+            qid: number;
+        };
+    createdAt: Date; // 创建时间
+    updatedAt?: Date; // 更新时间
+}
 
 declare module 'ejun' {
+    interface Model {
+        question: typeof QuestionModel;
+    }
     interface DocType {
         [TYPE_QUESTION]: QuestionDoc;
     }
 }
 
-export interface QuestionDoc {
-    docType: 91;
-    docId: ObjectId;
-    owner: number;
-    question_statement: string;
-    options: { label: string; value: string }[];
-    correct_answer: string;
-    createdAt: Date;
+
+interface QuestionCreateOptions {
+    difficulty?: number;
+    hidden?: boolean;
+    reference?: { domainId: string, qid: number };
 }
 
-export const TYPE_QUESTION: 91 = 91;
-
 export class QuestionModel {
+    static PROJECTION_PUBLIC: (keyof QuestionDoc)[] = [
+        '_id', 'domainId', 'docType', 'docId', 'qid', 'owner', 'title', 'tag', 'content', 'options', 'answer', 'difficulty', 'createdAt', 'updatedAt',
+    ];
+
+    static async getMulti(
+        domainId: string,
+        filter: Record<string, any>,
+        projection: (keyof QuestionDoc)[]
+    ) {
+        return await DocumentModel.getMulti(domainId, 91, filter, projection);
+    }
+
     static async add(
-        owner: number,
-        question_statement: string,
-        options: { label: string; value: string }[],
-        correct_answer: string
-    ): Promise<ObjectId> {
-        const payload: Partial<QuestionDoc> = {
-            owner,
-            question_statement,
-            options,
-            correct_answer,
-            createdAt: new Date(),
-        };
-
-        // 将问题数据保存到数据库
-        const result = await DocumentModel.add(
-            'system',
-            JSON.stringify(payload), // 保存完整问题数据为字符串
-            payload.owner!,
-            TYPE_QUESTION, // 自定义的题目类型
-            null,
-            null,
-            null,
-            payload
+        domainId: string, qid: string = '', title: string, content: string, owner: number,
+        tag: string[] = [], meta: QuestionCreateOptions = {},
+    ) {
+        const newDocId = new ObjectId(); // Generate a new ObjectId
+        const result = await QuestionModel.addWithId(
+            domainId, newDocId.toHexString(), qid, title, content, owner, tag, meta
         );
-
         return result;
     }
 
-    static async getAll(owner: number): Promise<QuestionDoc[]> {
-        return DocumentModel.getMulti('system', TYPE_QUESTION, { owner }).toArray();
+    static async addWithId(
+        domainId: string, docId: string, qid: string = '', title: string,
+        content: string, owner: number, tag: string[] = [],
+        meta: QuestionCreateOptions = {},
+    ) {
+        const args: Partial<QuestionDoc> = {
+            title, tag, hidden: meta.hidden || false, sort: sortable(qid || `P${docId}`),
+        };
+        if (qid) args.qid = qid;
+        if (meta.difficulty) args.difficulty = meta.difficulty;
+        if (meta.reference) args.reference = meta.reference;
+
+        const result = await document.add(domainId, content, owner, TYPE_QUESTION, docId, null, null, args);
+        return result;
     }
 }
 
@@ -159,10 +203,10 @@ class Question_MCQ_Handler extends Handler {
     
 }
 
-class StagingPushHandler extends Handler {
+export class StagingPushHandler extends Handler {
     async post() {
-    
-        let payload = this.request.body.questions_payload;
+        const domainId = this.context.domainId;
+        const payload = this.request.body.questions_payload;
 
         if (!payload) {
             console.error('No questions payload provided.');
@@ -171,78 +215,100 @@ class StagingPushHandler extends Handler {
             return;
         }
 
-        console.log('Received payload:', payload);
-
         try {
-            // 解析 JSON 格式的 payload
-            let questions: any[];
-            if (typeof payload === 'string') {
-                try {
-                    questions = JSON.parse(payload); // 解析 JSON 字符串
-                } catch (error) {
-                    console.error('Invalid JSON format:', error.message);
-                    throw new Error('Payload contains invalid JSON.');
-                }
-            } else {
-                questions = payload;
-            }
+            // Parse the payload
+            const questions: any[] = typeof payload === 'string' ? JSON.parse(payload) : payload;
 
-            console.log('Parsed questions:', questions);
-
+            // Array to store IDs of saved questions
             const savedIds: ObjectId[] = [];
             for (const question of questions) {
+                // Validate question format
                 if (
                     !question.question_statement ||
                     !Array.isArray(question.labeled_options) ||
                     !question.answer
                 ) {
-                    console.error('Invalid question format:', question);
                     throw new Error(
                         'Invalid question format: Each question must include question_statement, labeled_options, and answer.'
                     );
                 }
 
-                const options = question.labeled_options.map((option: any) => ({
-                    label: option.label,
-                    value: option.value,
-                }));
+                // Use MongoDB ObjectId for generating a unique docId
+                const newDocId = new ObjectId();
 
+                // Construct QuestionDoc
+                const questionDoc: Partial<QuestionDoc> = {
+                    docType: 91,
+                    domainId,
+                    qid: question.qid || '',
+                    docId: newDocId.toHexString(), // Store as a string
+                    title: question.title || question.question_statement,
+                    tag: question.tag || [],
+                    owner: this.user._id,
+                    content: question.question_statement,
+                    options: question.labeled_options.map((option: any) => ({
+                        label: option.label,
+                        value: option.value,
+                    })),
+                    answer: question.answer,
+                    hidden: question.hidden || false,
+                    sort: question.sort || null,
+                    difficulty: question.difficulty || 1,
+                    reference: question.reference || null,
+                    createdAt: new Date(),
+                    updatedAt: null,
+                };
+
+                console.log('Constructed QuestionDoc:', questionDoc);
+
+                // Add the question to the database
                 const stagedId = await QuestionModel.add(
-                    this.user._id,               
-                    question.question_statement, 
-                    options,                     
-                    question.answer              
+                    domainId,
+                    questionDoc.qid || '',
+                    questionDoc.title,
+                    questionDoc.content,
+                    questionDoc.owner,
+                    questionDoc.tag,
+                    {
+                        difficulty: questionDoc.difficulty,
+                        hidden: questionDoc.hidden,
+                        reference: questionDoc.reference,
+                    }
                 );
-                savedIds.push(stagedId);
+
+                savedIds.push(newDocId); // Push the ObjectId
             }
 
-            console.log('Saved IDs:', savedIds);
-
-            // 返回成功响应
+            // Respond with success
             this.response.status = 200;
             this.response.template = 'generator_main.html';
             this.response.body = {
                 message: 'Questions pushed successfully!',
-                questions: questions, 
+                savedIds,
             };
         } catch (error) {
             console.error('Error while pushing questions:', error.message);
+            this.response.status = 500;
             this.response.template = 'generator_main.html';
             this.response.body = {
                 error: `Failed to push questions: ${error.message}`,
-                questions: null,
             };
         }
     }
 }
 
-class StagingQuestionHandler extends Handler {
+
+
+
+
+export class StagingQuestionHandler extends Handler {
     async get() {
-        
+        const domainId = this.context.domainId; // 确保 domainId 来源正确
+
         try {
             const userId = this.user._id;
 
-            const questions = await QuestionModel.getAll(userId);
+            const questions = await QuestionModel.getAll(domainId, userId); // 修改为动态获取 domainId 的方式
 
             this.response.status = 200;
             this.response.template = 'staging_questions.html';
@@ -255,6 +321,7 @@ class StagingQuestionHandler extends Handler {
         }
     }
 }
+
 
 
 
