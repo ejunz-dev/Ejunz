@@ -1,103 +1,84 @@
-{% import "components/record.html" as record with context %}
-{% import "components/problem.html" as question with context %}
 {% extends "layout/basic.html" %}
+
 {% block content %}
-  <div class="row">
-    <div class="medium-9 columns">
-      <div class="section display-mode">
-        <div class="section__body no-padding">
-          <!-- Search Form -->
-          <form method="get" id="searchForm" action="{{ url('staging_questions') }}">
-            <div class="search">
-              <input name="q" type="text" value="{{ qs }}" placeholder="{{ _('Search Staged Questions') }}">
-              <button type="submit">
-                <span class="icon icon-search"></span>
-              </button>
-            </div>
-          </form>
-        </div>
-        <div class="section__body no-padding">
-          <!-- Question List -->
-          {% if not questions.length %}
-            <div class="nothing">
-              <p>{{ _('No staged questions available.') }}</p>
-            </div>
-          {% else %}
-            <table class="data-table">
-              <colgroup>
-                <col class="col--checkbox">
-                <col class="col--question-id">
-                <col class="col--question-statement">
-                <col class="col--answer">
-              </colgroup>
-              <thead>
-                <tr>
-                  <th class="col--checkbox">
-                    <label class="compact checkbox">
-                      <input type="checkbox" name="select_all" data-checkbox-toggle="questions">
-                    </label>
-                  </th>
-                  <th class="col--question-id">{{ _('ID') }}</th>
-                  <th class="col--question-statement">{{ _('Question Statement') }}</th>
-                  <th class="col--answer">{{ _('Correct Answer') }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for question in questions %}
-                <tr data-question-id="{{ question._id }}">
-                  <td class="col--checkbox">
-                    <label class="compact checkbox">
-                      <input type="checkbox" data-checkbox-group="questions" data-checkbox-range>
-                    </label>
-                  </td>
-                  <td class="col--question-id">{{ question._id }}</td>
-                  <td class="col--question-statement">
-                    <strong>{{ question.question_statement }}</strong>
-                    <ul>
-                      {% for option in question.options %}
-                      <li>{{ option.label }}. {{ option.value }}</li>
-                      {% endfor %}
-                    </ul>
-                  </td>
-                  <td class="col--answer">{{ question.correct_answer }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-            {{ paginator.render(page, ppcount, add_qs=('q=' + qs if qs else '')) }}
-          {% endif %}
-        </div>
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1>{{ _('Staged Questions') }}</h1>
       </div>
-    </div>
-    <div class="medium-3 columns">
-      {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
-        <div class="section side nojs--hide">
-          <ol class="menu">
-            <a href="javascript:;" class="menu__link edit-mode-hide" name="enter-edit-mode">
-              <span class="icon icon-edit"></span>
-              {{ _('Enter Edit Mode') }}
-            </a>
-            <a href="javascript:;" class="menu__link display-mode-hide" name="leave-edit-mode">
-              <span class="icon icon-edit"></span>
-              {{ _('Leave Edit Mode') }}
-            </a>
-            <a href="javascript:;" class="menu__link display-mode-hide" name="delete_selected_questions">
-              <span class="icon icon-delete"></span>
-              {{ _('Remove Selected Questions') }}
-            </a>
-          </ol>
-        </div>
-      {% endif %}
-      <div class="section side">
-        <div class="section__header">
-          <h1 class="section__title">{{ _('Staged Questions Overview') }}</h1>
-        </div>
-        <div class="section__body">
-          <div class="typo supplementary">
-            <p>{{ _('Manage your staged questions efficiently.') }}</p>
+      <div class="section__body">
+        <!-- Search Form -->
+        <form method="get" action="{{ url('staging_questions') }}">
+          <div class="search">
+            <input
+              name="q"
+              type="text"
+              value="{{ qs }}"
+              placeholder="{{ _('Search staged questions') }}"
+              class="textbox"
+            />
+            <button type="submit" class="button">
+              <span class="icon icon-search"></span> {{ _('Search') }}
+            </button>
           </div>
+        </form>
+
+        <!-- Questions List -->
+        {% if questions.length == 0 %}
+        <p class="nothing">{{ _('No questions available in staging.') }}</p>
+        {% else %}
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>{{ _('Question Statement') }}</th>
+              <th>{{ _('Options') }}</th>
+              <th>{{ _('Answer') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for question in questions %}
+            <tr>
+              <td>{{ loop.index + (page - 1) * ppcount }}</td>
+              <td>{{ question.title }}</td>
+              <td>
+                <ul>
+                  {% for option in question.options %}
+                  <li>{{ option.label }}. {{ option.value }}</li>
+                  {% endfor %}
+                </ul>
+              </td>
+              <td>{{ question.answer }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+
+        <!-- Pagination -->
+        <div class="pagination">
+          {% for i in range(1, totalCount // ppcount + (1 if totalCount % ppcount > 0 else 0) + 1) %}
+          <a
+            href="?page={{ i }}&ppcount={{ ppcount }}"
+            class="button {% if i == page %}active{% endif %}"
+            >{{ i }}</a
+          >
+          {% endfor %}
         </div>
+        {% endif %}
       </div>
     </div>
   </div>
+
+  <div class="medium-3 columns">
+    <div class="section side">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Overview') }}</h1>
+      </div>
+      <div class="section__body">
+        <p>{{ _('Manage and review all staged questions here.') }}</p>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
