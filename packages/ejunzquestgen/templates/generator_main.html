@@ -48,7 +48,7 @@
         
         <!-- Form to Push All Questions to Staging -->
         <form id="push-all-form" method="POST" action="/staging/push">
-            <input type="hidden" name="questions_payload" value="{{ questions | dump }}">
+          <input type="hidden" name="questions_payload" value="{{ questions | json }}">
           <button type="submit" class="button" style="margin-top: 20px;">{{ _('Push All to Staging') }}</button>
         </form>
 
