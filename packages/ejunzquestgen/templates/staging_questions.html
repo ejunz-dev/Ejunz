@@ -1,33 +1,103 @@
+{% import "components/record.html" as record with context %}
+{% import "components/problem.html" as question with context %}
 {% extends "layout/basic.html" %}
-
 {% block content %}
-<div class="row" style="padding: 20px;">
-    <h1>{{ _('Staging Question Bank') }}</h1>
-    
-    {% if error %}
-    <p style="color: red;">{{ error }}</p>
-    {% endif %}
-    
-    {% if questions and questions.length > 0 %}
-    <ul>
-        {% for question in questions %}
-        <li style="margin-bottom: 20px;">
-            <strong>{{ _('Question') }} {{ loop.index }}:</strong> {{ question.question_statement }}
-            <ul>
-                {% for option in question.options %}
-                <li>
-                    <span style="font-weight: bold;">{{ option.label }}.</span> {{ option.value }}
-                </li>
+  <div class="row">
+    <div class="medium-9 columns">
+      <div class="section display-mode">
+        <div class="section__body no-padding">
+          <!-- Search Form -->
+          <form method="get" id="searchForm" action="{{ url('staging_questions') }}">
+            <div class="search">
+              <input name="q" type="text" value="{{ qs }}" placeholder="{{ _('Search Staged Questions') }}">
+              <button type="submit">
+                <span class="icon icon-search"></span>
+              </button>
+            </div>
+          </form>
+        </div>
+        <div class="section__body no-padding">
+          <!-- Question List -->
+          {% if not questions.length %}
+            <div class="nothing">
+              <p>{{ _('No staged questions available.') }}</p>
+            </div>
+          {% else %}
+            <table class="data-table">
+              <colgroup>
+                <col class="col--checkbox">
+                <col class="col--question-id">
+                <col class="col--question-statement">
+                <col class="col--answer">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th class="col--checkbox">
+                    <label class="compact checkbox">
+                      <input type="checkbox" name="select_all" data-checkbox-toggle="questions">
+                    </label>
+                  </th>
+                  <th class="col--question-id">{{ _('ID') }}</th>
+                  <th class="col--question-statement">{{ _('Question Statement') }}</th>
+                  <th class="col--answer">{{ _('Correct Answer') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for question in questions %}
+                <tr data-question-id="{{ question._id }}">
+                  <td class="col--checkbox">
+                    <label class="compact checkbox">
+                      <input type="checkbox" data-checkbox-group="questions" data-checkbox-range>
+                    </label>
+                  </td>
+                  <td class="col--question-id">{{ question._id }}</td>
+                  <td class="col--question-statement">
+                    <strong>{{ question.question_statement }}</strong>
+                    <ul>
+                      {% for option in question.options %}
+                      <li>{{ option.label }}. {{ option.value }}</li>
+                      {% endfor %}
+                    </ul>
+                  </td>
+                  <td class="col--answer">{{ question.correct_answer }}</td>
+                </tr>
                 {% endfor %}
-            </ul>
-            {% if question.correct_answer %}
-            <p style="color: green; font-weight: bold;">{{ _('Correct Answer') }}: {{ question.correct_answer }}</p>
-            {% endif %}
-        </li>
-        {% endfor %}
-    </ul>
-    {% else %}
-    <p>{{ _('No questions found in the staging area.') }}</p>
-    {% endif %}
-</div>
+              </tbody>
+            </table>
+            {{ paginator.render(page, ppcount, add_qs=('q=' + qs if qs else '')) }}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="medium-3 columns">
+      {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+        <div class="section side nojs--hide">
+          <ol class="menu">
+            <a href="javascript:;" class="menu__link edit-mode-hide" name="enter-edit-mode">
+              <span class="icon icon-edit"></span>
+              {{ _('Enter Edit Mode') }}
+            </a>
+            <a href="javascript:;" class="menu__link display-mode-hide" name="leave-edit-mode">
+              <span class="icon icon-edit"></span>
+              {{ _('Leave Edit Mode') }}
+            </a>
+            <a href="javascript:;" class="menu__link display-mode-hide" name="delete_selected_questions">
+              <span class="icon icon-delete"></span>
+              {{ _('Remove Selected Questions') }}
+            </a>
+          </ol>
+        </div>
+      {% endif %}
+      <div class="section side">
+        <div class="section__header">
+          <h1 class="section__title">{{ _('Staged Questions Overview') }}</h1>
+        </div>
+        <div class="section__body">
+          <div class="typo supplementary">
+            <p>{{ _('Manage your staged questions efficiently.') }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 {% endblock %}

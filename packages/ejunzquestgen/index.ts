@@ -264,7 +264,7 @@ class StagingQuestionHandler extends Handler {
 export async function apply(ctx: Context) {
     ctx.Route('generator_detail', '/questgen', QuestionHandler, PRIV.PRIV_USER_PROFILE );
     ctx.Route('generator_main', '/questgen/mcq', Question_MCQ_Handler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('staging_push', '/questgen/stage/push', StagingPushHandler, PRIV.PRIV_USER_PROFILE); // 不指定权限
+    ctx.Route('staging_push', '/questgen/stage/push', StagingPushHandler, PRIV.PRIV_USER_PROFILE); 
     ctx.Route('staging_questions', '/questgen/stage/list', StagingQuestionHandler, PRIV.PRIV_USER_PROFILE);
 
 
