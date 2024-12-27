@@ -137,53 +137,68 @@ class QuestionHandler extends Handler {
 
 class Question_MCQ_Handler extends Handler {
     async get() {
+        // 确保从上下文或请求中获取 domainId
+        const domainId = this.args?.domainId || this.context?.domainId || 'system';
+
+        console.log('Resolved domainId in GET:', domainId);
+
+        // 设置上下文中的 domainId，确保 POST 请求可以使用
+        this.context.domainId = domainId;
+
+        // 渲染模板，并传递 domainId 和用户 ID 给前端
         this.response.template = 'generator_main.html';
         this.response.body = {
             message: 'Welcome to the Question Generator!',
             questions: null,
+            domainId, // 传递到前端供后续使用
+            userId: this.user?._id || null, // 将用户 ID 传递给前端
         };
     }
 
     async post() {
-        const input_text = this.request.body.input_text?.trim();
-        const max_questions = parseInt(this.request.body.max_questions, 10);
-    
-        if (!input_text || isNaN(max_questions) || max_questions <= 0) {
-            this.response.template = 'generator_main.html';
-            this.response.body = {
-                error: 'Invalid input. Please provide valid input text and a positive number for max questions.',
-                message: 'Welcome to the Question Generator!',
-                questions: null,
-            };
-            return;
+        // 确保从上下文、请求体或 referer 中获取 domainId
+        let domainId = this.args?.domainId || this.context?.domainId || this.request.body?.domainId;
+
+        // 如果仍未解析 domainId，从 referer 中提取
+        if (!domainId && this.request.headers.referer) {
+            const match = this.request.headers.referer.match(/\/d\/([^/]+)/);
+            domainId = match ? match[1] : 'system';
         }
-    
-        const apiUrl = loadApiConfig();
-        const params = { input_text, max_questions };
-    
+
+        console.log('Resolved domainId in POST:', domainId);
+
+        // 提取用户 ID
+        const userId = this.user?._id || null;
+
+        // 提取请求体中的参数
+        const { input_text, max_questions, question_type, difficulty } = this.request.body;
+        const params = {
+            domainId, // 使用解析出的 domainId
+            userId, // 添加用户 ID
+            input_text,
+            max_questions: parseInt(max_questions, 10),
+            question_type,
+            difficulty,
+        };
+
+        console.log('POST Parameters:', params);
+
         try {
-            console.log('Sending request to API:', JSON.stringify(params, null, 2)); // 打印发送的请求
-    
+            const apiUrl = loadApiConfig(); // 加载 API 配置
             const response = await fetch(`${apiUrl}/generate-mcq`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(params),
             });
-    
+
             if (!response.ok) {
-                console.error(`API call failed with status: ${response.status}`);
                 throw new Error(`API call failed with status: ${response.status}`);
             }
-    
+
             const data = await response.json();
-            console.log('API Response:', JSON.stringify(data, null, 2)); // 打印完整响应
-    
-            if (!data.questions || !Array.isArray(data.questions)) {
-                throw new Error('Invalid response format from the API.');
-            }
-    
-            console.log('Rendered Questions JSON:', JSON.stringify(data.questions, null, 2)); // 打印问题的 JSON
-    
+            console.log('API Response:', JSON.stringify(data, null, 2));
+
+            // 渲染模板，并返回生成的问题
             this.response.template = 'generator_main.html';
             this.response.body = {
                 questions: data.questions,
@@ -191,17 +206,17 @@ class Question_MCQ_Handler extends Handler {
             };
         } catch (error) {
             console.error('Error while generating questions:', error.message);
-    
+
+            // 错误处理并渲染错误信息
             this.response.template = 'generator_main.html';
-            this.response.body = {
-                error: `Failed to generate questions: ${error.message}`,
-                message: 'Welcome to the Question Generator!',
-                questions: null,
-            };
+            this.response.body = { error: `Failed to generate questions: ${error.message}` };
         }
     }
-    
 }
+
+
+    
+
 
 export class StagingPushHandler extends Handler {
     async post() {
