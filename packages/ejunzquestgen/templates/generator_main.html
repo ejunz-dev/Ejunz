@@ -7,7 +7,7 @@
       <div class="section__body">
         <h1>{{ _('Generate different quizzes using AI!') }}</h1>
         <ul>
-          <li><a href="./stage/list">{{ _('Staging Question Bank') }}</a></li>
+          <li><a href="./stage_list">{{ _('Staging Question Bank') }}</a></li>
         </ul>
         <!-- 显示错误或成功提示 -->
         {% if error %}
@@ -49,7 +49,7 @@
       <div class="section__body">
         {% if questions %}
         <h2>{{ _('Generated Questions') }}:</h2>
-        <form id="push-all-form" method="POST" action="./stage/push">
+        <form id="push-all-form" method="POST" action="./stage_push">
           <input type="hidden" name="questions_payload" value="{{ questions | json }}">
           <button type="submit" class="button" style="margin-top: 20px;">{{ _('Push All to Staging') }}</button>
         </form>
