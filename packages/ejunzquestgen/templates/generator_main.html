@@ -2,14 +2,18 @@
 
 {% block content %}
 <div class="row" style="display: flex; flex-wrap: wrap;">
-  <!-- Input and Settings Area -->
   <div class="medium-6 columns" style="width: 50%; padding: 20px; border-right: 1px solid #ccc;">
     <div class="section">
       <div class="section__body">
         <h1>{{ _('Generate different quizzes using AI!') }}</h1>
-        
+        <ul>
+          <li><a href="/questgen/stage/list">{{ _('Staging Question Bank') }}</a></li>
+      </ul>
+        <!-- 显示错误或成功提示 -->
         {% if error %}
-        <p style="color: red;">{{ error }}</p>
+        <p style="color: red; font-weight: bold;">{{ error }}</p>
+        {% elif message %}
+        <p style="color: green; font-weight: bold;">{{ message }}</p>
         {% endif %}
 
         <!-- Input Form -->
@@ -39,19 +43,15 @@
     </div>
   </div>
 
-  <!-- Question Display Area -->
   <div class="medium-6 columns" style="width: 50%; padding: 20px;">
     <div class="section">
       <div class="section__body">
         {% if questions %}
         <h2>{{ _('Generated Questions') }}:</h2>
-        
-        <!-- Form to Push All Questions to Staging -->
         <form id="push-all-form" method="POST" action="/staging/push">
           <input type="hidden" name="questions_payload" value="{{ questions | json }}">
           <button type="submit" class="button" style="margin-top: 20px;">{{ _('Push All to Staging') }}</button>
         </form>
-
         <ol>
           {% for question in questions %}
           <li style="margin-bottom: 20px;">

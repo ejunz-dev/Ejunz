@@ -161,8 +161,7 @@ class Question_MCQ_Handler extends Handler {
 
 class StagingPushHandler extends Handler {
     async post() {
-        console.log('POST /staging/push triggered');
-
+    
         let payload = this.request.body.questions_payload;
 
         if (!payload) {
@@ -190,7 +189,6 @@ class StagingPushHandler extends Handler {
 
             console.log('Parsed questions:', questions);
 
-            // 验证问题格式并存储到数据库
             const savedIds: ObjectId[] = [];
             for (const question of questions) {
                 if (
@@ -204,18 +202,16 @@ class StagingPushHandler extends Handler {
                     );
                 }
 
-                // 将选项映射到符合数据库的格式
                 const options = question.labeled_options.map((option: any) => ({
                     label: option.label,
                     value: option.value,
                 }));
 
-                // 保存问题到数据库
                 const stagedId = await QuestionModel.add(
-                    this.user._id,               // 用户 ID
-                    question.question_statement, // 问题内容
-                    options,                     // 选项数组
-                    question.answer              // 正确答案
+                    this.user._id,               
+                    question.question_statement, 
+                    options,                     
+                    question.answer              
                 );
                 savedIds.push(stagedId);
             }
@@ -224,11 +220,38 @@ class StagingPushHandler extends Handler {
 
             // 返回成功响应
             this.response.status = 200;
-            this.response.body = { message: 'Questions pushed successfully.', savedIds };
+            this.response.template = 'generator_main.html';
+            this.response.body = {
+                message: 'Questions pushed successfully!',
+                questions: questions, 
+            };
         } catch (error) {
             console.error('Error while pushing questions:', error.message);
+            this.response.template = 'generator_main.html';
+            this.response.body = {
+                error: `Failed to push questions: ${error.message}`,
+                questions: null,
+            };
+        }
+    }
+}
+
+class StagingQuestionHandler extends Handler {
+    async get() {
+        
+        try {
+            const userId = this.user._id;
+
+            const questions = await QuestionModel.getAll(userId);
+
+            this.response.status = 200;
+            this.response.template = 'staging_questions.html';
+            this.response.body = { questions };
+        } catch (error) {
+            console.error('Error fetching staging questions:', error.message);
             this.response.status = 500;
-            this.response.body = { error: `Failed to push questions: ${error.message}` };
+            this.response.template = 'staging_questions.html';
+            this.response.body = { error: 'Failed to fetch staging questions.' };
         }
     }
 }
@@ -238,11 +261,11 @@ class StagingPushHandler extends Handler {
 
 
 
-
 export async function apply(ctx: Context) {
-    ctx.Route('generator_detail', '/questgen', QuestionHandler, PRIV.PRIV_USER_PROFILE )
+    ctx.Route('generator_detail', '/questgen', QuestionHandler, PRIV.PRIV_USER_PROFILE );
     ctx.Route('generator_main', '/questgen/mcq', Question_MCQ_Handler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('staging_push', '/staging/push', StagingPushHandler); // 不指定权限
+    ctx.Route('staging_push', '/questgen/stage/push', StagingPushHandler, PRIV.PRIV_USER_PROFILE); // 不指定权限
+    ctx.Route('staging_questions', '/questgen/stage/list', StagingQuestionHandler, PRIV.PRIV_USER_PROFILE);
 
 
     ctx.injectUI('UserDropdown', 'generator_detail', (handler) => ({

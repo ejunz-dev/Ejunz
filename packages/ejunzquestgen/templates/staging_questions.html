@@ -1,0 +1,33 @@
+{% extends "layout/basic.html" %}
+
+{% block content %}
+<div class="row" style="padding: 20px;">
+    <h1>{{ _('Staging Question Bank') }}</h1>
+    
+    {% if error %}
+    <p style="color: red;">{{ error }}</p>
+    {% endif %}
+    
+    {% if questions and questions.length > 0 %}
+    <ul>
+        {% for question in questions %}
+        <li style="margin-bottom: 20px;">
+            <strong>{{ _('Question') }} {{ loop.index }}:</strong> {{ question.question_statement }}
+            <ul>
+                {% for option in question.options %}
+                <li>
+                    <span style="font-weight: bold;">{{ option.label }}.</span> {{ option.value }}
+                </li>
+                {% endfor %}
+            </ul>
+            {% if question.correct_answer %}
+            <p style="color: green; font-weight: bold;">{{ _('Correct Answer') }}: {{ question.correct_answer }}</p>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p>{{ _('No questions found in the staging area.') }}</p>
+    {% endif %}
+</div>
+{% endblock %}
