@@ -167,7 +167,7 @@ export class ProblemMainHandler extends Handler {
             this.response.body = {
                 title: this.renderTitle(this.translate('problem_main')),
                 fragments: (await Promise.all([
-                    this.renderHTML('partials/problem_list.html', {
+                    this.renderHTML('partials/.html'problem_list, {
                         page, ppcount, pcount, pdocs, psdict, qs: q,
                     }),
                     this.renderHTML('partials/problem_stat.html', { pcount, pcountRelation: this.queryContext.pcountRelation }),
