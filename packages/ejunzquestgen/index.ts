@@ -1,5 +1,5 @@
 import {
-    _, Context, DiscussionNotFoundError, DocumentModel, Filter,
+    _, Context, DiscussionNotFoundError, DocumentModel, Filter, DomainModel,  
     Handler, NumberKeys, ObjectId, OplogModel, paginate, post, query, route,
     param, PRIV, Types, UserModel, PERM, PERMS_BY_FAMILY, Permission, BadRequestError, PermissionError, NotFoundError
 } from 'ejun';
@@ -118,6 +118,45 @@ export class QuestionModel {
         const result = await document.add(domainId, content, owner, TYPE_QUESTION, docId, null, null, args);
         return result;
     }
+    static async list(
+        domainId: string, 
+        query: Filter<QuestionDoc>, 
+        page: number, 
+        pageSize: number, 
+        projection = QuestionModel.PROJECTION_PUBLIC
+    ): Promise<[QuestionDoc[], number, number]> {
+        // 获取相关 domain ID，包括 union 的扩展域
+        const union = await DomainModel.get(domainId);
+        const domainIds = [domainId, ...(union.union || [])];
+    
+        let count = 0; // 总计数
+        const qdocs: QuestionDoc[] = []; // 存储查询结果
+    
+        for (const id of domainIds) {
+            // 获取指定域中符合条件的文档总数
+            // eslint-disable-next-line no-await-in-loop
+            const ccount = await document.count(id, TYPE_QUESTION, query);
+    
+            // 根据分页参数处理结果
+            if (qdocs.length < pageSize && (page - 1) * pageSize - count <= ccount) {
+                // eslint-disable-next-line no-await-in-loop
+                qdocs.push(
+                    ...(await document
+                        .getMulti(id, TYPE_QUESTION, query, projection)
+                        .sort({ sort: 1, docId: 1 }) // 按 sort 和 docId 排序
+                        .skip(Math.max((page - 1) * pageSize - count, 0))
+                        .limit(pageSize - qdocs.length)
+                        .toArray())
+                );
+            }
+    
+            count += ccount; // 累加当前域的计数
+        }
+    
+        // 返回查询结果、总页数和总计数
+        return [qdocs, Math.ceil(count / pageSize), count];
+    }
+    
     
 }
 
@@ -310,19 +349,16 @@ export class StagingPushHandler extends Handler {
 }
 
 export class StagingQuestionHandler extends Handler {
-    async get({ domainId, page = 1, ppcount = 10 }) {
+    async get({ domainId, page = 1, pageSize = 10 }) {
         domainId = this.args?.domainId || this.context?.domainId || 'system';
         console.log('Resolved domainId in GET:', domainId);
 
-        const filter = {};
+        const query = {}; // 添加筛选条件
         const projection = QuestionModel.PROJECTION_PUBLIC;
 
         try {
-            const skip = (page - 1) * ppcount;
-
-            const cursor = await QuestionModel.getMulti(domainId, filter, projection);
-            const questions = await cursor.skip(skip).limit(ppcount).toArray();
-            const totalCount = await cursor.clone().count();
+            // 调用 QuestionModel.list 获取分页数据
+            const [questions, totalPages, totalCount] = await QuestionModel.list(domainId, query, page, pageSize, projection);
 
             console.log(`Fetched ${questions.length} questions for domainId: ${domainId}`);
 
@@ -331,18 +367,20 @@ export class StagingQuestionHandler extends Handler {
                 questions,
                 domainId,
                 page,
-                ppcount,
+                pageSize,
+                totalPages,
                 totalCount,
             };
         } catch (error) {
             console.error('Error while fetching questions:', error.message);
             this.response.template = 'error.html';
             this.response.body = {
-                error: 'Failed to fetch staged questions.',
+                error: 'Failed to fetch questions.',
             };
         }
     }
 }
+
 
 export async function apply(ctx: Context) {
     ctx.Route('generator_detail', '/questgen', QuestionHandler, PRIV.PRIV_USER_PROFILE );
