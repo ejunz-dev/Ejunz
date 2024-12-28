@@ -1,7 +1,7 @@
 import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter,
-    Handler, NumberKeys, ObjectId, OplogModel, paginate, post, query, route, 
-    param, PRIV, Types, UserModel, PERM, PERMS_BY_FAMILY, Permission,  BadRequestError, PermissionError, NotFoundError
+    Handler, NumberKeys, ObjectId, OplogModel, paginate, post, query, route,
+    param, PRIV, Types, UserModel, PERM, PERMS_BY_FAMILY, Permission, BadRequestError, PermissionError, NotFoundError
 } from 'ejun';
 import * as document from 'ejun/src/model/document';
 import fs from 'fs';
@@ -75,31 +75,47 @@ export class QuestionModel {
 
     static async add(
         domainId: string, qid: string = '', title: string, content: string, owner: number,
-        tag: string[] = [], meta: QuestionCreateOptions = {},
+        tag: string[] = [], options: { label: string; value: string }[] = [], answer: string = '',
+        meta: QuestionCreateOptions = {},
     ) {
         const newDocId = new ObjectId();
         const result = await QuestionModel.addWithId(
-            domainId, newDocId.toHexString(), qid, title, content, owner, tag, meta
+            domainId, newDocId.toHexString(), qid, title, content, owner, tag, options, answer, meta
         );
         return result;
     }
 
     static async addWithId(
-        domainId: string, docId: string, qid: string = '', title: string,
-        content: string, owner: number, tag: string[] = [],
+        domainId: string,
+        docId: string,
+        qid: string = '',
+        title: string,
+        content: string,
+        owner: number,
+        tag: string[] = [],
+        options: { label: string; value: string }[] = [],
+        answer: string = '',
         meta: QuestionCreateOptions = {},
     ) {
         const args: Partial<QuestionDoc> = {
-            title, tag, hidden: meta.hidden || false, sort: sortable(qid || `P${docId}`),
+            title,
+            tag,
+            hidden: meta.hidden || false,
+            sort: sortable(qid || `P${docId}`),
+            options, // 直接传递 options 数组
+            answer,  // 直接传递 answer 字段
         };
+    
         if (qid) args.qid = qid;
         if (meta.difficulty) args.difficulty = meta.difficulty;
         if (meta.reference) args.reference = meta.reference;
-
+    
         const result = await document.add(domainId, content, owner, TYPE_QUESTION, docId, null, null, args);
         return result;
     }
+    
 }
+
 
 function loadApiConfig() {
     const configPath = path.resolve(require('os').homedir(), '.ejunz', 'apiConfig.json');
@@ -245,16 +261,19 @@ export class StagingPushHandler extends Handler {
                     createdAt: new Date(),
                     updatedAt: null,
                 };
-
                 console.log('Constructed QuestionDoc:', questionDoc);
+                
 
-                const stagedId = await QuestionModel.add(
+                const stagedId = await QuestionModel.addWithId(
                     domainId,
+                    questionDoc.docId!,
                     questionDoc.qid || '',
                     questionDoc.title,
                     questionDoc.content,
                     questionDoc.owner,
                     questionDoc.tag,
+                    questionDoc.options || [],
+                    questionDoc.answer || '',
                     {
                         difficulty: questionDoc.difficulty,
                         hidden: questionDoc.hidden,
