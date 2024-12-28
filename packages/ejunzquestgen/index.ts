@@ -33,7 +33,7 @@ export interface QuestionDoc {
     owner: number;
     content: string;
     options: { label: string; value: string }[];
-    answer: string;
+    answer: { label: string; value: string } | null;
     hidden?: boolean;
     sort?: string;
     difficulty?: number;
@@ -94,7 +94,7 @@ export class QuestionModel {
         owner: number,
         tag: string[] = [],
         options: { label: string; value: string }[] = [],
-        answer: string = '',
+        answer: { label: string; value: string } | null = null, 
         meta: QuestionCreateOptions = {},
     ) {
         const args: Partial<QuestionDoc> = {
@@ -239,6 +239,7 @@ export class StagingPushHandler extends Handler {
                 }
 
                 const newDocId = new ObjectId();
+                const answerOption = question.labeled_options.find((option: any) => option.value === question.answer);
 
                 const questionDoc: Partial<QuestionDoc> = {
                     docType: 91,
@@ -253,7 +254,9 @@ export class StagingPushHandler extends Handler {
                         label: option.label,
                         value: option.value,
                     })),
-                    answer: question.answer,
+                    answer: answerOption
+                    ? { label: answerOption.label, value: answerOption.value } // 包含完整答案信息
+                    : null,
                     hidden: question.hidden || false,
                     sort: question.sort || null,
                     difficulty: question.difficulty || 1,
