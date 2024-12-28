@@ -102,8 +102,13 @@ export class QuestionModel {
             tag,
             hidden: meta.hidden || false,
             sort: sortable(qid || `P${docId}`),
-            options, // 直接传递 options 数组
-            answer,  // 直接传递 answer 字段
+            options,
+            answer,
+            difficulty: meta.difficulty || 1,
+            reference: meta.reference || null,
+            createdAt: new Date(), // 添加创建时间
+            updatedAt: null,       // 初始化更新时间为 null
+    
         };
     
         if (qid) args.qid = qid;
