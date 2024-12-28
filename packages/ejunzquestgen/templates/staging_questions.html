@@ -1,5 +1,6 @@
 {% extends "layout/basic.html" %}
-
+{% import "components/paginator.html" as paginator with context %}
+{% import "components/nothing.html" as nothing with context %}
 {% block content %}
 <div class="row">
   <div class="medium-9 columns">
@@ -8,32 +9,19 @@
         <h1>{{ _('Staged Questions') }}</h1>
       </div>
       <div class="section__body">
-        <!-- Search Form -->
-        <form method="get" action="{{ url('staging_questions') }}">
-          <div class="search">
-            <input
-              name="q"
-              type="text"
-              value="{{ qs }}"
-              placeholder="{{ _('Search staged questions') }}"
-              class="textbox"
-            />
-            <button type="submit" class="button">
-              <span class="icon icon-search"></span> {{ _('Search') }}
-            </button>
-          </div>
-        </form>
-
         <!-- Questions List -->
-        {% if questions.length == 0 %}
-        <p class="nothing">{{ _('No questions available in staging.') }}</p>
+        {% if not questions.length %}
+          {{ nothing.render(_('No questions available in staging.')) }}
         {% else %}
-        <form method="post" action="{{ url('staging_questions_publish') }}" onsubmit="return validateForm()">
+        <form method="post" action="{{ url('staging_questions_publish', domainId=domainId) }}">
           <table class="data-table">
             <thead>
               <tr>
                 <th>
-                  <input type="checkbox" id="select-all" onclick="toggleAllCheckboxes(this)" />
+                  <label class="checkbox compact">
+                    <!-- 全选复选框 -->
+                    <input type="checkbox" name="select_all" data-checkbox-toggle="qids" />
+                  </label>
                 </th>
                 <th>#</th>
                 <th>{{ _('Question Title') }}</th>
@@ -45,47 +33,41 @@
               {% for question in questions %}
               <tr>
                 <td>
-                  <input type="checkbox" name="selectedQuestions" value="{{ question._id.$oid }}" />
+                  <label class="checkbox compact">
+                    <!-- 单个问题复选框，value 设置为 question.qids -->
+                    <input type="checkbox" name="qids" value="{{ question.qids }}" data-checkbox-group="qids" />
+                  </label>
                 </td>
                 <td>{{ loop.index + (page - 1) * pageSize }}</td>
                 <td>{{ question.title }}</td>
                 <td>
                   <ul>
                     {% for option in question.options %}
-                    <li>{{ option.label }}. {{ option.value }}</li>
+                    <li>{{ option.label }}: {{ option.value }}</li>
                     {% endfor %}
                   </ul>
                 </td>
                 <td>
                   {% if question.answer %}
-                    {{ question.answer.label }}. {{ question.answer.value }}
+                    {{ question.answer.label }}: {{ question.answer.value }}
                   {% else %}
                     {{ _('No answer provided') }}
                   {% endif %}
                 </td>
-                
               </tr>
               {% endfor %}
             </tbody>
           </table>
-
+        
           <div class="actions">
             <button type="submit" class="button primary">
               <span class="icon icon-check"></span> {{ _('Publish Selected') }}
             </button>
           </div>
         </form>
-
-        <!-- Pagination -->
-        <div class="pagination">
-          {% for i in range(1, totalPages + 1) %}
-          <a
-            href="?page={{ i }}&pageSize={{ pageSize }}"
-            class="button {% if i == page %}active{% endif %}"
-            >{{ i }}</a
-          >
-          {% endfor %}
-        </div>
+        
+          <!-- Pagination -->
+          {{ paginator.render(page, totalPages, add_qs=('q=' + qs if qs else '')) }}
         {% endif %}
       </div>
     </div>
@@ -94,7 +76,7 @@
   <div class="medium-3 columns">
     <div class="section side">
       <div class="section__header">
-        <h1 class="section__title">{{ _('Overview') }}</h1>
+        <h1>{{ _('Overview') }}</h1>
       </div>
       <div class="section__body">
         <p>{{ _('Manage and review all staged questions here.') }}</p>
@@ -102,40 +84,5 @@
     </div>
   </div>
 </div>
-<script>
-  function toggleAllCheckboxes(source) {
-    const checkboxes = document.querySelectorAll('input[name="selectedQuestions"]');
-    checkboxes.forEach((checkbox) => {
-      checkbox.checked = source.checked;
-    });
-  }
 
-  function validateForm() {
-    const checkboxes = document.querySelectorAll('input[name="selectedQuestions"]:checked');
-    if (checkboxes.length === 0) {
-      alert('{{ _("Please select at least one question to publish.") }}');
-      return false;
-    }
-    return true;
-  }
-
-  document.addEventListener('DOMContentLoaded', () => {
-    const checkboxes = document.querySelectorAll('input[name="selectedQuestions"]');
-    const selectAllCheckbox = document.getElementById('select-all');
-
-    // Set "select all" checkbox state based on individual checkboxes
-    const updateSelectAllState = () => {
-      const allChecked = Array.from(checkboxes).every((checkbox) => checkbox.checked);
-      const noneChecked = Array.from(checkboxes).every((checkbox) => !checkbox.checked);
-      selectAllCheckbox.checked = allChecked;
-      selectAllCheckbox.indeterminate = !allChecked && !noneChecked;
-    };
-
-    checkboxes.forEach((checkbox) => {
-      checkbox.addEventListener('change', updateSelectAllState);
-    });
-
-    updateSelectAllState(); // Initialize state on page load
-  });
-</script>
 {% endblock %}

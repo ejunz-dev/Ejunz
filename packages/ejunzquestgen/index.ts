@@ -1,6 +1,6 @@
 import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter, DomainModel, ProblemModel,ProblemDoc,
-    Handler, NumberKeys, ObjectId, OplogModel, paginate, post, query, route,
+    Handler, NumberKeys, ObjectId, OplogModel, paginate, post, query, route,Projection,buildProjection,
     param, PRIV, Types, UserModel, PERM, PERMS_BY_FAMILY, Permission, BadRequestError, PermissionError, NotFoundError
 } from 'ejun';
 import * as document from 'ejun/src/model/document';
@@ -14,11 +14,7 @@ function sortable(source: string) {
 
 const logger = new Logger('question');
 
-export function buildProjection<T extends keyof QuestionDoc>(fields: readonly T[]): Projection<QuestionDoc> {
-    const o: Partial<Projection<QuestionDoc>> = {};
-    for (const k of fields) o[k] = true;
-    return o as Projection<QuestionDoc>;
-}
+
 
 export const TYPE_QUESTION: 91 = 91;
 
@@ -89,17 +85,17 @@ export class QuestionModel {
         return await DocumentModel.getMulti(domainId, 91, filter, projection);
     }
 
-    static async add(
-        domainId: string, qid: string = '', title: string, content: string, owner: number,
-        tag: string[] = [], options: { label: string; value: string }[] = [], answer: string = '',
-        meta: QuestionCreateOptions = {},
-    ) {
-        const newDocId = new ObjectId();
-        const result = await QuestionModel.addWithId(
-            domainId, newDocId.toHexString(), qid, title, content, owner, tag, options, answer, meta
-        );
-        return result;
-    }
+    // static async add(
+    //     domainId: string, qid: string = '', title: string, content: string, owner: number,
+    //     tag: string[] = [], options: { label: string; value: string }[] = [], answer: string = '',
+    //     meta: QuestionCreateOptions = {},
+    // ) {
+    //     const newDocId = new ObjectId();
+    //     const result = await QuestionModel.addWithId(
+    //         domainId, newDocId.toHexString(), qid, title, content, owner, tag, options, answer, meta
+    //     );
+    //     return result;
+    // }
 
     static async addWithId(
         domainId: string,
@@ -372,8 +368,7 @@ export class StagingPushHandler extends Handler {
             };
         }
     }
-
-
+  
     async generateUniqueQid(domainId: string): Promise<string> {
         let qid: string;
         let isUnique = false;
@@ -396,16 +391,16 @@ export class StagingPushHandler extends Handler {
 export class StagingQuestionHandler extends Handler {
     async get({ domainId, page = 1, pageSize = 10 }) {
         domainId = this.args?.domainId || this.context?.domainId || 'system';
-        console.log('Resolved domainId in GET:', domainId);
+
+        console.log(`Fetching questions for domainId: ${domainId}, page: ${page}, pageSize: ${pageSize}`);
 
         const query = {}; // 添加筛选条件
         const projection = QuestionModel.PROJECTION_PUBLIC;
 
         try {
-            // 调用 QuestionModel.list 获取分页数据
             const [questions, totalPages, totalCount] = await QuestionModel.list(domainId, query, page, pageSize, projection);
 
-            console.log(`Fetched ${questions.length} questions for domainId: ${domainId}`);
+            console.log(`Fetched ${questions.length} questions, totalPages: ${totalPages}, totalCount: ${totalCount}`);
 
             this.response.template = 'staging_questions.html';
             this.response.body = {
@@ -425,59 +420,96 @@ export class StagingQuestionHandler extends Handler {
         }
     }
 
-    async post() {
-        console.log('POST /questgen/stage_publish reached');
-        
-        const selectedQuestions = this.request.body.selectedQuestions;
-        if (!selectedQuestions || !Array.isArray(selectedQuestions) || selectedQuestions.length === 0) {
-            this.response.status = 400;
-            this.response.body = { error: 'No questions selected for publishing.' };
-            return;
-        }
-    
-
-        try {
-            for (const questionId of selectedQuestions) {
-                // 根据 questionId 获取问题数据并创建新问题
-                const question = await QuestionModel.get(this.context.domainId, questionId);
-                if (!question) continue;
-
-                const problemContent = this.generateProblemContent(question);
-                await ProblemModel.add(
-                    this.context.domainId,
-                    `P${new ObjectId()}`, // 生成新的问题 ID
-                    question.title,
-                    problemContent,
-                    this.user._id,
-                    question.tag || [],
-                    { difficulty: question.difficulty, hidden: false }
-                );
-            }
-
-            this.response.status = 200;
-            this.response.body = { message: 'Selected questions have been published successfully.' };
-        } catch (error) {
-            console.error('Error while publishing questions:', error.message);
-            this.response.status = 500;
-            this.response.body = { error: 'Failed to publish questions.' };
-        }
-    }
-    generateProblemContent(question: QuestionDoc): string {
+   
+    private generateProblemContent(question: QuestionDoc): string {
+        console.log(`Generating content for question: ${question.title}`);
         let content = `# Title\n${question.title}\n\n`;
-    
         content += `# Description\n${question.content}\n\n`;
-    
         content += `# Options\n`;
         for (const option of question.options) {
             content += `- **${option.label}**: ${option.value}\n`;
         }
-
-        content += `\n# Answer\nThe correct answer is **${question.answer}**.\n`;
-    
+        content += `\n# Answer\nThe correct answer is **${question.answer?.label || 'N/A'}**.\n`;
         return content;
     }
-    
+
+    @param('qids', Types.NumericArray)
+async post(domainId: string, qids: number[]) {
+    console.log('Request Body:', this.request.body); // 检查接收到的原始请求体
+    console.log('Received qids:', qids); // 调试日志
+    console.log('Questions Data:', questions);
+
+    // 检查是否提供了有效的 qids
+    if (!qids || qids.length === 0) {
+        console.error('No qids provided for publishing.');
+        this.response.status = 400;
+        this.response.body = { error: 'No questions selected for publishing.' };
+        return;
+    }
+
+    let successCount = 0; // 成功发布的计数
+    let failedCount = 0; // 失败的计数
+
+    for (const qid of qids) {
+        try {
+            console.log(`Processing qid: ${qid}`); // 调试日志
+
+            // 获取对应的 Question 文档
+            const questionDoc = await QuestionModel.get(domainId, qid);
+
+            if (!questionDoc) {
+                console.warn(`Question with qid ${qid} not found in domain ${domainId}.`);
+                failedCount++;
+                continue;
+            }
+
+            console.log(`Validating permissions for qid: ${qid}`);
+            // 检查用户是否有权限发布问题
+            if (!this.user.own(questionDoc, PERM.PERM_EDIT_PROBLEM_SELF)) {
+                this.checkPerm(PERM.PERM_EDIT_PROBLEM);
+            }
+
+            console.log(`Generating problem content for qid: ${qid}`);
+            // 生成 Problem 文档的内容
+            const problemContent = this.generateProblemContent(questionDoc);
+
+            console.log(`Adding problem for qid: ${qid}`);
+            // 添加新问题到 Problem 集合
+            await ProblemModel.add(
+                domainId,
+                `P${qid}`, // 使用 qid 作为 Problem 的 ID
+                questionDoc.title,
+                problemContent,
+                this.user._id,
+                questionDoc.tag || [],
+                {
+                    difficulty: questionDoc.difficulty || 1,
+                    hidden: questionDoc.hidden || false,
+                }
+            );
+
+            console.log(`Successfully published question with qid: ${qid}`);
+            successCount++;
+        } catch (error) {
+            console.error(`Failed to publish question with qid ${qid}:`, error.message);
+            failedCount++;
+        }
+    }
+
+    // 返回结果摘要
+    console.log(`Publish summary: Total - ${qids.length}, Success - ${successCount}, Failed - ${failedCount}`);
+    this.response.body = {
+        message: `Successfully published ${successCount} questions.`,
+        total: qids.length,
+        success: successCount,
+        failed: failedCount,
+    };
+
+    this.response.status = successCount > 0 ? 200 : 400; // 如果没有成功发布，返回错误状态码
 }
+
+}
+
     
 
 
