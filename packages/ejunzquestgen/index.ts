@@ -276,7 +276,6 @@ class Question_MCQ_Handler extends Handler {
         }
     }
 }
-
 export class StagingPushHandler extends Handler {
     async post() {
         const domainId = this.context.domainId;
@@ -301,10 +300,21 @@ export class StagingPushHandler extends Handler {
                 const newDocId = new ObjectId();
                 const answerOption = question.labeled_options.find((option: any) => option.value === question.answer);
 
+                let generatedQid = question.qid || '';
+                if (!generatedQid) {
+                    generatedQid = await this.generateUniqueQid(domainId);
+                } else {
+              
+                    const existingQuestion = await QuestionModel.get(domainId, generatedQid);
+                    if (existingQuestion) {
+                        throw new Error(`QID "${generatedQid}" already exists in domain "${domainId}".`);
+                    }
+                }
+
                 const questionDoc: Partial<QuestionDoc> = {
                     docType: 91,
                     domainId,
-                    qid: question.qid || '',
+                    qid: generatedQid, 
                     docId: newDocId.toHexString(),
                     title: question.title || question.question_statement,
                     tag: question.tag || [],
@@ -315,17 +325,17 @@ export class StagingPushHandler extends Handler {
                         value: option.value,
                     })),
                     answer: answerOption
-                    ? { label: answerOption.label, value: answerOption.value } // 包含完整答案信息
-                    : null,
+                        ? { label: answerOption.label, value: answerOption.value } 
+                        : null,
                     hidden: question.hidden || false,
-                    sort: question.sort || null,
+                    sort: question.sort || `P${newDocId}`, 
                     difficulty: question.difficulty || 1,
                     reference: question.reference || null,
                     createdAt: new Date(),
                     updatedAt: null,
                 };
+
                 console.log('Constructed QuestionDoc:', questionDoc);
-                
 
                 const stagedId = await QuestionModel.addWithId(
                     domainId,
@@ -362,7 +372,26 @@ export class StagingPushHandler extends Handler {
             };
         }
     }
+
+
+    async generateUniqueQid(domainId: string): Promise<string> {
+        let qid: string;
+        let isUnique = false;
+
+        while (!isUnique) {
+
+            qid = `Q${Math.random().toString(36).substring(2, 10).toUpperCase()}`; 
+
+            const existingQuestion = await QuestionModel.get(domainId, qid);
+            if (!existingQuestion) {
+                isUnique = true; 
+            }
+        }
+
+        return qid;
+    }
 }
+
 
 export class StagingQuestionHandler extends Handler {
     async get({ domainId, page = 1, pageSize = 10 }) {
@@ -436,16 +465,13 @@ export class StagingQuestionHandler extends Handler {
     generateProblemContent(question: QuestionDoc): string {
         let content = `# Title\n${question.title}\n\n`;
     
-        // 添加描述
         content += `# Description\n${question.content}\n\n`;
     
-        // 添加选项
         content += `# Options\n`;
         for (const option of question.options) {
             content += `- **${option.label}**: ${option.value}\n`;
         }
-    
-        // 添加答案
+
         content += `\n# Answer\nThe correct answer is **${question.answer}**.\n`;
     
         return content;
