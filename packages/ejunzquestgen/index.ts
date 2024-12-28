@@ -1,5 +1,5 @@
 import {
-    _, Context, DiscussionNotFoundError, DocumentModel, Filter, DomainModel,  
+    _, Context, DiscussionNotFoundError, DocumentModel, Filter, DomainModel, ProblemModel,ProblemDoc,
     Handler, NumberKeys, ObjectId, OplogModel, paginate, post, query, route,
     param, PRIV, Types, UserModel, PERM, PERMS_BY_FAMILY, Permission, BadRequestError, PermissionError, NotFoundError
 } from 'ejun';
@@ -65,6 +65,22 @@ export class QuestionModel {
         '_id', 'domainId', 'docType', 'docId', 'qid', 'owner', 'title', 'tag', 'content', 'options', 'answer', 'difficulty', 'createdAt', 'updatedAt',
     ];
 
+    static async get(
+        domainId: string,
+        qid: string | number,
+        projection: Projection<QuestionDoc> = QuestionModel.PROJECTION_PUBLIC,
+        rawConfig = false
+    ): Promise<QuestionDoc | null> { // 确保返回类型是 QuestionDoc
+        if (Number.isSafeInteger(+qid)) qid = +qid;
+        const res = typeof qid === 'number'
+            ? await document.get(domainId, TYPE_QUESTION, qid, projection)
+            : (await document.getMulti(domainId, TYPE_QUESTION, { sort: sortable(qid), qid })
+                .project(buildProjection(projection)).limit(1).toArray())[0];
+        if (!res) return null;
+        return res as QuestionDoc; // 强制类型转换为 QuestionDoc
+    }
+    
+
     static async getMulti(
         domainId: string,
         filter: Record<string, any>,
@@ -87,7 +103,7 @@ export class QuestionModel {
 
     static async addWithId(
         domainId: string,
-        docId: string,
+        docId: ObjectId,
         qid: string = '',
         title: string,
         content: string,
@@ -379,7 +395,64 @@ export class StagingQuestionHandler extends Handler {
             };
         }
     }
+
+    async post() {
+        console.log('POST /questgen/stage_publish reached');
+        
+        const selectedQuestions = this.request.body.selectedQuestions;
+        if (!selectedQuestions || !Array.isArray(selectedQuestions) || selectedQuestions.length === 0) {
+            this.response.status = 400;
+            this.response.body = { error: 'No questions selected for publishing.' };
+            return;
+        }
+    
+
+        try {
+            for (const questionId of selectedQuestions) {
+                // 根据 questionId 获取问题数据并创建新问题
+                const question = await QuestionModel.get(this.context.domainId, questionId);
+                if (!question) continue;
+
+                const problemContent = this.generateProblemContent(question);
+                await ProblemModel.add(
+                    this.context.domainId,
+                    `P${new ObjectId()}`, // 生成新的问题 ID
+                    question.title,
+                    problemContent,
+                    this.user._id,
+                    question.tag || [],
+                    { difficulty: question.difficulty, hidden: false }
+                );
+            }
+
+            this.response.status = 200;
+            this.response.body = { message: 'Selected questions have been published successfully.' };
+        } catch (error) {
+            console.error('Error while publishing questions:', error.message);
+            this.response.status = 500;
+            this.response.body = { error: 'Failed to publish questions.' };
+        }
+    }
+    generateProblemContent(question: QuestionDoc): string {
+        let content = `# Title\n${question.title}\n\n`;
+    
+        // 添加描述
+        content += `# Description\n${question.content}\n\n`;
+    
+        // 添加选项
+        content += `# Options\n`;
+        for (const option of question.options) {
+            content += `- **${option.label}**: ${option.value}\n`;
+        }
+    
+        // 添加答案
+        content += `\n# Answer\nThe correct answer is **${question.answer}**.\n`;
+    
+        return content;
+    }
+    
 }
+    
 
 
 export async function apply(ctx: Context) {
@@ -387,7 +460,8 @@ export async function apply(ctx: Context) {
     ctx.Route('generator_main', '/questgen/mcq', Question_MCQ_Handler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('staging_push', '/questgen/stage_push', StagingPushHandler, PRIV.PRIV_USER_PROFILE); 
     ctx.Route('staging_questions', '/questgen/stage_list', StagingQuestionHandler, PRIV.PRIV_USER_PROFILE);
-
+    ctx.Route('staging_questions_publish', '/questgen/stage_publish', StagingQuestionHandler, PRIV.PRIV_USER_PROFILE); // 新增
+    
     ctx.injectUI('UserDropdown', 'generator_detail', (handler) => ({
         icon: 'create',
         displayName: 'Question Generator',

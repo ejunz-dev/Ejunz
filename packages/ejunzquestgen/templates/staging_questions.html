@@ -28,36 +28,48 @@
         {% if questions.length == 0 %}
         <p class="nothing">{{ _('No questions available in staging.') }}</p>
         {% else %}
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>{{ _('Question Title') }}</th>
-              <th>{{ _('Options') }}</th>
-              <th>{{ _('Answer') }}</th>
-            
-            </tr>
-          </thead>
-          <tbody>
-            {% for question in questions %}
-            <tr>
-              <td>{{ loop.index + (page - 1) * pageSize }}</td>
-              <td>{{ question.title }}</td>
-              <td>
-                <ul>
-                  {% for option in question.options %}
-                  <li>{{ option.label }}. {{ option.value }}</li>
-                  {% endfor %}
-                </ul>
-              </td>
-              <td>
-                {{ question.answer.label }}. {{ question.answer.value }}
-              </td>
-            
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        <form method="post" action="{{ url('staging_questions_publish') }}" onsubmit="return validateForm()">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>
+                  <input type="checkbox" id="select-all" onclick="toggleAllCheckboxes(this)" />
+                </th>
+                <th>#</th>
+                <th>{{ _('Question Title') }}</th>
+                <th>{{ _('Options') }}</th>
+                <th>{{ _('Answer') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for question in questions %}
+              <tr>
+                <td>
+                  <input type="checkbox" name="selectedQuestions" value="{{ question._id.$oid }}" />
+                </td>
+                <td>{{ loop.index + (page - 1) * pageSize }}</td>
+                <td>{{ question.title }}</td>
+                <td>
+                  <ul>
+                    {% for option in question.options %}
+                    <li>{{ option.label }}. {{ option.value }}</li>
+                    {% endfor %}
+                  </ul>
+                </td>
+                <td>
+                  {{ question.answer }}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+
+          <div class="actions">
+            <button type="submit" class="button primary">
+              <span class="icon icon-check"></span> {{ _('Publish Selected') }}
+            </button>
+          </div>
+        </form>
 
         <!-- Pagination -->
         <div class="pagination">
@@ -85,4 +97,40 @@
     </div>
   </div>
 </div>
+<script>
+  function toggleAllCheckboxes(source) {
+    const checkboxes = document.querySelectorAll('input[name="selectedQuestions"]');
+    checkboxes.forEach((checkbox) => {
+      checkbox.checked = source.checked;
+    });
+  }
+
+  function validateForm() {
+    const checkboxes = document.querySelectorAll('input[name="selectedQuestions"]:checked');
+    if (checkboxes.length === 0) {
+      alert('{{ _("Please select at least one question to publish.") }}');
+      return false;
+    }
+    return true;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const checkboxes = document.querySelectorAll('input[name="selectedQuestions"]');
+    const selectAllCheckbox = document.getElementById('select-all');
+
+    // Set "select all" checkbox state based on individual checkboxes
+    const updateSelectAllState = () => {
+      const allChecked = Array.from(checkboxes).every((checkbox) => checkbox.checked);
+      const noneChecked = Array.from(checkboxes).every((checkbox) => !checkbox.checked);
+      selectAllCheckbox.checked = allChecked;
+      selectAllCheckbox.indeterminate = !allChecked && !noneChecked;
+    };
+
+    checkboxes.forEach((checkbox) => {
+      checkbox.addEventListener('change', updateSelectAllState);
+    });
+
+    updateSelectAllState(); // Initialize state on page load
+  });
+</script>
 {% endblock %}
