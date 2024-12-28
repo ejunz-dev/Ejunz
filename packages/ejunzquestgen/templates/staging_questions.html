@@ -57,8 +57,13 @@
                   </ul>
                 </td>
                 <td>
-                  {{ question.answer }}
+                  {% if question.answer %}
+                    {{ question.answer.label }}. {{ question.answer.value }}
+                  {% else %}
+                    {{ _('No answer provided') }}
+                  {% endif %}
                 </td>
+                
               </tr>
               {% endfor %}
             </tbody>
