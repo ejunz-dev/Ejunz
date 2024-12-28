@@ -20,7 +20,7 @@
                 <th>
                   <label class="checkbox compact">
                     <!-- 全选复选框 -->
-                    <input type="checkbox" name="select_all" data-checkbox-toggle="qids" />
+                    <input type="checkbox" name="select_all" data-checkbox-toggle="docIds" />
                   </label>
                 </th>
                 <th>#</th>
@@ -34,8 +34,8 @@
               <tr>
                 <td>
                   <label class="checkbox compact">
-                    <!-- 单个问题复选框，value 设置为 question.qids -->
-                    <input type="checkbox" name="qids" value="{{ question.qids }}" data-checkbox-group="qids" />
+                    <!-- 单个问题复选框，value 设置为 question.docId -->
+                    <input type="checkbox" name="docIds" value="{{ question.docId }}" data-checkbox-group="docIds" />
                   </label>
                 </td>
                 <td>{{ loop.index + (page - 1) * pageSize }}</td>
@@ -65,6 +65,7 @@
             </button>
           </div>
         </form>
+        
         
           <!-- Pagination -->
           {{ paginator.render(page, totalPages, add_qs=('q=' + qs if qs else '')) }}
