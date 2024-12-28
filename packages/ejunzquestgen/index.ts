@@ -14,7 +14,7 @@ function sortable(source: string) {
 
 const logger = new Logger('question');
 
-
+export type Field = keyof QuestionDoc;
 
 export const TYPE_QUESTION: 91 = 91;
 
@@ -23,7 +23,7 @@ export interface QuestionDoc {
     docType: 91;
     domainId: string;
     qid: string;
-    docId: ObjectId;
+    docId: number;
     title: string;
     tag: string[];
     owner: number;
@@ -57,9 +57,19 @@ interface QuestionCreateOptions {
 }
 
 export class QuestionModel {
-    static PROJECTION_PUBLIC: (keyof QuestionDoc)[] = [
+    static PROJECTION_PUBLIC: Field[] = [
         '_id', 'domainId', 'docType', 'docId', 'qid', 'owner', 'title', 'tag', 'content', 'options', 'answer', 'difficulty', 'createdAt', 'updatedAt',
     ];
+    static PROJECTION_CONTEST_LIST: Field[] = [
+        '_id', 'domainId', 'docType', 'docId', 'qid',
+        'owner', 'title','content', 'options', 'answer'
+    ];
+
+    static PROJECTION_LIST: Field[] = [
+        ...QuestionModel.PROJECTION_CONTEST_LIST,
+        'content', 'options', 'answer'
+    ];
+
 
     static async get(
         domainId: string,
@@ -77,29 +87,42 @@ export class QuestionModel {
     }
     
 
-    static async getMulti(
-        domainId: string,
-        filter: Record<string, any>,
-        projection: (keyof QuestionDoc)[]
-    ) {
-        return await DocumentModel.getMulti(domainId, 91, filter, projection);
+    static getMulti(domainId: string, query: Filter<QuestionDoc>, projection = QuestionModel.PROJECTION_LIST) {
+        return document.getMulti(domainId, TYPE_QUESTION, query, projection).sort({ sort: 1 });
     }
-
-    // static async add(
-    //     domainId: string, qid: string = '', title: string, content: string, owner: number,
-    //     tag: string[] = [], options: { label: string; value: string }[] = [], answer: string = '',
-    //     meta: QuestionCreateOptions = {},
-    // ) {
-    //     const newDocId = new ObjectId();
-    //     const result = await QuestionModel.addWithId(
-    //         domainId, newDocId.toHexString(), qid, title, content, owner, tag, options, answer, meta
-    //     );
-    //     return result;
-    // }
+    static async generateNextDocId(domainId: string): Promise<number> {
+        // 获取当前域中最大的 docId
+        const lastDoc = await DocumentModel.getMulti(domainId, 91, {})
+            .sort({ docId: -1 }) // 按 docId 降序排序
+            .limit(1)
+            .project({ docId: 1 })
+            .toArray();
+    
+        return (lastDoc[0]?.docId || 0) + 1; // 如果没有文档，则从 1 开始
+    }
+    
+    
+    static async add(
+        domainId: string, 
+        qid: string = '', 
+        title: string, 
+        content: string, 
+        owner: number,
+        tag: string[] = [], 
+        options: { label: string; value: string }[] = [], 
+        answer: { label: string; value: string } | null,
+        meta: QuestionCreateOptions = {},
+    ) {
+        const docId = await QuestionModel.generateNextDocId(domainId); // 动态生成递增的 docId
+        const result = await QuestionModel.addWithId(
+            domainId, docId, qid, title, content, owner, tag, options, answer, meta
+        );
+        return result;
+    }
 
     static async addWithId(
         domainId: string,
-        docId: ObjectId,
+        docId: number,
         qid: string = '',
         title: string,
         content: string,
@@ -276,42 +299,43 @@ export class StagingPushHandler extends Handler {
     async post() {
         const domainId = this.context.domainId;
         const payload = this.request.body.questions_payload;
-
+    
         if (!payload) {
             console.error('No questions payload provided.');
             this.response.status = 400;
             this.response.body = { error: 'No questions payload provided.' };
             return;
         }
-
+    
         try {
             const questions: any[] = typeof payload === 'string' ? JSON.parse(payload) : payload;
-
-            const savedIds: ObjectId[] = [];
+    
+            const savedIds: number[] = []; // 修改为存储数字类型的 docId
             for (const question of questions) {
                 if (!question.question_statement || !Array.isArray(question.labeled_options) || !question.answer) {
                     throw new Error('Invalid question format: Each question must include question_statement, labeled_options, and answer.');
                 }
-
-                const newDocId = new ObjectId();
+    
+                // 获取递增的 docId
+                const newDocId = await this.generateNextDocId(domainId);
+    
                 const answerOption = question.labeled_options.find((option: any) => option.value === question.answer);
-
+    
                 let generatedQid = question.qid || '';
                 if (!generatedQid) {
                     generatedQid = await this.generateUniqueQid(domainId);
                 } else {
-              
                     const existingQuestion = await QuestionModel.get(domainId, generatedQid);
                     if (existingQuestion) {
                         throw new Error(`QID "${generatedQid}" already exists in domain "${domainId}".`);
                     }
                 }
-
+    
                 const questionDoc: Partial<QuestionDoc> = {
                     docType: 91,
                     domainId,
-                    qid: generatedQid, 
-                    docId: newDocId.toHexString(),
+                    qid: generatedQid,
+                    docId: newDocId, // 使用递增的数字 docId
                     title: question.title || question.question_statement,
                     tag: question.tag || [],
                     owner: this.user._id,
@@ -321,18 +345,18 @@ export class StagingPushHandler extends Handler {
                         value: option.value,
                     })),
                     answer: answerOption
-                        ? { label: answerOption.label, value: answerOption.value } 
+                        ? { label: answerOption.label, value: answerOption.value }
                         : null,
                     hidden: question.hidden || false,
-                    sort: question.sort || `P${newDocId}`, 
+                    sort: question.sort || `P${newDocId}`, // 根据新的 docId 设置排序字段
                     difficulty: question.difficulty || 1,
                     reference: question.reference || null,
                     createdAt: new Date(),
                     updatedAt: null,
                 };
-
+    
                 console.log('Constructed QuestionDoc:', questionDoc);
-
+    
                 const stagedId = await QuestionModel.addWithId(
                     domainId,
                     questionDoc.docId!,
@@ -349,10 +373,10 @@ export class StagingPushHandler extends Handler {
                         reference: questionDoc.reference,
                     }
                 );
-
-                savedIds.push(newDocId);
+    
+                savedIds.push(newDocId); // 存储递增的 docId
             }
-
+    
             this.response.status = 200;
             this.response.template = 'generator_main.html';
             this.response.body = {
@@ -368,7 +392,17 @@ export class StagingPushHandler extends Handler {
             };
         }
     }
-  
+    
+    async generateNextDocId(domainId: string): Promise<number> {
+        const [lastDoc] = await QuestionModel.getMulti(domainId, {}, ['docId']) // 添加 projection 参数
+            .sort({ docId: -1 }) // 获取当前域中最大的 docId
+            .limit(1)
+            .toArray();
+    
+        return (lastDoc?.docId || 0) + 1; // 如果没有文档，则从 1 开始
+    }
+    
+    
     async generateUniqueQid(domainId: string): Promise<string> {
         let qid: string;
         let isUnique = false;
