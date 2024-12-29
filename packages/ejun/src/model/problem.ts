@@ -72,7 +72,7 @@ interface ProblemCreateOptions {
 export class ProblemModel {
     static PROJECTION_CONTEST_LIST: Field[] = [
         '_id', 'domainId', 'docType', 'docId', 'pid',
-        'owner', 'title',
+        'owner', 'title','options', 'answer',
     ];
 
     static PROJECTION_LIST: Field[] = [
@@ -90,7 +90,7 @@ export class ProblemModel {
     static PROJECTION_PUBLIC: Field[] = [
         ...ProblemModel.PROJECTION_LIST,
         'content', 'html', 'data', 'config', 'additional_file',
-        'reference', 'maintainer',
+        'reference', 'maintainer','options', 'answer',
     ];
 
     static default = {
@@ -112,6 +112,8 @@ export class ProblemModel {
         hidden: true,
         config: '',
         difficulty: 0,
+        options: [],
+        answer: null,
     };
 
     static deleted = {
@@ -136,39 +138,84 @@ export class ProblemModel {
     };
 
     static async add(
-        domainId: string, pid: string = '', title: string, content: string, owner: number,
-        tag: string[] = [], meta: ProblemCreateOptions = {},
+        domainId: string,
+        pid: string = '',
+        title: string,
+        content: string,
+        owner: number,
+        tag: string[] = [],
+        options: { label: string; value: string }[] = [], 
+        answer: { label: string; value: string } | null = null, 
+        meta: ProblemCreateOptions = {}
     ) {
         const [doc] = await ProblemModel.getMulti(domainId, {})
-            .sort({ docId: -1 }).limit(1).project({ docId: 1 })
+            .sort({ docId: -1 })
+            .limit(1)
+            .project({ docId: 1 })
             .toArray();
+    
         const result = await ProblemModel.addWithId(
-            domainId, (doc?.docId || 0) + 1, pid,
-            title, content, owner, tag, meta,
+            domainId,
+            (doc?.docId || 0) + 1,
+            pid,
+            title,
+            content,
+            owner,
+            tag,
+            options,
+            answer, 
+            meta
         );
         return result;
     }
-
+    
     static async addWithId(
-        domainId: string, docId: number, pid: string = '', title: string,
-        content: string, owner: number, tag: string[] = [],
-        meta: ProblemCreateOptions = {},
+        domainId: string,
+        docId: number,
+        pid: string = '',
+        title: string,
+        content: string,
+        owner: number,
+        tag: string[] = [], // 标签字段
+        options: { label: string; value: string }[] = [], // 选项字段
+        answer: { label: string; value: string } | null = null, // 答案字段
+        meta: ProblemCreateOptions = {}
     ) {
         const args: Partial<ProblemDoc> = {
-            title, tag, hidden: meta.hidden || false, nSubmit: 0, nAccept: 0, sort: sortable(pid || `P${docId}`),
+            title,
+            content,
+            owner,
+            tag,
+            options, 
+            answer, 
+            hidden: meta.hidden || false,
+            nSubmit: 0,
+            nAccept: 0,
+            sort: sortable(pid || `P${docId}`),
+            difficulty: meta.difficulty || 1,
         };
+    
         if (pid) args.pid = pid;
-        if (meta.difficulty) args.difficulty = meta.difficulty;
-        if (meta.reference) args.reference = meta.reference;
+
         await bus.parallel('problem/before-add', domainId, content, owner, docId, args);
-        const result = await document.add(domainId, content, owner, document.TYPE_PROBLEM, docId, null, null, args);
-        args.content = content;
-        args.owner = owner;
-        args.docType = document.TYPE_PROBLEM;
-        args.domainId = domainId;
+    
+        const result = await document.add(
+            domainId,
+            content,
+            owner,
+            document.TYPE_PROBLEM,
+            docId,
+            null,
+            null,
+            args
+        );
+
         await bus.emit('problem/add', args, result);
+    
         return result;
     }
+    
+    
 
     static async get(
         domainId: string, pid: string | number,

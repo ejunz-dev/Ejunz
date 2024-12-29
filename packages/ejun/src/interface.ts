@@ -261,6 +261,8 @@ declare module './model/problem' {
         nSubmit: number;
         nAccept: number;
         tag: string[];
+        options: { label: string; value: string }[]; 
+        answer: { label: string; value: string } | null;
         data: FileInfo[];
         additional_file: FileInfo[];
         hidden?: boolean;
