@@ -601,18 +601,67 @@ export class ProblemEditHandler extends ProblemManageHandler {
     @post('tag', Types.Content, true, null, parseCategory)
     @post('difficulty', Types.PositiveInt, (i) => +i <= 10, true)
     async post(
-        domainId: string, pid: string | number, title: string, content: string,
-        newPid: string | number = '', hidden = false, tag: string[] = [], difficulty = 0,
+        domainId: string,
+        pid: string | number,
+        title: string,
+        content: string,
+        newPid: string | number = '',
+        hidden = false,
+        tag: string[] = [],
+        difficulty = 0
     ) {
         if (typeof newPid !== 'string') newPid = `P${newPid}`;
-        if (newPid !== this.pdoc.pid && await problem.get(domainId, newPid)) throw new ProblemAlreadyExistError(pid);
+        if (newPid !== this.pdoc.pid && await problem.get(domainId, newPid)) {
+            throw new ProblemAlreadyExistError(pid);
+        }
+        let contentToProcess = content;
+        try {
+            const parsedContent = JSON.parse(content);
+            if (parsedContent && parsedContent.zh) {
+                contentToProcess = parsedContent.zh;
+            }
+        } catch (error) {
+        }
+        const options = this.parseOptions(contentToProcess);
+        const answer = this.parseAnswer(contentToProcess);
+
         const $update: Partial<ProblemDoc> = {
-            title, content, pid: newPid, hidden, tag: tag ?? [], difficulty, html: false,
+            title,
+            content, 
+            pid: newPid,
+            hidden,
+            tag: tag ?? [],
+            difficulty,
+            html: false,
+            options, 
+            answer, 
         };
+
         const pdoc = await problem.edit(domainId, this.pdoc.docId, $update);
         this.response.redirect = this.url('problem_detail', { pid: newPid || pdoc.docId });
     }
+
+    private parseOptions(content: string): { label: string; value: string }[] {
+        const optionsMatch = content.match(/# Options\n([\s\S]*?)\n\n/);
+        if (!optionsMatch) return [];
+        const optionsRaw = optionsMatch[1].split('\n').filter(Boolean);
+        return optionsRaw.map((line) => {
+            const match = line.match(/-\s\*\*(\w)\*\*:\s(.+)/);
+            if (!match) return null;
+            return { label: match[1], value: match[2] };
+        }).filter(Boolean) as { label: string; value: string }[];
+    }
+
+    private parseAnswer(content: string): { label: string; value: string } | null {
+        const answerMatch = content.match(/# Answer\nThe correct answer is \*\*(\w)\*\*\./);
+        if (!answerMatch) return null;
+        const answerLabel = answerMatch[1];
+        const options = this.parseOptions(content);
+        const answerOption = options.find((opt) => opt.label === answerLabel);
+        return answerOption || null;
+    }
 }
+
 
 export class ProblemConfigHandler extends ProblemManageHandler {
     async get() {
