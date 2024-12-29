@@ -408,12 +408,15 @@ export class StagingQuestionHandler extends Handler {
                     questionDoc.title,
                     problemContent,
                     this.user._id,
-                    questionDoc.tag || [],
+                    questionDoc.tag || [], 
+                    questionDoc.options || [], 
+                    questionDoc.answer || null, 
                     {
                         difficulty: questionDoc.difficulty || 1,
                         hidden: questionDoc.hidden || false,
                     }
                 );
+                
                 successCount++;
             } catch (error) {
                 failedCount++;
