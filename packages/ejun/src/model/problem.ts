@@ -14,7 +14,7 @@ import { FileUploadError, ProblemNotFoundError, ValidationError } from '../error
 import type {
     Document, ProblemDict, ProblemStatusDoc, User,
 } from '../interface';
-// import { parseConfig } from '../lib/testdataConfig';
+import { parseConfig } from '../lib/testdataConfig';
 import * as bus from '../service/bus';
 import {
     ArrayKeys, MaybeArray, NumberKeys, Projection,

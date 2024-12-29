@@ -38,8 +38,8 @@ export async function apply(ctx: Context) {
     await require('../settings').loadConfig();
     const modelSystem = require('../model/system');
     await modelSystem.runConfig();
-    // const storage = require('../service/storage');
-    // await storage.loadStorageService();
+    const storage = require('../service/storage');
+    await storage.loadStorageService();
     // Make sure everything is ready and then start main entry
     if (argv.options.watch) ctx.plugin(require('../service/watcher').default, {});
     await ctx.root.start();
@@ -53,7 +53,7 @@ export async function apply(ctx: Context) {
     await ctx.lifecycle.flush();
 
     await setting(pending, fail, require('../model/setting'));
-    // ctx.plugin(require('../service/monitor'));
+    ctx.plugin(require('../service/monitor'));
     ctx.plugin(require('../service/check'));
     await service(pending, fail, ctx);
     await builtinModel(ctx);
