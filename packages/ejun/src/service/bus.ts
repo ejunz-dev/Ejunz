@@ -5,11 +5,11 @@ import {
 import type { Handler, ServerEvents } from '@ejunz/framework';
 import pm2 from '@ejunz/utils/lib/locate-pm2';
 import { Context } from '../context';
-// import type { ProblemSolutionHandler } from '../handler/problem';
+import type { ProblemSolutionHandler } from '../handler/problem';
 import type { UserRegisterHandler } from '../handler/user';
 import type {
-    BaseUserDict, ContestBalloonDoc, DomainDoc, FileInfo,
-    MessageDoc,  RecordDoc,
+    BaseUserDict, ContestBalloonDoc, DiscussionDoc, DomainDoc, FileInfo,
+    MessageDoc, ProblemDict, ProblemDoc, RecordDoc,
     ScoreboardRow, Tdoc, TrainingDoc, User,
 } from '../interface';
 import type { DocType } from '../model/document';
@@ -65,21 +65,21 @@ export interface EventMap extends KnownHandlerEvents {
     'discussion/before-add': (payload: Partial<DiscussionDoc>) => VoidReturn
     'discussion/add': (payload: Partial<DiscussionDoc>) => VoidReturn
 
-    // 'problem/before-add': (domainId: string, content: string, owner: number, docId: number, doc: Partial<ProblemDoc>) => VoidReturn
-    // 'problem/add': (doc: Partial<ProblemDoc>, docId: number) => VoidReturn
-    // 'problem/before-edit': (doc: Partial<ProblemDoc>) => VoidReturn
-    // 'problem/edit': (doc: ProblemDoc) => VoidReturn
-    // 'problem/before-del': (domainId: string, docId: number) => VoidReturn
-    // 'problem/del': (domainId: string, docId: number) => VoidReturn
-    // 'problem/list': (query: Filter<ProblemDoc>, handler: any, sort?: string[]) => VoidReturn
-    // 'problem/get': (doc: ProblemDoc, handler: any) => VoidReturn
-    // 'problem/delete': (domainId: string, docId: number) => VoidReturn
-    // 'problem/addTestdata': (domainId: string, docId: number, name: string, payload: Omit<FileInfo, '_id'>) => VoidReturn
-    // 'problem/renameTestdata': (domainId: string, docId: number, name: string, newName: string) => VoidReturn
-    // 'problem/delTestdata': (domainId: string, docId: number, name: string[]) => VoidReturn
-    // 'problem/addAdditionalFile': (domainId: string, docId: number, name: string, payload: Omit<FileInfo, '_id'>) => VoidReturn
-    // 'problem/renameAdditionalFile': (domainId: string, docId: number, name: string, newName: string) => VoidReturn
-    // 'problem/delAdditionalFile': (domainId: string, docId: number, name: string[]) => VoidReturn
+    'problem/before-add': (domainId: string, content: string, owner: number, docId: number, doc: Partial<ProblemDoc>) => VoidReturn
+    'problem/add': (doc: Partial<ProblemDoc>, docId: number) => VoidReturn
+    'problem/before-edit': (doc: Partial<ProblemDoc>) => VoidReturn
+    'problem/edit': (doc: ProblemDoc) => VoidReturn
+    'problem/before-del': (domainId: string, docId: number) => VoidReturn
+    'problem/del': (domainId: string, docId: number) => VoidReturn
+    'problem/list': (query: Filter<ProblemDoc>, handler: any, sort?: string[]) => VoidReturn
+    'problem/get': (doc: ProblemDoc, handler: any) => VoidReturn
+    'problem/delete': (domainId: string, docId: number) => VoidReturn
+    'problem/addTestdata': (domainId: string, docId: number, name: string, payload: Omit<FileInfo, '_id'>) => VoidReturn
+    'problem/renameTestdata': (domainId: string, docId: number, name: string, newName: string) => VoidReturn
+    'problem/delTestdata': (domainId: string, docId: number, name: string[]) => VoidReturn
+    'problem/addAdditionalFile': (domainId: string, docId: number, name: string, payload: Omit<FileInfo, '_id'>) => VoidReturn
+    'problem/renameAdditionalFile': (domainId: string, docId: number, name: string, newName: string) => VoidReturn
+    'problem/delAdditionalFile': (domainId: string, docId: number, name: string[]) => VoidReturn
 
     'contest/before-add': (payload: Partial<Tdoc>) => VoidReturn
     'contest/add': (payload: Partial<Tdoc>, id: ObjectId) => VoidReturn
