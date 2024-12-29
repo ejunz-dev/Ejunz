@@ -1,5 +1,5 @@
 import { KoaContext, NotFoundError } from '@ejunz/framework';
-// import BlackListModel from '../../model/blacklist';
+import BlackListModel from '../../model/blacklist';
 import DomainModel from '../../model/domain';
 import * as system from '../../model/system';
 
@@ -15,7 +15,7 @@ export default async (ctx: KoaContext, next) => {
     const [absoluteDomain, inferDomain, bdoc] = await Promise.all([
         DomainModel.get(domainId),
         forceDomain ? Promise.resolve(null) : DomainModel.getByHost(host),
-        // BlackListModel.get(`ip::${ip}`),
+        BlackListModel.get(`ip::${ip}`),
     ]);
     if (bdoc) {
         ctx.body = 'blacklisted'; // Just return 404 if blacklisted
