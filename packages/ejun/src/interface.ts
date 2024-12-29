@@ -785,7 +785,7 @@ export interface Lib extends Record<string, any> {
     buildContent: typeof import('./lib/content').buildContent;
     // mail: typeof import('./lib/mail');
     // rating: typeof import('./lib/rating').default;
-    // testdataConfig: typeof import('./lib/testdataConfig');
+    testdataConfig: typeof import('./lib/testdataConfig');
     problemSearch: ProblemSearch;
 }
 

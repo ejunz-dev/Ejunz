@@ -7,7 +7,7 @@ export {
     WebService, Router, HandlerCommon, httpServer,
 } from '@ejunz/framework';
 
-// export * from './pipelineUtils';
+export * from './pipelineUtils';
 export * from './error';
 export * from './libs';
 export * from './settings';
@@ -28,14 +28,14 @@ export { default as RecordModel } from './model/record';
 // export { default as SolutionModel } from './model/solution';
 export { default as MessageModel } from './model/message';
 // export { default as OauthModel } from './model/oauth';
-// export { default as BlackListModel } from './model/blacklist';
+export { default as BlackListModel } from './model/blacklist';
 export { default as DomainModel } from './model/domain';
-// export { default as StorageModel } from './model/storage';
-// export { default as TaskModel } from './model/task';
+export { default as StorageModel } from './model/storage';
+export { default as TaskModel } from './model/task';
 export * from './model/builtin';
-// export * as JudgeHandler from './handler/judge';
+export * as JudgeHandler from './handler/judge';
 export { registerResolver, registerValue, registerUnion } from './service/api';
-// export { postJudge } from './handler/judge';
+export { postJudge } from './handler/judge';
 export { Collections } from './service/db';
 export { Handler, ConnectionHandler, requireSudo } from './service/server';
 export { Service, Context } from './context';
@@ -50,6 +50,6 @@ export const rank = db.ranked.bind(db);
 export { UiContextBase } from './service/layers/base';
 export * from '@ejunz/framework/decorators';
 export * from '@ejunz/framework/validator';
-// export * as StorageService from './service/storage';
+export * as StorageService from './service/storage';
 export { EventMap } from './service/bus';
 export { db, pwsh };
