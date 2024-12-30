@@ -747,12 +747,12 @@ export interface Model {
     task: typeof import('./model/task').default,
     schedule: typeof import('./model/schedule').default;
     oplog: typeof import('./model/oplog'),
-    // token: typeof import('./model/token').default,
-    // training: typeof import('./model/training'),
+    token: typeof import('./model/token').default,
+    training: typeof import('./model/training'),
     user: typeof import('./model/user').default,
     oauth: typeof import('./model/oauth').default,
     storage: typeof import('./model/storage').default,
-    // rp: typeof import('./script/rating').RpTypes,
+    rp: typeof import('./script/rating').RpTypes,
 }
 
 export interface EjunzService {
