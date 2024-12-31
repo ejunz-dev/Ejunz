@@ -38,7 +38,8 @@
     <div class="section side">
       {% if udoc.librarypic %}<div class="discussion-node__bg {{ udoc.librarypic }}"></div>{% endif %}
       <div class="section__header">
-        <h1 class="section__title">{{ _("{0}'s library").format(udoc.uname) }}</h1>
+        <h1 class="section__title">{{ _("{0}'s library").format(dname.toString()) }}</h1>
+
       </div>
       <div class="section__body">
         {% if handler.user._id == udoc._id %}
