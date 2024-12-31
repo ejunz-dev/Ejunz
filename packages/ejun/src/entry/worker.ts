@@ -98,6 +98,9 @@ export async function apply(ctx: Context) {
     }
     await ctx.parallel('app/listen');
     logger.success('Server started');
+    await ctx.parallel('task/daily');
+    await global.Ejunz.script.rp?.run({}, new Logger('task/rp').debug);
+    logger.success("daily task started")
     process.send?.('ready');
     await ctx.parallel('app/ready');
     return { fail };

@@ -13,8 +13,8 @@ if (!argv.args[0] || argv.args[0] === 'cli') {
     const cli = cac();
     require('../src/commands/install').register(cli);
     require('../src/commands/addon').register(cli);
-    // require('../src/commands/db').register(cli);
-    // require('../src/commands/patch').register(cli);
+    require('../src/commands/db').register(cli);
+    require('../src/commands/patch').register(cli);
     cli.help();
     cli.parse();
     if (!cli.matchedCommand) {
