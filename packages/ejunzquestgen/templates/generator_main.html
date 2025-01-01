@@ -19,6 +19,19 @@
         <!-- Input Form -->
         <form id="generate-form" method="POST" action="./mcq">
           <input type="hidden" name="domainId" value="{{ domainId }}">
+
+          <label for="document_id">{{ _('Choose a Document') }}:</label>
+          <select id="document_id" name="document_id" required style="width: 100%;" onchange="populateContent(this)">
+            <option value="" disabled selected>{{ _('Select a document') }}</option>
+            {% if documents and documents.length %}
+              {% for doc in documents %}
+              <option value="{{ doc.content }}">{{ doc.title }}</option>
+              {% endfor %}
+            {% else %}
+            <option value="" disabled>{{ _('No documents available') }}</option>
+            {% endif %}
+          </select>
+
           <label for="input_text">{{ _('Input Text') }}:</label>
           <textarea id="input_text" name="input_text" required style="width: 100%; height: 150px;">{{ request.body.input_text or '' }}</textarea>
 
@@ -79,4 +92,12 @@
     </div>
   </div>
 </div>
+
+<script>
+  // 当选择文档时，填充 Input Text 框
+  function populateContent(select) {
+    const content = select.value;
+    document.getElementById('input_text').value = content;
+  }
+</script>
 {% endblock %}

@@ -7,6 +7,7 @@ import * as document from 'ejun/src/model/document';
 import fs from 'fs';
 import path from 'path';
 import { Logger } from '@ejunz/utils/lib/utils';
+import {LibraryModel} from '@ejunz/ejunzlibrary';
 
 function sortable(source: string) {
     return source.replace(/(\d+)/g, (str) => (str.length >= 6 ? str : ('0'.repeat(6 - str.length) + str)));
@@ -199,14 +200,20 @@ class Question_MCQ_Handler extends Handler {
     async get() {
         const domainId = this.args?.domainId || this.context?.domainId || 'system';
         this.context.domainId = domainId;
+
+        // 获取所有文档，用于选择框
+        const documents = await LibraryModel.getMulti(domainId, {}).project({ _id: 1, title: 1, content: 1 }).toArray();
+
         this.response.template = 'generator_main.html';
         this.response.body = {
             message: 'Welcome to the Question Generator!',
-            questions: null,
+            questions: null, // 初始状态没有生成的问题
+            documents, // 将文档数据传递到模板
             domainId,
             userId: this.user?._id || null,
         };
     }
+
     async post() {
         let domainId = this.args?.domainId || this.context?.domainId || this.request.body?.domainId;
         if (!domainId && this.request.headers.referer) {
@@ -215,6 +222,7 @@ class Question_MCQ_Handler extends Handler {
         }
         const userId = this.user?._id || null;
         const { input_text, max_questions, question_type, difficulty } = this.request.body;
+
         const params = {
             domainId,
             userId,
@@ -223,6 +231,7 @@ class Question_MCQ_Handler extends Handler {
             question_type,
             difficulty,
         };
+
         try {
             const apiUrl = loadApiConfig();
             const response = await fetch(`${apiUrl}/generate-mcq`, {
@@ -234,17 +243,25 @@ class Question_MCQ_Handler extends Handler {
                 throw new Error(`API call failed with status: ${response.status}`);
             }
             const data = await response.json();
+
             this.response.template = 'generator_main.html';
             this.response.body = {
                 questions: data.questions,
                 message: 'Questions generated successfully!',
+                domainId,
+                documents: await LibraryModel.getMulti(domainId, {}).project({ _id: 1, title: 1, content: 1 }).toArray(),
             };
         } catch (error) {
             this.response.template = 'generator_main.html';
-            this.response.body = { error: `Failed to generate questions: ${error.message}` };
+            this.response.body = {
+                error: `Failed to generate questions: ${error.message}`,
+                domainId,
+                documents: await LibraryModel.getMulti(domainId, {}).project({ _id: 1, title: 1, content: 1 }).toArray(),
+            };
         }
     }
 }
+
 
 export class StagingPushHandler extends Handler {
     async post() {
