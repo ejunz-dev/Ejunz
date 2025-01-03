@@ -19,13 +19,15 @@
         <!-- Input Form -->
         <form id="generate-form" method="POST" action="./mcq">
           <input type="hidden" name="domainId" value="{{ domainId }}">
+          <input type="hidden" name="selectedDocumentId" id="selected_document_id" value="{{ documents[0]._id if documents and documents[0] else '' }}">
 
           <label for="document_id">{{ _('Choose a Document') }}:</label>
-          <select id="document_id" name="document_id" required style="width: 100%;" onchange="populateContent(this)">
+          <select id="document_id" name="document_id" required style="width: 100%;" onchange="this.form.input_text.value=this.options[this.selectedIndex].value; this.form.selectedDocumentId.value=this.options[this.selectedIndex].getAttribute('data-doc-id')">
+
             <option value="" disabled selected>{{ _('Select a document') }}</option>
             {% if documents and documents.length %}
               {% for doc in documents %}
-              <option value="{{ doc.content }}">{{ doc.title }}</option>
+              <option value="{{ doc.content }}" data-doc-id="{{ doc._id }}">{{ doc.title }}</option>
               {% endfor %}
             {% else %}
             <option value="" disabled>{{ _('No documents available') }}</option>
@@ -33,8 +35,8 @@
           </select>
 
           <label for="input_text">{{ _('Input Text') }}:</label>
-          <textarea id="input_text" name="input_text" required style="width: 100%; height: 150px;">{{ request.body.input_text or '' }}</textarea>
-
+          <textarea id="input_text" name="input_text" required style="width: 100%; height: 150px;"></textarea>
+          
           <label for="question_type">{{ _('Question Type') }}:</label>
           <select id="question_type" name="question_type" required style="width: 100%;">
             <option value="MCQ">MCQ</option>
@@ -63,9 +65,13 @@
         {% if questions %}
         <h2>{{ _('Generated Questions') }}:</h2>
         <form id="push-all-form" method="POST" action="./stage_push">
+          <!-- 添加隐藏字段 -->
           <input type="hidden" name="questions_payload" value="{{ questions | json }}">
+          <input type="hidden" name="selected_document_id" value="{{ selected_document_id }}">
           <button type="submit" class="button" style="margin-top: 20px;">{{ _('Push All to Staging') }}</button>
         </form>
+        
+      
         <ol>
           {% for question in questions %}
           <li style="margin-bottom: 20px;">
@@ -92,12 +98,4 @@
     </div>
   </div>
 </div>
-
-<script>
-  // 当选择文档时，填充 Input Text 框
-  function populateContent(select) {
-    const content = select.value;
-    document.getElementById('input_text').value = content;
-  }
-</script>
 {% endblock %}

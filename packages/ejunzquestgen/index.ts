@@ -201,14 +201,13 @@ class Question_MCQ_Handler extends Handler {
         const domainId = this.args?.domainId || this.context?.domainId || 'system';
         this.context.domainId = domainId;
 
-        // 获取所有文档，用于选择框
         const documents = await LibraryModel.getMulti(domainId, {}).project({ _id: 1, title: 1, content: 1 }).toArray();
 
         this.response.template = 'generator_main.html';
         this.response.body = {
             message: 'Welcome to the Question Generator!',
-            questions: null, // 初始状态没有生成的问题
-            documents, // 将文档数据传递到模板
+            questions: null, 
+            documents, 
             domainId,
             userId: this.user?._id || null,
         };
@@ -221,7 +220,14 @@ class Question_MCQ_Handler extends Handler {
             domainId = match ? match[1] : 'system';
         }
         const userId = this.user?._id || null;
-        const { input_text, max_questions, question_type, difficulty } = this.request.body;
+
+        const {
+            input_text,
+            max_questions,
+            question_type,
+            difficulty,
+            selectedDocumentId: selected_document_id,
+        } = this.request.body;
 
         const params = {
             domainId,
@@ -230,7 +236,11 @@ class Question_MCQ_Handler extends Handler {
             max_questions: parseInt(max_questions, 10),
             question_type,
             difficulty,
+            selected_document_id,
         };
+
+        console.log(`Received params: ${JSON.stringify(this.request.body)}`);
+        console.log(`Selected Document ID (selectedDocumentId): ${selected_document_id}`);
 
         try {
             const apiUrl = loadApiConfig();
@@ -239,19 +249,28 @@ class Question_MCQ_Handler extends Handler {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(params),
             });
+
             if (!response.ok) {
                 throw new Error(`API call failed with status: ${response.status}`);
             }
+
             const data = await response.json();
 
+            console.log(`Received data: ${JSON.stringify(data)}`);
+            this.context.selected_document_id = data.selected_document_id;
+
+
+            
             this.response.template = 'generator_main.html';
             this.response.body = {
                 questions: data.questions,
                 message: 'Questions generated successfully!',
                 domainId,
+                selected_document_id: data.selected_document_id,
                 documents: await LibraryModel.getMulti(domainId, {}).project({ _id: 1, title: 1, content: 1 }).toArray(),
             };
         } catch (error) {
+            console.error(`Error in generating questions: ${error.message}`);
             this.response.template = 'generator_main.html';
             this.response.body = {
                 error: `Failed to generate questions: ${error.message}`,
@@ -267,6 +286,9 @@ export class StagingPushHandler extends Handler {
     async post() {
         const domainId = this.context.domainId;
         const payload = this.request.body.questions_payload;
+        const selectedDocumentId = this.request.body.selected_document_id; // 从前端获取
+
+        console.log(`Received selected_document_id from frontend: ${selectedDocumentId}`);
 
         if (!payload) {
             this.response.status = 400;
@@ -275,8 +297,8 @@ export class StagingPushHandler extends Handler {
         }
 
         try {
-            const questions: any[] = typeof payload === 'string' ? JSON.parse(payload) : payload;
-            const savedIds: number[] = [];
+            const questions = typeof payload === 'string' ? JSON.parse(payload) : payload;
+            const savedIds = [];
 
             for (const question of questions) {
                 if (!question.question_statement || !Array.isArray(question.labeled_options) || !question.answer) {
@@ -285,24 +307,24 @@ export class StagingPushHandler extends Handler {
 
                 const newDocId = await this.generateNextDocId(domainId);
 
-                const questionDoc: Partial<QuestionDoc> = {
+                const questionDoc = {
                     docType: 91,
                     domainId,
                     docId: newDocId,
                     content: question.question_statement,
-                    options: question.labeled_options.map((option: any) => ({
+                    options: question.labeled_options.map(option => ({
                         label: option.label,
                         value: option.value,
                     })),
                     answer: { label: 'Example Label', value: question.answer },
                 };
 
-                // Trigger the `question/generated` event
                 console.log(`[Event Trigger] Triggering 'question/generated' for domainId: ${domainId}, docId: ${newDocId}`);
-                await bus.parallel('question/generated', domainId, newDocId, questionDoc);
+                await bus.parallel('question/generated', domainId, newDocId, questionDoc, selectedDocumentId);
                 console.log(`[Event Triggered] 'question/generated' triggered successfully for docId: ${newDocId}`);
                 savedIds.push(newDocId);
             }
+
             this.response.status = 200;
             this.response.body = {
                 message: 'Questions pushed and events triggered successfully!',
@@ -316,6 +338,7 @@ export class StagingPushHandler extends Handler {
             };
         }
     }
+ 
     async generateNextDocId(domainId: string): Promise<number> {
         const [lastDoc] = await QuestionModel.getMulti(domainId, {}, ['docId'])
             .sort({ docId: -1 })
