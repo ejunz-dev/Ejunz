@@ -204,7 +204,7 @@ class Question_MCQ_Handler extends Handler {
         const domainId = this.args?.domainId || this.context?.domainId || 'system';
         this.context.domainId = domainId;
 
-        const documents = await LibraryModel.getMulti(domainId, {}).project({ _id: 1, title: 1, content: 1 }).toArray();
+        const documents = await LibraryModel.getMulti(domainId, {}).project({ _id: 1, lid: 1, title: 1, content: 1 }).toArray();
 
         this.response.template = 'generator_main.html';
         this.response.body = {
