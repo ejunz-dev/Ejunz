@@ -40,6 +40,7 @@ export interface QuestionDoc {
     };
     createdAt: Date;
     updatedAt?: Date;
+    associatedDocumentId?: string; 
 }
 
 declare module 'ejun' {
@@ -54,7 +55,8 @@ declare module 'ejun' {
 interface QuestionCreateOptions {
     difficulty?: number;
     hidden?: boolean;
-    reference?: { domainId: string, qid: number };
+    reference?: { domainId: string; qid: number };
+    associatedDocumentId?: string | null; // 新增字段，用于关联文档
 }
 
 export class QuestionModel {
@@ -132,6 +134,7 @@ export class QuestionModel {
             answer,
             difficulty: meta.difficulty || 1,
             reference: meta.reference || null,
+            associatedDocumentId: meta.associatedDocumentId || null,
             createdAt: new Date(),
             updatedAt: null,
         };
@@ -281,12 +284,11 @@ class Question_MCQ_Handler extends Handler {
     }
 }
 
-
 export class StagingPushHandler extends Handler {
     async post() {
         const domainId = this.context.domainId;
         const payload = this.request.body.questions_payload;
-        const selectedDocumentId = this.request.body.selected_document_id; // 从前端获取
+        const selectedDocumentId = this.request.body.selected_document_id; // 接收关联字段
 
         console.log(`Received selected_document_id from frontend: ${selectedDocumentId}`);
 
@@ -297,8 +299,8 @@ export class StagingPushHandler extends Handler {
         }
 
         try {
-            const questions = typeof payload === 'string' ? JSON.parse(payload) : payload;
-            const savedIds = [];
+            const questions: any[] = typeof payload === 'string' ? JSON.parse(payload) : payload;
+            const savedIds: number[] = [];
 
             for (const question of questions) {
                 if (!question.question_statement || !Array.isArray(question.labeled_options) || !question.answer) {
@@ -306,39 +308,81 @@ export class StagingPushHandler extends Handler {
                 }
 
                 const newDocId = await this.generateNextDocId(domainId);
+                const answerOption = question.labeled_options.find((option: any) => option.value === question.answer);
+                let generatedQid = question.qid || '';
+                if (!generatedQid) {
+                    generatedQid = await this.generateUniqueQid(domainId);
+                } else {
+                    const existingQuestion = await QuestionModel.get(domainId, generatedQid);
+                    if (existingQuestion) {
+                        throw new Error(`QID "${generatedQid}" already exists in domain "${domainId}".`);
+                    }
+                }
 
-                const questionDoc = {
+                // 构造 questionDoc 并添加关联字段
+                const questionDoc: Partial<QuestionDoc> = {
                     docType: 91,
                     domainId,
+                    qid: generatedQid,
                     docId: newDocId,
+                    title: question.title || question.question_statement,
+                    tag: question.tag || [],
+                    owner: this.user._id,
                     content: question.question_statement,
-                    options: question.labeled_options.map(option => ({
+                    options: question.labeled_options.map((option: any) => ({
                         label: option.label,
                         value: option.value,
                     })),
-                    answer: { label: 'Example Label', value: question.answer },
+                    answer: answerOption
+                        ? { label: answerOption.label, value: answerOption.value }
+                        : null,
+                    hidden: question.hidden || false,
+                    sort: question.sort || `P${newDocId}`,
+                    difficulty: question.difficulty || 1,
+                    reference: question.reference || null,
+                    associatedDocumentId: selectedDocumentId, // 添加关联字段
+                    createdAt: new Date(),
+                    updatedAt: null,
                 };
 
-                console.log(`[Event Trigger] Triggering 'question/generated' for domainId: ${domainId}, docId: ${newDocId}`);
-                await bus.parallel('question/generated', domainId, newDocId, questionDoc, selectedDocumentId);
-                console.log(`[Event Triggered] 'question/generated' triggered successfully for docId: ${newDocId}`);
+                // 保存 questionDoc 到数据库
+                const stagedId = await QuestionModel.addWithId(
+                    domainId,
+                    questionDoc.docId!,
+                    questionDoc.qid || '',
+                    questionDoc.title,
+                    questionDoc.content,
+                    questionDoc.owner,
+                    questionDoc.tag,
+                    questionDoc.options || [],
+                    questionDoc.answer || '',
+                    {
+                        difficulty: questionDoc.difficulty,
+                        hidden: questionDoc.hidden,
+                        reference: questionDoc.reference,
+                        associatedDocumentId: questionDoc.associatedDocumentId, // 保存关联字段
+                    }
+                );
+
+                console.log(`[Saved] Question document with docId: ${newDocId}, associatedDocumentId: ${selectedDocumentId}`);
                 savedIds.push(newDocId);
             }
 
             this.response.status = 200;
+            this.response.template = 'generator_main.html';
             this.response.body = {
-                message: 'Questions pushed and events triggered successfully!',
+                message: 'Questions pushed successfully!',
                 savedIds,
             };
         } catch (error) {
-            console.error('Error during processing:', error.message);
             this.response.status = 500;
+            this.response.template = 'generator_main.html';
             this.response.body = {
-                error: `Failed to process request: ${error.message}`,
+                error: `Failed to push questions: ${error.message}`,
             };
         }
     }
- 
+
     async generateNextDocId(domainId: string): Promise<number> {
         const [lastDoc] = await QuestionModel.getMulti(domainId, {}, ['docId'])
             .sort({ docId: -1 })
@@ -346,6 +390,7 @@ export class StagingPushHandler extends Handler {
             .toArray();
         return (lastDoc?.docId || 0) + 1;
     }
+
     async generateUniqueQid(domainId: string): Promise<string> {
         let qid: string;
         let isUnique = false;
@@ -359,6 +404,7 @@ export class StagingPushHandler extends Handler {
         return qid;
     }
 }
+
 
 
 
