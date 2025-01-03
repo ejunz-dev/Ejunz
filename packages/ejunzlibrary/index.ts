@@ -9,6 +9,7 @@ export interface LibraryDoc {
     docType: 100;
     docId: ObjectId;
     domainId: string,
+    lid: number;
     owner: number;
     title: string;
     content: string;
@@ -29,6 +30,52 @@ declare module 'ejun' {
 }
 
 export class LibraryModel {
+    static async generateNextLid(domainId: string): Promise<number> {
+        const lastDoc = await DocumentModel.getMulti(domainId, TYPE_LIBRARY, {})
+            .sort({ lid: -1 }) // 按 lid 降序排列
+            .limit(1)
+            .project({ lid: 1 })
+            .toArray();
+        return (lastDoc[0]?.lid || 0) + 1; // 若不存在文档，从 1 开始
+    }
+
+    // 添加 addWithId 方法
+    static async addWithId(
+        domainId: string,
+        owner: number,
+        title: string,
+        content: string,
+        ip?: string,
+        meta: Partial<LibraryDoc> = {},
+    ): Promise<ObjectId> {
+        const lid = await LibraryModel.generateNextLid(domainId); // 生成新的 lid
+        const payload: Partial<LibraryDoc> = {
+            domainId,
+            content,
+            owner,
+            title,
+            ip,
+            lid,
+            nReply: 0,
+            updateAt: new Date(),
+            views: 0,
+            ...meta, // 合并其他元信息
+        };
+
+        const res = await DocumentModel.add(
+            domainId,
+            payload.content!,
+            payload.owner!,
+            TYPE_LIBRARY,
+            null,
+            null,
+            null,
+            _.omit(payload, ['domainId', 'content', 'owner']),
+        );
+
+        payload.docId = res; // 添加生成的 docId
+        return payload.docId;
+    }
     static async add(
         domainId:string, owner: number, title: string, content: string, ip?: string,
     ): Promise<ObjectId> {
@@ -205,7 +252,16 @@ class LibraryEditHandler extends LibraryHandler {
     @param('content', Types.Content)
     async postCreate(domainId: string, title: string, content: string) {
         await this.limitRate('add_library', 3600, 60);
-        const did = await LibraryModel.add(domainId, this.user._id, title, content, this.request.ip);
+        
+        // 调用 addWithId 方法生成并保存 lid
+        const did = await LibraryModel.addWithId(
+            domainId,
+            this.user._id,
+            title,
+            content,
+            this.request.ip
+        );
+        
         this.response.body = { did };
         this.response.redirect = this.url('library_detail', { uid: this.user._id, did });
     }
@@ -215,10 +271,13 @@ class LibraryEditHandler extends LibraryHandler {
     @param('content', Types.Content)
     async postUpdate(domainId: string, did: ObjectId, title: string, content: string) {
         if (!this.user.own(this.ddoc!)) this.checkPriv(PRIV.PRIV_EDIT_SYSTEM);
+        
+        // 修改文档内容
         await Promise.all([
             LibraryModel.edit(domainId, did, title, content),
             OplogModel.log(this, 'library.edit', this.ddoc),
         ]);
+        
         this.response.body = { did };
         this.response.redirect = this.url('library_detail', { uid: this.user._id, did });
     }
@@ -226,13 +285,17 @@ class LibraryEditHandler extends LibraryHandler {
     @param('did', Types.ObjectId)
     async postDelete(domainId: string, did: ObjectId) {
         if (!this.user.own(this.ddoc!)) this.checkPriv(PRIV.PRIV_EDIT_SYSTEM);
+        
+        // 删除文档
         await Promise.all([
             LibraryModel.del(domainId, did),
             OplogModel.log(this, 'library.delete', this.ddoc),
         ]);
+        
         this.response.redirect = this.url('library_main', { uid: this.ddoc!.owner });
     }
 }
+
 
 export async function apply(ctx: Context) {
     // ctx.Route('library', '/library', LibHandler);
