@@ -5,13 +5,6 @@ import {LibraryModel} from '@ejunz/ejunzlibrary';
 const logger = new Logger('addon/bus');
 
 
-declare module 'ejun' {
-    export interface Events<C extends Context = Context> {
-        'question/generated': (domainId: string, questionDocId: string, questionDoc: Partial<QuestionDoc>) => void;
-        'library/updated': (domainId: string, libraryId: string, updateData: { questionId: number }) => void;
-    }
-}
-
 export async function apply(ctx: Context) {
     const api = new ApiMixin(ctx);
 
