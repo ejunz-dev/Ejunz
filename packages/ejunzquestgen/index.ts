@@ -1,5 +1,5 @@
 import {
-    _, Context, DiscussionNotFoundError, DocumentModel, Filter, DomainModel, ProblemModel, ProblemDoc,
+    _, Context, DiscussionNotFoundError, DocumentModel, Filter, DomainModel, ProblemModel, ProblemDoc, bus,
     Handler, NumberKeys, ObjectId, OplogModel, paginate, post, query, route, Projection, buildProjection,
     param, PRIV, Types, UserModel, PERM, PERMS_BY_FAMILY, Permission, BadRequestError, PermissionError, NotFoundError
 } from 'ejun';
@@ -267,81 +267,52 @@ export class StagingPushHandler extends Handler {
     async post() {
         const domainId = this.context.domainId;
         const payload = this.request.body.questions_payload;
+
         if (!payload) {
             this.response.status = 400;
             this.response.body = { error: 'No questions payload provided.' };
             return;
         }
+
         try {
             const questions: any[] = typeof payload === 'string' ? JSON.parse(payload) : payload;
             const savedIds: number[] = [];
+
             for (const question of questions) {
                 if (!question.question_statement || !Array.isArray(question.labeled_options) || !question.answer) {
                     throw new Error('Invalid question format: Each question must include question_statement, labeled_options, and answer.');
                 }
+
                 const newDocId = await this.generateNextDocId(domainId);
-                const answerOption = question.labeled_options.find((option: any) => option.value === question.answer);
-                let generatedQid = question.qid || '';
-                if (!generatedQid) {
-                    generatedQid = await this.generateUniqueQid(domainId);
-                } else {
-                    const existingQuestion = await QuestionModel.get(domainId, generatedQid);
-                    if (existingQuestion) {
-                        throw new Error(`QID "${generatedQid}" already exists in domain "${domainId}".`);
-                    }
-                }
+
                 const questionDoc: Partial<QuestionDoc> = {
                     docType: 91,
                     domainId,
-                    qid: generatedQid,
                     docId: newDocId,
-                    title: question.title || question.question_statement,
-                    tag: question.tag || [],
-                    owner: this.user._id,
                     content: question.question_statement,
                     options: question.labeled_options.map((option: any) => ({
                         label: option.label,
                         value: option.value,
                     })),
-                    answer: answerOption
-                        ? { label: answerOption.label, value: answerOption.value }
-                        : null,
-                    hidden: question.hidden || false,
-                    sort: question.sort || `P${newDocId}`,
-                    difficulty: question.difficulty || 1,
-                    reference: question.reference || null,
-                    createdAt: new Date(),
-                    updatedAt: null,
+                    answer: { label: 'Example Label', value: question.answer },
                 };
-                const stagedId = await QuestionModel.addWithId(
-                    domainId,
-                    questionDoc.docId!,
-                    questionDoc.qid || '',
-                    questionDoc.title,
-                    questionDoc.content,
-                    questionDoc.owner,
-                    questionDoc.tag,
-                    questionDoc.options || [],
-                    questionDoc.answer || '',
-                    {
-                        difficulty: questionDoc.difficulty,
-                        hidden: questionDoc.hidden,
-                        reference: questionDoc.reference,
-                    }
-                );
+
+                // Trigger the `question/generated` event
+                console.log(`[Event Trigger] Triggering 'question/generated' for domainId: ${domainId}, docId: ${newDocId}`);
+                await bus.parallel('question/generated', domainId, newDocId, questionDoc);
+                console.log(`[Event Triggered] 'question/generated' triggered successfully for docId: ${newDocId}`);
                 savedIds.push(newDocId);
             }
             this.response.status = 200;
-            this.response.template = 'generator_main.html';
             this.response.body = {
-                message: 'Questions pushed successfully!',
+                message: 'Questions pushed and events triggered successfully!',
                 savedIds,
             };
         } catch (error) {
+            console.error('Error during processing:', error.message);
             this.response.status = 500;
-            this.response.template = 'generator_main.html';
             this.response.body = {
-                error: `Failed to push questions: ${error.message}`,
+                error: `Failed to process request: ${error.message}`,
             };
         }
     }
@@ -365,6 +336,10 @@ export class StagingPushHandler extends Handler {
         return qid;
     }
 }
+
+
+
+
 
 export class StagingQuestionHandler extends Handler {
     async get({ domainId, page = 1, pageSize = 10 }) {

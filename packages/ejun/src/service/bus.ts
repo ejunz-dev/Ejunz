@@ -98,7 +98,6 @@ export interface EventMap extends KnownHandlerEvents {
     'record/judge': (rdoc: RecordDoc, updated: boolean, pdoc?: ProblemDoc) => VoidReturn
 }
 /* eslint-enable @typescript-eslint/naming-convention */
-
 declare module 'cordis' {
     interface Events extends EventMap { }
 }
