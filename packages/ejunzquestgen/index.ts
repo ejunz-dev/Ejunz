@@ -40,7 +40,7 @@ export interface QuestionDoc {
     };
     createdAt: Date;
     updatedAt?: Date;
-    associatedDocumentId?: string; 
+    associatedDocumentId?: number; 
 }
 
 declare module 'ejun' {
@@ -478,6 +478,12 @@ export class StagingQuestionHandler extends Handler {
                         associatedDocumentId: questionDoc.associatedDocumentId, 
                     }
                 );
+                await bus.emit('question/published', {
+                    domainId,
+                    docId,
+                    associatedDocumentId: questionDoc.associatedDocumentId,
+                    title: questionDoc.title,
+                });
                 
                 successCount++;
             } catch (error) {
