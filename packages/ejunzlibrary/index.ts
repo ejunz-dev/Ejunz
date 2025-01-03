@@ -1,7 +1,7 @@
 import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter,
     Handler, NumberKeys, ObjectId, OplogModel, paginate,
-    param, PRIV, Types, UserModel, DomainModel
+    param, PRIV, Types, UserModel, DomainModel,document,ProblemModel
 } from 'ejun';
 
 export const TYPE_LIBRARY: 100 = 100;
@@ -212,16 +212,24 @@ class LibraryDetailHandler extends LibraryHandler {
         const dsdoc = this.user.hasPriv(PRIV.PRIV_USER_PROFILE)
             ? await LibraryModel.getStatus(domainId, did, this.user._id)
             : null;
+
         const udoc = await UserModel.getById(domainId, this.ddoc!.owner);
+
         if (!dsdoc?.view) {
             await Promise.all([
                 LibraryModel.inc(domainId, did, 'views', 1),
                 LibraryModel.setStatus(domainId, did, this.user._id, { view: true }),
             ]);
         }
+
+        const problems = await getProblemsByLibraryId(domainId, this.ddoc.lid);
+
         this.response.template = 'library_detail.html';
         this.response.body = {
-            ddoc: this.ddoc, dsdoc, udoc,
+            ddoc: this.ddoc,
+            dsdoc,
+            udoc,
+            problems, 
         };
     }
 
@@ -241,6 +249,18 @@ class LibraryDetailHandler extends LibraryHandler {
         this.back({ star: false });
     }
 }
+export async function getProblemsByLibraryId(domainId: string, lid: number) {
+    console.log(`Fetching problems for library ID: ${lid}`);
+    const query = {
+        domainId,
+        associatedDocumentId: lid 
+    };
+    console.log(`Querying problems with:`, query);
+    return await ProblemModel.getMulti(domainId, query).toArray();
+}
+
+
+
 
 class LibraryEditHandler extends LibraryHandler {
     async get() {
