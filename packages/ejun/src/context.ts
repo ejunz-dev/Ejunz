@@ -11,7 +11,7 @@ import type { ConnectionHandler, Handler } from './service/server';
 import { Logger } from './logger'
 
 
-const logger = new Logger('addon/bus');
+const logger = new Logger('Bus');
 
 
 export interface Events<C extends Context = Context> extends cordis.Events<C>, EventMap, ServerEvents<Handler, ConnectionHandler> { }
