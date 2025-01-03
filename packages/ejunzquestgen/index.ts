@@ -61,7 +61,7 @@ interface QuestionCreateOptions {
 
 export class QuestionModel {
     static PROJECTION_PUBLIC: Field[] = [
-        '_id', 'domainId', 'docType', 'docId', 'qid', 'owner', 'title', 'tag', 'content', 'options', 'answer', 'difficulty', 'createdAt', 'updatedAt',
+        '_id', 'domainId', 'docType', 'docId', 'qid', 'owner', 'title', 'tag', 'content', 'options', 'answer', 'difficulty', 'createdAt', 'updatedAt','associatedDocumentId'
     ];
     static PROJECTION_CONTEST_LIST: Field[] = [
         '_id', 'domainId', 'docType', 'docId', 'qid',
@@ -475,6 +475,7 @@ export class StagingQuestionHandler extends Handler {
                     {
                         difficulty: questionDoc.difficulty || 1,
                         hidden: questionDoc.hidden || false,
+                        associatedDocumentId: questionDoc.associatedDocumentId, 
                     }
                 );
                 

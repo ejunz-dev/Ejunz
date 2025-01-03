@@ -67,6 +67,7 @@ interface ProblemCreateOptions {
     difficulty?: number;
     hidden?: boolean;
     reference?: { domainId: string, pid: number };
+    associatedDocumentId?: number | null;
 }
 
 export class ProblemModel {
@@ -90,7 +91,7 @@ export class ProblemModel {
     static PROJECTION_PUBLIC: Field[] = [
         ...ProblemModel.PROJECTION_LIST,
         'content', 'html', 'data', 'config', 'additional_file',
-        'reference', 'maintainer','options', 'answer',
+        'reference', 'maintainer','options', 'answer','associatedDocumentId'
     ];
 
     static default = {
@@ -193,6 +194,7 @@ export class ProblemModel {
             nAccept: 0,
             sort: sortable(pid || `P${docId}`),
             difficulty: meta.difficulty || 1,
+            associatedDocumentId: meta.associatedDocumentId ?? null,
         };
     
         if (pid) args.pid = pid;
