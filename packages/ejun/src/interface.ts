@@ -274,6 +274,7 @@ declare module './model/problem' {
             domainId: string;
             pid: number;
         };
+        associatedDocumentId?: number | null;
 
         /** string (errormsg) */
         config: string | ProblemConfig;
