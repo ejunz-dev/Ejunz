@@ -1,6 +1,9 @@
-import { Context, ApiMixin, ObjectId } from 'ejun';
+import { Context, ApiMixin, ObjectId, Logger } from 'ejun';
 import { QuestionDoc } from '@ejunz/ejunzquestgen';
 import {LibraryModel} from '@ejunz/ejunzlibrary';
+
+const logger = new Logger('addon/bus');
+
 
 declare module 'ejun' {
     export interface Events<C extends Context = Context> {
@@ -12,15 +15,15 @@ declare module 'ejun' {
 export async function apply(ctx: Context) {
     const api = new ApiMixin(ctx);
 
-    // 动态注册 `question/generated` 事件
-    api.registerEvent('question/generated', async (domainId, questionDocId, questionDoc, selectedDocumentId) => {
-        if (selectedDocumentId) {
-            const libraryDoc = await LibraryModel.get(domainId, new ObjectId(selectedDocumentId));
-            const updatedContent = `${libraryDoc.content}\nAssociated question: ${questionDocId}`;
-            await LibraryModel.edit(domainId, selectedDocumentId, libraryDoc.title, updatedContent);
-            console.log(`[Library Updated] Linked question ID ${questionDocId} to library ID ${selectedDocumentId}`);
-        } else {
-            console.log(`[Event Triggered] No document selected for linking question ID ${questionDocId}`);
+    // 动态注册并监听 `question/published` 事件
+    api.registerEvent('question/published', async (payload) => {
+        logger.info('[Event Triggered] question/published:', payload);
+
+        // 测试日志
+        if (payload?.associatedDocumentId) {
+            logger.info(
+                `Published question associated with document ID: ${payload.associatedDocumentId}`
+            );
         }
     });
     
