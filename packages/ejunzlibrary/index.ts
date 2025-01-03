@@ -246,6 +246,7 @@ export async function apply(ctx: Context) {
         args: {},
         checker: (handler) => handler.user.hasPriv(PRIV.PRIV_USER_PROFILE),
     }));
+    
     ctx.i18n.load('zh', {
         "{0}'s library": '{0} 的项目',
         Library: '项目',

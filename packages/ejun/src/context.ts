@@ -8,6 +8,11 @@ import type { EventMap } from './service/bus';
 import type { CheckService } from './service/check';
 import type { } from './service/migration';
 import type { ConnectionHandler, Handler } from './service/server';
+import { Logger } from './logger'
+
+
+const logger = new Logger('addon/bus');
+
 
 export interface Events<C extends Context = Context> extends cordis.Events<C>, EventMap, ServerEvents<Handler, ConnectionHandler> { }
 
@@ -54,17 +59,35 @@ const T = <F extends (...args: any[]) => any>(origFunc: F, disposeFunc?) =>
         this[Context.current]?.on('dispose', () => (disposeFunc ? disposeFunc(res) : res()));
     };
 
-export class ApiMixin extends Service {
-    addScript = T(addScript);
-    setImmediate = T(setImmediate, clearImmediate);
-    provideModule = T(provideModule);
-    injectUI = T(inject);
-    broadcast = (event: keyof EventMap, ...payload) => this.ctx.emit('bus/broadcast', event, payload);
-    constructor(ctx) {
-        super(ctx, '$api', true);
-        ctx.mixin('$api', ['addScript', 'setImmediate', 'provideModule', 'injectUI', 'broadcast']);
+    export class ApiMixin extends Service {
+        addScript = T(addScript);
+        setImmediate = T(setImmediate, clearImmediate);
+        provideModule = T(provideModule);
+        injectUI = T(inject);
+
+        registerEvent = (eventName: string, handler: (...args: any[]) => void) => {
+            this.ctx.on(eventName as keyof Events<Context>, handler);
+            logger.info(`Event "${eventName}" registered successfully.`);
+        };
+    
+        broadcast = (event: keyof EventMap, ...payload) => {
+            this.ctx.emit('bus/broadcast', event, payload);
+        };
+    
+        constructor(ctx) {
+            super(ctx, '$api', true);
+    
+            ctx.mixin('$api', [
+                'addScript',
+                'setImmediate',
+                'provideModule',
+                'injectUI',
+                'broadcast',
+                'registerEvent',
+            ]);
+        }
     }
-}
+    
 
 export class Context extends cordis.Context {
     domain?: DomainDoc;
