@@ -62,4 +62,21 @@
     </div>
   </div>
 </div>
+
+<!-- 添加关联问题链接 -->
+<div class="section">
+  <h3>{{ _('Related Problems') }}</h3>
+  <ul>
+    {% for problem in problems %}
+    <li>
+      <a class="discussion-node-tag media-link" href="{{ url('problem_detail', domainId=problem.domainId, pid=problem.docId) }}">
+        <span class="v-center icon icon-problem"></span>{{ problem.title }}
+      </a>
+    </li>
+    {% endfor %}
+    {% if not problems %}
+    <p>{{ _('No related problems found.') }}</p>
+    {% endif %}
+  </ul>
+</div>
 {% endblock %}

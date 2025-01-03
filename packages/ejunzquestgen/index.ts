@@ -204,6 +204,7 @@ class Question_MCQ_Handler extends Handler {
         const domainId = this.args?.domainId || this.context?.domainId || 'system';
         this.context.domainId = domainId;
 
+        // 获取 library 文档并包括 lid 字段
         const documents = await LibraryModel.getMulti(domainId, {}).project({ _id: 1, lid: 1, title: 1, content: 1 }).toArray();
 
         this.response.template = 'generator_main.html';
@@ -218,19 +219,28 @@ class Question_MCQ_Handler extends Handler {
 
     async post() {
         let domainId = this.args?.domainId || this.context?.domainId || this.request.body?.domainId;
+
+        // 确保 domainId 的值正确
         if (!domainId && this.request.headers.referer) {
             const match = this.request.headers.referer.match(/\/d\/([^/]+)/);
             domainId = match ? match[1] : 'system';
         }
         const userId = this.user?._id || null;
 
+        // 从请求体中获取数据
         const {
             input_text,
             max_questions,
             question_type,
             difficulty,
-            selectedDocumentId: selected_document_id,
+            selectedDocumentId, // 直接从请求体获取
         } = this.request.body;
+
+        // 确保 selectedDocumentId 为数字类型
+        const selected_document_id = parseInt(selectedDocumentId, 10);
+        if (isNaN(selected_document_id)) {
+            throw new Error('Invalid selectedDocumentId: must be a number.');
+        }
 
         const params = {
             domainId,
@@ -242,11 +252,13 @@ class Question_MCQ_Handler extends Handler {
             selected_document_id,
         };
 
-        console.log(`Received params: ${JSON.stringify(this.request.body)}`);
-        console.log(`Selected Document ID (selectedDocumentId): ${selected_document_id}`);
+        console.log(`Received params: ${JSON.stringify(params)}`);
+        console.log(`Selected Document ID (selected_document_id): ${selected_document_id}`);
 
         try {
             const apiUrl = loadApiConfig();
+
+            // 调用外部 API 生成问题
             const response = await fetch(`${apiUrl}/generate-mcq`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -262,15 +274,13 @@ class Question_MCQ_Handler extends Handler {
             console.log(`Received data: ${JSON.stringify(data)}`);
             this.context.selected_document_id = data.selected_document_id;
 
-
-            
             this.response.template = 'generator_main.html';
             this.response.body = {
                 questions: data.questions,
                 message: 'Questions generated successfully!',
                 domainId,
                 selected_document_id: data.selected_document_id,
-                documents: await LibraryModel.getMulti(domainId, {}).project({ _id: 1, title: 1, content: 1 }).toArray(),
+                documents: await LibraryModel.getMulti(domainId, {}).project({ _id: 1, lid: 1, title: 1, content: 1 }).toArray(),
             };
         } catch (error) {
             console.error(`Error in generating questions: ${error.message}`);
@@ -278,17 +288,18 @@ class Question_MCQ_Handler extends Handler {
             this.response.body = {
                 error: `Failed to generate questions: ${error.message}`,
                 domainId,
-                documents: await LibraryModel.getMulti(domainId, {}).project({ _id: 1, title: 1, content: 1 }).toArray(),
+                documents: await LibraryModel.getMulti(domainId, {}).project({ _id: 1, lid: 1, title: 1, content: 1 }).toArray(),
             };
         }
     }
 }
 
+
 export class StagingPushHandler extends Handler {
     async post() {
         const domainId = this.context.domainId;
         const payload = this.request.body.questions_payload;
-        const selectedDocumentId = this.request.body.selected_document_id; // 接收关联字段
+        const selectedDocumentId = Number(this.request.body.selected_document_id); // 确保转换为数字
 
         console.log(`Received selected_document_id from frontend: ${selectedDocumentId}`);
 
