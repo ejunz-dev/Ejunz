@@ -115,21 +115,25 @@
   </div>
   <div class="medium-3 columns"><div data-sticky="large">
     {% include "partials/problem_sidebar.html" %}
-  </div>
-    <!-- 插入显示 options 和 answer 字段 -->
     <div class="section">
-      <h2>Options</h2>
+      <h2>{{ _('Related Library Documents') }}</h2>
+      {% if relatedLibrary and relatedLibrary|length > 0 %}
       <ul>
-        {% for option in pdoc.options %}
-        <li><strong>{{ option.label }}:</strong> {{ option.value }}</li>
+        {% for library in relatedLibrary %}
+        <li>
+          <a class="discussion-node-tag media-link" href="{{ url('library_detail', domainId=library.domainId, did=library.docId) }}">
+            <span class="v-center icon icon-book"></span>{{ library.title }}
+          </a>
+        </li>
         {% endfor %}
       </ul>
+      {% else %}
+      <p>{{ _('No related library documents found.') }}</p>
+      {% endif %}
     </div>
-    <div class="section">
-      <h2>Answer</h2>
-      <p><strong>Correct Answer:</strong> {{ pdoc.answer.label }} - {{ pdoc.answer.value }}</p>
-    </div>
-  </div>
+    
+    
+    
 </div>
 </div>
 </div>
