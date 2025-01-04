@@ -367,7 +367,7 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
             discussionCount: dcnt,
             tdoc: this.tdoc,
             owner_udoc: (tid && this.tdoc.owner !== this.pdoc.owner) ? await user.getById(domainId, this.tdoc.owner) : null,
-            relatedLibrary: this.relatedLibrary,
+            relatedLibrary: this.response.body.relatedLibrary || [],
         };
         if (this.tdoc && this.tsdoc) {
             const fields = ['attend', 'startAt'];
