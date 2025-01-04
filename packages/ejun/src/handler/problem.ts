@@ -35,6 +35,7 @@ import {
     Handler, param, post, query, route, Types,
 } from '../service/server';
 import { ContestDetailBaseHandler } from './contest';
+import { LibraryModel } from '@ejunz/ejunzlibrary';
 
 export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
 
@@ -277,6 +278,18 @@ export class ProblemRandomHandler extends Handler {
         this.response.redirect = this.url('problem_detail', { pid });
     }
 }
+export async function getLibraryByAssociatedDocumentId(domainId: string, associatedDocumentId: number) {
+    console.log(`Fetching library for associatedDocumentId: ${associatedDocumentId}`);
+    const query = {
+        domainId,
+        lid: associatedDocumentId, // 用 lid 作为查询条件
+    };
+    console.log(`Querying library with:`, query);
+    return await LibraryModel.getMulti(domainId, query).toArray(); // 确保返回完整文档
+}
+
+
+
 
 export class ProblemDetailHandler extends ContestDetailBaseHandler {
     pdoc: ProblemDoc;
@@ -288,6 +301,17 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
     async _prepare(domainId: string, pid: number | string, tid?: ObjectId) {
         this.pdoc = await problem.get(domainId, pid);
         if (!this.pdoc) throw new ProblemNotFoundError(domainId, pid);
+        if (this.pdoc.associatedDocumentId) {
+            const relatedLibrary = await getLibraryByAssociatedDocumentId(domainId, this.pdoc.associatedDocumentId);
+            this.response.body.relatedLibrary = relatedLibrary.map((library) => ({
+                docId: library.docId.toString(), // 转为字符串，用于链接
+                title: library.title,
+                domainId: library.domainId,
+            }));
+            console.log(`Fetched relatedLibrary:`, this.response.body.relatedLibrary);
+        }
+        
+        
         if (tid) {
             if (!this.tdoc?.pids?.includes(this.pdoc.docId)) throw new ContestNotFoundError(domainId, tid);
             if (contest.isNotStarted(this.tdoc)) throw new ContestNotLiveError(tid);
@@ -343,6 +367,7 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
             discussionCount: dcnt,
             tdoc: this.tdoc,
             owner_udoc: (tid && this.tdoc.owner !== this.pdoc.owner) ? await user.getById(domainId, this.tdoc.owner) : null,
+            relatedLibrary: this.relatedLibrary,
         };
         if (this.tdoc && this.tsdoc) {
             const fields = ['attend', 'startAt'];
