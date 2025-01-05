@@ -443,6 +443,7 @@ export interface DomainDoc extends Record<string, any> {
     bulletin: string,
     _join?: any,
     host?: string[],
+    _files: FileInfo[];
 }
 
 // Message
