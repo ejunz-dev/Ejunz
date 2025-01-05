@@ -331,11 +331,11 @@ export async function apply(ctx: Context) {
     }));
     
     ctx.i18n.load('zh', {
-        "{0}'s library": '{0} 的项目',
-        Library: '项目',
-        library_detail: '项目详情',
-        library_edit: '编辑项目',
-        library_main: '项目',
+        "{0}'s library": '{0} 的文档',
+        Library: '文档',
+        library_detail: '文档详情',
+        library_edit: '编辑文档',
+        library_domain: '文档',
     });
     ctx.i18n.load('zh_TW', {
         "{0}'s library": '{0} 的部落格',
