@@ -1,4 +1,3 @@
-
 {% extends "layout/basic.html" %}
 {% block content %}
 <div class="row" data-sticky-parent>
@@ -11,7 +10,53 @@
         </div>
       </div>
       {{ noscript_note.render() }}
-      {% include "partials/files.html" %}
+      <div class="section__body no-padding files" data-fragment-id="files">
+        {% if files and files.length %}
+          <table class="data-table">
+            <colgroup>
+              <col class="col--checkbox">
+              <col class="col--name">
+              <col class="col--size">
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="col--checkbox">
+                  <label class="compact checkbox">
+                    <input type="checkbox" name="select_all" data-checkbox-toggle="files">
+                  </label>
+                </th>
+                <th class="col--name">{{ _('Filename') }}</th>
+                <th class="col--size">{{ _('Size') }}</th>
+                <th class="col--operation"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {%- for file in files -%}
+              <tr data-filename="{{ file.name or 'Unknown' }}" data-size="{{ file.size or 0 }}">
+                <td class="col--checkbox">
+                  <label class="compact checkbox">
+                    <input type="checkbox" data-checkbox-group="files" data-checkbox-range>
+                  </label>
+                </td>
+                <td class="col--name" data-preview>
+                  <a href="{{ urlForFile(file.userId, file.name or '') }}">{{ file.name or 'Unknown' }}</a>
+
+                </td>
+                <td class="col--size">{{ size(file.size or 0) }}</td>
+                <td class="col--operation">
+                  <a href="{{ urlForFile(file.userId, file.name or '') }}" class="icon icon-download"></a>
+                </td>
+              </tr>
+              {%- endfor -%}
+            </tbody>
+          </table>
+        {% else %}
+          <div class="no-files">
+            <i class="icon icon-files-empty"></i>
+            <p>{{ _('There are no files currently.') }}</p>
+          </div>
+        {% endif %}
+      </div>
       <div class="section__body">
         <button class="rounded button" name="remove_selected">{{ _('Remove Selected') }}</button>
       </div>
