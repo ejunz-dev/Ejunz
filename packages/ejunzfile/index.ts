@@ -17,22 +17,14 @@ export class DomainFilesHandler extends Handler {
     async get() {
         const domainId = await this.resolveDomainId();
         const domain = await DomainModel.get(domainId);
-    
-        console.log('Resolved domain:', domain);
-        if (!domain) throw new Error('Domain not found.');
-    
+
+        if (!domain) throw new NotFoundError('Domain not found.');
+
         this.response.body = {
             files: sortFiles(domain.files),
-
-            urlForFile: (userId, filename) => this.url('domain_fs_download', {
-                domainId: this.args.domainId || this.context.domainId,
-                userId: userId,
-                filename,
-            }),
-            
+            urlForFile: (filename: string) =>
+                this.url('domain_fs_download', { domainId, filename }),
         };
-
-        console.log('Response Body:', this.response.body);
 
         this.response.pjax = 'partials/files.html';
         this.response.template = 'domain_files.html';
@@ -40,34 +32,38 @@ export class DomainFilesHandler extends Handler {
 
     @post('filename', Types.Filename)
     async postUploadFile(domainId: string, filename: string) {
+        console.log("Uploading file:", filename, "to domainId:", domainId);
+        console.log('Decorators applied on postUploadFile:', { domainId, filename });
+
         const userId = this.user._id;
 
         const domain = await DomainModel.get(domainId);
-        if (!domain) throw new Error('Domain not found.');
+        if (!domain) throw new NotFoundError('Domain not found.');
 
         domain.files = domain.files || [];
 
-        if (domain.files.find((file) => file.name === filename && file.userId === userId)) {
-            throw new Error(`File "${filename}" already exists for userId: ${userId}.`);
+        if (domain.files.find((file) => file.name === filename)) {
+            throw new FileExistsError(`File "${filename}" already exists.`);
         }
 
         const file = this.request.files?.file;
-        if (!file) throw new Error('No file uploaded.');
-        const f = statSync(file.filepath);
+        if (!file) throw new ValidationError('No file uploaded.');
 
-        const filePath = `domain/${domainId}/${userId}/${filename}`;
+        const filePath = `domain/${domainId}/${filename}`;
         await StorageModel.put(filePath, file.filepath);
 
         const meta = await StorageModel.getMeta(filePath);
+
+        // 在元数据中添加 userId 字段
         const payload = {
             name: filename,
-            userId,
+            userId, // 添加上传者的 userId
             ...pick(meta, ['size', 'lastModified', 'etag']),
         };
 
         domain.files.push(payload);
         await DomainModel.edit(domainId, { files: domain.files });
-
+        console.log("File uploaded and metadata saved successfully:", payload);
         this.back();
     }
 
@@ -77,13 +73,10 @@ export class DomainFilesHandler extends Handler {
             throw new ValidationError('Expected "files" to be an array of strings');
         }
 
-        const userId = this.user._id;
         const domain = await DomainModel.get(domainId);
-        if (!domain) throw new ValidationError('Domain not found.');
+        if (!domain) throw new NotFoundError('Domain not found.');
 
-        const filePaths = files.map((file) => `domain/${domainId}/${userId}/${file}`);
-        console.log('Files to delete from storage:', filePaths);
-
+        const filePaths = files.map((file) => `domain/${domainId}/${file}`);
         await Promise.all([
             StorageModel.del(filePaths),
             DomainModel.edit(domainId, {
@@ -91,27 +84,30 @@ export class DomainFilesHandler extends Handler {
             }),
         ]);
 
-        console.log('Files successfully deleted');
         this.back();
     }
 }
 
-export class FSDownloadHandler extends Handler {
+
+export class DomainFSDownloadHandler extends Handler {
     noCheckPermView = true;
 
-    @param('domainId', Types.Name)
-    @param('userId', Types.Name)
-    @param('filename', Types.Filename)
-    async get(domainId: string, userId: string, filename: string) {
-        const target = `domain/${domainId}/${userId}/${filename}`;
-        console.log('Download request for target:', target);
-        console.log('Download handler params:', { domainId, userId, filename });
+    async get({ filename }: { filename: string }) {
+        // 通过 args、context 或默认值解析 domainId
+        const domainId = this.args?.domainId || this.context?.domainId || 'default_domain';
+        console.log('Resolved params:', { domainId, filename });
 
+        console.log("Entering DomainFSDownloadHandler.get...");
+        console.log("Received domainId:", domainId, "filename:", filename);
+
+        const target = `domain/${domainId}/${filename}`;
         const file = await StorageModel.getMeta(target);
         if (!file) {
-            console.error(`File not found: ${target}`);
             throw new NotFoundError(`File "${filename}" does not exist.`);
         }
+        console.log("Generated target path:", target);
+
+        console.log('File metadata:', file);
 
         try {
             this.response.redirect = await StorageModel.signDownloadLink(target, filename, false);
@@ -119,11 +115,15 @@ export class FSDownloadHandler extends Handler {
         } catch (e) {
             throw new Error(`Error downloading file "${filename}": ${e.message}`);
         }
+
+        console.log("File metadata retrieved successfully:", file);
     }
 }
 
 
-export class StorageHandler extends Handler {
+
+
+export class DomainStorageHandler extends Handler {
     noCheckPermView = true;
     notUsage = true;
 
@@ -162,8 +162,8 @@ export class StorageHandler extends Handler {
 
 export async function apply(ctx) {
     ctx.Route('domain_files', '/domainfile', DomainFilesHandler);
-    ctx.Route('domain_fs_download', '/domainfile/:domainId/:userId/:filename', FSDownloadHandler);
-    ctx.Route('storage', '/storage', StorageHandler);
+    ctx.Route('domain_fs_download', '/domainfile/:filename', DomainFSDownloadHandler);
+    ctx.Route('storage', '/domainfile/storage', DomainStorageHandler);
 
     ctx.injectUI('Nav', 'domain_files', () => ({
         name: 'domain_files',
