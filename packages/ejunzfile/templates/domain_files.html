@@ -4,39 +4,46 @@
   <div class="medium-10 columns">
     <div class="section">
       <div class="section__header">
-        <h1 class="section__title">{{ _('Files Available for Reference') }}</h1>
+        <h1 class="section__title">{{ _('Files') }}</h1>
+        <div class="section__tools">
+          <button class="primary rounded button" name="upload_file">{{ _('Upload File') }}</button>
+        </div>
       </div>
+      {{ noscript_note.render() }}
       <div class="section__body no-padding files" data-fragment-id="files">
         {% if files and files.length %}
           <table class="data-table">
             <colgroup>
+              <col class="col--checkbox">
               <col class="col--name">
               <col class="col--size">
-              <col class="col--operation">
             </colgroup>
             <thead>
               <tr>
+                <th class="col--checkbox">
+                  <label class="compact checkbox">
+                    <input type="checkbox" name="select_all" data-checkbox-toggle="files">
+                  </label>
+                </th>
                 <th class="col--name">{{ _('Filename') }}</th>
                 <th class="col--size">{{ _('Size') }}</th>
-                <th class="col--operation">{{ _('File URL') }}</th>
+                <th class="col--operation"></th>
               </tr>
             </thead>
             <tbody>
               {%- for file in files -%}
-              <tr>
+              <tr data-filename="{{ file.name or 'Unknown' }}" data-size="{{ file.size or 0 }}">
+                <td class="col--checkbox">
+                  <label class="compact checkbox">
+                    <input type="checkbox" data-checkbox-group="files" data-checkbox-range>
+                  </label>
+                </td>
                 <td class="col--name" data-preview>
-                  {{ file.name or 'Unknown' }}
+                  <a href="{{ urlForFile(file.name or '') }}">{{ file.name or 'Unknown' }}</a>
                 </td>
                 <td class="col--size">{{ size(file.size or 0) }}</td>
                 <td class="col--operation">
-                  <input
-                    type="text"
-                    value="{{ urlForFile(file.name or '') }}"
-                    readonly
-                    class="textbox url-box"
-                    style="width: 100%; cursor: pointer;"
-                    onclick="this.select();"
-                  >
+                  <a href="{{ urlForFile(file.name or '') }}" class="icon icon-download"></a>
                 </td>
               </tr>
               {%- endfor -%}
@@ -48,6 +55,9 @@
             <p>{{ _('There are no files currently.') }}</p>
           </div>
         {% endif %}
+      </div>
+      <div class="section__body">
+        <button class="rounded button" name="remove_selected">{{ _('Remove Selected') }}</button>
       </div>
     </div>
   </div>
