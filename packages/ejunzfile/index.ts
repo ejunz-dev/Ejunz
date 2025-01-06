@@ -139,4 +139,31 @@ export async function apply(ctx) {
         args: {},
         checker: (handler) => handler.user.hasPriv(PRIV.PRIV_USER_PROFILE),
     }));
+    ctx.i18n.load('zh', {
+        "{0}'s domain_files": '{0} 的文件',
+        domain_files: '域文件',
+        domain_files_detail: '文件详情',
+        domain_files_edit: '编辑文件',
+        domain_files_main: '文件',
+    });
+    ctx.i18n.load('zh_TW', {
+        "{0}'s domain_files": '{0} 的檔案',
+        domain_files: '檔案',
+        domain_files_detail: '檔案詳情',
+        domain_files_edit: '編輯檔案',
+        domain_files_main: '檔案',
+    });
+    ctx.i18n.load('kr', {
+        "{0}'s domain_files": '{0}의 파일',
+        domain_files: '파일',
+        domain_files_main: '파일',
+        domain_files_detail: '파일 상세',
+        domain_files_edit: '파일 수정',
+    });
+    ctx.i18n.load('en', {
+        domain_files_main: 'Domain Files',
+        domain_files_detail: 'Domain Files Detail',
+        domain_files_edit: 'Edit Domain Files',
+    });
+    
 }
