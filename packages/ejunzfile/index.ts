@@ -89,11 +89,11 @@ export class DomainFilesHandler extends Handler {
 }
 
 
+
 export class DomainFSDownloadHandler extends Handler {
     noCheckPermView = true;
 
     async get({ filename }: { filename: string }) {
-        // 通过 args、context 或默认值解析 domainId
         const domainId = this.args?.domainId || this.context?.domainId || 'default_domain';
         console.log('Resolved params:', { domainId, filename });
 
@@ -107,63 +107,31 @@ export class DomainFSDownloadHandler extends Handler {
         }
         console.log("Generated target path:", target);
 
-        console.log('File metadata:', file);
+        const mimeType = lookup(filename) || 'application/octet-stream';
+        console.log("File MIME type:", mimeType);
 
         try {
-            this.response.redirect = await StorageModel.signDownloadLink(target, filename, false);
-            this.response.addHeader('Cache-Control', 'public');
+            this.response.body = await StorageModel.get(target);
+            this.response.type = mimeType;
+
+            if (!['application/pdf', 'image/jpeg', 'image/png'].includes(mimeType)) {
+                this.response.disposition = `attachment; filename="${encodeRFC5987ValueChars(filename)}"`;
+            }
         } catch (e) {
-            throw new Error(`Error downloading file "${filename}": ${e.message}`);
+            throw new Error(`Error streaming file "${filename}": ${e.message}`);
         }
 
-        console.log("File metadata retrieved successfully:", file);
+        console.log("File streamed successfully:", file);
     }
 }
 
 
-
-
-export class DomainStorageHandler extends Handler {
-    noCheckPermView = true;
-    notUsage = true;
-
-
-    @param('target', Types.Name) 
-    @param('filename', Types.Filename, true) 
-    @param('expire', Types.UnsignedInt) 
-    @param('secret', Types.String) 
-    async get(target: string, filename = '', expire: number, secret: string) {
-        const expectedSignature = md5(`${target}/${expire}/${builtinConfig.file.secret}`);
-
-        if (expire < Date.now()) {
-            throw new AccessDeniedError('Link has expired.');
-        }
-
-        if (secret !== expectedSignature) {
-            console.error(`Invalid signature. Expected: ${expectedSignature}, Received: ${secret}`);
-            throw new AccessDeniedError('Invalid signature.');
-        }
-
-        const file = await StorageModel.getMeta(target);
-        if (!file) {
-            throw new NotFoundError(`File "${target}" does not exist.`);
-        }
-
-        this.response.body = await StorageModel.get(target);
-        this.response.type = lookup(target) || 'application/octet-stream';
-
-        if (filename) {
-            this.response.disposition = `attachment; filename="${encodeRFC5987ValueChars(filename)}"`;
-        }
-    }
-}
 
 
 
 export async function apply(ctx) {
     ctx.Route('domain_files', '/domainfile', DomainFilesHandler);
     ctx.Route('domain_fs_download', '/domainfile/:filename', DomainFSDownloadHandler);
-    ctx.Route('storage', '/domainfile/storage', DomainStorageHandler);
 
     ctx.injectUI('Nav', 'domain_files', () => ({
         name: 'domain_files',
