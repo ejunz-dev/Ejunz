@@ -87,16 +87,34 @@ declare module 'ejun' {
     }
   }
 }
+const pathRegex = /^\/d\/[A-Za-z0-9\/%.-]+$/;
+function parseFilePath(filePath: string, hostname: string) {
+  // Decode the file path to handle encoded characters like "%20"
+  const decodedPath = decodeURIComponent(filePath);
+  // Remove redundant slashes and encode the path for the final URL
+  const sanitizedPath = decodedPath.replace(/\/{2,}/g, '/');
+  return `${hostname}${sanitizedPath}`;
+}
 
-export function Media(md: MarkdownIt) {
-  const supported = ['youtube', 'vimeo', 'vine', 'prezi', 'bilibili', 'youku', 'msoffice'];
+export function Media(md: MarkdownIt, getHostname?: () => string) {
+  const supported = ['youtube', 'vimeo', 'vine', 'prezi', 'bilibili', 'youku', 'msoffice', 'file'];
+
   md.renderer.rules.video = function tokenizeReturn(tokens, idx) {
     let src = md.utils.escapeHtml(tokens[idx].attrGet('src'));
     const service = md.utils.escapeHtml(tokens[idx].attrGet('service')).toLowerCase();
-    if (Ejunz.module.richmedia?.[service]) {
+
+    if (Ejunz?.module?.richmedia?.[service]) {
       const result = Ejunz.module.richmedia[service].get(src);
       if (result) return result;
     }
+  
+
+    else if (service === 'file' && pathRegex.test(src)) {
+      const hostname = typeof getHostname === 'function' ? getHostname() : 'https://beta.ejunz.com';
+      src = parseFilePath(src, hostname);
+    }
+    
+
     if (service === 'pdf') {
       if (src.startsWith('file://') || src.startsWith('./')) src += src.includes('?') ? '&noDisposition=1' : '?noDisposition=1';
       return `\
@@ -107,6 +125,7 @@ export function Media(md: MarkdownIt) {
           </embed>
         </object>`;
     }
+
     if (['url', 'video'].includes(service)) {
       return `\
         <video width="100%" controls>
@@ -114,6 +133,7 @@ export function Media(md: MarkdownIt) {
           Your browser doesn't support video tag.
         </video>`;
     }
+
     if (supported.includes(service)) {
       return `\
       <iframe class="embed-responsive-item ${service}-player" type="text/html" \
@@ -123,34 +143,50 @@ export function Media(md: MarkdownIt) {
     }
     return `<div data-${service}>${md.utils.escapeHtml(src)}</div>`;
   };
+
   md.inline.ruler.before('emphasis', 'video', (state, silent) => {
-    const theState = state;
     const oldPos = state.pos;
-    if (state.src.charCodeAt(oldPos) !== 0x40
-      ||/* @ */ state.src.charCodeAt(oldPos + 1) !== 0x5B/* [ */) {
+  
+    if (state.src.charCodeAt(oldPos) !== 0x40 /* @ */
+      || state.src.charCodeAt(oldPos + 1) !== 0x5B /* [ */) {
       return false;
     }
+  
     const match = EMBED_REGEX.exec(state.src.slice(state.pos, state.src.length));
-    if (!match || match.length < 3) return false;
+    if (!match || match.length < 3) {
+      console.warn('Markdown inline rule did not match:', state.src);
+      return false;
+    }
+  
     let [, service, src] = match;
     service = service.toLowerCase();
+  
     if (service === 'youtube') src = youtubeParser(src);
     else if (service === 'vimeo') src = vimeoParser(src);
     else if (service === 'vine') src = vineParser(src);
     else if (service === 'prezi') src = preziParser(src);
+    else if (service === 'file' && pathRegex.test(src)) {
+      const hostname = typeof getHostname === 'function' ? getHostname() : 'https://beta.ejunz.com';
+      src = parseFilePath(src, hostname);
+    }
+  
     if (src === ')') src = '';
+  
     const serviceStart = oldPos + 2;
+  
     if (!silent) {
-      theState.pos = serviceStart;
-      const newState = new theState.md.inline.State(service, theState.md, theState.env, []);
+      state.pos = serviceStart;
+      const newState = new state.md.inline.State(service, state.md, state.env, []);
       newState.md.inline.tokenize(newState);
-      const token = theState.push('video', '', undefined);
+      const token = state.push('video', '', undefined);
       token.attrPush(['src', src]);
       token.attrPush(['service', service]);
       token.attrPush(['url', match[2]]);
-      token.level = theState.level;
+      token.level = state.level;
     }
-    theState.pos += theState.src.indexOf(')', theState.pos);
+  
+    state.pos += state.src.indexOf(')', state.pos);
     return true;
   });
+  
 }
