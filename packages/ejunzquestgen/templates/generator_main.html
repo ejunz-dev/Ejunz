@@ -16,7 +16,6 @@
         <p style="color: green; font-weight: bold;">{{ message }}</p>
         {% endif %}
 
-        <!-- Input Form -->
         <form id="generate-form" method="POST" action="./mcq">
           <input type="hidden" name="domainId" value="{{ domainId }}">
           <input type="hidden" name="selectedDocumentId" id="selected_document_id" value="{{ documents[0].lid if documents and documents[0] else '' }}">
