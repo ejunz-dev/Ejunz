@@ -1,7 +1,7 @@
 import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter,
     Handler, NumberKeys, ObjectId, OplogModel, paginate,
-    param, PRIV, Types, UserModel, DomainModel,document,ProblemModel
+    param, PRIV, Types, UserModel, DomainModel,StorageModel,ProblemModel,NotFoundError
 } from 'ejun';
 
 export const TYPE_LIBRARY: 100 = 100;
@@ -262,11 +262,23 @@ export async function getProblemsByLibraryId(domainId: string, lid: number) {
 
 
 
-class LibraryEditHandler extends LibraryHandler {
+export class LibraryEditHandler extends LibraryHandler {
     async get() {
+        const domainId = this.context.domainId || 'default_domain';
+        const files = await StorageModel.list(`domain/${domainId}/`);
+
+        // 定义用于生成文件 URL 的函数
+        const urlForFile = (filename: string) => `/d/${domainId}/domainfile/${encodeURIComponent(filename)}`;
+
         this.response.template = 'library_edit.html';
-        this.response.body = { ddoc: this.ddoc };
+        this.response.body = {
+            ddoc: this.ddoc,
+            files,
+            urlForFile, 
+        };
     }
+
+
 
     @param('title', Types.Title)
     @param('content', Types.Content)
@@ -286,35 +298,12 @@ class LibraryEditHandler extends LibraryHandler {
         this.response.redirect = this.url('library_detail', { uid: this.user._id, did });
     }
 
-    @param('did', Types.ObjectId)
-    @param('title', Types.Title)
-    @param('content', Types.Content)
-    async postUpdate(domainId: string, did: ObjectId, title: string, content: string) {
-        if (!this.user.own(this.ddoc!)) this.checkPriv(PRIV.PRIV_EDIT_SYSTEM);
-        
-        // 修改文档内容
-        await Promise.all([
-            LibraryModel.edit(domainId, did, title, content),
-            OplogModel.log(this, 'library.edit', this.ddoc),
-        ]);
-        
-        this.response.body = { did };
-        this.response.redirect = this.url('library_detail', { uid: this.user._id, did });
-    }
 
-    @param('did', Types.ObjectId)
-    async postDelete(domainId: string, did: ObjectId) {
-        if (!this.user.own(this.ddoc!)) this.checkPriv(PRIV.PRIV_EDIT_SYSTEM);
-        
-        // 删除文档
-        await Promise.all([
-            LibraryModel.del(domainId, did),
-            OplogModel.log(this, 'library.delete', this.ddoc),
-        ]);
-        
-        this.response.redirect = this.url('library_main', { uid: this.ddoc!.owner });
-    }
+
+    
 }
+
+
 
 
 export async function apply(ctx: Context) {
