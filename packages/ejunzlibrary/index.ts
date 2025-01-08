@@ -96,6 +96,20 @@ export class LibraryModel {
         payload.docId = res;
         return payload.docId;
     }
+    static async getByLid(domainId: string, lid: number): Promise<LibraryDoc | null> {
+
+        const cursor = DocumentModel.getMulti(domainId, TYPE_LIBRARY, { lid });
+
+        const doc = await cursor.next();
+  
+        if (!doc) {
+            console.warn(`No Library document found for lid: ${lid} in domain: ${domainId}`);
+            return null;
+        }
+    
+        return doc as LibraryDoc;
+    }
+    
 
     static async get(domainId: string, did: ObjectId): Promise<LibraryDoc> {
         return await DocumentModel.get(domainId, TYPE_LIBRARY, did);
@@ -200,12 +214,6 @@ export class LibraryDomainHandler extends Handler {
         }
     }
 }
-
-
-
-
-
-
 class LibraryDetailHandler extends LibraryHandler {
     @param('did', Types.ObjectId)
     async get(domainId: string, did: ObjectId) {
@@ -221,15 +229,28 @@ class LibraryDetailHandler extends LibraryHandler {
                 LibraryModel.setStatus(domainId, did, this.user._id, { view: true }),
             ]);
         }
+        console.log('ddoc:', this.ddoc);
 
-        const problems = await getProblemsByLibraryId(domainId, this.ddoc.lid);
+        let lid = this.ddoc.lid;
+        console.log('Original lid:', lid, 'Type:', typeof lid);
+
+        if (typeof lid === 'string') {
+            lid = parseInt(lid, 10);
+            console.log('Converted lid to number:', lid);
+        }
+
+        if (isNaN(lid)) {
+            throw new Error(`Invalid lid: ${this.ddoc.lid}`);
+        }
+
+        const problems = await getProblemsByLibraryId(domainId, lid);
 
         this.response.template = 'library_detail.html';
         this.response.body = {
             ddoc: this.ddoc,
             dsdoc,
             udoc,
-            problems, 
+            problems,
         };
     }
 
