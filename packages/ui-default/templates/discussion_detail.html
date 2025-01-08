@@ -7,15 +7,21 @@
       <div class="section__body">
         <ul class="supplementary list">
           <li>
-            <a class="discussion-node-tag" href="{{ url('discussion_node', type=model.discussion.typeDisplay[vnode.type], name=vnode.id) }}">
+            <a class="discussion-node-tag" href="{{ url('discussion_node', type=model.discussion.typeDisplay[vnode.type]|default('Unknown'), name=vnode.id) }}">
             {% if ddoc.parentType == model.document.TYPE_DISCUSSION_NODE %}
               <span class="v-center icon icon-tag"></span>
+              {{ _('Discussion Node') }}
             {% elif ddoc.parentType == model.document.TYPE_CONTEST %}
               <span class="v-center icon icon-award"></span>
+              {{ _('Contest Node') }}
+            {% elif ddoc.parentType == 100 %}
+              <span class="v-center icon icon-library"></span>
+              {{ _('lib') }}
             {% else %}
               <span class="v-center icon icon-flag"></span>
+              {{ _('Unknown Node') }}
             {% endif %}
-              {{ vnode['title'] }}
+              {{ vnode.title|default('Untitled Node') }}
             </a>
           </li>
           <li><h2>{{ ddoc.title }}</h2></li>
@@ -26,7 +32,7 @@
           </li>
         </ul>
         <div class="typo topic__content richmedia" data-emoji-enabled data-raw-url="{{ url('discussion_raw', did=ddoc.docId) }}">
-          {{ ddoc['content']|markdown|safe }}
+          {{ ddoc.content|markdown|safe }}
         </div>
       </div>
       <ul class="section__footer supplementary dot list">

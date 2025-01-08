@@ -15,7 +15,7 @@ import * as document from './document';
 import problem from './problem';
 import * as training from './training';
 import { User } from './user';
-
+import { LibraryModel, TYPE_LIBRARY} from 'ejun';
 export interface DiscussionDoc extends Document { }
 export type Field = keyof DiscussionDoc;
 
@@ -38,6 +38,7 @@ export const typeDisplay = {
     [document.TYPE_DISCUSSION_NODE]: 'node',
     [document.TYPE_TRAINING]: 'training',
     [document.TYPE_HOMEWORK]: 'homework',
+    [TYPE_LIBRARY]: 'library',
 };
 
 export const coll = db.collection('discussion.history');
@@ -292,6 +293,43 @@ export async function getVnode(domainId: string, type: number, id: string, uid?:
             ...tdoc, type, id: _id, hidden: false,
         };
     }
+
+if (type === TYPE_LIBRARY) {
+    console.log(`Processing TYPE_LIBRARY node with id: ${id}`); // Log the ID being processed
+
+    // 检查 id 是否为数字类型
+    let ddoc;
+    if (/^\d+$/.test(id)) {
+        console.log(`ID ${id} is a numeric lid.`);
+        ddoc = await LibraryModel.getByLid(domainId, parseInt(id, 10)); // 根据 lid 获取文档
+    } else if (ObjectId.isValid(id)) {
+        console.log(`ID ${id} is a valid ObjectId.`);
+        ddoc = await LibraryModel.get(domainId, new ObjectId(id));
+    } else {
+        console.error(`Invalid ID format: ${id}`);
+        throw new Error(`Invalid ID format: ${id}`);
+    }
+
+    if (!ddoc) {
+        console.error(`Library document not found for id: ${id}`);
+        throw new Error(`Library document not found for id: ${id}`);
+    }
+
+    const result = {
+        title: ddoc.title,
+        type: TYPE_LIBRARY,
+        id: ddoc.lid, // 使用 lid 返回
+        owner: ddoc.owner,
+        content: ddoc.content,
+        views: ddoc.views,
+        replies: ddoc.nReply,
+    };
+    console.log(`Returning Library node:`, result); // Log the final result
+    return result;
+}
+
+    
+
     return {
         title: id,
         ...await getNode(domainId, id),
@@ -300,6 +338,7 @@ export async function getVnode(domainId: string, type: number, id: string, uid?:
         owner: 1,
     };
 }
+
 
 export function getNodes(domainId: string) {
     return document.getMulti(domainId, document.TYPE_DISCUSSION_NODE).toArray();
