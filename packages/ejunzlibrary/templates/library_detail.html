@@ -28,7 +28,7 @@
           <span class="icon icon-edit"></span> {{ _('Edit') }}
         </a></li>
       {% endif %}
-        <li>{{ _('{0} views').format(ddoc.views) }}</li>
+        <li>{{ _('{0} views').format(ddoc.views) }}</li>a
       {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
         <li><form class="form--inline" method="post">
           <input type="hidden" name="operation" value="{% if not dsdoc['star'] %}star{% else %}unstar{% endif %}">
@@ -43,7 +43,43 @@
         </a></li>
       </ul>
     </div>
+
+    <!-- 添加关联问题链接 -->
+    <div class="section">
+      <h3>{{ _('Related Problems') }}</h3>
+      <ul>
+        {% for problem in problems %}
+        <li>
+          <a class="discussion-node-tag media-link" href="{{ url('problem_detail', domainId=problem.domainId, pid=problem.docId) }}">
+            <span class="v-center icon icon-problem"></span>{{ problem.title }}
+          </a>
+        </li>
+        {% endfor %}
+        {% if not problems %}
+        <p>{{ _('No related problems found.') }}</p>
+        {% endif %}
+      </ul>
+    </div>
+
+    <!-- 新建讨论前端 -->
+
+    <div class="section">
+      <h3>{{ _('Create Discussion') }}</h3>
+      {% if handler.user.hasPerm(perm.PERM_CREATE_DISCUSSION) %}
+        <a class="button primary" href="{{ url('discussion_create', type='library',name=ddoc.lid|int) }}">
+          {{ _('Start a New Discussion') }}
+        </a>
+      {% else %}
+        {% if not handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+          <p><a href="javascript:showSignInDialog();">{{ _('Login to create a discussion.') }}</a></p>
+        {% else %}
+          <p>{{ _('You do not have permission to create a discussion.') }}</p>
+        {% endif %}
+      {% endif %}
+    </div>
+
   </div>
+
   <div class="medium-3 columns">
     <div class="section side">
       <div class="profile__bg user-profile-bg--1"></div>
@@ -61,22 +97,5 @@
       </div>
     </div>
   </div>
-</div>
-
-<!-- 添加关联问题链接 -->
-<div class="section">
-  <h3>{{ _('Related Problems') }}</h3>
-  <ul>
-    {% for problem in problems %}
-    <li>
-      <a class="discussion-node-tag media-link" href="{{ url('problem_detail', domainId=problem.domainId, pid=problem.docId) }}">
-        <span class="v-center icon icon-problem"></span>{{ problem.title }}
-      </a>
-    </li>
-    {% endfor %}
-    {% if not problems %}
-    <p>{{ _('No related problems found.') }}</p>
-    {% endif %}
-  </ul>
 </div>
 {% endblock %}
