@@ -19,11 +19,11 @@
     {% set owner_udoc = udict[vnode.owner] %}
     {% include "partials/contest_sidebar.html" %}
   {% elif vnode.type == 100 %}
-    {% set ldoc = vnode %}
+    {% set ddoc = vnode %}
     {% set owner_udoc = udict[vnode.owner] %}
     <div class="section side">
       <div class="section__header">
-        <h1 class="section__title">{{ ldoc['title'] or _('Library Discussions') }}</h1>
+        <h1 class="section__title">{{ ddoc['title'] or _('Library Discussions') }}</h1>
       </div>
       <div class="section__body">
         <p>{{ _('This section contains discussions related to the library content.') }}</p>
