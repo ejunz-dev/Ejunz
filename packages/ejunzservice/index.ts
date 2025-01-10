@@ -1,6 +1,6 @@
 import { Context, ApiMixin, ObjectId, Logger } from 'ejun';
 import { QuestionDoc } from '@ejunz/ejunzquestgen';
-import {LibraryModel} from '@ejunz/ejunzlibrary';
+import {DocsModel} from '@ejunz/ejunzdocs';
 
 const logger = new Logger('addon/bus');
 
@@ -21,9 +21,9 @@ export async function apply(ctx: Context) {
     });
     
 
-    // 动态注册 `library/updated` 事件
-    api.registerEvent('library/updated', (domainId: string, libraryId: string, updateData: any) => {
-        console.log(`Library updated: ${domainId}, ID: ${libraryId}`);
+    // 动态注册 `docs/updated` 事件
+    api.registerEvent('docs/updated', (domainId: string, docsId: string, updateData: any) => {
+        console.log(`Docs updated: ${domainId}, ID: ${docsId}`);
     });
 }
 

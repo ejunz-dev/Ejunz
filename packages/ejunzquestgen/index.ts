@@ -7,7 +7,7 @@ import * as document from 'ejun/src/model/document';
 import fs from 'fs';
 import path from 'path';
 import { Logger } from '@ejunz/utils/lib/utils';
-import {LibraryModel} from '@ejunz/ejunzlibrary';
+import {DocsModel} from '@ejunz/ejunzdocs';
 
 function sortable(source: string) {
     return source.replace(/(\d+)/g, (str) => (str.length >= 6 ? str : ('0'.repeat(6 - str.length) + str)));
@@ -204,8 +204,8 @@ class Question_MCQ_Handler extends Handler {
         const domainId = this.args?.domainId || this.context?.domainId || 'system';
         this.context.domainId = domainId;
 
-        // 获取 library 文档并包括 lid 字段
-        const documents = await LibraryModel.getMulti(domainId, {}).project({ _id: 1, lid: 1, title: 1, content: 1 }).toArray();
+        // 获取 docs 文档并包括 lid 字段
+        const documents = await DocsModel.getMulti(domainId, {}).project({ _id: 1, lid: 1, title: 1, content: 1 }).toArray();
 
         this.response.template = 'generator_main.html';
         this.response.body = {
@@ -280,7 +280,7 @@ class Question_MCQ_Handler extends Handler {
                 message: 'Questions generated successfully!',
                 domainId,
                 selected_document_id: data.selected_document_id,
-                documents: await LibraryModel.getMulti(domainId, {}).project({ _id: 1, lid: 1, title: 1, content: 1 }).toArray(),
+                documents: await DocsModel.getMulti(domainId, {}).project({ _id: 1, lid: 1, title: 1, content: 1 }).toArray(),
             };
         } catch (error) {
             console.error(`Error in generating questions: ${error.message}`);
@@ -288,7 +288,7 @@ class Question_MCQ_Handler extends Handler {
             this.response.body = {
                 error: `Failed to generate questions: ${error.message}`,
                 domainId,
-                documents: await LibraryModel.getMulti(domainId, {}).project({ _id: 1, lid: 1, title: 1, content: 1 }).toArray(),
+                documents: await DocsModel.getMulti(domainId, {}).project({ _id: 1, lid: 1, title: 1, content: 1 }).toArray(),
             };
         }
     }
