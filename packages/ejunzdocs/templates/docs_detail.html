@@ -7,9 +7,9 @@
       <div class="section__body">
         <ul class="supplementary list">
           <li>
-            <a class="discussion-node-tag" href="{{ url('library_main', uid=udoc._id) }}">
+            <a class="discussion-node-tag" href="{{ url('docs_main', uid=udoc._id) }}">
               <span class="v-center icon icon-flag"></span>
-              {{ _("{0}'s library").format(udoc.uname) }}
+              {{ _("{0}'s docs").format(udoc.uname) }}
             </a>
           </li>
           <li><h2>{{ ddoc.title }}</h2></li>
@@ -25,7 +25,7 @@
       </div>
       <ul class="section__footer supplementary dot list">
       {% if handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) or handler.user.own(ddoc) %}
-        <li><a href="{{ url('library_edit', uid=udoc._id, did=ddoc.docId) }}">
+        <li><a href="{{ url('docs_edit', uid=udoc._id, did=ddoc.docId) }}">
           <span class="icon icon-edit"></span> {{ _('Edit') }}
         </a></li>
       {% endif %}
@@ -60,7 +60,7 @@
           {% if handler.user.hasPerm(perm.PERM_VIEW_DISCUSSION) %}
           <li class="menu__item">
             <a class="menu__link{% if page_name == 'discussion_node' or page_name == 'discussion_detail' %} active{% endif %}" 
-              href="{{ url('discussion_node', type='library', name=ddoc.lid) }}">
+              href="{{ url('discussion_node', type='docs', name=ddoc.lid) }}">
               <span class="icon icon-comment--text"></span> 
               {{ _('View Discussions') }}
               {% if discussionCount is defined %} ({{ discussionCount }}){% endif %}
@@ -69,7 +69,7 @@
           {% endif %}
           {% if handler.user.hasPerm(perm.PERM_CREATE_DISCUSSION) %}
           <li class="menu__item">
-            <a class="menu__link highlight" href="{{ url('discussion_create', type='library', name=ddoc.lid) }}">
+            <a class="menu__link highlight" href="{{ url('discussion_create', type='docs', name=ddoc.lid) }}">
               <span class="icon icon-add"></span> {{ _('Create a Discussion') }}
             </a>
           </li>

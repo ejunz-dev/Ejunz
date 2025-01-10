@@ -7,10 +7,10 @@ import {
 } from 'vj/utils';
 import { ctx } from '../../context';
 
-let isBeforeUnloadTriggeredByLibrary = !window.isSecureContext;
+let isBeforeUnloadTriggeredByDocs = !window.isSecureContext;
 function onBeforeUnload(e) {
-  if (isBeforeUnloadTriggeredByLibrary) {
-    isBeforeUnloadTriggeredByLibrary = false;
+  if (isBeforeUnloadTriggeredByDocs) {
+    isBeforeUnloadTriggeredByDocs = false;
     return;
   }
   e.returnValue = '';

@@ -6,7 +6,7 @@
   <div class="medium-9 columns">
     <div class="section">
       {% if not ddocs.length %}
-        {{ nothing.render('No documents found in this library.') }}
+        {{ nothing.render('No documents found in this docs.') }}
       {% else %}
         <ol class="section__list discussion__list">
           {%- for ddoc in ddocs -%}
@@ -20,7 +20,7 @@
                 </div>
                 <div class="media__body top">
                   <h1 class="discussion__title">
-                    <a href="{{ url('library_detail', domainId=domainId, did=ddoc._id, anchor=ddoc.updateAt.getTime()) }}" data-emoji-enabled>
+                    <a href="{{ url('docs_detail', domainId=domainId, did=ddoc._id, anchor=ddoc.updateAt.getTime()) }}" data-emoji-enabled>
                       {{ ddoc.title }}
                     </a>
                   </h1>
@@ -40,11 +40,11 @@
   <div class="medium-3 columns">
     <div class="section side">
       <div class="section__header">
-        <h1 class="section__title">{{ _("{0}'s Library").format(dname) }}</h1>
+        <h1 class="section__title">{{ _("{0}'s Docs").format(dname) }}</h1>
       </div>
       <div class="section__body">
         <p>
-          <a href="{{ url('library_create', domainId=domainId) }}" class="expanded primary button">
+          <a href="{{ url('docs_create', domainId=domainId) }}" class="expanded primary button">
             {{ _('Create a New Document') }}
           </a>
         </p>

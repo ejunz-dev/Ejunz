@@ -116,19 +116,19 @@
   <div class="medium-3 columns"><div data-sticky="large">
     {% include "partials/problem_sidebar.html" %}
     <div class="section">
-      <h2>{{ _('Related Library Documents') }}</h2>
-      {% if relatedLibrary and relatedLibrary|length > 0 %}
+      <h2>{{ _('Related Docs Documents') }}</h2>
+      {% if relatedDocs and relatedDocs|length > 0 %}
       <ul>
-        {% for library in relatedLibrary %}
+        {% for docs in relatedDocs %}
         <li>
-          <a class="discussion-node-tag media-link" href="{{ url('library_detail', domainId=library.domainId, did=library.docId) }}">
-            <span class="v-center icon icon-book"></span>{{ library.title }}
+          <a class="discussion-node-tag media-link" href="{{ url('docs_detail', domainId=docs.domainId, did=docs.docId) }}">
+            <span class="v-center icon icon-book"></span>{{ docs.title }}
           </a>
         </li>
         {% endfor %}
       </ul>
       {% else %}
-      <p>{{ _('No related library documents found.') }}</p>
+      <p>{{ _('No related docs documents found.') }}</p>
       {% endif %}
     </div>
     

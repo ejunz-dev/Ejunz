@@ -4,8 +4,8 @@ import {
     param, PRIV, Types, UserModel, DomainModel,StorageModel,ProblemModel,NotFoundError
 } from 'ejun';
 
-export const TYPE_LIBRARY: 100 = 100;
-export interface LibraryDoc {
+export const TYPE_DOCS: 100 = 100;
+export interface DocsDoc {
     docType: 100;
     docId: ObjectId;
     domainId: string,
@@ -22,16 +22,16 @@ export interface LibraryDoc {
 }
 declare module 'ejun' {
     interface Model {
-        library: typeof LibraryModel;
+        docs: typeof DocsModel;
     }
     interface DocType {
-        [TYPE_LIBRARY]: LibraryDoc;
+        [TYPE_DOCS]: DocsDoc;
     }
 }
 
-export class LibraryModel {
+export class DocsModel {
     static async generateNextLid(domainId: string): Promise<number> {
-        const lastDoc = await DocumentModel.getMulti(domainId, TYPE_LIBRARY, {})
+        const lastDoc = await DocumentModel.getMulti(domainId, TYPE_DOCS, {})
             .sort({ lid: -1 }) // 按 lid 降序排列
             .limit(1)
             .project({ lid: 1 })
@@ -46,10 +46,10 @@ export class LibraryModel {
         title: string,
         content: string,
         ip?: string,
-        meta: Partial<LibraryDoc> = {},
+        meta: Partial<DocsDoc> = {},
     ): Promise<ObjectId> {
-        const lid = await LibraryModel.generateNextLid(domainId); // 生成新的 lid
-        const payload: Partial<LibraryDoc> = {
+        const lid = await DocsModel.generateNextLid(domainId); // 生成新的 lid
+        const payload: Partial<DocsDoc> = {
             domainId,
             content,
             owner,
@@ -66,7 +66,7 @@ export class LibraryModel {
             domainId,
             payload.content!,
             payload.owner!,
-            TYPE_LIBRARY,
+            TYPE_DOCS,
             null,
             null,
             null,
@@ -79,7 +79,7 @@ export class LibraryModel {
     static async add(
         domainId:string, owner: number, title: string, content: string, ip?: string,
     ): Promise<ObjectId> {
-        const payload: Partial<LibraryDoc> = {
+        const payload: Partial<DocsDoc> = {
             domainId,
             content,
             owner,
@@ -90,86 +90,86 @@ export class LibraryModel {
             views: 0,
         };
         const res = await DocumentModel.add(
-            domainId, payload.content!, payload.owner!, TYPE_LIBRARY,
+            domainId, payload.content!, payload.owner!, TYPE_DOCS,
             null, null, null, _.omit(payload, ['domainId', 'content', 'owner']),
         );
         payload.docId = res;
         return payload.docId;
     }
-    static async getByLid(domainId: string, lid: number): Promise<LibraryDoc | null> {
+    static async getByLid(domainId: string, lid: number): Promise<DocsDoc | null> {
 
-        const cursor = DocumentModel.getMulti(domainId, TYPE_LIBRARY, { lid });
+        const cursor = DocumentModel.getMulti(domainId, TYPE_DOCS, { lid });
 
         const doc = await cursor.next();
   
         if (!doc) {
-            console.warn(`No Library document found for lid: ${lid} in domain: ${domainId}`);
+            console.warn(`No Docs document found for lid: ${lid} in domain: ${domainId}`);
             return null;
         }
     
-        return doc as LibraryDoc;
+        return doc as DocsDoc;
     }
     
 
-    static async get(domainId: string, did: ObjectId): Promise<LibraryDoc> {
-        return await DocumentModel.get(domainId, TYPE_LIBRARY, did);
+    static async get(domainId: string, did: ObjectId): Promise<DocsDoc> {
+        return await DocumentModel.get(domainId, TYPE_DOCS, did);
     }
 
-    static edit(domainId: string, did: ObjectId, title: string, content: string): Promise<LibraryDoc> {
+    static edit(domainId: string, did: ObjectId, title: string, content: string): Promise<DocsDoc> {
         const payload = { title, content };
-        return DocumentModel.set(domainId, TYPE_LIBRARY, did, payload);
+        return DocumentModel.set(domainId, TYPE_DOCS, did, payload);
     }
 
-    static inc(domainId: string, did: ObjectId, key: NumberKeys<LibraryDoc>, value: number): Promise<LibraryDoc | null> {
-        return DocumentModel.inc(domainId, TYPE_LIBRARY, did, key, value);
+    static inc(domainId: string, did: ObjectId, key: NumberKeys<DocsDoc>, value: number): Promise<DocsDoc | null> {
+        return DocumentModel.inc(domainId, TYPE_DOCS, did, key, value);
     }
 
     static del(domainId: string, did: ObjectId): Promise<never> {
         return Promise.all([
-            DocumentModel.deleteOne(domainId, TYPE_LIBRARY, did),
-            DocumentModel.deleteMultiStatus(domainId, TYPE_LIBRARY, { docId: did }),
+            DocumentModel.deleteOne(domainId, TYPE_DOCS, did),
+            DocumentModel.deleteMultiStatus(domainId, TYPE_DOCS, { docId: did }),
         ]) as any;
     }
 
-    static count(domainId: string, query: Filter<LibraryDoc>) {
-        return DocumentModel.count(domainId, TYPE_LIBRARY, query);
+    static count(domainId: string, query: Filter<DocsDoc>) {
+        return DocumentModel.count(domainId, TYPE_DOCS, query);
     }
 
-    static getMulti(domainId: string, query: Filter<LibraryDoc> = {}) {
-        return DocumentModel.getMulti(domainId, TYPE_LIBRARY, query)
+    static getMulti(domainId: string, query: Filter<DocsDoc> = {}) {
+        return DocumentModel.getMulti(domainId, TYPE_DOCS, query)
             .sort({ _id: -1 });
     }
 
     static async addReply(domainId: string, did: ObjectId, owner: number, content: string, ip: string): Promise<ObjectId> {
         const [[, drid]] = await Promise.all([
-            DocumentModel.push(domainId, TYPE_LIBRARY, did, 'reply', content, owner, { ip }),
-            DocumentModel.incAndSet(domainId, TYPE_LIBRARY, did, 'nReply', 1, { updateAt: new Date() }),
+            DocumentModel.push(domainId, TYPE_DOCS, did, 'reply', content, owner, { ip }),
+            DocumentModel.incAndSet(domainId, TYPE_DOCS, did, 'nReply', 1, { updateAt: new Date() }),
         ]);
         return drid;
     }
 
     static setStar(domainId: string, did: ObjectId, uid: number, star: boolean) {
-        return DocumentModel.setStatus(domainId, TYPE_LIBRARY, did, uid, { star });
+        return DocumentModel.setStatus(domainId, TYPE_DOCS, did, uid, { star });
     }
 
     static getStatus(domainId: string, did: ObjectId, uid: number) {
-        return DocumentModel.getStatus(domainId, TYPE_LIBRARY, did, uid);
+        return DocumentModel.getStatus(domainId, TYPE_DOCS, did, uid);
     }
 
     static setStatus(domainId: string, did: ObjectId, uid: number, $set) {
-        return DocumentModel.setStatus(domainId, TYPE_LIBRARY, did, uid, $set);
+        return DocumentModel.setStatus(domainId, TYPE_DOCS, did, uid, $set);
     }
 }
 
-global.Ejunz.model.library = LibraryModel;
+global.Ejunz.model.docs = DocsModel;
 
-class LibraryHandler extends Handler {
-    ddoc?: LibraryDoc;
+class DocsHandler extends Handler {
+    ddoc?: DocsDoc;
 
     @param('did', Types.ObjectId, true)
     async _prepare(domainId: string, did: ObjectId) {
         if (did) {
-            this.ddoc = await LibraryModel.get(domainId, did);
+            this.ddoc = await DocsModel.get(domainId, did);
             if (!this.ddoc) throw new DiscussionNotFoundError(domainId, did);
         }
     }
@@ -178,7 +178,7 @@ class LibraryHandler extends Handler {
 
 
 
-export class LibraryDomainHandler extends Handler {
+export class DocsDomainHandler extends Handler {
     async get({ domainId, page = 1, pageSize = 10 }) {
         domainId = this.args?.domainId || this.context?.domainId || 'system';
 
@@ -191,12 +191,12 @@ export class LibraryDomainHandler extends Handler {
             }
 
             const [ddocs, totalPages, totalCount] = await paginate(
-                LibraryModel.getMulti(domainId, query),
+                DocsModel.getMulti(domainId, query),
                 page,
                 pageSize
             );
 
-            this.response.template = 'library_domain.html';
+            this.response.template = 'docs_domain.html';
             this.response.body = {
                 ddocs,
                 domainId,
@@ -214,19 +214,19 @@ export class LibraryDomainHandler extends Handler {
         }
     }
 }
-class LibraryDetailHandler extends LibraryHandler {
+class DocsDetailHandler extends DocsHandler {
     @param('did', Types.ObjectId)
     async get(domainId: string, did: ObjectId) {
         const dsdoc = this.user.hasPriv(PRIV.PRIV_USER_PROFILE)
-            ? await LibraryModel.getStatus(domainId, did, this.user._id)
+            ? await DocsModel.getStatus(domainId, did, this.user._id)
             : null;
 
         const udoc = await UserModel.getById(domainId, this.ddoc!.owner);
 
         if (!dsdoc?.view) {
             await Promise.all([
-                LibraryModel.inc(domainId, did, 'views', 1),
-                LibraryModel.setStatus(domainId, did, this.user._id, { view: true }),
+                DocsModel.inc(domainId, did, 'views', 1),
+                DocsModel.setStatus(domainId, did, this.user._id, { view: true }),
             ]);
         }
         console.log('ddoc:', this.ddoc);
@@ -243,9 +243,9 @@ class LibraryDetailHandler extends LibraryHandler {
             throw new Error(`Invalid lid: ${this.ddoc.lid}`);
         }
 
-        const problems = await getProblemsByLibraryId(domainId, lid);
+        const problems = await getProblemsByDocsId(domainId, lid);
 
-        this.response.template = 'library_detail.html';
+        this.response.template = 'docs_detail.html';
         this.response.body = {
             ddoc: this.ddoc,
             dsdoc,
@@ -260,18 +260,18 @@ class LibraryDetailHandler extends LibraryHandler {
 
     @param('did', Types.ObjectId)
     async postStar(domainId: string, did: ObjectId) {
-        await LibraryModel.setStar(domainId, did, this.user._id, true);
+        await DocsModel.setStar(domainId, did, this.user._id, true);
         this.back({ star: true });
     }
 
     @param('did', Types.ObjectId)
     async postUnstar(domainId: string, did: ObjectId) {
-        await LibraryModel.setStar(domainId, did, this.user._id, false);
+        await DocsModel.setStar(domainId, did, this.user._id, false);
         this.back({ star: false });
     }
 }
-export async function getProblemsByLibraryId(domainId: string, lid: number) {
-    console.log(`Fetching problems for library ID: ${lid}`);
+export async function getProblemsByDocsId(domainId: string, lid: number) {
+    console.log(`Fetching problems for docs ID: ${lid}`);
     const query = {
         domainId,
         associatedDocumentId: lid 
@@ -283,14 +283,14 @@ export async function getProblemsByLibraryId(domainId: string, lid: number) {
 
 
 
-export class LibraryEditHandler extends LibraryHandler {
+export class DocsEditHandler extends DocsHandler {
     async get() {
         const domainId = this.context.domainId || 'default_domain';
         const files = await StorageModel.list(`domain/${domainId}/`);
 
         const urlForFile = (filename: string) => `/d/${domainId}/domainfile/${encodeURIComponent(filename)}`;
 
-        this.response.template = 'library_edit.html';
+        this.response.template = 'docs_edit.html';
         this.response.body = {
             ddoc: this.ddoc,
             files,
@@ -301,9 +301,9 @@ export class LibraryEditHandler extends LibraryHandler {
     @param('title', Types.Title)
     @param('content', Types.Content)
     async postCreate(domainId: string, title: string, content: string) {
-        await this.limitRate('add_library', 3600, 60);
+        await this.limitRate('add_docs', 3600, 60);
 
-        const did = await LibraryModel.addWithId(
+        const did = await DocsModel.addWithId(
             domainId,
             this.user._id,
             title,
@@ -312,7 +312,7 @@ export class LibraryEditHandler extends LibraryHandler {
         );
         
         this.response.body = { did };
-        this.response.redirect = this.url('library_detail', { uid: this.user._id, did });
+        this.response.redirect = this.url('docs_detail', { uid: this.user._id, did });
     }
 
     @param('did', Types.ObjectId)
@@ -321,23 +321,23 @@ export class LibraryEditHandler extends LibraryHandler {
     async postUpdate(domainId: string, did: ObjectId, title: string, content: string) {
        
         await Promise.all([
-            LibraryModel.edit(domainId,did, title, content),
-            OplogModel.log(this, 'library.edit', this.ddoc),
+            DocsModel.edit(domainId,did, title, content),
+            OplogModel.log(this, 'docs.edit', this.ddoc),
         ]);
 
         this.response.body = { did };
-        this.response.redirect = this.url('library_detail', { uid: this.user._id, did });
+        this.response.redirect = this.url('docs_detail', { uid: this.user._id, did });
     }
 
     @param('did', Types.ObjectId)
     async postDelete(domainId: string, did: ObjectId) {
 
         await Promise.all([
-            LibraryModel.del(domainId, did),
-            OplogModel.log(this, 'library.delete', this.ddoc),
+            DocsModel.del(domainId, did),
+            OplogModel.log(this, 'docs.delete', this.ddoc),
         ]);
 
-        this.response.redirect = this.url('library_domain');
+        this.response.redirect = this.url('docs_domain');
     }
 }
 
@@ -345,42 +345,42 @@ export class LibraryEditHandler extends LibraryHandler {
 
 
 export async function apply(ctx: Context) {
-    // ctx.Route('library', '/library', LibHandler);
-    ctx.Route('library_domain', '/library', LibraryDomainHandler);
-    ctx.Route('library_create', '/library/create', LibraryEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('library_detail', '/library/:did', LibraryDetailHandler);
-    ctx.Route('library_edit', '/library/:did/edit', LibraryEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.injectUI('Nav', 'library_domain', () => ({
-        name: 'library_domain',
-        displayName: 'Library',
+    // ctx.Route('docs', '/docs', LibHandler);
+    ctx.Route('docs_domain', '/docs', DocsDomainHandler);
+    ctx.Route('docs_create', '/docs/create', DocsEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('docs_detail', '/docs/:did', DocsDetailHandler);
+    ctx.Route('docs_edit', '/docs/:did/edit', DocsEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.injectUI('Nav', 'docs_domain', () => ({
+        name: 'docs_domain',
+        displayName: 'Docs',
         args: {},
         checker: (handler) => handler.user.hasPriv(PRIV.PRIV_USER_PROFILE),
     }));
     
     ctx.i18n.load('zh', {
-        "{0}'s library": '{0} 的文档',
-        Library: '文档',
-        library_detail: '文档详情',
-        library_edit: '编辑文档',
-        library_domain: '文档',
+        "{0}'s docs": '{0} 的文档',
+        Docs: '文档',
+        docs_detail: '文档详情',
+        docs_edit: '编辑文档',
+        docs_domain: '文档',
     });
     ctx.i18n.load('zh_TW', {
-        "{0}'s library": '{0} 的部落格',
-        Library: '部落格',
-        library_detail: '部落格詳情',
-        library_edit: '編輯部落格',
-        library_main: '部落格',
+        "{0}'s docs": '{0} 的部落格',
+        Docs: '部落格',
+        docs_detail: '部落格詳情',
+        docs_edit: '編輯部落格',
+        docs_main: '部落格',
     });
     ctx.i18n.load('kr', {
-        "{0}'s library": '{0}의 블로그',
-        Library: '블로그',
-        library_main: '블로그',
-        library_detail: '블로그 상세',
-        library_edit: '블로그 수정',
+        "{0}'s docs": '{0}의 블로그',
+        Docs: '블로그',
+        docs_main: '블로그',
+        docs_detail: '블로그 상세',
+        docs_edit: '블로그 수정',
     });
     ctx.i18n.load('en', {
-        library_main: 'Library',
-        library_detail: 'Library Detail',
-        library_edit: 'Edit Library',
+        docs_main: 'Docs',
+        docs_detail: 'Docs Detail',
+        docs_edit: 'Edit Docs',
     });
 }
