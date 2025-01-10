@@ -327,8 +327,13 @@ export async function apply(ctx: Context) {
     }));
 
     ctx.i18n.load('en', {
-        repo_main: 'Repository',
+        repo_domain: 'Repository',
         repo_detail: 'Repository Detail',
         repo_edit: 'Edit Repository',
+    });
+    ctx.i18n.load('zh', {
+        repo_domain: '资料库',
+        repo_detail: '资料详情',
+        repo_edit: '编辑资料',
     });
 }
