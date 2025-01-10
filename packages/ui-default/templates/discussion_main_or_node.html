@@ -23,10 +23,10 @@
     {% set owner_udoc = udict[vnode.owner] %}
     <div class="section side">
       <div class="section__header">
-        <h1 class="section__title">{{ ddoc['title'] or _('Library Discussions') }}</h1>
+        <h1 class="section__title">{{ ddoc['title'] or _('Docs Discussions') }}</h1>
       </div>
       <div class="section__body">
-        <p>{{ _('This section contains discussions related to the library content.') }}</p>
+        <p>{{ _('This section contains discussions related to the docs content.') }}</p>
         {% if handler.user.hasPerm(perm.PERM_CREATE_DISCUSSION) %}
       
         {% else %}

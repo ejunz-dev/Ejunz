@@ -12,7 +12,7 @@ import message from '../model/message';
 import * as oplog from '../model/oplog';
 import user from '../model/user';
 import { Handler, param, Types } from '../service/server';
-import { TYPE_LIBRARY } from '@ejunz/ejunzlibrary';
+import { TYPE_DOCS } from '@ejunz/ejunzdocs';
 
 export const typeMapper = {
     problem: document.TYPE_PROBLEM,
@@ -20,7 +20,7 @@ export const typeMapper = {
     node: document.TYPE_DISCUSSION_NODE,
     training: document.TYPE_TRAINING,
     homework: document.TYPE_CONTEST,
-    library: TYPE_LIBRARY,
+    docs: TYPE_DOCS,
 };
 
 class DiscussionHandler extends Handler {
