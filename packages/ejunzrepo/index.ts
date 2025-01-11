@@ -156,43 +156,32 @@ class RepoHandler extends Handler {
     }
 }
 
-
-
 export class RepoDomainHandler extends Handler {
     async get({ domainId, page = 1, pageSize = 10 }) {
-        // 获取当前域 ID
-        domainId = this.args?.domainId || this.context?.domainId || 'default_domain';
+        domainId = this.args?.domainId || this.context?.domainId 
 
-        const query = {};
         try {
             const domainInfo = await DomainModel.get(domainId);
-
             if (!domainInfo) {
-                throw new Error(`Domain not found for id: ${domainId}`);
+                throw new NotFoundError(`Domain not found for ID: ${domainId}`);
             }
 
-            // 分页获取 Repo 列表
-            const [repos, totalPages, totalCount] = await paginate(
-                RepoModel.getMulti(domainId, query),
+            const [ddocs, totalPages, totalCount] = await paginate(
+                RepoModel.getMulti(domainId, {}),
                 page,
                 pageSize
             );
-
-            // 配置模板
             this.response.template = 'repo_domain.html';
             this.response.body = {
                 domainId,
-                domainName: domainInfo.name,
-                repos,
+                ddocs,
                 page,
-                pageSize,
                 totalPages,
                 totalCount,
             };
         } catch (error) {
             console.error('Error in fetching Repos:', error);
 
-            // 错误页面
             this.response.template = 'error.html';
             this.response.body = {
                 error: 'Failed to fetch repositories.',
@@ -200,6 +189,7 @@ export class RepoDomainHandler extends Handler {
         }
     }
 }
+
 
 class RepoDetailHandler extends RepoHandler {
     @param('did', Types.ObjectId)
