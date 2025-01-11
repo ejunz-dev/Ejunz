@@ -1,101 +1,47 @@
 {% extends "layout/basic.html" %}
 {% block content %}
 <div class="row">
-  <!-- 主内容区域 -->
   <div class="medium-9 columns">
     <div class="section">
-      <div class="section__body">
-        <ul class="supplementary list">
-          <li>
-            <a class="discussion-node-tag" href="{{ url('repo_main', uid=udoc._id) }}">
-              <span class="v-center icon icon-flag"></span>
-              {{ _("{0}'s repo").format(udoc.uname) }}
-            </a>
-          </li>
-          <li><h2>{{ ddoc.title }}</h2></li>
-          <li>
-            {{ user.render_inline(udoc) }}
-            @
-            {{ datetimeSpan(ddoc._id)|safe }}
-          </li>
-        </ul>
-        <div class="typo richmedia topic__content" data-emoji-enabled>
-          {{ ddoc['content']|markdown|safe }}
-        </div>
+      <div class="section__header">
+        <h1 class="section__title">{{ ddoc.title }}</h1>
       </div>
-      <ul class="section__footer supplementary dot list">
-      {% if handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) or handler.user.own(ddoc) %}
-        <li><a href="{{ url('repo_edit', uid=udoc._id, did=ddoc.docId) }}">
-          <span class="icon icon-edit"></span> {{ _('Edit') }}
-        </a></li>
-      {% endif %}
-        <li>{{ _('{0} views').format(ddoc.views) }}</li>
-      {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
-        <li>
-          <form class="form--inline" method="post">
-            <input type="hidden" name="operation" value="{% if not dsdoc['star'] %}star{% else %}unstar{% endif %}">
-            <button class="star{% if dsdoc['star'] %} activated{% endif %}" type="submit">
-              <span class="starred--hide"><span class="icon icon-star--outline"></span> {{ _('Star') }}</span>
-              <span class="starred--show"><span class="icon icon-star"></span> {{ _('Unstar') }}</span>
-            </button>
-          </form>
-        </li>
-      {% endif %}
-        <li><a href="{{ url('wiki_help', anchor='contact') }}">
-          <span class="icon icon-warning"></span> {{ _('Report') }}
-        </a></li>
-      </ul>
+      <div class="section__body">
+        <p>{{ ddoc.content }}</p>
+        <hr>
+        <h2>{{ _('Files') }}</h2>
+        {% if ddoc.files and ddoc.files.length %}
+          <ul>
+            {% for file in ddoc.files %}
+              <li>
+                <a href="{{ file.path }}" target="_blank">{{ file.name }}</a> ({{ file.size }} bytes)
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p>{{ _('No files available.') }}</p>
+        {% endif %}
+        <hr>
+        <h2>{{ _('Associated Problems') }}</h2>
+        {% if problems and problems.length %}
+          <ul>
+            {% for problem in problems %}
+              <li>{{ problem.title }} ({{ problem.id }})</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p>{{ _('No problems associated with this repository.') }}</p>
+        {% endif %}
+      </div>
     </div>
   </div>
-
-  <!-- 侧边栏 -->
   <div class="medium-3 columns">
-    <!-- Discussions 侧边栏 -->
-    <div class="section">
+    <div class="section side">
       <div class="section__header">
-        <h1 class="section__title">{{ _('Discussions') }}</h1>
+        <h2>{{ _('Actions') }}</h2>
       </div>
       <div class="section__body">
-        <ul class="menu">
-          {% if handler.user.hasPerm(perm.PERM_VIEW_DISCUSSION) %}
-          <li class="menu__item">
-            <a class="menu__link{% if page_name == 'discussion_node' or page_name == 'discussion_detail' %} active{% endif %}" 
-              href="{{ url('discussion_node', type='repo', name=ddoc.rid) }}">
-              <span class="icon icon-comment--text"></span> 
-              {{ _('View Discussions') }}
-              {% if discussionCount is defined %} ({{ discussionCount }}){% endif %}
-            </a>
-          </li>
-          {% endif %}
-          {% if handler.user.hasPerm(perm.PERM_CREATE_DISCUSSION) %}
-          <li class="menu__item">
-            <a class="menu__link highlight" href="{{ url('discussion_create', type='repo', name=ddoc.rid) }}">
-              <span class="icon icon-add"></span> {{ _('Create a Discussion') }}
-            </a>
-          </li>
-          {% endif %}
-        </ul>
-      </div>
-    </div>
-
-    <!-- Related Problems 侧边栏 -->
-    <div class="section">
-      <div class="section__header">
-        <h1 class="section__title">{{ _('Related Problems') }}</h1>
-      </div>
-      <div class="section__body">
-        <ul>
-          {% for problem in problems %}
-          <li>
-            <a class="discussion-node-tag media-link" href="{{ url('problem_detail', domainId=problem.domainId, pid=problem.docId) }}">
-              <span class="v-center icon icon-problem"></span>{{ problem.title }}
-            </a>
-          </li>
-          {% endfor %}
-          {% if not problems %}
-          <p>{{ _('No related problems found.') }}</p>
-          {% endif %}
-        </ul>
+        <a href="{{ url('repo_edit', domainId=domainId, did=ddoc._id) }}" class="button primary expanded">{{ _('Edit Repository') }}</a>
       </div>
     </div>
   </div>
