@@ -6,21 +6,21 @@
   <div class="medium-9 columns">
     <div class="section">
       {% if not ddocs.length %}
-        {{ nothing.render('No repos found in this repo.') }}
+        {{ nothing.render('No repos found in this repository.') }}
       {% else %}
-        <ol class="section__list discussion__list">
+        <ol class="section__list repo__list">
           {%- for ddoc in ddocs -%}
-            <li class="section__list__item discussion__item">
+            <li class="section__list__item repo__item">
               <div class="media">
                 <div class="media__left">
-                  <div class="discussion__replies numbox">
-                    <div class="numbox__num large">{{ datetimeSpan(ddoc.updateAt, false, 'D')|safe }}</div>
-                    <div class="numbox__text">{{ datetimeSpan(ddoc.updateAt, false, 'YYYY-M')|safe }}</div>
+                  <div class="repo__meta numbox">
+                    <div class="numbox__num large">{{ ddoc.nReply }}</div>
+                    <div class="numbox__text">{{ _('Replies') }}</div>
                   </div>
                 </div>
                 <div class="media__body top">
-                  <h1 class="discussion__title">
-                    <a href="{{ url('repo_detail', domainId=domainId, did=ddoc._id, anchor=ddoc.updateAt.getTime()) }}" data-emoji-enabled>
+                  <h1 class="repo__title">
+                    <a href="{{ url('repo_detail', domainId=domainId, did=ddoc.docId) }}" data-emoji-enabled>
                       {{ ddoc.title }}
                     </a>
                   </h1>
@@ -40,12 +40,13 @@
   <div class="medium-3 columns">
     <div class="section side">
       <div class="section__header">
-        <h1 class="section__title">{{ _("{0}'s Repo").format(dname) }}</h1>
+        <h1 class="section__title">{{ _("{0}'s Repository").format(dname) }}</h1>
       </div>
       <div class="section__body">
         <p>
+          <!-- 新建页面按钮 -->
           <a href="{{ url('repo_create', domainId=domainId) }}" class="expanded primary button">
-            {{ _('Create a New Document') }}
+            {{ _('Create a New Repository') }}
           </a>
         </p>
       </div>

@@ -5,18 +5,24 @@
   <div class="medium-9 columns">
     <div class="section">
       <div class="section__body">
-        <form method="post">
+        <form method="post" enctype="multipart/form-data">
+          <!-- 标题输入框 -->
           <div class="row">
             <div class="medium-12 columns">
               <label>
                 {{ _('Title') }}
                 <input 
-                  name="title" placeholder="{{ _('title') }}"
-                  value="{{ ddoc.title|default('') }}"
-                  class="textbox" autofocus>
+                  name="title" 
+                  placeholder="{{ _('Enter repository title') }}"
+                  value="{{ ddoc.title|default('') }}" 
+                  class="textbox" 
+                  required 
+                  autofocus>
               </label>
             </div>
           </div>
+          
+          <!-- 内容输入框 -->
           {{ form.form_textarea({
                 columns:12,
                 label:'Content',
@@ -25,50 +31,77 @@
                 hotkeys:'ctrl+enter:submit',
                 markdown:true,
                 required:true,
-                extra_style:'height: 500px',
+                extra_style:'height: 300px',
                 extra_textarea_class:'auto-resize',
                 id:'content-textarea'
               }) }}
-            <div class="row">
-              <div class="columns">
-                <h3>{{ _('Available Files') }}</h3>
-                {% if files and files.length %}
-                <table class="data-table">
-                  <thead>
-                    <tr>
-                      <th>{{ _('Filename') }}</th>
-                      <th>{{ _('URL') }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for file in files %}
-                    <tr>
-                      <td>
-                        <button 
-                          type="button" 
-                          class="link-button"
-                          onclick="copyToClipboard('{{ urlForFile(file.name) }}')">
-                          {{ file.name }}
-                        </button>
-                      </td>
-                      <td>
-                        {% if urlForFile %}
-                        <a href="{{ urlForFile(file.name) }}" target="_blank">{{ urlForFile(file.name) }}</a>
-                        {% else %}
-                        {{ _('URL not available') }}
-                        {% endif %}
-                      </td>
-                    </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-                {% else %}
-                <p>{{ _('No files available.') }}</p>
-                {% endif %}
-              </div>
+
+          <!-- 文件上传 -->
+          <div class="row">
+            <div class="medium-12 columns">
+              <label>
+                {{ _('Upload File') }}
+                <input type="file" name="file" class="textbox" required>
+              </label>
             </div>
-            <div class="row"><div class="columns">
-              <button name="operation" value="{{ 'update' if ddoc else 'create' }}" data-default-submit type="submit" class="rounded primary button">
+          </div>
+
+          <!-- 自定义文件名 -->
+          <div class="row">
+            <div class="medium-12 columns">
+              <label>
+                {{ _('Custom File Name (Optional)') }}
+                <input 
+                  name="filename" 
+                  placeholder="{{ _('Enter custom file name') }}" 
+                  value="" 
+                  class="textbox">
+              </label>
+            </div>
+          </div>
+
+          <!-- 已上传文件列表 -->
+          <div class="row">
+            <div class="columns">
+              <h3>{{ _('Available Files') }}</h3>
+              {% if files and files.length %}
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>{{ _('Filename') }}</th>
+                    <th>{{ _('URL') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for file in files %}
+                  <tr>
+                    <td>{{ file.name }}</td>
+                    <td>
+                      {% if urlForFile %}
+                      <a href="{{ urlForFile(file.name) }}" target="_blank">{{ urlForFile(file.name) }}</a>
+                      {% else %}
+                      {{ _('URL not available') }}
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+              {% else %}
+              <p>{{ _('No files available.') }}</p>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- 提交按钮 -->
+          <div class="row">
+            <div class="columns">
+              <button 
+                name="operation" 
+                value="{{ 'update' if ddoc else 'create' }}" 
+                data-default-submit 
+                type="submit" 
+                class="rounded primary button">
                 {{ _('Update') if ddoc else _('Create') }} (Ctrl+Enter)
               </button>
               {% if ddoc and (handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) or handler.user.own(ddoc)) %}
@@ -79,7 +112,8 @@
               <button type="button" class="rounded button" onclick="window.history.go(-1)">
                 {{ _('Cancel') }}
               </button>
-            </div></div>
+            </div>
+          </div>
         </form>
       </div>
     </div>
@@ -88,26 +122,4 @@
     {% include 'components/md_hint.html' %}
   </div>
 </div>
-<script>
-  function copyToClipboard(url) {
-    navigator.clipboard.writeText(url).then(() => {
-      alert('URL copied to clipboard: ' + url);
-    }).catch(err => {
-      console.error('Failed to copy: ', err);
-    });
-  }
-</script>
-<style>
-  .link-button {
-    background: none;
-    border: none;
-    color: blue;
-    text-decoration: underline;
-    cursor: pointer;
-    font-size: inherit;
-  }
-  .link-button:hover {
-    text-decoration: none;
-  }
-</style>
 {% endblock %}
