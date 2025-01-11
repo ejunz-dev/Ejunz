@@ -190,73 +190,38 @@ export class RepoDomainHandler extends Handler {
     }
 }
 
+export class RepoDetailHandler extends Handler {
+    ddoc?: RepoDoc;
 
-class RepoDetailHandler extends RepoHandler {
+    @param('did', Types.ObjectId, true)
+    async _prepare(domainId: string, did: ObjectId) {
+        if (did) {
+            // 获取 Repo 文档
+            this.ddoc = await RepoModel.get(domainId, did);
+            if (!this.ddoc) {
+                throw new NotFoundError(`Repository not found for ID: ${did}`);
+            }
+        }
+    }
+
     @param('did', Types.ObjectId)
     async get(domainId: string, did: ObjectId) {
-        const dsdoc = this.user.hasPriv(PRIV.PRIV_USER_PROFILE)
-            ? await RepoModel.getStatus(domainId, did, this.user._id)
-            : null;
-
-        const udoc = await UserModel.getById(domainId, this.ddoc!.owner);
-
-        if (!dsdoc?.view) {
-            await Promise.all([
-                RepoModel.inc(domainId, did, 'views', 1),
-                RepoModel.setStatus(domainId, did, this.user._id, { view: true }),
-            ]);
-        }
-        console.log('ddoc:', this.ddoc);
-
-        let rid = this.ddoc.rid;
-        console.log('Original rid:', rid, 'Type:', typeof rid);
-
-        if (typeof rid === 'string') {
-            rid = parseInt(rid, 10);
-            console.log('Converted rid to number:', rid);
+        if (!this.ddoc) {
+            throw new NotFoundError(`Repository not found for ID: ${did}`);
         }
 
-        if (isNaN(rid)) {
-            throw new Error(`Invarid rid: ${this.ddoc.rid}`);
-        }
-
-        const problems = await getProblemsByRepoId(domainId, rid);
-
+        // 获取文件和问题
+        const files = this.ddoc.files || [];
+   
+        // 配置模板
         this.response.template = 'repo_detail.html';
         this.response.body = {
+            domainId,
             ddoc: this.ddoc,
-            dsdoc,
-            udoc,
-            problems,
+            files,
         };
     }
-
-    async post() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
-    }
-
-    @param('did', Types.ObjectId)
-    async postStar(domainId: string, did: ObjectId) {
-        await RepoModel.setStar(domainId, did, this.user._id, true);
-        this.back({ star: true });
-    }
-
-    @param('did', Types.ObjectId)
-    async postUnstar(domainId: string, did: ObjectId) {
-        await RepoModel.setStar(domainId, did, this.user._id, false);
-        this.back({ star: false });
-    }
 }
-export async function getProblemsByRepoId(domainId: string, rid: number) {
-    console.log(`Fetching problems for repo ID: ${rid}`);
-    const query = {
-        domainId,
-        associatedDocumentId: rid 
-    };
-    console.log(`Querying problems with:`, query);
-    return await ProblemModel.getMulti(domainId, query).toArray();
-}
-
 
 
 

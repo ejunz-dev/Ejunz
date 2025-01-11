@@ -22,16 +22,6 @@
           <p>{{ _('No files available.') }}</p>
         {% endif %}
         <hr>
-        <h2>{{ _('Associated Problems') }}</h2>
-        {% if problems and problems.length %}
-          <ul>
-            {% for problem in problems %}
-              <li>{{ problem.title }} ({{ problem.id }})</li>
-            {% endfor %}
-          </ul>
-        {% else %}
-          <p>{{ _('No problems associated with this repository.') }}</p>
-        {% endif %}
       </div>
     </div>
   </div>
