@@ -11,7 +11,6 @@ export interface RepoDoc {
     domainId: string,
     rid: number;
     owner: number;
-    reponame: string;
     content: string;
     ip: string;
     updateAt: Date;
@@ -296,7 +295,6 @@ export class RepoEditHandler extends RepoHandler {
         title: string,
         content: string,
         filename: string,
-        reponame: string
     ) {
         await this.limitRate('add_repo', 3600, 60);
     
@@ -354,7 +352,6 @@ export class RepoEditHandler extends RepoHandler {
         // 创建 repo
         const did = await RepoModel.addWithId(domainId, this.user._id, title, content, this.request.ip, {
             files: [fileData], // 存储文件信息到 repo
-            reponame,
             rid,
         });
         
