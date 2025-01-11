@@ -1,6 +1,6 @@
 import {
     _, Context, DocumentModel, Filter,
-    Handler, NumberKeys, ObjectId, OplogModel, paginate,
+    Handler, NumberKeys, ObjectId, OplogModel, paginate,ValidationError,
     param, PRIV, Types, UserModel, DomainModel, StorageModel, ProblemModel, NotFoundError,DiscussionNotFoundError
 } from 'ejun';
 
@@ -11,7 +11,7 @@ export interface RepoDoc {
     domainId: string,
     rid: number;
     owner: number;
-    title: string;
+    reponame: string;
     content: string;
     ip: string;
     updateAt: Date;
@@ -19,7 +19,16 @@ export interface RepoDoc {
     views: number;
     reply: any[];
     react: Record<string, number>;
-}
+    files: {
+        name: string;            // 文件名
+        path: string;            // 文件路径
+        size: number;            // 文件大小
+        lastModified: Date;      // 最后修改时间
+        etag?: string;           // 文件校验码
+    }[];                         // 支持多个文件
+}                         // 支持多个文件
+
+
 declare module 'ejun' {
     interface Model {
         repo: typeof RepoModel;
@@ -152,7 +161,8 @@ class RepoHandler extends Handler {
 
 export class RepoDomainHandler extends Handler {
     async get({ domainId, page = 1, pageSize = 10 }) {
-        domainId = this.args?.domainId || this.context?.domainId || 'system';
+        // 获取当前域 ID
+        domainId = this.args?.domainId || this.context?.domainId || 'default_domain';
 
         const query = {};
         try {
@@ -162,30 +172,36 @@ export class RepoDomainHandler extends Handler {
                 throw new Error(`Domain not found for id: ${domainId}`);
             }
 
-            const [ddocs, totalPages, totalCount] = await paginate(
+            // 分页获取 Repo 列表
+            const [repos, totalPages, totalCount] = await paginate(
                 RepoModel.getMulti(domainId, query),
                 page,
                 pageSize
             );
 
+            // 配置模板
             this.response.template = 'repo_domain.html';
             this.response.body = {
-                ddocs,
                 domainId,
-                dname: domainInfo.name,
+                domainName: domainInfo.name,
+                repos,
                 page,
                 pageSize,
                 totalPages,
                 totalCount,
             };
         } catch (error) {
+            console.error('Error in fetching Repos:', error);
+
+            // 错误页面
             this.response.template = 'error.html';
             this.response.body = {
-                error: 'Failed to fetch documents for the domain.',
+                error: 'Failed to fetch repositories.',
             };
         }
     }
 }
+
 class RepoDetailHandler extends RepoHandler {
     @param('did', Types.ObjectId)
     async get(domainId: string, did: ObjectId) {
@@ -258,60 +274,98 @@ export async function getProblemsByRepoId(domainId: string, rid: number) {
 export class RepoEditHandler extends RepoHandler {
     async get() {
         const domainId = this.context.domainId || 'default_domain';
-        const files = await StorageModel.list(`domain/${domainId}/`);
+        const rid = this.ddoc?.rid;
+        const files = await StorageModel.list(`domain/${domainId}/${rid}`);
+        
 
-        const urlForFile = (filename: string) => `/d/${domainId}/domainfile/${encodeURIComponent(filename)}`;
+        const urlForFile = (filename: string) =>
+            `/d/${domainId}/${rid}/domainfile/${(filename)}`;
 
         this.response.template = 'repo_edit.html';
         this.response.body = {
             ddoc: this.ddoc,
             files,
-            urlForFile, 
+            urlForFile,
         };
     }
 
     @param('title', Types.Title)
     @param('content', Types.Content)
-    async postCreate(domainId: string, title: string, content: string) {
+    async postCreate(
+        domainId: string,
+        title: string,
+        content: string,
+        filename: string,
+        reponame: string
+    ) {
         await this.limitRate('add_repo', 3600, 60);
-
-        const did = await RepoModel.addWithId(
-            domainId,
-            this.user._id,
-            title,
-            content,
-            this.request.ip
+    
+        // 确保文件上传
+        const file = this.request.files?.file;
+        if (!file) {
+            throw new ValidationError('A file must be uploaded to create a repo.');
+        }
+    
+        // 校验 domain 是否存在
+        const domain = await DomainModel.get(domainId);
+        if (!domain) {
+            throw new NotFoundError('Domain not found.');
+        }
+    
+        // 初始化 domain.files
+        domain.files = domain.files || [];
+    
+        // 生成新的 rid
+        const rid = await RepoModel.generateNextRid(domainId);
+    
+        // 处理文件名
+        const providedFilename = filename || file.originalFilename; // 优先使用用户提供的文件名
+        const filePath = `domain/${domainId}/${rid}/${providedFilename}`;
+    
+        // 检查是否有重复的文件名
+        const existingFile = domain.files.find(
+            (f) => f.name === providedFilename && f.path.startsWith(`domain/${domainId}/${rid}/`)
         );
+        if (existingFile) {
+            throw new ValidationError(`A file with the name "${providedFilename}" already exists in this repository.`);
+        }
+    
+        // 上传文件
+        await StorageModel.put(filePath, file.filepath, this.user._id);
+        // 获取文件元数据
+        const fileMeta = await StorageModel.getMeta(filePath);
+        if (!fileMeta) {
+            throw new ValidationError(`Failed to retrieve metadata for the uploaded file: ${filename}`);
+        }
+        const fileData = {
+            name: providedFilename ?? 'unknown_file', // 如果 name 为 null，使用默认值
+            path: filePath, // 文件路径
+            size: fileMeta.size ?? 0, // 如果 size 为 undefined，使用默认值 0
+            lastModified: fileMeta.lastModified ?? new Date(), // 如果 lastModified 为 undefined，使用当前时间
+            etag: fileMeta.etag ?? '', // 如果 etag 为 undefined，使用空字符串
+        };
         
+        console.log('File uploaded successfully:', fileData);
+    
+        // 将文件信息添加到 domain.files
+        domain.files.push(fileData);
+        await DomainModel.edit(domainId, { files: domain.files });
+    
+        // 创建 repo
+        const did = await RepoModel.addWithId(domainId, this.user._id, title, content, this.request.ip, {
+            files: [fileData], // 存储文件信息到 repo
+            reponame,
+            rid,
+        });
+        
+    
+        // 响应
         this.response.body = { did };
         this.response.redirect = this.url('repo_detail', { uid: this.user._id, did });
     }
-
-    @param('did', Types.ObjectId)
-    @param('title', Types.Title)
-    @param('content', Types.Content)
-    async postUpdate(domainId: string, did: ObjectId, title: string, content: string) {
-       
-        await Promise.all([
-            RepoModel.edit(domainId,did, title, content),
-            OplogModel.log(this, 'repo.edit', this.ddoc),
-        ]);
-
-        this.response.body = { did };
-        this.response.redirect = this.url('repo_detail', { uid: this.user._id, did });
-    }
-
-    @param('did', Types.ObjectId)
-    async postDelete(domainId: string, did: ObjectId) {
-
-        await Promise.all([
-            RepoModel.del(domainId, did),
-            OplogModel.log(this, 'repo.delete', this.ddoc),
-        ]);
-
-        this.response.redirect = this.url('repo_domain');
-    }
+    
 }
+
 
 
 export async function apply(ctx: Context) {
