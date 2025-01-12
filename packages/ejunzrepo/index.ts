@@ -253,29 +253,22 @@ export class RepoEditHandler extends RepoHandler {
     ) {
         await this.limitRate('add_repo', 3600, 60);
     
-        // 确保文件上传
         const file = this.request.files?.file;
         if (!file) {
             throw new ValidationError('A file must be uploaded to create a repo.');
         }
     
-        // 校验 domain 是否存在
         const domain = await DomainModel.get(domainId);
         if (!domain) {
             throw new NotFoundError('Domain not found.');
         }
     
-        // 初始化 domain.files
         domain.files = domain.files || [];
-    
-        // 生成新的 rid
         const rid = await RepoModel.generateNextRid(domainId);
     
-        // 处理文件名
-        const providedFilename = filename || file.originalFilename; // 优先使用用户提供的文件名
+        const providedFilename = filename || file.originalFilename;
         const filePath = `domain/${domainId}/${rid}/${providedFilename}`;
     
-        // 检查是否有重复的文件名
         const existingFile = domain.files.find(
             (f) => f.name === providedFilename && f.path.startsWith(`domain/${domainId}/${rid}/`)
         );
@@ -283,39 +276,49 @@ export class RepoEditHandler extends RepoHandler {
             throw new ValidationError(`A file with the name "${providedFilename}" already exists in this repository.`);
         }
     
-        // 上传文件
         await StorageModel.put(filePath, file.filepath, this.user._id);
-        // 获取文件元数据
         const fileMeta = await StorageModel.getMeta(filePath);
         if (!fileMeta) {
             throw new ValidationError(`Failed to retrieve metadata for the uploaded file: ${filename}`);
         }
-        const fileData = {
-            name: providedFilename ?? 'unknown_file', // 如果 name 为 null，使用默认值
-            path: filePath, // 文件路径
-            size: fileMeta.size ?? 0, // 如果 size 为 undefined，使用默认值 0
-            lastModified: fileMeta.lastModified ?? new Date(), // 如果 lastModified 为 undefined，使用当前时间
-            etag: fileMeta.etag ?? '', // 如果 etag 为 undefined，使用空字符串
-        };
-        
-        console.log('File uploaded successfully:', fileData);
     
-        // 将文件信息添加到 domain.files
+        const fileData = {
+            name: providedFilename ?? 'unknown_file',
+            path: filePath,
+            size: fileMeta.size ?? 0,
+            lastModified: fileMeta.lastModified ?? new Date(),
+            etag: fileMeta.etag ?? '',
+        };
+    
         domain.files.push(fileData);
         await DomainModel.edit(domainId, { files: domain.files });
     
-        // 创建 repo
         const did = await RepoModel.addWithId(domainId, this.user._id, title, content, this.request.ip, {
-            files: [fileData], // 存储文件信息到 repo
+            files: [fileData],
             rid,
         });
-        
     
-        // 响应
         this.response.body = { did };
         this.response.redirect = this.url('repo_detail', { uid: this.user._id, did });
     }
     
+    @param('did', Types.ObjectId)
+    @param('title', Types.Title)
+    @param('content', Types.Content)
+    async postUpdate(domainId: string, did: ObjectId, title: string, content: string) {
+
+        const repo = await RepoModel.get(domainId, did);
+        if (!repo) {
+            throw new NotFoundError(`Repository not found for ID: ${did}`);
+        }
+
+        const updatedRepo = await RepoModel.edit(domainId, did, title, content);
+
+        console.log('Repo updated successfully:', updatedRepo);
+
+        this.response.body = { did };
+        this.response.redirect = this.url('repo_detail', { uid: this.user._id, did });
+    }
 }
 
 

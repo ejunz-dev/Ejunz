@@ -6,47 +6,44 @@
     <div class="section">
       <div class="section__body">
         <form method="post" enctype="multipart/form-data">
-          <!-- 标题输入框 -->
           <div class="row">
             <div class="medium-12 columns">
               <label>
                 {{ _('Reponame') }}
                 <input 
                   name="title" 
-                  placeholder="{{ _('Enter repository reponame') }}"
-                  value="{{ ddoc.reponame|default('') }}" 
+                  placeholder="{{ _('Enter repository title') }}"
+                  value="{{ ddoc.title|default('') }}" 
                   class="textbox" 
                   required 
                   autofocus>
               </label>
             </div>
           </div>
-          
-          <!-- 内容输入框 -->
+
           {{ form.form_textarea({
-                columns:12,
-                label:'Content',
-                name:'content',
-                value:ddoc.content|default(''),
-                hotkeys:'ctrl+enter:submit',
-                markdown:true,
-                required:true,
-                extra_style:'height: 300px',
-                extra_textarea_class:'auto-resize',
-                id:'content-textarea'
+                columns: 12,
+                label: _('Content'),
+                name: 'content',
+                value: ddoc.content|default(''),
+                hotkeys: 'ctrl+enter:submit',
+                markdown: true,
+                required: true,
+                extra_style: 'height: 500px',
+                extra_textarea_class: 'auto-resize',
+                id: 'content-textarea'
               }) }}
 
-          <!-- 文件上传 -->
+          {% if not ddoc %}
           <div class="row">
             <div class="medium-12 columns">
               <label>
                 {{ _('Upload File') }}
-                <input type="file" name="file" class="textbox" required>
+                <input type="file" name="file" class="textbox">
               </label>
             </div>
           </div>
 
-          <!-- 自定义文件名 -->
           <div class="row">
             <div class="medium-12 columns">
               <label>
@@ -59,41 +56,8 @@
               </label>
             </div>
           </div>
+          {% endif %}
 
-          <!-- 已上传文件列表 -->
-          <div class="row">
-            <div class="columns">
-              <h3>{{ _('Available Files') }}</h3>
-              {% if files and files.length %}
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>{{ _('Filename') }}</th>
-                    <th>{{ _('URL') }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for file in files %}
-                  <tr>
-                    <td>{{ file.name }}</td>
-                    <td>
-                      {% if urlForFile %}
-                      <a href="{{ urlForFile(file.name) }}" target="_blank">{{ urlForFile(file.name) }}</a>
-                      {% else %}
-                      {{ _('URL not available') }}
-                      {% endif %}
-                    </td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-              {% else %}
-              <p>{{ _('No files available.') }}</p>
-              {% endif %}
-            </div>
-          </div>
-
-          <!-- 提交按钮 -->
           <div class="row">
             <div class="columns">
               <button 
