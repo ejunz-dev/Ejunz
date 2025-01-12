@@ -101,6 +101,32 @@ export class RepoModel {
         return DocumentModel.set(domainId, TYPE_REPO, did, payload);
     }
 
+    static async addversion(
+        domainId: string,
+        did: ObjectId,
+        filename: string,
+        version: string,
+        path: string,
+        size: number,
+        lastModified: Date,
+        etag: string
+    ): Promise<RepoDoc> {
+        const payload = {
+            filename,
+            version,
+            path,
+            size,
+            lastModified,
+            etag,
+        };
+    
+        // 使用解构赋值提取 RepoDoc
+        const [updatedRepo] = await DocumentModel.push(domainId, TYPE_REPO, did, 'files', payload);
+    
+        return updatedRepo;
+    }
+    
+
     static inc(domainId: string, did: ObjectId, key: NumberKeys<RepoDoc>, value: number): Promise<RepoDoc | null> {
         return DocumentModel.inc(domainId, TYPE_REPO, did, key, value);
     }
@@ -327,6 +353,101 @@ export class RepoEditHandler extends RepoHandler {
     }
 }
 
+export class RepoVersionHandler extends Handler {
+    @param('did', Types.ObjectId, true)
+    async get(domainId: string, did: ObjectId) {
+        const repo = await RepoModel.get(domainId, did);
+        if (!repo) {
+            throw new NotFoundError(`Repository not found for ID: ${did}`);
+        }
+
+        this.response.template = 'repo_version.html';
+        this.response.body = {
+            ddoc: repo,
+            domainId,
+        };
+    }
+
+    @param('did', Types.ObjectId, true)
+    @param('filename', Types.String, true)
+    @param('version', Types.String, true)
+    async post(domainId: string, did: ObjectId, filename: string, version: string) {
+        const file = this.request.files?.file;
+        if (!file) {
+            throw new ValidationError('A file must be uploaded.');
+        }
+
+        const repo = await RepoModel.get(domainId, did);
+        if (!repo) {
+            throw new NotFoundError(`Repository not found for ID: ${did}`);
+        }
+
+        const isValidVersion = /^\d+\.\d+\.\d+$/.test(version);
+        if (!isValidVersion) {
+            throw new ValidationError('Version must follow the format x.x.x (e.g., 1.0.0).');
+        }
+
+        const sortedFiles = repo.files?.sort((a, b) => this.compareVersion(a.version, b.version)) || [];
+        const latestVersion = sortedFiles.length ? sortedFiles[sortedFiles.length - 1].version : null;
+        if (latestVersion && this.compareVersion(version, latestVersion) <= 0) {
+            throw new ValidationError(`Version ${version} must be greater than the latest version ${latestVersion}.`);
+        }
+
+        const existingFile = repo.files?.find((f) => f.filename === filename);
+        if (existingFile) {
+            throw new ValidationError(`A file with the name "${filename}" already exists in this repository.`);
+        }
+
+        const rid = repo.rid;
+        const filePath = `domain/${domainId}/${rid}/${filename}`;
+        await StorageModel.put(filePath, file.filepath, this.user._id);
+        const fileMeta = await StorageModel.getMeta(filePath);
+        if (!fileMeta) {
+            throw new ValidationError(`Failed to retrieve metadata for the uploaded file: ${filename}`);
+        }
+
+        const fileData = {
+            filename,
+            version,
+            path: filePath,
+            size: fileMeta.size ?? 0,
+            lastModified: fileMeta.lastModified ?? new Date(),
+            etag: fileMeta.etag ?? '',
+        };
+
+        repo.files.push(fileData);
+        await RepoModel.addversion(
+            domainId,
+            did,
+            fileData.filename,
+            fileData.version,
+            fileData.path,
+            fileData.size, 
+            fileData.lastModified,
+            fileData.etag 
+        );
+        console.log('New version added successfully:', fileData);
+
+        this.response.body = { message: 'New version uploaded successfully.', fileData };
+        this.response.redirect = this.url('repo_detail', { domainId, did });
+    }
+
+    private compareVersion(v1: string, v2: string): number {
+        const v1Parts = v1.split('.').map(Number);
+        const v2Parts = v2.split('.').map(Number);
+
+        for (let i = 0; i < Math.max(v1Parts.length, v2Parts.length); i++) {
+            const part1 = v1Parts[i] || 0;
+            const part2 = v2Parts[i] || 0;
+            if (part1 > part2) return 1;
+            if (part1 < part2) return -1;
+        }
+        return 0;
+    }
+}
+
+
+
 
 
 export async function apply(ctx: Context) {
@@ -334,6 +455,8 @@ export async function apply(ctx: Context) {
     ctx.Route('repo_create', '/repo/create', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_detail', '/repo/:did', RepoDetailHandler);
     ctx.Route('repo_edit', '/repo/:did/edit', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('repo_add_version', '/repo/:did/add-version', RepoVersionHandler, PRIV.PRIV_USER_PROFILE);
+    // ctx.Route('repo_history', '/repo/:did/history', RepoHistroyHandler, PRIV.PRIV_USER_PROFILE);
     ctx.injectUI('Nav', 'repo_domain', () => ({
         name: 'repo_domain',
         displayName: 'Repo',

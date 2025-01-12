@@ -9,19 +9,48 @@
       <div class="section__body">
         <p>{{ ddoc.content }}</p>
         <hr>
-        <h2>{{ _('Files') }}</h2>
-        {% if ddoc.files and ddoc.files.length %}
-          <ul>
-            {% for file in ddoc.files %}
-            <h3>Version: {{ file.version }}</h3>
-              <li>
-                <a href="{{ file.path }}" target="_blank">{{ file.filename }}</a> ({{ file.size }} bytes)
-              </li>
-            {% endfor %}
-          </ul>
-        {% else %}
-          <p>{{ _('No files available.') }}</p>
-        {% endif %}
+       <h2>{{ _('Files') }}</h2>
+
+{% if ddoc.files and ddoc.files.length %}
+  <!-- 显示最新版本文件 -->
+      <div class="section">
+    <h3>{{ _('Latest Version') }}</h3>
+    {% set latest_file = ddoc.files | sort(attribute='lastModified', reverse=True) | first %}
+    <ul>
+      <li>
+        <strong>{{ _('Filename:') }}</strong> <a href="{{ latest_file.path }}" target="_blank">{{ latest_file.filename }}</a>
+      </li>
+      <li>
+        <strong>{{ _('Version:') }}</strong> {{ latest_file.version }}
+      </li>
+      <li>
+        <strong>{{ _('Size:') }}</strong> {{ latest_file.size }} bytes
+      </li>
+      <li>
+        <strong>{{ _('Last Modified:') }}</strong> {{ latest_file.lastModified }}
+      </li>
+    </ul>
+  </div>
+
+
+
+
+  <!-- 显示所有文件 -->
+  <div class="section">
+    <h3>{{ _('All Versions') }}</h3>
+    <ul>
+      {% for file in ddoc.files | sort(attribute='version', reverse=True) %}
+        <li>
+          <strong>{{ _('Version:') }}</strong> {{ file.version }}
+          <a href="{{ file.path }}" target="_blank">{{ file.filename }}</a> ({{ file.size }} bytes)
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% else %}
+  <p>{{ _('No files available.') }}</p>
+{% endif %}
+
         <hr>
       </div>
     </div>
@@ -33,6 +62,12 @@
       </div>
       <div class="section__body">
         <a href="{{ url('repo_edit', domainId=domainId, did=ddoc._id) }}" class="button primary expanded">{{ _('Edit Repository') }}</a>
+      </div>
+      <div class="section__body">
+        <a href="{{ url('repo_history', domainId=domainId, did=ddoc._id) }}" class="button primary expanded">{{ _('View Files History') }}</a>
+      </div>
+      <div class="section__body">
+        <a href="{{ url('repo_add_version', domainId=domainId, did=ddoc._id) }}" class="button success expanded">{{ _('Submit New Version File') }}</a>
       </div>
     </div>
   </div>
