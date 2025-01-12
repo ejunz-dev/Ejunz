@@ -4,9 +4,7 @@
 <div class="row">
   <div class="medium-9 columns">
     <div class="section">
-      <div class="section__header">
-        <h1 class="section__title">{{ _('Repositories in Domain: {0}').format(domainId) }}</h1>
-      </div>
+      
       <div class="section__body">
         {% if not ddocs.length %}
           <p>{{ _('No repositories found.') }}</p>
@@ -32,7 +30,7 @@
   <div class="medium-3 columns">
     <div class="section side">
       <div class="section__header">
-        <h2>{{ _('Actions') }}</h2>
+        <h2 class="section__title">{{ _("{0}'s repositories").format(domainId) }}</h2>
       </div>
       <div class="section__body">
         <a href="{{ url('repo_create', domainId=domainId) }}" class="button primary expanded">{{ _('Create New Repository') }}</a>
