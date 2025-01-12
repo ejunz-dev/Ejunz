@@ -12,6 +12,7 @@ export interface RepoDoc {
     rid: number;
     owner: number;
     content: string;
+    title: string;
     ip: string;
     updateAt: Date;
     nReply: number;
@@ -19,7 +20,8 @@ export interface RepoDoc {
     reply: any[];
     react: Record<string, number>;
     files: {
-        name: string;            // 文件名
+        filename: string;            // 文件名
+        version: string;
         path: string;            // 文件路径
         size: number;            // 文件大小
         lastModified: Date;      // 最后修改时间
@@ -245,11 +247,14 @@ export class RepoEditHandler extends RepoHandler {
 
     @param('title', Types.Title)
     @param('content', Types.Content)
+    @param('filename', Types.String)
+    @param('version', Types.String)
     async postCreate(
         domainId: string,
         title: string,
         content: string,
         filename: string,
+        version: string,
     ) {
         await this.limitRate('add_repo', 3600, 60);
     
@@ -270,7 +275,7 @@ export class RepoEditHandler extends RepoHandler {
         const filePath = `domain/${domainId}/${rid}/${providedFilename}`;
     
         const existingFile = domain.files.find(
-            (f) => f.name === providedFilename && f.path.startsWith(`domain/${domainId}/${rid}/`)
+            (f) => f.filename === providedFilename && f.path.startsWith(`domain/${domainId}/${rid}/`)
         );
         if (existingFile) {
             throw new ValidationError(`A file with the name "${providedFilename}" already exists in this repository.`);
@@ -283,7 +288,8 @@ export class RepoEditHandler extends RepoHandler {
         }
     
         const fileData = {
-            name: providedFilename ?? 'unknown_file',
+            filename: providedFilename ?? 'unknown_file',
+            version: version ?? '0.0.0',
             path: filePath,
             size: fileMeta.size ?? 0,
             lastModified: fileMeta.lastModified ?? new Date(),
