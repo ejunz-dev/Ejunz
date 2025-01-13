@@ -1,8 +1,10 @@
 import {
     _, Context, DocumentModel, Filter,
-    Handler, NumberKeys, ObjectId, OplogModel, paginate,ValidationError,
+    Handler, NumberKeys, ObjectId, OplogModel, paginate,ValidationError,encodeRFC5987ValueChars,
     param, PRIV, Types, UserModel, DomainModel, StorageModel, ProblemModel, NotFoundError,DiscussionNotFoundError
 } from 'ejun';
+import { lookup } from 'mime-types';
+
 
 export const TYPE_REPO: 110 = 110;
 export interface RepoDoc {
@@ -445,6 +447,71 @@ export class RepoVersionHandler extends Handler {
         return 0;
     }
 }
+export class RepoHistoryHandler extends Handler {
+    @param('did', Types.ObjectId, true)
+    async get(domainId: string, did: ObjectId) {
+        const repo = await RepoModel.get(domainId, did);
+        if (!repo) {
+            throw new NotFoundError(`Repository not found for ID: ${did}`);
+        }
+        // 按 lastModified 时间排序
+        const sortedFiles = repo.files?.sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime());
+        if (!sortedFiles || sortedFiles.length === 0) {
+            throw new NotFoundError('No files found in the repository.');
+        }
+
+        this.response.template = 'repo_history.html';
+        this.response.body = {
+            ddoc: repo,
+            domainId,
+            rid: repo.rid,
+            files: sortedFiles,
+            urlForFile: (filename: string) =>
+                this.url('repo_file_download', { domainId, filename }),
+        };
+    }
+}
+
+
+export class RepofileDownloadHandler extends Handler {
+    async get({ rid, filename }: { rid: string; filename: string }) {
+        const domainId = this.context.domainId || 'default_domain';
+
+        console.log("Entering RepofileDownloadHandler.get...");
+        console.log("Received rid:", rid, "filename:", filename);
+
+        if (!rid || !filename) {
+            throw new ValidationError('Invalid request: RID or filename missing.');
+        }
+
+        const filePath = `domain/${domainId}/${rid}/${filename}`;
+        console.log("Resolved file path:", filePath);
+
+        const fileMeta = await StorageModel.getMeta(filePath);
+        if (!fileMeta) {
+            throw new NotFoundError(`File "${filename}" does not exist in repository "${rid}".`);
+        }
+
+        const mimeType = lookup(filename) || 'application/octet-stream';
+        console.log("File MIME type:", mimeType);
+
+        try {
+            this.response.body = await StorageModel.get(filePath);
+            this.response.type = mimeType;
+
+            if (!['application/pdf', 'image/jpeg', 'image/png'].includes(mimeType)) {
+                this.response.disposition = `attachment; filename="${encodeRFC5987ValueChars(filename)}"`;
+            }
+
+            console.log("File streamed successfully:", fileMeta);
+        } catch (error) {
+            throw new Error(`Error streaming file "${filename}": ${error.message}`);
+        }
+    }
+}
+    
+    
+
 
 
 
@@ -456,7 +523,10 @@ export async function apply(ctx: Context) {
     ctx.Route('repo_detail', '/repo/:did', RepoDetailHandler);
     ctx.Route('repo_edit', '/repo/:did/edit', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_add_version', '/repo/:did/add-version', RepoVersionHandler, PRIV.PRIV_USER_PROFILE);
-    // ctx.Route('repo_history', '/repo/:did/history', RepoHistroyHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('repo_history', '/repo/:did/history', RepoHistoryHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('repo_file_download', '/repo/:rid/file/:filename', RepofileDownloadHandler, PRIV.PRIV_USER_PROFILE);
+
+    
     ctx.injectUI('Nav', 'repo_domain', () => ({
         name: 'repo_domain',
         displayName: 'Repo',
