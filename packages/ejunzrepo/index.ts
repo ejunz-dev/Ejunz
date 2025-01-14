@@ -22,14 +22,14 @@ export interface RepoDoc {
     reply: any[];
     react: Record<string, number>;
     files: {
-        filename: string;            // 文件名
+        filename: string;           
         version: string;
-        path: string;            // 文件路径
-        size: number;            // 文件大小
-        lastModified: Date;      // 最后修改时间
-        etag?: string;           // 文件校验码
-    }[];                         // 支持多个文件
-}                         // 支持多个文件
+        path: string;            
+        size: number;           
+        lastModified: Date;      
+        etag?: string;        
+    }[];
+}                         
 
 
 declare module 'ejun' {
