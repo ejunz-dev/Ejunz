@@ -89,7 +89,7 @@ declare module 'ejun' {
 }
 const pathRegex = /^\/d\/[A-Za-z0-9\/%.-]+$/;
 function parseFilePath(filePath: string, hostname: string) {
-  // Decode the file path to handle encoded characters like "%20"
+  // Decode the domainfile path to handle encoded characters like "%20"
   const decodedPath = decodeURIComponent(filePath);
   // Remove redundant slashes and encode the path for the final URL
   const sanitizedPath = decodedPath.replace(/\/{2,}/g, '/');
@@ -97,7 +97,7 @@ function parseFilePath(filePath: string, hostname: string) {
 }
 
 export function Media(md: MarkdownIt, getHostname?: () => string) {
-  const supported = ['youtube', 'vimeo', 'vine', 'prezi', 'bilibili', 'youku', 'msoffice', 'file'];
+  const supported = ['youtube', 'vimeo', 'vine', 'prezi', 'bilibili', 'youku', 'msoffice', 'domainfile'];
 
   md.renderer.rules.video = function tokenizeReturn(tokens, idx) {
     let src = md.utils.escapeHtml(tokens[idx].attrGet('src'));
@@ -109,14 +109,14 @@ export function Media(md: MarkdownIt, getHostname?: () => string) {
     }
   
 
-    else if (service === 'file' && pathRegex.test(src)) {
+    else if (service === 'domainfile' && pathRegex.test(src)) {
       const hostname = typeof getHostname === 'function' ? getHostname() : 'https://beta.ejunz.com';
       src = parseFilePath(src, hostname);
     }
     
 
     if (service === 'pdf') {
-      if (src.startsWith('file://') || src.startsWith('./')) src += src.includes('?') ? '&noDisposition=1' : '?noDisposition=1';
+      if (src.startsWith('domainfile://') || src.startsWith('./')) src += src.includes('?') ? '&noDisposition=1' : '?noDisposition=1';
       return `\
         <object classid="clsid:${uuid().toUpperCase()}">
           <param name="SRC" value="${src}" >
@@ -165,7 +165,7 @@ export function Media(md: MarkdownIt, getHostname?: () => string) {
     else if (service === 'vimeo') src = vimeoParser(src);
     else if (service === 'vine') src = vineParser(src);
     else if (service === 'prezi') src = preziParser(src);
-    else if (service === 'file' && pathRegex.test(src)) {
+    else if (service === 'domainfile' && pathRegex.test(src)) {
       const hostname = typeof getHostname === 'function' ? getHostname() : 'https://beta.ejunz.com';
       src = parseFilePath(src, hostname);
     }
