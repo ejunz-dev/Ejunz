@@ -324,9 +324,7 @@ export class RepoEditHandler extends RepoHandler {
             etag: fileMeta.etag ?? '',
         };
     
-        domain.files.push(fileData);
-        await DomainModel.edit(domainId, { files: domain.files });
-    
+
         const did = await RepoModel.addWithId(domainId, this.user._id, title, content, this.request.ip, {
             files: [fileData],
             rid,
