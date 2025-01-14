@@ -424,7 +424,6 @@ export async function revSetStatus<T extends keyof DocStatusType>(
     const res = await collStatus.findOneAndUpdate(filter, update, { returnDocument: 'after' });
     return res.value;
 }
-
 export async function apply(ctx: Context) {
     ctx.on('domain/delete', (domainId) => Promise.all([
         coll.deleteMany({ domainId }),
