@@ -259,11 +259,11 @@ export class RepoEditHandler extends RepoHandler {
     async get() {
         const domainId = this.context.domainId || 'default_domain';
         const rid = this.ddoc?.rid;
-        const files = await StorageModel.list(`domain/${domainId}/${rid}`);
+        const files = await StorageModel.list(`repo/${domainId}/${rid}`);
         
 
         const urlForFile = (filename: string) =>
-            `/d/${domainId}/${rid}/domainfile/${(filename)}`;
+            `/d/${domainId}/${rid}/${(filename)}`;
 
         this.response.template = 'repo_edit.html';
         this.response.body = {
@@ -300,10 +300,10 @@ export class RepoEditHandler extends RepoHandler {
         const rid = await RepoModel.generateNextRid(domainId);
     
         const providedFilename = filename || file.originalFilename;
-        const filePath = `domain/${domainId}/${rid}/${providedFilename}`;
+        const filePath = `repo/${domainId}/${rid}/${providedFilename}`;
     
         const existingFile = domain.files.find(
-            (f) => f.filename === providedFilename && f.path.startsWith(`domain/${domainId}/${rid}/`)
+            (f) => f.filename === providedFilename && f.path.startsWith(`repo/${domainId}/${rid}/`)
         );
         if (existingFile) {
             throw new ValidationError(`A file with the name "${providedFilename}" already exists in this repository.`);
@@ -401,7 +401,7 @@ export class RepoVersionHandler extends Handler {
         }
 
         const rid = repo.rid;
-        const filePath = `domain/${domainId}/${rid}/${filename}`;
+        const filePath = `repo/${domainId}/${rid}/${filename}`;
         await StorageModel.put(filePath, file.filepath, this.user._id);
         const fileMeta = await StorageModel.getMeta(filePath);
         if (!fileMeta) {
@@ -484,7 +484,7 @@ export class RepofileDownloadHandler extends Handler {
             throw new ValidationError('Invalid request: RID or filename missing.');
         }
 
-        const filePath = `domain/${domainId}/${rid}/${filename}`;
+        const filePath = `repo/${domainId}/${rid}/${filename}`;
         console.log("Resolved file path:", filePath);
 
         const fileMeta = await StorageModel.getMeta(filePath);
