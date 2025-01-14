@@ -87,17 +87,26 @@ declare module 'ejun' {
     }
   }
 }
-const pathRegex = /^\/d\/[A-Za-z0-9\/%.-]+$/;
-function parseFilePath(filePath: string, hostname: string) {
-  // Decode the domainfile path to handle encoded characters like "%20"
-  const decodedPath = decodeURIComponent(filePath);
-  // Remove redundant slashes and encode the path for the final URL
-  const sanitizedPath = decodedPath.replace(/\/{2,}/g, '/');
-  return `${hostname}${sanitizedPath}`;
+const domainfileRegex = /^\/d\/[A-Za-z0-9\/%.-]+$/;
+const repofileRegex = /^\/repo\/[A-Za-z0-9]+\/file\/[A-Za-z0-9\/%.-]+$/;
+
+function parseFilePath(filePath: string, hostname: string, type: 'domainfile' | 'repofile') {
+  const decodedPath = decodeURIComponent(filePath).replace(/\/{2,}/g, '/'); // Decode and sanitize path
+
+  if (type === 'domainfile' && domainfileRegex.test(decodedPath)) {
+    return `${hostname}${decodedPath}`;
+  }
+
+  if (type === 'repofile' && repofileRegex.test(decodedPath)) {
+    return `${hostname}${decodedPath}`;
+  }
+
+  throw new Error(`Invalid ${type} path: ${filePath}`);
 }
 
+
 export function Media(md: MarkdownIt, getHostname?: () => string) {
-  const supported = ['youtube', 'vimeo', 'vine', 'prezi', 'bilibili', 'youku', 'msoffice', 'domainfile'];
+  const supported = ['youtube', 'vimeo', 'vine', 'prezi', 'bilibili', 'youku', 'msoffice', 'domainfile', 'repofile'];
 
   md.renderer.rules.video = function tokenizeReturn(tokens, idx) {
     let src = md.utils.escapeHtml(tokens[idx].attrGet('src'));
@@ -108,85 +117,94 @@ export function Media(md: MarkdownIt, getHostname?: () => string) {
       if (result) return result;
     }
   
+ // Handle domainfile
+ if (service === 'domainfile' && domainfileRegex.test(src)) {
+  const hostname = typeof getHostname === 'function' ? getHostname() : 'https://beta.ejunz.com';
+  src = parseFilePath(src, hostname, 'domainfile');
+  return `<a href="${src}" target="_blank">${src}</a>`;
+}
 
-    else if (service === 'domainfile' && pathRegex.test(src)) {
-      const hostname = typeof getHostname === 'function' ? getHostname() : 'https://beta.ejunz.com';
-      src = parseFilePath(src, hostname);
-    }
-    
+// Handle repofile
+if (service === 'repofile' && repofileRegex.test(src)) {
+  const hostname = typeof getHostname === 'function' ? getHostname() : 'https://beta.ejunz.com';
+  src = parseFilePath(src, hostname, 'repofile');
+  return `<img src="${src}" alt="${src}" style="max-width: 100%;">`;
+}
 
-    if (service === 'pdf') {
-      if (src.startsWith('domainfile://') || src.startsWith('./')) src += src.includes('?') ? '&noDisposition=1' : '?noDisposition=1';
-      return `\
-        <object classid="clsid:${uuid().toUpperCase()}">
-          <param name="SRC" value="${src}" >
-          <embed width="100%" style="min-height: 100vh;border: none;" fullscreen="yes" src="${src}">
-            <noembed></noembed>
-          </embed>
-        </object>`;
-    }
+if (service === 'pdf') {
+  if (src.startsWith('file://') || src.startsWith('./')) src += src.includes('?') ? '&noDisposition=1' : '?noDisposition=1';
+  return `\
+    <object classid="clsid:${uuid().toUpperCase()}">
+      <param name="SRC" value="${src}" >
+      <embed width="100%" style="min-height: 100vh;border: none;" fullscreen="yes" src="${src}">
+        <noembed></noembed>
+      </embed>
+    </object>`;
+}
 
-    if (['url', 'video'].includes(service)) {
-      return `\
-        <video width="100%" controls>
-          <source src="${src}" type="${src.endsWith('ogg') ? 'video/ogg' : 'video/mp4'}">
-          Your browser doesn't support video tag.
-        </video>`;
-    }
+if (['url', 'video'].includes(service)) {
+  return `\
+    <video width="100%" controls>
+      <source src="${src}" type="${src.endsWith('ogg') ? 'video/ogg' : 'video/mp4'}">
+      Your browser doesn't support video tag.
+    </video>`;
+}
 
-    if (supported.includes(service)) {
-      return `\
-      <iframe class="embed-responsive-item ${service}-player" type="text/html" \
-        width="100%" style="min-height: 500px" ${allowFullScreen} \
-        src="${resourceUrl(service, src, tokens[idx].attrGet('url'))}"
-        scrolling="no" border="0" frameborder="no" framespacing="0"></iframe>`;
-    }
-    return `<div data-${service}>${md.utils.escapeHtml(src)}</div>`;
-  };
+if (supported.includes(service)) {
+  return `\
+  <iframe class="embed-responsive-item ${service}-player" type="text/html" \
+    width="100%" style="min-height: 500px" ${allowFullScreen} \
+    src="${resourceUrl(service, src, tokens[idx].attrGet('url'))}"
+    scrolling="no" border="0" frameborder="no" framespacing="0"></iframe>`;
+}
+return `<div data-${service}>${md.utils.escapeHtml(src)}</div>`;
+};
 
-  md.inline.ruler.before('emphasis', 'video', (state, silent) => {
-    const oldPos = state.pos;
-  
-    if (state.src.charCodeAt(oldPos) !== 0x40 /* @ */
-      || state.src.charCodeAt(oldPos + 1) !== 0x5B /* [ */) {
-      return false;
-    }
-  
-    const match = EMBED_REGEX.exec(state.src.slice(state.pos, state.src.length));
-    if (!match || match.length < 3) {
-      console.warn('Markdown inline rule did not match:', state.src);
-      return false;
-    }
-  
-    let [, service, src] = match;
-    service = service.toLowerCase();
-  
-    if (service === 'youtube') src = youtubeParser(src);
-    else if (service === 'vimeo') src = vimeoParser(src);
-    else if (service === 'vine') src = vineParser(src);
-    else if (service === 'prezi') src = preziParser(src);
-    else if (service === 'domainfile' && pathRegex.test(src)) {
-      const hostname = typeof getHostname === 'function' ? getHostname() : 'https://beta.ejunz.com';
-      src = parseFilePath(src, hostname);
-    }
-  
-    if (src === ')') src = '';
-  
-    const serviceStart = oldPos + 2;
-  
-    if (!silent) {
-      state.pos = serviceStart;
-      const newState = new state.md.inline.State(service, state.md, state.env, []);
-      newState.md.inline.tokenize(newState);
-      const token = state.push('video', '', undefined);
-      token.attrPush(['src', src]);
-      token.attrPush(['service', service]);
-      token.attrPush(['url', match[2]]);
-      token.level = state.level;
-    }
-  
-    state.pos += state.src.indexOf(')', state.pos);
-    return true;
-  });
-  
+md.inline.ruler.before('emphasis', 'video', (state, silent) => {
+const oldPos = state.pos;
+
+if (state.src.charCodeAt(oldPos) !== 0x40 /* @ */
+  || state.src.charCodeAt(oldPos + 1) !== 0x5B /* [ */) {
+  return false;
+}
+
+const match = EMBED_REGEX.exec(state.src.slice(state.pos, state.src.length));
+if (!match || match.length < 3) {
+  console.warn('Markdown inline rule did not match:', state.src);
+  return false;
+}
+
+let [, service, src] = match;
+service = service.toLowerCase();
+
+if (service === 'youtube') src = youtubeParser(src);
+else if (service === 'vimeo') src = vimeoParser(src);
+else if (service === 'vine') src = vineParser(src);
+else if (service === 'prezi') src = preziParser(src);
+else if (service === 'domainfile' && domainfileRegex.test(src)) {
+  const hostname = typeof getHostname === 'function' ? getHostname() : 'https://beta.ejunz.com';
+  src = parseFilePath(src, hostname, 'domainfile');
+} else if (service === 'repofile' && repofileRegex.test(src)) {
+  const hostname = typeof getHostname === 'function' ? getHostname() : 'https://beta.ejunz.com';
+  src = parseFilePath(src, hostname, 'repofile');
+}
+
+if (src === ')') src = '';
+
+const serviceStart = oldPos + 2;
+
+if (!silent) {
+  state.pos = serviceStart;
+  const newState = new state.md.inline.State(service, state.md, state.env, []);
+  newState.md.inline.tokenize(newState);
+  const token = state.push('video', '', undefined);
+  token.attrPush(['src', src]);
+  token.attrPush(['service', service]);
+  token.attrPush(['url', match[2]]);
+  token.level = state.level;
+}
+
+state.pos += state.src.indexOf(')', state.pos);
+return true;
+});
 }
