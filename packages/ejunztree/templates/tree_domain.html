@@ -1,0 +1,43 @@
+{% import "components/paginator.html" as paginator with context %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__header">
+        <h2 class="section__title">{{ _("Branches in {0}").format(domainName) }}</h2>
+      </div>
+      <div class="section__body">
+        {% if nodes and nodes.length %}
+          <ol class="section__list">
+            {% for node in nodes %}
+              <li class="section__list__item">
+                <h2>
+                  <a href="{{ url('branch_detail', domainId=domainId, did=node._id) }}">{{ node.title }}</a>
+                </h2>
+                <ul class="list supplementary">
+                  <li>{{ _('{0} views').format(node.views) }}</li>
+                  <li>{{ _('Last updated: {0}').format(node.updateAt | date('YYYY-MM-DD HH:mm:ss')) }}</li>
+                </ul>
+              </li>
+            {% endfor %}
+          </ol>
+          {{ paginator.render(page, totalPages) }}
+        {% else %}
+          <p>{{ _('No branches found.') }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="medium-3 columns">
+    <div class="section side">
+      <div class="section__header">
+        <h2 class="section__title">{{ _("Manage Branches") }}</h2>
+      </div>
+      <div class="section__body">
+        <a href="{{ url('branch_create', domainId=domainId) }}" class="button primary expanded">{{ _('Create New Branch') }}</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
