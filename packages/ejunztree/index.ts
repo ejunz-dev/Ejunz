@@ -161,9 +161,15 @@ export class BranchModel {
         await DocumentModel.inc(domainId, TYPE_BR, docId, 'views', 1);
     }
 
-    static async edit(domainId: string, docId: ObjectId, title: string, content: string): Promise<void> {
-        await DocumentModel.set(domainId, TYPE_BR, docId, { title, content });
-    }    
+    static async edit(domainId: string, docId: ObjectId, title: string, content: string, lids?: number[], rids?: number[]): Promise<void> {
+        const updateFields: any = { title, content };
+        
+        if (lids !== undefined) updateFields.lids = lids;
+        if (rids !== undefined) updateFields.rids = rids;
+    
+        await DocumentModel.set(domainId, TYPE_BR, docId, updateFields);
+    }
+    
 }
 export async function getDocsByLid(domainId: string, lids: number | number[]) {
     console.log(`Fetching docs for lids: ${lids}`);
@@ -341,15 +347,23 @@ export class BranchEditHandler extends BranchHandler {
     @param('docId', Types.ObjectId)
     @param('title', Types.Title)
     @param('content', Types.Content)
-    async postUpdate(domainId: string, docId: ObjectId, title: string, content: string) {
+    @param('lids', Types.String)  // 先接受字符串
+    @param('rids', Types.String)
+    async postUpdate(domainId: string, docId: ObjectId, title: string, content: string, lids: string, rids: string) {
+        // 解析 lids 和 rids，将字符串转换成数字数组
+        const parsedLids = lids ? lids.split(',').map(Number).filter(n => !isNaN(n)) : [];
+        const parsedRids = rids ? rids.split(',').map(Number).filter(n => !isNaN(n)) : [];
+    
         await Promise.all([
-            BranchModel.edit(domainId, docId, title, content),
+            BranchModel.edit(domainId, docId, title, content, parsedLids, parsedRids),
             OplogModel.log(this, 'branch.edit', this.ddoc),
         ]);
-
+    
         this.response.body = { docId };
         this.response.redirect = this.url('branch_detail', { uid: this.user._id, docId });
     }
+    
+
 
     @param('docId', Types.ObjectId)
     async postDelete(domainId: string, docId: ObjectId) {
