@@ -6,11 +6,7 @@
     <div class="section">
       <div class="section__header">
         <h2 class="section__title">
-          {% if branchDoc %}
-            {{ _("Edit Branch") }}
-          {% else %}
-            {{ _("Create Branch") }}
-          {% endif %}
+          {{ _("Edit Branch") if ddoc else _("Create Branch") }}
         </h2>
       </div>
       <div class="section__body">
@@ -20,7 +16,7 @@
               label:_('Branch Title'),
               name:'title',
               placeholder:_('Enter branch title'),
-              value:branchDoc.title|default(''),
+              value:ddoc.title|default(''),
               autofocus:true
           }) }}
 
@@ -28,7 +24,7 @@
               columns:12,
               label:_('Branch Content'),
               name:'content',
-              value:branchDoc.content|default(''),
+              value:ddoc.content|default(''),
               markdown:true
           }) }}
 
@@ -37,7 +33,7 @@
               <label>
                 {{ _('Logic IDs (LIDs)') }}
                 <textarea name="lids" class="textbox" rows="3" placeholder="{{ _('Enter LIDs, one per line') }}">
-                  {% for lid in branchDoc.lids|default([]) %}
+                  {% for lid in ddoc.lids|default([]) %}
                     {{ lid }}
                   {% endfor %}
                 </textarea>
@@ -47,7 +43,7 @@
               <label>
                 {{ _('Resource IDs (RIDs)') }}
                 <textarea name="rids" class="textbox" rows="3" placeholder="{{ _('Enter RIDs, one per line') }}">
-                  {% for rid in branchDoc.rids|default([]) %}
+                  {% for rid in ddoc.rids|default([]) %}
                     {{ rid }}
                   {% endfor %}
                 </textarea>
@@ -55,25 +51,25 @@
             </div>
           </div>
 
-          <div class="row"><div class="columns">
-          {% if branchDoc %}
-            <button name="operation" value="update" type="submit" class="rounded primary button">
-              {{ _('Update') }}
-            </button>
-            {% if handler.user.own(branchDoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
-              <button name="operation" value="delete" type="submit" class="rounded button">
-                {{ _('Delete') }}
+          <div class="row">
+            <div class="columns">
+              <button 
+                name="operation" 
+                value="{{ 'update' if ddoc else 'create' }}" 
+                type="submit" 
+                class="rounded primary button">
+                {{ _('Update') if ddoc else _('Create') }}
               </button>
-            {% endif %}
-          {% else %}
-            <button name="operation" value="create" type="submit" class="rounded primary button">
-              {{ _('Create') }}
-            </button>
-          {% endif %}
-            <button type="button" class="rounded button" onclick="window.history.go(-1)">
-              {{ _('Cancel') }}
-            </button>
-          </div></div>
+              {% if ddoc and (handler.user.own(ddoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) %}
+                <button name="operation" value="delete" type="submit" class="rounded button">
+                  {{ _('Delete') }}
+                </button>
+              {% endif %}
+              <button type="button" class="rounded button" onclick="window.history.go(-1)">
+                {{ _('Cancel') }}
+              </button>
+            </div>
+          </div>
         </form>
       </div>
     </div>
