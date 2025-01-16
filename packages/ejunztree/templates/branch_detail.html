@@ -49,6 +49,22 @@
             {% endfor %}
           </ul>
         </div>
+
+        <h4>{{ _("Sub-Branches") }}</h4>
+        {% if childrenBranches and childrenBranches|length > 0 %}
+        <ul>
+            {% for branch in childrenBranches %}
+                <li>
+                    <a href="{{ url('branch_detail', domainId=ddoc.domainId, docId=branch.docId) }}">
+                        {{ branch.title }}
+                    </a>
+                </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+          <p>{{ _("No sub-branches available.") }}</p>
+          {% endif %}
+
         {% else %}
         <p>{{ _("No linked resources available.") }}</p>
         {% endif %}
