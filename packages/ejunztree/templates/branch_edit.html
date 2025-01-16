@@ -6,11 +6,22 @@
     <div class="section">
       <div class="section__header">
         <h2 class="section__title">
-          {{ _("Edit Branch") if ddoc else _("Create Branch") }}
+          {% if ddoc %}
+            {{ _("Edit Branch") }}
+          {% elif parentId %}
+            {{ _("Create Sub-Branch") }}
+          {% else %}
+            {{ _("Create Branch") }}
+          {% endif %}
         </h2>
       </div>
       <div class="section__body">
         <form method="post">
+          <!-- Hidden input to store parentId if creating a sub-branch -->
+          {% if parentId %}
+            <input type="hidden" name="parentId" value="{{ parentId }}">
+          {% endif %}
+
           {{ form.form_text({
               columns:12,
               label:_('Branch Title'),
@@ -55,10 +66,16 @@
             <div class="columns">
               <button 
                 name="operation" 
-                value="{{ 'update' if ddoc else 'create' }}" 
+                value="{% if ddoc %}update{% elif parentId %}create_subbranch{% else %}create{% endif %}" 
                 type="submit" 
                 class="rounded primary button">
-                {{ _('Update') if ddoc else _('Create') }}
+                {% if ddoc %}
+                  {{ _('Update') }}
+                {% elif parentId %}
+                  {{ _('Create Sub-Branch') }}
+                {% else %}
+                  {{ _('Create') }}
+                {% endif %}
               </button>
               {% if ddoc and (handler.user.own(ddoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) %}
                 <button name="operation" value="delete" type="submit" class="rounded button">

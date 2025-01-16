@@ -10,9 +10,20 @@
         <h3>{{ _("Title") }}: {{ ddoc.title }}</h3>
         <p>{{ _("Content") }}: {{ ddoc.content }}</p>
 
+        <h4>{{ _("Branch Information") }}</h4>
+        <p>
+          {{ _("Branch ID") }}: {{ ddoc.bid }} <br>
+          {% if ddoc.parentId %}
+            {{ _("Parent Branch ID") }}: {{ ddoc.parentId }} <br>
+            <strong>{{ _("Type") }}:</strong> <span class="badge secondary">{{ _("Sub-Branch") }}</span>
+          {% else %}
+            <strong>{{ _("Type") }}:</strong> <span class="badge primary">{{ _("Trunk") }}</span>
+          {% endif %}
+        </p>
+
         <h4>{{ _("Linked Items") }}</h4>
         
-         {% if docs and docs|length > 0 %}
+        {% if docs and docs|length > 0 %}
         <div>
           <p>{{ _("LIDs (Linked Documents):") }}</p>
           <ul>
@@ -27,7 +38,7 @@
         <p>{{ _("No linked documents available.") }}</p>
         {% endif %}
 
-         {% if repos and repos|length > 0 %}
+        {% if repos and repos|length > 0 %}
         <div>
           <p>{{ _("RIDs (Linked Resources):") }}</p>
           <ul>
@@ -41,10 +52,10 @@
         {% else %}
         <p>{{ _("No linked resources available.") }}</p>
         {% endif %}
-
       </div>
     </div>
   </div>
+
   <div class="medium-3 columns">
     <div class="section side">
       <div class="section__header">
@@ -57,6 +68,16 @@
         <a href="{{ url('tree_domain', domainId=ddoc.domainId) }}" class="button expanded">
           {{ _('Back to Tree') }}
         </a>
+
+        {% if ddoc.parentId %}
+          <a href="{{ url('branch_create_subbranch', domainId=ddoc.domainId, parentId=ddoc.bid) }}" class="button success expanded">
+            {{ _('Create Sub-Branch') }}
+          </a>
+        {% else %}
+          <a href="{{ url('branch_create_subbranch', domainId=ddoc.domainId, parentId=ddoc.bid) }}" class="button warning expanded">
+            {{ _('Create First Sub-Branch') }}
+          </a>
+        {% endif %}
       </div>
     </div>
   </div>
