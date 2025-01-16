@@ -91,7 +91,9 @@ export class BranchModel {
         owner: number,
         title: string,
         content: string,
-        ip?: string
+        ip?: string,
+        lids: number[] = [],
+        rids: number[] = []
     ): Promise<ObjectId> {
         const parentNode = await DocumentModel.getMulti(domainId, TYPE_BR, { bid: parentBid })
             .limit(1)
@@ -112,6 +114,8 @@ export class BranchModel {
             content,
             owner,
             ip,
+            lids,
+            rids,
             updateAt: new Date(),
             views: 0,
             path,
@@ -375,11 +379,61 @@ export class BranchEditHandler extends BranchHandler {
         this.response.redirect = this.url('tree_domain');
     }
 }
+export class BranchCreateSubbranchHandler extends BranchHandler {
+    @param('parentId', Types.Int)
+    async get(domainId: string, parentId: number) {
+        console.log("Opening Sub-Branch Editor. parentId:", parentId);
+
+        const parentBranchCursor = await BranchModel.getBranch(domainId, { bid: parentId });
+
+        const parentBranch = await parentBranchCursor.toArray();
+
+        if (!parentBranch.length) {
+            throw new Error(`Parent branch with bid ${parentId} not found.`);
+        }
+
+        this.response.template = 'branch_edit.html';
+        this.response.body = {
+            domainId,
+            parentId, // 确保前端能正确拿到 parentId
+        };
+    }
+
+    @param('parentId', Types.Int)
+    @param('title', Types.Title)
+    @param('content', Types.Content)
+    @param('lids', Types.ArrayOf(Types.Int))
+    @param('rids', Types.ArrayOf(Types.Int))
+    async postCreateSubbranch(domainId: string, parentId: number, title: string, content: string, lids: number[], rids: number[]) {
+        await this.limitRate('add_subbranch', 3600, 60);
+
+        console.log(`Creating Sub-Branch under parentId: ${parentId}`);
+
+        const docId = await BranchModel.addBranchNode(
+            domainId,
+            null, 
+            parentId, 
+            this.user._id,
+            title,
+            content,
+            this.request.ip,
+            lids,
+            rids
+        );
+
+        this.response.body = { docId };
+        this.response.redirect = this.url('branch_detail', { uid: this.user._id, docId });
+    }
+}
+
+
+
+
 
 export async function apply(ctx: Context) {
     ctx.Route('tree_domain', '/tree/branch', TreeDomainHandler);
     ctx.Route('branch_create', '/tree/createbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('branch_create_subbranch', '/tree/:parentId/createbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('branch_create_subbranch', '/tree/branch/:parentId/createsubbranch', BranchCreateSubbranchHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('branch_detail', '/tree/branch/:docId', BranchDetailHandler);
     ctx.Route('branch_edit', '/tree/branch/:docId/editbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.injectUI('Nav', 'tree_domain', () => ({
