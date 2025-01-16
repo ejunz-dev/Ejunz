@@ -59,3 +59,4 @@ export {encodeRFC5987ValueChars} from './service/storage';
 export * as domain from './model/domain';
 export * from '@ejunz/ejunzdocs';
 import * as system from './model/system';
+export {RepoModel} from '@ejunz/ejunzrepo';
