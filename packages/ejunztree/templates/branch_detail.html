@@ -11,27 +11,37 @@
         <p>{{ _("Content") }}: {{ ddoc.content }}</p>
 
         <h4>{{ _("Linked Items") }}</h4>
+        
+         {% if docs and docs|length > 0 %}
         <div>
           <p>{{ _("LIDs (Linked Documents):") }}</p>
           <ul>
-            {% for lid in ddoc.lids %}
+            {% for doc in docs %}
               <li>
-                <a href="{{ url('document_detail', lid=lid) }}">{{ _("Document ID:") }} {{ lid }}</a>
+                <a href="{{ url('docs_detail', domainId=ddoc.domainId, did=doc._id) }}">{{ _("Document ID:") }} {{ doc.title  }}</a>
               </li>
             {% endfor %}
           </ul>
         </div>
+        {% else %}
+        <p>{{ _("No linked documents available.") }}</p>
+        {% endif %}
 
+         {% if repos and repos|length > 0 %}
         <div>
           <p>{{ _("RIDs (Linked Resources):") }}</p>
           <ul>
-            {% for rid in ddoc.rids %}
+            {% for repo in repos %}
               <li>
-                <a href="{{ url('resource_detail', rid=rid) }}">{{ _("Resource ID:") }} {{ rid }}</a>
+                <a href="{{ url('repo_detail',domainId=ddoc.domainId, did=repo._id) }}">{{ _("Resource ID:") }} {{ repo.title }}</a>
               </li>
             {% endfor %}
           </ul>
         </div>
+        {% else %}
+        <p>{{ _("No linked resources available.") }}</p>
+        {% endif %}
+
       </div>
     </div>
   </div>
