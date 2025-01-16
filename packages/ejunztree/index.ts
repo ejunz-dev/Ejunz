@@ -1,7 +1,7 @@
 import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter,
     Handler, NumberKeys, ObjectId, OplogModel, paginate,
-    param, PRIV, Types, UserModel, DomainModel, StorageModel, ProblemModel, NotFoundError
+    param, PRIV, Types, UserModel, DomainModel, StorageModel, ProblemModel, NotFoundError,DocsModel,RepoModel
 } from 'ejun';
 
 export const TYPE_BR: 1 = 1;
@@ -163,8 +163,32 @@ export class BranchModel {
 
     static async edit(domainId: string, docId: ObjectId, title: string, content: string): Promise<void> {
         await DocumentModel.set(domainId, TYPE_BR, docId, { title, content });
-    }
+    }    
 }
+export async function getDocsByLid(domainId: string, lids: number | number[]) {
+    console.log(`Fetching docs for lids: ${lids}`);
+
+    const query = {
+        domainId,
+        lid: Array.isArray(lids) ? { $in: lids } : lids,
+    };
+
+    console.log(`Querying docs with:`, query);
+    return await DocsModel.getMulti(domainId, query).toArray();
+}
+
+export async function getReposByRid(domainId: string, rids: number | number[]) {
+    console.log(`Fetching docs for rids: ${rids}`);
+
+    const query = {
+        domainId,
+        rid: Array.isArray(rids) ? { $in: rids } : rids,
+    };
+
+    console.log(`Querying docs with:`, query);
+    return await RepoModel.getMulti(domainId, query).toArray();
+}
+
 
 class BranchHandler extends Handler {
     ddoc?: BRDoc;
@@ -225,13 +249,22 @@ export class BranchDetailHandler extends BranchHandler {
 
         const children = await BranchModel.getChildren(domainId, this.ddoc!.bid);
 
+
+        const docs = this.ddoc?.lids ? await getDocsByLid(domainId, this.ddoc.lids) : [];
+        const repos = this.ddoc?.rids ? await getReposByRid(domainId, this.ddoc.rids) : [];
+        
+
         this.response.template = 'branch_detail.html';
         this.response.body = {
             ddoc: this.ddoc,
             dsdoc,
             udoc,
+            docs,
+            repos,
             children,
         };
+        console.log('docs', docs);
+        console.log('repos', repos);
     }
 
     async post() {
