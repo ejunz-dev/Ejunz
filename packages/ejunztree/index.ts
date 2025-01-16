@@ -10,8 +10,7 @@ export interface BRDoc {
     docType: 1;
     docId: ObjectId;
     domainId: string;
-    brId?: ObjectId | null;
-    brid: number;
+    bid: number;
     owner: number;
     title: string;
     content: string;
@@ -20,7 +19,7 @@ export interface BRDoc {
     views: number;
     lids: Array<number>;
     rids: Array<number>;
-    parentId?: ObjectId | null;
+    parentId?: number|null;
     path: string;
     branch: boolean;
     childrenCount?: number;
@@ -34,39 +33,41 @@ declare module 'ejun' {
         [TYPE_BR]: BRDoc;
     }
 }
-
 export class BranchModel {
-    static async generateNextTeid(domainId: string): Promise<number> {
+    static async generateNextBid(domainId: string): Promise<number> {
         const lastDoc = await DocumentModel.getMulti(domainId, TYPE_BR, {})
-            .sort({ teid: -1 })
+            .sort({ bid: -1 })
             .limit(1)
-            .project({ teid: 1 })
+            .project({ bid: 1 })
             .toArray();
-        return (lastDoc[0]?.teid || 0) + 1;
+        return (lastDoc[0]?.bid || 0) + 1;
     }
 
     static async addTrunkNode(
         domainId: string,
-        brId: ObjectId | null,
+        bid: number,
         owner: number,
         title: string,
         content: string,
-        ip?: string
+        ip?: string,
+        lids: number[] = [],
+        rids: number[] = []
     ): Promise<ObjectId> {
-        const teid = await this.generateNextTeid(domainId);
-
+        const newBid = bid || await this.generateNextBid(domainId);
         const payload: Partial<BRDoc> = {
             domainId,
-            brId,
+            bid: newBid,
             title,
             content,
             owner,
             ip,
+            lids,
+            rids,
             updateAt: new Date(),
             views: 0,
-            path: `/${teid}`,
+            path: `/${newBid}`,
             branch: false,
-            parentId: null,
+            parentId: null, // 顶层节点 parentId 为 null
         };
 
         const docId = await DocumentModel.add(
@@ -85,25 +86,28 @@ export class BranchModel {
 
     static async addBranchNode(
         domainId: string,
-        brId: ObjectId,
-        parentId: ObjectId,
+        bid: number | null,
+        parentBid: number,
         owner: number,
         title: string,
         content: string,
         ip?: string
     ): Promise<ObjectId> {
-        const parentNode = await this.get(domainId, parentId);
-        if (!parentNode) {
+        const parentNode = await DocumentModel.getMulti(domainId, TYPE_BR, { bid: parentBid })
+            .limit(1)
+            .toArray();
+
+        if (!parentNode.length) {
             throw new Error('Parent node does not exist.');
         }
 
-        const teid = await this.generateNextTeid(domainId);
-        const path = `${parentNode.path}/${teid}`;
+        const newBid = bid ?? await this.generateNextBid(domainId);
+        const path = `${parentNode[0].path}/${newBid}`;
 
         const payload: Partial<BRDoc> = {
             domainId,
-            brId,
-            parentId,
+            bid: newBid,
+            parentId: parentBid, // 使用父节点的 bid
             title,
             content,
             owner,
@@ -128,11 +132,12 @@ export class BranchModel {
         return docId;
     }
 
+
     static async get(domainId: string, docId: ObjectId): Promise<BRDoc | null> {
         return await DocumentModel.get(domainId, TYPE_BR, docId);
     }
 
-    static async getChildren(domainId: string, parentId: ObjectId): Promise<BRDoc[]> {
+    static async getChildren(domainId: string, parentId: number): Promise<BRDoc[]> {
         return await DocumentModel.getMulti(domainId, TYPE_BR, { parentId }).toArray();
     }
 
@@ -167,8 +172,11 @@ class BranchHandler extends Handler {
     @param('docId', Types.ObjectId, true)
     async _prepare(domainId: string, docId: ObjectId) {
         if (docId) {
-            this.ddoc = await BranchModel.get(domainId, docId);
-            if (!this.ddoc) throw new DiscussionNotFoundError(domainId, docId);
+            const branchDoc = await BranchModel.get(domainId, docId);
+            if (!branchDoc) {
+                throw new NotFoundError(domainId, docId);
+            }
+            this.ddoc = branchDoc;
         }
     }
 }
@@ -184,11 +192,11 @@ export class TreeDomainHandler extends Handler {
             const branches = await BranchModel.getBranch(domainId, { parentId: null });
             if (!branches) throw new Error('No branches found.');
 
-            const [nodes, totalPages, totalCount] = await paginate(branches, page, pageSize);
+            const [ddocs, totalPages, totalCount] = await paginate(branches, page, pageSize);
 
             this.response.template = 'tree_domain.html';
             this.response.body = {
-                nodes,
+                ddocs,
                 domainId,
                 domainName: domainInfo.name,
                 page,
@@ -201,8 +209,10 @@ export class TreeDomainHandler extends Handler {
             this.response.template = 'error.html';
             this.response.body = { error: error.message || 'An unexpected error occurred.' };
         }
+        console.log('ddocs', this.response.body.ddocs);
     }
 }
+
 
 export class BranchDetailHandler extends BranchHandler {
     @param('docId', Types.ObjectId)
@@ -213,7 +223,7 @@ export class BranchDetailHandler extends BranchHandler {
 
         const udoc = await UserModel.getById(domainId, this.ddoc!.owner);
 
-        const children = await BranchModel.getChildren(domainId, docId);
+        const children = await BranchModel.getChildren(domainId, this.ddoc!.bid);
 
         this.response.template = 'branch_detail.html';
         this.response.body = {
@@ -247,7 +257,16 @@ export class BranchEditHandler extends BranchHandler {
 
     @param('title', Types.Title)
     @param('content', Types.Content)
-    async postCreate(domainId: string, title: string, content: string) {
+    @param('lids', Types.ArrayOf(Types.Int))
+    @param('rids', Types.ArrayOf(Types.Int))
+
+    async postCreate(
+        domainId: string,
+        title: string,
+        content: string,
+        lids: number[],
+        rids: number[]
+    ) {
         await this.limitRate('add_branch', 3600, 60);
 
         const docId = await BranchModel.addTrunkNode(
@@ -256,7 +275,9 @@ export class BranchEditHandler extends BranchHandler {
             this.user._id,
             title,
             content,
-            this.request.ip
+            this.request.ip,
+            lids,
+            rids
         );
 
         this.response.body = { docId };
@@ -269,10 +290,10 @@ export class BranchEditHandler extends BranchHandler {
     async postCreateBranch(domainId: string, parentId: ObjectId, title: string, content: string) {
         await this.limitRate('add_subbranch', 3600, 60);
 
-        const brId = this.ddoc?.brId || parentId;
+        const bid = this.ddoc?.bid || parentId;
         const docId = await BranchModel.addBranchNode(
             domainId,
-            brId,
+            bid,
             parentId,
             this.user._id,
             title,
@@ -309,11 +330,11 @@ export class BranchEditHandler extends BranchHandler {
 }
 
 export async function apply(ctx: Context) {
-    ctx.Route('tree_domain', '/tree', TreeDomainHandler);
-    ctx.Route('branch_create', '/tree/createbanch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('branch_create_subbranch', '/tree/:parentId/createbanch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('tree_domain', '/tree/branch', TreeDomainHandler);
+    ctx.Route('branch_create', '/tree/createbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('branch_create_subbranch', '/tree/:parentId/createbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('branch_detail', '/tree/branch/:docId', BranchDetailHandler);
-    ctx.Route('branch_edit', '/tree/branch/:docId/edit', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('branch_edit', '/tree/branch/:docId/editbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.injectUI('Nav', 'tree_domain', () => ({
         name: 'tree_main',
         displayName: 'Tree',

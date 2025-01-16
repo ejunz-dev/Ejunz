@@ -1,0 +1,85 @@
+{% import "components/form.html" as form with context %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__header">
+        <h2 class="section__title">
+          {% if branchDoc %}
+            {{ _("Edit Branch") }}
+          {% else %}
+            {{ _("Create Branch") }}
+          {% endif %}
+        </h2>
+      </div>
+      <div class="section__body">
+        <form method="post">
+          {{ form.form_text({
+              columns:12,
+              label:_('Branch Title'),
+              name:'title',
+              placeholder:_('Enter branch title'),
+              value:branchDoc.title|default(''),
+              autofocus:true
+          }) }}
+
+          {{ form.form_textarea({
+              columns:12,
+              label:_('Branch Content'),
+              name:'content',
+              value:branchDoc.content|default(''),
+              markdown:true
+          }) }}
+
+          <div class="row">
+            <div class="medium-6 columns">
+              <label>
+                {{ _('Logic IDs (LIDs)') }}
+                <textarea name="lids" class="textbox" rows="3" placeholder="{{ _('Enter LIDs, one per line') }}">
+                  {% for lid in branchDoc.lids|default([]) %}
+                    {{ lid }}
+                  {% endfor %}
+                </textarea>
+              </label>
+            </div>
+            <div class="medium-6 columns">
+              <label>
+                {{ _('Resource IDs (RIDs)') }}
+                <textarea name="rids" class="textbox" rows="3" placeholder="{{ _('Enter RIDs, one per line') }}">
+                  {% for rid in branchDoc.rids|default([]) %}
+                    {{ rid }}
+                  {% endfor %}
+                </textarea>
+              </label>
+            </div>
+          </div>
+
+          <div class="row"><div class="columns">
+          {% if branchDoc %}
+            <button name="operation" value="update" type="submit" class="rounded primary button">
+              {{ _('Update') }}
+            </button>
+            {% if handler.user.own(branchDoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
+              <button name="operation" value="delete" type="submit" class="rounded button">
+                {{ _('Delete') }}
+              </button>
+            {% endif %}
+          {% else %}
+            <button name="operation" value="create" type="submit" class="rounded primary button">
+              {{ _('Create') }}
+            </button>
+          {% endif %}
+            <button type="button" class="rounded button" onclick="window.history.go(-1)">
+              {{ _('Cancel') }}
+            </button>
+          </div></div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="medium-3 columns">
+    {% include 'components/md_hint.html' %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,54 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__header">
+        <h2 class="section__title">{{ _("Branch Details") }}</h2>
+      </div>
+      <div class="section__body">
+        <h3>{{ _("Title") }}: {{ ddoc.title }}</h3>
+        <p>{{ _("Content") }}: {{ ddoc.content }}</p>
+
+        <h4>{{ _("Linked Items") }}</h4>
+        <div>
+          <p>{{ _("LIDs (Linked Documents):") }}</p>
+          <ul>
+            {% for lid in ddoc.lids %}
+              <li>
+                <a href="{{ url('document_detail', lid=lid) }}">{{ _("Document ID:") }} {{ lid }}</a>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <div>
+          <p>{{ _("RIDs (Linked Resources):") }}</p>
+          <ul>
+            {% for rid in ddoc.rids %}
+              <li>
+                <a href="{{ url('resource_detail', rid=rid) }}">{{ _("Resource ID:") }} {{ rid }}</a>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="medium-3 columns">
+    <div class="section side">
+      <div class="section__header">
+        <h2 class="section__title">{{ _("Actions") }}</h2>
+      </div>
+      <div class="section__body">
+        <a href="{{ url('branch_edit', domainId=ddoc.domainId, docId=ddoc.docId) }}" class="button primary expanded">
+          {{ _('Edit Branch') }}
+        </a>
+        <a href="{{ url('tree_domain', domainId=ddoc.domainId) }}" class="button expanded">
+          {{ _('Back to Tree') }}
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
