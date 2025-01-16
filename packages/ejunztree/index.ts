@@ -257,8 +257,9 @@ export class BranchDetailHandler extends BranchHandler {
 
         const udoc = await UserModel.getById(domainId, this.ddoc!.owner);
 
-        const children = await BranchModel.getChildren(domainId, this.ddoc!.bid);
+        const childrenBranchesCursor = await BranchModel.getBranch(domainId, { parentId: this.ddoc!.bid });
 
+        const childrenBranches = await childrenBranchesCursor.toArray();
 
         const docs = this.ddoc?.lids ? await getDocsByLid(domainId, this.ddoc.lids) : [];
         const repos = this.ddoc?.rids ? await getReposByRid(domainId, this.ddoc.rids) : [];
@@ -271,10 +272,9 @@ export class BranchDetailHandler extends BranchHandler {
             udoc,
             docs,
             repos,
-            children,
+            childrenBranches,
         };
-        console.log('docs', docs);
-        console.log('repos', repos);
+        console.log('childrenBranches', childrenBranches);
     }
 
     async post() {
