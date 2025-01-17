@@ -4,43 +4,34 @@
   <div class="medium-9 columns">
     <div class="section">
       <div class="section__header">
-        <h2 class="section__title">{{ _("Branches in {0}").format(domainName) }}</h2>
+        <h2 class="section__title">{{ _("Tree List") }}</h2>
       </div>
       <div class="section__body">
-        {% if not ddocs.length %}
-          <p>{{ _('No branches found.') }}</p>
+        {% if trees and trees|length > 0 %}
+        <ul>
+          {% for tree in trees %}
+          <li>
+            <a href="{{ url('tree_detail', domainId=domainId, docId=tree._id) }}">
+              {{ tree.title }}
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
         {% else %}
-          <ol class="section__list">
-            {% for branchDoc in ddocs %}
-              <li class="section__list__item">
-                <h2>
-                  <a href="{{ url('branch_detail', domainId=domainId, docId=branchDoc._id) }}">
-                    {{ branchDoc.title }}
-                  </a>
-                </h2>
-                <ul class="list supplementary">
-                  <li>{{ _('{0} views').format(branchDoc.views) }}</li>
-                  <li>{{ _('Last updated: {0}').format(branchDoc.updateAt) }}</li>
-                  <li>{{ _('Logic IDs: {0}').format(branchDoc.lids | join(', ')) }}</li>
-                  <li>{{ _('Resource IDs: {0}').format(branchDoc.rids | join(', ')) }}</li>
-                </ul>
-                <p>{{ branchDoc.content }}</p>
-              </li>
-            {% endfor %}
-          </ol>
-          {{ paginator.render(page, totalPages) }}
+        <p>{{ _("No trees available.") }}</p>
         {% endif %}
       </div>
     </div>
   </div>
+
   <div class="medium-3 columns">
     <div class="section side">
       <div class="section__header">
-        <h2 class="section__title">{{ _("Manage Branches") }}</h2>
+        <h2 class="section__title">{{ _("Actions") }}</h2>
       </div>
       <div class="section__body">
-        <a href="{{ url('branch_create', domainId=domainId) }}" class="button primary expanded">
-          {{ _('Create New Branch') }}
+        <a href="{{ url('tree_create', domainId=domainId) }}" class="button primary expanded">
+          {{ _('Create New Tree') }}
         </a>
       </div>
     </div>

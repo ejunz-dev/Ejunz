@@ -1,7 +1,7 @@
 {% extends "layout/basic.html" %}
 {% block content %}
 <div class="row">
-  <div class="medium-9 columns">
+  <div class="medium-6 columns">
     <div class="section">
       <div class="section__header">
         <h2 class="section__title">{{ _("Branch Details") }}</h2>
@@ -71,6 +71,16 @@
       </div>
     </div>
   </div>
+
+  <!-- Add the Branch Map Component -->
+<div class="medium-6 columns">
+    <div id="branch-map-root" 
+        data-domain-id="{{ ddoc.domainId }}" 
+        data-current-bid="{{ ddoc.bid }}"
+        style="min-height: 300px;"> <!-- 这里确保有足够的高度 -->
+    </div>
+</div>
+
 
   <div class="medium-3 columns">
     <div class="section side">
