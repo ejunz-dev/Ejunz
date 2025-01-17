@@ -1,7 +1,8 @@
 import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter,
     Handler, NumberKeys, ObjectId, OplogModel, paginate,
-    param, PRIV, Types, UserModel, DomainModel, StorageModel, ProblemModel, NotFoundError,DocsModel,RepoModel
+    param, PRIV, Types, UserModel, DomainModel, StorageModel, ProblemModel, NotFoundError,DocsModel,RepoModel,
+    parseMemoryMB
 } from 'ejun';
 
 export const TYPE_BR: 1 = 1;
@@ -445,40 +446,60 @@ export class BranchDetailHandler extends BranchHandler {
 }
 
 export class BranchEditHandler extends BranchHandler {
-    @param('trid', Types.Int)
+    async get() {
+        const domainId = this.context.domainId || 'system';
+
+        this.response.template = 'branch_edit.html';
+        this.response.body = {
+            ddoc: this.ddoc,
+            trid: this.args.trid,
+        };
+        console.log('ddoc:', this.ddoc);
+        console.log('trid:', this.args.trid);
+    }
+
+    @param('trid', Types.Int) // 新增接收 `trid`
     @param('title', Types.Title)
     @param('content', Types.Content)
-    async postCreateBranch(domainId: string, trid: number, title: string, content: string) {
+    @param('lids', Types.ArrayOf(Types.Int))
+    @param('rids', Types.ArrayOf(Types.Int))
+    async postCreate(
+        domainId: string,
+        trid: number, // 让新建分支时必须绑定一个 `trid`
+        title: string,
+        content: string,
+        lids: number[],
+        rids: number[]
+    ) {
         await this.limitRate('add_branch', 3600, 60);
 
-        const bid = await BranchModel.generateNextBid(domainId);
         const docId = await BranchModel.addTrunkNode(
             domainId,
-            trid,  // 传入 `trid`
-            bid,
+            trid, // 绑定树 ID
+            null, // bid 由系统生成
             this.user._id,
             title,
             content,
-            this.request.ip
+            this.request.ip,
+            lids,
+            rids
         );
 
         this.response.body = { docId };
         this.response.redirect = this.url('branch_detail', { uid: this.user._id, docId });
     }
-}
-export class BranchCreateSubbranchHandler extends BranchHandler {
-    @param('trid', Types.Int)
-    @param('parentId', Types.Int)
+
+    @param('trid', Types.Int) // 让子分支也必须有 `trid`
+    @param('parentId', Types.ObjectId)
     @param('title', Types.Title)
     @param('content', Types.Content)
-    async postCreateSubbranch(domainId: string, trid: number, parentId: number, title: string, content: string) {
+    async postCreateBranch(domainId: string, trid: number, parentId: number, title: string, content: string) {
         await this.limitRate('add_subbranch', 3600, 60);
 
-        const bid = await BranchModel.generateNextBid(domainId);
         const docId = await BranchModel.addBranchNode(
             domainId,
-            trid,  // 传入 `trid`
-            bid,
+            trid, // 绑定 `trid`
+            null, // bid 由系统生成
             parentId,
             this.user._id,
             title,
@@ -489,7 +510,83 @@ export class BranchCreateSubbranchHandler extends BranchHandler {
         this.response.body = { docId };
         this.response.redirect = this.url('branch_detail', { uid: this.user._id, docId });
     }
+
+    @param('docId', Types.ObjectId)
+    @param('title', Types.Title)
+    @param('content', Types.Content)
+    @param('lids', Types.String)
+    @param('rids', Types.String)
+    async postUpdate(domainId: string, docId: ObjectId, title: string, content: string, lids: string, rids: string) {
+        const parsedLids = lids ? lids.split(',').map(Number).filter(n => !isNaN(n)) : [];
+        const parsedRids = rids ? rids.split(',').map(Number).filter(n => !isNaN(n)) : [];
+
+        await Promise.all([
+            BranchModel.edit(domainId, docId, title, content, parsedLids, parsedRids),
+            OplogModel.log(this, 'branch.edit', this.ddoc),
+        ]);
+
+        this.response.body = { docId };
+        this.response.redirect = this.url('branch_detail', { uid: this.user._id, docId });
+    }
+
+    @param('docId', Types.ObjectId)
+    async postDelete(domainId: string, docId: ObjectId) {
+        await Promise.all([
+            BranchModel.deleteNode(domainId, docId),
+            OplogModel.log(this, 'branch.delete', this.ddoc),
+        ]);
+
+        this.response.redirect = this.url('tree_detail', { trid: this.ddoc?.trid });
+    }
 }
+
+
+export class BranchCreateSubbranchHandler extends BranchHandler {
+    async get() {
+        const domainId = this.context.domainId || 'system';
+        const parentId = Number(this.args?.parentId);
+
+        console.log(`Debug: Opening sub-branch creation for parentId: ${parentId}`);
+
+        this.response.template = 'branch_edit.html';
+        this.response.body = {
+            ddoc: this.ddoc,
+            parentId,
+        };
+    }
+    
+  
+    @param('title', Types.Title)
+    @param('content', Types.Content)
+    @param('parentId', Types.Int)
+    @param('lids', Types.ArrayOf(Types.Int))
+    @param('rids', Types.ArrayOf(Types.Int))
+
+    async postCreateSubbranch(domainId: string,title: string, content: string, parentId: number, trid: number, lids: number[], rids: number[]) {
+        await this.limitRate('add_subbranch', 3600, 60);
+
+        console.log(`Debug: Creating sub-branch under trid ${trid}, parentId ${parentId}`);
+
+
+        const bid = await BranchModel.generateNextBid(domainId);
+        const docId = await BranchModel.addBranchNode(
+            domainId,
+            trid, 
+            bid,
+            parentId,
+            this.user._id,
+            title,
+            content,
+            this.request.ip,
+            lids,
+            rids
+        );
+
+        this.response.body = { docId };
+        this.response.redirect = this.url('branch_detail', { uid: this.user._id, docId });
+    }
+}
+
 
 
 export async function apply(ctx: Context) {
@@ -498,7 +595,7 @@ export async function apply(ctx: Context) {
     ctx.Route('tree_detail', '/tree/:docId', TreeDetailHandler);
     ctx.Route('tree_edit', '/tree/:docId/edit', TreeEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('tree_branch', '/tree/:trid/branch', TreeBranchHandler);
-    ctx.Route('branch_create', '/tree/createbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('branch_create', '/tree/:trid/createbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('branch_create_subbranch', '/tree/branch/:parentId/createsubbranch', BranchCreateSubbranchHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('branch_detail', '/tree/branch/:docId', BranchDetailHandler);
     ctx.Route('branch_edit', '/tree/branch/:docId/editbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
