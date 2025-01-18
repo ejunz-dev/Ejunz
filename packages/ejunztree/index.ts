@@ -271,6 +271,10 @@ export class BranchModel {
     static async getBranchesByIds(domainId: string, bids: number[]) {
         return await DocumentModel.getMulti(domainId, TYPE_BR, { bid: { $in: bids } }).toArray();
     }
+    static async getBranches(domainId: string, query: Filter<BRDoc>) {
+        return DocumentModel.getMulti(domainId, TYPE_BR, query);
+    }
+
 }
 export async function getDocsByLid(domainId: string, lids: number | number[]) {
     console.log(`Fetching docs for lids: ${lids}`);
@@ -456,11 +460,7 @@ export class BranchDetailHandler extends BranchHandler {
         const childrenBranchesCursor = await BranchModel.getBranch(domainId, { parentId: this.ddoc!.bid });
         const childrenBranches = await childrenBranchesCursor.toArray();
 
-        const docs = this.ddoc?.lids ? await getDocsByLid(domainId, this.ddoc.lids) : [];
-        const repos = this.ddoc?.rids ? await getReposByRid(domainId, this.ddoc.rids) : [];
-
         const pathLevels = this.ddoc?.path?.split('/').filter(Boolean) || [];
-
         const pathBranches = await BranchModel.getBranchesByIds(domainId, pathLevels.map(Number));
 
         this.response.template = 'branch_detail.html';
@@ -468,8 +468,8 @@ export class BranchDetailHandler extends BranchHandler {
             ddoc: this.ddoc,
             dsdoc,
             udoc,
-            docs,
-            repos,
+            docs: this.ddoc?.lids ? await getDocsByLid(domainId, this.ddoc.lids) : [],
+            repos: this.ddoc?.rids ? await getReposByRid(domainId, this.ddoc.rids) : [],
             childrenBranches,
             pathBranches,
         };
@@ -482,6 +482,7 @@ export class BranchDetailHandler extends BranchHandler {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
     }
 }
+
 
 
 export class BranchEditHandler extends BranchHandler {
