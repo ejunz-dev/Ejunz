@@ -322,7 +322,7 @@ export class TreeDomainHandler extends Handler {
         try {
             const trees = await TreeModel.getAllTrees(domainId);
             
-            this.response.template = 'tree_domain.html';  // 指定渲染的模板
+            this.response.template = 'tree_domain.html';  
             this.response.body = {
                 domainId,
                 trees
@@ -330,7 +330,7 @@ export class TreeDomainHandler extends Handler {
         console.log('trees:', trees);
         } catch (error) {
             console.error("Error fetching trees:", error);
-            this.response.template = 'error.html';  // 错误时显示错误页面
+            this.response.template = 'error.html';  
             this.response.body = { error: "Failed to fetch trees" };
         }
     }
@@ -372,43 +372,32 @@ export class TreeDetailHandler extends Handler {
         const trid = tree.trid;
         const treeBranches = await TreeModel.getBranchesByTree(domainId, trid);
 
-        const branchHierarchy = {};
+        const buildHierarchy = (parentId, branches) => {
+            return branches
+                .filter(branch => branch.parentId === parentId)
+                .map(branch => ({
+                    ...branch,
+                    subBranches: buildHierarchy(branch.bid, branches)
+                }));
+        };
 
-        treeBranches.forEach(branch => {
-            const pathLevels = branch.path.split('/').filter(Boolean);
-
-            const trunkId = pathLevels[0];
-            if (!branchHierarchy[trunkId]) {
-                branchHierarchy[trunkId] = { trunk: null, mainBranches: {}, subBranches: {} };
-            }
-
-            if (pathLevels.length === 1) {
-                branchHierarchy[trunkId].trunk = branch;
-            }
-
-            if (pathLevels.length === 2) {
-                const mainBranchId = pathLevels[1];
-                branchHierarchy[trunkId].mainBranches[mainBranchId] = branch;
-            }
-
-            if (pathLevels.length >= 3) {
-                const mainBranchId = pathLevels[1];
-                if (!branchHierarchy[trunkId].subBranches[mainBranchId]) {
-                    branchHierarchy[trunkId].subBranches[mainBranchId] = [];
-                }
-                branchHierarchy[trunkId].subBranches[mainBranchId].push(branch);
-            }
-        });
+        const root = treeBranches.find(branch => branch.parentId === null || branch.path.split('/').length === 1);
+        const branchHierarchy = {
+            trunk: root || null,
+            branches: buildHierarchy(root?.bid || null, treeBranches)
+        };
 
         this.response.template = 'tree_detail.html';
-        this.response.pjax = 'tree_map.html';
         this.response.body = {
             tree,
             treeBranches,
             branchHierarchy,
         };
+
+        console.log('branchHierarchy:', JSON.stringify(branchHierarchy, null, 2));
     }
 }
+
 
 
 
@@ -470,7 +459,6 @@ export class BranchDetailHandler extends BranchHandler {
         console.log(`Fetching entire tree for trid: ${ddoc.trid}`);
         const treeBranches = await TreeModel.getBranchesByTree(domainId, ddoc.trid);
 
-        // 递归构建分支树
         const branchHierarchy = {};
 
         const buildHierarchy = (parentId: number, branchList: any[]) => {
@@ -481,7 +469,7 @@ export class BranchDetailHandler extends BranchHandler {
             }));
         };
 
-        branchHierarchy[ddoc.trid] = buildHierarchy(5, treeBranches); // 5 是 Root Trunk ID
+        branchHierarchy[ddoc.trid] = buildHierarchy(5, treeBranches); 
 
         this.response.template = 'branch_detail.html';
         this.response.pjax = 'branch_detail.html'; 
