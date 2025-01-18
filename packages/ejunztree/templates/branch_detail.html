@@ -9,14 +9,13 @@
       <div class="section__body">
         <h2>{{ _("Tree ID") }}: {{ ddoc.trid }}</h2>
 
-        <!-- Path URL (History + Future) -->
+        <!-- Branch Path -->
         <div class="section">
           <div class="section__header">
             <h3>{{ _("Branch Path") }}</h3>
           </div>
           <div class="section__body path-container">
             <nav class="breadcrumb">
-              {% set path_length = pathBranches|length + childrenBranches|length %}
               {% for pathBranch in pathBranches %}
                 {% if pathBranch.docId == ddoc.docId %}
                   <strong>{{ pathBranch.title }}</strong>
@@ -25,14 +24,7 @@
                     {{ pathBranch.title }}
                   </a>
                 {% endif %}
-                {% if loop.index < path_length %} - {% endif %}
-              {% endfor %}
-
-              {% for branch in childrenBranches %}
-                /
-                <a href="{{ url('branch_detail', domainId=ddoc.domainId, docId=branch.docId) }}">
-                  {{ branch.title }}
-                </a>
+                {% if not loop.last %} - {% endif %}
               {% endfor %}
             </nav>
           </div>
@@ -54,6 +46,24 @@
               {% endif %}
             </p>
             <p><strong>{{ _("Content") }}:</strong> {{ ddoc.content }}</p>
+          </div>
+        </div>
+        <!-- Sub-Branches -->
+        <div class="section">
+          <div class="section__header">
+            <h3>{{ _("Sub-Branches") }}</h3>
+          </div>
+          <div class="section__body sub-branches">
+            {% if childrenBranches and childrenBranches|length > 0 %}
+              {% for branch in childrenBranches %}
+                <a href="{{ url('branch_detail', domainId=ddoc.domainId, docId=branch.docId) }}">
+                  {{ branch.title }}
+                </a>
+                {% if not loop.last %} | {% endif %}
+              {% endfor %}
+            {% else %}
+              <p>{{ _("No sub-branches available.") }}</p>
+            {% endif %}
           </div>
         </div>
       </div>
