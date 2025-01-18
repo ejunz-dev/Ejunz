@@ -1,4 +1,5 @@
 {% extends "layout/basic.html" %}
+
 {% block content %}
 <div class="row">
   <div class="medium-9 columns">
@@ -12,19 +13,50 @@
           <p>{{ _("Tree ID") }}: {{ tree.trid }}</p>
 
           <h4>{{ _("Branches") }}</h4>
-          {% if treeBranches and treeBranches|length > 0 %}
-          <ul>
-            {% for branch in treeBranches %}
-            <li>
-              <a href="{{ url('branch_detail', domainId=tree.domainId, docId=branch.docId) }}">
-                {{ branch.title }}
-              </a>
-            </li>
-            {% endfor %}
-          </ul>
-          {% else %}
-          <p>{{ _("No branches available.") }}</p>
-          {% endif %}
+
+          {% for trunkId, trunkData in branchHierarchy %}
+            <div class="branch-section">
+              <h5><strong>{{ _("Trunk (Bid: 5)") }}: {{ trunkId }}</strong></h5>
+              {% if trunkData.trunk %}
+                <div class="branch trunk">
+                  <p><strong>{{ _("Title") }}:</strong> {{ trunkData.trunk.title }}</p>
+                  <p><strong>{{ _("Branch ID") }}:</strong> {{ trunkData.trunk.docId }}</p>
+                  <p><strong>{{ _("Branch Type") }}:</strong> Trunk</p>
+                  <a href="{{ url('branch_detail', domainId=tree.domainId, docId=trunkData.trunk.docId) }}">{{ _("View Trunk") }}</a>
+                </div>
+              {% else %}
+                <p>{{ _("No trunk data available.") }}</p>
+              {% endif %}
+
+              {% if trunkData.mainBranches %}
+                <h6>{{ _("Main Branches (Bid: 6)") }}</h6>
+                <ul>
+                  {% for mainBranchId, mainBranch in trunkData.mainBranches %}
+                    <li class="main-branch">
+                      <p><strong>{{ _("Title") }}:</strong> {{ mainBranch.title }}</p>
+                      <p><strong>{{ _("Branch ID") }}:</strong> {{ mainBranch.docId }}</p>
+                      <p><strong>{{ _("Branch Type") }}:</strong> Main Branch</p>
+                      <a href="{{ url('branch_detail', domainId=tree.domainId, docId=mainBranch.docId) }}">{{ _("View Main Branch") }}</a>
+
+                      {% if trunkData.subBranches[mainBranchId] %}
+                        <h6>{{ _("Sub Branches") }}</h6>
+                        <ul>
+                          {% for subBranch in trunkData.subBranches[mainBranchId] %}
+                            <li class="sub-branch">
+                              <p><strong>{{ _("Title") }}:</strong> {{ subBranch.title }}</p>
+                              <p><strong>{{ _("Branch ID") }}:</strong> {{ subBranch.docId }}</p>
+                              <p><strong>{{ _("Branch Type") }}:</strong> Sub-Branch</p>
+                              <a href="{{ url('branch_detail', domainId=tree.domainId, docId=subBranch.docId) }}">{{ _("View Sub-Branch") }}</a>
+                            </li>
+                          {% endfor %}
+                        </ul>
+                      {% endif %}
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+          {% endfor %}
         {% else %}
           <p>{{ _("Tree not found.") }}</p>
         {% endif %}
@@ -39,10 +71,12 @@
       </div>
       <div class="section__body">
         {% if tree %}
-          <a href="{{ url('branch_create', domainId=tree.domainId, trid=tree.trid) }}" 
-             class="button primary expanded">
-            {{ _('Create Branch') }}
-          </a>
+          {% if not treeBranches or treeBranches|length == 0 %}
+            <a href="{{ url('branch_create', domainId=tree.domainId, trid=tree.trid) }}" 
+               class="button primary expanded">
+              {{ _('Create Branch') }}
+            </a>
+          {% endif %}
         {% endif %}
       </div>
     </div>

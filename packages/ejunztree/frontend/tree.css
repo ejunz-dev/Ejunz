@@ -1,0 +1,36 @@
+.tree-container {
+    padding-left: 20px;
+    border-left: 2px solid #ccc;
+  }
+  
+  .branch-container {
+    margin-bottom: 20px;
+  }
+  
+  .branch-title {
+    font-weight: bold;
+    font-size: 1.2em;
+    padding: 5px;
+    background-color: #f0f0f0;
+    border-radius: 4px;
+  }
+  
+  .sub-branches {
+    list-style-type: none;
+    margin-left: 20px;
+    padding-left: 20px;
+    border-left: 2px dotted #ccc;
+  }
+  
+  .sub-branch-title {
+    font-weight: normal;
+    padding: 5px;
+    background-color: #fafafa;
+    border-radius: 4px;
+  }
+  
+  .sub-branch-id {
+    font-size: 0.9em;
+    color: #666;
+  }
+  
