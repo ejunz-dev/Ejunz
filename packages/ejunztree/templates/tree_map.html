@@ -1,57 +1,27 @@
-{% macro render_tree(branchHierarchy, parentKey="5", prefix="") %}
-  {% if branchHierarchy[parentKey] %}
-    <div class="tree-container">
+{% macro render_tree(branchHierarchy, branches, prefix="") %}
+  {% if branches %}
+    <ul class="tree-view">
+      {% for branch in branches %}
+        <li>
+          {{ prefix }}<a href="{{ url('branch_detail', domainId=ddoc.domainId, docId=branch.docId) }}">
+            {% if loop.first and not prefix %} 🌳 {% elif branch.subBranches and branch.subBranches|length > 0 %} 🌿 {% else %} 🌱 {% endif %}
+            {{ branch.title }}
+          </a>
 
-      <!-- 🌳 Trunk 分支 -->
-      {% if branchHierarchy[parentKey].trunk %}
-        <div class="branch-section">
-          <h4>🌳 Trunk</h4>
-          <ul class="tree-view">
-            <li class="trunk">
-              <a href="{{ url('branch_detail', domainId=ddoc.domainId, docId=branchHierarchy[parentKey].trunk.docId) }}">
-                {{ branchHierarchy[parentKey].trunk.title }}
-              </a>
-            </li>
-          </ul>
-        </div>
-      {% endif %}
-
-      <!-- 🌿 Main Branches -->
-      {% if branchHierarchy[parentKey].mainBranches %}
-        <div class="branch-section">
-          <h4>🌿 Main Branches</h4>
-          <ul class="tree-view">
-            {% for key, branch in branchHierarchy[parentKey].mainBranches %}
-              <li class="main-branch">
-                {{ prefix }}├── 
-                <a href="{{ url('branch_detail', domainId=ddoc.domainId, docId=branch.docId) }}">
-                  {{ branch.title }}
-                </a>
-
-                <!-- 🌱 Sub-Branches -->
-                {% if branchHierarchy[parentKey].subBranches[key] %}
-                  <ul class="sub-branch-list">
-                    {% for subBranch in branchHierarchy[parentKey].subBranches[key] %}
-                      <li class="sub-branch">
-                        {{ prefix }}│   ├── 
-                        <a href="{{ url('branch_detail', domainId=ddoc.domainId, docId=subBranch.docId) }}">
-                          {{ subBranch.title }}
-                        </a>
-                      </li>
-                    {% endfor %}
-                  </ul>
-                {% endif %}
-              </li>
-            {% endfor %}
-          </ul>
-        </div>
-      {% endif %}
-      
-    </div>
+          <!-- 递归渲染子分支 -->
+          {% if branch.subBranches and branch.subBranches|length > 0 %}
+            {{ render_tree(branchHierarchy, branch.subBranches, prefix + "│  ") }}
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
   {% endif %}
 {% endmacro %}
 
-<!-- 🌳 渲染完整的 Tree -->
 <div class="tree-view">
-  {{ render_tree(branchHierarchy) }}
+  {% if branchHierarchy[ddoc.trid] %}
+    {{ render_tree(branchHierarchy, branchHierarchy[ddoc.trid]) }}
+  {% else %}
+    <p>{{ _("No branches available.") }}</p>
+  {% endif %}
 </div>
