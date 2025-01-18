@@ -85,15 +85,10 @@
           {{ _('Back to Tree') }}
         </a>
 
-        {% if ddoc.parentId %}
           <a href="{{ url('branch_create_subbranch', domainId=ddoc.domainId, parentId=ddoc.bid) }}" class="button success expanded">
             {{ _('Create Sub-Branch') }}
           </a>
-        {% else %}
-          <a href="{{ url('branch_create_subbranch', domainId=ddoc.domainId, parentId=ddoc.bid) }}" class="button warning expanded">
-            {{ _('Create First Sub-Branch') }}
-          </a>
-        {% endif %}
+
       </div>
     </div>
   </div>
