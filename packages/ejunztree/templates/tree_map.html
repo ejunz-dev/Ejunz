@@ -1,24 +1,35 @@
-{% macro render_tree(branchHierarchy, branches, prefix="") %}
+{% macro render_tree(branchHierarchy, branches, level=0, index=0, total=1, prefix="") %}
   {% if branches %}
-    <ul class="tree-view">
+    <div style="display: flex; justify-content: center; align-items: flex-end; gap: 50px;">
       {% for branch in branches %}
-        <li>
-          {{ prefix }}<a href="{{ url('branch_detail', domainId=ddoc.domainId, docId=branch.docId) }}">
-            {% if loop.first and not prefix %} 🌳 {% elif branch.subBranches and branch.subBranches|length > 0 %} 🌿 {% else %} 🌱 {% endif %}
-            {{ branch.title }}
-          </a>
+        <div style="text-align: center; position: relative;">
 
-          <!-- 递归渲染子分支 -->
           {% if branch.subBranches and branch.subBranches|length > 0 %}
-            {{ render_tree(branchHierarchy, branch.subBranches, prefix + "│  ") }}
+            <div style="display: flex; flex-direction: column-reverse; align-items: center;">
+              {{ render_tree(branchHierarchy, branch.subBranches, level + 1, loop.index0, loop.length, prefix + "    ") }}
+            </div>
           {% endif %}
-        </li>
+
+          <div>
+            {{ prefix }}{% if level == 0 %} 🌳 {% elif branch.subBranches and branch.subBranches|length > 0 %} 🌿 {% else %} 🌱 {% endif %}
+            <a href="{{ url('branch_detail', domainId=ddoc.domainId, docId=branch.docId) }}">
+              {{ branch.title }}
+            </a>
+          </div>
+
+          {% if level > 0 %}
+            <div>
+              {{ prefix }}*
+            </div>
+          {% endif %}
+
+        </div>
       {% endfor %}
-    </ul>
+    </div>
   {% endif %}
 {% endmacro %}
 
-<div class="tree-view">
+<div style="display: flex; flex-direction: column; align-items: center;">
   {% if branchHierarchy[ddoc.trid] %}
     {{ render_tree(branchHierarchy, branchHierarchy[ddoc.trid]) }}
   {% else %}
