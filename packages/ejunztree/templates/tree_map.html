@@ -1,0 +1,36 @@
+{% macro render_tree(branchHierarchy, parentKey="5") %}
+  {% if branchHierarchy[parentKey] %}
+    <ul class="tree-view">
+      {% if branchHierarchy[parentKey].trunk %}
+        <li>
+          <a href="{{ url('branch_detail', domainId=ddoc.domainId, docId=branchHierarchy[parentKey].trunk.docId) }}">
+            🌳 {{ branchHierarchy[parentKey].trunk.title }}
+          </a>
+        </li>
+      {% endif %}
+
+      {% for key, branch in branchHierarchy[parentKey].mainBranches %}
+        <li>
+          <a href="{{ url('branch_detail', domainId=ddoc.domainId, docId=branch.docId) }}">
+            🌿 {{ branch.title }}
+          </a>
+          {% if branchHierarchy[key] %}
+            {{ render_tree(branchHierarchy, key) }}
+          {% endif %}
+        </li>
+      {% endfor %}
+
+      {% for key, subBranchList in branchHierarchy[parentKey].subBranches %}
+        {% for subBranch in subBranchList %}
+          <li>
+            <a href="{{ url('branch_detail', domainId=ddoc.domainId, docId=subBranch.docId) }}">
+              🌱 {{ subBranch.title }}
+            </a>
+          </li>
+        {% endfor %}
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endmacro %}
+
+{{ render_tree(branchHierarchy) }}

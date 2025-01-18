@@ -1,4 +1,5 @@
 {% extends "layout/basic.html" %}
+
 {% block content %}
 <div class="row">
   <div class="medium-6 columns">
@@ -9,7 +10,17 @@
       <div class="section__body">
         <h2>{{ _("Tree ID") }}: {{ ddoc.trid }}</h2>
 
-        <!-- Branch Path -->
+        <!-- 🌳 Tree Map -->
+        <div class="section">
+          <div class="section__header">
+            <h3>{{ _("Tree Map") }}</h3>
+          </div>
+          <div class="section__body">
+            {% include "tree_map.html" %}
+          </div>
+        </div>
+
+        <!-- 🔹 Branch Path -->
         <div class="section">
           <div class="section__header">
             <h3>{{ _("Branch Path") }}</h3>
@@ -30,7 +41,7 @@
           </div>
         </div>
 
-        <!-- Current Branch -->
+        <!-- 🔹 Current Branch -->
         <div class="section">
           <div class="section__header">
             <h3>{{ _("Current Branch") }}</h3>
@@ -48,7 +59,8 @@
             <p><strong>{{ _("Content") }}:</strong> {{ ddoc.content }}</p>
           </div>
         </div>
-        <!-- Sub-Branches -->
+
+        <!-- 🔹 Sub-Branches -->
         <div class="section">
           <div class="section__header">
             <h3>{{ _("Sub-Branches") }}</h3>
