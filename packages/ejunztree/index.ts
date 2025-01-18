@@ -459,12 +459,8 @@ export class BranchDetailHandler extends BranchHandler {
             throw new NotFoundError(`Branch with docId ${docId} not found.`);
         }
 
-        const dsdoc = this.user.hasPriv(PRIV.PRIV_USER_PROFILE)
-            ? ddoc
-            : null;
-
+        const dsdoc = this.user.hasPriv(PRIV.PRIV_USER_PROFILE) ? ddoc : null;
         const udoc = await UserModel.getById(domainId, ddoc.owner);
-
         const childrenBranchesCursor = await BranchModel.getBranch(domainId, { parentId: ddoc.bid });
         const childrenBranches = await childrenBranchesCursor.toArray();
 
@@ -474,32 +470,18 @@ export class BranchDetailHandler extends BranchHandler {
         console.log(`Fetching entire tree for trid: ${ddoc.trid}`);
         const treeBranches = await TreeModel.getBranchesByTree(domainId, ddoc.trid);
 
+        // 递归构建分支树
         const branchHierarchy = {};
-        treeBranches.forEach(branch => {
-            const pathLevels = branch.path.split('/').filter(Boolean);
-            const trunkId = pathLevels[0];
 
-            if (!branchHierarchy[trunkId]) {
-                branchHierarchy[trunkId] = { 
-                    trunk: branch,  
-                    mainBranches: {}, 
-                    subBranches: {} 
-                };
-            }
+        const buildHierarchy = (parentId: number, branchList: any[]) => {
+            const branches = branchList.filter(branch => branch.parentId === parentId);
+            return branches.map(branch => ({
+                ...branch,
+                subBranches: buildHierarchy(branch.bid, branchList)
+            }));
+        };
 
-            if (pathLevels.length === 2) {
-                const mainBranchId = pathLevels[1];
-                branchHierarchy[trunkId].mainBranches[mainBranchId] = branch;
-            }
-
-            if (pathLevels.length >= 3) {
-                const mainBranchId = pathLevels[1];
-                if (!branchHierarchy[trunkId].subBranches[mainBranchId]) {
-                    branchHierarchy[trunkId].subBranches[mainBranchId] = [];
-                }
-                branchHierarchy[trunkId].subBranches[mainBranchId].push(branch);
-            }
-        });
+        branchHierarchy[ddoc.trid] = buildHierarchy(5, treeBranches); // 5 是 Root Trunk ID
 
         this.response.template = 'branch_detail.html';
         this.response.pjax = 'branch_detail.html'; 
@@ -515,13 +497,14 @@ export class BranchDetailHandler extends BranchHandler {
             branchHierarchy,
         };
         console.log('treeBranches:', treeBranches);
-        console.log('branchHierarchy:', branchHierarchy);
+        console.log('branchHierarchy:', JSON.stringify(branchHierarchy, null, 2));
     }
 
     async post() {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
     }
 }
+
 
 
 
