@@ -268,7 +268,9 @@ export class BranchModel {
     static async getTree(domainId: string, trid: number) {
         return await DocumentModel.getMulti(domainId, TYPE_BR, { trid }).toArray();
     }
-    
+    static async getBranchesByIds(domainId: string, bids: number[]) {
+        return await DocumentModel.getMulti(domainId, TYPE_BR, { bid: { $in: bids } }).toArray();
+    }
 }
 export async function getDocsByLid(domainId: string, lids: number | number[]) {
     console.log(`Fetching docs for lids: ${lids}`);
@@ -441,6 +443,10 @@ export class TreeBranchHandler extends Handler {
 export class BranchDetailHandler extends BranchHandler {
     @param('docId', Types.ObjectId)
     async get(domainId: string, docId: ObjectId) {
+        if (!docId) {
+            throw new NotFoundError(`Invalid request: docId is missing`);
+        }
+
         const dsdoc = this.user.hasPriv(PRIV.PRIV_USER_PROFILE)
             ? await BranchModel.get(domainId, docId)
             : null;
@@ -448,12 +454,14 @@ export class BranchDetailHandler extends BranchHandler {
         const udoc = await UserModel.getById(domainId, this.ddoc!.owner);
 
         const childrenBranchesCursor = await BranchModel.getBranch(domainId, { parentId: this.ddoc!.bid });
-
         const childrenBranches = await childrenBranchesCursor.toArray();
 
         const docs = this.ddoc?.lids ? await getDocsByLid(domainId, this.ddoc.lids) : [];
         const repos = this.ddoc?.rids ? await getReposByRid(domainId, this.ddoc.rids) : [];
-        
+
+        const pathLevels = this.ddoc?.path?.split('/').filter(Boolean) || [];
+
+        const pathBranches = await BranchModel.getBranchesByIds(domainId, pathLevels.map(Number));
 
         this.response.template = 'branch_detail.html';
         this.response.body = {
@@ -463,14 +471,18 @@ export class BranchDetailHandler extends BranchHandler {
             docs,
             repos,
             childrenBranches,
+            pathBranches,
         };
-        console.log('childrenBranches', childrenBranches);
+
+        console.log('childrenBranches:', childrenBranches);
+        console.log('pathBranches:', pathBranches);
     }
 
     async post() {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
     }
 }
+
 
 export class BranchEditHandler extends BranchHandler {
     async get() {
