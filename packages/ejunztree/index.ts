@@ -401,6 +401,7 @@ export class TreeDetailHandler extends Handler {
         });
 
         this.response.template = 'tree_detail.html';
+        this.response.pjax = 'tree_map.html';
         this.response.body = {
             tree,
             treeBranches,
@@ -451,37 +452,78 @@ export class BranchDetailHandler extends BranchHandler {
             throw new NotFoundError(`Invalid request: docId is missing`);
         }
 
+        console.log(`Fetching details for branch docId: ${docId}`);
+
+        const ddoc = await BranchModel.get(domainId, docId);
+        if (!ddoc) {
+            throw new NotFoundError(`Branch with docId ${docId} not found.`);
+        }
+
         const dsdoc = this.user.hasPriv(PRIV.PRIV_USER_PROFILE)
-            ? await BranchModel.get(domainId, docId)
+            ? ddoc
             : null;
 
-        const udoc = await UserModel.getById(domainId, this.ddoc!.owner);
+        const udoc = await UserModel.getById(domainId, ddoc.owner);
 
-        const childrenBranchesCursor = await BranchModel.getBranch(domainId, { parentId: this.ddoc!.bid });
+        const childrenBranchesCursor = await BranchModel.getBranch(domainId, { parentId: ddoc.bid });
         const childrenBranches = await childrenBranchesCursor.toArray();
 
-        const pathLevels = this.ddoc?.path?.split('/').filter(Boolean) || [];
+        const pathLevels = ddoc.path?.split('/').filter(Boolean) || [];
         const pathBranches = await BranchModel.getBranchesByIds(domainId, pathLevels.map(Number));
 
+        console.log(`Fetching entire tree for trid: ${ddoc.trid}`);
+        const treeBranches = await TreeModel.getBranchesByTree(domainId, ddoc.trid);
+
+        const branchHierarchy = {};
+        treeBranches.forEach(branch => {
+            const pathLevels = branch.path.split('/').filter(Boolean);
+            const trunkId = pathLevels[0];
+
+            if (!branchHierarchy[trunkId]) {
+                branchHierarchy[trunkId] = { 
+                    trunk: branch,  
+                    mainBranches: {}, 
+                    subBranches: {} 
+                };
+            }
+
+            if (pathLevels.length === 2) {
+                const mainBranchId = pathLevels[1];
+                branchHierarchy[trunkId].mainBranches[mainBranchId] = branch;
+            }
+
+            if (pathLevels.length >= 3) {
+                const mainBranchId = pathLevels[1];
+                if (!branchHierarchy[trunkId].subBranches[mainBranchId]) {
+                    branchHierarchy[trunkId].subBranches[mainBranchId] = [];
+                }
+                branchHierarchy[trunkId].subBranches[mainBranchId].push(branch);
+            }
+        });
+
         this.response.template = 'branch_detail.html';
+        this.response.pjax = 'branch_detail.html'; 
         this.response.body = {
-            ddoc: this.ddoc,
+            ddoc,
             dsdoc,
             udoc,
-            docs: this.ddoc?.lids ? await getDocsByLid(domainId, this.ddoc.lids) : [],
-            repos: this.ddoc?.rids ? await getReposByRid(domainId, this.ddoc.rids) : [],
+            docs: ddoc.lids ? await getDocsByLid(domainId, ddoc.lids) : [],
+            repos: ddoc.rids ? await getReposByRid(domainId, ddoc.rids) : [],
             childrenBranches,
             pathBranches,
+            treeBranches,
+            branchHierarchy,
         };
-
-        console.log('childrenBranches:', childrenBranches);
-        console.log('pathBranches:', pathBranches);
+        console.log('treeBranches:', treeBranches);
+        console.log('branchHierarchy:', branchHierarchy);
     }
 
     async post() {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
     }
 }
+
+
 
 
 
