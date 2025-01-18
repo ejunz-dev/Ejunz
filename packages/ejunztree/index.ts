@@ -362,17 +362,44 @@ export class TreeDetailHandler extends Handler {
         if (!tree) {
             throw new NotFoundError(`Tree with docId ${docId} not found.`);
         }
-        console.log('docId:', docId);
+
         const trid = tree.trid;
         const treeBranches = await TreeModel.getBranchesByTree(domainId, trid);
 
+        const branchHierarchy = {};
+
+        treeBranches.forEach(branch => {
+            const pathLevels = branch.path.split('/').filter(Boolean);
+
+            const trunkId = pathLevels[0];
+            if (!branchHierarchy[trunkId]) {
+                branchHierarchy[trunkId] = { trunk: null, mainBranches: {}, subBranches: {} };
+            }
+
+            if (pathLevels.length === 1) {
+                branchHierarchy[trunkId].trunk = branch;
+            }
+
+            if (pathLevels.length === 2) {
+                const mainBranchId = pathLevels[1];
+                branchHierarchy[trunkId].mainBranches[mainBranchId] = branch;
+            }
+
+            if (pathLevels.length >= 3) {
+                const mainBranchId = pathLevels[1];
+                if (!branchHierarchy[trunkId].subBranches[mainBranchId]) {
+                    branchHierarchy[trunkId].subBranches[mainBranchId] = [];
+                }
+                branchHierarchy[trunkId].subBranches[mainBranchId].push(branch);
+            }
+        });
+
         this.response.template = 'tree_detail.html';
         this.response.body = {
-            tree, 
+            tree,
             treeBranches,
+            branchHierarchy,
         };
-        console.log('tree:', tree);
-        console.log('treeBranches:', treeBranches);
     }
 }
 
