@@ -364,15 +364,21 @@ export class TreeDetailHandler extends Handler {
         }
         console.log(`Fetching tree with docId: ${docId}`);
 
+        // 获取当前树的信息
         const tree = await TreeModel.getTree(domainId, docId);
         if (!tree) {
             throw new NotFoundError(`Tree with docId ${docId} not found.`);
         }
 
-        const trid = tree.trid;
-        const treeBranches = await TreeModel.getBranchesByTree(domainId, trid);
+        // 获取所有的 treeBranches
+        console.log(`Fetching entire tree for trid: ${tree.trid}`);
+        const treeBranches = await TreeModel.getBranchesByTree(domainId, tree.trid);
 
-        const buildHierarchy = (parentId, branches) => {
+        // 确定根节点 (trunk)
+        const trunk = treeBranches.find(branch => branch.parentId === null || branch.path.split('/').length === 1);
+
+        // 递归构建分支层次结构
+        const buildHierarchy = (parentId: number | null, branches: any[]) => {
             return branches
                 .filter(branch => branch.parentId === parentId)
                 .map(branch => ({
@@ -381,26 +387,39 @@ export class TreeDetailHandler extends Handler {
                 }));
         };
 
-        const root = treeBranches.find(branch => branch.parentId === null || branch.path.split('/').length === 1);
+        // 构建 `branchHierarchy`
         const branchHierarchy = {
-            trunk: root || null,
-            branches: buildHierarchy(root?.bid || null, treeBranches)
+            trunk: trunk || null,
+            branches: trunk ? buildHierarchy(trunk.bid, treeBranches) : [],
         };
 
+        // 获取当前节点的子分支
+        const childrenBranchesCursor = await BranchModel.getBranch(domainId, { parentId: trunk?.bid });
+        const childrenBranches = await childrenBranchesCursor.toArray();
+
+        // 解析路径
+        const pathLevels = trunk?.path?.split('/').filter(Boolean) || [];
+        const pathBranches = await BranchModel.getBranchesByIds(domainId, pathLevels.map(Number));
+
+        // 发送数据到模板
         this.response.template = 'tree_detail.html';
+        this.response.pjax = 'tree_detail.html';
         this.response.body = {
             tree,
+            childrenBranches,
+            pathBranches,
             treeBranches,
             branchHierarchy,
         };
 
+        console.log('treeBranches:', JSON.stringify(treeBranches, null, 2));
         console.log('branchHierarchy:', JSON.stringify(branchHierarchy, null, 2));
     }
+
+    async post() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+    }
 }
-
-
-
-
 
 
 export class TreeBranchHandler extends Handler {
@@ -434,6 +453,7 @@ export class TreeBranchHandler extends Handler {
         console.log('ddocs', this.response.body.ddocs);
     }
 }
+
 export class BranchDetailHandler extends BranchHandler {
     @param('docId', Types.ObjectId)
     async get(domainId: string, docId: ObjectId) {
