@@ -10,23 +10,63 @@
       <div class="section__body">
         {% if tree %}
           <h3>{{ _("Tree Title") }}: {{ tree.title }}</h3>
-          <p>{{ _("Tree ID") }}: {{ tree.trid }}</p>
+          <p><strong>{{ _("Tree ID") }}:</strong> {{ tree.trid }}</p>
 
-          <h4>{{ _("Structured Document") }}</h4>
+          <div class="section">
+            <div class="section__header">
+              <h3>{{ _("Tree Map") }}</h3>
+            </div>
+            <div class="section__body">
+              {% if branchHierarchy and branchHierarchy.trunk %}
+                
+                {% macro render_tree(branches, level=0, prefix="") %}
+                {% if branches and branches|length > 0 %}
+                  <div style="display: flex; justify-content: center; align-items: flex-end; gap: 50px; {% if level == 0 %}flex-wrap: wrap;{% endif %}">
 
-          <div class="document">
-            {% if branchHierarchy.trunk %}
-              <h2 class="branch-title">
-                1. {{ branchHierarchy.trunk.title }}
-              </h2>
-              <div class="branch-content">
-                <p><a href="{{ url('branch_detail', domainId=tree.domainId, docId=branchHierarchy.trunk.docId) }}">{{ _("View Details") }}</a></p>
+                    {% for branch in branches if branch.bid != branchHierarchy.trunk.bid %}
+                      <div style="text-align: center; position: relative;">
+                        {% if branch.subBranches and branch.subBranches|length > 0 %}
+                          <div style="display: flex; flex-direction: column-reverse; align-items: center;">
+                            {{ render_tree(branch.subBranches, level + 1, prefix + "    ") }}
+                          </div>
+                        {% endif %}
+                        <div>
+                          {% if branch.subBranches and branch.subBranches|length > 0 %} 🌿 {% else %} 🌱 {% endif %}
+                          <a href="{{ url('branch_detail', domainId=tree.domainId, docId=branch.docId) }}">
+                            {{ branch.title }}
+                          </a>
+                        </div>
+                        <div>{{ prefix }}*</div>
+                      </div>
+                    {% endfor %}
+                  </div>
+
+                  {% if level == 0 and branchHierarchy.trunk %}
+                    <div style="display: flex; justify-content: center; margin-top: 20px;">
+                      <div style="text-align: center;">
+                        🌳
+                        <a href="{{ url('branch_detail', domainId=tree.domainId, docId=branchHierarchy.trunk.docId) }}">
+                          {{ branchHierarchy.trunk.title }}
+                        </a>
+                      </div>
+                    </div>
+                  {% endif %}
+                {% endif %}
+              {% endmacro %}
+
+              <div style="display: flex; flex-direction: column; align-items: center;">
+                {% if branchHierarchy and branchHierarchy.trunk %}
+                  {{ render_tree(branchHierarchy.branches) }}
+                {% else %}
+                  <p>{{ _("No branches available.") }}</p>
+                {% endif %}
               </div>
-            {% endif %}
 
-            {% if branchHierarchy.branches %}
-              {{ render_tree(branchHierarchy.branches, "1") }}
-            {% endif %}
+
+              {% else %}
+                <p>{{ _("No branches available.") }}</p>
+              {% endif %}
+            </div>
           </div>
 
         {% else %}
@@ -35,47 +75,5 @@
       </div>
     </div>
   </div>
-
-  <div class="medium-3 columns">
-    <div class="section side">
-      <div class="section__header">
-        <h2 class="section__title">{{ _("Actions") }}</h2>
-      </div>
-      <div class="section__body">
-        {% if tree %}
-          {% if not treeBranches or treeBranches|length == 0 %}
-            <a href="{{ url('branch_create', domainId=tree.domainId, trid=tree.trid) }}" 
-               class="button primary expanded">
-              {{ _('Create Branch') }}
-            </a>
-          {% endif %}
-        {% endif %}
-      </div>
-    </div>
-  </div>
 </div>
-
 {% endblock %}
-{% macro render_tree(branches, prefix) %}
-  <ul class="branch-list">
-    {% for branch in branches %}
-      {% set branch_number = prefix + "." + (loop.index0 + 1)|string %}
-      <li class="branch-item">
-        <h3 class="branch-title">
-          <a href="{{ url('branch_detail', domainId=tree.domainId, docId=branch.docId) }}">
-            {{ branch_number }} {{ branch.title }}
-          </a>
-        </h3>
-        <div class="branch-content">
-          <p><strong>{{ _("Content") }}:</strong> {{ branch.content }}</p>
-
-        
-
-          {% if branch.subBranches and branch.subBranches|length > 0 %}
-            {{ render_tree(branch.subBranches, branch_number) }}
-          {% endif %}
-        </div>
-      </li>
-    {% endfor %}
-  </ul>
-{% endmacro %}
