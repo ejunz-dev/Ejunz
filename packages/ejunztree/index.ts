@@ -521,7 +521,7 @@ export class BranchDetailHandler extends BranchHandler {
             treeBranches,
             branchHierarchy,
         };
-    console.log('problems:', problems);
+    console.log('repos:', repos);
     }
 
     async post() {
