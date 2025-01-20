@@ -86,10 +86,10 @@
             {% if ctdocs|length > 0 %}
             <h4>{{ _("Related Contests") }}</h4>
             <ul>
-              {% for cdoc in ctdocs %}
+              {% for ctdoc in ctdocs %}
               <li>
-                <a class="discussion-node-tag media-link" href="{{ url('contest_detail', domainId=cdoc.domainId, cid=cdoc.docId) }}">
-                  <span class="v-center icon icon-problem"></span>{{ cdoc.title }}
+                <a class="discussion-node-tag media-link" href="{{ url('contest_detail', domainId=ctdoc.domainId, tid=ctdoc.docId) }}">
+                  <span class="v-center icon icon-problem"></span>{{ ctdoc.title }}
                 </a>
               </li>
               {% endfor %}
