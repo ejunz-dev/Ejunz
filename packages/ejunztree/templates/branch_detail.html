@@ -57,8 +57,19 @@
             </a>
           </li>
           {% endfor %}
-          
           {% endif %}
+
+          {% if problems|length > 0 %}
+          <h4>{{ _("Related Problems") }}</h4>
+          <ul>
+            {% for problem in problems %}
+            <li>
+              <a class="discussion-node-tag media-link" href="{{ url('problem_detail', domainId=problem.domainId, pid=problem.docId) }}">
+                <span class="v-center icon icon-problem"></span>{{ problem.title }}
+              </a>
+            </li>
+            {% endfor %}
+            {% endif %}
       </div>
     </div>
    </div>

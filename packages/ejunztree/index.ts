@@ -276,6 +276,7 @@ export class BranchModel {
     }
 
 }
+
 export async function getDocsByLid(domainId: string, lids: number | number[]) {
     console.log(`Fetching docs for lids: ${lids}`);
 
@@ -298,6 +299,17 @@ export async function getReposByRid(domainId: string, rids: number | number[]) {
 
     console.log(`Querying docs with:`, query);
     return await RepoModel.getMulti(domainId, query).toArray();
+}
+
+
+export async function getProblemsByDocsId(domainId: string, lid: number) {
+    console.log(`Fetching problems for docs ID: ${lid}`);
+    const query = {
+        domainId,
+        associatedDocumentId: lid 
+    };
+    console.log(`Querying problems with:`, query);
+    return await ProblemModel.getMulti(domainId, query).toArray();
 }
 
 
@@ -493,6 +505,7 @@ export class BranchDetailHandler extends BranchHandler {
 
         const docs = ddoc.lids ? await getDocsByLid(domainId, ddoc.lids) : [];
         const repos = ddoc.rids ? await getReposByRid(domainId, ddoc.rids) : [];
+        const problems = ddoc.lids?.length ? await getProblemsByDocsId(domainId, ddoc.lids[0]) : [];
 
         this.response.template = 'branch_detail.html';
         this.response.pjax = 'branch_detail.html'; 
@@ -502,13 +515,13 @@ export class BranchDetailHandler extends BranchHandler {
             udoc,
             docs,
             repos,
+            problems,
             childrenBranches,
             pathBranches,
             treeBranches,
             branchHierarchy,
         };
-    console.log('docs:', docs);
-    console.log('repos:', repos);
+    console.log('problems:', problems);
     }
 
     async post() {
