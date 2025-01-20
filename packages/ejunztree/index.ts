@@ -2,7 +2,7 @@ import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter,
     Handler, NumberKeys, ObjectId, OplogModel, paginate,
     param, PRIV, Types, UserModel, DomainModel, StorageModel, ProblemModel, NotFoundError,DocsModel,RepoModel,
-    parseMemoryMB,ContestModel,DiscussionModel
+    parseMemoryMB,ContestModel,DiscussionModel,TrainingModel
 } from 'ejun';
 
 export const TYPE_BR: 1 = 1;
@@ -511,10 +511,13 @@ export class BranchDetailHandler extends BranchHandler {
         const repos = ddoc.rids ? await getReposByRid(domainId, ddoc.rids) : [];
         const problems = ddoc.lids?.length ? await getProblemsByDocsId(domainId, ddoc.lids[0]) : [];
         const pids = problems.map(p => Number(p.docId));    
-        const [ctdocs, htdocs] = await Promise.all([
-            Promise.all(pids.map(pid => getRelated(domainId, pid))),         
-            Promise.all(pids.map(pid => getRelated(domainId, pid, 'homework'))) 
-        ]);
+        const [ctdocs, htdocs, tdocs] = await Promise.all([
+        Promise.all(pids.map(pid => getRelated(domainId, pid))),         
+        Promise.all(pids.map(pid => getRelated(domainId, pid, 'homework'))),
+        TrainingModel.getByPid(domainId, pids) 
+    ]);
+
+
 
         this.response.template = 'branch_detail.html';
         this.response.pjax = 'branch_detail.html'; 
@@ -528,14 +531,13 @@ export class BranchDetailHandler extends BranchHandler {
             pids,
             ctdocs: ctdocs.flat(),
             htdocs: htdocs.flat(), 
+            tdocs: tdocs.flat(),
             childrenBranches,
             pathBranches,
             treeBranches,
             branchHierarchy,
         };
-        console.log('pids:', pids);
-        console.log('ctdocs:', ctdocs);
-        console.log('htdocs:', htdocs);
+       console.log('tdocs:', tdocs);
     }
 
     async post() {
