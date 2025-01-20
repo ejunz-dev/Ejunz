@@ -114,6 +114,18 @@
                 </li>
                 {% endfor %}
                 {% endif %}
+              
+              {% if tdocs|length > 0 %}
+              <h4>{{ _("Related Training Plans") }}</h4>
+              <ul>
+                {% for tdoc in tdocs %}
+                <li>
+                  <a class="discussion-node-tag media-link" href="{{ url('training_detail', domainId=tdoc.domainId, tid=tdoc.docId) }}">
+                    <span class="v-center icon icon-problem"></span>{{ tdoc.title }}
+                  </a>
+                </li>
+                {% endfor %}
+                {% endif %}
 
       </div>
     </div>

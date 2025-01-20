@@ -116,6 +116,16 @@ export async function getList(domainId: string, tids: ObjectId[]) {
     for (const tdoc of tdocs) r[tdoc.docId.toString()] = tdoc;
     return r;
 }
+export async function getByPid(domainId: string, pids: number[]): Promise<TrainingDoc[]> {
+    if (!pids.length) return [];
+
+    const tdocs = await getMulti(domainId, {
+        'dag.pids': { $in: pids }
+    }).toArray();
+
+    return tdocs;
+}
+
 
 global.Ejunz.model.training = {
     getPids,
@@ -135,4 +145,5 @@ global.Ejunz.model.training = {
     enroll,
     setStatus,
     getListStatus,
+    getByPid,
 };
