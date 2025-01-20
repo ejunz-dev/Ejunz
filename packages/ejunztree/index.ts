@@ -491,21 +491,24 @@ export class BranchDetailHandler extends BranchHandler {
 
         branchHierarchy[ddoc.trid] = buildHierarchy(5, treeBranches); 
 
+        const docs = ddoc.lids ? await getDocsByLid(domainId, ddoc.lids) : [];
+        const repos = ddoc.rids ? await getReposByRid(domainId, ddoc.rids) : [];
+
         this.response.template = 'branch_detail.html';
         this.response.pjax = 'branch_detail.html'; 
         this.response.body = {
             ddoc,
             dsdoc,
             udoc,
-            docs: ddoc.lids ? await getDocsByLid(domainId, ddoc.lids) : [],
-            repos: ddoc.rids ? await getReposByRid(domainId, ddoc.rids) : [],
+            docs,
+            repos,
             childrenBranches,
             pathBranches,
             treeBranches,
             branchHierarchy,
         };
-        console.log('treeBranches:', treeBranches);
-        console.log('branchHierarchy:', JSON.stringify(branchHierarchy, null, 2));
+    console.log('docs:', docs);
+    console.log('repos:', repos);
     }
 
     async post() {
