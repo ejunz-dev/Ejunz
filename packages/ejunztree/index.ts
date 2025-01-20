@@ -2,7 +2,7 @@ import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter,
     Handler, NumberKeys, ObjectId, OplogModel, paginate,
     param, PRIV, Types, UserModel, DomainModel, StorageModel, ProblemModel, NotFoundError,DocsModel,RepoModel,
-    parseMemoryMB
+    parseMemoryMB,ContestModel
 } from 'ejun';
 
 export const TYPE_BR: 1 = 1;
@@ -274,7 +274,6 @@ export class BranchModel {
     static async getBranches(domainId: string, query: Filter<BRDoc>) {
         return DocumentModel.getMulti(domainId, TYPE_BR, query);
     }
-
 }
 
 export async function getDocsByLid(domainId: string, lids: number | number[]) {
@@ -310,6 +309,11 @@ export async function getProblemsByDocsId(domainId: string, lid: number) {
     };
     console.log(`Querying problems with:`, query);
     return await ProblemModel.getMulti(domainId, query).toArray();
+}
+
+export async function getRelated(domainId: string, pid: number, rule?: string) {
+    const rules = Object.keys(ContestModel.RULES).filter((i) => !ContestModel.RULES[i].hidden);
+    return await DocumentModel.getMulti(domainId, DocumentModel.TYPE_CONTEST, { pids: pid, rule: rule || { $in: rules } }).toArray();
 }
 
 
@@ -506,6 +510,12 @@ export class BranchDetailHandler extends BranchHandler {
         const docs = ddoc.lids ? await getDocsByLid(domainId, ddoc.lids) : [];
         const repos = ddoc.rids ? await getReposByRid(domainId, ddoc.rids) : [];
         const problems = ddoc.lids?.length ? await getProblemsByDocsId(domainId, ddoc.lids[0]) : [];
+        const pids = problems.map(p => Number(p.docId));    
+        const [ctdocs, htdocs] = await Promise.all([
+            Promise.all(pids.map(pid => getRelated(domainId, pid))),         
+            Promise.all(pids.map(pid => getRelated(domainId, pid, 'homework'))) 
+        ]);
+
 
         this.response.template = 'branch_detail.html';
         this.response.pjax = 'branch_detail.html'; 
@@ -516,12 +526,17 @@ export class BranchDetailHandler extends BranchHandler {
             docs,
             repos,
             problems,
+            pids,
+            ctdocs: ctdocs.flat(),
+            htdocs: htdocs.flat(), 
             childrenBranches,
             pathBranches,
             treeBranches,
             branchHierarchy,
         };
-    console.log('repos:', repos);
+        console.log('pids:', pids);
+        console.log('ctdocs:', ctdocs);
+        console.log('htdocs:', htdocs);
     }
 
     async post() {
