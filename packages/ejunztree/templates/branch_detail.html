@@ -70,6 +70,43 @@
             </li>
             {% endfor %}
             {% endif %}
+          
+          {% if tdocs|length > 0 %}
+          <h4>{{ _("Related Training Plans") }}</h4>
+          <ul>
+            {% for tdoc in tdocs %}
+            <li>
+              <a class="discussion-node-tag media-link" href="{{ url('training_detail', domainId=tdoc.domainId, tid=tdoc.docId) }}">
+                <span class="v-center icon icon-problem"></span>{{ tdoc.title }}
+              </a>
+            </li>
+            {% endfor %}
+            {% endif %}
+
+            {% if ctdocs|length > 0 %}
+            <h4>{{ _("Related Contests") }}</h4>
+            <ul>
+              {% for cdoc in ctdocs %}
+              <li>
+                <a class="discussion-node-tag media-link" href="{{ url('contest_detail', domainId=cdoc.domainId, cid=cdoc.docId) }}">
+                  <span class="v-center icon icon-problem"></span>{{ cdoc.title }}
+                </a>
+              </li>
+              {% endfor %}
+              {% endif %}
+
+              {% if htdocs|length > 0 %}
+              <h4>{{ _("Related Homework") }}</h4>
+              <ul>
+                {% for htdoc in htdocs %}
+                <li>
+                  <a class="discussion-node-tag media-link" href="{{ url('homework_detail', domainId=htdoc.domainId, tid=htdoc._id) }}">
+                    <span class="v-center icon icon-problem"></span>{{ htdoc.title }}
+                  </a>
+                </li>
+                {% endfor %}
+                {% endif %}
+
       </div>
     </div>
    </div>
