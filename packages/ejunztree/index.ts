@@ -2,7 +2,7 @@ import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter,
     Handler, NumberKeys, ObjectId, OplogModel, paginate,
     param, PRIV, Types, UserModel, DomainModel, StorageModel, ProblemModel, NotFoundError,DocsModel,RepoModel,
-    parseMemoryMB,ContestModel
+    parseMemoryMB,ContestModel,DiscussionModel
 } from 'ejun';
 
 export const TYPE_BR: 1 = 1;
@@ -516,7 +516,6 @@ export class BranchDetailHandler extends BranchHandler {
             Promise.all(pids.map(pid => getRelated(domainId, pid, 'homework'))) 
         ]);
 
-
         this.response.template = 'branch_detail.html';
         this.response.pjax = 'branch_detail.html'; 
         this.response.body = {
@@ -544,11 +543,6 @@ export class BranchDetailHandler extends BranchHandler {
     }
 }
 
-
-
-
-
-
 export class BranchEditHandler extends BranchHandler {
     async get() {
         const domainId = this.context.domainId || 'system';
@@ -562,14 +556,14 @@ export class BranchEditHandler extends BranchHandler {
         console.log('trid:', this.args.trid);
     }
 
-    @param('trid', Types.Int) // 新增接收 `trid`
+    @param('trid', Types.Int) 
     @param('title', Types.Title)
     @param('content', Types.Content)
     @param('lids', Types.ArrayOf(Types.Int))
     @param('rids', Types.ArrayOf(Types.Int))
     async postCreate(
         domainId: string,
-        trid: number, // 让新建分支时必须绑定一个 `trid`
+        trid: number, 
         title: string,
         content: string,
         lids: number[],
@@ -579,8 +573,8 @@ export class BranchEditHandler extends BranchHandler {
 
         const docId = await BranchModel.addTrunkNode(
             domainId,
-            trid, // 绑定树 ID
-            null, // bid 由系统生成
+            trid, 
+            null, 
             this.user._id,
             title,
             content,
@@ -593,7 +587,7 @@ export class BranchEditHandler extends BranchHandler {
         this.response.redirect = this.url('branch_detail', { uid: this.user._id, docId });
     }
 
-    @param('trid', Types.Int) // 让子分支也必须有 `trid`
+    @param('trid', Types.Int) 
     @param('parentId', Types.ObjectId)
     @param('title', Types.Title)
     @param('content', Types.Content)
@@ -602,8 +596,8 @@ export class BranchEditHandler extends BranchHandler {
 
         const docId = await BranchModel.addBranchNode(
             domainId,
-            trid, // 绑定 `trid`
-            null, // bid 由系统生成
+            trid, 
+            null, 
             parentId,
             this.user._id,
             title,
