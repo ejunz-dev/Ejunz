@@ -41,6 +41,14 @@
               <span class="v-center icon icon-problem"></span>{{ doc.title }}
             </a>
           </li>
+          <li class="menu__item">
+            <a class="menu__link{% if page_name == 'discussion_node' or page_name == 'discussion_detail' %} active{% endif %}" 
+              href="{{ url('discussion_node', type='docs', name=doc.lid) }}">
+              <span class="icon icon-comment--text"></span> 
+              {{ _('View Discussions') }}
+              {% if discussionCount is defined %} ({{ discussionCount }}){% endif %}
+            </a>
+          </li>
           {% endfor %}
           {% if docs|length == 0 %}
           <p>{{ _('No related problems found.') }}</p>
