@@ -1,4 +1,4 @@
-import type { DocsDoc } from '@ejunz/ejunzdocs';
+import type { DocsDoc } from 'ejun/src/interface';
 import PropTypes from 'prop-types';
 import React, { forwardRef } from 'react';
 import { api, gql, request } from 'vj/utils';

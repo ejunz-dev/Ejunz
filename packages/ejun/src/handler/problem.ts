@@ -35,7 +35,7 @@ import {
     Handler, param, post, query, route, Types,
 } from '../service/server';
 import { ContestDetailBaseHandler } from './contest';
-import { DocsModel } from '@ejunz/ejunzdocs';
+import { DocsModel } from '../model/doc';
 
 export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
 
