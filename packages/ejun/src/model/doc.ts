@@ -28,6 +28,8 @@ import storage from './storage';
 import * as SystemModel from './system';
 import user from './user';
 import * as document from './document';
+import _ from 'lodash';
+
 
 export interface DocsDoc extends Document { }
 export type Field = keyof DocsDoc;
