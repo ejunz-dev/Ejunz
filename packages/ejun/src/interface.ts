@@ -283,6 +283,25 @@ declare module './model/problem' {
 export type { ProblemDoc } from './model/problem';
 export type ProblemDict = NumericDictionary<ProblemDoc>;
 
+declare module './model/doc'{
+interface DocsDoc {
+    docType: document['TYPE_DOCS'];
+    docId: ObjectId;
+    domainId: string,
+    lid: number;
+    owner: number;
+    title: string;
+    content: string;
+    ip: string;
+    updateAt: Date;
+    nReply: number;
+    views: number;
+    reply: any[];
+    react: Record<string, number>;
+}
+}
+export type { DocsDoc } from './model/doc';
+
 export interface StatusDocBase {
     _id: ObjectId,
     docId: any,
@@ -739,6 +758,7 @@ export interface Model {
     discussion: typeof import('./model/discussion'),
     document: Omit<typeof import('./model/document'), 'apply'>,
     domain: typeof import('./model/domain').default,
+    doc: typeof import('./model/doc').default,
     message: typeof import('./model/message').default,
     opcount: typeof import('./model/opcount'),
     problem: typeof import('./model/problem').default,

@@ -7,7 +7,7 @@ import * as document from 'ejun/src/model/document';
 import fs from 'fs';
 import path from 'path';
 import { Logger } from '@ejunz/utils/lib/utils';
-import {DocsModel} from '@ejunz/ejunzdocs';
+import {DocsModel} from 'ejun';
 
 function sortable(source: string) {
     return source.replace(/(\d+)/g, (str) => (str.length >= 6 ? str : ('0'.repeat(6 - str.length) + str)));

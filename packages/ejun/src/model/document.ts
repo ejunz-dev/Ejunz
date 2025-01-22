@@ -7,7 +7,7 @@ import { Context } from '../context';
 import {
     Content, ContestClarificationDoc, DiscussionDoc,
     DiscussionReplyDoc, ProblemDoc, ProblemStatusDoc,
-    Tdoc, TrainingDoc,
+    Tdoc, TrainingDoc,DocsDoc,
 } from '../interface';
 import * as bus from '../service/bus';
 import db from '../service/db';
@@ -19,6 +19,7 @@ type NormalArrayKeys<O, P = any> = Exclude<ArrayKeys<O, P>, Symbol>;
 
 export const coll = db.collection('document');
 export const collStatus = db.collection('document.status');
+export const TYPE_DOCS: 100 = 100;
 
 export const TYPE_PROBLEM: 10 = 10;
 export const TYPE_PROBLEM_SOLUTION: 11 = 11;
@@ -33,6 +34,7 @@ export const TYPE_TRAINING: 40 = 40;
 export const TYPE_HOMEWORK: 60 = 60;
 
 export interface DocType {
+    [TYPE_DOCS]: DocsDoc;
     [TYPE_PROBLEM]: ProblemDoc;
     [TYPE_PROBLEM_SOLUTION]: any;
     [TYPE_PROBLEM_LIST]: any;
