@@ -57,6 +57,6 @@ export { db, pwsh };
 export * as bus from './service/bus';
 export {encodeRFC5987ValueChars} from './service/storage';
 export * as domain from './model/domain';
-export * from '@ejunz/ejunzdocs';
+export * as docs from './model/doc';
 import * as system from './model/system';
 export {RepoModel} from '@ejunz/ejunzrepo';

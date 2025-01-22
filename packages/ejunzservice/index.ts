@@ -1,6 +1,5 @@
-import { Context, ApiMixin, ObjectId, Logger } from 'ejun';
+import { Context, ApiMixin, ObjectId, Logger,docs } from 'ejun';
 import { QuestionDoc } from '@ejunz/ejunzquestgen';
-import {DocsModel} from '@ejunz/ejunzdocs';
 
 const logger = new Logger('addon/bus');
 
