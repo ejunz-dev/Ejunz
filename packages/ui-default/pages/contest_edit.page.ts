@@ -2,12 +2,14 @@ import $ from 'jquery';
 import moment from 'moment';
 import ProblemSelectAutoComplete from 'vj/components/autocomplete/ProblemSelectAutoComplete';
 import UserSelectAutoComplete from 'vj/components/autocomplete/UserSelectAutoComplete';
+import DocsSelectAutoComplete from 'vj/components/autocomplete/DocsSelectAutoComplete';
 import { ConfirmDialog } from 'vj/components/dialog';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n, request, tpl } from 'vj/utils';
 
-const page = new NamedPage(['contest_edit', 'contest_create', 'homework_create', 'homework_edit'], (pagename) => {
+const page = new NamedPage(['contest_edit', 'contest_create', 'homework_create', 'homework_edit', 'branch_edit'], (pagename) => {
   ProblemSelectAutoComplete.getOrConstruct($('[name="pids"]'), { multi: true, clearDefaultValue: false });
+  DocsSelectAutoComplete.getOrConstruct($('[name="lids"]'), { multi: true, clearDefaultValue: false });
   UserSelectAutoComplete.getOrConstruct<true>($('[name="maintainer"]'), { multi: true, clearDefaultValue: false });
   $('[name="rule"]').on('change', () => {
     const rule = $('[name="rule"]').val();

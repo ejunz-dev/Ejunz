@@ -1,6 +1,6 @@
 import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter,
-    Handler, NumberKeys, ObjectId, OplogModel, paginate,
+    Handler, NumberKeys, ObjectId, OplogModel, paginate,PERM,
     param, PRIV, Types, UserModel, DomainModel,StorageModel,ProblemModel,NotFoundError
 } from 'ejun';
 
@@ -159,6 +159,21 @@ export class DocsModel {
     static setStatus(domainId: string, did: ObjectId, uid: number, $set) {
         return DocumentModel.setStatus(domainId, TYPE_DOCS, did, uid, $set);
     }
+
+    static async getList(domainId: string, ids: number[]): Promise<DocsDoc[]> {
+        if (!ids || ids.length === 0) return [];
+    
+        const query = { domainId, lid: { $in: ids } };
+        const docs = await DocumentModel.getMulti(domainId, TYPE_DOCS, query).toArray();
+    
+        return docs.map(doc => ({
+            ...doc,
+            lid: doc.lid ? String(doc.lid) : '0',  // 确保 lid 永远是字符串
+        }));
+    }
+    
+    
+    
 }
 
 global.Ejunz.model.docs = DocsModel;
@@ -382,5 +397,31 @@ export async function apply(ctx: Context) {
         docs_main: 'Docs',
         docs_detail: 'Docs Detail',
         docs_edit: 'Edit Docs',
+    });
+    ctx.inject(['api'], ({ api }) => {
+        api.value('Doc', [
+            ['docId', 'ObjectID!'],
+            ['lid', 'String'],
+            ['title', 'String!'],
+            ['content', 'String!'],
+        ]);
+        api.resolver(
+            'Query', 'doc(id: Int, title: String)', 'Doc',
+            async (arg, c) => {
+                c.checkPerm(PERM.PERM_VIEW);
+                const ddoc = await DocsModel.get(c.args.domainId, arg.title || arg.id);
+                if (!ddoc) return null;
+                c.ddoc = ddoc;
+                return ddoc;
+            },
+        );
+
+        api.resolver(
+            'Query', 'docs(ids: [Int]!)', '[Doc]!',  // ✅ 允许传多个 lid
+            async (arg, c) => {
+                c.checkPerm(PERM.PERM_VIEW);
+                const res = await DocsModel.getList(c.args.domainId, arg.ids); // 🔥 这里传入的是 `lid`
+                return res;
+            }, 'Get a list of docs by lid');
     });
 }

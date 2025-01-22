@@ -38,30 +38,24 @@
               value:ddoc.content|default(''),
               markdown:true
           }) }}
-
-          <div class="row">
-            <div class="medium-6 columns">
-              <label>
-                {{ _('Logic IDs (LIDs)') }}
-                <textarea name="lids" class="textbox" rows="3" placeholder="{{ _('Enter LIDs, one per line') }}">
-                  {% for lid in ddoc.lids|default([]) %}
-                    {{ lid }}
-                  {% endfor %}
-                </textarea>
-              </label>
-            </div>
-            <div class="medium-6 columns">
-              <label>
-                {{ _('Resource IDs (RIDs)') }}
-                <textarea name="rids" class="textbox" rows="3" placeholder="{{ _('Enter RIDs, one per line') }}">
-                  {% for rid in ddoc.rids|default([]) %}
-                    {{ rid }}
-                  {% endfor %}
-                </textarea>
-              </label>
-            </div>
-          </div>
-
+            {{ form.form_text({
+              columns:null,
+              label:'Problems',
+              name:'pids',
+              value:pids
+          }) }}
+          {{ form.form_text({
+              columns:null,
+              label:'Docs',
+              name:'lids',
+              value:lids
+          }) }}
+          {{ form.form_text({
+              columns:null,
+              label:'Repos',
+              name:'rids',
+              value:rids
+          }) }}
           <div class="row">
             <div class="columns">
               <button 

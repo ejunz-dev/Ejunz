@@ -1,7 +1,7 @@
 import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter,
     Handler, NumberKeys, ObjectId, OplogModel, paginate,
-    param, PRIV, Types, UserModel, DomainModel, StorageModel, ProblemModel, NotFoundError,DocsModel,RepoModel,
+    param, PRIV,PERM, Types, UserModel, DomainModel, StorageModel, ProblemModel, NotFoundError,DocsModel,RepoModel,
     parseMemoryMB,ContestModel,DiscussionModel,TrainingModel
 } from 'ejun';
 
@@ -275,6 +275,15 @@ export class BranchModel {
         return DocumentModel.getMulti(domainId, TYPE_BR, query);
     }
 }
+export async function getDocsByDomain (domainId: string) {
+    console.log(`Fetching docs for domain: ${domainId}`);
+    return await DocsModel.getMulti(domainId, {}).toArray();
+}
+
+export async function getDocsByIds (domainId: string, ids: ObjectId[]) {
+    console.log(`Fetching docs for ids: ${ids}`);
+    return await DocsModel.getMulti(domainId, { _id: { $in: ids } }).toArray();
+}
 
 export async function getDocsByLid(domainId: string, lids: number | number[]) {
     console.log(`Fetching docs for lids: ${lids}`);
@@ -546,17 +555,35 @@ export class BranchDetailHandler extends BranchHandler {
 }
 
 export class BranchEditHandler extends BranchHandler {
-    async get() {
-        const domainId = this.context.domainId || 'system';
+    @param('docId', Types.ObjectId)
+    async get(domainId: string, docId: ObjectId) {
+        if (!docId) {
+            throw new NotFoundError(`Invalid request: docId is missing`);
+        }
+
+        console.log(`Fetching details for branch docId: ${docId}`);
+
+        const ddoc = await BranchModel.get(domainId, docId);
+        if (!ddoc) {
+            throw new NotFoundError(`Branch with docId ${docId} not found.`);
+        }
+        const problems = ddoc.lids?.length ? await getProblemsByDocsId(domainId, ddoc.lids[0]) : [];
+        const pids = problems.map(p => Number(p.docId));    
 
         this.response.template = 'branch_edit.html';
         this.response.body = {
-            ddoc: this.ddoc,
+            ddoc,
             trid: this.args.trid,
+            pids: pids.join(',') || '',
+            lids: ddoc.lids?.join(',') || '', // 同样处理 `lids`
+            rids: ddoc.rids?.join(',') || '', // 同样处理 `rids`
+        
         };
+
         console.log('ddoc:', this.ddoc);
         console.log('trid:', this.args.trid);
     }
+
 
     @param('trid', Types.Int) 
     @param('title', Types.Title)
