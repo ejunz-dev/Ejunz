@@ -11,22 +11,17 @@ const DocsSelectAutoComplete = forwardRef<AutoCompleteHandle<DocsDoc>, AutoCompl
     
     queryItems={async (query) => {
       const { ddocs } = await request.get(`/d/${UiContext.domainId}/docs`, { q: query, quick: true });
-    
       return ddocs.filter((d) =>
         d.title.includes(query) || 
         d.lid.includes(query) || 
         d.docId.toString() === query 
       );
     }}
-    
-
     fetchItems={(ids) => api(gql`
-      query ($ids: [Int]!) {
-        docs(ids: $ids) {
+      docs(ids: ${ids.map((i) => +i)}) {
           docId
           lid
           title
-        }
       }
     `,['data', 'docs'])}
 
