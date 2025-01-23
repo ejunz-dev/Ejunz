@@ -43,11 +43,19 @@ class DocsHandler extends Handler {
     @param('lid', Types.String, true)  
     async _prepare(domainId: string, lid: string) {
         if (lid) {
-            this.ddoc = await docs.get(domainId, lid);
-            if (!this.ddoc) throw new DiscussionNotFoundError(domainId, lid);
+            const normalizedLid: number | string = /^\d+$/.test(lid) ? Number(lid) : lid;
+
+            console.log(`[DocsHandler] Querying document with ${typeof normalizedLid === 'number' ? 'docId' : 'lid'} = ${normalizedLid}`);
+
+            this.ddoc = await docs.get(domainId, normalizedLid);
+            if (!this.ddoc) {
+                console.error(`[DocsHandler] Document with ${typeof normalizedLid === 'number' ? 'docId' : 'lid'}=${normalizedLid} not found in domain=${domainId}`);
+                throw new NotFoundError(domainId, lid);
+            }
         }
     }
 }
+
 
 export class DocsDomainHandler extends Handler {
     async get({ domainId, page = 1, pageSize = 10 }) {
@@ -95,15 +103,18 @@ export class DocsDomainHandler extends Handler {
 }
 
 class DocsDetailHandler extends DocsHandler {
-    @param('lid', Types.String)
+    @param('lid', Types.String) 
     async get(domainId: string, lid: string) {
         console.log(`[DocsDetailHandler] Looking for doc with lid=${lid} in domain=${domainId}`);
 
-        const normalizedLid = isNaN(Number(lid)) ? lid : Number(lid);
+        const normalizedLid: number | string = Number.isSafeInteger(+lid) ? +lid : lid;
+
+        console.log(`[DocsDetailHandler] Querying document by ${typeof normalizedLid === 'number' ? 'docId' : 'lid'} = ${normalizedLid}`);
+
         const ddoc = await docs.get(domainId, normalizedLid);
         if (!ddoc) {
-            console.error(`[DocsDetailHandler] Document with lid=${lid} not found in domain=${domainId}`);
-            throw new DiscussionNotFoundError(domainId, lid);
+            console.error(`[DocsDetailHandler] Document with ${typeof normalizedLid === 'number' ? 'docId' : 'lid'}=${normalizedLid} not found in domain=${domainId}`);
+            throw new NotFoundError(domainId, lid);
         }
 
         const dsdoc = this.user.hasPriv(PRIV.PRIV_USER_PROFILE)
@@ -129,8 +140,12 @@ class DocsDetailHandler extends DocsHandler {
             udoc,
             problems,
         };
+        console.log(`ddoc:`, ddoc);
     }
 }
+
+
+
 
 
 export async function getProblemsByDocsId(domainId: string, lid: string) {

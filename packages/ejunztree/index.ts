@@ -285,17 +285,19 @@ export async function getDocsByIds (domainId: string, ids: ObjectId[]) {
     return await DocsModel.getMulti(domainId, { _id: { $in: ids } }).toArray();
 }
 
-export async function getDocsByLid(domainId: string, lids: string | string[]) {
-    console.log(`Fetching docs for lids: ${JSON.stringify(lids)}`);
+export async function getDocsByDocId(domainId: string, docIds: number | number[]) {
+    console.log(`Fetching docs for docIds: ${docIds}`);
 
     const query = {
         domainId,
-        lid: Array.isArray(lids) ? { $in: lids.map(String) } : String(lids),
+        docId: Array.isArray(docIds) ? { $in: docIds.map(Number) } : Number(docIds),
     };
 
-    console.log(`Querying docs with:`, JSON.stringify(query));
+    console.log(`Querying docs with:`, JSON.stringify(query, null, 2));
+
     return await DocsModel.getMulti(domainId, query).toArray();
 }
+
 
 
 export async function getReposByRid(domainId: string, rids: number | number[]) {
@@ -516,7 +518,15 @@ export class BranchDetailHandler extends BranchHandler {
         };
 
         branchHierarchy[ddoc.trid] = buildHierarchy(5, treeBranches); 
-        const docs = ddoc.lids ? await getDocsByLid(domainId, Array.isArray(ddoc.lids) ? ddoc.lids.map(String) : String(ddoc.lids)) : [];
+        const docs = (ddoc.lids?.filter(lid => lid != null).length
+    ? await getDocsByDocId(domainId, ddoc.lids.filter(lid => lid != null).map(Number))
+    : [])
+    .filter(doc => doc !== null && doc !== undefined); 
+    docs.forEach(doc => {
+        doc.lid = doc.lid ? String(doc.lid) : null;
+    });
+    
+        
         const repos = ddoc.rids ? await getReposByRid(domainId, ddoc.rids) : [];
         const problems = ddoc.lids?.length ? await getProblemsByDocsId(domainId, ddoc.lids[0]) : [];
         const pids = problems.map(p => Number(p.docId));    
@@ -546,7 +556,11 @@ export class BranchDetailHandler extends BranchHandler {
             treeBranches,
             branchHierarchy,
         };
-       console.log('tdocs:', tdocs);
+        console.log('ddoc:', ddoc);
+       console.log('docs:', docs);
+         console.log('ddoc.lid:', ddoc.lids);
+         console.log('doc.lid:', docs.filter(d => d && d.lid).map(d => d.lid));
+
     }
 
     async post() {
