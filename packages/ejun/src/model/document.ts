@@ -20,7 +20,7 @@ type NormalArrayKeys<O, P = any> = Exclude<ArrayKeys<O, P>, Symbol>;
 export const coll = db.collection('document');
 export const collStatus = db.collection('document.status');
 export const TYPE_DOCS: 100 = 100;
-
+export const TYPE_REPO: 110 = 110;
 export const TYPE_PROBLEM: 10 = 10;
 export const TYPE_PROBLEM_SOLUTION: 11 = 11;
 export const TYPE_PROBLEM_LIST: 12 = 12;
