@@ -1,178 +1,28 @@
+import AdmZip from 'adm-zip';
+import { readFile, statSync } from 'fs-extra';
 import {
-    _, Context, DocumentModel, Filter,
-    Handler, NumberKeys, ObjectId, OplogModel, paginate,ValidationError,encodeRFC5987ValueChars,
-    param, PRIV, Types, UserModel, DomainModel, StorageModel, ProblemModel, NotFoundError,DiscussionNotFoundError
-} from 'ejun';
+    escapeRegExp, flattenDeep, intersection, pick,
+} from 'lodash';
+import { Filter, ObjectId } from 'mongodb';
+import type { Context } from '../context';
+import {
+    BadRequestError, ContestNotAttendedError, ContestNotEndedError, ContestNotFoundError, ContestNotLiveError,
+    FileLimitExceededError, HackFailedError, NoProblemError, NotFoundError,
+    PermissionError, ProblemAlreadyExistError, ProblemAlreadyUsedByContestError, ProblemConfigError,
+    ProblemIsReferencedError, ProblemNotAllowLanguageError, ProblemNotAllowPretestError, ProblemNotFoundError,
+    RecordNotFoundError, SolutionNotFoundError, ValidationError,DiscussionNotFoundError
+} from '../error';
+import {
+    Handler, param, post, query, route, Types,
+} from '../service/server';
+import { ContestDetailBaseHandler } from './contest';
+import storage from '../model/storage';
+import Repo from '../model/repo';
+import { PERM, PRIV, STATUS } from '../model/builtin';
 import { lookup } from 'mime-types';
-
-
-export const TYPE_REPO: 110 = 110;
-export interface RepoDoc {
-    docType: 110;
-    docId: ObjectId;
-    domainId: string,
-    rid: number;
-    owner: number;
-    content: string;
-    title: string;
-    ip: string;
-    updateAt: Date;
-    nReply: number;
-    views: number;
-    reply: any[];
-    react: Record<string, number>;
-    files: {
-        filename: string;           
-        version: string;
-        path: string;            
-        size: number;           
-        lastModified: Date;      
-        etag?: string;        
-    }[];
-}                         
-
-
-declare module 'ejun' {
-    interface Model {
-        repo: typeof RepoModel;
-    }
-    interface DocType {
-        [TYPE_REPO]: RepoDoc;
-    }
-}
-
-export class RepoModel {
-    static async generateNextRid(domainId: string): Promise<number> {
-        const lastDoc = await DocumentModel.getMulti(domainId, TYPE_REPO, {})
-            .sort({ rid: -1 }) // 按 rid 降序排列
-            .limit(1)
-            .project({ rid: 1 })
-            .toArray();
-        return (lastDoc[0]?.rid || 0) + 1; // 若不存在文档，从 1 开始
-    }
-
-    static async addWithId(
-        domainId: string,
-        owner: number,
-        title: string,
-        content: string,
-        ip?: string,
-        meta: Partial<RepoDoc> = {},
-    ): Promise<ObjectId> {
-        const rid = await RepoModel.generateNextRid(domainId); // 生成新的 rid
-        const payload: Partial<RepoDoc> = {
-            domainId,
-            content,
-            owner,
-            title,
-            ip,
-            rid,
-            nReply: 0,
-            updateAt: new Date(),
-            views: 0,
-            ...meta, // 合并其他元信息
-        };
-
-        const res = await DocumentModel.add(
-            domainId,
-            payload.content!,
-            payload.owner!,
-            TYPE_REPO,
-            null,
-            null,
-            null,
-            _.omit(payload, ['domainId', 'content', 'owner']),
-        );
-
-        payload.docId = res; // 添加生成的 docId
-        return payload.docId;
-    }
-
-    static async getByRid(domainId: string, rid: number): Promise<RepoDoc | null> {
-        const cursor = DocumentModel.getMulti(domainId, TYPE_REPO, { rid });
-        const doc = await cursor.next();
-        return doc ? (doc as RepoDoc) : null;
-    }
-
-    static async get(domainId: string, did: ObjectId): Promise<RepoDoc> {
-        return await DocumentModel.get(domainId, TYPE_REPO, did);
-    }
-
-    static edit(domainId: string, did: ObjectId, title: string, content: string): Promise<RepoDoc> {
-        const payload = { title, content };
-        return DocumentModel.set(domainId, TYPE_REPO, did, payload);
-    }
-
-    static async addversion(
-        domainId: string,
-        did: ObjectId,
-        filename: string,
-        version: string,
-        path: string,
-        size: number,
-        lastModified: Date,
-        etag: string
-    ): Promise<RepoDoc> {
-        const payload = {
-            filename,
-            version,
-            path,
-            size,
-            lastModified,
-            etag,
-        };
-    
-        // 使用解构赋值提取 RepoDoc
-        const [updatedRepo] = await DocumentModel.push(domainId, TYPE_REPO, did, 'files', payload);
-    
-        return updatedRepo;
-    }
-    
-
-    static inc(domainId: string, did: ObjectId, key: NumberKeys<RepoDoc>, value: number): Promise<RepoDoc | null> {
-        return DocumentModel.inc(domainId, TYPE_REPO, did, key, value);
-    }
-
-    static del(domainId: string, did: ObjectId): Promise<never> {
-        return Promise.all([
-            DocumentModel.deleteOne(domainId, TYPE_REPO, did),
-            DocumentModel.deleteMultiStatus(domainId, TYPE_REPO, { docId: did }),
-        ]) as any;
-    }
-
-    static count(domainId: string, query: Filter<RepoDoc>) {
-        return DocumentModel.count(domainId, TYPE_REPO, query);
-    }
-
-    static getMulti(domainId: string, query: Filter<RepoDoc> = {}) {
-        return DocumentModel.getMulti(domainId, TYPE_REPO, query)
-            .sort({ _id: -1 });
-    }
-
-    static async addReply(domainId: string, did: ObjectId, owner: number, content: string, ip: string): Promise<ObjectId> {
-        const [[, rrid]] = await Promise.all([
-            DocumentModel.push(domainId, TYPE_REPO, did, 'reply', content, owner, { ip }),
-            DocumentModel.incAndSet(domainId, TYPE_REPO, did, 'nReply', 1, { updateAt: new Date() }),
-        ]);
-        return rrid;
-    }
-
-    static setStar(domainId: string, did: ObjectId, uid: number, star: boolean) {
-        return DocumentModel.setStatus(domainId, TYPE_REPO, did, uid, { star });
-    }
-
-    static getStatus(domainId: string, did: ObjectId, uid: number) {
-        return DocumentModel.getStatus(domainId, TYPE_REPO, did, uid);
-    }
-
-    static setStatus(domainId: string, did: ObjectId, uid: number, $set) {
-        return DocumentModel.setStatus(domainId, TYPE_REPO, did, uid, $set);
-    }
-}
-
-global.Ejunz.model.repo = RepoModel;
-
-
+import { encodeRFC5987ValueChars } from '../service/storage';
+import { RepoDoc } from '../interface';
+import domain from '../model/domain';
 
 class RepoHandler extends Handler {
     ddoc?: RepoDoc;
@@ -180,7 +30,7 @@ class RepoHandler extends Handler {
     @param('did', Types.ObjectId, true)
     async _prepare(domainId: string, did: ObjectId) {
         if (did) {
-            this.ddoc = await RepoModel.get(domainId, did);
+            this.ddoc = await Repo.get(domainId, did);
             if (!this.ddoc) throw new NotFoundError(domainId, did);
         }
     }
@@ -188,24 +38,29 @@ class RepoHandler extends Handler {
 
 export class RepoDomainHandler extends Handler {
     async get({ domainId, page = 1, pageSize = 10 }) {
-        domainId = this.args?.domainId || this.context?.domainId 
+        domainId = this.args?.domainId || this.context?.domainId;
 
         try {
-            const domainInfo = await DomainModel.get(domainId);
+            const domainInfo = await domain.get(domainId);
             if (!domainInfo) {
                 throw new NotFoundError(`Domain not found for ID: ${domainId}`);
             }
 
-            const [ddocs, totalPages, totalCount] = await paginate(
-                RepoModel.getMulti(domainId, {}),
-                page,
-                pageSize
-            );
+            const allDocs = await Repo.getMulti(domainId, {}).toArray();
+
+            const totalCount = allDocs.length;
+            const totalPages = Math.ceil(totalCount / pageSize);
+
+            const currentPage = Math.max(1, Math.min(page, totalPages));
+
+            const startIndex = (currentPage - 1) * pageSize;
+            const paginatedDocs = allDocs.slice(startIndex, startIndex + pageSize);
+
             this.response.template = 'repo_domain.html';
             this.response.body = {
                 domainId,
-                ddocs,
-                page,
+                ddocs: paginatedDocs,
+                page: currentPage,
                 totalPages,
                 totalCount,
             };
@@ -220,14 +75,14 @@ export class RepoDomainHandler extends Handler {
     }
 }
 
+
 export class RepoDetailHandler extends Handler {
     ddoc?: RepoDoc;
 
     @param('did', Types.ObjectId, true)
     async _prepare(domainId: string, did: ObjectId) {
         if (did) {
-            // 获取 Repo 文档
-            this.ddoc = await RepoModel.get(domainId, did);
+            this.ddoc = await Repo.get(domainId, did);
             if (!this.ddoc) {
                 throw new NotFoundError(`Repository not found for ID: ${did}`);
             }
@@ -240,10 +95,8 @@ export class RepoDetailHandler extends Handler {
             throw new NotFoundError(`Repository not found for ID: ${did}`);
         }
 
-        // 获取文件和问题
         const files = this.ddoc.files || [];
-   
-        // 配置模板
+
         this.response.template = 'repo_detail.html';
         this.response.body = {
             domainId,
@@ -259,7 +112,7 @@ export class RepoEditHandler extends RepoHandler {
     async get() {
         const domainId = this.context.domainId || 'default_domain';
         const rid = this.ddoc?.rid;
-        const files = await StorageModel.list(`repo/${domainId}/${rid}`);
+        const files = await storage.list(`repo/${domainId}/${rid}`);
         
 
         const urlForFile = (filename: string) =>
@@ -291,26 +144,26 @@ export class RepoEditHandler extends RepoHandler {
             throw new ValidationError('A file must be uploaded to create a repo.');
         }
     
-        const domain = await DomainModel.get(domainId);
-        if (!domain) {
+        const Domain = await domain.get(domainId);
+        if (!Domain) {
             throw new NotFoundError('Domain not found.');
         }
     
-        domain.files = domain.files || [];
-        const rid = await RepoModel.generateNextRid(domainId);
+        Domain.files = Domain.files || [];
+        const rid = await Repo.generateNextRid(domainId);
     
         const providedFilename = filename || file.originalFilename;
         const filePath = `repo/${domainId}/${rid}/${providedFilename}`;
     
-        const existingFile = domain.files.find(
+        const existingFile = Domain.files.find(
             (f) => f.filename === providedFilename && f.path.startsWith(`repo/${domainId}/${rid}/`)
         );
         if (existingFile) {
             throw new ValidationError(`A file with the name "${providedFilename}" already exists in this repository.`);
         }
     
-        await StorageModel.put(filePath, file.filepath, this.user._id);
-        const fileMeta = await StorageModel.getMeta(filePath);
+        await storage.put(filePath, file.filepath, this.user._id);
+        const fileMeta = await storage.getMeta(filePath);
         if (!fileMeta) {
             throw new ValidationError(`Failed to retrieve metadata for the uploaded file: ${filename}`);
         }
@@ -325,7 +178,7 @@ export class RepoEditHandler extends RepoHandler {
         };
     
 
-        const did = await RepoModel.addWithId(domainId, this.user._id, title, content, this.request.ip, {
+        const did = await Repo.addWithId(domainId, this.user._id, title, content, this.request.ip, {
             files: [fileData],
             rid,
         });
@@ -339,12 +192,12 @@ export class RepoEditHandler extends RepoHandler {
     @param('content', Types.Content)
     async postUpdate(domainId: string, did: ObjectId, title: string, content: string) {
 
-        const repo = await RepoModel.get(domainId, did);
+        const repo = await Repo.get(domainId, did);
         if (!repo) {
             throw new NotFoundError(`Repository not found for ID: ${did}`);
         }
 
-        const updatedRepo = await RepoModel.edit(domainId, did, title, content);
+        const updatedRepo = await Repo.edit(domainId, did, title, content);
 
         console.log('Repo updated successfully:', updatedRepo);
 
@@ -356,7 +209,7 @@ export class RepoEditHandler extends RepoHandler {
 export class RepoVersionHandler extends Handler {
     @param('did', Types.ObjectId, true)
     async get(domainId: string, did: ObjectId) {
-        const repo = await RepoModel.get(domainId, did);
+        const repo = await Repo.get(domainId, did);
         if (!repo) {
             throw new NotFoundError(`Repository not found for ID: ${did}`);
         }
@@ -377,7 +230,7 @@ export class RepoVersionHandler extends Handler {
             throw new ValidationError('A file must be uploaded.');
         }
 
-        const repo = await RepoModel.get(domainId, did);
+        const repo = await Repo.get(domainId, did);
         if (!repo) {
             throw new NotFoundError(`Repository not found for ID: ${did}`);
         }
@@ -400,8 +253,8 @@ export class RepoVersionHandler extends Handler {
 
         const rid = repo.rid;
         const filePath = `repo/${domainId}/${rid}/${filename}`;
-        await StorageModel.put(filePath, file.filepath, this.user._id);
-        const fileMeta = await StorageModel.getMeta(filePath);
+        await storage.put(filePath, file.filepath, this.user._id);
+        const fileMeta = await storage.getMeta(filePath);
         if (!fileMeta) {
             throw new ValidationError(`Failed to retrieve metadata for the uploaded file: ${filename}`);
         }
@@ -416,7 +269,7 @@ export class RepoVersionHandler extends Handler {
         };
 
         repo.files.push(fileData);
-        await RepoModel.addversion(
+        await Repo.addversion(
             domainId,
             did,
             fileData.filename,
@@ -448,7 +301,7 @@ export class RepoVersionHandler extends Handler {
 export class RepoHistoryHandler extends Handler {
     @param('did', Types.ObjectId, true)
     async get(domainId: string, did: ObjectId) {
-        const repo = await RepoModel.get(domainId, did);
+        const repo = await Repo.get(domainId, did);
         if (!repo) {
             throw new NotFoundError(`Repository not found for ID: ${did}`);
         }
@@ -485,7 +338,7 @@ export class RepofileDownloadHandler extends Handler {
         const filePath = `repo/${domainId}/${rid}/${filename}`;
         console.log("Resolved file path:", filePath);
 
-        const fileMeta = await StorageModel.getMeta(filePath);
+        const fileMeta = await storage.getMeta(filePath);
         if (!fileMeta) {
             throw new NotFoundError(`File "${filename}" does not exist in repository "${rid}".`);
         }
@@ -494,7 +347,7 @@ export class RepofileDownloadHandler extends Handler {
         console.log("File MIME type:", mimeType);
 
         try {
-            this.response.body = await StorageModel.get(filePath);
+            this.response.body = await storage.get(filePath);
             this.response.type = mimeType;
 
             if (!['application/pdf', 'image/jpeg', 'image/png'].includes(mimeType)) {
