@@ -45,12 +45,12 @@ export class DocsModel {
 
     static PROJECTION_DETAIL: Field[] = [
         ...DocsModel.PROJECTION_LIST,
-        'docId', 'lid', 'title'
+       'docId', 'lid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply'
     ];
 
     static PROJECTION_PUBLIC: Field[] = [
         ...DocsModel.PROJECTION_DETAIL,
-        'docId', 'lid',
+        'docId', 'lid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply'
     ];
 
     static async generateNextDocId(domainId: string): Promise<number> {
@@ -118,19 +118,24 @@ export class DocsModel {
         return DocsModel.addWithId(domainId, docId, owner, title, content, ip);
     }
 
-    static async get(domainId: string, lid: string | number): Promise<DocsDoc | null> {
+    static async get(domainId: string, lid: number | string): Promise<DocsDoc | null> {
         const query = typeof lid === 'number' ? { docId: lid } : { lid: String(lid) };
-
+    
+        console.log(`[DocsModel.get] Querying document with ${typeof lid === 'number' ? 'docId' : 'lid'}=${lid}`);
+    
         const res = await document.getMulti(domainId, document.TYPE_DOCS, query)
             .project(buildProjection(DocsModel.PROJECTION_PUBLIC))
             .limit(1)
             .toArray();
-
+    
         if (!res.length) {
+            console.error(`[DocsModel.get] No document found for ${typeof lid === 'number' ? 'docId' : 'lid'}=${lid}`);
             return null;
         }
-        return res[0];
+        return res[0] as DocsDoc;
     }
+    
+    
 
     static getMulti(domainId: string, query: Filter<DocsDoc> = {}, projection = DocsModel.PROJECTION_LIST) {
         return document.getMulti(domainId, document.TYPE_DOCS, query, projection).sort({ docId: -1 });
