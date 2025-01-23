@@ -35,17 +35,13 @@
             <div class="section__body">
             <h4>{{ _("Related Docs") }}</h4>
         <ul>
-          {% for doc in docs %}
-          <li>
-          
-          <span class="v-center icon icon-problem"></span> {{ doc.title }}
-        
-          </li>
-        
-          {% endfor %}
-          {% if docs|length == 0 %}
-          <p>{{ _('No related problems found.') }}</p>
-          {% endif %}
+                {% for doc in docs %}
+        <li>
+          <a class="discussion-node-tag media-link" href="{{ url('docs_detail', domainId=ddoc.domainId, lid=doc.lid | default(doc.docId)) }}">
+            <span class="v-center icon icon-problem"></span> {{ doc.title }}
+          </a>
+        </li>
+      {% endfor %}
         </ul>
 
         {% if repos|length > 0 %}
