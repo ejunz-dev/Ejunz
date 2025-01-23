@@ -306,7 +306,7 @@ export type { DocsDoc } from './model/doc';
 export type DocsDict = NumericDictionary<DocsDoc>;
 
 declare module './model/repo'{
-export interface RepoDoc {
+interface RepoDoc {
     docType: document['TYPE_REPO'];
     docId: ObjectId;
     domainId: string,
@@ -330,7 +330,7 @@ export interface RepoDoc {
     }[];
 }                
 }         
-export type { RepoDoc } from './model/doc';
+export type { RepoDoc } from './model/repo';
 export type RepoDict = NumericDictionary<RepoDoc>;
 
 export interface StatusDocBase {
@@ -790,6 +790,7 @@ export interface Model {
     document: Omit<typeof import('./model/document'), 'apply'>,
     domain: typeof import('./model/domain').default,
     doc: typeof import('./model/doc').default,
+    repo: typeof import('./model/repo').default,
     message: typeof import('./model/message').default,
     opcount: typeof import('./model/opcount'),
     problem: typeof import('./model/problem').default,
