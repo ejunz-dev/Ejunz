@@ -8,6 +8,7 @@ import type { Context } from './context';
 import type { DocStatusType } from './model/document';
 import type { ProblemDoc } from './model/problem';
 import type { DocsDoc } from './model/doc';
+import type { RepoDoc } from './model/repo'; 
 import type { Handler } from './service/server';
 
 type document = typeof import('./model/document');
@@ -304,6 +305,33 @@ declare module './model/doc'{
 export type { DocsDoc } from './model/doc';
 export type DocsDict = NumericDictionary<DocsDoc>;
 
+declare module './model/repo'{
+export interface RepoDoc {
+    docType: document['TYPE_REPO'];
+    docId: ObjectId;
+    domainId: string,
+    rid: number;
+    owner: number;
+    content: string;
+    title: string;
+    ip: string;
+    updateAt: Date;
+    nReply: number;
+    views: number;
+    reply: any[];
+    react: Record<string, number>;
+    files: {
+        filename: string;           
+        version: string;
+        path: string;            
+        size: number;           
+        lastModified: Date;      
+        etag?: string;        
+    }[];
+}                
+}         
+export type { RepoDoc } from './model/doc';
+export type RepoDict = NumericDictionary<RepoDoc>;
 
 export interface StatusDocBase {
     _id: ObjectId,
