@@ -7,7 +7,7 @@ import { Context } from '../context';
 import {
     Content, ContestClarificationDoc, DiscussionDoc,
     DiscussionReplyDoc, ProblemDoc, ProblemStatusDoc,
-    Tdoc, TrainingDoc,DocsDoc,
+    Tdoc, TrainingDoc,DocsDoc,RepoDoc
 } from '../interface';
 import * as bus from '../service/bus';
 import db from '../service/db';
@@ -35,6 +35,7 @@ export const TYPE_HOMEWORK: 60 = 60;
 
 export interface DocType {
     [TYPE_DOCS]: DocsDoc;
+    [TYPE_REPO]: RepoDoc;
     [TYPE_PROBLEM]: ProblemDoc;
     [TYPE_PROBLEM_SOLUTION]: any;
     [TYPE_PROBLEM_LIST]: any;

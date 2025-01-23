@@ -12,7 +12,7 @@ import message from '../model/message';
 import * as oplog from '../model/oplog';
 import user from '../model/user';
 import { Handler, param, Types } from '../service/server';
-import { TYPE_DOCS } from '../model/doc';
+import { TYPE_DOCS } from '../model/document';
 
 export const typeMapper = {
     problem: document.TYPE_PROBLEM,
