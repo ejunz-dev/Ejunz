@@ -285,17 +285,18 @@ export async function getDocsByIds (domainId: string, ids: ObjectId[]) {
     return await DocsModel.getMulti(domainId, { _id: { $in: ids } }).toArray();
 }
 
-export async function getDocsByLid(domainId: string, lids: number | number[]) {
-    console.log(`Fetching docs for lids: ${lids}`);
+export async function getDocsByLid(domainId: string, lids: string | string[]) {
+    console.log(`Fetching docs for lids: ${JSON.stringify(lids)}`);
 
     const query = {
         domainId,
-        lid: Array.isArray(lids) ? { $in: lids } : lids,
+        lid: Array.isArray(lids) ? { $in: lids.map(String) } : String(lids),
     };
 
-    console.log(`Querying docs with:`, query);
+    console.log(`Querying docs with:`, JSON.stringify(query));
     return await DocsModel.getMulti(domainId, query).toArray();
 }
+
 
 export async function getReposByRid(domainId: string, rids: number | number[]) {
     console.log(`Fetching docs for rids: ${rids}`);
@@ -515,8 +516,7 @@ export class BranchDetailHandler extends BranchHandler {
         };
 
         branchHierarchy[ddoc.trid] = buildHierarchy(5, treeBranches); 
-
-        const docs = ddoc.lids ? await getDocsByLid(domainId, ddoc.lids) : [];
+        const docs = ddoc.lids ? await getDocsByLid(domainId, Array.isArray(ddoc.lids) ? ddoc.lids.map(String) : String(ddoc.lids)) : [];
         const repos = ddoc.rids ? await getReposByRid(domainId, ddoc.rids) : [];
         const problems = ddoc.lids?.length ? await getProblemsByDocsId(domainId, ddoc.lids[0]) : [];
         const pids = problems.map(p => Number(p.docId));    
