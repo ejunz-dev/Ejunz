@@ -286,9 +286,9 @@ export type ProblemDict = NumericDictionary<ProblemDoc>;
 declare module './model/doc'{
 interface DocsDoc {
     docType: document['TYPE_DOCS'];
-    docId: ObjectId;
+    docId: number;
     domainId: string,
-    lid: number;
+    lid: string;
     owner: number;
     title: string;
     content: string;

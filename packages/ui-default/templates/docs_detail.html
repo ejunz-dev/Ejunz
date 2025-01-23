@@ -25,7 +25,7 @@
       </div>
       <ul class="section__footer supplementary dot list">
       {% if handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) or handler.user.own(ddoc) %}
-        <li><a href="{{ url('docs_edit', uid=udoc._id, did=ddoc.docId) }}">
+        <li><a href="{{ url('docs_edit', uid=udoc._id, lid=ddoc.lid) }}">
           <span class="icon icon-edit"></span> {{ _('Edit') }}
         </a></li>
       {% endif %}
