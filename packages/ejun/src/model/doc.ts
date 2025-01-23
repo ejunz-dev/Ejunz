@@ -31,155 +31,126 @@ import * as document from './document';
 import _ from 'lodash';
 
 
-export interface DocsDoc extends Document { }
+export interface DocsDoc extends Document {}
 export type Field = keyof DocsDoc;
 
 const logger = new Logger('docs');
-
+function sortable(source: string) {
+    return source.replace(/(\d+)/g, (str) => (str.length >= 6 ? str : ('0'.repeat(6 - str.length) + str)));
+}
 
 export class DocsModel {
+    /** 🔹 投影定义 */
+    static PROJECTION_LIST: Field[] = [
+        'docId', 'lid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply'
+    ];
 
-    static async generateNextLid(domainId: string): Promise<number> {
+    static PROJECTION_DETAIL: Field[] = [
+        ...DocsModel.PROJECTION_LIST,
+        'docId', 'lid', 'title'
+    ];
+
+    static PROJECTION_PUBLIC: Field[] = [
+        ...DocsModel.PROJECTION_DETAIL,
+        'docId', 'lid',
+    ];
+
+    /** 🔹 生成下一个 `docId` */
+    static async generateNextDocId(domainId: string): Promise<number> {
         const lastDoc = await document.getMulti(domainId, document.TYPE_DOCS, {})
-            .sort({ lid: -1 }) // 按 lid 降序排列
+            .sort({ docId: -1 })
+            .limit(1)
+            .project({ docId: 1 })
+            .toArray();
+        return (lastDoc[0]?.docId || 0) + 1;
+    }
+
+    /** 🔹 生成下一个 `lid`（字符串类型） */
+    static async generateNextLid(domainId: string): Promise<string> {
+        const lastDoc = await document.getMulti(domainId, document.TYPE_DOCS, {})
+            .sort({ lid: -1 })
             .limit(1)
             .project({ lid: 1 })
             .toArray();
-        return (lastDoc[0]?.lid || 0) + 1; // 若不存在文档，从 1 开始
+        
+        const lastLidNumber = parseInt(lastDoc[0]?.lid?.match(/\d+/)?.[0] || '0', 10);
+        return `D${lastLidNumber + 1}`;
     }
 
-    // 添加 addWithId 方法
+    /** 🔹 添加文档（指定 `docId` 和 `lid`） */
     static async addWithId(
         domainId: string,
+        docId: number,
         owner: number,
         title: string,
         content: string,
         ip?: string,
         meta: Partial<DocsDoc> = {},
-    ): Promise<ObjectId> {
-        const lid = await DocsModel.generateNextLid(domainId); // 生成新的 lid
+    ): Promise<string> {
+        const lid = await DocsModel.generateNextLid(domainId);
+
         const payload: Partial<DocsDoc> = {
             domainId,
+            docId,
+            lid,
             content,
             owner,
             title,
             ip,
-            lid,
             nReply: 0,
             updateAt: new Date(),
             views: 0,
-            ...meta, // 合并其他元信息
+            ...meta
         };
 
-        const res = await document.add(
+        await document.add(
             domainId,
             payload.content!,
             payload.owner!,
             document.TYPE_DOCS,
-            null,
+            docId,
             null,
             null,
             _.omit(payload, ['domainId', 'content', 'owner']),
         );
 
-        payload.docId = res; // 添加生成的 docId
-        return payload.docId;
+        return lid;
     }
+
+    /** 🔹 添加文档（自动生成 `docId` 和 `lid`） */
     static async add(
-        domainId:string, owner: number, title: string, content: string, ip?: string,
-    ): Promise<ObjectId> {
-        const payload: Partial<DocsDoc> = {
-            domainId,
-            content,
-            owner,
-            title,
-            ip,
-            nReply: 0,
-            updateAt: new Date(),
-            views: 0,
-        };
-        const res = await document.add(
-            domainId, payload.content!, payload.owner!, document.TYPE_DOCS,
-            null, null, null, _.omit(payload, ['domainId', 'content', 'owner']),
-        );
-        payload.docId = res;
-        return payload.docId;
+        domainId: string, owner: number, title: string, content: string, ip?: string,
+    ): Promise<string> {
+        const docId = await DocsModel.generateNextDocId(domainId);
+        return DocsModel.addWithId(domainId, docId, owner, title, content, ip);
     }
-    static async getByLid(domainId: string, lid: number): Promise<DocsDoc | null> {
 
-        const cursor = document.getMulti(domainId, document.TYPE_DOCS, { lid });
-
-        const doc = await cursor.next();
-  
-        if (!doc) {
-            console.warn(`No Docs document found for lid: ${lid} in domain: ${domainId}`);
+    static async get(domainId: string, lid: string | number): Promise<DocsDoc | null> {
+        console.log(`[DocsModel] Fetching doc with lid=${lid} in domain=${domainId}`);
+    
+        const query = typeof lid === 'number' ? { docId: lid } : { lid: String(lid) };
+    
+        const res = await document.getMulti(domainId, document.TYPE_DOCS, query)
+            .project(buildProjection(DocsModel.PROJECTION_PUBLIC))
+            .limit(1)
+            .toArray();
+    
+        if (!res.length) {
+            console.warn(`[DocsModel] Document not found for lid=${lid} in domain=${domainId}`);
             return null;
         }
-    
-        return doc as DocsDoc;
+        
+        return res[0];
     }
     
-
-    static async get(domainId: string, did: ObjectId): Promise<DocsDoc> {
-        return await document.get(domainId, document.TYPE_DOCS, did);
-    }
-
-    static edit(domainId: string, did: ObjectId, title: string, content: string): Promise<DocsDoc> {
-        const payload = { title, content };
-        return document.set(domainId, document.TYPE_DOCS, did, payload);
-    }
-
-    static inc(domainId: string, did: ObjectId, key: NumberKeys<DocsDoc>, value: number): Promise<DocsDoc | null> {
-        return document.inc(domainId, document.TYPE_DOCS, did, key, value);
-    }
-
-    static del(domainId: string, did: ObjectId): Promise<never> {
-        return Promise.all([
-            document.deleteOne(domainId, document.TYPE_DOCS, did),
-            document.deleteMultiStatus(domainId, document.TYPE_DOCS, { docId: did }),
-        ]) as any;
-    }
-
-    static count(domainId: string, query: Filter<DocsDoc>) {
-        return document.count(domainId, document.TYPE_DOCS, query);
-    }
-
-    static getMulti(domainId: string, query: Filter<DocsDoc> = {}) {
-        return document.getMulti(domainId, document.TYPE_DOCS, query)
-            .sort({ _id: -1 });
-    }
-
-    static async addReply(domainId: string, did: ObjectId, owner: number, content: string, ip: string): Promise<ObjectId> {
-        const [[, drid]] = await Promise.all([
-            document.push(domainId, document.TYPE_DOCS, did, 'reply', content, owner, { ip }),
-            document.incAndSet(domainId, document.TYPE_DOCS, did, 'nReply', 1, { updateAt: new Date() }),
-        ]);
-        return drid;
-    }
-
-    static setStar(domainId: string, did: ObjectId, uid: number, star: boolean) {
-        return document.setStatus(domainId, document.TYPE_DOCS, did, uid, { star });
-    }
-
-    static getStatus(domainId: string, did: ObjectId, uid: number) {
-        return document.getStatus(domainId, document.TYPE_DOCS, did, uid);
-    }
-
-    static setStatus(domainId: string, did: ObjectId, uid: number, $set) {
-        return document.setStatus(domainId, document.TYPE_DOCS, did, uid, $set);
-    }
-
-    static async getList(domainId: string, ids: number[]): Promise<DocsDoc[]> {
-        if (!ids || ids.length === 0) return [];
     
-        const query = { domainId, lid: { $in: ids } };
-        const docs = await document.getMulti(domainId, document.TYPE_DOCS, query).toArray();
-    
-        return docs.map(doc => ({
-            ...doc,
-            lid: doc.lid ? String(doc.lid) : '0',  // 确保 lid 永远是字符串
-        }));
+
+    /** 🔹 获取多个文档 */
+    static getMulti(domainId: string, query: Filter<DocsDoc> = {}, projection = DocsModel.PROJECTION_LIST) {
+        return document.getMulti(domainId, document.TYPE_DOCS, query, projection).sort({ docId: -1 });
     }
+
+    /** 🔹 分页获取文档 */
     static async list(
         domainId: string,
         query: Filter<DocsDoc>,
@@ -190,40 +161,99 @@ export class DocsModel {
     ): Promise<[DocsDoc[], number, number]> {
         const union = await DomainModel.get(domainId);
         const domainIds = [domainId, ...(union?.union || [])];
-        
+
         let totalCount = 0;
         const docsList: DocsDoc[] = [];
-    
+
         for (const id of domainIds) {
-            // 🔹 确保用户有权限查看文档
             if (typeof uid === 'number') {
                 const userDoc = await user.getById(id, uid);
                 if (!userDoc.hasPerm(PERM.PERM_VIEW)) continue;
             }
-    
-            // 🔹 计算当前 `domainId` 里的文档总数
+
             const currentCount = await document.count(id, document.TYPE_DOCS, query);
-    
+
             if (docsList.length < pageSize && (page - 1) * pageSize - totalCount <= currentCount) {
-                // 🔹 查询 `docs` 并进行分页
                 docsList.push(
                     ...await document.getMulti(id, document.TYPE_DOCS, query, projection)
-                        .sort({ _id: -1 })  // 按 `_id` 降序排列
+                        .sort({ docId: -1 })
                         .skip(Math.max((page - 1) * pageSize - totalCount, 0))
                         .limit(pageSize - docsList.length)
                         .toArray()
                 );
             }
-    
+
             totalCount += currentCount;
         }
-    
+
         return [docsList, Math.ceil(totalCount / pageSize), totalCount];
     }
-    
+
+    /** 🔹 通过 `lid` 编辑文档 */
+    static async edit(domainId: string, lid: string, updates: Partial<DocsDoc>): Promise<DocsDoc> {
+        const doc = await document.getMulti(domainId, document.TYPE_DOCS, { lid }).next();
+        if (!doc) throw new Error(`Document with lid=${lid} not found`);
+
+        return document.set(domainId, document.TYPE_DOCS, doc.docId, updates);
+    }
+
+    /** 🔹 通过 `lid` 删除文档 */
+    static async del(domainId: string, lid: string): Promise<boolean> {
+        const doc = await document.getMulti(domainId, document.TYPE_DOCS, { lid }).next();
+        if (!doc) throw new Error(`Document with lid=${lid} not found`);
+
+        await Promise.all([
+            document.deleteOne(domainId, document.TYPE_DOCS, doc.docId),
+            document.deleteMultiStatus(domainId, document.TYPE_DOCS, { docId: doc.docId }),
+        ]);
+        return true;
+    }
+
+    /** 🔹 统计文档总数 */
+    static async count(domainId: string, query: Filter<DocsDoc>) {
+        return document.count(domainId, document.TYPE_DOCS, query);
+    }
+
+    /** 🔹 获取文档状态 */
+    static async getStatus(domainId: string, lid: string, uid: number) {
+        return document.getStatus(domainId, document.TYPE_DOCS, lid, uid);
+    }
+
+    /** 🔹 设置文档状态 */
+    static async setStatus(domainId: string, lid: string, uid: number, updates) {
+        return document.setStatus(domainId, document.TYPE_DOCS, lid, uid, updates);
+    }
+
+        /** 🔹 通过 `lid` 批量获取文档 */
+    static async getList(domainId: string, lids: string[]): Promise<DocsDoc[]> {
+        if (!lids || lids.length === 0) return [];
+
+        const query = { domainId, lid: { $in: lids } };
+        
+        // 🔹 查询文档并应用投影
+        const docs = await document.getMulti(domainId, document.TYPE_DOCS, query, DocsModel.PROJECTION_PUBLIC)
+            .toArray();
+
+        // 🔹 确保 `lid` 始终是字符串
+        return docs.map(doc => ({
+            ...doc,
+            lid: String(doc.lid),
+        }));
+    }
+    /** 🔹 递增文档字段 */
+    static async inc(domainId: string, lid: string, key: NumberKeys<DocsDoc>, value: number): Promise<DocsDoc | null> {
+        // 🔹 先根据 lid 获取对应的 docId
+        const doc = await document.getMulti(domainId, document.TYPE_DOCS, { lid }).next();
+        if (!doc) throw new Error(`Document with lid=${lid} not found`);
+
+        // 🔹 递增字段
+        return document.inc(domainId, document.TYPE_DOCS, doc.docId, key, value);
+    }
+
+
 }
-export function apply(ctx: Context) {
-   
-}
+
+export function apply(ctx: Context) {}
+
 global.Ejunz.model.doc = DocsModel;
 export default DocsModel;
