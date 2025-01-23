@@ -60,3 +60,4 @@ export * as domain from './model/domain';
 export * as docs from './model/doc';
 import * as system from './model/system';
 export {RepoModel} from '@ejunz/ejunzrepo';
+export {DocsModel} from './model/doc';

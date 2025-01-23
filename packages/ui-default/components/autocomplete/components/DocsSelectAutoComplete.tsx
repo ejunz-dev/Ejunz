@@ -10,36 +10,36 @@ const DocsSelectAutoComplete = forwardRef<AutoCompleteHandle<DocsDoc>, AutoCompl
     cacheKey={`docs-${UiContext.domainId}`}
     
     queryItems={async (query) => {
-      const { docs } = await api(gql`
-        query {
-          docs(ids: []) {
-            lid
-            title
-          }
-        }
-      `, ['data', 'docs']);
-      
-      return docs.filter(d => d.title.includes(query) || d.lid.toString().includes(query));
+      const { ddocs } = await request.get(`/d/${UiContext.domainId}/docs`, { q: query, quick: true });
+    
+      return ddocs.filter((d) =>
+        d.title.includes(query) || 
+        d.lid.includes(query) || 
+        d.docId.toString() === query 
+      );
     }}
+    
 
     fetchItems={(ids) => api(gql`
-      docs(ids: ${ids.map((i) => parseInt(i, 10))}) {
-        lid
-        title
-        content
+      query ($ids: [Int]!) {
+        docs(ids: $ids) {
+          docId
+          lid
+          title
+        }
       }
-    `, ['data', 'docs'])}
+    `,['data', 'docs'])}
 
-    itemText={(ddoc) => `${ddoc.lid} ${ddoc.title}`}
-    itemKey={(ddoc) => `${ddoc.lid || ddoc}`}
-    
+    itemText={(ddoc) => `${ddoc.docId} ${ddoc.title}`}
+    itemKey={(ddoc) => `${ddoc.docId || ddoc}`}
+
     renderItem={(ddoc) => (
       <div className="media">
         <div className="media__body medium">
-          <div className="doc-select__name">
-            {ddoc.lid ? `#${ddoc.lid} ` : ''} {ddoc.title}
+          <div className="docs-select__name">
+            {ddoc.lid ? `${ddoc.lid} ` : ''} {ddoc.title}
           </div>
-          <div className="doc-select__id">文档 ID = {ddoc.lid}</div>
+          <div className="docs-select__id">ID = {ddoc.docId}</div>
         </div>
       </div>
     )}
