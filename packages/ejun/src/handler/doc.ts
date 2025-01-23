@@ -247,29 +247,29 @@ export async function apply(ctx: Context) {
     });
     ctx.inject(['api'], ({ api }) => {
         api.value('Doc', [
-            ['docId', 'ObjectID!'],
-            ['lid', 'String'],
+            ['docId', 'Int!'],
+            ['lid', 'String!'],
             ['title', 'String!'],
             ['content', 'String!'],
         ]);
     
         api.resolver(
-            'Query', 'doc(lid: String)', 'Doc',
+            'Query', 'doc(id: Int, title: String)', 'Doc',
             async (arg, c) => {
                 c.checkPerm(PERM.PERM_VIEW);
-                const ddoc = await docs.get(c.args.domainId, arg.lid);
+                const ddoc = await docs.get(c.args.domainId, arg.title || arg.id);
                 if (!ddoc) return null;
                 c.ddoc = ddoc;
                 return ddoc;
             },
         );
-    
-        api.resolver(
-            'Query', 'docs(lids: [String]!)', '[Doc]!',  
-            async (arg, c) => {
-                c.checkPerm(PERM.PERM_VIEW);
-                const res = await docs.getList(c.args.domainId, arg.lids);
-                return res;
-            }, 'Get a list of docs by lid');
+
+        api.resolver('Query', 'docs(ids: [Int])', '[Doc]', async (arg, c) => {
+            c.checkPerm(PERM.PERM_VIEW);
+            const res = await docs.getList(c.args.domainId, arg.ids,
+                undefined);
+            return Object.keys(res).map((id) => res[+id]);
+        }, 'Get a list of docs by ids');
     });
-}    
+}
+    
