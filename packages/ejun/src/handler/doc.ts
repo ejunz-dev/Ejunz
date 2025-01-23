@@ -263,13 +263,14 @@ export async function apply(ctx: Context) {
                 return ddoc;
             },
         );
-
         api.resolver('Query', 'docs(ids: [Int])', '[Doc]', async (arg, c) => {
             c.checkPerm(PERM.PERM_VIEW);
-            const res = await docs.getList(c.args.domainId, arg.ids,
-                undefined);
-            return Object.keys(res).map((id) => res[+id]);
+            const res = await docs.getList(c.args.domainId, arg.ids, undefined);
+            return Object.keys(res)
+                .map((id) => res[+id])
+                .filter((doc) => doc !== null && doc !== undefined); 
         }, 'Get a list of docs by ids');
+        
     });
 }
     
