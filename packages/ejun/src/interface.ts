@@ -7,6 +7,7 @@ import type { Binary, FindCursor, ObjectId } from 'mongodb';
 import type { Context } from './context';
 import type { DocStatusType } from './model/document';
 import type { ProblemDoc } from './model/problem';
+import type { DocsDoc } from './model/doc';
 import type { Handler } from './service/server';
 
 type document = typeof import('./model/document');
@@ -284,23 +285,25 @@ export type { ProblemDoc } from './model/problem';
 export type ProblemDict = NumericDictionary<ProblemDoc>;
 
 declare module './model/doc'{
-interface DocsDoc {
-    docType: document['TYPE_DOCS'];
-    docId: number;
-    domainId: string,
-    lid: string;
-    owner: number;
-    title: string;
-    content: string;
-    ip: string;
-    updateAt: Date;
-    nReply: number;
-    views: number;
-    reply: any[];
-    react: Record<string, number>;
-}
+    interface DocsDoc {
+        docType: document['TYPE_DOCS'];
+        docId: number;
+        domainId: string,
+        lid: string;
+        owner: number;
+        title: string;
+        content: string;
+        ip: string;
+        updateAt: Date;
+        nReply: number;
+        views: number;
+        reply: any[];
+        react: Record<string, number>;
+    }
 }
 export type { DocsDoc } from './model/doc';
+export type DocsDict = NumericDictionary<DocsDoc>;
+
 
 export interface StatusDocBase {
     _id: ObjectId,
