@@ -2,7 +2,7 @@ import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter,
     Handler, NumberKeys, ObjectId, OplogModel, paginate,
     param, PRIV,PERM, Types, UserModel, DomainModel, StorageModel, ProblemModel, NotFoundError,DocsModel,RepoModel,
-    parseMemoryMB,ContestModel,DiscussionModel,TrainingModel
+    parseMemoryMB,ContestModel,DiscussionModel,TrainingModel,buildProjection
 } from 'ejun';
 
 export const TYPE_BR: 1 = 1;
@@ -286,16 +286,22 @@ export async function getDocsByIds (domainId: string, ids: ObjectId[]) {
 }
 
 export async function getDocsByDocId(domainId: string, docIds: number | number[]) {
-    console.log(`Fetching docs for docIds: ${docIds}`);
+    console.log(`Fetching docs for docIds: ${JSON.stringify(docIds)}`);
 
     const query = {
         domainId,
-        docId: Array.isArray(docIds) ? { $in: docIds.map(Number) } : Number(docIds),
+        docId: Array.isArray(docIds) ? { $in: docIds } : docIds, // 直接使用 docIds
     };
 
     console.log(`Querying docs with:`, JSON.stringify(query, null, 2));
 
-    return await DocsModel.getMulti(domainId, query).toArray();
+    const results = await DocsModel.getMulti(domainId, query)
+        .project(buildProjection(DocsModel.PROJECTION_PUBLIC)) // 仅获取必要字段
+        .toArray();
+
+    console.log(`Fetched docs:`, results);
+
+    return results;
 }
 
 
@@ -518,25 +524,27 @@ export class BranchDetailHandler extends BranchHandler {
         };
 
         branchHierarchy[ddoc.trid] = buildHierarchy(5, treeBranches); 
-        const docs = (ddoc.lids?.filter(lid => lid != null).length
-    ? await getDocsByDocId(domainId, ddoc.lids.filter(lid => lid != null).map(Number))
-    : [])
-    .filter(doc => doc !== null && doc !== undefined); 
-    docs.forEach(doc => {
-        doc.lid = doc.lid ? String(doc.lid) : null;
-    });
-    
-        
+
+        const docs = ddoc.lids?.length
+            ? await getDocsByDocId(domainId, ddoc.lids.filter(lid => lid != null).map(Number))
+            : [];
+
+        docs.forEach(doc => {
+            if (!doc.lid) {
+                doc.lid = String(doc.docId); 
+            } else {
+                doc.lid = String(doc.lid);
+            }
+        });
+
         const repos = ddoc.rids ? await getReposByRid(domainId, ddoc.rids) : [];
         const problems = ddoc.lids?.length ? await getProblemsByDocsId(domainId, ddoc.lids[0]) : [];
         const pids = problems.map(p => Number(p.docId));    
         const [ctdocs, htdocs, tdocs] = await Promise.all([
-        Promise.all(pids.map(pid => getRelated(domainId, pid))),         
-        Promise.all(pids.map(pid => getRelated(domainId, pid, 'homework'))),
-        TrainingModel.getByPid(domainId, pids) 
-    ]);
-
-
+            Promise.all(pids.map(pid => getRelated(domainId, pid))),         
+            Promise.all(pids.map(pid => getRelated(domainId, pid, 'homework'))),
+            TrainingModel.getByPid(domainId, pids) 
+        ]);
 
         this.response.template = 'branch_detail.html';
         this.response.pjax = 'branch_detail.html'; 
@@ -556,17 +564,13 @@ export class BranchDetailHandler extends BranchHandler {
             treeBranches,
             branchHierarchy,
         };
-        console.log('ddoc:', ddoc);
-       console.log('docs:', docs);
-         console.log('ddoc.lid:', ddoc.lids);
-         console.log('doc.lid:', docs.filter(d => d && d.lid).map(d => d.lid));
-
     }
 
     async post() {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
     }
 }
+
 
 export class BranchEditHandler extends BranchHandler {
     @param('docId', Types.ObjectId)
@@ -589,8 +593,8 @@ export class BranchEditHandler extends BranchHandler {
             ddoc,
             trid: this.args.trid,
             pids: pids.join(',') || '',
-            lids: ddoc.lids?.join(',') || '', // 同样处理 `lids`
-            rids: ddoc.rids?.join(',') || '', // 同样处理 `rids`
+            lids: ddoc.lids?.join(',') || '', 
+            rids: ddoc.rids?.join(',') || '', 
         
         };
 
