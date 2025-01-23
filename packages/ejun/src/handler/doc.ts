@@ -40,37 +40,38 @@ import docs from '../model/doc';
 class DocsHandler extends Handler {
     ddoc?: DocsDoc;
 
-    @param('did', Types.ObjectId, true)
-    async _prepare(domainId: string, did: ObjectId) {
-        if (did) {
-            this.ddoc = await docs.get(domainId, did);
-            if (!this.ddoc) throw new DiscussionNotFoundError(domainId, did);
+    @param('lid', Types.String, true)  
+    async _prepare(domainId: string, lid: string) {
+        if (lid) {
+            this.ddoc = await docs.get(domainId, lid);
+            if (!this.ddoc) throw new DiscussionNotFoundError(domainId, lid);
         }
     }
 }
+
 export class DocsDomainHandler extends Handler {
     async get({ domainId, page = 1, pageSize = 10 }) {
-        domainId = this.args?.domainId || this.context?.domainId || 'system';
+        console.log(`[DocsDomainHandler] Fetching documents for domain: ${domainId}, Page: ${page}, PageSize: ${pageSize}`);
 
+        domainId = this.args?.domainId || this.context?.domainId || 'system';
         page = parseInt(page as any, 10) || 1;
         pageSize = parseInt(pageSize as any, 10) || 10;
 
-        const query = {};
-        try {
-            console.log(`[DocsDomainHandler] Fetching domain info for domainId: ${domainId}`);
-            const domainInfo = await domain.get(domainId);
+        const query: Filter<DocsDoc> = {};
 
+        try {
+            const domainInfo = await domain.get(domainId);
             if (!domainInfo) {
                 throw new Error(`Domain not found for id: ${domainId}`);
             }
 
-            const cursor = docs.getMulti(domainId, query);
-            const totalCount = await cursor.count();
-            const totalPages = Math.ceil(totalCount / pageSize);
+            const [ddocs, totalPages, totalCount] = await docs.list(
+                domainId, query, page, pageSize, docs.PROJECTION_LIST
+            );
 
-            const ddocs = await cursor.skip((page - 1) * pageSize).limit(pageSize).toArray();
-
-            console.log(`[DocsDomainHandler] Documents fetched successfully. Total: ${totalCount}, Pages: ${totalPages}`);
+            console.log(`[DocsDomainHandler] Documents fetched successfully.`);
+            console.log(`Total Documents: ${totalCount}, Total Pages: ${totalPages}`);
+            console.log(`First 3 docs:`, JSON.stringify(ddocs.slice(0, 3), null, 2));
 
             this.response.template = 'docs_domain.html';
             this.response.body = {
@@ -87,77 +88,56 @@ export class DocsDomainHandler extends Handler {
             this.response.template = 'error.html';
             this.response.body = {
                 error: `Failed to fetch documents for the domain: ${error.message}`,
-                details: error.stack, 
+                details: error.stack,
             };
         }
     }
 }
 
-
-
-
-
 class DocsDetailHandler extends DocsHandler {
-    @param('did', Types.ObjectId)
-    async get(domainId: string, did: ObjectId) {
+    @param('lid', Types.String)
+    async get(domainId: string, lid: string) {
+        console.log(`[DocsDetailHandler] Looking for doc with lid=${lid} in domain=${domainId}`);
+
+        const normalizedLid = isNaN(Number(lid)) ? lid : Number(lid);
+        const ddoc = await docs.get(domainId, normalizedLid);
+        if (!ddoc) {
+            console.error(`[DocsDetailHandler] Document with lid=${lid} not found in domain=${domainId}`);
+            throw new DiscussionNotFoundError(domainId, lid);
+        }
+
         const dsdoc = this.user.hasPriv(PRIV.PRIV_USER_PROFILE)
-            ? await docs.getStatus(domainId, did, this.user._id)
+            ? await docs.getStatus(domainId, ddoc.lid, this.user._id)
             : null;
 
-        const udoc = await user.getById(domainId, this.ddoc!.owner);
+        const udoc = await user.getById(domainId, ddoc.owner);
 
         if (!dsdoc?.view) {
             await Promise.all([
-                docs.inc(domainId, did, 'views', 1),
-                docs.setStatus(domainId, did, this.user._id, { view: true }),
+                docs.inc(domainId, ddoc.lid, 'views', 1),
+                docs.setStatus(domainId, ddoc.lid, this.user._id, { view: true }),
             ]);
         }
-        console.log('ddoc:', this.ddoc);
 
-        let lid = this.ddoc.lid;
-        console.log('Original lid:', lid, 'Type:', typeof lid);
-
-        if (typeof lid === 'string') {
-            lid = parseInt(lid, 10);
-            console.log('Converted lid to number:', lid);
-        }
-
-        if (isNaN(lid)) {
-            throw new Error(`Invalid lid: ${this.ddoc.lid}`);
-        }
-
-        const problems = await getProblemsByDocsId(domainId, lid);
+        console.log(`[DocsDetailHandler] Fetching related problems for docs lid: ${ddoc.lid}`);
+        const problems = await getProblemsByDocsId(domainId, ddoc.lid);
 
         this.response.template = 'docs_detail.html';
         this.response.body = {
-            ddoc: this.ddoc,
+            ddoc,
             dsdoc,
             udoc,
             problems,
         };
     }
-
-    async post() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
-    }
-
-    @param('did', Types.ObjectId)
-    async postStar(domainId: string, did: ObjectId) {
-        await docs.setStar(domainId, did, this.user._id, true);
-        this.back({ star: true });
-    }
-
-    @param('did', Types.ObjectId)
-    async postUnstar(domainId: string, did: ObjectId) {
-        await docs.setStar(domainId, did, this.user._id, false);
-        this.back({ star: false });
-    }
 }
-export async function getProblemsByDocsId(domainId: string, lid: number) {
+
+
+export async function getProblemsByDocsId(domainId: string, lid: string) {
     console.log(`Fetching problems for docs ID: ${lid}`);
     const query = {
         domainId,
-        associatedDocumentId: lid 
+        associatedDocumentId: lid // 这里 `lid` 现在是字符串
     };
     console.log(`Querying problems with:`, query);
     return await problem.getMulti(domainId, query).toArray();
@@ -186,37 +166,35 @@ export class DocsEditHandler extends DocsHandler {
     async postCreate(domainId: string, title: string, content: string) {
         await this.limitRate('add_docs', 3600, 60);
 
-        const did = await docs.addWithId(
+        const lid = await docs.add(
             domainId,
             this.user._id,
             title,
             content,
             this.request.ip
         );
-        
-        this.response.body = { did };
-        this.response.redirect = this.url('docs_detail', { uid: this.user._id, did });
+
+        this.response.body = { lid };
+        this.response.redirect = this.url('docs_detail', { uid: this.user._id, lid });
     }
 
-    @param('did', Types.ObjectId)
+    @param('lid', Types.String)
     @param('title', Types.Title)
     @param('content', Types.Content)
-    async postUpdate(domainId: string, did: ObjectId, title: string, content: string) {
-       
+    async postUpdate(domainId: string, lid: string, title: string, content: string) {
         await Promise.all([
-            docs.edit(domainId,did, title, content),
+            docs.edit(domainId, lid, { title, content }),
             oplog.log(this, 'docs.edit', this.ddoc),
         ]);
 
-        this.response.body = { did };
-        this.response.redirect = this.url('docs_detail', { uid: this.user._id, did });
+        this.response.body = { lid };
+        this.response.redirect = this.url('docs_detail', { uid: this.user._id, lid });
     }
 
-    @param('did', Types.ObjectId)
-    async postDelete(domainId: string, did: ObjectId) {
-
+    @param('lid', Types.String)
+    async postDelete(domainId: string, lid: string) {
         await Promise.all([
-            docs.del(domainId, did),
+            docs.del(domainId, lid),
             oplog.log(this, 'docs.delete', this.ddoc),
         ]);
 
@@ -227,12 +205,13 @@ export class DocsEditHandler extends DocsHandler {
 
 
 
+
 export async function apply(ctx: Context) {
     // ctx.Route('docs', '/docs', LibHandler);
     ctx.Route('docs_domain', '/docs', DocsDomainHandler);
     ctx.Route('docs_create', '/docs/create', DocsEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('docs_detail', '/docs/:did', DocsDetailHandler);
-    ctx.Route('docs_edit', '/docs/:did/edit', DocsEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('docs_detail', '/docs/:lid', DocsDetailHandler);
+    ctx.Route('docs_edit', '/docs/:lid/edit', DocsEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.injectUI('Nav', 'docs_domain', () => ({
         name: 'docs_domain',
         displayName: 'Docs',
@@ -273,23 +252,24 @@ export async function apply(ctx: Context) {
             ['title', 'String!'],
             ['content', 'String!'],
         ]);
+    
         api.resolver(
-            'Query', 'doc(id: Int, title: String)', 'Doc',
+            'Query', 'doc(lid: String)', 'Doc',
             async (arg, c) => {
                 c.checkPerm(PERM.PERM_VIEW);
-                const ddoc = await docs.get(c.args.domainId, arg.title || arg.id);
+                const ddoc = await docs.get(c.args.domainId, arg.lid);
                 if (!ddoc) return null;
                 c.ddoc = ddoc;
                 return ddoc;
             },
         );
-
+    
         api.resolver(
-            'Query', 'docs(ids: [Int]!)', '[Doc]!',  // ✅ 允许传多个 lid
+            'Query', 'docs(lids: [String]!)', '[Doc]!',  
             async (arg, c) => {
                 c.checkPerm(PERM.PERM_VIEW);
-                const res = await docs.getList(c.args.domainId, arg.ids); // 🔥 这里传入的是 `lid`
+                const res = await docs.getList(c.args.domainId, arg.lids);
                 return res;
             }, 'Get a list of docs by lid');
     });
-}
+}    
