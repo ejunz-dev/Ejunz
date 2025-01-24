@@ -212,7 +212,33 @@ export class RepoModel {
 
         return [repoList, Math.ceil(totalCount / pageSize), totalCount];
     }
-
+    static async getList(
+        domainId: string, 
+        docIds: number[],
+        projection = RepoModel.PROJECTION_PUBLIC, 
+        indexByDocIdOnly = false,
+    ): Promise<Record<number | string, RepoDoc>> {
+        if (!docIds?.length) {
+            return {};
+        }
+    
+        const r: Record<number, RepoDoc> = {};
+        const l: Record<string, RepoDoc> = {};
+    
+        const q: any = { docId: { $in: docIds } };
+    
+        let repos = await document.getMulti(domainId, document.TYPE_REPO, q)
+            .project<RepoDoc>(buildProjection(projection))
+            .toArray();
+    
+        for (const repo of repos) {
+            r[repo.docId] = repo;
+            if (repo.rid) l[repo.rid] = repo;
+        }
+    
+        return indexByDocIdOnly ? r : Object.assign(r, l);
+    }
+    
     static async edit(domainId: string, rid: string, updates: Partial<RepoDoc>): Promise<RepoDoc> {
         const repo = await document.getMulti(domainId, document.TYPE_REPO, { rid }).next();
         if (!repo) throw new Error(`Document with rid=${rid} not found`);
