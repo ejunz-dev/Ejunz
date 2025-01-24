@@ -115,9 +115,9 @@ export class RepoDetailHandler extends Handler {
         this.response.template = 'repo_detail.html';
         this.response.body = {
             domainId,
-            rid: ddoc.rid, // ✅ 确保 rid 传递正确
+            rid: ddoc.rid, 
             ddoc,
-            files: ddoc.files, // ✅ 确保传递正确的文件数据
+            files: ddoc.files, 
         };
     }
 }
@@ -241,7 +241,7 @@ export class RepoEditHandler extends RepoHandler {
 
 
 export class RepoVersionHandler extends Handler {
-   @param('rid', Types.RepoId, true) // ✅ 现在直接使用 rid
+   @param('rid', Types.RepoId, true) 
     async get(domainId: string, rid: string) {
         const repo = await Repo.getByRid(domainId, rid);
         if (!repo) throw new NotFoundError(`Repository not found for RID: ${rid}`);
@@ -260,17 +260,15 @@ export class RepoVersionHandler extends Handler {
         const file = this.request.files?.file;
         if (!file) throw new ValidationError('A file must be uploaded.');
 
-        // ✅ 获取 RepoDoc（确保 rid 传递正确）
         const repo = await Repo.getByRid(domainId, rid);
         if (!repo) throw new NotFoundError(`Repository not found for RID: ${rid}`);
 
-        // ✅ 使用 docId 作为路径，而不是 rid
         const docId = repo.docId;
         if (typeof docId !== 'number') {
             throw new Error(`Expected docId to be a number, but got ${typeof docId}`);
         }
 
-        const filePath = `repo/${domainId}/${String(docId).padStart(3, '0')}/${filename}`;
+        const filePath = `repo/${domainId}/${docId}/${filename}`;
         await storage.put(filePath, file.filepath, this.user._id);
         const fileMeta = await storage.getMeta(filePath);
         if (!fileMeta) throw new ValidationError(`Failed to retrieve metadata for the uploaded file: ${filename}`);
@@ -278,7 +276,7 @@ export class RepoVersionHandler extends Handler {
         const fileData = {
             filename,
             version,
-            path: filePath, // ✅ 修正 `path` 使用 `docId`
+            path: filePath, 
             size: fileMeta.size ?? 0,
             lastModified: fileMeta.lastModified ?? new Date(),
             etag: fileMeta.etag ?? '',
