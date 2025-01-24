@@ -57,25 +57,47 @@
                 {% endfor %}
               </ul>
 
-              {% for repo in repos %}
-              <div class="repo-section">
-                {% if repo.files|length > 0 %}
-                <ul>
-                  {% for file in repo.files %}
-                  <li>
-                  <span class="v-center icon icon-file"></span> 
-                  <a href="{{ url('repo_file_download', { rid: repo.rid, filename: file.filename }) }}">
-                    {{ file.filename }} (v{{ file.version }})
-                  </a>
-                </li>
-                  {% endfor %}
-                </ul>
-                {% else %}
-                <p>{{ _("No files available.") }}</p>
-                {% endif %}
-              </div>
-              {% endfor %}
-              {% endif %}
+             {% for repo in repos %}
+<div class="repo-section">
+    {% if repo.files|length > 0 %}
+    <table class="table">
+        <thead>
+            <tr>
+                <th>{{ _("Version") }}</th>
+                <th>{{ _("Filename") }}</th>
+                <th>{{ _("Size") }}</th>
+                <th>{{ _("Last Modified") }}</th>
+                <th>{{ _("Actions") }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for file in repo.files %}
+            <tr data-filename="{{ file.filename }}" data-size="{{ file.size }}">
+                <td class="col--version">{{ file.version }}</td>
+                <td class="col--name" data-preview>
+                    <a href="{{ url('branch_file_download', { docId: ddoc.docId, rid: repo.rid, filename: file.filename }) }}" 
+                       data-preview="{{ url('branch_file_download', { docId: ddoc.docId, rid: repo.rid, filename: file.filename }) }}">
+                        {{ file.filename }} (v{{ file.version }})
+                    </a>
+                </td>
+                <td class="col--size">{{ size(file.size) }}</td>
+                <td class="col--modified">{{ file.lastModified }}</td>
+                <td class="col--operation">
+                    <a href="{{ url('branch_file_download', { docId: ddoc.docId, rid: repo.rid, filename: file.filename }) }}" 
+                       class="icon icon-download" title="{{ _('Download') }}">
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>{{ _("No files available.") }}</p>
+    {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
 
               {% if problems|length > 0 %}
               <h4>{{ _("Related Problems") }}</h4>
