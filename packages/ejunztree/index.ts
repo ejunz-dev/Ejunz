@@ -530,7 +530,7 @@ export class BranchDetailHandler extends BranchHandler {
             }));
         };
 
-        branchHierarchy[ddoc.trid] = buildHierarchy(5, treeBranches); 
+        branchHierarchy[ddoc.trid] = buildHierarchy(5, treeBranches);
 
         const docs = ddoc.lids?.length
             ? await getDocsByDocId(domainId, ddoc.lids.filter(lid => lid != null).map(Number))
@@ -538,46 +538,52 @@ export class BranchDetailHandler extends BranchHandler {
 
         docs.forEach(doc => {
             if (!doc.lid) {
-                doc.lid = String(doc.docId); 
+                doc.lid = String(doc.docId);
             } else {
                 doc.lid = String(doc.lid);
             }
         });
 
         const repos = ddoc.rids ? await getReposByDocId(domainId, ddoc.rids) : [];
+        const reposWithFiles = repos.map(repo => ({
+            ...repo,
+            files: repo.files || [] 
+        }));
+
         const problems = ddoc.lids?.length ? await getProblemsByDocsId(domainId, ddoc.lids[0]) : [];
-        const pids = problems.map(p => Number(p.docId));    
+        const pids = problems.map(p => Number(p.docId));
         const [ctdocs, htdocs, tdocs] = await Promise.all([
-            Promise.all(pids.map(pid => getRelated(domainId, pid))),         
+            Promise.all(pids.map(pid => getRelated(domainId, pid))),
             Promise.all(pids.map(pid => getRelated(domainId, pid, 'homework'))),
-            TrainingModel.getByPid(domainId, pids) 
+            TrainingModel.getByPid(domainId, pids)
         ]);
 
         this.response.template = 'branch_detail.html';
-        this.response.pjax = 'branch_detail.html'; 
+        this.response.pjax = 'branch_detail.html';
         this.response.body = {
             ddoc,
             dsdoc,
             udoc,
             docs,
-            repos,
+            repos: reposWithFiles, 
             problems,
             pids,
             ctdocs: ctdocs.flat(),
-            htdocs: htdocs.flat(), 
+            htdocs: htdocs.flat(),
             tdocs: tdocs.flat(),
             childrenBranches,
             pathBranches,
             treeBranches,
             branchHierarchy,
         };
-        console.log('repos', repos);
+        console.log('reposWithFiles', reposWithFiles);
     }
 
     async post() {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
     }
 }
+
 
 
 export class BranchEditHandler extends BranchHandler {
