@@ -616,15 +616,38 @@ export class BranchEditHandler extends BranchHandler {
         if (!ddoc) {
             throw new NotFoundError(`Branch with docId ${docId} not found.`);
         }
+        const docs = ddoc.lids?.length
+        ? await getDocsByDocId(domainId, ddoc.lids.filter(lid => lid != null).map(Number))
+        : [];
+
+        docs.forEach(doc => {
+            if (!doc.lid) {
+                doc.lid = String(doc.docId);
+            } else {
+                doc.lid = String(doc.lid);
+            }
+        });
+
+        const repos = ddoc.rids ? await getReposByDocId(domainId, ddoc.rids) : [];
+        const reposWithFiles = repos.map(repo => ({
+            ...repo,
+            files: repo.files || [] 
+        }));
+
+        
 
         this.response.template = 'branch_edit.html';
         this.response.body = {
             ddoc,
+            docs,
+            repos: reposWithFiles,
             trid: this.args.trid,
+
         };
 
-        console.log('ddoc:', ddoc);
-        console.log('trid:', this.args.trid);
+        console.log('Docs:', docs);
+        console.log('Repos:', reposWithFiles);
+
     }
 
     @param('docId', Types.ObjectId)
@@ -643,6 +666,7 @@ export class BranchEditHandler extends BranchHandler {
         this.response.redirect = this.url('tree_detail', { trid: this.ddoc?.trid });
     }
 }
+
 
 export class BranchResourceEditHandler extends BranchHandler {
     @param('docId', Types.ObjectId)
