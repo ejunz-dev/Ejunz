@@ -53,22 +53,25 @@ export class RepoDomainHandler extends Handler {
             const domainInfo = await domain.get(domainId);
             if (!domainInfo) throw new NotFoundError(`Domain not found for ID: ${domainId}`);
 
-            const allDocs = await Repo.getMulti(domainId, {}).toArray();
+            const allRepos = await Repo.getMulti(domainId, {}).toArray();
 
-            const totalCount = allDocs.length;
+            const totalCount = allRepos.length;
             const totalPages = Math.ceil(totalCount / pageSize);
             const currentPage = Math.max(1, Math.min(page, totalPages));
             const startIndex = (currentPage - 1) * pageSize;
-            const paginatedDocs = allDocs.slice(startIndex, startIndex + pageSize);
+            const paginatedRepos = allRepos.slice(startIndex, startIndex + pageSize);
 
             this.response.template = 'repo_domain.html';
             this.response.body = {
                 domainId,
-                ddocs: paginatedDocs,
+                rdocs: paginatedRepos,
                 page: currentPage,
                 totalPages,
                 totalCount,
             };
+            console.log(`rdocs`, paginatedRepos);
+        
+            
         } catch (error) {
             console.error('Error in fetching Repos:', error);
             this.response.template = 'error.html';

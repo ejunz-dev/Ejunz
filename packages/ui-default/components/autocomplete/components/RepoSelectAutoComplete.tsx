@@ -1,40 +1,42 @@
-import type { DocsDoc } from 'ejun/src/interface';
+import type { RepoDoc } from 'ejun/src/interface';
 import PropTypes from 'prop-types';
 import React, { forwardRef } from 'react';
 import { api, gql, request } from 'vj/utils';
 import AutoComplete, { AutoCompleteHandle, AutoCompleteProps } from './AutoComplete';
 
-const DocsSelectAutoComplete = forwardRef<AutoCompleteHandle<DocsDoc>, AutoCompleteProps<DocsDoc>>((props, ref) => (
-  <AutoComplete<DocsDoc>
+const RepoSelectAutoComplete = forwardRef<AutoCompleteHandle<RepoDoc>, AutoCompleteProps<RepoDoc>>((props, ref) => (
+  <AutoComplete<RepoDoc>
     ref={ref as any}
-    cacheKey={`docs-${UiContext.domainId}`}
+    cacheKey={`repos-${UiContext.domainId}`}
     
     queryItems={async (query) => {
-      const { ddocs } = await request.get(`/d/${UiContext.domainId}/docs`, { q: query, quick: true });
-      return ddocs.filter((d) =>
-        d.title.includes(query) || 
-        d.lid.includes(query) || 
-        d.docId.toString() === query 
-      );
+        const response = await request.get(`/d/${UiContext.domainId}/repo`, { q: query, quick: true });
+        const rdocs = response?.rdocs || [];
+        return rdocs.filter((d) =>
+          d.title.includes(query) || 
+          d.rid.includes(query) || 
+          d.docId.toString() === query 
+        );
+        
     }}
     fetchItems={(ids) => api(gql`
-      docs(ids: ${ids.map((i) => +i)}) {
+      repos(ids: ${ids.map((i) => +i)}) {
           docId
-          lid
+          rid
           title
       }
-    `,['data', 'docs'])}
+    `,['data', 'repos'])}
 
-    itemText={(ddoc) => `${ddoc.docId} ${ddoc.title}`}
-    itemKey={(ddoc) => `${ddoc.docId || ddoc}`}
+    itemText={(rdoc) => `${rdoc.docId} ${rdoc.title}`}
+    itemKey={(rdoc) => `${rdoc.docId || rdoc}`}
 
-    renderItem={(ddoc) => (
+    renderItem={(rdoc) => (
       <div className="media">
         <div className="media__body medium">
-          <div className="docs-select__name">
-            {ddoc.lid ? `${ddoc.lid} ` : ''} {ddoc.title}
+          <div className="repos-select__name">
+            {rdoc.rid ? `${rdoc.rid} ` : ''} {rdoc.title}
           </div>
-          <div className="docs-select__id">ID = {ddoc.docId}</div>
+          <div className="repos-select__id">ID = {rdoc.docId}</div>
         </div>
       </div>
     )}
@@ -43,7 +45,7 @@ const DocsSelectAutoComplete = forwardRef<AutoCompleteHandle<DocsDoc>, AutoCompl
   />
 ));
 
-DocsSelectAutoComplete.propTypes = {
+RepoSelectAutoComplete.propTypes = {
   width: PropTypes.string,
   height: PropTypes.string,
   listStyle: PropTypes.object,
@@ -55,7 +57,7 @@ DocsSelectAutoComplete.propTypes = {
   freeSoloConverter: PropTypes.func,
 };
 
-DocsSelectAutoComplete.defaultProps = {
+RepoSelectAutoComplete.defaultProps = {
   width: '100%',
   height: 'auto',
   listStyle: {},
@@ -66,6 +68,6 @@ DocsSelectAutoComplete.defaultProps = {
   freeSoloConverter: (input) => input,
 };
 
-DocsSelectAutoComplete.displayName = 'DocsSelectAutoComplete';
+RepoSelectAutoComplete.displayName = 'RepoSelectAutoComplete';
 
-export default DocsSelectAutoComplete;
+export default RepoSelectAutoComplete;
