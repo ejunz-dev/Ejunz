@@ -241,7 +241,7 @@ export class RepoEditHandler extends RepoHandler {
 
 
 export class RepoVersionHandler extends Handler {
-    @param('rid', Types.String, true) // ✅ 现在直接使用 rid
+   @param('rid', Types.RepoId, true) // ✅ 现在直接使用 rid
     async get(domainId: string, rid: string) {
         const repo = await Repo.getByRid(domainId, rid);
         if (!repo) throw new NotFoundError(`Repository not found for RID: ${rid}`);
@@ -253,7 +253,7 @@ export class RepoVersionHandler extends Handler {
         };
     }
 
-    @param('rid', Types.String, true)
+   @param('rid', Types.RepoId, true)
     @param('filename', Types.String, true)
     @param('version', Types.String, true)
     async post(domainId: string, rid: string, filename: string, version: string) {
@@ -304,24 +304,42 @@ export class RepoVersionHandler extends Handler {
 
 
 export class RepoHistoryHandler extends Handler {
-    @param('rid', Types.String, true) // 🔹 Now uses rid instead of rid
+    @param('rid', Types.RepoId, true) 
     async get(domainId: string, rid: string) {
-        const repo = await Repo.getByRid(domainId, rid);
-        if (!repo) throw new NotFoundError(`Repository not found for RID: ${rid}`);
+        console.log(`[RepoHistoryHandler] Querying repository with rid=${rid}`);
 
-        const sortedFiles = repo.files?.sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime()) || [];
-        if (!sortedFiles.length) throw new NotFoundError('No files found in the repository.');
+        const repo = await Repo.getByRid(domainId, rid);
+        if (!repo) {
+            console.error(`[RepoHistoryHandler] Repository not found for RID: ${rid}`);
+            throw new NotFoundError(`Repository not found for RID: ${rid}`);
+        }
+
+        const repoRid = repo.rid ?? String(repo.docId);
+        console.log(`[RepoHistoryHandler] Using rid=${repoRid}`);
+
+        const sortedFiles = (repo.files || [])
+            .map(file => ({
+                ...file,
+                lastModified: new Date(file.lastModified),
+            }))
+            .sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
+
+        if (!sortedFiles.length) {
+            console.warn(`[RepoHistoryHandler] No files found in repo=${repoRid}`);
+            throw new NotFoundError('No files found in the repository.');
+        }
 
         this.response.template = 'repo_history.html';
         this.response.body = {
             ddoc: repo,
             domainId,
-            rid: repo.rid,
+            rid: repoRid, 
             files: sortedFiles,
-            urlForFile: (filename: string) => this.url('repo_file_download', { domainId, rid, filename }),
+            urlForFile: (filename: string) => this.url('repo_file_download', { domainId, rid: repoRid, filename }), // ✅ 确保 rid 是字符串
         };
     }
 }
+
 
 
 
