@@ -27,22 +27,21 @@ import domain from '../model/domain';
 class RepoHandler extends Handler {
     ddoc?: RepoDoc;
 
-    @param('rid', Types.String, true) 
-    async _prepare(domainId: string, rid: string) {
-        if (rid) {
-            const normalizedId: number | string = /^\d+$/.test(rid) ? Number(rid) : rid;
+    async _prepare(domainId: string, rid?: string) {
+        if (!rid || rid === 'create') return; 
 
-            console.log(`[RepoHandler] Querying document with ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
+        const normalizedId: number | string = /^\d+$/.test(rid) ? Number(rid) : rid;
+        console.log(`[RepoHandler] Querying repository with ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
 
-            this.ddoc = await Repo.get(domainId, normalizedId); 
-
-            if (!this.ddoc) {
-                console.error(`[RepoHandler] Repository not found for ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
-                throw new NotFoundError(`Repository not found for ${typeof normalizedId === 'number' ? 'docId' : 'rid'}: ${normalizedId}`);
-            }
+        this.ddoc = await Repo.get(domainId, normalizedId);
+        if (!this.ddoc) {
+            console.error(`[RepoHandler] Repository not found for ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
+            throw new NotFoundError(`Repository not found for ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
         }
     }
 }
+
+
 
 
 export class RepoDomainHandler extends Handler {
@@ -80,50 +79,70 @@ export class RepoDomainHandler extends Handler {
 export class RepoDetailHandler extends Handler {
     ddoc?: RepoDoc;
 
-    @param('rid', Types.String, true) 
+    @param('rid', Types.RepoId)
     async _prepare(domainId: string, rid: string) {
-        if (rid) {
+        if (!rid) return;
 
-            const normalizedId: number | string = /^\d+$/.test(rid) ? Number(rid) : rid;
+        const normalizedId: number | string = /^\d+$/.test(rid) ? Number(rid) : rid;
+        console.log(`[RepoDetailHandler] Querying document with ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
 
-            console.log(`[RepoDetailHandler] Querying document with ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
-
-            this.ddoc = await Repo.get(domainId, normalizedId);
-            if (!this.ddoc) {
-                console.error(`[RepoDetailHandler] Repository not found for ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
-                throw new NotFoundError(`Repository not found for ${typeof normalizedId === 'number' ? 'docId' : 'rid'}: ${normalizedId}`);
-            }
+        this.ddoc = await Repo.get(domainId, normalizedId);
+        if (!this.ddoc) {
+            console.error(`[RepoDetailHandler] Repository not found for ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
+            throw new NotFoundError(`Repository not found for ${typeof normalizedId === 'number' ? 'docId' : 'rid'}: ${normalizedId}`);
         }
     }
 
-    @param('rid', Types.String) 
+    @param('rid', Types.RepoId)
     async get(domainId: string, rid: string) {
-        if (!this.ddoc) throw new NotFoundError(`Repository not found for ID: ${rid}`);
+        const normalizedId: number | string = /^\d+$/.test(rid) ? Number(rid) : rid;
+
+        console.log(`[RepoDetailHandler] Querying document with ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
+
+        const ddoc = await Repo.get(domainId, normalizedId);
+        if (!ddoc) {
+            throw new NotFoundError(`Repository not found for ${typeof normalizedId === 'number' ? 'docId' : 'rid'}: ${normalizedId}`);
+        }
+
+        if (!Array.isArray(ddoc.files)) {
+            console.warn(`[RepoDetailHandler] Warning: ddoc.files is not an array, resetting to empty array.`);
+            ddoc.files = [];
+        }
+
+        console.log(`[RepoDetailHandler] Retrieved files:`, JSON.stringify(ddoc.files, null, 2));
 
         this.response.template = 'repo_detail.html';
         this.response.body = {
             domainId,
-            ddoc: this.ddoc,
-            files: this.ddoc.files || [],
+            rid: ddoc.rid, // ✅ 确保 rid 传递正确
+            ddoc,
+            files: ddoc.files, // ✅ 确保传递正确的文件数据
         };
-        console.log('Repo detail:', this.ddoc);
     }
 }
+
+
+
 
 
 export class RepoEditHandler extends RepoHandler {
     async get() {
         const domainId = this.context.domainId || 'default_domain';
+
+        if (!this.ddoc) {
+            console.warn(`[RepoEditHandler.get] No ddoc found, skipping repo_edit.`);
+            this.response.template = 'repo_edit.html';
+            this.response.body = { ddoc: null, files: [], urlForFile: null };
+            return;
+        }
     
         const docId = this.ddoc?.docId;
         if (!docId) {
             throw new ValidationError('Missing docId');
         }
     
-        // 这里用 `docId` 作为路径
-        const files = await storage.list(`repo/${domainId}/${String(docId).padStart(3, '0')}`);
-    
-        const urlForFile = (filename: string) => `/d/${domainId}/${String(docId).padStart(3, '0')}/${filename}`;
+        const files = await storage.list(`repo/${domainId}/${docId}`);
+        const urlForFile = (filename: string) => `/d/${domainId}/${docId}/${filename}`;
     
         this.response.template = 'repo_edit.html';
         this.response.body = {
@@ -135,92 +154,89 @@ export class RepoEditHandler extends RepoHandler {
     
 
     @param('title', Types.Title)
-@param('content', Types.Content)
-@param('filename', Types.String)
-@param('version', Types.String)
-async postCreate(
-    domainId: string,
-    title: string,
-    content: string,
-    filename: string,
-    version: string,
-) {
-    await this.limitRate('add_repo', 3600, 60);
-
-    const file = this.request.files?.file;
-    if (!file) {
-        throw new ValidationError('A file must be uploaded to create a repo.');
-    }
-
-    const domainInfo = await domain.get(domainId);
-    if (!domainInfo) {
-        throw new NotFoundError('Domain not found.');
-    }
-
-    domainInfo.files = domainInfo.files || [];
-    
-    // ✅ 生成 `docId`
-    const docId = await Repo.generateNextDocId(domainId);
-
-    const providedFilename = filename || file.originalFilename;
-    const filePath = `repo/${domainId}/${docId}/${providedFilename}`;  // ✅ 修正 `filePath` 使用 `docId`
-
-    const existingFile = domainInfo.files.find(
-        (f) => f.filename === providedFilename && f.path.startsWith(`repo/${domainId}/`)
-    );
-    if (existingFile) {
-        throw new ValidationError(`A file with the name "${providedFilename}" already exists in this repository.`);
-    }
-
-    await storage.put(filePath, file.filepath, this.user._id);
-    const fileMeta = await storage.getMeta(filePath);
-    if (!fileMeta) {
-        throw new ValidationError(`Failed to retrieve metadata for the uploaded file: ${filename}`);
-    }
-
-    const fileData = {
-        filename: providedFilename ?? 'unknown_file',
-        version: version ?? '0.0.0',
-        path: filePath,  // ✅ 这里也是 `docId` 作为路径
-        size: fileMeta.size ?? 0,
-        lastModified: fileMeta.lastModified ?? new Date(),
-        etag: fileMeta.etag ?? '',
-    };
-
-    // ✅ `addWithId()` 返回 `rid: string`，但 `filePath` 仍然用 `docId`
-    const rid = await Repo.addWithId(
-        domainId,
-        docId,  // ✅ 这里传 `docId`
-        this.user._id,
-        title,
-        content,
-        this.request.ip,
-        { files: [fileData] }
-    );
-
-    this.response.body = { docId };
-    this.response.redirect = this.url('repo_detail', { uid: this.user._id, docId });
-}
-
-    
-
-    @param('rid', Types.String)
-    @param('title', Types.Title)
     @param('content', Types.Content)
-    async postUpdate(domainId: string, rid: string, title: string, content: string) {
-        const repo = await Repo.getByRid(domainId, rid);
-        if (!repo) {
-            throw new NotFoundError(`Repository not found for RID: ${rid}`);
+    @param('filename', Types.String)
+    @param('version', Types.String)
+    async postCreate(
+        domainId: string,
+        title: string,
+        content: string,
+        filename: string,
+        version: string,
+    ) {
+        await this.limitRate('add_repo', 3600, 60);
+    
+        const file = this.request.files?.file;
+        if (!file) {
+            throw new ValidationError('A file must be uploaded to create a repo.');
         }
-
-        const updatedRepo = await Repo.edit(domainId, rid, { title, content });
-
-        console.log('Repo updated successfully:', updatedRepo);
-
+    
+        const domainInfo = await domain.get(domainId);
+        if (!domainInfo) {
+            throw new NotFoundError('Domain not found.');
+        }
+    
+        const docId = await Repo.generateNextDocId(domainId);
+        console.log(`[RepoEditHandler] Created new docId=${docId}`);
+    
+        const providedFilename = filename || file.originalFilename;
+        const filePath = `repo/${domainId}/${docId}/${providedFilename}`;
+    
+        await storage.put(filePath, file.filepath, this.user._id);
+        const fileMeta = await storage.getMeta(filePath);
+        if (!fileMeta) {
+            throw new ValidationError(`Failed to retrieve metadata for the uploaded file: ${filename}`);
+        }
+    
+        const fileData = {
+            filename: providedFilename ?? 'unknown_file',
+            version: version ?? '0.0.0',
+            path: filePath,
+            size: fileMeta.size ?? 0,
+            lastModified: fileMeta.lastModified ?? new Date(),
+            etag: fileMeta.etag ?? '',
+        };
+    
+        const rid = await Repo.addWithId(
+            domainId,
+            docId,
+            this.user._id,
+            title,
+            content,
+            this.request.ip,
+            { files: [fileData] }
+        );
+        console.log(`[RepoEditHandler] Created repository: docId=${docId}, rid=${rid}`);
+        
         this.response.body = { rid };
         this.response.redirect = this.url('repo_detail', { uid: this.user._id, rid });
     }
+    
+    @param('rid', Types.RepoId)
+    @param('title', Types.Title)
+    @param('content', Types.Content)
+    async postUpdate(domainId: string, rid: string, title: string, content: string) {
+        const normalizedId: number | string = /^\d+$/.test(rid) ? Number(rid) : rid;
+    
+        console.log(`[RepoEditHandler] Updating repo with ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
+    
+        const repo = await Repo.get(domainId, normalizedId);
+        if (!repo) {
+            throw new NotFoundError(`Repository not found for ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
+        }
+    
+        const repoRid = repo.rid;
+        const updatedRepo = await Repo.edit(domainId, repoRid, { title, content });
+    
+        console.log('Repo updated successfully:', updatedRepo);
+    
+        this.response.body = { rid: repoRid };
+        this.response.redirect = this.url('repo_detail', { uid: this.user._id, rid: repoRid });
+    }
+    
+
 }
+
 
 
 export class RepoVersionHandler extends Handler {
