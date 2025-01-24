@@ -2,7 +2,7 @@ import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter,
     Handler, NumberKeys, ObjectId, OplogModel, paginate,
     param, PRIV,PERM, Types, UserModel, DomainModel, StorageModel, ProblemModel, NotFoundError,DocsModel,RepoModel,
-    parseMemoryMB,ContestModel,DiscussionModel,TrainingModel,buildProjection
+    parseMemoryMB,ContestModel,DiscussionModel,TrainingModel,buildProjection,RepoDoc
 } from 'ejun';
 
 export const TYPE_BR: 1 = 1;
@@ -304,19 +304,26 @@ export async function getDocsByDocId(domainId: string, docIds: number | number[]
     return results;
 }
 
-
-
-export async function getReposByRid(domainId: string, rids: number | number[]) {
-    console.log(`Fetching docs for rids: ${rids}`);
+export async function getReposByDocId(domainId: string, docId: number | number[]) {
+    console.log(`Fetching repos for rids: ${JSON.stringify(docId)}`);
 
     const query = {
         domainId,
-        rid: Array.isArray(rids) ? { $in: rids } : rids,
+        docId: Array.isArray(docId) ? { $in: docId } : docId, // 使用 rid 进行查询
     };
 
-    console.log(`Querying docs with:`, query);
-    return await RepoModel.getMulti(domainId, query).toArray();
+    console.log(`Querying repos with:`, JSON.stringify(query, null, 2));
+
+    const results = await RepoModel.getMulti(domainId, query)
+        .project(buildProjection(RepoModel.PROJECTION_PUBLIC)) // 仅获取必要字段
+        .toArray();
+
+    console.log(`Fetched repos:`, JSON.stringify(results, null, 2));
+
+    return results;
 }
+
+
 
 
 export async function getProblemsByDocsId(domainId: string, lid: number) {
@@ -537,7 +544,7 @@ export class BranchDetailHandler extends BranchHandler {
             }
         });
 
-        const repos = ddoc.rids ? await getReposByRid(domainId, ddoc.rids) : [];
+        const repos = ddoc.rids ? await getReposByDocId(domainId, ddoc.rids) : [];
         const problems = ddoc.lids?.length ? await getProblemsByDocsId(domainId, ddoc.lids[0]) : [];
         const pids = problems.map(p => Number(p.docId));    
         const [ctdocs, htdocs, tdocs] = await Promise.all([
@@ -564,6 +571,7 @@ export class BranchDetailHandler extends BranchHandler {
             treeBranches,
             branchHierarchy,
         };
+        console.log('repos', repos);
     }
 
     async post() {

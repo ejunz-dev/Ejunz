@@ -49,7 +49,7 @@
         <ul>
           {% for repo in repos %}
           <li>
-            <a class="discussion-node-tag media-link" href="{{ url('repo_detail', domainId=repo.domainId, did=repo.docId) }}">
+            <a class="discussion-node-tag media-link" href="{{ url('repo_detail', domainId=ddoc.domainId, rid=repo.rid | default(repo.docId)) }}">
               <span class="v-center icon icon-problem"></span>{{ repo.title }}
             </a>
           </li>
