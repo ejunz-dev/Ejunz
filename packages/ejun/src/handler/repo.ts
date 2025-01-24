@@ -44,7 +44,6 @@ class RepoHandler extends Handler {
 
 
 
-
 export class RepoDomainHandler extends Handler {
     async get({ domainId, page = 1, pageSize = 10 }) {
         domainId = this.args?.domainId || this.context?.domainId;
@@ -338,6 +337,8 @@ export class RepoHistoryHandler extends Handler {
             files: sortedFiles,
             urlForFile: (filename: string) => this.url('repo_file_download', { domainId, rid: repoRid, filename }), // ✅ 确保 rid 是字符串
         };
+        console.log('files', sortedFiles);
+        console.log('repo', repo);
     }
 }
 
