@@ -1,8 +1,67 @@
 {% import "components/form.html" as form with context %}
 {% extends "layout/basic.html" %}
 {% block content %}
-<div class="row">
-  <div class="medium-9 columns">
+<div class="row" style="display: flex; flex-wrap: nowrap; align-items: flex-start;">
+
+
+  <div class="medium-3 columns">
+    <!-- 相关文档 -->
+    {% if docs %}
+    <div class="section">
+      <div class="section__header">
+        <h3>{{ _("Related Docs") }}</h3>
+      </div>
+      <div class="section__body">
+        <ul>
+          {% for doc in docs %}
+          <li>
+            <a class="discussion-node-tag media-link" 
+               href="{{ url('docs_detail', domainId=ddoc.domainId, lid=doc.lid | default(doc.docId)) }}">
+              <span class="v-center icon icon-doc"></span> {{ doc.title }}
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if repos %}
+    <div class="section">
+      <div class="section__header">
+        <h3>{{ _("Related Repositories") }}</h3>
+      </div>
+      <div class="section__body">
+        {% for repo in repos %}
+        <div class="repo-section">
+          <h5>
+            <a class="discussion-node-tag media-link" 
+               href="{{ url('repo_detail', domainId=ddoc.domainId, rid=repo.rid) }}">
+              <span class="v-center icon icon-repo"></span> {{ repo.title }}
+            </a>
+          </h5>
+          {% if repo.files and repo.files|length > 0 %}
+          <ul>
+            {% for file in repo.files %}
+            <li>
+              <a href="{{ url('branch_file_download', { docId: ddoc.docId, rid: repo.rid, filename: file.filename }) }}" 
+                 data-preview="{{ url('branch_file_download', { docId: ddoc.docId, rid: repo.rid, filename: file.filename }) }}">
+                <span class="v-center icon icon-file"></span> {{ file.filename }} (v{{ file.version }})
+              </a>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p>{{ _("No files available.") }}</p>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="medium-8 columns">
     <div class="section">
       <div class="section__header">
         <h2 class="section__title">
@@ -75,66 +134,11 @@
           <p>{{ _('Content will be added after creating the branch.') }}</p>
         </div>
         {% endif %}
-
-        <!-- 只有在编辑模式下才显示相关资源 -->
-        {% if ddoc %}
-        <div class="section">
-          <div class="section__header">
-            <h3>{{ _("Related Resources") }}</h3>
-          </div>
-          <div class="section__body">
-            
-            <!-- 相关文档 -->
-            {% if docs %}
-            <h4>{{ _("Related Docs") }}</h4>
-            <ul>
-              {% for doc in docs %}
-              <li>
-                <a class="discussion-node-tag media-link" 
-                   href="{{ url('docs_detail', domainId=ddoc.domainId, lid=doc.lid | default(doc.docId)) }}">
-                  <span class="v-center icon icon-doc"></span> {{ doc.title }}
-                </a>
-              </li>
-              {% endfor %}
-            </ul>
-            {% endif %}
-
-            <!-- 相关仓库和文件 -->
-            {% if repos %}
-            <h4>{{ _("Related Repositories") }}</h4>
-            {% for repo in repos %}
-            <div class="repo-section">
-              <h5>
-                <a class="discussion-node-tag media-link" 
-                   href="{{ url('repo_detail', domainId=ddoc.domainId, rid=repo.rid) }}">
-                  <span class="v-center icon icon-repo"></span> {{ repo.title }}
-                </a>
-              </h5>
-              {% if repo.files and repo.files|length > 0 %}
-              <ul>
-                {% for file in repo.files %}
-                <li>
-                  <a href="{{ url('branch_file_download', { docId: ddoc.docId, rid: repo.rid, filename: file.filename }) }}" 
-                     data-preview="{{ url('branch_file_download', { docId: ddoc.docId, rid: repo.rid, filename: file.filename }) }}">
-                    <span class="v-center icon icon-file"></span> {{ file.filename }} (v{{ file.version }})
-                  </a>
-                </li>
-                {% endfor %}
-              </ul>
-              {% else %}
-              <p>{{ _("No files available.") }}</p>
-              {% endif %}
-            </div>
-            {% endfor %}
-            {% endif %}
-
-          </div>
-        </div>
-        {% endif %}
-
       </div>
     </div>
   </div>
+
+  <!-- 右侧 Markdown 提示（3列） -->
   <div class="medium-3 columns">
     {% include 'components/md_hint.html' %}
   </div>
