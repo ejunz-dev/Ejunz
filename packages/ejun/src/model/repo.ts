@@ -33,17 +33,17 @@ export type Field = keyof RepoDoc;
 
 export class RepoModel {
     static PROJECTION_LIST: Field[] = [
-        'docId', 'rid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply'
+        'docId', 'rid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply','files'
     ];
 
     static PROJECTION_DETAIL: Field[] = [
         ...RepoModel.PROJECTION_LIST,
-       'docId', 'rid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply'
+       'docId', 'rid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply','files'
     ];
 
     static PROJECTION_PUBLIC: Field[] = [
         ...RepoModel.PROJECTION_DETAIL,
-        'docId', 'rid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply'
+        'docId', 'rid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply','files'
     ];
 
     static async generateNextDocId(domainId: string): Promise<number> {
@@ -125,13 +125,24 @@ export class RepoModel {
     }
 
     static async getByRid(domainId: string, rid: string): Promise<RepoDoc | null> {
-        const doc = await document.getMulti(domainId, document.TYPE_REPO, { rid })
-            .project<RepoDoc>(buildProjection(RepoModel.PROJECTION_DETAIL))
+        const query = /^\d+$/.test(rid) ? { docId: Number(rid) } : { rid };
+    
+        console.log(`[RepoModel.getByRid] Querying repository with`, query);
+    
+        const doc = await document.getMulti(domainId, document.TYPE_REPO, query)
+            .project<RepoDoc>(buildProjection(RepoModel.PROJECTION_DETAIL)) 
             .limit(1)
             .next();
-
+    
+        if (!doc) {
+            console.warn(`[RepoModel.getByRid] No document found for query=`, query);
+        } else {
+            console.log(`[RepoModel.getByRid] Retrieved document:`, JSON.stringify(doc, null, 2));
+        }
+    
         return doc || null;
     }
+    
 
     static async get(domainId: string, rid: number | string): Promise<RepoDoc | null> {
         const query = typeof rid === 'number' ? { docId: rid } : { rid: String(rid) };
