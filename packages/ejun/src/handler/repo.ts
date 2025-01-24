@@ -340,24 +340,30 @@ export class RepoHistoryHandler extends Handler {
     }
 }
 
-
-
-
 export class RepofileDownloadHandler extends Handler {
     async get({ rid, filename }: { rid: string; filename: string }) {
         const domainId = this.context.domainId || 'default_domain';
-        const filePath = `repo/${domainId}/${rid}/${filename}`;
+
+        const repo = await Repo.getByRid(domainId, rid);
+        if (!repo) throw new NotFoundError(`Repository not found for RID: ${rid}`);
+
+        const docId = repo.docId ?? rid;  
+        const filePath = `repo/${domainId}/${docId}/${filename}`;
+
+        console.log(`[RepofileDownloadHandler] Checking filePath=${filePath}`);
 
         const fileMeta = await storage.getMeta(filePath);
         if (!fileMeta) throw new NotFoundError(`File "${filename}" does not exist in repository "${rid}".`);
 
         this.response.body = await storage.get(filePath);
         this.response.type = lookup(filename) || 'application/octet-stream';
+
         if (!['application/pdf', 'image/jpeg', 'image/png'].includes(this.response.type)) {
             this.response.disposition = `attachment; filename="${encodeRFC5987ValueChars(filename)}"`;
         }
     }
 }
+
 
     
     
