@@ -113,6 +113,25 @@ export class BranchModel {
             .toArray();
         return (lastDoc[0]?.trid || 0) + 1;
     }
+    static async updateResources(domainId: string, docId: ObjectId, lids?: number[], rids?: number[]): Promise<void> {
+        if (!docId) {
+            throw new Error(`updateResources: docId is required`);
+        }
+    
+        const updateFields: any = {};
+    
+        if (lids !== undefined) updateFields.lids = lids;
+        if (rids !== undefined) updateFields.rids = rids;
+    
+        console.log(`Updating resources for docId: ${docId}`);
+        console.log(`Lids: ${lids}`);
+        console.log(`Rids: ${rids}`);
+    
+        await DocumentModel.set(domainId, TYPE_BR, docId, updateFields);
+    }
+    
+
+
 
     static async addTrunkNode(
         domainId: string,
@@ -584,8 +603,6 @@ export class BranchDetailHandler extends BranchHandler {
     }
 }
 
-
-
 export class BranchEditHandler extends BranchHandler {
     @param('docId', Types.ObjectId)
     async get(domainId: string, docId: ObjectId) {
@@ -599,39 +616,22 @@ export class BranchEditHandler extends BranchHandler {
         if (!ddoc) {
             throw new NotFoundError(`Branch with docId ${docId} not found.`);
         }
-        const problems = ddoc.lids?.length ? await getProblemsByDocsId(domainId, ddoc.lids[0]) : [];
-        const pids = problems.map(p => Number(p.docId));    
 
         this.response.template = 'branch_edit.html';
         this.response.body = {
             ddoc,
             trid: this.args.trid,
-            pids: pids.join(',') || '',
-            lids: ddoc.lids?.join(',') || '', 
-            rids: ddoc.rids?.join(',') || '', 
-        
         };
 
-        console.log('ddoc:', this.ddoc);
+        console.log('ddoc:', ddoc);
         console.log('trid:', this.args.trid);
     }
-
-
-
 
     @param('docId', Types.ObjectId)
     @param('title', Types.Title)
     @param('content', Types.Content)
-    @param('lids', Types.String)
-    @param('rids', Types.String)
-    async postUpdate(domainId: string, docId: ObjectId, title: string, content: string, lids: string, rids: string) {
-        const parsedLids = lids ? lids.split(',').map(Number).filter(n => !isNaN(n)) : [];
-        const parsedRids = rids ? rids.split(',').map(Number).filter(n => !isNaN(n)) : [];
-
-        await Promise.all([
-            BranchModel.edit(domainId, docId, title, content, parsedLids, parsedRids),
-            OplogModel.log(this, 'branch.edit', this.ddoc),
-        ]);
+    async postUpdate(domainId: string, docId: ObjectId, title: string, content: string) {
+        await BranchModel.edit(domainId, docId, title, content);
 
         this.response.body = { docId };
         this.response.redirect = this.url('branch_detail', { uid: this.user._id, docId });
@@ -639,12 +639,45 @@ export class BranchEditHandler extends BranchHandler {
 
     @param('docId', Types.ObjectId)
     async postDelete(domainId: string, docId: ObjectId) {
-        await Promise.all([
-            BranchModel.deleteNode(domainId, docId),
-            OplogModel.log(this, 'branch.delete', this.ddoc),
-        ]);
-
+        await BranchModel.deleteNode(domainId, docId);
         this.response.redirect = this.url('tree_detail', { trid: this.ddoc?.trid });
+    }
+}
+
+export class BranchResourceEditHandler extends BranchHandler {
+    @param('docId', Types.ObjectId)
+    async get(domainId: string, docId: ObjectId) {
+        if (!docId) {
+            throw new NotFoundError(`Invalid request: docId is missing`);
+        }
+
+        console.log(`Fetching resources for branch docId: ${docId}`);
+
+        const ddoc = await BranchModel.get(domainId, docId);
+        if (!ddoc) {
+            throw new NotFoundError(`Branch with docId ${docId} not found.`);
+        }
+
+        this.response.template = 'branch_resource_edit.html';
+        this.response.body = {
+            ddoc,
+            trid: this.args.trid,
+            lids: ddoc.lids?.join(',') || '',
+            rids: ddoc.rids?.join(',') || '',
+        };
+    }
+
+    @param('docId', Types.ObjectId)
+    @param('lids', Types.String)
+    @param('rids', Types.String)
+    async postUpdateResources(domainId: string, docId: ObjectId, lids: string, rids: string) {
+        const parsedLids = lids ? lids.split(',').map(Number).filter(n => !isNaN(n)) : [];
+        const parsedRids = rids ? rids.split(',').map(Number).filter(n => !isNaN(n)) : [];
+
+        await BranchModel.updateResources(domainId, docId, parsedLids, parsedRids);
+
+        this.response.body = { docId };
+        this.response.redirect = this.url('branch_detail', { uid: this.user._id, docId });
     }
 }
 
@@ -731,6 +764,7 @@ export async function apply(ctx: Context) {
     ctx.Route('branch_create_subbranch', '/tree/branch/:parentId/createsubbranch', BranchCreateSubbranchHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('branch_detail', '/tree/branch/:docId', BranchDetailHandler);
     ctx.Route('branch_edit', '/tree/branch/:docId/editbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('branch_resource_edit', '/tree/branch/:docId/edit/resources', BranchResourceEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('branch_file_download', '/tree/branch/:docId/repo/:rid/:filename', BranchfileDownloadHandler);
     ctx.injectUI('Nav', 'tree_domain', () => ({
         name: 'tree_domain',
