@@ -44,17 +44,49 @@
       {% endfor %}
         </ul>
 
-        {% if repos|length > 0 %}
-        <h4>{{ _("Related Repos") }}</h4>
-        <ul>
-          {% for repo in repos %}
-          <li>
-            <a class="discussion-node-tag media-link" href="{{ url('repo_detail', domainId=ddoc.domainId, rid=repo.rid | default(repo.docId)) }}">
-              <span class="v-center icon icon-problem"></span>{{ repo.title }}
-            </a>
-          </li>
-          {% endfor %}
-          {% endif %}
+      {% if repos|length > 0 %}
+<h4>{{ _("Related Repositories") }}</h4>
+{% for repo in repos %}
+<div class="repo-section">
+  <h5>{{ repo.title }}</h5>
+  {% if repo.files|length > 0 %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{{ _("Version") }}</th>
+        <th>{{ _("Filename") }}</th>
+        <th>{{ _("Size") }}</th>
+        <th>{{ _("Last Modified") }}</th>
+        <th>{{ _("Actions") }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for file in repo.files %}
+      <tr>
+        <td class="col--version">{{ file.version }}</td>
+        <td class="col--name" data-preview>
+          <a href="{{ url('repo_file_download', domainId=ddoc.domainId, rid=repo.rid, filename=file.filename) }}">
+            {{ file.filename }}
+          </a>
+        </td>
+        <td class="col--size">{{ size(file.size) }}</td>
+        <td class="col--modified">{{ file.lastModified }}</td>
+        <td class="col--operation">
+          <a href="{{ url('repo_file_download', domainId=ddoc.domainId, rid=repo.rid, filename=file.filename) }}" 
+             class="icon icon-download" title="{{ _('Download') }}"></a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>{{ _("No files available.") }}</p>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+
 
           {% if problems|length > 0 %}
           <h4>{{ _("Related Problems") }}</h4>
