@@ -23,6 +23,7 @@ export interface Types {
     Filename: Type<string>;
     DomainId: Type<string>;
     ProblemId: Type<string | number>;
+    RepoId: Type<string | number>;
     Role: Type<string>;
     Title: Type<string>;
     Emoji: Type<string>;
