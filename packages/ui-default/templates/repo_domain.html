@@ -6,17 +6,17 @@
     <div class="section">
       
       <div class="section__body">
-        {% if not ddocs.length %}
+        {% if not rdocs.length %}
           <p>{{ _('No repositories found.') }}</p>
         {% else %}
           <ol class="section__list">
-            {% for ddoc in ddocs %}
+            {% for rdoc in rdocs %}
               <li class="section__list__item">
                 <h2>
-                  <a href="{{ url('repo_detail', domainId=domainId, rid=ddoc.rid) }}">{{ ddoc.title }}</a>
+                  <a href="{{ url('repo_detail', domainId=domainId, rid=rdoc.rid) }}">{{ rdoc.title }}</a>
                 </h2>
                 <ul class="list supplementary">
-                  <li>{{ _('{0} views').format(ddoc.views) }}</li>
+                  <li>{{ _('{0} views').format(rdoc.views) }}</li>
                  
                 </ul>
               </li>
