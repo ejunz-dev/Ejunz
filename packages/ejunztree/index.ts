@@ -2,9 +2,9 @@ import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter,
     Handler, NumberKeys, ObjectId, OplogModel, paginate,
     param, PRIV,PERM, Types, UserModel, DomainModel, StorageModel, ProblemModel, NotFoundError,DocsModel,RepoModel,
-    parseMemoryMB,ContestModel,DiscussionModel,TrainingModel,buildProjection,RepoDoc
+    parseMemoryMB,ContestModel,DiscussionModel,TrainingModel,buildProjection,RepoDoc,encodeRFC5987ValueChars
 } from 'ejun';
-
+import { lookup } from 'mime-types';
 export const TYPE_BR: 1 = 1;
 export const TYPE_TR: 6 = 6;
 
@@ -746,8 +746,29 @@ export class BranchCreateSubbranchHandler extends BranchHandler {
     }
 }
 
+export class BranchfileDownloadHandler extends Handler {
+    async get({ docId, rid, filename }: { docId: string; rid: string; filename: string }) {
+        const domainId = this.context.domainId || 'default_domain';
 
+        const repo = await RepoModel.getByRid(domainId, rid);
+        if (!repo) throw new NotFoundError(`Repository not found for RID: ${rid}`);
 
+        const actualDocId = repo.docId ?? docId;  
+        const filePath = `repo/${domainId}/${actualDocId}/${filename}`;
+
+        console.log(`[BranchfileDownloadHandler] Checking filePath=${filePath}`);
+
+        const fileMeta = await StorageModel.getMeta(filePath);
+        if (!fileMeta) throw new NotFoundError(`File "${filename}" does not exist in repository "${rid}".`);
+
+        this.response.body = await StorageModel.get(filePath);
+        this.response.type = lookup(filename) || 'application/octet-stream';
+
+        if (!['application/pdf', 'image/jpeg', 'image/png'].includes(this.response.type)) {
+            this.response.disposition = `attachment; filename="${encodeRFC5987ValueChars(filename)}"`;
+        }
+    }
+}
 export async function apply(ctx: Context) {
     ctx.Route('tree_domain', '/tree', TreeDomainHandler);
     ctx.Route('tree_create', '/tree/create', TreeEditHandler, PRIV.PRIV_USER_PROFILE);
@@ -758,6 +779,7 @@ export async function apply(ctx: Context) {
     ctx.Route('branch_create_subbranch', '/tree/branch/:parentId/createsubbranch', BranchCreateSubbranchHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('branch_detail', '/tree/branch/:docId', BranchDetailHandler);
     ctx.Route('branch_edit', '/tree/branch/:docId/editbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('branch_file_download', '/tree/branch/:docId/repo/:rid/:filename', BranchfileDownloadHandler);
     ctx.injectUI('Nav', 'tree_domain', () => ({
         name: 'tree_domain',
         displayName: 'tree_domain',
