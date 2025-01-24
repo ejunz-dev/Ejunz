@@ -31,14 +31,18 @@
               autofocus:true
           }) }}
 
-          {{ form.form_textarea({
-              columns:12,
-              label:_('Branch Content'),
-              name:'content',
-              value:ddoc.content|default(''),
-              markdown:true
-          }) }}
-            {{ form.form_text({
+          <!-- 只有在编辑模式下才显示内容的编辑框 -->
+          {% if ddoc %}
+            {{ form.form_textarea({
+                columns:12,
+                label:_('Branch Content'),
+                name:'content',
+                value:ddoc.content|default(''),
+                markdown:true
+            }) }}
+          {% endif %}
+
+          {{ form.form_text({
               columns:null,
               label:'Problems',
               name:'pids',
@@ -56,6 +60,7 @@
               name:'rids',
               value:rids
           }) }}
+
           <div class="row">
             <div class="columns">
               <button 
@@ -82,6 +87,14 @@
             </div>
           </div>
         </form>
+
+        <!-- 只有在创建模式下，提供跳转去编辑内容的按钮 -->
+        {% if not ddoc %}
+        <div class="section">
+          <p>{{ _('Content will be added after creating the branch.') }}</p>
+        </div>
+        {% endif %}
+
       </div>
     </div>
   </div>
