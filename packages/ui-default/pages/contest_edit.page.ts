@@ -8,7 +8,7 @@ import { ConfirmDialog } from 'vj/components/dialog';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n, request, tpl } from 'vj/utils';
 
-const page = new NamedPage(['contest_edit', 'contest_create', 'homework_create', 'homework_edit', 'branch_edit'], (pagename) => {
+const page = new NamedPage(['contest_edit', 'contest_create', 'homework_create', 'homework_edit', 'branch_resource_edit'], (pagename) => {
   ProblemSelectAutoComplete.getOrConstruct($('[name="pids"]'), { multi: true, clearDefaultValue: false });
   DocsSelectAutoComplete.getOrConstruct($('[name="lids"]'), { multi: true, clearDefaultValue: false });
   RepoSelectAutoComplete.getOrConstruct($('[name="rids"]'), { multi: true, clearDefaultValue: false });

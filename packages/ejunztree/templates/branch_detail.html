@@ -163,8 +163,12 @@
       </div>
       <div class="section__body">
         <a href="{{ url('branch_edit', domainId=ddoc.domainId, docId=ddoc.docId) }}" class="button primary expanded">
-          {{ _('Edit Branch') }}
+          {{ _('Edit Content') }}
         </a>
+      <a href="{{ url('branch_resource_edit', domainId=ddoc.domainId, docId=ddoc.docId ) }}" class="button primary expanded">
+                  {{ _('Edit Resources') }}
+                </a>
+
         <a href="{{ url('tree_domain', domainId=ddoc.domainId) }}" class="button expanded">
           {{ _('Back to Tree') }}
         </a>
