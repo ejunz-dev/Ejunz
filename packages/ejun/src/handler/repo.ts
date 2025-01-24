@@ -27,6 +27,7 @@ import domain from '../model/domain';
 class RepoHandler extends Handler {
     ddoc?: RepoDoc;
 
+    @param('rid', Types.RepoId)
     async _prepare(domainId: string, rid?: string) {
         if (!rid || rid === 'create') return; 
 
