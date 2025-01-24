@@ -308,9 +308,9 @@ export type DocsDict = NumericDictionary<DocsDoc>;
 declare module './model/repo'{
 interface RepoDoc {
     docType: document['TYPE_REPO'];
-    docId: ObjectId;
+    docId: number;
     domainId: string,
-    rid: number;
+    rid: string;
     owner: number;
     content: string;
     title: string;

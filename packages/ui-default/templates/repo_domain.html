@@ -13,7 +13,7 @@
             {% for ddoc in ddocs %}
               <li class="section__list__item">
                 <h2>
-                  <a href="{{ url('repo_detail', domainId=domainId, did=ddoc._id) }}">{{ ddoc.title }}</a>
+                  <a href="{{ url('repo_detail', domainId=domainId, rid=ddoc.rid) }}">{{ ddoc.title }}</a>
                 </h2>
                 <ul class="list supplementary">
                   <li>{{ _('{0} views').format(ddoc.views) }}</li>
