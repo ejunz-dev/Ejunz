@@ -617,58 +617,7 @@ export class BranchEditHandler extends BranchHandler {
     }
 
 
-    @param('trid', Types.Int) 
-    @param('title', Types.Title)
-    @param('content', Types.Content)
-    @param('lids', Types.ArrayOf(Types.Int))
-    @param('rids', Types.ArrayOf(Types.Int))
-    async postCreate(
-        domainId: string,
-        trid: number, 
-        title: string,
-        content: string,
-        lids: number[],
-        rids: number[]
-    ) {
-        await this.limitRate('add_branch', 3600, 60);
 
-        const docId = await BranchModel.addTrunkNode(
-            domainId,
-            trid, 
-            null, 
-            this.user._id,
-            title,
-            content,
-            this.request.ip,
-            lids,
-            rids
-        );
-
-        this.response.body = { docId };
-        this.response.redirect = this.url('branch_detail', { uid: this.user._id, docId });
-    }
-
-    @param('trid', Types.Int) 
-    @param('parentId', Types.ObjectId)
-    @param('title', Types.Title)
-    @param('content', Types.Content)
-    async postCreateBranch(domainId: string, trid: number, parentId: number, title: string, content: string) {
-        await this.limitRate('add_subbranch', 3600, 60);
-
-        const docId = await BranchModel.addBranchNode(
-            domainId,
-            trid, 
-            null, 
-            parentId,
-            this.user._id,
-            title,
-            content,
-            this.request.ip
-        );
-
-        this.response.body = { docId };
-        this.response.redirect = this.url('branch_detail', { uid: this.user._id, docId });
-    }
 
     @param('docId', Types.ObjectId)
     @param('title', Types.Title)
@@ -713,29 +662,32 @@ export class BranchCreateSubbranchHandler extends BranchHandler {
             parentId,
         };
     }
-    
-  
+
     @param('title', Types.Title)
-    @param('content', Types.Content)
     @param('parentId', Types.Int)
     @param('lids', Types.ArrayOf(Types.Int))
     @param('rids', Types.ArrayOf(Types.Int))
-
-    async postCreateSubbranch(domainId: string,title: string, content: string, parentId: number, trid: number, lids: number[], rids: number[]) {
+    async postCreateSubbranch(
+        domainId: string,
+        title: string,
+        parentId: number,
+        trid: number,
+        lids: number[],
+        rids: number[]
+    ) {
         await this.limitRate('add_subbranch', 3600, 60);
 
         console.log(`Debug: Creating sub-branch under trid ${trid}, parentId ${parentId}`);
 
-
         const bid = await BranchModel.generateNextBid(domainId);
         const docId = await BranchModel.addBranchNode(
             domainId,
-            trid, 
+            trid,
             bid,
             parentId,
             this.user._id,
             title,
-            content,
+            '', 
             this.request.ip,
             lids,
             rids
@@ -745,6 +697,7 @@ export class BranchCreateSubbranchHandler extends BranchHandler {
         this.response.redirect = this.url('branch_detail', { uid: this.user._id, docId });
     }
 }
+
 
 export class BranchfileDownloadHandler extends Handler {
     async get({ docId, rid, filename }: { docId: string; rid: string; filename: string }) {
@@ -775,7 +728,6 @@ export async function apply(ctx: Context) {
     ctx.Route('tree_detail', '/tree/:docId', TreeDetailHandler);
     ctx.Route('tree_edit', '/tree/:docId/edit', TreeEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('tree_branch', '/tree/:trid/branch', TreeBranchHandler);
-    ctx.Route('branch_create', '/tree/:trid/createbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('branch_create_subbranch', '/tree/branch/:parentId/createsubbranch', BranchCreateSubbranchHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('branch_detail', '/tree/branch/:docId', BranchDetailHandler);
     ctx.Route('branch_edit', '/tree/branch/:docId/editbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
