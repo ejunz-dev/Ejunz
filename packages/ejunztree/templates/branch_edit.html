@@ -1,9 +1,17 @@
 {% import "components/form.html" as form with context %}
 {% extends "layout/basic.html" %}
 {% block content %}
+
+<script>
+  {{ set(UiContext, {
+    ddoc: ddoc,
+    docs: docs,
+    repos: repos,
+    resources: resources
+  }) }}
+</script>
+
 <div class="row" style="display: flex; flex-wrap: nowrap; align-items: flex-start;">
-
-
   <div class="medium-3 columns">
     <!-- 相关文档 -->
     {% if docs %}
@@ -15,8 +23,10 @@
         <ul>
           {% for doc in docs %}
           <li>
-            <a class="discussion-node-tag media-link" 
-               href="{{ url('docs_detail', domainId=ddoc.domainId, lid=doc.lid | default(doc.docId)) }}">
+            <a class="discussion-node-tag media-link resource-link" 
+               data-resource="{{ doc.title }}"
+               href="javascript:void(0)"
+               onclick="copyResourceUrl(this)">
               <span class="v-center icon icon-doc"></span> {{ doc.title }}
             </a>
           </li>
@@ -35,8 +45,10 @@
         {% for repo in repos %}
         <div class="repo-section">
           <h5>
-            <a class="discussion-node-tag media-link" 
-               href="{{ url('repo_detail', domainId=ddoc.domainId, rid=repo.rid) }}">
+            <a class="discussion-node-tag media-link resource-link" 
+               data-resource="{{ repo.title }}"
+               href="javascript:void(0)"
+               onclick="copyResourceUrl(this)">
               <span class="v-center icon icon-repo"></span> {{ repo.title }}
             </a>
           </h5>
@@ -44,8 +56,10 @@
           <ul>
             {% for file in repo.files %}
             <li>
-              <a href="{{ url('branch_file_download', { docId: ddoc.docId, rid: repo.rid, filename: file.filename }) }}" 
-                 data-preview="{{ url('branch_file_download', { docId: ddoc.docId, rid: repo.rid, filename: file.filename }) }}">
+              <a class="resource-link"
+                 data-resource="{{ file.filename }}"
+                 href="javascript:void(0)"
+                 onclick="copyResourceUrl(this)">
                 <span class="v-center icon icon-file"></span> {{ file.filename }} (v{{ file.version }})
               </a>
             </li>
@@ -143,4 +157,38 @@
     {% include 'components/md_hint.html' %}
   </div>
 </div>
+
+<script>
+  function updateResourceLinks() {
+    document.querySelectorAll(".resource-link").forEach((el) => {
+      const resourceName = el.dataset.resource.trim();
+      if (window.UiContext.resources && window.UiContext.resources[resourceName]) {
+        el.setAttribute("data-url", window.UiContext.resources[resourceName]); // 存储相对 URL
+      } else {
+        console.warn("Resource not found:", resourceName);
+      }
+    });
+  }
+
+  function copyResourceUrl(el) {
+    const resourceName = el.dataset.resource;
+    const url = window.UiContext.resources ? window.UiContext.resources[resourceName] : null;
+
+    if (!url) {
+      console.warn("Resource URL not found for:", resourceName);
+      return;
+    }
+
+ const markdownLink = `@[import](${url})`;
+
+    navigator.clipboard.writeText(markdownLink).then(() => {
+      alert(`📋 资源路径已复制: ${url}`);
+    }).catch((err) => {
+      console.error("❌ 复制失败:", err);
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", updateResourceLinks);
+</script>
+
 {% endblock %}
