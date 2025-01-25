@@ -34,6 +34,8 @@ export default new AutoloadPage('media', async () => {
         if (category === 'p' && !extra) resolve(ele, { type: 'problem', id: data, domainId });
         if (category === 'contest' && !extra) resolve(ele, { type: 'contest', id: data, domainId });
         if (category === 'homework' && !extra) resolve(ele, { type: 'homework', id: data, domainId });
+        if (category === 'docs' && !extra) resolve(ele, { type: 'docs', id: data, domainId });
+
       });
     });
     if (!items.length) return;

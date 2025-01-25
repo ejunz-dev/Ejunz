@@ -119,9 +119,12 @@ export class DocsModel {
     }
 
     static async get(domainId: string, lid: number | string): Promise<DocsDoc | null> {
-        const query = typeof lid === 'number' ? { docId: lid } : { lid: String(lid) };
+
+        const docIdNumber = Number(lid);
+
+        const query = !isNaN(docIdNumber) ? { docId: docIdNumber } : { lid: String(lid) };
     
-        console.log(`[DocsModel.get] Querying document with ${typeof lid === 'number' ? 'docId' : 'lid'}=${lid}`);
+        console.log(`[DocsModel.get] Querying document in domain=${domainId} with`, query);
     
         const res = await document.getMulti(domainId, document.TYPE_DOCS, query)
             .project(buildProjection(DocsModel.PROJECTION_PUBLIC))
@@ -129,9 +132,11 @@ export class DocsModel {
             .toArray();
     
         if (!res.length) {
-            console.error(`[DocsModel.get] No document found for ${typeof lid === 'number' ? 'docId' : 'lid'}=${lid}`);
+            console.error(`[DocsModel.get] No document found for`, query);
             return null;
         }
+    
+        console.log(`[DocsModel.get] Query Result:`, res);
         return res[0] as DocsDoc;
     }
     

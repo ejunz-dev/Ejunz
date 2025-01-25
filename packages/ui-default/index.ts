@@ -1,7 +1,7 @@
 /* eslint-disable global-require */
 import {
   ContestModel, Context, Handler, ObjectId, param, PERM, PRIV, ProblemModel, Schema,
-  SettingModel, SystemModel, SystemSettings, Types, UserModel,
+  SettingModel, SystemModel, SystemSettings, Types, UserModel,DocsModel
 } from 'ejun';
 import convert from 'schemastery-jsonschema';
 import markdown from './backendlib/markdown';
@@ -114,6 +114,11 @@ class RichMediaHandler extends Handler {
     if (tdoc) return await this.renderHTML('partials/homework.html', { tdoc });
     return '';
   }
+  async renderDocs(domainId, payload) {
+    const ddoc = await DocsModel.get(payload.domainId || domainId, payload.id) || DocsModel.default;
+    return await this.renderHTML('partials/docs.html', { ddoc });
+}
+
 
   async post({ domainId, items }) {
     const res = [];
@@ -123,6 +128,7 @@ class RichMediaHandler extends Handler {
       else if (item.type === 'problem') res.push(this.renderProblem(domainId, item).catch(() => ''));
       else if (item.type === 'contest') res.push(this.renderContest(domainId, item).catch(() => ''));
       else if (item.type === 'homework') res.push(this.renderHomework(domainId, item).catch(() => ''));
+      else if (item.type === 'docs') res.push(this.renderDocs(domainId, item).catch(() => ''));
       else res.push('');
     }
     this.response.body = await Promise.all(res);
