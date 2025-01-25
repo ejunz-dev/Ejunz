@@ -654,7 +654,7 @@ export class BranchEditHandler extends BranchHandler {
         reposWithFiles.forEach(repo => {
             resources[repo.title] = `/d/system/repo/${repo.docId}`;
             repo.files.forEach(file => {
-                resources[file.filename] = `/tree/branch/${ddoc.docId}/repo/${repo.rid}/${encodeURIComponent(file.filename)}`;
+                resources[file.filename] = `/tree/branch/${ddoc.docId}/repo/${repo.docId}/${encodeURIComponent(file.filename)}`;
             });
         });
 
@@ -779,10 +779,10 @@ export class BranchCreateSubbranchHandler extends BranchHandler {
 
 
 export class BranchfileDownloadHandler extends Handler {
-    async get({ docId, rid, filename }: { docId: string; rid: string; filename: string }) {
+    async get({ docId, rid, filename }: { docId: string; rid: string|number; filename: string }) {
         const domainId = this.context.domainId || 'default_domain';
 
-        const repo = await RepoModel.getByRid(domainId, rid);
+        const repo = await RepoModel.get(domainId, rid);
         if (!repo) throw new NotFoundError(`Repository not found for RID: ${rid}`);
 
         const actualDocId = repo.docId ?? docId;  
