@@ -1,0 +1,15 @@
+{% macro render_inline(ddoc) %}
+{% if ddoc %}
+  <span class="docs-link">
+    <a class="docs-title" href="{{ url('docs_detail', lid=ddoc.docId) }}">
+      {{ ddoc.title }}
+    </a>
+  </span>
+{% else %}
+  <span class="docs-link">
+    <a class="docs-title" href="#">
+      {{ _('Unknown Document') }}
+    </a>
+  </span>
+{% endif %}
+{% endmacro %}
