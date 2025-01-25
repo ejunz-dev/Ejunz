@@ -1,7 +1,7 @@
 /* eslint-disable global-require */
 import {
   ContestModel, Context, Handler, ObjectId, param, PERM, PRIV, ProblemModel, Schema,
-  SettingModel, SystemModel, SystemSettings, Types, UserModel,DocsModel
+  SettingModel, SystemModel, SystemSettings, Types, UserModel,DocsModel,RepoModel
 } from 'ejun';
 import convert from 'schemastery-jsonschema';
 import markdown from './backendlib/markdown';
@@ -118,6 +118,20 @@ class RichMediaHandler extends Handler {
     const ddoc = await DocsModel.get(payload.domainId || domainId, payload.id) || DocsModel.default;
     return await this.renderHTML('partials/docs.html', { ddoc });
 }
+async renderRepo(domainId, payload) {
+  const docId = parseInt(payload.id, 10); // 确保 `docId` 是数字
+  if (isNaN(docId)) return '';
+
+  console.log(`[RichMediaHandler.renderRepo] Fetching repo for docId=${docId}`);
+
+  const rdoc = await RepoModel.get(domainId, docId) || RepoModel.default;
+  
+  console.log(`[RichMediaHandler.renderRepo] Retrieved repo:`, rdoc);
+
+  return await this.renderHTML('partials/repo.html', { rdoc });
+}
+
+
 
 
   async post({ domainId, items }) {
@@ -129,6 +143,7 @@ class RichMediaHandler extends Handler {
       else if (item.type === 'contest') res.push(this.renderContest(domainId, item).catch(() => ''));
       else if (item.type === 'homework') res.push(this.renderHomework(domainId, item).catch(() => ''));
       else if (item.type === 'docs') res.push(this.renderDocs(domainId, item).catch(() => ''));
+      else if (item.type === 'repo') res.push(this.renderRepo(domainId, item).catch(() => ''));
       else res.push('');
     }
     this.response.body = await Promise.all(res);

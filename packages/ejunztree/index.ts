@@ -582,7 +582,7 @@ export class BranchDetailHandler extends BranchHandler {
             resources[doc.title] = `/d/system/docs/${doc.docId}`;
         });
         reposWithFiles.forEach(repo => {
-            resources[repo.title] = `/d/system/repo/${repo.rid}`;
+            resources[repo.title] = `/d/system/repo/${repo.docId}`;
             repo.files.forEach(file => {
                 resources[file.filename] = `/tree/branch/${ddoc.docId}/repo/${repo.rid}/${encodeURIComponent(file.filename)}`;
             });
@@ -652,7 +652,7 @@ export class BranchEditHandler extends BranchHandler {
 
         // **📌 添加仓库**
         reposWithFiles.forEach(repo => {
-            resources[repo.title] = `/d/system/repo/${repo.rid}`;
+            resources[repo.title] = `/d/system/repo/${repo.docId}`;
             repo.files.forEach(file => {
                 resources[file.filename] = `/tree/branch/${ddoc.docId}/repo/${repo.rid}/${encodeURIComponent(file.filename)}`;
             });
