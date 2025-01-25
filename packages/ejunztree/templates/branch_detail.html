@@ -10,24 +10,27 @@
       <div class="section__body">
         <h2>{{ _("Tree ID") }}: {{ ddoc.trid }}</h2>
 
-        <!-- 🔹 Current Branch -->
-        <div class="section">
-          <div class="section__header">
-            <h3>{{ _("Current Branch") }}</h3>
-          </div>
-          <div class="section__body current-branch">
-            <p><strong>{{ _("Title") }}:</strong> {{ ddoc.title }}</p>
-            <p><strong>{{ _("Branch ID") }}:</strong> {{ ddoc.bid }}</p>
-            <p><strong>{{ _("Type") }}:</strong> 
-              {% if ddoc.parentId %}
-                <span class="badge secondary">{{ _("Sub-Branch") }}</span>
-              {% else %}
-                <span class="badge primary">{{ _("Trunk") }}</span>
-              {% endif %}
-            </p>
-            <p><strong>{{ _("Content") }}:</strong> {{ ddoc.content }}</p>
-          </div>
+            <div class="section">
+        <div class="section__header">
+          <h3>{{ _("Current Branch") }}</h3>
         </div>
+        <div class="section__body current-branch">
+          <p><strong>{{ _("Title") }}:</strong> {{ ddoc.title }}</p>
+          <p><strong>{{ _("Branch ID") }}:</strong> {{ ddoc.bid }}</p>
+          <p><strong>{{ _("Type") }}:</strong> 
+            {% if ddoc.parentId %}
+              <span class="badge secondary">{{ _("Sub-Branch") }}</span>
+            {% else %}
+              <span class="badge primary">{{ _("Trunk") }}</span>
+            {% endif %}
+          </p>
+          <p><strong>{{ _("Content") }}:</strong></p>
+          <div class="typo richmedia topic__content" data-emoji-enabled>
+          {{ ddoc.content|markdown|safe }}
+        </div>
+        </div>
+      </div>
+
 
         <div class="section">
           <div class="section__header">

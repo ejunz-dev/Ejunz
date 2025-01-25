@@ -576,7 +576,18 @@ export class BranchDetailHandler extends BranchHandler {
             Promise.all(pids.map(pid => getRelated(domainId, pid, 'homework'))),
             TrainingModel.getByPid(domainId, pids)
         ]);
-
+       
+        const resources = {};
+        docs.forEach(doc => {
+            resources[doc.title] = `/d/system/docs/${doc.docId}`;
+        });
+        reposWithFiles.forEach(repo => {
+            resources[repo.title] = `/d/system/repo/${repo.rid}`;
+            repo.files.forEach(file => {
+                resources[file.filename] = `/tree/branch/${ddoc.docId}/repo/${repo.rid}/${encodeURIComponent(file.filename)}`;
+            });
+        });
+        
         this.response.template = 'branch_detail.html';
         this.response.pjax = 'branch_detail.html';
         this.response.body = {
@@ -594,14 +605,15 @@ export class BranchDetailHandler extends BranchHandler {
             pathBranches,
             treeBranches,
             branchHierarchy,
+            resources // ✅ 传递到前端
         };
-        console.log('reposWithFiles', reposWithFiles);
     }
 
     async post() {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
     }
 }
+
 
 export class BranchEditHandler extends BranchHandler {
     @param('docId', Types.ObjectId)
@@ -617,24 +629,36 @@ export class BranchEditHandler extends BranchHandler {
             throw new NotFoundError(`Branch with docId ${docId} not found.`);
         }
         const docs = ddoc.lids?.length
-        ? await getDocsByDocId(domainId, ddoc.lids.filter(lid => lid != null).map(Number))
-        : [];
+            ? await getDocsByDocId(domainId, ddoc.lids.filter(lid => lid != null).map(Number))
+            : [];
 
         docs.forEach(doc => {
-            if (!doc.lid) {
-                doc.lid = String(doc.docId);
-            } else {
-                doc.lid = String(doc.lid);
-            }
+            doc.lid = String(doc.lid || doc.docId);
         });
 
         const repos = ddoc.rids ? await getReposByDocId(domainId, ddoc.rids) : [];
         const reposWithFiles = repos.map(repo => ({
             ...repo,
-            files: repo.files || [] 
+            files: repo.files || []
         }));
 
-        
+        // **✅ 生成资源映射**
+        const resources = {};
+
+        // **📌 添加文档**
+        docs.forEach(doc => {
+            resources[doc.title] = `/d/system/docs/${doc.docId}`;
+        });
+
+        // **📌 添加仓库**
+        reposWithFiles.forEach(repo => {
+            resources[repo.title] = `/d/system/repo/${repo.rid}`;
+            repo.files.forEach(file => {
+                resources[file.filename] = `/tree/branch/${ddoc.docId}/repo/${repo.rid}/${encodeURIComponent(file.filename)}`;
+            });
+        });
+
+        console.log("Resources Mapping:", resources); // **✅ 调试输出**
 
         this.response.template = 'branch_edit.html';
         this.response.body = {
@@ -642,13 +666,11 @@ export class BranchEditHandler extends BranchHandler {
             docs,
             repos: reposWithFiles,
             trid: this.args.trid,
-
+            resources  // ✅ **传递资源映射**
         };
-
-        console.log('Docs:', docs);
-        console.log('Repos:', reposWithFiles);
-
     }
+
+
 
     @param('docId', Types.ObjectId)
     @param('title', Types.Title)
