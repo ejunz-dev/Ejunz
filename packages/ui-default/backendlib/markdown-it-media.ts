@@ -6,6 +6,8 @@ import { v4 as uuid } from 'uuid';
 
 const allowFullScreen = ' webkitallowfullscreen mozallowfullscreen allowfullscreen';
 
+const IMPORT_REGEX = /@\[(.*?)\]\((.*?)\)/;
+
 const ytRegex = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
 function youtubeParser(url: string) {
   const match = url.match(ytRegex);
@@ -79,6 +81,24 @@ function resourceUrl(service: string, src: string, url: string) {
   }
   return src;
 }
+function getResourceTitle(resourceUrl: string) {
+  if (typeof window !== 'undefined' && window.UiContext && window.UiContext.resources) {
+    console.log("🔍 Checking UiContext.resources:", window.UiContext.resources);
+    console.log("🔍 Searching title for:", resourceUrl);
+
+    const decodedUrl = decodeURIComponent(resourceUrl);
+
+    for (const [title, url] of Object.entries(window.UiContext.resources)) {
+      if (decodeURIComponent(url) === decodedUrl) {
+        console.log(`✅ Found title: ${title} for ${decodedUrl}`);
+        return title; 
+      }
+    }
+  }
+
+  console.warn(`❌ Title not found for: ${resourceUrl}`);
+  return resourceUrl; 
+}
 
 declare module 'ejun' {
   interface ModuleInterfaces {
@@ -106,8 +126,36 @@ function parseFilePath(filePath: string, hostname: string, type: 'domainfile' | 
 
 
 export function Media(md: MarkdownIt, getHostname?: () => string) {
-  const supported = ['youtube', 'vimeo', 'vine', 'prezi', 'bilibili', 'youku', 'msoffice', 'domainfile', 'repofile'];
+  const supported = ['youtube', 'vimeo', 'vine', 'prezi', 'bilibili', 'youku', 'msoffice', 'domainfile', 'repofile','import'];
+  md.inline.ruler.before('emphasis', 'import_resource', (state, silent) => {
+    const match = IMPORT_REGEX.exec(state.src.slice(state.pos));
+    if (!match) return false;
 
+    const [fullMatch, displayText, resourceUrl] = match;
+
+    if (!silent) {
+      const token = state.push('import_resource', '', 0);
+      token.content = displayText;
+      token.attrSet('resourceUrl', resourceUrl);
+    }
+
+    state.pos += fullMatch.length;
+    return true;
+});
+
+md.renderer.rules.import_resource = function (tokens, idx) {
+  const token = tokens[idx];
+  const resourceUrl = token.attrGet('resourceUrl') || '';
+  const resourceTitle = getResourceTitle(resourceUrl) || resourceUrl; // ✅ 直接查找 title
+
+  console.log(`🎯 Rendering import: ${resourceTitle} (${resourceUrl})`);
+  return `<a href="${resourceUrl}" class="resource-link">@${resourceTitle}</a>`;
+};
+
+
+
+
+  
   md.renderer.rules.video = function tokenizeReturn(tokens, idx) {
     let src = md.utils.escapeHtml(tokens[idx].attrGet('src'));
     const service = md.utils.escapeHtml(tokens[idx].attrGet('service')).toLowerCase();
@@ -116,6 +164,10 @@ export function Media(md: MarkdownIt, getHostname?: () => string) {
       const result = Ejunz.module.richmedia[service].get(src);
       if (result) return result;
     }
+  if (service === 'import') {
+      const resourceTitle = getResourceTitle(src) || src;
+      return `<a href="${src}" class="resource-link">@${resourceTitle}</a>`;
+  }
   
  // Handle domainfile
  if (service === 'domainfile' && domainfileRegex.test(src)) {
