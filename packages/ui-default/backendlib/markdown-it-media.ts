@@ -83,21 +83,23 @@ function resourceUrl(service: string, src: string, url: string) {
 }
 function getResourceTitle(resourceUrl: string) {
   if (typeof window !== 'undefined' && window.UiContext && window.UiContext.resources) {
-    console.log("🔍 Checking UiContext.resources:", window.UiContext.resources);
-    console.log("🔍 Searching title for:", resourceUrl);
+      console.log("🔍 Checking UiContext.resources:", window.UiContext.resources);
+      console.log("🔍 Searching title for:", resourceUrl);
 
-    const decodedUrl = decodeURIComponent(resourceUrl);
+      const decodedUrl = decodeURIComponent(resourceUrl);
+      console.log("🔍 Decoded URL:", decodedUrl);
 
-    for (const [title, url] of Object.entries(window.UiContext.resources)) {
-      if (decodeURIComponent(url) === decodedUrl) {
-        console.log(`✅ Found title: ${title} for ${decodedUrl}`);
-        return title; 
+      for (const [title, url] of Object.entries(window.UiContext.resources)) {
+          console.log(`🔍 Comparing: ${decodeURIComponent(url)} === ${decodedUrl}`);
+          if (decodeURIComponent(url) === decodedUrl) {
+              console.log(`✅ Found title: ${title} for ${decodedUrl}`);
+              return title;
+          }
       }
-    }
   }
 
   console.warn(`❌ Title not found for: ${resourceUrl}`);
-  return resourceUrl; 
+  return resourceUrl.split('/').pop() || "未知资源"; // ✅ 避免 undefined
 }
 
 declare module 'ejun' {
@@ -146,7 +148,7 @@ export function Media(md: MarkdownIt, getHostname?: () => string) {
 md.renderer.rules.import_resource = function (tokens, idx) {
   const token = tokens[idx];
   const resourceUrl = token.attrGet('resourceUrl') || '';
-  const resourceTitle = getResourceTitle(resourceUrl) || resourceUrl; // ✅ 直接查找 title
+  const resourceTitle = getResourceTitle(resourceUrl); // ✅ 确保从 UiContext 解析名称
 
   console.log(`🎯 Rendering import: ${resourceTitle} (${resourceUrl})`);
   return `<a href="${resourceUrl}" class="resource-link">@${resourceTitle}</a>`;
