@@ -654,7 +654,7 @@ export class BranchEditHandler extends BranchHandler {
         reposWithFiles.forEach(repo => {
             resources[repo.title] = `/d/system/repo/${repo.docId}`;
             repo.files.forEach(file => {
-                resources[file.filename] = `/tree/branch/${ddoc.docId}/repo/${repo.docId}/${encodeURIComponent(file.filename)}`;
+                resources[file.filename] = `/repo/${repo.docId}/file/${encodeURIComponent(file.filename)}`;
             });
         });
 
