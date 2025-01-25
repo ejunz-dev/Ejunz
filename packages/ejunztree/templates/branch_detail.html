@@ -1,5 +1,12 @@
 {% extends "layout/basic.html" %}
-
+<script>
+  {{ set(UiContext, {
+    ddoc: ddoc,
+    docs: docs,
+    repos: repos,
+    resources: resources
+  }) }}
+</script>
 {% block content %}
 <div class="row">
   <div class="medium-9 columns">
