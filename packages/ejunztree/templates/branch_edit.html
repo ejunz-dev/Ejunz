@@ -160,35 +160,51 @@
 
 <script>
   function updateResourceLinks() {
-    document.querySelectorAll(".resource-link").forEach((el) => {
-      const resourceName = el.dataset.resource.trim();
-      if (window.UiContext.resources && window.UiContext.resources[resourceName]) {
-        el.setAttribute("data-url", window.UiContext.resources[resourceName]); // 存储相对 URL
-      } else {
-        console.warn("Resource not found:", resourceName);
-      }
-    });
+  if (!window.UiContext.resources) {
+    console.warn("🚨 UiContext.resources 为空，无法更新资源链接");
+    return;
   }
+
+  document.querySelectorAll(".resource-link").forEach((el) => {
+    const resourceName = el.dataset.resource?.trim();
+    if (!resourceName) return;
+
+    if (window.UiContext.resources[resourceName]) {
+      el.setAttribute("data-url", window.UiContext.resources[resourceName]); // 存储相对 URL
+    } else {
+      console.warn(`🚨 资源未找到: ${resourceName}`);
+    }
+  });
+}
+
 
   function copyResourceUrl(el) {
-    const resourceName = el.dataset.resource;
-    const url = window.UiContext.resources ? window.UiContext.resources[resourceName] : null;
+  const resourceName = el.dataset.resource;
+  const url = window.UiContext.resources ? window.UiContext.resources[resourceName] : null;
 
-    if (!url) {
-      console.warn("Resource URL not found for:", resourceName);
-      return;
-    }
-
- const markdownLink = `@[import](${url})`;
-
-    navigator.clipboard.writeText(markdownLink).then(() => {
-      alert(`📋 资源路径已复制: ${url}`);
-    }).catch((err) => {
-      console.error("❌ 复制失败:", err);
-    });
+  if (!url) {
+    console.warn("Resource URL not found for:", resourceName);
+    return;
   }
 
-  document.addEventListener("DOMContentLoaded", updateResourceLinks);
+  const markdownLink = `@[import](${url})`;
+
+  if (!navigator.clipboard || !navigator.clipboard.writeText) {
+    console.warn("Clipboard API 不支持，尝试使用 `prompt` 方式");
+    prompt("手动复制资源路径:", markdownLink);
+    return;
+  }
+
+  navigator.clipboard.writeText(markdownLink)
+    .then(() => {
+      alert(`📋 资源路径已复制: ${url}`);
+    })
+    .catch((err) => {
+      console.error("❌ 复制失败:", err);
+      alert("复制失败，请手动复制: " + markdownLink);
+    });
+}
+
 </script>
 
 {% endblock %}

@@ -215,4 +215,105 @@ monaco.languages.registerCodeLensProvider('markdown', {
   },
 });
 
+monaco.languages.registerCodeLensProvider('markdown', {
+  async provideCodeLenses(model) {
+    const repos = model.findMatches('@\\[\\]\\(/repo/(\\d+)\\)', true, true, true, null, true);
+    if (!repos.length) {
+      return { lenses: [], dispose: () => {} };
+    }
 
+    // 确保 docId 是数字
+    const docIds = repos.map((r) => parseInt(r.matches[1], 10)).filter((id) => !isNaN(id));
+
+    console.log("Fetching repos for docIds:", docIds);
+
+    // 通过 GraphQL 查询 `repo` 标题
+    const { data } = await api(gql`
+      query GetRepoTitles {
+        repos(ids: [${docIds.join(',')}]) {
+          docId
+          title
+        }
+      }
+    `, ['data', 'repos']);
+
+    console.log("GraphQL response:", data);
+
+    return {
+      lenses: repos.map((r, index) => {
+        const docId = parseInt(r.matches[1], 10);
+        const repo = data?.repos?.find((repo) => repo.docId === docId);
+        const title = repo?.title || `📁 仓库 ${docId}`;
+
+        return {
+          range: r.range,
+          id: `${index}.${docId}`,
+          command: {
+            id: '.openRepoPage',
+            arguments: [docId],
+            title: title,
+          },
+        };
+      }),
+      dispose: () => {},
+    };
+  },
+});
+
+monaco.languages.registerCompletionItemProvider('markdown', {
+  async provideCompletionItems(model, position) {
+    const word = model.getWordAtPosition(position);
+    if (!word || word.word.length < 2) return { suggestions: [] };
+
+    const prefix = model.getValueInRange({
+      startLineNumber: position.lineNumber,
+      endLineNumber: position.lineNumber,
+      startColumn: word.startColumn - 1,
+      endColumn: word.startColumn,
+    });
+
+    if (prefix !== '@') return { suggestions: [] };
+
+    const range = {
+      startLineNumber: position.lineNumber,
+      endLineNumber: position.lineNumber,
+      startColumn: word.startColumn - 1,
+      endColumn: word.endColumn,
+    };
+
+    const text = model.getValueInRange(range);
+    const match = text.match(/@\[\]\(\/repo\/(\d+)\)/);
+
+    if (!match) return { suggestions: [] };
+
+    const docId = parseInt(match[1], 10);
+    if (isNaN(docId)) return { suggestions: [] };
+
+    console.log("Fetching title for repo docId:", docId);
+
+    const { data } = await api(gql`
+      query GetRepoTitle {
+        repos(ids: [${docId}]) {
+          docId
+          title
+        }
+      }
+    `, ['data', 'repos']);
+
+    console.log("GraphQL response:", data);
+
+    const repo = data?.repos?.[0];
+    const title = repo?.title || `📁 仓库 ${docId}`;
+
+    return {
+      suggestions: [
+        {
+          label: `@${title}`,
+          kind: monaco.languages.CompletionItemKind.Text,
+          insertText: `@[](/repo/${docId}) `,
+          range,
+        },
+      ],
+    };
+  },
+});

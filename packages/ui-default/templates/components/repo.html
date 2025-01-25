@@ -1,0 +1,15 @@
+{% macro render_inline(rdoc) %}
+{% if rdoc %}
+  <span class="repo-link">
+    <a class="repo-title" href="{{ url('repo_detail', rid=rdoc.docId) }}">
+      {{ rdoc.title }}
+    </a>
+  </span>
+{% else %}
+  <span class="repo-link">
+    <a class="repo-title" href="#">
+      {{ _('Unknown Repository') }}
+    </a>
+  </span>
+{% endif %}
+{% endmacro %}
