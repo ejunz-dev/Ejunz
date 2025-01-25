@@ -81,7 +81,7 @@ function resourceUrl(service: string, src: string, url: string) {
   }
   return src;
 }
-function getResourceTitle(resourceUrl: string) {
+function getResourceTitle(resourceUrl) {
   if (typeof window !== 'undefined' && window.UiContext && window.UiContext.resources) {
       console.log("🔍 Checking UiContext.resources:", window.UiContext.resources);
       console.log("🔍 Searching title for:", resourceUrl);
@@ -90,7 +90,6 @@ function getResourceTitle(resourceUrl: string) {
       console.log("🔍 Decoded URL:", decodedUrl);
 
       for (const [title, url] of Object.entries(window.UiContext.resources)) {
-          console.log(`🔍 Comparing: ${decodeURIComponent(url)} === ${decodedUrl}`);
           if (decodeURIComponent(url) === decodedUrl) {
               console.log(`✅ Found title: ${title} for ${decodedUrl}`);
               return title;
@@ -99,8 +98,9 @@ function getResourceTitle(resourceUrl: string) {
   }
 
   console.warn(`❌ Title not found for: ${resourceUrl}`);
-  return resourceUrl.split('/').pop() || "未知资源"; // ✅ 避免 undefined
+  return decodeURIComponent(resourceUrl.split('/').pop()) || "Unkown"; 
 }
+
 
 declare module 'ejun' {
   interface ModuleInterfaces {
