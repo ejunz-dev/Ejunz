@@ -54,6 +54,19 @@
                 </li>
                 {% endfor %}
               </ul>
+                   {% if problems|length > 0 %}
+              <h4>{{ _("Related Problems") }}</h4>
+              <ul>
+                {% for problem in problems %}
+                <li>
+                  <a class="discussion-node-tag media-link" href="{{ url('problem_detail', domainId=problem.domainId, pid=problem.docId) }}">
+                    <span class="v-center icon icon-problem"></span>{{ problem.title }}
+                  </a>
+                </li>
+                {% endfor %}
+              </ul>
+              {% endif %}
+              
               {% for repo in repos %}
               <div class="repo-section">
                   {% if repo.files|length > 0 %}
@@ -84,19 +97,7 @@
                   {% endif %}
               </div>
               {% endfor %}
-              {% if problems|length > 0 %}
-              <h4>{{ _("Related Problems") }}</h4>
-              <ul>
-                {% for problem in problems %}
-                <li>
-                  <a class="discussion-node-tag media-link" href="{{ url('problem_detail', domainId=problem.domainId, pid=problem.docId) }}">
-                    <span class="v-center icon icon-problem"></span>{{ problem.title }}
-                  </a>
-                </li>
-                {% endfor %}
-              </ul>
-              {% endif %}
-              
+        
               {% if tdocs|length > 0 %}
               <h4>{{ _("Problems Related Training Plans") }}</h4>
               <ul>

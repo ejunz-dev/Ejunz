@@ -131,7 +131,7 @@ class DocsDetailHandler extends DocsHandler {
         }
 
         console.log(`[DocsDetailHandler] Fetching related problems for docs lid: ${ddoc.lid}`);
-        const problems = await getProblemsByDocsId(domainId, ddoc.lid);
+        const problems = await getProblemsByDocsId(domainId, ddoc.docId);
 
         this.response.template = 'docs_detail.html';
         this.response.body = {
@@ -148,7 +148,7 @@ class DocsDetailHandler extends DocsHandler {
 
 
 
-export async function getProblemsByDocsId(domainId: string, lid: string) {
+export async function getProblemsByDocsId(domainId: string, lid: string|number) {
     console.log(`Fetching problems for docs ID: ${lid}`);
     const query = {
         domainId,
