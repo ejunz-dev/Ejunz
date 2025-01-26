@@ -642,6 +642,7 @@ export class BranchEditHandler extends BranchHandler {
             ...repo,
             files: repo.files || []
         }));
+        const problems = ddoc.lids?.length ? await getProblemsByDocsId(domainId, ddoc.lids[0]) : [];
 
         // **✅ 生成资源映射**
         const resources = {};
@@ -666,6 +667,7 @@ export class BranchEditHandler extends BranchHandler {
             ddoc,
             docs,
             repos: reposWithFiles,
+            problems,
             trid: this.args.trid,
             resources  // ✅ **传递资源映射**
         };
