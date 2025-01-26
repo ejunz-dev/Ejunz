@@ -205,7 +205,7 @@ class Question_MCQ_Handler extends Handler {
         this.context.domainId = domainId;
 
         // 获取 docs 文档并包括 lid 字段
-        const documents = await DocsModel.getMulti(domainId, {}).project({ _id: 1, lid: 1, title: 1, content: 1 }).toArray();
+        const documents = await DocsModel.getMulti(domainId, {}).project({ _id: 1, docId: 1, title: 1, content: 1 }).toArray();
 
         this.response.template = 'generator_main.html';
         this.response.body = {
@@ -215,6 +215,7 @@ class Question_MCQ_Handler extends Handler {
             domainId,
             userId: this.user?._id || null,
         };
+        console.log('documents', documents);
     }
 
     async post() {
@@ -236,11 +237,15 @@ class Question_MCQ_Handler extends Handler {
             selectedDocumentId, // 直接从请求体获取
         } = this.request.body;
 
+        console.log('Request Body:', this.request.body);
+
+        console.log('selectedDocumentId', selectedDocumentId);
         // 确保 selectedDocumentId 为数字类型
-        const selected_document_id = parseInt(selectedDocumentId, 10);
-        if (isNaN(selected_document_id)) {
-            throw new Error('Invalid selectedDocumentId: must be a number.');
-        }
+        const selected_document_id = parseInt(this.request.body.selectedDocumentId || '0', 10);
+if (isNaN(selected_document_id) || selected_document_id === 0) {
+    throw new Error('Invalid selectedDocumentId: must be a number.');
+}
+
 
         const params = {
             domainId,
