@@ -18,16 +18,16 @@
 
         <form id="generate-form" method="POST" action="./mcq">
           <input type="hidden" name="domainId" value="{{ domainId }}">
-          <input type="hidden" name="selectedDocumentId" id="selected_document_id" value="{{ documents[0].lid if documents and documents[0] else '' }}">
-
 
           <label for="document_id">{{ _('Choose a Document') }}:</label>
-          <select id="document_id" name="document_id" required style="width: 100%;" onchange="this.form.input_text.value=this.options[this.selectedIndex].value; this.form.selectedDocumentId.value=this.options[this.selectedIndex].getAttribute('data-doc-id')">
-
+          <select id="document_id" name="selectedDocumentId" required style="width: 100%;" 
+                  onchange="this.form.input_text.value=this.options[this.selectedIndex].value">
             <option value="" disabled selected>{{ _('Select a document') }}</option>
             {% if documents and documents.length %}
               {% for doc in documents %}
-              <option value="{{ doc.content }}" data-doc-id="{{ doc.lid }}">{{ doc.title }}</option>
+              <option value="{{ doc.docId }}" {% if doc == documents[0] %}selected{% endif %}>
+                {{ doc.title }}
+              </option>
               {% endfor %}
             {% else %}
             <option value="" disabled>{{ _('No documents available') }}</option>
@@ -35,7 +35,7 @@
           </select>
 
           <label for="input_text">{{ _('Input Text') }}:</label>
-          <textarea id="input_text" name="input_text" required style="width: 100%; height: 150px;"></textarea>
+          <textarea id="input_text" name="input_text" required style="width: 100%; height: 150px;">{{ documents[0].content if documents and documents[0] else '' }}</textarea>
           
           <label for="question_type">{{ _('Question Type') }}:</label>
           <select id="question_type" name="question_type" required style="width: 100%;">
@@ -70,7 +70,6 @@
           <input type="hidden" name="selected_document_id" value="{{ selected_document_id }}">
           <button type="submit" class="button" style="margin-top: 20px;">{{ _('Push All to Staging') }}</button>
         </form>
-        
       
         <ol>
           {% for question in questions %}
