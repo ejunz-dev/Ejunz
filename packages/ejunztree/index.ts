@@ -607,6 +607,7 @@ export class BranchDetailHandler extends BranchHandler {
             branchHierarchy,
             resources // ✅ 传递到前端
         };
+        console.log('Related Problems',problems)
     }
 
     async post() {
