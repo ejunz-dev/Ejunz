@@ -150,9 +150,17 @@ md.renderer.rules.import_resource = function (tokens, idx) {
   const resourceUrl = token.attrGet('resourceUrl') || '';
   const resourceTitle = getResourceTitle(resourceUrl); // ✅ 确保从 UiContext 解析名称
 
+  
   console.log(`🎯 Rendering import: ${resourceTitle} (${resourceUrl})`);
-  return `<a href="${resourceUrl}" class="resource-link">@${resourceTitle}</a>`;
+
+  return `
+    <a href="${resourceUrl}" class="discussion-node-tag media-link resource-link" 
+       target="_blank" rel="noopener noreferrer">
+      <span class="v-center"></span> @${resourceTitle}
+    </a>
+  `;
 };
+
 
 
 
