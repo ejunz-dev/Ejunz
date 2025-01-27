@@ -15,7 +15,7 @@
         </h2>
       </div>
       <div class="section__body">
-        <form method="post" action="{{ url('tree_create') }}">
+        <form method="post">
           <!-- Hidden input to store tree ID if editing -->
           {% if tree %}
             <input type="hidden" name="trid" value="{{ tree.trid }}">
@@ -30,13 +30,13 @@
               autofocus: true
           }) }}
 
-          {{ form.form_textarea({
-              columns: 12,
-              label: _('Tree Description'),
-              name: 'description',
-              value: tree.description|default(''),
-              markdown: true
-          }) }}
+           {{ form.form_textarea({
+                columns:12,
+                label:_('Tree Content'),
+                name:'content',
+                value:tree.content|default(''),
+                markdown:true
+            }) }}
 
           <div class="row">
             <div class="columns">

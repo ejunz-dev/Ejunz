@@ -14,8 +14,10 @@ export interface TRDoc {
     domainId: string;
     trid: number;
     title: string;
+    content: string;
     owner: number;
     createdAt: Date;
+    updateAt: Date;
 }
 
 
@@ -60,28 +62,42 @@ export class TreeModel {
         return (lastTree[0]?.trid || 0) + 1;
     }
 
-    static async createTree(domainId: string, owner: number, title: string): Promise<number> {
+    static async createTree(domainId: string, owner: number, title: string, content: string): Promise<ObjectId> {
         const newTrid = await this.generateNextTrid(domainId);
+        
         const payload: Partial<TRDoc> = {
-            docType: 6,
+            docType: TYPE_TR,
             domainId,
             trid: newTrid,
             title,
+            content: content || '',  // 避免 null
             owner,
             createdAt: new Date(),
         };
-
-        await DocumentModel.add(
+    
+        const docId = await DocumentModel.add(
             domainId,
-            JSON.stringify(payload), 
-            owner, 
-            TYPE_TR, 
-            null, null, null, 
-            payload
+            payload.content!,  // ✅ 传 content 作为文档主要内容
+            payload.owner!,  // ✅ 传 owner 作为创建者
+            TYPE_TR,
+            null,
+            null,
+            null,
+            _.omit(payload, ['domainId', 'content', 'owner'])  // ✅ 传完整对象但移除重复字段
         );
-
-        return newTrid;
+    
+        return docId;
     }
+    
+
+    static async edit(domainId: string, docId: ObjectId, title: string, content: string): Promise<void> {
+        await DocumentModel.set(domainId, TYPE_TR, docId, {
+            title,
+            content: content || '',  // 🚨 避免 null
+        });
+    }
+    
+
 
     static async getTree(domainId: string, docId: ObjectId): Promise<TRDoc | null> {
         return await DocumentModel.get(domainId, TYPE_TR, docId);
@@ -267,26 +283,7 @@ export class BranchModel {
     
         await DocumentModel.set(domainId, TYPE_BR, docId, updateFields);
     }
-  
-    
 
-    static async createTree(domainId: string, owner: number, title: string): Promise<number> {
-        const newTrid = await this.generateNextTrid(domainId);
-        const payload = {
-            domainId,
-            trid: newTrid,
-            title,
-            owner,
-            createdAt: new Date(),
-        };
-
-        await DocumentModel.add(domainId, JSON.stringify(payload), owner, TYPE_BR, null, null, null, payload);
-        return newTrid;
-    }
-
-    static async getTree(domainId: string, trid: number) {
-        return await DocumentModel.getMulti(domainId, TYPE_BR, { trid }).toArray();
-    }
     static async getBranchesByIds(domainId: string, bids: number[]) {
         return await DocumentModel.getMulti(domainId, TYPE_BR, { bid: { $in: bids } }).toArray();
     }
@@ -398,22 +395,65 @@ export class TreeDomainHandler extends Handler {
 
 
 export class TreeEditHandler extends Handler {
-    async get() {
+    @param('docId', Types.ObjectId, true)
+    async get(domainId: string, docId: ObjectId) {
+
+        
+            const tree = await TreeModel.getTree(domainId, docId);
+
         this.response.template = 'tree_edit.html';
-        this.response.body = {
-            tree: null, // 新建模式，没有已有的 Tree 数据
-        };
+        this.response.body = { tree };
+        console.log('tree:', this.response.body.tree);
     }
 
     @param('title', Types.Title)
-    async postCreate(domainId: string, title: string) {
+    @param('content', Types.Content, true)
+    async postCreate(domainId: string, title: string, content: string) {
         await this.checkPriv(PRIV.PRIV_USER_PROFILE);
-
-        const trid = await TreeModel.createTree(domainId, this.user._id, title);
-        this.response.body = { trid };
-        this.response.redirect = this.url('tree_detail', { domainId, trid });
+    
+        if (!title.trim()) {
+            throw new Error("Title cannot be empty.");
+        }
+    
+        // ✅ 确保 content 不为 null 或 undefined
+        if (!content || typeof content !== 'string') {
+            content = '';  // 避免存入 null
+        }
+    
+        // ✅ 调用 `createTree` 创建树，并获取 `trid`
+        const docId = await TreeModel.createTree(domainId, this.user._id, title, content);
+    
+        // ✅ 返回 `trid` 而不是 `docId`
+        this.response.body = { docId };
+        this.response.redirect = this.url('tree_detail', { domainId, docId });  // ✅ 跳转到树详情页
     }
+    
+    
+
+    @param('docId', Types.ObjectId)
+    @param('title', Types.Title)
+    @param('content', Types.Content)
+    async postUpdate(domainId: string, docId: ObjectId, title: string, content: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+    
+        if (!title.trim()) {
+            throw new Error("Title cannot be empty.");
+        }
+    
+        // 🚨 确保 content 不是 null
+        if (!content || typeof content !== 'string') {
+            content = '';
+        }
+    
+       await TreeModel.edit(domainId, docId, title, content);
+        this.response.body = { docId };
+        this.response.redirect = this.url('tree_detail', { domainId, docId });
+        console.log('docId:', this.response.body.docId);
+
+    }
+    
 }
+
 
 
 export class TreeDetailHandler extends Handler {
@@ -472,8 +512,7 @@ export class TreeDetailHandler extends Handler {
             branchHierarchy,
         };
 
-        console.log('treeBranches:', JSON.stringify(treeBranches, null, 2));
-        console.log('branchHierarchy:', JSON.stringify(branchHierarchy, null, 2));
+       console.log('tree', this.response.body.tree);
     }
 
     async post() {
