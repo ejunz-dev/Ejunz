@@ -605,7 +605,7 @@ export class BranchDetailHandler extends BranchHandler {
             pathBranches,
             treeBranches,
             branchHierarchy,
-            resources // ✅ 传递到前端
+            resources 
         };
         console.log('pids',pids)
         console.log('Related homework',htdocs)
@@ -646,16 +646,19 @@ export class BranchEditHandler extends BranchHandler {
             files: repo.files || []
         }));
         const problems = ddoc.lids?.length ? await getProblemsByDocsId(domainId, ddoc.lids[0]) : [];
+        const pids = problems.map(p => Number(p.docId));
+        const [ctdocs, htdocs, tdocs] = await Promise.all([
+            Promise.all(pids.map(pid => getRelated(domainId, pid))),
+            Promise.all(pids.map(pid => getRelated(domainId, pid, 'homework'))),
+            TrainingModel.getByPid(domainId, pids)
+        ]);
 
-        // **✅ 生成资源映射**
         const resources = {};
 
-        // **📌 添加文档**
         docs.forEach(doc => {
             resources[doc.title] = `/d/system/docs/${doc.docId}`;
         });
 
-        // **📌 添加仓库**
         reposWithFiles.forEach(repo => {
             resources[repo.title] = `/d/system/repo/${repo.docId}`;
             repo.files.forEach(file => {
@@ -663,16 +666,20 @@ export class BranchEditHandler extends BranchHandler {
             });
         });
 
-        console.log("Resources Mapping:", resources); // **✅ 调试输出**
+        console.log("Resources Mapping:", resources);
 
         this.response.template = 'branch_edit.html';
         this.response.body = {
             ddoc,
             docs,
+            pids,
+            ctdocs: ctdocs.flat(),
+            htdocs: htdocs.flat(),
+            tdocs: tdocs.flat(),
             repos: reposWithFiles,
             problems,
             trid: this.args.trid,
-            resources  // ✅ **传递资源映射**
+            resources  
         };
     }
 
