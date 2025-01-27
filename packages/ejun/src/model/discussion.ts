@@ -3,7 +3,7 @@ import { Filter, ObjectId } from 'mongodb';
 import { Context } from '../context';
 import { DiscussionNodeNotFoundError, DocumentNotFoundError } from '../error';
 import {
-    DiscussionHistoryDoc, DiscussionReplyDoc, DiscussionTailReplyDoc, Document,
+    DiscussionHistoryDoc, DiscussionReplyDoc, DiscussionTailReplyDoc, Document
 } from '../interface';
 import * as bus from '../service/bus';
 import db from '../service/db';
@@ -15,7 +15,7 @@ import * as document from './document';
 import problem from './problem';
 import * as training from './training';
 import { User } from './user';
-import { DocsModel, TYPE_DOCS} from 'ejun';
+import DocsModel from './doc';
 export interface DiscussionDoc extends Document { }
 export type Field = keyof DiscussionDoc;
 
@@ -38,7 +38,7 @@ export const typeDisplay = {
     [document.TYPE_DISCUSSION_NODE]: 'node',
     [document.TYPE_TRAINING]: 'training',
     [document.TYPE_HOMEWORK]: 'homework',
-    [TYPE_DOCS]: 'docs',
+    [document.TYPE_DOCS]: 'docs',
 };
 
 export const coll = db.collection('discussion.history');
@@ -294,14 +294,14 @@ export async function getVnode(domainId: string, type: number, id: string, uid?:
         };
     }
 
-if (type === TYPE_DOCS) {
+if (type === document.TYPE_DOCS) {
     console.log(`Processing TYPE_DOCS node with id: ${id}`); // Log the ID being processed
 
     // 检查 id 是否为数字类型
     let ddoc;
     if (/^\d+$/.test(id)) {
         console.log(`ID ${id} is a numeric lid.`);
-        ddoc = await DocsModel.getByLid(domainId, parseInt(id, 10)); // 根据 lid 获取文档
+        ddoc = await DocsModel.get(domainId, parseInt(id, 10)); // 根据 lid 获取文档
     } else if (ObjectId.isValid(id)) {
         console.log(`ID ${id} is a valid ObjectId.`);
         ddoc = await DocsModel.get(domainId, new ObjectId(id));
@@ -317,14 +317,15 @@ if (type === TYPE_DOCS) {
 
     const result = {
         title: ddoc.title,
-        type: TYPE_DOCS,
-        id: ddoc.lid, // 使用 lid 返回
+        type: ddoc.docType,
+        id: ddoc.docId, // 使用 lid 返回
         owner: ddoc.owner,
         content: ddoc.content,
         views: ddoc.views,
         replies: ddoc.nReply,
     };
     console.log(`Returning Docs node:`, result); // Log the final result
+    console.log('ddoc',ddoc)
     return result;
 }
 
