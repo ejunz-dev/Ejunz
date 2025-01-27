@@ -1,9 +1,12 @@
 {% macro render_inline(ddoc) %}
 {% if ddoc %}
   <span class="docs-link">
-    <a class="docs-title" href="{{ url('docs_detail', lid=ddoc.docId) }}">
-      {{ ddoc.title }}
+    <a class="discussion-node-tag media-link docs-title" 
+       href="{{ url('docs_detail', lid=ddoc.docId) }}" 
+       target="_blank" rel="noopener noreferrer">
+      <span class="v-center icon icon-book"></span> {{ ddoc.title }}
     </a>
+
   </span>
 {% else %}
   <span class="docs-link">
