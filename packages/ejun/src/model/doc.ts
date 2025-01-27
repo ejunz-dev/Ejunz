@@ -50,7 +50,7 @@ export class DocsModel {
 
     static PROJECTION_PUBLIC: Field[] = [
         ...DocsModel.PROJECTION_DETAIL,
-        'docId', 'lid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply'
+        'docId', 'lid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply','docType'
     ];
 
     static async generateNextDocId(domainId: string): Promise<number> {
