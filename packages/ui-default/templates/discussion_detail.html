@@ -7,16 +7,19 @@
       <div class="section__body">
         <ul class="supplementary list">
           <li>
-            <a class="discussion-node-tag" href="{{ url('discussion_node', type=model.discussion.typeDisplay[vnode.type]|default('Unknown'), name=vnode.id) }}">
+            <a class="discussion-node-tag" href="{{ url('discussion_node', type=model.discussion.typeDisplay[vnode.type], name=vnode.id) }}">
             {% if ddoc.parentType == model.document.TYPE_DISCUSSION_NODE %}
               <span class="v-center icon icon-tag"></span>
-              {{ _('Discussion Node') }}
+              {{ _('Discussion:') }}
             {% elif ddoc.parentType == model.document.TYPE_CONTEST %}
               <span class="v-center icon icon-award"></span>
-              {{ _('Contest Node') }}
-            {% elif ddoc.parentType == 100 %}
-              <span class="v-center icon icon-docs"></span>
-              {{ _('lib') }}
+              {{ _('Contest:') }}
+            {% elif ddoc.parentType == model.document.TYPE_DOCS %}
+              <span class="v-center icon icon-book"></span>
+              {{ _('Docs:') }}
+            {% elif ddoc.parentType == model.document.TYPE_PROBLEM %}
+              <span class="v-center icon icon-flag"></span>
+              {{ _('Problem:') }}
             {% else %}
               <span class="v-center icon icon-flag"></span>
               {{ _('Unknown Node') }}

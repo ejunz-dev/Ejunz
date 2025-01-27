@@ -508,4 +508,5 @@ global.Ejunz.model.document = {
     TYPE_PROBLEM_LIST,
     TYPE_PROBLEM_SOLUTION,
     TYPE_TRAINING,
+    TYPE_DOCS,
 };

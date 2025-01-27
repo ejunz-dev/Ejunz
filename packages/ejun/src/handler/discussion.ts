@@ -12,7 +12,6 @@ import message from '../model/message';
 import * as oplog from '../model/oplog';
 import user from '../model/user';
 import { Handler, param, Types } from '../service/server';
-import { TYPE_DOCS } from '../model/document';
 
 export const typeMapper = {
     problem: document.TYPE_PROBLEM,
@@ -20,7 +19,7 @@ export const typeMapper = {
     node: document.TYPE_DISCUSSION_NODE,
     training: document.TYPE_TRAINING,
     homework: document.TYPE_CONTEST,
-    docs: TYPE_DOCS,
+    docs: document.TYPE_DOCS,
 };
 
 class DiscussionHandler extends Handler {
@@ -92,6 +91,7 @@ class DiscussionMainHandler extends Handler {
         this.response.body = {
             ddocs, dpcount, udict, page, page_name: 'discussion_main', vndict, vnode: {}, vnodes,
         };
+        console.log('response',this.response.body)
     }
 }
 
@@ -128,6 +128,7 @@ class DiscussionNodeHandler extends DiscussionHandler {
             page_name: 'discussion_node',
             vnodes,
         };
+        console.log('response',this.response.body)
     }
 }
 
@@ -152,9 +153,6 @@ class DiscussionCreateHandler extends DiscussionHandler {
         this.response.body = { path, vnode: this.vnode };
         console.log('ddoc:', this.ddoc);
 console.log('vnode:', this.vnode);
-
-
-
     }
 
     @param('type', Types.Range(Object.keys(typeMapper)))
@@ -240,6 +238,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
         this.response.body = {
             path, ddoc: this.ddoc, dsdoc, drdocs, page, pcount, drcount, udict, vnode: this.vnode, reactions,
         };
+        console.log('typeDisplay',{ type: discussion.typeDisplay[this.ddoc.parentType], name: this.ddoc.parentId })
     }
 
     async post() {
