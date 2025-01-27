@@ -63,9 +63,12 @@
               <ul>
                 {% for htdoc in htdocs %}
                 <li>
-                  <a class="discussion-node-tag media-link" href="{{ url('homework_detail', domainId=htdoc.domainId, tid=htdoc.docId) }}">
-                    <span class="v-center icon icon-homework"></span>{{ htdoc.title }}
-                  </a>
+         <a class="discussion-node-tag media-link resource-link" 
+               data-resource="{{ htdoc.title }}"
+               href="javascript:void(0)"
+               onclick="copyResourceUrl(this)">
+              <span class="v-center icon icon-homework"></span> {{ htdoc.title }}
+            </a>
                 </li>
                 {% endfor %}
               </ul>
@@ -80,9 +83,12 @@
               <ul>
                 {% for tdoc in tdocs %}
                 <li>
-                  <a class="discussion-node-tag media-link" href="{{ url('training_detail', domainId=tdoc.domainId, tid=tdoc.docId) }}">
-                    <span class="v-center icon icon-training"></span>{{ tdoc.title }}
-                  </a>
+         <a class="discussion-node-tag media-link resource-link" 
+               data-resource="{{ tdoc.title }}"
+               href="javascript:void(0)"
+               onclick="copyResourceUrl(this)">
+              <span class="v-center icon icon-training"></span> {{ tdoc.title }}
+            </a>
                 </li>
                 {% endfor %}
               </ul>
@@ -98,9 +104,12 @@
               <ul>
                 {% for ctdoc in ctdocs %}
                 <li>
-                  <a class="discussion-node-tag media-link" href="{{ url('contest_detail', domainId=ctdoc.domainId, tid=ctdoc.docId) }}">
-                    <span class="v-center icon icon-contest"></span>{{ ctdoc.title }}
-                  </a>
+         <a class="discussion-node-tag media-link resource-link" 
+               data-resource="{{ ctdoc.title }}"
+               href="javascript:void(0)"
+               onclick="copyResourceUrl(this)">
+              <span class="v-center icon icon-contest"></span> {{ ctdoc.title }}
+            </a>
                 </li>
                 {% endfor %}
               </ul>  
@@ -232,7 +241,7 @@
 </div>
 
 <script>
-  function updateResourceLinks() {
+function updateResourceLinks() {
   if (!window.UiContext.resources) {
     console.warn("🚨 UiContext.resources 为空，无法更新资源链接");
     return;
@@ -261,9 +270,15 @@ function copyResourceUrl(el) {
 
   let markdownLink = `@[import](${url})`;
 
-  // 🔍 识别是否是文件路径（repo 中的 file）
-  if (/\/repo\/\d+\/file\/.+/.test(url)) {
-    markdownLink = `@[import](${url})`;  // 文件格式
+  // 🔍 识别是否是 Contest、Homework 或 Training 的 URL 格式
+  if (/\/contest\/[a-zA-Z0-9]+$/.test(url)) {
+    markdownLink = `@[import](${url})`; // Contest 格式
+  } else if (/\/homework\/[a-zA-Z0-9]+$/.test(url)) {
+    markdownLink = `@[import](${url})`; // Homework 格式
+  } else if (/\/training\/[a-zA-Z0-9]+$/.test(url)) {
+    markdownLink = `@[import](${url})`; // Training 格式
+  } else if (/\/repo\/\d+\/file\/.+/.test(url)) {
+    markdownLink = `@[import](${url})`; // Repo 文件格式
   }
 
   if (!navigator.clipboard || !navigator.clipboard.writeText) {
@@ -281,8 +296,7 @@ function copyResourceUrl(el) {
       alert("复制失败，请手动复制: " + markdownLink);
     });
 }
-
-
 </script>
+
 
 {% endblock %}
