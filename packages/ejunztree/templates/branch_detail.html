@@ -1,4 +1,5 @@
 {% extends "layout/basic.html" %}
+
 <script>
   {{ set(UiContext, {
     ddoc: ddoc,
@@ -7,6 +8,7 @@
     resources: resources
   }) }}
 </script>
+
 {% block content %}
 <div class="row">
   <div class="medium-9 columns">
@@ -15,200 +17,95 @@
         <h2 class="section__title">{{ _("Branch Details") }}</h2>
       </div>
       <div class="section__body">
-        <h2>{{ _("Tree ID") }}: {{ ddoc.trid }}</h2>
-
-            <div class="section">
-        <div class="section__header">
-          <h3>{{ _("Current Branch") }}</h3>
-        </div>
-        <div class="section__body current-branch">
-          <p><strong>{{ _("Title") }}:</strong> {{ ddoc.title }}</p>
+        {% if ddoc %}
+          <h3>{{ _("Branch Title") }}: {{ ddoc.title }}</h3>
           <p><strong>{{ _("Branch ID") }}:</strong> {{ ddoc.bid }}</p>
-          <p><strong>{{ _("Type") }}:</strong> 
-            {% if ddoc.parentId %}
-              <span class="badge secondary">{{ _("Sub-Branch") }}</span>
-            {% else %}
-              <span class="badge primary">{{ _("Trunk") }}</span>
-            {% endif %}
-          </p>
-          <p><strong>{{ _("Content") }}:</strong></p>
-          <div class="typo richmedia topic__content" data-emoji-enabled>
-          {{ ddoc.content|markdown|safe }}
-        </div>
-        </div>
-      </div>
 
-
-        <div class="section">
-          <div class="section__header">
-            <h3>{{ _("Hooked Resources") }}</h3>
+          <!-- 🔥 Markdown 渲染 Branch 内容 -->
+          <div class="section">
+            <div class="section__header">
+              <h3>{{ _("Branch Content") }}</h3>
+            </div>
             <div class="section__body">
-              <h4>{{ _("Related Docs") }}</h4>
-              <ul>
-                {% for doc in docs %}
-                <li>
-                  <a class="discussion-node-tag media-link" 
-                     href="{{ url('docs_detail', domainId=ddoc.domainId, lid=doc.lid | default(doc.docId)) }}">
-                    <span class="v-center icon icon-problem"></span> {{ doc.title }}
-                  </a>
-                </li>
-                {% endfor %}
-              </ul>
-                   {% if problems|length > 0 %}
-              <h4>{{ _("Related Problems") }}</h4>
-              <ul>
-                {% for problem in problems %}
-                <li>
-                  <a class="discussion-node-tag media-link" href="{{ url('problem_detail', domainId=problem.domainId, pid=problem.docId) }}">
-                    <span class="v-center icon icon-problem"></span>{{ problem.title }}
-                  </a>
-                </li>
-                {% endfor %}
-              </ul>
+              {% if ddoc.content %}
+                <div class="typo richmedia topic__content" data-emoji-enabled>
+                  {{ ddoc.content|markdown|safe }}
+                </div>
+              {% else %}
+                <p>{{ _("No content available.") }}</p>
               {% endif %}
-              {% if htdocs|length > 0 %}
-              <h4>{{ _("Related Homework") }}</h4>
-              <ul>
-                {% for htdoc in htdocs %}
-                <li>
-                  <a class="discussion-node-tag media-link" href="{{ url('homework_detail', domainId=htdoc.domainId, tid=htdoc.docId) }}">
-                    <span class="v-center icon icon-homework"></span>{{ htdoc.title }}
-                  </a>
-                </li>
-                {% endfor %}
-              </ul>
-              {% endif %}
-              {% if tdocs|length > 0 %}
-              <h4>{{ _("Problems Related Training Plans") }}</h4>
-              <ul>
-                {% for tdoc in tdocs %}
-                <li>
-                  <a class="discussion-node-tag media-link" href="{{ url('training_detail', domainId=tdoc.domainId, tid=tdoc.docId) }}">
-                    <span class="v-center icon icon-training"></span>{{ tdoc.title }}
-                  </a>
-                </li>
-                {% endfor %}
-              </ul>
-              {% endif %}
-              {% if ctdocs|length > 0 %}
-              <h4>{{ _("Related Contest") }}</h4>
-              <ul>
-                {% for ctdoc in ctdocs %}
-                <li>
-                  <a class="discussion-node-tag media-link" href="{{ url('contest_detail', domainId=ctdoc.domainId, tid=ctdoc.docId) }}">
-                    <span class="v-center icon icon-contest"></span>{{ ctdoc.title }}
-                  </a>
-                </li>
-                {% endfor %}
-              </ul>
-              {% endif %}
-              {% for repo in repos %}
-              <div class="repo-section">
-                  {% if repo.files|length > 0 %}
-                  <h4>{{ _("Files in Repository") }}:
-                    <a class="discussion-node-tag media-link" href="{{ url('repo_detail', domainId=ddoc.domainId, rid=repo.rid) }}">
-                          <span class="v-center icon icon-repo"></span> {{ repo.title }}
-                      </a>
-                  </h4>
-                  <table class="table">
-                      <tbody>
-                          {% for file in repo.files %}
-                          <tr data-filename="{{ file.filename }}" data-size="{{ file.size }}">
-                            
-                              <td class="col--name" data-preview>
-                                  <a class="discussion-node-tag media-link"
-                                    href="{{ url('branch_file_download', { docId: ddoc.docId, rid: repo.rid, filename: file.filename }) }}"
-                                    data-preview="{{ url('branch_file_download', { docId: ddoc.docId, rid: repo.rid, filename: file.filename }) }}">
-                                      <span class="v-center icon icon-file"></span> {{ file.filename }} (v{{ file.version }})
-                                  </a>
-                              </td>
-                          
-                          </tr>
-                          {% endfor %}
-                      </tbody>
-                  </table>
-                  {% else %}
-                  <p>{{ _("No files available.") }}</p>
-                  {% endif %}
-              </div>
-              {% endfor %}
-        
-              
             </div>
           </div>
-        </div>
+          <!-- ✅ Markdown 渲染部分结束 -->
 
-        <!-- 🌳 Tree Map -->
-        <div class="section">
-          <div class="section__header">
-            <h3>{{ _("Tree Map") }}</h3>
-          </div>
-          <div class="section__body">
-            {% include "tree_map.html" %}
-          </div>
-        </div>
+          <div class="section">
+            <div class="section__header">
+              <h3>{{ _("Branch Map") }}</h3>
+            </div>
+            <div class="section__body">
+              {% if branchHierarchy and branchHierarchy.trunk %}
+                
+                {% macro render_tree(branches, level=0, prefix="") %}
+                {% if branches and branches|length > 0 %}
+                  <div style="display: flex; justify-content: center; align-items: flex-end; gap: 50px; {% if level == 0 %}flex-wrap: wrap;{% endif %}">
 
-        <!-- 🔹 Branch Path -->
-        <div class="section">
-          <div class="section__header">
-            <h3>{{ _("Branch Path") }}</h3>
-          </div>
-          <div class="section__body path-container">
-            <nav class="breadcrumb">
-              {% for pathBranch in pathBranches %}
-                {% if pathBranch.docId == ddoc.docId %}
-                  <strong>{{ pathBranch.title }}</strong>
-                {% else %}
-                  <a href="{{ url('branch_detail', domainId=ddoc.domainId, docId=pathBranch.docId) }}">
-                    {{ pathBranch.title }}
-                  </a>
+                    {% for branch in branches if branch.bid != branchHierarchy.trunk.bid %}
+                      <div style="text-align: center; position: relative;">
+                        {% if branch.subBranches and branch.subBranches|length > 0 %}
+                          <div style="display: flex; flex-direction: column-reverse; align-items: center;">
+                            {{ render_tree(branch.subBranches, level + 1, prefix + "    ") }}
+                          </div>
+                        {% endif %}
+                        <div>
+                          {% if branch.subBranches and branch.subBranches|length > 0 %} 🌿 {% else %} 🌱 {% endif %}
+                          <a href="{{ url('branch_detail', domainId=ddoc.domainId, docId=branch.docId) }}">
+                            {{ branch.title }}
+                          </a>
+                        </div>
+                        <div>{{ prefix }}*</div>
+                      </div>
+                    {% endfor %}
+                  </div>
+
+                  {% if level == 0 and branchHierarchy.trunk %}
+                    <div style="display: flex; justify-content: center; margin-top: 20px;">
+                      <div style="text-align: center;">
+                        🌳
+                        <a href="{{ url('branch_detail', domainId=ddoc.domainId, docId=branchHierarchy.trunk.docId) }}">
+                          {{ branchHierarchy.trunk.title }}
+                        </a>
+                      </div>
+                    </div>
+                  {% endif %}
                 {% endif %}
-                {% if not loop.last %} - {% endif %}
-              {% endfor %}
-            </nav>
-          </div>
-        </div>
+              {% endmacro %}
 
-        <!-- 🔹 Sub-Branches -->
-        <div class="section">
-          <div class="section__header">
-            <h3>{{ _("Sub-Branches") }}</h3>
+              <div style="display: flex; flex-direction: column; align-items: center;">
+                {% if branchHierarchy and branchHierarchy.trunk %}
+                  {{ render_tree(branchHierarchy.branches) }}
+                {% else %}
+                  <p>{{ _("No branches available.") }}</p>
+                {% endif %}
+              </div>
+
+              {% else %}
+                <p>{{ _("No branches available.") }}</p>
+              {% endif %}
+            </div>
           </div>
-          <div class="section__body sub-branches">
-            {% if childrenBranches and childrenBranches|length > 0 %}
-              {% for branch in childrenBranches %}
-                <a href="{{ url('branch_detail', domainId=ddoc.domainId, docId=branch.docId) }}">
-                  {{ branch.title }}
-                </a>
-                {% if not loop.last %} | {% endif %}
-              {% endfor %}
-            {% else %}
-              <p>{{ _("No sub-branches available.") }}</p>
-            {% endif %}
-          </div>
-        </div>
+
+        {% else %}
+          <p>{{ _("Branch not found.") }}</p>
+        {% endif %}
       </div>
+    
     </div>
   </div>
-
   <div class="medium-3 columns">
-    <div class="section side">
+    <div class="section">
       <div class="section__header">
-        <h2 class="section__title">{{ _("Actions") }}</h2>
-      </div>
-      <div class="section__body">
         <a href="{{ url('branch_edit', domainId=ddoc.domainId, docId=ddoc.docId) }}" class="button primary expanded">
           {{ _('Edit Content') }}
-        </a>
-      <a href="{{ url('branch_resource_edit', domainId=ddoc.domainId, docId=ddoc.docId ) }}" class="button primary expanded">
-                  {{ _('Edit Resources') }}
-                </a>
-
-        <a href="{{ url('tree_domain', domainId=ddoc.domainId) }}" class="button expanded">
-          {{ _('Back to Tree') }}
-        </a>
-        <a href="{{ url('branch_create_subbranch', domainId=ddoc.domainId, parentId=ddoc.bid) }}" class="button success expanded">
-          {{ _('Create Sub-Branch') }}
         </a>
       </div>
     </div>

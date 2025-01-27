@@ -11,7 +11,20 @@
         {% if tree %}
           <h3>{{ _("Tree Title") }}: {{ tree.title }}</h3>
           <p><strong>{{ _("Tree ID") }}:</strong> {{ tree.trid }}</p>
-
+        <div class="section">
+                  <div class="section__header">
+                    <h3>{{ _("Tree Content") }}</h3>
+                  </div>
+                  <div class="section__body">
+                    {% if tree.content %}
+                      <div class="typo richmedia topic__content" data-emoji-enabled>
+                        {{ tree.content|markdown|safe }}
+                      </div>
+                    {% else %}
+                      <p>{{ _("No content available.") }}</p>
+                    {% endif %}
+                  </div>
+                </div>
           <div class="section">
             <div class="section__header">
               <h3>{{ _("Tree Map") }}</h3>
@@ -72,6 +85,16 @@
         {% else %}
           <p>{{ _("Tree not found.") }}</p>
         {% endif %}
+      </div>
+    
+    </div>
+  </div>
+  <div class="medium-3 columns">
+    <div class="section">
+      <div class="section__header">
+        <a href="{{ url('tree_edit', domainId=tree.domainId, docId=tree.docId) }}" class="button primary expanded">
+          {{ _('Edit Content') }}
+        </a>
       </div>
     </div>
   </div>
