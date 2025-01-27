@@ -665,6 +665,28 @@ export class BranchEditHandler extends BranchHandler {
                 resources[file.filename] = `/repo/${repo.docId}/file/${encodeURIComponent(file.filename)}`;
             });
         });
+        problems.forEach(problem => {
+            resources[problem.title] = `/p/${problem.docId}`;
+        }
+        );
+
+        ctdocs.flat().forEach(contest => {
+            if (contest && contest.docId && contest.title) {
+                resources[contest.title] = `/contest/${contest.docId}`;
+            }
+        });
+
+        htdocs.flat().forEach(homework => {
+            if (homework && homework.docId && homework.title) {
+                resources[homework.title] = `/homework/${homework.docId}`;
+            }
+        });
+
+        tdocs.flat().forEach(training => {
+            if (training && training.docId && training.title) {
+                resources[training.title] = `/training/${training.docId}`;
+            }
+        });
 
         console.log("Resources Mapping:", resources);
 
