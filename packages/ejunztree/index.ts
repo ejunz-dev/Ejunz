@@ -7,6 +7,20 @@ import {
 import { lookup } from 'mime-types';
 export const TYPE_BR: 1 = 1;
 export const TYPE_TR: 6 = 6;
+export const TYPE_FR: 7 = 7;
+
+export interface FRDoc {
+    docType: 7; // Forest 
+    docId: ObjectId;
+    domainId: string;
+    trids: number[]; // 存储所有 Tree ID
+    title: string;
+    content: string;
+    owner: number;
+    createdAt: Date;
+    updateAt: Date;
+}
+
 
 export interface TRDoc {
     docType: 6;  // 标识它是一个 Tree
@@ -44,14 +58,99 @@ export interface BRDoc {
 
 declare module 'ejun' {
     interface Model {
-        br: typeof BranchModel;
+        fr: typeof ForestModel;
         tr: typeof TreeModel;
+        br: typeof BranchModel;
     }
     interface DocType {
-        [TYPE_BR]: BRDoc;
+        [TYPE_FR]: FRDoc;
         [TYPE_TR]: TRDoc;
+        [TYPE_BR]: BRDoc;
+        
     }
 }
+export class ForestModel {
+    /**
+     * 获取指定 domainId 的森林
+     */
+    static async getForest(domainId: string): Promise<FRDoc | null> {
+        const results = await DocumentModel.getMulti(domainId, TYPE_FR, { domainId }).limit(1).toArray();
+        return results.length ? results[0] : null;
+    }
+    
+
+    /**
+     * 创建森林（每个 domain 只能有一个森林）
+     */
+    static async createForest(domainId: string, owner: number, title: string, content: string): Promise<ObjectId> {
+        // ✅ 获取该 domain 下的所有 Tree
+        const trees = await TreeModel.getAllTrees(domainId);
+        const treeIds = trees.map(tree => tree.trid); // 获取所有 Tree 的 ID
+
+        const payload: Partial<ForestDoc> = {
+            docType: TYPE_FR,
+            domainId,
+            trids: treeIds, // ✅ 直接关联现有的 Tree
+            title: title || 'Unnamed Forest',
+            content: content || '',
+            owner,
+            createdAt: new Date(),
+            updateAt: new Date(),
+        };
+
+        return await DocumentModel.add(
+            domainId,
+            payload.content!,
+            payload.owner!,
+            TYPE_FR,
+            null,
+            null,
+            null,
+            _.omit(payload, ['content', 'owner'])
+        );
+    }
+
+    /**
+     * 更新森林的 title 和 content
+     */
+    static async updateForest(domainId: string, docId: ObjectId, title: string, content: string): Promise<void> {
+        const forest = await this.getForest(domainId);
+    
+        if (!forest) {
+            throw new Error(`Forest not found for domain: ${domainId}`);
+        }
+    
+        await DocumentModel.set(domainId, TYPE_FR, docId, {
+            title,
+            content
+        });
+    }
+    
+    
+    static async addTreeToForest(domainId: string, trid: number): Promise<void> {
+        const forest = await this.getForest(domainId);
+    
+        if (!forest) {
+            throw new Error(`Forest not found for domain: ${domainId}`);
+        }
+    
+        // ✅ 避免重复添加相同的 Tree
+        if (forest.trids.includes(trid)) {
+            console.warn(`Tree ${trid} already exists in the forest.`);
+            return;
+        }
+    
+        forest.trids.push(trid);
+    
+        await DocumentModel.set(domainId, TYPE_FR, forest.docId, {
+            trids: forest.trids
+        });
+    }
+    
+    
+   
+}
+
 export class TreeModel {
     static async generateNextTrid(domainId: string): Promise<number> {
         const lastTree = await DocumentModel.getMulti(domainId, TYPE_TR, {}) 
@@ -372,26 +471,97 @@ class BranchHandler extends Handler {
         }
     }
 }
-export class TreeDomainHandler extends Handler {
+export class ForestDomainHandler extends Handler {
     async get({ domainId }) {
         domainId = this.args?.domainId || this.context?.domainId || 'system';
-
+        
         try {
+            const forest = await ForestModel.getForest(domainId);
+
+            if (!forest) {
+                console.warn(`No forest found for domain: ${domainId}`);
+                this.response.template = 'forest_domain.html';
+                this.response.body = { 
+                    domainId,
+                    forest: { title: 'Default Forest', content: 'No content available.', trids: [] }, // ✅ 避免 null
+                    trees: []  // ✅ 确保 `trees` 不会是 undefined
+                };
+                console.log('domainId',domainId)
+                return;
+                
+            }
+
+            // 🚀 **获取所有 `trees`**
             const trees = await TreeModel.getAllTrees(domainId);
-            
-            this.response.template = 'tree_domain.html';  
-            this.response.body = {
-                domainId,
-                trees
+
+            // ✅ 发送 `forest` 和 `trees` 到模板
+            this.response.template = 'forest_domain.html';
+            this.response.body = { 
+                domainId, 
+                forest,
+                trees  // ✅ 传递 `trees`
             };
-        console.log('trees:', trees);
+            console.log('domainId',domainId)
+            
         } catch (error) {
-            console.error("Error fetching trees:", error);
-            this.response.template = 'error.html';  
-            this.response.body = { error: "Failed to fetch trees" };
+            console.error("Error fetching forest:", error);
+            this.response.template = 'error.html';
+            this.response.body = { error: "Failed to fetch forest" };
         }
     }
 }
+
+
+export class ForestEditHandler extends Handler {
+    @param('docId', Types.ObjectId, true) // `docId` 可能为空，表示创建模式
+    async get(domainId: string, docId?: ObjectId) {
+        let forest = (await ForestModel.getForest(domainId)) as FRDoc | null; // ✅ 允许 null
+    
+        if (!forest) {
+            console.warn(`No forest found for domain: ${domainId}`);
+            forest = {
+                docType: 7,
+                domainId: domainId,
+                trids: [],
+                title: '',
+                content: '',
+                owner: this.user._id,
+                createdAt: new Date(),
+                updateAt: new Date(),
+            } as Partial<FRDoc>; // ✅ 这里不包含 `docId`
+        }
+
+        this.response.template = 'forest_edit.html';
+        this.response.body = { forest };
+    }
+
+    @param('title', Types.Title)
+    @param('content', Types.Content, true)
+    async postCreate(domainId: string, title: string, content: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+
+        // ✅ 创建 Forest 并自动关联所有 Tree
+        const docId = await ForestModel.createForest(domainId, this.user._id, title, content || '');
+
+        this.response.body = { docId };
+        this.response.redirect = this.url('forest_domain', { domainId });
+    }
+
+    @param('docId', Types.ObjectId)
+    @param('title', Types.Title)
+    @param('content', Types.Content, true)
+    async postUpdate(domainId: string, docId: ObjectId, title: string, content: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+
+        // ✅ 只更新 title 和 content，不影响 trids
+        await ForestModel.updateForest(domainId, docId, title, content || '');
+
+        this.response.body = { docId };
+        this.response.redirect = this.url('forest_domain', { domainId });
+    }
+}
+
+
 
 
 export class TreeEditHandler extends Handler {
@@ -410,6 +580,7 @@ export class TreeEditHandler extends Handler {
     @param('content', Types.Content, true)
     async postCreate(domainId: string, title: string, content: string) {
         await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
     
         if (!title.trim()) {
             throw new Error("Title cannot be empty.");
@@ -876,7 +1047,9 @@ export class BranchfileDownloadHandler extends Handler {
     }
 }
 export async function apply(ctx: Context) {
-    ctx.Route('tree_domain', '/tree', TreeDomainHandler);
+    ctx.Route('forest_domain', '/forest', ForestDomainHandler);
+    ctx.Route('forest_edit', '/forest/:docId/edit', ForestEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('forest_create', '/forest/create', ForestEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('tree_create', '/tree/create', TreeEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('tree_detail', '/tree/:docId', TreeDetailHandler);
     ctx.Route('tree_edit', '/tree/:docId/edit', TreeEditHandler, PRIV.PRIV_USER_PROFILE);
@@ -886,9 +1059,9 @@ export async function apply(ctx: Context) {
     ctx.Route('branch_edit', '/tree/branch/:docId/editbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('branch_resource_edit', '/tree/branch/:docId/edit/resources', BranchResourceEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('branch_file_download', '/tree/branch/:docId/repo/:rid/:filename', BranchfileDownloadHandler);
-    ctx.injectUI('Nav', 'tree_domain', () => ({
-        name: 'tree_domain',
-        displayName: 'tree_domain',
+    ctx.injectUI('Nav', 'forest_domain', () => ({
+        name: 'forest_domain',
+        displayName: 'forest_domain',
         args: {},
         checker: (handler) => handler.user.hasPriv(PRIV.PRIV_USER_PROFILE),
     }));

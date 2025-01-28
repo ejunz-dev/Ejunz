@@ -1,0 +1,75 @@
+{% import "components/form.html" as form with context %}
+{% extends "layout/basic.html" %}
+
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__header">
+        <h2 class="section__title">
+          {% if forest.docId %}
+            {{ _("Edit Forest") }}
+          {% else %}
+            {{ _("Create Forest") }}
+          {% endif %}
+        </h2>
+      </div>
+      <div class="section__body">
+        <form method="post">
+          {% if forest.docId %}
+            <input type="hidden" name="docId" value="{{ forest.docId }}">
+          {% endif %}
+
+          {{ form.form_text({
+              columns: 12,
+              label: _('Forest Title'),
+              name: 'title',
+              placeholder: _('Enter forest title'),
+              value: forest.title|default(''),
+              autofocus: true
+          }) }}
+
+          {{ form.form_textarea({
+              columns: 12,
+              label: _('Forest Content'),
+              name: 'content',
+              value: forest.content|default(''),
+              markdown: true
+          }) }}
+
+          <div class="row">
+            <div class="columns">
+              <button 
+                name="operation" 
+                value="{% if forest.docId %}update{% else %}create{% endif %}" 
+                type="submit" 
+                class="rounded primary button">
+                {% if forest.docId %}
+                  {{ _('Update Forest') }}
+                {% else %}
+                  {{ _('Create Forest') }}
+                {% endif %}
+              </button>
+
+              {% if forest.docId and (handler.user.own(forest) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) %}
+                <button name="operation" value="delete" type="submit" class="rounded button">
+                  {{ _('Delete Forest') }}
+                </button>
+              {% endif %}
+              
+              <button type="button" class="rounded button" onclick="window.history.go(-1)">
+                {{ _('Cancel') }}
+              </button>
+            </div>
+          </div>
+
+        </form>
+      </div>
+    </div>
+  </div>
+  
+  <div class="medium-3 columns">
+    {% include 'components/md_hint.html' %}
+  </div>
+</div>
+{% endblock %}
