@@ -1032,6 +1032,7 @@ export class BranchEditHandler extends BranchHandler {
         console.log("Resources Mapping:", resources);
 
         this.response.template = 'branch_edit.html';
+
         this.response.body = {
             ddoc,
             docs,
@@ -1042,21 +1043,27 @@ export class BranchEditHandler extends BranchHandler {
             repos: reposWithFiles,
             problems,
             trid: this.args.trid,
-            resources  
+            resources,
+       
         };
     }
-
-
 
     @param('docId', Types.ObjectId)
     @param('title', Types.Title)
     @param('content', Types.Content)
     async postUpdate(domainId: string, docId: ObjectId, title: string, content: string) {
-        await BranchModel.edit(domainId, docId, title, content);
 
+        const branch = await BranchModel.get(domainId, docId);
+        if (!branch || !branch.trid) {
+            throw new NotFoundError(`Branch with docId ${docId} not found or has no trid.`);
+        }
+
+        await BranchModel.edit(domainId, docId, title, content);
+ 
         this.response.body = { docId };
-        this.response.redirect = this.url('branch_detail', { uid: this.user._id, docId });
+        this.response.redirect = this.url('branch_detail', { trid: branch.trid, docId });
     }
+    
 
     @param('docId', Types.ObjectId)
     async postDelete(domainId: string, docId: ObjectId) {
@@ -1090,17 +1097,23 @@ export class BranchResourceEditHandler extends BranchHandler {
     }
 
     @param('docId', Types.ObjectId)
-    @param('lids', Types.String)
-    @param('rids', Types.String)
-    async postUpdateResources(domainId: string, docId: ObjectId, lids: string, rids: string) {
-        const parsedLids = lids ? lids.split(',').map(Number).filter(n => !isNaN(n)) : [];
-        const parsedRids = rids ? rids.split(',').map(Number).filter(n => !isNaN(n)) : [];
+@param('lids', Types.String)
+@param('rids', Types.String)
+async postUpdateResources(domainId: string, docId: ObjectId, lids: string, rids: string) {
+    const parsedLids = lids ? lids.split(',').map(Number).filter(n => !isNaN(n)) : [];
+    const parsedRids = rids ? rids.split(',').map(Number).filter(n => !isNaN(n)) : [];
 
-        await BranchModel.updateResources(domainId, docId, parsedLids, parsedRids);
-
-        this.response.body = { docId };
-        this.response.redirect = this.url('branch_detail', { uid: this.user._id, docId });
+    const branch = await BranchModel.get(domainId, docId);
+    if (!branch || !branch.trid) {
+        throw new NotFoundError(`Branch with docId ${docId} not found or has no trid.`);
     }
+
+    await BranchModel.updateResources(domainId, docId, parsedLids, parsedRids);
+
+    this.response.body = { docId };
+    this.response.redirect = this.url('branch_detail', { trid: branch.trid, docId });
+}
+
 }
 
 
