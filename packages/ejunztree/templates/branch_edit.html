@@ -11,10 +11,19 @@
   }) }}
 </script>
 
+{% set has_docs = docs and docs|length > 0 %}
+{% set has_problems = problems and problems|length > 0 %}
+{% set has_htdocs = htdocs and htdocs|length > 0 %}
+{% set has_tdocs = tdocs and tdocs|length > 0 %}
+{% set has_ctdocs = ctdocs and ctdocs|length > 0 %}
+{% set has_repos = repos and repos|length > 0 %}
+{% set has_related_content = has_docs or has_problems or has_htdocs or has_tdocs or has_ctdocs or has_repos %}
+
 <div class="row" style="display: flex; flex-wrap: nowrap; align-items: flex-start;">
+
+  {% if has_related_content %}
   <div class="medium-3 columns">
-    <!-- 相关文档 -->
-    {% if docs %}
+    {% if has_docs %}
     <div class="section">
       <div class="section__header">
         <h3>{{ _("Related Docs") }}</h3>
@@ -35,7 +44,8 @@
       </div>
     </div>
     {% endif %}
-    {% if problems %}
+
+    {% if has_problems %}
     <div class="section">
       <div class="section__header">
         <h3>{{ _("Related Problems") }}</h3>
@@ -56,69 +66,74 @@
       </div>
     </div>
     {% endif %}
-    {% if htdocs|length > 0 %}
-     <div class="section">
+
+    {% if has_htdocs %}
+    <div class="section">
       <div class="section__header">
-              <h4>{{ _("Related Homework") }}</h4>
-              <ul>
-                {% for htdoc in htdocs %}
-                <li>
-         <a class="discussion-node-tag media-link resource-link" 
+        <h4>{{ _("Related Homework") }}</h4>
+      </div>
+      <div class="section__body">
+        <ul>
+          {% for htdoc in htdocs %}
+          <li>
+            <a class="discussion-node-tag media-link resource-link" 
                data-resource="{{ htdoc.title }}"
                href="javascript:void(0)"
                onclick="copyResourceUrl(this)">
               <span class="v-center icon icon-homework"></span> {{ htdoc.title }}
             </a>
-                </li>
-                {% endfor %}
-              </ul>
-              {% endif %}
-              </div>
-            </div>
-            {% if tdocs|length > 0 %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if has_tdocs %}
     <div class="section">
       <div class="section__header">
-          
-              <h4>{{ _("Problems Related Training Plans") }}</h4>
-              <ul>
-                {% for tdoc in tdocs %}
-                <li>
-         <a class="discussion-node-tag media-link resource-link" 
+        <h4>{{ _("Problems Related Training Plans") }}</h4>
+      </div>
+      <div class="section__body">
+        <ul>
+          {% for tdoc in tdocs %}
+          <li>
+            <a class="discussion-node-tag media-link resource-link" 
                data-resource="{{ tdoc.title }}"
                href="javascript:void(0)"
                onclick="copyResourceUrl(this)">
               <span class="v-center icon icon-training"></span> {{ tdoc.title }}
             </a>
-                </li>
-                {% endfor %}
-              </ul>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
 
-              </div>
-            </div>
-                          {% endif %}
-            {% if ctdocs|length > 0 %}
+    {% if has_ctdocs %}
     <div class="section">
       <div class="section__header">
-          
-              <h4>{{ _("Related Contest") }}</h4>
-              <ul>
-                {% for ctdoc in ctdocs %}
-                <li>
-         <a class="discussion-node-tag media-link resource-link" 
+        <h4>{{ _("Related Contest") }}</h4>
+      </div>
+      <div class="section__body">
+        <ul>
+          {% for ctdoc in ctdocs %}
+          <li>
+            <a class="discussion-node-tag media-link resource-link" 
                data-resource="{{ ctdoc.title }}"
                href="javascript:void(0)"
                onclick="copyResourceUrl(this)">
               <span class="v-center icon icon-contest"></span> {{ ctdoc.title }}
             </a>
-                </li>
-                {% endfor %}
-              </ul>  
-              </div>
-            </div>
-             {% endif %}
-    
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
 
-    {% if repos %}
+    {% if has_repos %}
     <div class="section">
       <div class="section__header">
         <h3>{{ _("Related Repositories") }}</h3>
@@ -156,8 +171,10 @@
     </div>
     {% endif %}
   </div>
+  {% endif %}
 
-  <div class="medium-8 columns">
+  {# 🌟 右侧内容区域自动调整 #}
+  <div class="{% if has_related_content %}medium-8{% else %}medium-12{% endif %} columns">
     <div class="section">
       <div class="section__header">
         <h2 class="section__title">
@@ -172,7 +189,6 @@
       </div>
       <div class="section__body">
         <form method="post">
-          <!-- Hidden input to store parentId if creating a sub-branch -->
           {% if parentId %}
             <input type="hidden" name="parentId" value="{{ parentId }}">
           {% endif %}
@@ -186,7 +202,6 @@
               autofocus:true
           }) }}
 
-          <!-- 只有在编辑模式下才显示内容的编辑框 -->
           {% if ddoc %}
             {{ form.form_textarea({
                 columns:12,
@@ -199,104 +214,22 @@
 
           <div class="row">
             <div class="columns">
-              <button 
-                name="operation" 
-                value="{% if ddoc %}update{% elif parentId %}create_subbranch{% else %}create{% endif %}" 
-                type="submit" 
-                class="rounded primary button">
-                {% if ddoc %}
-                  {{ _('Update') }}
-                {% elif parentId %}
-                  {{ _('Create Sub-Branch') }}
-                {% else %}
-                  {{ _('Create') }}
-                {% endif %}
+              <button type="submit" class="rounded primary button">
+                {{ _('Submit') }}
               </button>
-              {% if ddoc and (handler.user.own(ddoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) %}
-                <button name="operation" value="delete" type="submit" class="rounded button">
-                  {{ _('Delete') }}
-                </button>
-              {% endif %}
               <button type="button" class="rounded button" onclick="window.history.go(-1)">
                 {{ _('Cancel') }}
               </button>
             </div>
           </div>
         </form>
-
-        <!-- 只有在创建模式下，提供跳转去编辑内容的按钮 -->
-        {% if not ddoc %}
-        <div class="section">
-          <p>{{ _('Content will be added after creating the branch.') }}</p>
-        </div>
-        {% endif %}
       </div>
     </div>
   </div>
-
-  <!-- 右侧 Markdown 提示（3列） -->
-  <div class="medium-3 columns">
+<div class="medium-3 columns">
     {% include 'components/md_hint.html' %}
   </div>
+
 </div>
-
-<script>
-function updateResourceLinks() {
-  if (!window.UiContext.resources) {
-    console.warn("🚨 UiContext.resources 为空，无法更新资源链接");
-    return;
-  }
-
-  document.querySelectorAll(".resource-link").forEach((el) => {
-    const resourceName = el.dataset.resource?.trim();
-    if (!resourceName) return;
-
-    if (window.UiContext.resources[resourceName]) {
-      el.setAttribute("data-url", window.UiContext.resources[resourceName]); // 存储相对 URL
-    } else {
-      console.warn(`🚨 资源未找到: ${resourceName}`);
-    }
-  });
-}
-
-function copyResourceUrl(el) {
-  const resourceName = el.dataset.resource;
-  const url = window.UiContext.resources ? window.UiContext.resources[resourceName] : null;
-
-  if (!url) {
-    console.warn("🚨 Resource URL not found for:", resourceName);
-    return;
-  }
-
-  let markdownLink = `@[import](${url})`;
-
-  // 🔍 识别是否是 Contest、Homework 或 Training 的 URL 格式
-  if (/\/contest\/[a-zA-Z0-9]+$/.test(url)) {
-    markdownLink = `@[import](${url})`; // Contest 格式
-  } else if (/\/homework\/[a-zA-Z0-9]+$/.test(url)) {
-    markdownLink = `@[import](${url})`; // Homework 格式
-  } else if (/\/training\/[a-zA-Z0-9]+$/.test(url)) {
-    markdownLink = `@[import](${url})`; // Training 格式
-  } else if (/\/repo\/\d+\/file\/.+/.test(url)) {
-    markdownLink = `@[import](${url})`; // Repo 文件格式
-  }
-
-  if (!navigator.clipboard || !navigator.clipboard.writeText) {
-    console.warn("📋 Clipboard API 不支持，使用 prompt 方式");
-    prompt("手动复制资源路径:", markdownLink);
-    return;
-  }
-
-  navigator.clipboard.writeText(markdownLink)
-    .then(() => {
-      alert(`📋 资源路径已复制: ${markdownLink}`);
-    })
-    .catch((err) => {
-      console.error("❌ 复制失败:", err);
-      alert("复制失败，请手动复制: " + markdownLink);
-    });
-}
-</script>
-
 
 {% endblock %}
