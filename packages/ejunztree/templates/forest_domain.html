@@ -1,4 +1,12 @@
 {% extends "layout/basic.html" %}
+<script>
+  {{ set(UiContext, {
+    ddoc: ddoc,
+    docs: docs,
+    repos: repos,
+    resources: resources
+  }) }}
+</script>
 {% block content %}
 <div class="row">
 
@@ -10,7 +18,9 @@
       <div class="section__body">
         {% if forest %}
           <h3>{{ forest.title }}</h3>
-          <p>{{ forest.content|markdown|safe }}</p>
+         <div class="typo richmedia topic__content" data-emoji-enabled>
+          {{ forest.content|markdown|safe }}
+        </div>
         {% else %}
           <p>{{ _("No forest exists. You can create one.") }}</p>
         {% endif %}
