@@ -83,14 +83,13 @@ export class ForestModel {
      * 创建森林（每个 domain 只能有一个森林）
      */
     static async createForest(domainId: string, owner: number, title: string, content: string): Promise<ObjectId> {
-        // ✅ 获取该 domain 下的所有 Tree
         const trees = await TreeModel.getAllTrees(domainId);
         const treeIds = trees.map(tree => tree.trid); // 获取所有 Tree 的 ID
 
         const payload: Partial<ForestDoc> = {
             docType: TYPE_FR,
             domainId,
-            trids: treeIds, // ✅ 直接关联现有的 Tree
+            trids: treeIds, 
             title: title || 'Unnamed Forest',
             content: content || '',
             owner,
@@ -134,7 +133,7 @@ export class ForestModel {
             throw new Error(`Forest not found for domain: ${domainId}`);
         }
     
-        // ✅ 避免重复添加相同的 Tree
+        
         if (forest.trids.includes(trid)) {
             console.warn(`Tree ${trid} already exists in the forest.`);
             return;
@@ -161,9 +160,9 @@ export class TreeModel {
         return (lastTree[0]?.trid || 0) + 1;
     }
 
-    static async createTree(domainId: string, owner: number, title: string, content: string): Promise<ObjectId> {
+    static async createTree(domainId: string, owner: number, title: string, content: string): Promise<{ docId: ObjectId, trid: number }> {
         const newTrid = await this.generateNextTrid(domainId);
-        
+    
         const payload: Partial<TRDoc> = {
             docType: TYPE_TR,
             domainId,
@@ -176,23 +175,30 @@ export class TreeModel {
     
         const docId = await DocumentModel.add(
             domainId,
-            payload.content!,  // ✅ 传 content 作为文档主要内容
-            payload.owner!,  // ✅ 传 owner 作为创建者
+            payload.content!, 
+            payload.owner!, 
             TYPE_TR,
             null,
             null,
             null,
-            _.omit(payload, ['domainId', 'content', 'owner'])  // ✅ 传完整对象但移除重复字段
+            _.omit(payload, ['domainId', 'content', 'owner'])  
         );
     
-        return docId;
+        return { docId, trid: newTrid };  
     }
     
+    
 
-    static async edit(domainId: string, docId: ObjectId, title: string, content: string): Promise<void> {
-        await DocumentModel.set(domainId, TYPE_TR, docId, {
+    static async edit(domainId: string, trid: number, title: string, content: string): Promise<void> {
+        // 🔍 先获取 `docId`，确保正确更新
+        const treeDoc = await this.getTreeByTrid(domainId, trid);
+        if (!treeDoc) {
+            throw new Error(`Tree with trid ${trid} not found in domain ${domainId}`);
+        }
+    
+        await DocumentModel.set(domainId, TYPE_TR, treeDoc.docId, {
             title,
-            content: content || '',  // 🚨 避免 null
+            content: content || '',   
         });
     }
     
@@ -201,6 +207,12 @@ export class TreeModel {
     static async getTree(domainId: string, docId: ObjectId): Promise<TRDoc | null> {
         return await DocumentModel.get(domainId, TYPE_TR, docId);
     }
+    static async getTreeByTrid(domainId: string, trid: number): Promise<TRDoc | null> {
+        const result = await DocumentModel.getMulti(domainId, TYPE_TR, { trid }).limit(1).toArray();
+        return result.length > 0 ? result[0] : null;  
+    }
+    
+
 
     static async getAllTrees(domainId: string): Promise<TRDoc[]> {
         return await DocumentModel.getMulti(domainId, TYPE_TR, {}).toArray();
@@ -250,7 +262,7 @@ export class BranchModel {
 
     static async addTrunkNode(
         domainId: string,
-        trid: number,
+        trid: number | string,
         bid: number,
         owner: number,
         title: string,
@@ -260,9 +272,14 @@ export class BranchModel {
         rids: number[] = []
     ): Promise<ObjectId> {
         const newBid = bid || await this.generateNextBid(domainId);
+        const parsedTrid = typeof trid === 'string' ? parseInt(trid, 10) : trid;
+    if (isNaN(parsedTrid)) {
+        throw new Error(`Invalid trid: ${trid}`);
+    }
+
         const payload: Partial<BRDoc> = {
             domainId,
-            trid,
+            trid: parsedTrid,
             bid: newBid,
             title,
             content,
@@ -293,7 +310,7 @@ export class BranchModel {
 
     static async addBranchNode(
         domainId: string,
-        trid: number,
+        trid: number[],
         bid: number | null,
         parentBid: number,
         owner: number,
@@ -477,31 +494,32 @@ export class ForestDomainHandler extends Handler {
         
         try {
             const forest = await ForestModel.getForest(domainId);
+            console.log("Fetched forest:", forest);  
 
             if (!forest) {
                 console.warn(`No forest found for domain: ${domainId}`);
                 this.response.template = 'forest_domain.html';
                 this.response.body = { 
                     domainId,
-                    forest: { title: 'Default Forest', content: 'No content available.', trids: [] }, // ✅ 避免 null
-                    trees: []  // ✅ 确保 `trees` 不会是 undefined
+                    forest: { docId: null, title: 'Default Forest', content: 'No content available.', trids: [] },
+                    trees: []  
                 };
-                console.log('domainId',domainId)
+                console.log('forest',forest);
                 return;
-                
             }
 
-            // 🚀 **获取所有 `trees`**
+            
             const trees = await TreeModel.getAllTrees(domainId);
+            console.log("Fetched trees:", trees); 
 
-            // ✅ 发送 `forest` 和 `trees` 到模板
+            
             this.response.template = 'forest_domain.html';
             this.response.body = { 
                 domainId, 
                 forest,
-                trees  // ✅ 传递 `trees`
+                trees  
             };
-            console.log('domainId',domainId)
+            console.log("trees.length:", trees.length);
             
         } catch (error) {
             console.error("Error fetching forest:", error);
@@ -512,11 +530,11 @@ export class ForestDomainHandler extends Handler {
 }
 
 
+
 export class ForestEditHandler extends Handler {
-    @param('docId', Types.ObjectId, true) // `docId` 可能为空，表示创建模式
+    @param('docId', Types.ObjectId, true) 
     async get(domainId: string, docId?: ObjectId) {
-        let forest = (await ForestModel.getForest(domainId)) as FRDoc | null; // ✅ 允许 null
-    
+        let forest = (await ForestModel.getForest(domainId)) as FRDoc | null; 
         if (!forest) {
             console.warn(`No forest found for domain: ${domainId}`);
             forest = {
@@ -528,7 +546,7 @@ export class ForestEditHandler extends Handler {
                 owner: this.user._id,
                 createdAt: new Date(),
                 updateAt: new Date(),
-            } as Partial<FRDoc>; // ✅ 这里不包含 `docId`
+            } as Partial<FRDoc>; 
         }
 
         this.response.template = 'forest_edit.html';
@@ -540,7 +558,7 @@ export class ForestEditHandler extends Handler {
     async postCreate(domainId: string, title: string, content: string) {
         await this.checkPriv(PRIV.PRIV_USER_PROFILE);
 
-        // ✅ 创建 Forest 并自动关联所有 Tree
+        
         const docId = await ForestModel.createForest(domainId, this.user._id, title, content || '');
 
         this.response.body = { docId };
@@ -553,7 +571,7 @@ export class ForestEditHandler extends Handler {
     async postUpdate(domainId: string, docId: ObjectId, title: string, content: string) {
         await this.checkPriv(PRIV.PRIV_USER_PROFILE);
 
-        // ✅ 只更新 title 和 content，不影响 trids
+        
         await ForestModel.updateForest(domainId, docId, title, content || '');
 
         this.response.body = { docId };
@@ -565,11 +583,11 @@ export class ForestEditHandler extends Handler {
 
 
 export class TreeEditHandler extends Handler {
-    @param('docId', Types.ObjectId, true)
-    async get(domainId: string, docId: ObjectId) {
+    @param('trid', Types.Int, true)
+    async get(domainId: string, trid: number) {
 
         
-            const tree = await TreeModel.getTree(domainId, docId);
+            const tree = await TreeModel.getTreeByTrid(domainId, trid);
 
         this.response.template = 'tree_edit.html';
         this.response.body = { tree };
@@ -580,45 +598,43 @@ export class TreeEditHandler extends Handler {
     @param('content', Types.Content, true)
     async postCreate(domainId: string, title: string, content: string) {
         await this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        
     
         if (!title.trim()) {
             throw new Error("Title cannot be empty.");
         }
     
-        // ✅ 确保 content 不为 null 或 undefined
         if (!content || typeof content !== 'string') {
-            content = '';  // 避免存入 null
+            content = '';
         }
     
-        // ✅ 调用 `createTree` 创建树，并获取 `trid`
-        const docId = await TreeModel.createTree(domainId, this.user._id, title, content);
+        
+        const { docId, trid } = await TreeModel.createTree(domainId, this.user._id, title, content);
     
-        // ✅ 返回 `trid` 而不是 `docId`
-        this.response.body = { docId };
-        this.response.redirect = this.url('tree_detail', { domainId, docId });  // ✅ 跳转到树详情页
+        this.response.body = { docId, trid };
+        this.response.redirect = this.url('tree_detail', { domainId, trid }); 
     }
     
     
+    
 
-    @param('docId', Types.ObjectId)
+    @param('trid', Types.Int)
     @param('title', Types.Title)
     @param('content', Types.Content)
-    async postUpdate(domainId: string, docId: ObjectId, title: string, content: string) {
+    async postUpdate(domainId: string, trid: number, title: string, content: string) {
         await this.checkPriv(PRIV.PRIV_USER_PROFILE);
     
         if (!title.trim()) {
             throw new Error("Title cannot be empty.");
         }
     
-        // 🚨 确保 content 不是 null
+        
         if (!content || typeof content !== 'string') {
             content = '';
         }
     
-       await TreeModel.edit(domainId, docId, title, content);
-        this.response.body = { docId };
-        this.response.redirect = this.url('tree_detail', { domainId, docId });
+       await TreeModel.edit(domainId, trid, title, content);
+        this.response.body = { trid };
+        this.response.redirect = this.url('tree_detail', { domainId, trid });
         console.log('docId:', this.response.body.docId);
 
     }
@@ -628,27 +644,27 @@ export class TreeEditHandler extends Handler {
 
 
 export class TreeDetailHandler extends Handler {
-    @param('docId', Types.ObjectId)
-    async get(domainId: string, docId: ObjectId) {
-        if (!docId) {
+    @param('trid', Types.Int)
+    async get(domainId: string, trid: number) {
+        if (!trid) {
             throw new NotFoundError(`Invalid request: docId is missing`);
         }
-        console.log(`Fetching tree with docId: ${docId}`);
+        console.log(`Fetching tree with docId: ${trid}`);
 
         // 获取当前树的信息
-        const tree = await TreeModel.getTree(domainId, docId);
+        const tree = await TreeModel.getTreeByTrid(domainId, trid);
         if (!tree) {
-            throw new NotFoundError(`Tree with docId ${docId} not found.`);
+            throw new NotFoundError(`Tree with docId ${trid} not found.`);
         }
 
         // 获取所有的 treeBranches
         console.log(`Fetching entire tree for trid: ${tree.trid}`);
         const treeBranches = await TreeModel.getBranchesByTree(domainId, tree.trid);
 
-        // 确定根节点 (trunk)
+        
         const trunk = treeBranches.find(branch => branch.parentId === null || branch.path.split('/').length === 1);
 
-        // 递归构建分支层次结构
+        
         const buildHierarchy = (parentId: number | null, branches: any[]) => {
             return branches
                 .filter(branch => branch.parentId === parentId)
@@ -658,13 +674,13 @@ export class TreeDetailHandler extends Handler {
                 }));
         };
 
-        // 构建 `branchHierarchy`
+        
         const branchHierarchy = {
             trunk: trunk || null,
             branches: trunk ? buildHierarchy(trunk.bid, treeBranches) : [],
         };
 
-        // 获取当前节点的子分支
+        
         const childrenBranchesCursor = await BranchModel.getBranch(domainId, { parentId: trunk?.bid });
         const childrenBranches = await childrenBranchesCursor.toArray();
 
@@ -672,11 +688,12 @@ export class TreeDetailHandler extends Handler {
         const pathLevels = trunk?.path?.split('/').filter(Boolean) || [];
         const pathBranches = await BranchModel.getBranchesByIds(domainId, pathLevels.map(Number));
 
-        // 发送数据到模板
+
         this.response.template = 'tree_detail.html';
         this.response.pjax = 'tree_detail.html';
         this.response.body = {
             tree,
+            trunk,
             childrenBranches,
             pathBranches,
             treeBranches,
@@ -684,6 +701,9 @@ export class TreeDetailHandler extends Handler {
         };
 
        console.log('tree', this.response.body.tree);
+       console.log('trunk', this.response.body.trunk);
+       console.log("branchHierarchy:", JSON.stringify(branchHierarchy, null, 2));
+
     }
 
     async post() {
@@ -723,6 +743,7 @@ export class TreeBranchHandler extends Handler {
         console.log('ddocs', this.response.body.ddocs);
     }
 }
+
 
 export class BranchDetailHandler extends BranchHandler {
     @param('docId', Types.ObjectId)
@@ -827,6 +848,116 @@ export class BranchDetailHandler extends BranchHandler {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
     }
 }
+
+
+
+
+
+
+
+export class TreeCreateTrunkHandler extends Handler {
+    async get() {
+        const domainId = this.context.domainId || 'system';
+        const trid = Number(this.args?.trid);
+
+        console.log(`Debug: Opening trunk creation for trid: ${trid}`);
+
+        this.response.template = 'branch_edit.html';
+        this.response.body = {
+            ddoc: this.ddoc,
+            trid
+        };
+    }
+
+    @param('title', Types.Title)
+    @param('trid', Types.number)
+    async postCreate(
+        domainId: string,
+        title: string,
+        trid: string,
+        lids: number[] = [],   
+        rids: number[] = []  
+    ) {
+        await this.limitRate('add_trunk', 3600, 60);
+ 
+        console.log(`Debug: Creating trunk for trid ${trid}`);
+        const parsedTrid = parseInt(trid, 10);
+        if (isNaN(parsedTrid)) {
+            throw new Error(`Invalid trid: ${trid}`);
+        }
+
+        const bid = await BranchModel.generateNextBid(domainId);
+        const docId = await BranchModel.addTrunkNode(
+            domainId,
+            parsedTrid,
+            bid,
+            this.user._id,
+            title,
+            '', 
+            this.request.ip,
+            lids,
+            rids
+        );
+
+        this.response.body = { docId };
+        this.response.redirect = this.url('branch_detail', { uid: this.user._id, trid,docId });
+    }
+}
+
+
+
+
+export class BranchCreateSubbranchHandler extends BranchHandler {
+    async get() {
+        const domainId = this.context.domainId || 'system';
+        const parentId = Number(this.args?.parentId);
+        const trid = Number(this.args?.trid);
+
+        console.log(`Debug: Opening sub-branch creation for parentId: ${parentId}, trid: ${trid}`);
+
+        this.response.template = 'branch_edit.html';
+        this.response.body = {
+            ddoc: this.ddoc,
+            parentId,
+            trid
+        };
+    }
+
+    @param('title', Types.Title)
+    @param('parentId', Types.Int)
+    @param('trid', Types.String)
+    async postCreateSubbranch(
+        domainId: string,
+        title: string,
+        parentId: number,
+        trid: string,
+        lids: number[] = [],  
+        rids: number[] = []  
+    ) {
+        await this.limitRate('add_subbranch', 3600, 60);
+        const tridArray = trid.split(',').map(Number).filter(n => !isNaN(n));
+
+        console.log(`Debug: Creating sub-branch under trid ${trid}, parentId ${parentId}`);
+
+        const bid = await BranchModel.generateNextBid(domainId);
+        const docId = await BranchModel.addBranchNode(
+            domainId,
+            tridArray,
+            bid,
+            parentId,
+            this.user._id,
+            title,
+            '', 
+            this.request.ip,
+            lids,
+            rids
+        );
+
+        this.response.body = { docId };
+        this.response.redirect = this.url('branch_detail', { uid: this.user._id,trid, docId });
+    }
+}
+
 
 
 export class BranchEditHandler extends BranchHandler {
@@ -973,54 +1104,6 @@ export class BranchResourceEditHandler extends BranchHandler {
 }
 
 
-export class BranchCreateSubbranchHandler extends BranchHandler {
-    async get() {
-        const domainId = this.context.domainId || 'system';
-        const parentId = Number(this.args?.parentId);
-
-        console.log(`Debug: Opening sub-branch creation for parentId: ${parentId}`);
-
-        this.response.template = 'branch_edit.html';
-        this.response.body = {
-            ddoc: this.ddoc,
-            parentId,
-        };
-    }
-
-    @param('title', Types.Title)
-    @param('parentId', Types.Int)
-    @param('lids', Types.ArrayOf(Types.Int))
-    @param('rids', Types.ArrayOf(Types.Int))
-    async postCreateSubbranch(
-        domainId: string,
-        title: string,
-        parentId: number,
-        trid: number,
-        lids: number[],
-        rids: number[]
-    ) {
-        await this.limitRate('add_subbranch', 3600, 60);
-
-        console.log(`Debug: Creating sub-branch under trid ${trid}, parentId ${parentId}`);
-
-        const bid = await BranchModel.generateNextBid(domainId);
-        const docId = await BranchModel.addBranchNode(
-            domainId,
-            trid,
-            bid,
-            parentId,
-            this.user._id,
-            title,
-            '', 
-            this.request.ip,
-            lids,
-            rids
-        );
-
-        this.response.body = { docId };
-        this.response.redirect = this.url('branch_detail', { uid: this.user._id, docId });
-    }
-}
 
 
 export class BranchfileDownloadHandler extends Handler {
@@ -1051,14 +1134,15 @@ export async function apply(ctx: Context) {
     ctx.Route('forest_edit', '/forest/:docId/edit', ForestEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('forest_create', '/forest/create', ForestEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('tree_create', '/tree/create', TreeEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('tree_detail', '/tree/:docId', TreeDetailHandler);
-    ctx.Route('tree_edit', '/tree/:docId/edit', TreeEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('tree_detail', '/tree/:trid', TreeDetailHandler);
+    ctx.Route('tree_create_trunk', '/tree/:trid/createtrunk', TreeCreateTrunkHandler);
+    ctx.Route('tree_edit', '/tree/:trid/edit', TreeEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('tree_branch', '/tree/:trid/branch', TreeBranchHandler);
-    ctx.Route('branch_create_subbranch', '/tree/branch/:parentId/createsubbranch', BranchCreateSubbranchHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('branch_detail', '/tree/branch/:docId', BranchDetailHandler);
-    ctx.Route('branch_edit', '/tree/branch/:docId/editbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('branch_resource_edit', '/tree/branch/:docId/edit/resources', BranchResourceEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('branch_file_download', '/tree/branch/:docId/repo/:rid/:filename', BranchfileDownloadHandler);
+    ctx.Route('branch_create_subbranch', '/tree/:trid/branch/:parentId/createsubbranch', BranchCreateSubbranchHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('branch_detail', '/tree/:trid/branch/:docId', BranchDetailHandler);
+    ctx.Route('branch_edit', '/tree/:trid/branch/:docId/editbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('branch_resource_edit', '/tree/:trid/branch/:docId/edit/resources', BranchResourceEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('branch_file_download', '/tree/:trid/branch/:docId/repo/:rid/:filename', BranchfileDownloadHandler);
     ctx.injectUI('Nav', 'forest_domain', () => ({
         name: 'forest_domain',
         displayName: 'forest_domain',

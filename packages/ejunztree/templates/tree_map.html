@@ -12,7 +12,7 @@
 
           <div>
             {{ prefix }}{% if level == 0 %} 🌳 {% elif branch.subBranches and branch.subBranches|length > 0 %} 🌿 {% else %} 🌱 {% endif %}
-            <a href="{{ url('branch_detail', domainId=ddoc.domainId, docId=branch.docId) }}">
+            <a href="{{ url('branch_detail', domainId=ddoc.domainId, trid=ddoc.trid,docId=branch.docId) }}">
               {{ branch.title }}
             </a>
           </div>

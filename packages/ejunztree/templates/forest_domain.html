@@ -21,26 +21,27 @@
 
   <div class="medium-9 columns">
     <div class="section">
-      <div class="section__header">
-        <h2 class="section__title">{{ _("Tree List") }}</h2>
-      </div>
-      <div class="section__body">
-        {% if trees and trees|length > 0 %}
-        <ul>
-          {% for tree in trees %}
-          <li>
-            <a href="{{ url('tree_detail', domainId=domainId, docId=tree._id) }}">
-              {{ tree.title }}
-            </a>
-          </li>
-          {% endfor %}
-        </ul>
-        {% else %}
-        <p>{{ _("No trees available.") }}</p>
-        {% endif %}
-      </div>
+        <div class="section__header">
+            <h2 class="section__title">{{ _("Tree List") }}</h2>
+        </div>
+        <div class="section__body">
+            {% if trees and trees|length > 0 %}
+            <ul>
+                {% for tree in trees %}
+                <li>
+                    <a href="{{ url('tree_detail', domainId=tree.domainId, trid=tree.trid) }}">
+                        {{ tree.title }} (ID: {{ tree.trid }})
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p>{{ _("No trees available.") }}</p>
+            {% endif %}
+        </div>
     </div>
-  </div>
+</div>
+
 
   <div class="medium-3 columns">
     <div class="section side">
