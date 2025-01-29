@@ -759,39 +759,54 @@ export class BranchDetailHandler extends BranchHandler {
             throw new NotFoundError(`Branch with docId ${docId} not found.`);
         }
 
+        if (Array.isArray(ddoc.trid)) {
+            ddoc.trid = ddoc.trid[0]; 
+        }
+        console.log('trunk trid:', ddoc.trid);
+        
+        
+
         const dsdoc = this.user.hasPriv(PRIV.PRIV_USER_PROFILE) ? ddoc : null;
         const udoc = await UserModel.getById(domainId, ddoc.owner);
-        const childrenBranchesCursor = await BranchModel.getBranch(domainId, { parentId: ddoc.bid });
-        const childrenBranches = await childrenBranchesCursor.toArray();
 
         const pathLevels = ddoc.path?.split('/').filter(Boolean) || [];
         const pathBranches = await BranchModel.getBranchesByIds(domainId, pathLevels.map(Number));
+        console.log('pathBranches', pathBranches);
+        console.log('pathLevels', pathLevels);
 
         console.log(`Fetching entire tree for trid: ${ddoc.trid}`);
         const treeBranches = await TreeModel.getBranchesByTree(domainId, ddoc.trid);
+        console.log('treeBranches', treeBranches);
 
         const branchHierarchy = {};
 
+        const trunkBid = pathBranches.length ? pathBranches[0].bid : ddoc.bid;
+
         const buildHierarchy = (parentId: number, branchList: any[]) => {
+
             const branches = branchList.filter(branch => branch.parentId === parentId);
+
+            if (branches.length === 0) {
+                console.warn(`⚠️ Warning: No branches found for parentId = ${parentId}`);
+            } else {
+                console.log(`✅ Found branches:`, branches.map(b => ({ bid: b.bid, title: b.title })));
+            }
+
             return branches.map(branch => ({
                 ...branch,
                 subBranches: buildHierarchy(branch.bid, branchList)
             }));
         };
 
-        branchHierarchy[ddoc.trid] = buildHierarchy(5, treeBranches);
+        branchHierarchy[ddoc.trid] = buildHierarchy(trunkBid, treeBranches);
+        console.log('branchHierarchy', branchHierarchy);
 
         const docs = ddoc.lids?.length
             ? await getDocsByDocId(domainId, ddoc.lids.filter(lid => lid != null).map(Number))
             : [];
 
         docs.forEach(doc => {
-            if (!doc.lid) {
-                doc.lid = String(doc.docId);
-            } else {
-                doc.lid = String(doc.lid);
-            }
+            doc.lid = doc.lid ? String(doc.lid) : String(doc.docId);
         });
 
         const repos = ddoc.rids ? await getReposByDocId(domainId, ddoc.rids) : [];
@@ -818,7 +833,7 @@ export class BranchDetailHandler extends BranchHandler {
                 resources[file.filename] = `/tree/branch/${ddoc.docId}/repo/${repo.rid}/${encodeURIComponent(file.filename)}`;
             });
         });
-        
+
         this.response.template = 'branch_detail.html';
         this.response.pjax = 'branch_detail.html';
         this.response.body = {
@@ -832,16 +847,11 @@ export class BranchDetailHandler extends BranchHandler {
             ctdocs: ctdocs.flat(),
             htdocs: htdocs.flat(),
             tdocs: tdocs.flat(),
-            childrenBranches,
             pathBranches,
             treeBranches,
             branchHierarchy,
             resources 
         };
-        console.log('pids',pids)
-        console.log('Related homework',htdocs)
-        console.log('Related contest',ctdocs)
-        console.log('Related training',tdocs)
     }
 
     async post() {
@@ -855,53 +865,63 @@ export class BranchDetailHandler extends BranchHandler {
 
 
 
-export class TreeCreateTrunkHandler extends Handler {
+export class TreeCreateTrunkHandler extends BranchHandler {
     async get() {
         const domainId = this.context.domainId || 'system';
+        const parentId = Number(this.args?.parentId);
         const trid = Number(this.args?.trid);
 
-        console.log(`Debug: Opening trunk creation for trid: ${trid}`);
+        console.log(`Debug: Opening sub-branch creation for parentId: ${parentId}, trid: ${trid}`);
 
         this.response.template = 'branch_edit.html';
         this.response.body = {
             ddoc: this.ddoc,
+            parentId,
             trid
         };
     }
 
     @param('title', Types.Title)
-    @param('trid', Types.number)
+    @param('trid', Types.String)
     async postCreate(
         domainId: string,
         title: string,
         trid: string,
-        lids: number[] = [],   
-        rids: number[] = []  
+        lids: number[] = [],
+        rids: number[] = []
     ) {
         await this.limitRate('add_trunk', 3600, 60);
- 
-        console.log(`Debug: Creating trunk for trid ${trid}`);
-        const parsedTrid = parseInt(trid, 10);
-        if (isNaN(parsedTrid)) {
+
+        // 🟢 解析 trid，并确保传入的是单个 `number`
+        const tridArray = trid.split(',').map(Number).filter(n => !isNaN(n));
+        if (tridArray.length === 0) {
             throw new Error(`Invalid trid: ${trid}`);
         }
+        const parsedTrid = tridArray[0]; // 取数组的第一个值
+
+        console.log(`Debug: Creating Trunk for trid ${parsedTrid}`);
 
         const bid = await BranchModel.generateNextBid(domainId);
+
+        // ✅ 修正 `addTrunkNode` 调用，确保 `trid` 是 `number`
         const docId = await BranchModel.addTrunkNode(
             domainId,
-            parsedTrid,
+            parsedTrid, // 传递 `number` 类型的 `trid`
             bid,
             this.user._id,
             title,
-            '', 
+            '',
             this.request.ip,
             lids,
             rids
         );
 
+        console.log(`Debug: Created Trunk docId=${docId}, bid=${bid}`);
+
         this.response.body = { docId };
-        this.response.redirect = this.url('branch_detail', { uid: this.user._id, trid,docId });
+        this.response.redirect = this.url('branch_detail', { uid: this.user._id, trid: parsedTrid, docId });
     }
+
 }
 
 
