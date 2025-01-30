@@ -23,7 +23,6 @@ export interface NodeDoc {
     react: Record<string, number>;
     files: {
         filename: string;           
-        version: string;
         path: string;            
         size: number;           
         lastModified: Date;      
@@ -261,7 +260,6 @@ export class NodeModel {
         domainId: string,
         docId: number,
         filename: string,
-        version: string,
         path: string,
         size: number,
         lastModified: Date,
@@ -272,7 +270,6 @@ export class NodeModel {
 
         const payload = {
             filename,
-            version,
             path,
             size,
             lastModified,
@@ -467,13 +464,11 @@ export class NodeEditHandler extends NodeHandler {
     @param('title', Types.Title)
     @param('content', Types.Content)
     @param('filename', Types.String)
-    @param('version', Types.String)
     async postCreate(
         domainId: string,
         title: string,
         content: string,
         filename: string,
-        version: string,
     ) {
         await this.limitRate('add_node', 3600, 60);
     
@@ -501,7 +496,6 @@ export class NodeEditHandler extends NodeHandler {
     
         const fileData = {
             filename: providedFilename ?? 'unknown_file',
-            version: version ?? '0.0.0',
             path: filePath,
             size: fileMeta.size ?? 0,
             lastModified: fileMeta.lastModified ?? new Date(),
@@ -550,7 +544,7 @@ export class NodeEditHandler extends NodeHandler {
 
 
 
-export class NodeVersionHandler extends Handler {
+export class NodeAddHandler extends Handler {
    @param('nid', Types.NodeId, true) 
     async get(domainId: string, nid: string) {
         const node = await NodeModel.getBynid(domainId, nid);
@@ -565,8 +559,7 @@ export class NodeVersionHandler extends Handler {
 
    @param('nid', Types.NodeId, true)
     @param('filename', Types.String, true)
-    @param('version', Types.String, true)
-    async post(domainId: string, nid: string, filename: string, version: string) {
+    async post(domainId: string, nid: string, filename: string) {
         const file = this.request.files?.file;
         if (!file) throw new ValidationError('A file must be uploaded.');
 
@@ -585,7 +578,6 @@ export class NodeVersionHandler extends Handler {
 
         const fileData = {
             filename,
-            version,
             path: filePath, 
             size: fileMeta.size ?? 0,
             lastModified: fileMeta.lastModified ?? new Date(),
@@ -596,7 +588,6 @@ export class NodeVersionHandler extends Handler {
             domainId,
             node.docId,
             fileData.filename,
-            fileData.version,
             fileData.path,
             fileData.size,
             fileData.lastModified,
@@ -688,7 +679,7 @@ export async function apply(ctx: Context) {
     ctx.Route('node_create', '/node/create', NodeEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('node_detail', '/node/:nid', NodeDetailHandler);
     ctx.Route('node_edit', '/node/:nid/edit', NodeEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('node_add_version', '/node/:nid/add-version', NodeVersionHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('node_add', '/node/:nid/add', NodeAddHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('node_history', '/node/:nid/history', NodeHistoryHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('node_file_download', '/node/:nid/file/:filename', NodefileDownloadHandler, PRIV.PRIV_USER_PROFILE);
 
@@ -725,7 +716,6 @@ export async function apply(ctx: Context) {
 
         api.value('File', [
             ['filename', 'String!'],
-            ['version', 'String!'],
             ['path', 'String!'],
             ['size', 'Int!'],
             ['lastModified', 'String!'],
