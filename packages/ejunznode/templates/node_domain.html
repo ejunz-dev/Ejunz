@@ -1,0 +1,41 @@
+{% import "components/paginator.html" as paginator with context %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      
+      <div class="section__body">
+        {% if not ndocs.length %}
+          <p>{{ _('No nodesitories found.') }}</p>
+        {% else %}
+          <ol class="section__list">
+            {% for ndoc in ndocs %}
+              <li class="section__list__item">
+                <h2>
+                  <a href="{{ url('node_detail', domainId=domainId, nid=ndoc.nid) }}">{{ ndoc.title }}</a>
+                </h2>
+                <ul class="list supplementary">
+                  <li>{{ _('{0} views').format(ndoc.views) }}</li>
+                 
+                </ul>
+              </li>
+            {% endfor %}
+          </ol>
+          {{ paginator.render(page, totalPages) }}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="medium-3 columns">
+    <div class="section side">
+      <div class="section__header">
+        <h2 class="section__title">{{ _("{0}'s nodesitories").format(domainId) }}</h2>
+      </div>
+      <div class="section__body">
+        <a href="{{ url('node_create', domainId=domainId) }}" class="button primary expanded">{{ _('Create New Repository') }}</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
