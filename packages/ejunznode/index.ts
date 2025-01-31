@@ -28,6 +28,7 @@ export interface NodeDoc {
         lastModified: Date;      
         etag?: string;        
         type: 'node' | 'file';
+        position?: { x: number; y: number };
     }[];
 }                                   
 
@@ -265,7 +266,8 @@ export class NodeModel {
         path: string,
         size: number,
         lastModified: Date,
-        etag: string
+        etag: string,
+        position?: { x: number; y: number },
     ): Promise<NodeDoc> {
         const nodeDoc = await NodeModel.get(domainId, docId);
         if (!nodeDoc) throw new Error(`Nodesitory with docId=${docId} not found`);
@@ -277,6 +279,7 @@ export class NodeModel {
             lastModified,
             etag,
             type: 'file' as const,
+            position,
         };
 
         const [updatedNode] = await DocumentModel.push(domainId, TYPE_NODE, docId, 'files', payload);
@@ -558,14 +561,21 @@ export class NodeAddHandler extends Handler {
         this.response.body = {
             ddoc: node,
             domainId,
+            files: node.files.filter(file => file.type === 'node'),  // 仅传递 type 为 'node' 的文件
         };
     }
 
    @param('nid', Types.NodeId, true)
     @param('filename', Types.String, true)
-    async post(domainId: string, nid: string, filename: string) {
+    @param('x', Types.Number, true)
+    @param('y', Types.Number, true)
+    async post(domainId: string, nid: string, filename: string, x: number, y: number) {
         const file = this.request.files?.file;
         if (!file) throw new ValidationError('A file must be uploaded.');
+
+        if (isNaN(x) || isNaN(y)) {
+            throw new ValidationError('Coordinates must be provided.');
+        }
 
         const node = await NodeModel.getBynid(domainId, nid);
         if (!node) throw new NotFoundError(`Nodesitory not found for NID: ${nid}`);
@@ -587,6 +597,7 @@ export class NodeAddHandler extends Handler {
             lastModified: fileMeta.lastModified ?? new Date(),
             etag: fileMeta.etag ?? '',
             type: 'file' as const,
+            position: { x, y },  // 确保位置参数被添加
         };
 
         await NodeModel.addVersion(
@@ -596,9 +607,9 @@ export class NodeAddHandler extends Handler {
             fileData.path,
             fileData.size,
             fileData.lastModified,
-            fileData.etag
+            fileData.etag,
+            fileData.position
         );
-        
 
         console.log('Version added successfully:', fileData);
 
