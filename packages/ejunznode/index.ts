@@ -27,6 +27,7 @@ export interface NodeDoc {
         size: number;           
         lastModified: Date;      
         etag?: string;        
+        type: 'node' | 'file';
     }[];
 }                                   
 
@@ -110,6 +111,7 @@ export class NodeModel {
             nReply: 0,
             updateAt: new Date(),
             views: 0,
+            files: meta.files?.map(file => ({ ...file, type: 'node' })) || [],
             ...meta, 
         };
 
@@ -274,6 +276,7 @@ export class NodeModel {
             size,
             lastModified,
             etag,
+            type: 'file' as const,
         };
 
         const [updatedNode] = await DocumentModel.push(domainId, TYPE_NODE, docId, 'files', payload);
@@ -500,6 +503,7 @@ export class NodeEditHandler extends NodeHandler {
             size: fileMeta.size ?? 0,
             lastModified: fileMeta.lastModified ?? new Date(),
             etag: fileMeta.etag ?? '',
+            type: 'node' as const,
         };
     
         const nid = await NodeModel.addWithId(
@@ -582,6 +586,7 @@ export class NodeAddHandler extends Handler {
             size: fileMeta.size ?? 0,
             lastModified: fileMeta.lastModified ?? new Date(),
             etag: fileMeta.etag ?? '',
+            type: 'file' as const,
         };
 
         await NodeModel.addVersion(
