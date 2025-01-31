@@ -23,21 +23,7 @@
             </div>
           </div>
 
-          <!-- 版本号 -->
-          <div class="row">
-            <div class="medium-12 columns">
-              <label>
-                {{ _('File Version') }}
-                <input 
-                  name="version" 
-                  placeholder="{{ _('Enter file version (e.g., 1.0.0)') }}" 
-                  value="" 
-                  class="textbox" 
-                  required>
-              </label>
-            </div>
-          </div>
-
+   
           <!-- 文件上传 -->
           <div class="row">
             <div class="medium-12 columns">
@@ -77,7 +63,6 @@
           <ul>
             {% for file in ddoc.files | sort(attribute='version', reverse=True) %}
               <li>
-                <strong>{{ _('Version:') }}</strong> {{ file.version }}<br>
                 <strong>{{ _('Filename:') }}</strong> 
                 <a href="{{ file.path }}" target="_blank">{{ file.filename }}</a><br>
                 <strong>{{ _('Size:') }}</strong> {{ file.size }} bytes
