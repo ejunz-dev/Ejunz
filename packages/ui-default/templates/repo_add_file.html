@@ -4,19 +4,10 @@
   <div class="medium-9 columns">
     <div class="section">
       <div class="section__header">
-        <h1 class="section__title">{{ _('Submit New Version') }}</h1>
+        <h1 class="section__title">{{ _('Submit New File') }}</h1>
       </div>
       <div class="section__body">
-        <!-- 图片展示 -->
-        {% if files %}
-          <div class="image-container">
-            {% for file in files %}
-              <img src="{{ file.url }}" alt="{{ file.filename }}" id="node-image-{{ loop.index }}" style="max-width: 100%;">
-            {% endfor %}
-          </div>
-        {% endif %}
-
-        <form method="post" enctype="multipart/form-data" onsubmit="return validateCoordinates()">
+        <form method="post" enctype="multipart/form-data">
           <!-- 文件名 -->
           <div class="row">
             <div class="medium-12 columns">
@@ -32,6 +23,22 @@
             </div>
           </div>
 
+          <!-- 版本号（仅在迭代模式下显示） -->
+          {% if ddoc.isIterative %}
+          <div class="row version-row">
+            <div class="medium-12 columns">
+              <label>
+                {{ _('File Version') }}
+                <input 
+                  name="version" 
+                  placeholder="{{ _('Enter file version (e.g., 1.0.0)') }}" 
+                  value="" 
+                  class="textbox">
+              </label>
+            </div>
+          </div>
+          {% endif %}
+
           <!-- 文件上传 -->
           <div class="row">
             <div class="medium-12 columns">
@@ -45,9 +52,6 @@
               </label>
             </div>
           </div>
-
-          <input type="hidden" name="x" id="x-coordinate">
-          <input type="hidden" name="y" id="y-coordinate">
 
           <!-- 提交按钮 -->
           <div class="row">
@@ -63,26 +67,4 @@
     </div>
   </div>
 </div>
-
-<script>
-  document.querySelectorAll('img[id^="node-image-"]').forEach(function(image) {
-    image.addEventListener('click', function(event) {
-      const rect = event.target.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      document.getElementById('x-coordinate').value = x;
-      document.getElementById('y-coordinate').value = y;
-    });
-  });
-
-  function validateCoordinates() {
-    const x = document.getElementById('x-coordinate').value;
-    const y = document.getElementById('y-coordinate').value;
-    if (!x || !y) {
-      alert('Please click on the image to select a position.');
-      return false;
-    }
-    return true;
-  }
-</script>
 {% endblock %}
