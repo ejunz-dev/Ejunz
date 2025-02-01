@@ -100,6 +100,7 @@ export class RepoModel {
             nReply: 0,
             updateAt: new Date(),
             views: 0,
+            isIterative: false,
             ...meta, 
         };
 
@@ -118,10 +119,10 @@ export class RepoModel {
     }
 
     static async add(
-        domainId: string, owner: number, title: string, content: string, ip?: string,
+        domainId: string, owner: number, title: string, content: string, ip?: string, isIterative: boolean = true
     ): Promise<string> {
         const docId = await RepoModel.generateNextDocId(domainId);
-        return RepoModel.addWithId(domainId, docId, owner, title, content, ip);
+        return RepoModel.addWithId(domainId, docId, owner, title, content, ip, {}, isIterative);
     }
 
     static async getByRid(domainId: string, rid: string): Promise<RepoDoc | null> {
@@ -245,8 +246,7 @@ export class RepoModel {
 
         return document.set(domainId, document.TYPE_REPO, repo.docId, updates);
     }
-
-    static async addVersion(
+static async addVersion(
         domainId: string,
         docId: number,
         filename: string,
@@ -272,6 +272,32 @@ export class RepoModel {
 
         return updatedRepo;
     }
+    static async addFile(
+        domainId: string,
+        docId: number,
+        filename: string,
+        path: string,
+        size: number,
+        lastModified: Date,
+        etag: string
+    ): Promise<RepoDoc> {
+        const repoDoc = await RepoModel.get(domainId, docId);
+        if (!repoDoc) throw new Error(`Repository with docId=${docId} not found`);
+
+
+        const payload = {
+            filename,
+            path,
+            size,
+            lastModified,
+            etag,
+        };
+
+        const [updatedRepo] = await document.push(domainId, document.TYPE_REPO, docId, 'files', payload);
+
+        return updatedRepo;
+    }
+
 
     static async inc(domainId: string, rid: string, key: NumberKeys<RepoDoc>, value: number): Promise<RepoDoc | null> {
         const doc = await RepoModel.getByRid(domainId, rid);

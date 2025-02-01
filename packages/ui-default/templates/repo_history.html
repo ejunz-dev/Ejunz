@@ -11,7 +11,9 @@
         {% if files and files.length %}
           <table class="data-table">
             <colgroup>
+              {% if ddoc.isIterative %}
               <col class="col--version">
+              {% endif %}
               <col class="col--name">
               <col class="col--size">
               <col class="col--modified">
@@ -19,7 +21,9 @@
             </colgroup>
             <thead>
               <tr>
+                {% if ddoc.isIterative %}
                 <th class="col--version">{{ _('Version') }}</th>
+                {% endif %}
                 <th class="col--name">{{ _('Filename') }}</th>
                 <th class="col--size">{{ _('Size') }}</th>
                 <th class="col--modified">{{ _('Last Modified') }}</th>
@@ -29,7 +33,9 @@
             <tbody>
               {%- for file in files -%}
               <tr data-filename="{{ file.filename }}" data-size="{{ file.size }}">
+                {% if ddoc.isIterative %}
                 <td class="col--version">{{ file.version }}</td>
+                {% endif %}
                 <td class="col--name" data-preview>
                   <a href="{{ url('repo_file_download', { rid: rid, filename: file.filename }) }}">{{ file.filename }}</a>
                 </td>

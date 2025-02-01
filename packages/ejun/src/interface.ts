@@ -320,6 +320,7 @@ interface RepoDoc {
     views: number;
     reply: any[];
     react: Record<string, number>;
+    isIterative?: boolean;
     files: {
         filename: string;           
         version: string;

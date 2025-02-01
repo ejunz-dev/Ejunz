@@ -57,7 +57,7 @@
             </div>
           </div>
           
-          <div class="row">
+          <div class="row version-row" style="display: none;">
             <div class="medium-12 columns">
               <label>
                 {{ _('File Version (Optional)') }}
@@ -70,6 +70,17 @@
             </div>
           </div>
           {% endif %}
+
+          <div class="row">
+            <div class="medium-12 columns">
+              <label>
+                <input type="checkbox" name="isIterative" id="isIterativeCheckbox" {% if ddoc.isIterative %}checked{% endif %}>
+                {{ _('Enable Iterative Mode') }}
+              </label>
+            </div>
+          </div>
+
+          <input type="hidden" name="isIterative" value="false">
 
           <div class="row">
             <div class="columns">
@@ -99,4 +110,26 @@
     {% include 'components/md_hint.html' %}
   </div>
 </div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const isIterativeCheckbox = document.getElementById('isIterativeCheckbox');
+    const versionRow = document.querySelector('.version-row');
+    const hiddenField = document.querySelector('input[name="isIterative"][type="hidden"]');
+
+    function toggleVersionRow() {
+      if (isIterativeCheckbox.checked) {
+        versionRow.style.display = 'block';
+      } else {
+        versionRow.style.display = 'none';
+      }
+    }
+
+    isIterativeCheckbox.addEventListener('change', function() {
+      hiddenField.disabled = isIterativeCheckbox.checked;
+      toggleVersionRow();
+    });
+    toggleVersionRow(); // 初始化时调用一次
+  });
+</script>
 {% endblock %}
