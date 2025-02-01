@@ -159,13 +159,15 @@ export class RepoEditHandler extends RepoHandler {
     @param('title', Types.Title)
     @param('content', Types.Content)
     @param('filename', Types.String)
-    @param('version', Types.String)
+    @param('version', Types.String, true)
+    @param('isIterative', Types.Boolean)
     async postCreate(
         domainId: string,
         title: string,
         content: string,
         filename: string,
         version: string,
+        isIterative: boolean = false
     ) {
         await this.limitRate('add_repo', 3600, 60);
     
@@ -193,7 +195,7 @@ export class RepoEditHandler extends RepoHandler {
     
         const fileData = {
             filename: providedFilename ?? 'unknown_file',
-            version: version ?? '0.0.0',
+            version: isIterative ? (version ?? '0.0.0') : undefined,
             path: filePath,
             size: fileMeta.size ?? 0,
             lastModified: fileMeta.lastModified ?? new Date(),
@@ -207,7 +209,7 @@ export class RepoEditHandler extends RepoHandler {
             title,
             content,
             this.request.ip,
-            { files: [fileData] }
+            { files: [fileData], isIterative }
         );
         console.log(`[RepoEditHandler] Created repository: docId=${docId}, rid=${rid}`);
         
@@ -242,23 +244,23 @@ export class RepoEditHandler extends RepoHandler {
 
 
 
-export class RepoVersionHandler extends Handler {
-   @param('rid', Types.RepoId, true) 
+export class RepoAddFileHandler extends Handler {
+    @param('rid', Types.RepoId, true) 
     async get(domainId: string, rid: string) {
         const repo = await Repo.getByRid(domainId, rid);
         if (!repo) throw new NotFoundError(`Repository not found for RID: ${rid}`);
 
-        this.response.template = 'repo_version.html';
+        this.response.template = 'repo_add_file.html';
         this.response.body = {
             ddoc: repo,
             domainId,
         };
     }
 
-   @param('rid', Types.RepoId, true)
+    @param('rid', Types.RepoId, true)
     @param('filename', Types.String, true)
     @param('version', Types.String, true)
-    async post(domainId: string, rid: string, filename: string, version: string) {
+    async post(domainId: string, rid: string, filename: string, version?: string) {
         const file = this.request.files?.file;
         if (!file) throw new ValidationError('A file must be uploaded.');
 
@@ -277,26 +279,37 @@ export class RepoVersionHandler extends Handler {
 
         const fileData = {
             filename,
-            version,
+            version: repo.isIterative ? version : undefined,
             path: filePath, 
             size: fileMeta.size ?? 0,
             lastModified: fileMeta.lastModified ?? new Date(),
             etag: fileMeta.etag ?? '',
         };
 
-        await Repo.addVersion(
-            domainId,
-            repo.docId,
-            fileData.filename,
-            fileData.version,
-            fileData.path,
-            fileData.size,
-            fileData.lastModified,
-            fileData.etag
-        );
-        
+        if (repo.isIterative) {
+            await Repo.addVersion(
+                domainId,
+                repo.docId,
+                fileData.filename,
+                fileData.version,
+                fileData.path,
+                fileData.size,
+                fileData.lastModified,
+                fileData.etag
+            );
+        } else {
+            await Repo.addFile(
+                domainId,
+                repo.docId,
+                fileData.filename,
+                fileData.path,
+                fileData.size,
+                fileData.lastModified,
+                fileData.etag
+            );
+        }
 
-        console.log('Version added successfully:', fileData);
+        console.log('File added successfully:', fileData);
 
         this.response.redirect = this.url('repo_detail', { domainId, rid });
     }
@@ -380,7 +393,7 @@ export async function apply(ctx: Context) {
     ctx.Route('repo_create', '/repo/create', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_detail', '/repo/:rid', RepoDetailHandler);
     ctx.Route('repo_edit', '/repo/:rid/edit', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('repo_add_version', '/repo/:rid/add-version', RepoVersionHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('repo_add_file', '/repo/:rid/add_file', RepoAddFileHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_history', '/repo/:rid/history', RepoHistoryHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_file_download', '/repo/:rid/file/:filename', RepofileDownloadHandler, PRIV.PRIV_USER_PROFILE);
 

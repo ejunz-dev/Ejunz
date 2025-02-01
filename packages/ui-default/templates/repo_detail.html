@@ -20,9 +20,11 @@
       <li>
         <strong>{{ _('Filename:') }}</strong> <a href="{{ latest_file.path }}" target="_blank">{{ latest_file.filename }}</a>
       </li>
+      {% if ddoc.isIterative %}
       <li>
         <strong>{{ _('Version:') }}</strong> {{ latest_file.version }}
       </li>
+      {% endif %}
       <li>
         <strong>{{ _('Size:') }}</strong> {{ latest_file.size }} bytes
       </li>
@@ -36,6 +38,7 @@
 
 
   <!-- 显示所有文件 -->
+  {% if ddoc.isIterative %}
   <div class="section">
     <h3>{{ _('All Versions') }}</h3>
     <ul>
@@ -47,6 +50,7 @@
       {% endfor %}
     </ul>
   </div>
+  {% endif %}
 {% else %}
   <p>{{ _('No files available.') }}</p>
 {% endif %}
@@ -71,8 +75,8 @@
         </a>
       </div>
       <div class="section__body">
-        <a href="{{ url('repo_add_version', domainId=domainId, rid=ddoc.rid) }}" class="button primary expanded">
-          {{ _('Submit New Version File') }}
+        <a href="{{ url('repo_add_file', domainId=domainId, rid=ddoc.rid) }}" class="button primary expanded">
+          {{ _('Submit New File') }}
         </a>
       </div>
     </div>
