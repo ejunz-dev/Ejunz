@@ -23,6 +23,21 @@
             </div>
           </div>
 
+          <!-- 标签输入 -->
+          <div class="row">
+            <div class="medium-12 columns">
+              {{ form.form_text({
+                 row:false,
+                 columns:9,
+                 label:'Tags',
+                 help_text:'Split by \', \'.',
+                 name:'tag',
+                 value:pdoc['tag']|default([])|join(', ')
+               }) }}
+            </div>
+          </div>
+          <!-- 标签输入结束 -->
+
           <!-- 版本号（仅在迭代模式下显示） -->
           {% if ddoc.isIterative %}
           <div class="row version-row">
@@ -66,5 +81,19 @@
       </div>
     </div>
   </div>
+
+  <!-- 插入的分类部分 -->
+  <div class="medium-3 columns">
+    <div class="section side visiable nojs--hide section--problem-sidebar-tags">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Categories') }} ({{ _('click to add') }})</h1>
+      </div>
+      <div class="section__body problem-sidebar-tags__detail">
+        {% include "partials/category.html" %}
+      </div>
+    </div>
+  </div>
+  <!-- 分类部分结束 -->
+
 </div>
 {% endblock %}
