@@ -327,7 +327,8 @@ interface RepoDoc {
         path: string;            
         size: number;           
         lastModified: Date;      
-        etag?: string;        
+        etag?: string;     
+        tag: string[];   
     }[];
 }                
 }         

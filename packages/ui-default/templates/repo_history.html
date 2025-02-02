@@ -9,7 +9,7 @@
       {{ noscript_note.render() }}
       <div class="section__body no-padding files" data-fragment-id="files">
         {% if files and files.length %}
-          <table class="data-table">
+          <table class="data-table hide-file-tag">
             <colgroup>
               {% if ddoc.isIterative %}
               <col class="col--version">
@@ -24,9 +24,13 @@
                 {% if ddoc.isIterative %}
                 <th class="col--version">{{ _('Version') }}</th>
                 {% endif %}
-                <th class="col--name">{{ _('Filename') }}</th>
+                <th class="col--name">{{ _('Filename') }}
+                 
+                </th>
+                
                 <th class="col--size">{{ _('Size') }}</th>
                 <th class="col--modified">{{ _('Last Modified') }}</th>
+                <th class="col--tag">{{ _('Tags') }}</th>
                 <th class="col--operation"></th>
               </tr>
             </thead>
@@ -38,9 +42,17 @@
                 {% endif %}
                 <td class="col--name" data-preview>
                   <a href="{{ url('repo_file_download', { rid: rid, filename: file.filename }) }}">{{ file.filename }}</a>
+
                 </td>
                 <td class="col--size">{{ size(file.size) }}</td>
                 <td class="col--modified">{{ file.lastModified }}</td>
+                <td class="col--tag">
+                  <div class="tags">
+                    {% for tag in file.tag %}
+                      <span class="tag">{{ tag }}</span>
+                    {% endfor %}
+                  </div>
+                </td>
                 <td class="col--operation">
                   <a href="{{ url('repo_file_download', { rid: rid, filename: file.filename }) }}" class="icon icon-download" title="{{ _('Download') }}"></a>
                 </td>

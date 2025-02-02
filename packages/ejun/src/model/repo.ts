@@ -254,7 +254,8 @@ static async addVersion(
         path: string,
         size: number,
         lastModified: Date,
-        etag: string
+        etag: string,
+        tag: string[] = [],
     ): Promise<RepoDoc> {
         const repoDoc = await RepoModel.get(domainId, docId);
         if (!repoDoc) throw new Error(`Repository with docId=${docId} not found`);
@@ -266,6 +267,7 @@ static async addVersion(
             size,
             lastModified,
             etag,
+            tag,
         };
 
         const [updatedRepo] = await document.push(domainId, document.TYPE_REPO, docId, 'files', payload);
@@ -279,7 +281,8 @@ static async addVersion(
         path: string,
         size: number,
         lastModified: Date,
-        etag: string
+        etag: string,
+        tag: string[] = [],
     ): Promise<RepoDoc> {
         const repoDoc = await RepoModel.get(domainId, docId);
         if (!repoDoc) throw new Error(`Repository with docId=${docId} not found`);
@@ -291,6 +294,7 @@ static async addVersion(
             size,
             lastModified,
             etag,
+            tag,
         };
 
         const [updatedRepo] = await document.push(domainId, document.TYPE_REPO, docId, 'files', payload);
