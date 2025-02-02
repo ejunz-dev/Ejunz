@@ -24,6 +24,9 @@ import { encodeRFC5987ValueChars } from '../service/storage';
 import { RepoDoc } from '../interface';
 import domain from '../model/domain';
 
+export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
+
+
 class RepoHandler extends Handler {
     ddoc?: RepoDoc;
 
@@ -111,7 +114,6 @@ export class RepoDetailHandler extends Handler {
             console.warn(`[RepoDetailHandler] Warning: ddoc.files is not an array, resetting to empty array.`);
             ddoc.files = [];
         }
-
         console.log(`[RepoDetailHandler] Retrieved files:`, JSON.stringify(ddoc.files, null, 2));
 
         this.response.template = 'repo_detail.html';
@@ -121,6 +123,10 @@ export class RepoDetailHandler extends Handler {
             ddoc,
             files: ddoc.files, 
         };
+        console.log('tag', ddoc.files.map(file => ({
+            ...file,
+            tag: file.tag || []
+        })));
     }
 }
 
@@ -260,7 +266,8 @@ export class RepoAddFileHandler extends Handler {
     @param('rid', Types.RepoId, true)
     @param('filename', Types.String, true)
     @param('version', Types.String, true)
-    async post(domainId: string, rid: string, filename: string, version?: string) {
+    @post('tag', Types.Content, true, null, parseCategory)
+    async post(domainId: string, rid: string, filename: string, version?: string, tag: string[] = []) {
         const file = this.request.files?.file;
         if (!file) throw new ValidationError('A file must be uploaded.');
 
@@ -284,6 +291,7 @@ export class RepoAddFileHandler extends Handler {
             size: fileMeta.size ?? 0,
             lastModified: fileMeta.lastModified ?? new Date(),
             etag: fileMeta.etag ?? '',
+            tag: tag,
         };
 
         if (repo.isIterative) {
@@ -295,7 +303,8 @@ export class RepoAddFileHandler extends Handler {
                 fileData.path,
                 fileData.size,
                 fileData.lastModified,
-                fileData.etag
+                fileData.etag,
+                fileData.tag
             );
         } else {
             await Repo.addFile(
@@ -305,7 +314,8 @@ export class RepoAddFileHandler extends Handler {
                 fileData.path,
                 fileData.size,
                 fileData.lastModified,
-                fileData.etag
+                fileData.etag,
+                fileData.tag
             );
         }
 
@@ -334,6 +344,7 @@ export class RepoHistoryHandler extends Handler {
             .map(file => ({
                 ...file,
                 lastModified: new Date(file.lastModified),
+                tag: file.tag || []
             }))
             .sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
 
