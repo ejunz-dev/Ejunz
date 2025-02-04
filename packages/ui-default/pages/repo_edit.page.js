@@ -154,29 +154,8 @@ async function handleSection(ev, sidebar, type) {
   $section.removeClass('animating');
 }
 
-export default new NamedPage(['problem_create', 'problem_edit'], () => {
-  let confirmed = false;
-  $(document).on('click', '[name="operation"]', (ev) => {
-    ev.preventDefault();
-    if (confirmed) {
-      return request.post('.', { operation: 'delete' }).then((res) => {
-        window.location.href = res.url;
-      }).catch((e) => {
-        Notification.error(e.message);
-      });
-    }
-    const message = 'Confirm deleting this problem? Its files, submissions, discussions and solutions will be deleted as well.';
-    return new ConfirmDialog({
-      $body: tpl`
-        <div class="typo">
-          <p>${i18n(message)}</p>
-        </div>`,
-    }).open().then((action) => {
-      if (action !== 'yes') return;
-      confirmed = true;
-      ev.target.click();
-    });
-  });
+export default new NamedPage(['repo_add_file','repo_edit'], () => {
+ 
   $(document).on('change', '[name="tag"]', parseCategorySelection);
   buildCategoryFilter();
   parseCategorySelection();
