@@ -28,22 +28,21 @@ import user from './user';
 import * as document from './document';
 import _ from 'lodash';
 
-export interface RepoDoc extends Document {}
 export type Field = keyof RepoDoc;
 
 export class RepoModel {
     static PROJECTION_LIST: Field[] = [
-        'docId', 'rid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply','files'
+        'docId', 'rid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply','files','tag'
     ];
 
     static PROJECTION_DETAIL: Field[] = [
         ...RepoModel.PROJECTION_LIST,
-       'docId', 'rid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply','files'
+       'docId', 'rid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply','files','tag'
     ];
 
     static PROJECTION_PUBLIC: Field[] = [
         ...RepoModel.PROJECTION_DETAIL,
-        'docId', 'rid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply','files'
+        'docId', 'rid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply','files','tag'
     ];
 
     static async generateNextDocId(domainId: string): Promise<number> {
@@ -82,6 +81,7 @@ export class RepoModel {
         content: string,
         ip?: string,
         meta: Partial<RepoDoc> = {},
+        isIterative: boolean = true
     ): Promise<string> {
         const rid = await RepoModel.generateNextRid(domainId);
 
@@ -101,6 +101,7 @@ export class RepoModel {
             updateAt: new Date(),
             views: 0,
             isIterative: false,
+            tag: meta.tag || [],
             ...meta, 
         };
 
@@ -119,10 +120,16 @@ export class RepoModel {
     }
 
     static async add(
-        domainId: string, owner: number, title: string, content: string, ip?: string, isIterative: boolean = true
+        domainId: string, 
+        owner: number, 
+        title: string, 
+        content: string, 
+        ip?: string, 
+        isIterative: boolean = true,
+        tags: string[] = []
     ): Promise<string> {
         const docId = await RepoModel.generateNextDocId(domainId);
-        return RepoModel.addWithId(domainId, docId, owner, title, content, ip, {}, isIterative);
+        return RepoModel.addWithId(domainId, docId, owner, title, content, ip, { tag: tags }, isIterative);
     }
 
     static async getByRid(domainId: string, rid: string): Promise<RepoDoc | null> {
@@ -222,6 +229,10 @@ export class RepoModel {
     static async edit(domainId: string, rid: string, updates: Partial<RepoDoc>): Promise<RepoDoc> {
         const repo = await document.getMulti(domainId, document.TYPE_REPO, { rid }).next();
         if (!repo) throw new Error(`Document with rid=${rid} not found`);
+
+        if (updates.tag) {
+            updates.tag = Array.isArray(updates.tag) ? updates.tag : [updates.tag];
+        }
 
         return document.set(domainId, document.TYPE_REPO, repo.docId, updates);
     }

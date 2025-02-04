@@ -154,7 +154,7 @@ async function handleSection(ev, sidebar, type) {
   $section.removeClass('animating');
 }
 
-export default new NamedPage(['problem_create', 'problem_edit','repo_add_file'], () => {
+export default new NamedPage(['problem_create', 'problem_edit','repo_add_file','repo_edit'], () => {
   let confirmed = false;
   $(document).on('click', '[name="operation"]', (ev) => {
     ev.preventDefault();

@@ -321,6 +321,7 @@ interface RepoDoc {
     reply: any[];
     react: Record<string, number>;
     isIterative?: boolean;
+    tag: string[];    
     files: {
         filename: string;           
         version: string;
@@ -845,7 +846,7 @@ export interface Lib extends Record<string, any> {
     problemSearch: ProblemSearch;
 }
 
-export type UIInjectableFields = 'ProblemAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel' | 'ProfileHeaderContact';
+export type UIInjectableFields = 'ProblemAdd' |'RepoAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel' | 'ProfileHeaderContact';
 export interface UI {
     template: Record<string, string>,
     nodes: Record<UIInjectableFields, any[]>,

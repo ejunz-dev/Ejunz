@@ -7,7 +7,7 @@ import { i18n, request, tpl } from 'vj/utils';
 
 const page = new NamedPage([
   'problem_create', 'problem_edit', 'problem_solution', 'problem_submit',
-  'problem_files', 'problem_detail', 'discussion_node', 'discussion_detail','repo_add_file'
+  'problem_files', 'problem_detail', 'discussion_node', 'discussion_detail','repo_add_file','repo_edit'
 ], () => {
   $(document).on('click', '[name="problem-sidebar__show-category"]', (ev) => {
     $(ev.currentTarget).hide();
