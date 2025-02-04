@@ -145,31 +145,18 @@ export class RepoModel {
     }
     
 
-    static async get(domainId: string, rid: number | string): Promise<RepoDoc | null> {
-        const query = typeof rid === 'number' ? { docId: rid } : { rid: String(rid) };
-
-        console.log(`[RepoModel.get] Querying document with ${typeof rid === 'number' ? 'docId' : 'rid'}=${rid}`);
-
-        const res = await document.getMulti(domainId, document.TYPE_REPO, query)
-            .project({ files: 1, rid: 1, title: 1, content: 1, docId: 1 })
-            .limit(1)
-            .toArray();
-
-        if (!res.length) {
-            console.error(`[RepoModel.get] No document found for ${typeof rid === 'number' ? 'docId' : 'rid'}=${rid}`);
-            return null;
-        }
-
-        const repoDoc = res[0] as RepoDoc;
-
-        if (!Array.isArray(repoDoc.files)) {
-            console.warn(`[RepoModel.get] Warning: repoDoc.files is not an array, resetting to empty array.`);
-            repoDoc.files = [];
-        }
-
-        console.log(`[RepoModel.get] Retrieved document:`, JSON.stringify(repoDoc, null, 2));
-
-        return repoDoc;
+    static async get(
+        domainId: string, 
+        rid: string | number,
+        projection: Projection<RepoDoc> = RepoModel.PROJECTION_PUBLIC
+    ): Promise<RepoDoc | null> {
+        if (Number.isSafeInteger(+rid)) rid = +rid;
+        const res = typeof rid === 'number'
+            ? await document.get(domainId, document.TYPE_REPO, rid, projection)
+            : (await document.getMulti(domainId, document.TYPE_REPO, { rid })
+                .project(buildProjection(projection)).limit(1).toArray())[0];
+        if (!res) return null;
+        return res;
     }
 
     static getMulti(domainId: string, query: Filter<RepoDoc> = {}, projection = RepoModel.PROJECTION_LIST) {
@@ -177,41 +164,32 @@ export class RepoModel {
     }
 
     static async list(
-        domainId: string,
-        query: Filter<RepoDoc>,
-        page: number,
-        pageSize: number,
-        projection = RepoModel.PROJECTION_LIST,
-        uid?: number
+        domainId: string, query: Filter<RepoDoc>,
+        page: number, pageSize: number,
+        projection = RepoModel.PROJECTION_LIST, uid?: number,
     ): Promise<[RepoDoc[], number, number]> {
         const union = await DomainModel.get(domainId);
-        const domainIds = [domainId, ...(union?.union || [])];
-
-        let totalCount = 0;
-        const repoList: RepoDoc[] = [];
-
+        const domainIds = [domainId, ...(union.union || [])];
+        let count = 0;
+        const rdocs = [];
         for (const id of domainIds) {
+            // TODO enhance performance
             if (typeof uid === 'number') {
-                const userDoc = await user.getById(id, uid);
-                if (!userDoc.hasPerm(PERM.PERM_VIEW)) continue;
+                // eslint-disable-next-line no-await-in-loop
+                const udoc = await user.getById(id, uid);
+                if (!udoc.hasPerm(PERM.PERM_VIEW)) continue;
             }
-
-            const currentCount = await document.count(id, document.TYPE_REPO, query);
-
-            if (repoList.length < pageSize && (page - 1) * pageSize - totalCount <= currentCount) {
-                repoList.push(
-                    ...await document.getMulti(id, document.TYPE_REPO, query, projection)
-                        .sort({ docId: -1 })
-                        .skip(Math.max((page - 1) * pageSize - totalCount, 0))
-                        .limit(pageSize - repoList.length)
-                        .toArray()
-                );
+            // eslint-disable-next-line no-await-in-loop
+            const ccount = await document.count(id, document.TYPE_REPO, query);
+            if (rdocs.length < pageSize && (page - 1) * pageSize - count <= ccount) {
+                // eslint-disable-next-line no-await-in-loop
+                rdocs.push(...await document.getMulti(id, document.TYPE_REPO, query, projection)
+                    .sort({ sort: 1, docId: 1 })
+                    .skip(Math.max((page - 1) * pageSize - count, 0)).limit(pageSize - rdocs.length).toArray());
             }
-
-            totalCount += currentCount;
+            count += ccount;
         }
-
-        return [repoList, Math.ceil(totalCount / pageSize), totalCount];
+        return [rdocs, Math.ceil(count / pageSize), count];
     }
     static async getList(
         domainId: string, 
@@ -239,6 +217,7 @@ export class RepoModel {
     
         return indexByDocIdOnly ? r : Object.assign(r, l);
     }
+
     
     static async edit(domainId: string, rid: string, updates: Partial<RepoDoc>): Promise<RepoDoc> {
         const repo = await document.getMulti(domainId, document.TYPE_REPO, { rid }).next();

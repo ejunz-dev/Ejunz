@@ -891,3 +891,8 @@ declare global {
     var Ejunz: EjunzGlobal; // eslint-disable-line
     var addons: string[]; // eslint-disable-line
 }
+
+export interface RepoSearchOptions {
+    limit?: number;
+    skip?: number;
+}

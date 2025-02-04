@@ -23,29 +23,170 @@ import { lookup } from 'mime-types';
 import { encodeRFC5987ValueChars } from '../service/storage';
 import { RepoDoc } from '../interface';
 import domain from '../model/domain';
-
+import { User } from '../model/user';
+import * as system from '../model/system';
+import parser from '@ejunz/utils/lib/search';
+import { RepoSearchOptions } from '../interface';
 export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
 
-
-class RepoHandler extends Handler {
-    ddoc?: RepoDoc;
-
-     @param('rid', Types.RepoId, true)
-    async _prepare(domainId: string, rid?: string) {
-        if (!rid || rid === 'create') return; 
-
-        const normalizedId: number | string = /^\d+$/.test(rid) ? Number(rid) : rid;
-        console.log(`[RepoHandler] Querying repository with ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
-
-        this.ddoc = await Repo.get(domainId, normalizedId);
-        if (!this.ddoc) {
-            console.error(`[RepoHandler] Repository not found for ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
-            throw new NotFoundError(`Repository not found for ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
-        }
+function buildQuery(udoc: User) {
+    const q: Filter<RepoDoc> = {};
+    if (!udoc.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN)) {
+        q.$or = [
+            { hidden: false },
+            { owner: udoc._id },
+            { maintainer: udoc._id },
+        ];
     }
+    return q;
 }
 
+const defaultSearch = async (domainId: string, q: string, options?: RepoSearchOptions) => {
+    const escaped = escapeRegExp(q.toLowerCase());
+    const projection: (keyof RepoDoc)[] = ['domainId', 'docId', 'rid'];
+    const $regex = new RegExp(q.length >= 2 ? escaped : `\\A${escaped}`, 'gmi');
+    const filter = { $or: [{ rid: { $regex } }, { title: { $regex } }, { tag: q }] };
+    const rdocs = await Repo.getMulti(domainId, filter, projection)
+        .skip(options.skip || 0).limit(options.limit || system.get('pagination.problem')).toArray();
+    if (!options.skip) {
+        let rdoc = await Repo.get(domainId, Number.isSafeInteger(+q) ? +q : q, projection);
+        if (rdoc) rdocs.unshift(rdoc);
+        else if (/^R\d+$/.test(q)) {
+            rdoc = await Repo.get(domainId, +q.substring(1), projection);
+            if (rdoc) rdocs.unshift(rdoc);
+        }
+    }
+    return {
+        hits: Array.from(new Set(rdocs.map((i) => `${i.domainId}/${i.docId}`))),
+        total: Math.max(rdocs.length, await Repo.count(domainId, filter)),
+        countRelation: 'eq',
+    };
+};
 
+export interface QueryContext {
+    query: Filter<RepoDoc>;
+    sort: string[];
+    pcountRelation: string;
+    parsed: ReturnType<typeof parser.parse>;
+    category: string[];
+    text: string;
+    total: number;
+    fail: boolean;
+}
+
+export class RepoMainHandler extends Handler {
+    queryContext: QueryContext = {
+        query: {},
+        sort: [],
+        pcountRelation: 'eq',
+        parsed: null,
+        category: [],
+        text: '',
+        total: 0,
+        fail: false,
+    };
+
+    @param('page', Types.PositiveInt, true)
+    @param('q', Types.Content, true)
+    @param('limit', Types.PositiveInt, true)
+    @param('pjax', Types.Boolean)
+    @param('quick', Types.Boolean)
+    async get(domainId: string, page = 1, q = '', limit: number, pjax = false, quick = false) {
+        this.response.template = 'repo_domain.html';
+        if (!limit || limit > this.ctx.setting.get('pagination.problem') || page > 1) limit = this.ctx.setting.get('pagination.problem');
+        
+        console.log('Initial Query Context:', this.queryContext);
+
+        this.queryContext.query = buildQuery(this.user);
+        console.log('Query after buildQuery:', this.queryContext.query);
+
+        const query = this.queryContext.query;
+        const psdict = {};
+        const search = global.Ejunz.lib.problemSearch || defaultSearch;
+        const parsed = parser.parse(q, {
+            keywords: ['category', 'difficulty'],
+            offsets: false,
+            alwaysArray: true,
+            tokenize: true,
+        });
+
+        const category = parsed.category || [];
+        const text = (parsed.text || []).join(' ');
+        console.log('Parsed Query:', { category, text });
+
+        if (parsed.difficulty?.every((i) => Number.isSafeInteger(+i))) {
+            query.difficulty = { $in: parsed.difficulty.map(Number) };
+        }
+        if (category.length) query.$and = category.map((tag) => ({ tag }));
+        if (text) category.push(text);
+        if (category.length) this.UiContext.extraTitleContent = category.join(',');
+
+        let total = 0;
+        if (text) {
+            const result = await search(domainId, q, { skip: (page - 1) * limit, limit });
+            total = result.total;
+            this.queryContext.pcountRelation = result.countRelation;
+            if (!result.hits.length) this.queryContext.fail = true;
+            query.$and ||= [];
+            query.$and.push({
+                $or: result.hits.map((i) => {
+                    const [did, docId] = i.split('/');
+                    return { domainId: did, docId: +docId };
+                }),
+            });
+            this.queryContext.sort = result.hits;
+        }
+
+        console.log('Final Query Context:', this.queryContext);
+
+        const sort = this.queryContext.sort;
+        await this.ctx.parallel('repo/list', query, this, sort);
+
+        let [rdocs, ppcount, pcount] = this.queryContext.fail
+            ? [[], 0, 0]
+            : await Repo.list(
+                domainId, query, sort.length ? 1 : page, limit,
+                quick ? ['title', 'rid', 'domainId', 'docId'] : undefined,
+                this.user._id,
+            );
+
+        
+
+
+        if (total) {
+            pcount = total;
+            ppcount = Math.ceil(total / limit);
+        }
+        if (sort.length) rdocs = rdocs.sort((a, b) => sort.indexOf(`${a.domainId}/${a.docId}`) - sort.indexOf(`${b.domainId}/${b.docId}`));
+        if (text && pcount > rdocs.length) pcount = rdocs.length;
+
+       
+
+        if (pjax) {
+            this.response.body = {
+                title: this.renderTitle(this.translate('repo_domain')),
+                fragments: (await Promise.all([
+                    this.renderHTML('partials/repo_list.html', {
+                        page, ppcount, pcount, rdocs, psdict, qs: q,
+                    }),
+                    this.renderHTML('partials/repo_stat.html', { pcount, pcountRelation: this.queryContext.pcountRelation }),
+                    this.renderHTML('partials/repo_lucky.html', { qs: q }),
+                ])).map((i) => ({ html: i })),
+            };
+        } else {
+            this.response.body = {
+                page,
+                pcount,
+                ppcount,
+                pcountRelation: this.queryContext.pcountRelation,
+                rdocs,
+                psdict,
+                qs: q,
+            };
+            console.log('Response Body:', this.response.body);
+        }
+    }
+}   
 
 export class RepoDomainHandler extends Handler {
     async get({ domainId, page = 1, pageSize = 10 }) {
@@ -130,11 +271,7 @@ export class RepoDetailHandler extends Handler {
     }
 }
 
-
-
-
-
-export class RepoEditHandler extends RepoHandler {
+export class RepoEditHandler extends RepoMainHandler {
     async get() {
         const domainId = this.context.domainId || 'default_domain';
 
@@ -248,8 +385,6 @@ export class RepoEditHandler extends RepoHandler {
 
 }
 
-
-
 export class RepoAddFileHandler extends Handler {
     @param('rid', Types.RepoId, true) 
     async get(domainId: string, rid: string) {
@@ -325,7 +460,6 @@ export class RepoAddFileHandler extends Handler {
     }
 }
 
-
 export class RepoHistoryHandler extends Handler {
     @param('rid', Types.RepoId, true) 
     async get(domainId: string, rid: string) {
@@ -390,17 +524,8 @@ export class RepofileDownloadHandler extends Handler {
     }
 }
 
-
-    
-    
-
-
-
-
-
-
 export async function apply(ctx: Context) {
-    ctx.Route('repo_domain', '/repo', RepoDomainHandler);
+    ctx.Route('repo_domain', '/repo', RepoMainHandler);
     ctx.Route('repo_create', '/repo/create', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_detail', '/repo/:rid', RepoDetailHandler);
     ctx.Route('repo_edit', '/repo/:rid/edit', RepoEditHandler, PRIV.PRIV_USER_PROFILE);

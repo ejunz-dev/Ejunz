@@ -299,7 +299,7 @@ function processElement(ele) {
   createHint('Hint::icon::difficulty', $(ele).find('th.col--difficulty'));
 }
 
-const page = new NamedPage(['problem_main','repo_history'], () => {
+const page = new NamedPage(['problem_main','repo_history','repo_domain'], () => {
   const $body = $('body');
   $body.addClass('display-mode');
   $('.section.display-mode').removeClass('display-mode');
