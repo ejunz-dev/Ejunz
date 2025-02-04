@@ -50,6 +50,9 @@ export const Nav = (name, args, prefix, ...permPrivChecker) => {
 export const ProblemAdd = (name, args, icon = 'add', text = 'Create Problem') => {
     inject('ProblemAdd', name, { ...args, icon, text });
 };
+export const RepoAdd = (name, args, icon = 'add', text = 'Create Repository') => {
+    inject('RepoAdd', name, { ...args, icon, text });
+};
 
 inject('Nav', 'homepage', { prefix: 'homepage' });
 inject('Nav', 'problem_main', { prefix: 'problem' }, PERM.PERM_VIEW_PROBLEM);
@@ -67,6 +70,7 @@ inject('Nav', 'ranking', { prefix: 'ranking' }, PERM.PERM_VIEW_RANKING);
 inject('Nav', 'domain_dashboard', { prefix: 'domain' }, PERM.PERM_EDIT_DOMAIN);
 inject('Nav', 'manage_dashboard', { prefix: 'manage' }, PRIV.PRIV_EDIT_SYSTEM);
 inject('ProblemAdd', 'problem_create', { icon: 'add', text: 'Create Problem' });
+inject('RepoAdd', 'repo_create', { icon: 'add', text: 'Create Repository' });
 inject('ControlPanel', 'manage_dashboard');
 inject('ControlPanel', 'manage_script');
 inject('ControlPanel', 'manage_user_import');

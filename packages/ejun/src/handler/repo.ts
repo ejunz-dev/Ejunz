@@ -272,6 +272,8 @@ export class RepoDetailHandler extends Handler {
 }
 
 export class RepoEditHandler extends RepoMainHandler {
+    ddoc: RepoDoc | null = null; 
+    
     async get() {
         const domainId = this.context.domainId || 'default_domain';
 
@@ -289,12 +291,14 @@ export class RepoEditHandler extends RepoMainHandler {
     
         const files = await storage.list(`repo/${domainId}/${docId}`);
         const urlForFile = (filename: string) => `/d/${domainId}/${docId}/${filename}`;
+
     
         this.response.template = 'repo_edit.html';
         this.response.body = {
             ddoc: this.ddoc,
             files,
             urlForFile,
+            tag: tag,
         };
     }
     
@@ -303,6 +307,7 @@ export class RepoEditHandler extends RepoMainHandler {
     @param('content', Types.Content)
     @param('filename', Types.String)
     @param('version', Types.String, true)
+    @post('tag', Types.Content, true, null, parseCategory)
     @param('isIterative', Types.Boolean)
     async postCreate(
         domainId: string,
@@ -310,6 +315,7 @@ export class RepoEditHandler extends RepoMainHandler {
         content: string,
         filename: string,
         version: string,
+        tag: string[] = [],
         isIterative: boolean = false
     ) {
         await this.limitRate('add_repo', 3600, 60);
@@ -343,6 +349,7 @@ export class RepoEditHandler extends RepoMainHandler {
             size: fileMeta.size ?? 0,
             lastModified: fileMeta.lastModified ?? new Date(),
             etag: fileMeta.etag ?? '',
+            tag: tag ?? [],
         };
     
         const rid = await Repo.addWithId(
@@ -352,7 +359,7 @@ export class RepoEditHandler extends RepoMainHandler {
             title,
             content,
             this.request.ip,
-            { files: [fileData], isIterative }
+            { files: [fileData], isIterative, tag: tag ?? [] }
         );
         console.log(`[RepoEditHandler] Created repository: docId=${docId}, rid=${rid}`);
         
@@ -363,7 +370,8 @@ export class RepoEditHandler extends RepoMainHandler {
     @param('rid', Types.RepoId)
     @param('title', Types.Title)
     @param('content', Types.Content)
-    async postUpdate(domainId: string, rid: string, title: string, content: string) {
+    @post('tag', Types.Content, true, null, parseCategory)
+    async postUpdate(domainId: string, rid: string, title: string, content: string, tag: string[] = []) {
         const normalizedId: number | string = /^\d+$/.test(rid) ? Number(rid) : rid;
     
         console.log(`[RepoEditHandler] Updating repo with ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
@@ -374,7 +382,7 @@ export class RepoEditHandler extends RepoMainHandler {
         }
     
         const repoRid = repo.rid;
-        const updatedRepo = await Repo.edit(domainId, repoRid, { title, content });
+        const updatedRepo = await Repo.edit(domainId, repoRid, { title, content, tag: tag ?? [] });
     
         console.log('Repo updated successfully:', updatedRepo);
     

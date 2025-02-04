@@ -15,8 +15,8 @@
       <col class="col--status edit-mode-hide">
     {% endif %}
       <col class="col--name">
-      <col class="col--ac-tried">
-      <col class="col--difficulty">
+      <col class="col--files">
+
     </colgroup>
     <thead>
       <tr>
@@ -30,6 +30,7 @@
 
         {% endif %}
         <th class="col--name">{{ _('Repository') }}
+        <th class="col--files">{{ _('Files') }}
 
           </th>
 
@@ -56,8 +57,8 @@
 
           {{ repo.render_repo_title(rdoc) }}
         </td>
-        <td class="col--ac-tried">{{ rdoc.nAccept }} / {{ rdoc.nSubmit }}</td>
-        <td class="col--difficulty">{{ rdoc['difficulty'] or _('(None)') }}</td>
+        <td class="col--files">{{ rdoc.files|length }}</td>
+        
       </tr>
     {%- endfor -%}
     </tbody>
