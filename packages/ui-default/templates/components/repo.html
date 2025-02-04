@@ -1,18 +1,35 @@
-{% macro render_inline(rdoc) %}
-{% if rdoc %}
-  <span class="repo-link">
-    <a class="discussion-node-tag media-link repo-title" 
-       href="{{ url('repo_detail', rid=rdoc.docId) }}" 
-       target="_blank" rel="noopener noreferrer">
-      <span class="v-center icon icon-link"></span> {{ rdoc.title }}
-    </a>
+{% macro render_repo_title(rdoc, tdoc=none, show_tags=true, show_invisible_flag=true, invalid=false, inline=false, small=false, alphabetic=false) %}
+{%- if not invalid -%}
+  {% set _linkArgs = { rid:rdoc.rid|default(rdoc.docId) } %}
+  {% if tdoc %}{{ set(_linkArgs, 'query', {tid:tdoc.docId}) }}{% endif %}
+  {% if rdoc.domainId !== handler.args.domainId %}{{ set(_linkArgs, 'domainId', rdoc.domainId) }}{% endif %}
+  <a href="{{ url('repo_detail', _linkArgs) }}"{% if small %} data-tooltip="{{ rdoc.title }}"{% endif %}>
+{%- endif -%}
+{%- if rdoc.domainId !== handler.args.domainId -%}<b>{{ rdoc.domainId }}#</b>{%- endif -%}
+{%- if tdoc and alphabetic -%}
+  <b>{{ String.fromCharCode(65 + tdoc.rids.indexOf(rdoc.docId)) if tdoc.rids.includes(rdoc.docId) else '#' }}</b>
+{%- else -%}
+  <b>{{ rdoc.rid or ('R'+rdoc.docId if rdoc.domainId === handler.args.domainId else rdoc.docId) }}</b>
+{%- endif -%}
+{%- if not small -%}&nbsp;&nbsp;{{ rdoc.title }}{%- endif -%}
+{%- if not invalid -%}
+  </a>
+{%- endif -%}
+{%- if rdoc.hidden and show_invisible_flag -%}
+  <span class="text-orange">({{ _('Hidden') }})</span>
+{%- endif -%}
+{%- if show_tags -%}{{ render_repo_tags(rdoc, inline=inline) }}{%- endif -%}
+{% endmacro %}
 
-  </span>
-{% else %}
-  <span class="repo-link">
-    <a class="repo-title" href="#">
-      {{ _('Unknown Repository') }}
-    </a>
-  </span>
-{% endif %}
+{% macro render_repo_tags(rdoc, show_none_label=false, inline=false) %}
+{%- if rdoc.tag|length > 0 %}
+  {%- if not inline %}<ul class="repo__tags">{% endif -%}
+  {%- for tag in rdoc['tag'] %}
+    {% set _w = '"' if tag and tag.includes(' ') else '' %}
+    <li class="repo__tag"><a class="repo__tag-link" href="{{ url('repo_main', query={q:'category:'+_w+tag+_w}) }}">{{ tag }}</a></li>
+  {%- endfor -%}
+  {%- if not inline %}</ul>{% endif -%}
+{%- else -%}
+  {%- if show_none_label -%}{{ _('(None)') }}{%- endif -%}
+{%- endif -%}
 {% endmacro %}
