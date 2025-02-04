@@ -96,6 +96,8 @@ export interface EventMap extends KnownHandlerEvents {
 
     'record/change': (rdoc: RecordDoc, $set?: any, $push?: any, body?: any) => void
     'record/judge': (rdoc: RecordDoc, updated: boolean, pdoc?: ProblemDoc) => VoidReturn
+
+    'repo/list': (query: Filter<RepoDoc>, handler: any, sort?: string[]) => VoidReturn
 }
 /* eslint-enable @typescript-eslint/naming-convention */
 declare module 'cordis' {

@@ -104,8 +104,12 @@ export class ProblemMainHandler extends Handler {
     async get(domainId: string, page = 1, q = '', limit: number, pjax = false, quick = false) {
         this.response.template = 'problem_main.html';
         if (!limit || limit > this.ctx.setting.get('pagination.problem') || page > 1) limit = this.ctx.setting.get('pagination.problem');
+        
+        console.log('Initial Query Context:', this.queryContext);
+
         this.queryContext.query = buildQuery(this.user);
-        // eslint-disable-next-line @typescript-eslint/no-shadow
+        console.log('Query after buildQuery:', this.queryContext.query);
+
         const query = this.queryContext.query;
         const psdict = {};
         const search = global.Ejunz.lib.problemSearch || defaultSearch;
@@ -115,14 +119,18 @@ export class ProblemMainHandler extends Handler {
             alwaysArray: true,
             tokenize: true,
         });
+
         const category = parsed.category || [];
         const text = (parsed.text || []).join(' ');
+        console.log('Parsed Query:', { category, text });
+
         if (parsed.difficulty?.every((i) => Number.isSafeInteger(+i))) {
             query.difficulty = { $in: parsed.difficulty.map(Number) };
         }
         if (category.length) query.$and = category.map((tag) => ({ tag }));
         if (text) category.push(text);
         if (category.length) this.UiContext.extraTitleContent = category.join(',');
+
         let total = 0;
         if (text) {
             const result = await search(domainId, q, { skip: (page - 1) * limit, limit });
@@ -138,9 +146,12 @@ export class ProblemMainHandler extends Handler {
             });
             this.queryContext.sort = result.hits;
         }
+
+        console.log('Final Query Context:', this.queryContext);
+
         const sort = this.queryContext.sort;
         await this.ctx.parallel('problem/list', query, this, sort);
-        // eslint-disable-next-line prefer-const
+
         let [pdocs, ppcount, pcount] = this.queryContext.fail
             ? [[], 0, 0]
             : await problem.list(
@@ -148,12 +159,19 @@ export class ProblemMainHandler extends Handler {
                 quick ? ['title', 'pid', 'domainId', 'docId'] : undefined,
                 this.user._id,
             );
+
+        
+        console.log('ppcount:', ppcount);
+        console.log('pcount:', pcount);
+        
+
         if (total) {
             pcount = total;
             ppcount = Math.ceil(total / limit);
         }
         if (sort.length) pdocs = pdocs.sort((a, b) => sort.indexOf(`${a.domainId}/${a.docId}`) - sort.indexOf(`${b.domainId}/${b.docId}`));
         if (text && pcount > pdocs.length) pcount = pdocs.length;
+
         if (this.user.hasPriv(PRIV.PRIV_USER_PROFILE)) {
             const domainIds = Array.from(new Set(pdocs.map((i) => i.domainId)));
             await Promise.all(
@@ -164,6 +182,7 @@ export class ProblemMainHandler extends Handler {
                     ).then((res) => Object.assign(psdict, res))),
             );
         }
+
         if (pjax) {
             this.response.body = {
                 title: this.renderTitle(this.translate('problem_main')),
@@ -185,6 +204,7 @@ export class ProblemMainHandler extends Handler {
                 psdict,
                 qs: q,
             };
+            console.log('Response Body:', this.response.body);
         }
     }
 
