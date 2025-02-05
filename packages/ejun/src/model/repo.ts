@@ -32,7 +32,7 @@ export type Field = keyof RepoDoc;
 
 export class RepoModel {
     static PROJECTION_LIST: Field[] = [
-        'docId', 'rid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply','files','tag'
+        'domainId', 'docId', 'rid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply','files','tag'
     ];
 
     static PROJECTION_DETAIL: Field[] = [
@@ -169,6 +169,38 @@ export class RepoModel {
     static getMulti(domainId: string, query: Filter<RepoDoc> = {}, projection = RepoModel.PROJECTION_LIST) {
         return document.getMulti(domainId, document.TYPE_REPO, query, projection).sort({ docId: -1 });
     }
+
+    static async listFiles(
+        domainId: string, 
+        query: Filter<RepoDoc>,
+        page: number, pageSize: number,
+        projection = RepoModel.PROJECTION_LIST, uid?: number,
+    ): Promise<[RepoDoc[], number, number]> {
+        const union = await DomainModel.get(domainId);
+        const domainIds = [domainId, ...(union.union || [])];
+        let count = 0;
+        const files = [];
+        for (const id of domainIds) {
+            // TODO enhance performance
+            if (typeof uid === 'number') {
+                // eslint-disable-next-line no-await-in-loop
+                const udoc = await user.getById(id, uid);
+                if (!udoc.hasPerm(PERM.PERM_VIEW)) continue;
+            }
+            // eslint-disable-next-line no-await-in-loop
+            const ccount = await document.count(id, document.TYPE_REPO, query);
+            if (files.length < pageSize && (page - 1) * pageSize - count <= ccount) {
+                // eslint-disable-next-line no-await-in-loop
+                files.push(...await document.getMulti(id, document.TYPE_REPO, query, projection)
+                    .sort({ sort: 1, docId: 1 })
+                    .skip(Math.max((page - 1) * pageSize - count, 0)).limit(pageSize - files.length).toArray());
+            }
+            count += ccount;
+        }
+        return [files, Math.ceil(count / pageSize), count];
+        console.log('files', files);
+    }
+
 
     static async list(
         domainId: string, query: Filter<RepoDoc>,

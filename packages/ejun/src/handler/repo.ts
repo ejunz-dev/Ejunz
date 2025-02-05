@@ -188,40 +188,7 @@ export class RepoMainHandler extends Handler {
     }
 }   
 
-export class RepoDomainHandler extends Handler {
-    async get({ domainId, page = 1, pageSize = 10 }) {
-        domainId = this.args?.domainId || this.context?.domainId;
 
-        try {
-            const domainInfo = await domain.get(domainId);
-            if (!domainInfo) throw new NotFoundError(`Domain not found for ID: ${domainId}`);
-
-            const allRepos = await Repo.getMulti(domainId, {}).toArray();
-
-            const totalCount = allRepos.length;
-            const totalPages = Math.ceil(totalCount / pageSize);
-            const currentPage = Math.max(1, Math.min(page, totalPages));
-            const startIndex = (currentPage - 1) * pageSize;
-            const paginatedRepos = allRepos.slice(startIndex, startIndex + pageSize);
-
-            this.response.template = 'repo_domain.html';
-            this.response.body = {
-                domainId,
-                rdocs: paginatedRepos,
-                page: currentPage,
-                totalPages,
-                totalCount,
-            };
-            console.log(`rdocs`, paginatedRepos);
-        
-            
-        } catch (error) {
-            console.error('Error in fetching Repos:', error);
-            this.response.template = 'error.html';
-            this.response.body = { error: 'Failed to fetch repositories.' };
-        }
-    }
-}
 
 export class RepoDetailHandler extends Handler {
     ddoc?: RepoDoc;
@@ -467,6 +434,133 @@ export class RepoAddFileHandler extends Handler {
         this.response.redirect = this.url('repo_detail', { domainId, rid });
     }
 }
+export class RepoFileHandler extends Handler {
+    queryContext: QueryContext = {
+        query: {},
+        sort: [],
+        pcountRelation: 'eq',
+        parsed: null,
+        category: [],
+        text: '',
+        total: 0,
+        fail: false,
+    };
+
+    @param('rid', Types.RepoId, true)
+    @param('page', Types.PositiveInt, true)
+    @param('q', Types.Content, true)
+    @param('limit', Types.PositiveInt, true)
+    @param('pjax', Types.Boolean)
+    @param('quick', Types.Boolean)
+    async get(domainId: string, rid: string, page = 1, q = '', limit: number, pjax = false, quick = false) {
+        this.response.template = 'repo_history.html';
+        if (!limit || limit > this.ctx.setting.get('pagination.problem') || page > 1) limit = this.ctx.setting.get('pagination.problem');
+        
+        console.log('Initial Query Context:', this.queryContext);
+
+        this.queryContext.query = buildQuery(this.user);
+        this.queryContext.query.rid = rid;
+        console.log('Query after buildQuery:', this.queryContext.query);
+
+        const query = this.queryContext.query;
+        const psdict = {};
+        const search = global.Ejunz.lib.problemSearch || defaultSearch;
+        const parsed = parser.parse(q, {
+            keywords: ['category', 'difficulty'],
+            offsets: false,
+            alwaysArray: true,
+            tokenize: true,
+        });
+
+        const category = parsed.category || [];
+        const text = (parsed.text || []).join(' ');
+        console.log('Parsed Query:', { category, text });
+
+        if (parsed.difficulty?.every((i) => Number.isSafeInteger(+i))) {
+            query.difficulty = { $in: parsed.difficulty.map(Number) };
+        }
+        if (category.length) query.$and = category.map((tag) => ({ tag }));
+        if (text) category.push(text);
+        if (category.length) this.UiContext.extraTitleContent = category.join(',');
+
+        let total = 0;
+        if (text) {
+            const result = await search(domainId, q, { skip: (page - 1) * limit, limit });
+            total = result.total;
+            this.queryContext.pcountRelation = result.countRelation;
+            if (!result.hits.length) this.queryContext.fail = true;
+            query.$and ||= [];
+            query.$and.push({
+                $or: result.hits.map((i) => {
+                    const [did, docId] = i.split('/');
+                    return { domainId: did, docId: +docId };
+                }),
+            });
+            this.queryContext.sort = result.hits;
+        }
+
+        console.log('Final Query Context:', this.queryContext);
+
+        const sort = this.queryContext.sort;
+        await this.ctx.parallel('repofile/list', query, this, sort);
+
+        let [docs, ppcount, pcount] = this.queryContext.fail
+        ? [[], 0, 0]
+        : await Repo.listFiles(
+            domainId, 
+            query, 
+            sort.length ? 1 : page, 
+            limit,
+            quick 
+                ? ['title', 'rid', 'domainId', 'docId', 'files'] // 只投影到顶级属性
+                : undefined,
+            this.user._id,
+        );
+        console.log('docs', docs);
+    
+        // 提取文件信息
+        const files = docs.flatMap(doc => doc.files.map(file => ({
+            ...file,
+            domainId: doc.domainId,
+            docId: doc.docId,
+            rid: doc.rid,
+            title: doc.title,
+        }))).filter(file => file.rid === rid); // 过滤出特定 rid 的文件
+        console.log('files', files);
+
+        if (total) {
+            pcount = total;
+            ppcount = Math.ceil(total / limit);
+        }
+        if (sort.length) docs = docs.sort((a, b) => sort.indexOf(`${a.domainId}/${a.docId}`) - sort.indexOf(`${b.domainId}/${b.docId}`));
+        if (text && pcount > docs.length) pcount = docs.length;
+
+       
+
+        if (pjax) {
+            this.response.body = {
+                title: this.renderTitle(this.translate('repo_history')),
+                fragments: (await Promise.all([
+                    this.renderHTML('partials/repo_file_list.html', {
+                        page, ppcount, pcount, files, psdict, qs: q,
+                    }),
+                ])).map((i) => ({ html: i })),
+            };
+        } else {
+            this.response.body = {
+                rid,
+                page,
+                pcount,
+                ppcount,
+                pcountRelation: this.queryContext.pcountRelation,
+                files,
+                psdict,
+                qs: q,
+            };
+            console.log('rid', rid);
+        }
+    }
+}   
 
 export class RepoHistoryHandler extends Handler {
     @param('rid', Types.RepoId, true) 
@@ -538,7 +632,7 @@ export async function apply(ctx: Context) {
     ctx.Route('repo_detail', '/repo/:rid', RepoDetailHandler);
     ctx.Route('repo_edit', '/repo/:rid/edit', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_add_file', '/repo/:rid/add_file', RepoAddFileHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('repo_history', '/repo/:rid/history', RepoHistoryHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('repo_history', '/repo/:rid/history', RepoFileHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_file_download', '/repo/:rid/file/:filename', RepofileDownloadHandler, PRIV.PRIV_USER_PROFILE);
 
     
