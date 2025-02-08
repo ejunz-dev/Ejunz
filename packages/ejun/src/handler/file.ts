@@ -28,7 +28,21 @@ import * as system from '../model/system';
 import parser from '@ejunz/utils/lib/search';
 import { RepoSearchOptions } from '../interface';
 import { QueryContext } from './repo';
+import * as document from '../model/document';
+import * as file from '../model/file';
+import { FileDoc } from '../interface';
+import user from '../model/user';
+import { isSafeInteger } from 'lodash';
 export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
+
+export const typeMapper = {
+    problem: document.TYPE_PROBLEM,
+    contest: document.TYPE_CONTEST,
+    node: document.TYPE_FILE_NODE,
+    training: document.TYPE_TRAINING,
+    homework: document.TYPE_CONTEST,
+    docs: document.TYPE_DOCS,
+};
 
 function buildQuery(udoc: User) {
     const q: Filter<RepoDoc> = {};
@@ -63,6 +77,279 @@ const defaultSearch = async (domainId: string, q: string, options?: RepoSearchOp
         countRelation: 'eq',
     };
 };
+
+class FileHandler extends Handler {
+    ddoc?: FileDoc;
+    vnode?: any;
+
+    @param('type', Types.Range(Object.keys(typeMapper)), true)
+    @param('name', Types.String, true)
+    @param('did', Types.ObjectId, true)
+    async _prepare(
+        domainId: string, type: string, name: string,
+        did: ObjectId,
+    ) {
+        this.checkPerm(PERM.PERM_VIEW_PROBLEM);
+        if (did) {
+            this.ddoc = await file.get(domainId, did);
+            if (!this.ddoc) throw new NotFoundError(domainId, did);
+            type = file.typeDisplay[this.ddoc.parentType];
+            name = this.ddoc.parentId.toString();
+            }
+        
+        // TODO(twd2): exclude problem/contest discussions?
+        // TODO(iceboy): continuation based pagination.
+        this.vnode = await file.getVnode(domainId, typeMapper[type], name, this.user._id);
+        if (!file.checkVNodeVisibility(typeMapper[type], this.vnode, this.user)) throw new NotFoundError(this.vnode.id);
+        if (this.ddoc) {
+            this.ddoc.parentType ||= this.vnode.type;
+            this.ddoc.parentId ||= this.vnode.id;
+        }
+    }
+}
+
+class FileMainHandler extends Handler {
+    @param('page', Types.PositiveInt, true)
+    @param('all', Types.Boolean)
+    async get(domainId: string, page = 1, all = false) {
+        console.log('Resolved domainId:', domainId);
+    console.log('Request headers:', this.request.headers);
+    console.log('Request query:', this.request.query);
+    console.log('Context domain:', this.context.EjunzContext.domain);
+
+        // Limit to known types
+        const parentType = { $in: Object.keys(typeMapper).map((i) => typeMapper[i]) };
+        all &&= this.user.hasPerm(PERM.PERM_MOD_BADGE);
+        const [ddocs, dpcount] = await this.paginate(
+            file.getMulti(domainId, { parentType, ...all ? {} : { hidden: false } }),
+            page,
+            'file',
+        );
+        const udict = await user.getList(domainId, ddocs.map((ddoc) => ddoc.owner));
+        const [vndict, vnodes] = await Promise.all([
+            file.getListVnodes(domainId, ddocs, this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN), this.user.group),
+            file.getNodes(domainId),
+        ]);
+        this.response.template = 'file_main_or_node.html';
+        this.response.body = {
+            ddocs, dpcount, udict, page, page_name: 'file_main', vndict, vnode: {}, vnodes,
+        };
+        console.log('response',this.response.body)
+    }
+}
+
+class FileNodeHandler extends FileHandler {
+    @param('type', Types.Range(Object.keys(typeMapper)))
+    @param('name', Types.String)
+    @param('page', Types.PositiveInt, true)
+    async get(domainId: string, type: string, _name: string, page = 1) {
+        let name: ObjectId | string | number;
+        if (ObjectId.isValid(_name)) name = new ObjectId(_name);
+        else if (isSafeInteger(parseInt(_name, 10))) name = parseInt(_name, 10);
+        else name = _name;
+        const hidden = this.user.own(this.vnode) || this.user.hasPerm(PERM.PERM_EDIT_DISCUSSION) ? {} : { hidden: false };
+        const [ddocs, dpcount] = await this.paginate(
+            file.getMulti(domainId, { parentType: typeMapper[type], parentId: name, ...hidden }),
+            page,
+            'file',
+        );
+        const uids = ddocs.map((ddoc) => ddoc.owner);
+        uids.push(this.vnode.owner);
+        const [udict, vnodes] = await Promise.all([
+            user.getList(domainId, uids),
+            file.getNodes(domainId),
+        ]);
+        const vndict = { [typeMapper[type]]: { [name.toString()]: this.vnode } };
+        this.response.template = 'file_main_or_node.html';
+        this.response.body = {
+            ddocs,
+            dpcount,
+            udict,
+            page,
+            vndict,
+            vnode: this.vnode,
+            page_name: 'file_node',
+            vnodes,
+        };
+        console.log('response',this.response.body)
+    }
+}
+class FileCreateHandler extends FileHandler {
+    async get({ type, name }) {
+        // 强制转换 name 为数字
+        const resolvedName = typeof name === 'string' ? parseInt(name, 10) : name;
+        if (isNaN(resolvedName)) {
+            throw new Error(`Invalid name (lid): ${name}`);
+        }
+
+        console.log('Resolved name (lid):', resolvedName, 'Type:', typeof resolvedName);
+
+        const path = [
+            ['Ejunz', 'homepage'],
+            ['file_main', 'file_main'],
+            [this.vnode.title, 'file_node', { type, name: resolvedName }, true],
+            ['file_create', null],
+        ];
+
+        this.response.template = 'file_create.html';
+        this.response.body = { path, vnode: this.vnode };
+        console.log('ddoc:', this.ddoc);
+console.log('vnode:', this.vnode);
+    }
+
+    @param('type', Types.Range(Object.keys(typeMapper)))
+    @param('title', Types.Title)
+    @param('content', Types.Content)
+    @param('highlight', Types.Boolean)
+    @param('pin', Types.Boolean)
+    async post(
+        domainId: string, type: string, title: string,
+        content: string, highlight = false, pin = false,
+    ) {
+        await this.limitRate('add_file', 3600, 60);
+
+        if (highlight) this.checkPerm(PERM.PERM_HIGHLIGHT_DISCUSSION);
+        if (pin) this.checkPerm(PERM.PERM_PIN_DISCUSSION);
+
+        // 确保 vnode.id 是数字
+        let resolvedId = this.vnode.id;
+        if (typeof resolvedId === 'string') {
+            resolvedId = parseInt(resolvedId, 10);
+        }
+        if (isNaN(resolvedId)) {
+            throw new Error(`Invalid vnode.id: ${this.vnode.id}`);
+        }
+
+        console.log('Resolved vnode.id:', resolvedId, 'Type:', typeof resolvedId);
+
+        const hidden = this.vnode.hidden ?? false;
+        const did = await file.add(
+            domainId, typeMapper[type], resolvedId, this.user._id,
+            title, content, this.request.ip, highlight, pin, hidden,
+        );
+
+        this.response.body = { did };
+        this.response.redirect = this.url('file_detail', { did });
+
+console.log('vnode:', this.vnode);
+
+
+    }
+}
+
+
+class FileDetailHandler extends FileHandler {
+    @param('did', Types.ObjectId)
+    @param('page', Types.PositiveInt, true)
+    async get(domainId: string, did: ObjectId, page = 1) {
+        const dsdoc = this.user.hasPriv(PRIV.PRIV_USER_PROFILE)
+            ? await file.getStatus(domainId, did, this.user._id)
+            : null;
+        const [drdocs, pcount, drcount] = await this.paginate(
+            file.getMultiReply(domainId, did),
+            page,
+            'reply',
+        );
+        const uids = [
+            ...this.vnode.owner ? [this.vnode.owner] : [],
+            this.ddoc.owner,
+            ...drdocs.map((drdoc) => drdoc.owner),
+        ];
+        for (const drdoc of drdocs) {
+            if (drdoc.reply) uids.push(...drdoc.reply.map((drrdoc) => drrdoc.owner));
+        }
+        const reactions = { [did.toHexString()]: dsdoc?.react || {} };
+        await Promise.all(drdocs.map((drdoc) =>
+            discussion.getReaction(domainId, document.TYPE_DISCUSSION_REPLY, drdoc._id, this.user._id).then((reaction) => {
+                reactions[drdoc._id.toHexString()] = reaction;
+            })));
+        const udict = await user.getList(domainId, uids);
+        if (!dsdoc?.view && this.user.hasPriv(PRIV.PRIV_USER_PROFILE)) {
+            await Promise.all([
+                discussion.inc(domainId, did, 'views', 1),
+                discussion.setStatus(domainId, did, this.user._id, { view: true }),
+            ]);
+        }
+        const path = [
+            ['Ejunz', 'homepage'],
+            ['discussion_main', 'discussion_main'],
+            [this.vnode.title, 'discussion_node', { type: discussion.typeDisplay[this.ddoc.parentType], name: this.ddoc.parentId }, true],
+            [this.ddoc.title, null, null, true],
+        ];
+        this.response.template = 'discussion_detail.html';
+        this.response.body = {
+            path, ddoc: this.ddoc, dsdoc, drdocs, page, pcount, drcount, udict, vnode: this.vnode, reactions,
+        };
+        console.log('typeDisplay',{ type: discussion.typeDisplay[this.ddoc.parentType], name: this.ddoc.parentId })
+    }
+
+    async post() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+    }
+
+}
+
+class FileEditHandler extends FileHandler {
+    async get() {
+        const path = [
+            ['Ejunz', 'homepage'],
+            ['file_main', 'file_main'],
+            [this.vnode.title, 'file_node', { type: file.typeDisplay[this.ddoc.parentType], name: this.ddoc.parentId }, true],
+            [this.ddoc.title, 'file_detail', { did: this.ddoc.docId }, true],
+            ['file_edit', null],
+        ];
+        this.response.template = 'file_edit.html';
+        this.response.body = { ddoc: this.ddoc, path };
+    }
+
+    @param('did', Types.ObjectId)
+    @param('title', Types.Title)
+    @param('content', Types.Content)
+    @param('highlight', Types.Boolean)
+    @param('pin', Types.Boolean)
+    async postUpdate(
+        domainId: string, did: ObjectId, title: string, content: string,
+        highlight = false, pin = false,
+    ) {
+        if (!this.user.own(this.ddoc)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        else this.checkPerm(PERM.PERM_EDIT_DISCUSSION_SELF);
+        if (!this.user.hasPerm(PERM.PERM_HIGHLIGHT_DISCUSSION)) highlight = this.ddoc.highlight;
+        if (!this.user.hasPerm(PERM.PERM_PIN_DISCUSSION)) pin = this.ddoc.pin;
+        const hidden = this.vnode.hidden ?? false;
+        await Promise.all([
+            file.edit(domainId, did, {
+                title, highlight, pin, content, editor: this.user._id, edited: true, hidden,
+            }),
+            oplog.log(this, 'file.edit', this.ddoc),
+        ]);
+        this.response.body = { did };
+        this.response.redirect = this.url('file_detail', { did });
+    }
+
+    @param('did', Types.ObjectId)
+    async postDelete(domainId: string, did: ObjectId) {
+        const deleteBy = this.user.own(this.ddoc) ? 'self' : 'Admin';
+        if (!this.user.own(this.ddoc)) this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
+        else this.checkPerm(PERM.PERM_DELETE_DISCUSSION_SELF);
+        const msg = JSON.stringify({
+            message: 'Admin {0} delete your discussion "{1}".',
+            params: [
+                this.user.uname,
+                this.ddoc.title,
+            ],
+        });
+        await Promise.all([
+            oplog.log(this, 'file.delete', this.ddoc),
+            deleteBy !== 'self' && message.send(1, this.ddoc.owner, msg, message.FLAG_RICHTEXT | message.FLAG_UNREAD),
+            file.del(domainId, did),
+        ]);
+        this.response.body = { type: this.ddoc.parentType, parent: this.ddoc.parentId };
+        this.response.redirect = this.url('file_node', {
+            type: file.typeDisplay[this.ddoc.parentType],
+            name: this.ddoc.parentId,
+        });
+    }
+}
 
 export class RepoAddFileHandler extends Handler {
     @param('rid', Types.RepoId, true) 
@@ -330,8 +617,4 @@ export class RepofileDownloadHandler extends Handler {
     }
 }
 export async function apply(ctx: Context) {
-    ctx.Route('repo_add_file', '/repo/:rid/add_file', RepoAddFileHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('repo_history', '/repo/:rid/history', RepoFileHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('repo_file_download', '/repo/:rid/file/:filename', RepofileDownloadHandler, PRIV.PRIV_USER_PROFILE);
-
-}
+ 

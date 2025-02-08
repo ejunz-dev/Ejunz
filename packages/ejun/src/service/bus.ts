@@ -9,7 +9,7 @@ import type { ProblemSolutionHandler } from '../handler/problem';
 import type { UserRegisterHandler } from '../handler/user';
 import type {
     BaseUserDict, ContestBalloonDoc, DiscussionDoc, DomainDoc, FileInfo,
-    MessageDoc, ProblemDict, ProblemDoc, RecordDoc,
+    MessageDoc, ProblemDict, ProblemDoc, RecordDoc, FileDoc, RepoDoc,
     ScoreboardRow, Tdoc, TrainingDoc, User,
 } from '../interface';
 import type { DocType } from '../model/document';
@@ -99,6 +99,11 @@ export interface EventMap extends KnownHandlerEvents {
 
     'repo/list': (query: Filter<RepoDoc>, handler: any, sort?: string[]) => VoidReturn
     'repofile/list': (query: Filter<RepoDoc>, handler: any, sort?: string[]) => VoidReturn
+
+    'file/before-add': (payload: Partial<FileDoc>) => VoidReturn
+    'file/add': (payload: Partial<FileDoc>) => VoidReturn
+    
+    
 }
 /* eslint-enable @typescript-eslint/naming-convention */
 declare module 'cordis' {

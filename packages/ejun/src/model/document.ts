@@ -7,7 +7,7 @@ import { Context } from '../context';
 import {
     Content, ContestClarificationDoc, DiscussionDoc,
     DiscussionReplyDoc, ProblemDoc, ProblemStatusDoc,
-    Tdoc, TrainingDoc,DocsDoc,RepoDoc
+    Tdoc, TrainingDoc,DocsDoc,RepoDoc,FileDoc
 } from '../interface';
 import * as bus from '../service/bus';
 import db from '../service/db';
@@ -21,6 +21,8 @@ export const coll = db.collection('document');
 export const collStatus = db.collection('document.status');
 export const TYPE_DOCS: 100 = 100;
 export const TYPE_REPO: 110 = 110;
+export const TYPE_FILE_NODE: 120 = 120;
+export const TYPE_FILE: 121 = 121;
 export const TYPE_PROBLEM: 10 = 10;
 export const TYPE_PROBLEM_SOLUTION: 11 = 11;
 export const TYPE_PROBLEM_LIST: 12 = 12;
@@ -36,6 +38,8 @@ export const TYPE_HOMEWORK: 60 = 60;
 export interface DocType {
     [TYPE_DOCS]: DocsDoc;
     [TYPE_REPO]: RepoDoc;
+    [TYPE_FILE]: FileDoc;
+    [TYPE_FILE_NODE]: any;
     [TYPE_PROBLEM]: ProblemDoc;
     [TYPE_PROBLEM_SOLUTION]: any;
     [TYPE_PROBLEM_LIST]: any;
@@ -509,4 +513,7 @@ global.Ejunz.model.document = {
     TYPE_PROBLEM_SOLUTION,
     TYPE_TRAINING,
     TYPE_DOCS,
+    TYPE_REPO,
+    TYPE_FILE,
+    TYPE_FILE_NODE,
 };

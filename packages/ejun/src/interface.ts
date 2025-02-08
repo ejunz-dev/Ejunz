@@ -10,6 +10,7 @@ import type { ProblemDoc } from './model/problem';
 import type { DocsDoc } from './model/doc';
 import type { RepoDoc } from './model/repo'; 
 import type { Handler } from './service/server';
+import type { FileDoc } from './model/file';
 
 type document = typeof import('./model/document');
 
@@ -305,24 +306,42 @@ declare module './model/doc'{
 export type { DocsDoc } from './model/doc';
 export type DocsDict = NumericDictionary<DocsDoc>;
 
+
 declare module './model/repo'{
-interface RepoDoc {
-    docType: document['TYPE_REPO'];
-    docId: number;
-    domainId: string,
-    rid: string;
-    owner: number;
-    content: string;
-    title: string;
-    ip: string;
-    updateAt: Date;
-    nReply: number;
-    views: number;
-    reply: any[];
-    react: Record<string, number>;
-    isIterative?: boolean;
-    tag: string[];    
-    files: {
+    interface RepoDoc {
+        docType: document['TYPE_REPO'];
+        docId: number;
+        domainId: string,
+        rid: string;
+        owner: number;
+        content: string;
+        title: string;
+        ip: string;
+        updateAt: Date;
+        nReply: number;
+        views: number;
+        reply: any[];
+        react: Record<string, number>;
+        isIterative?: boolean;
+        tag: string[];    
+        files: FileDoc[];
+    }                
+    }         
+    export type { RepoDoc } from './model/repo';
+    export type RepoDict = NumericDictionary<RepoDoc>;
+    
+    export type { FileDoc } from './model/file';        
+    declare module './model/file' {
+        interface FileDoc {
+        docType: document['TYPE_FILE'];
+        docId: ObjectId;
+        parentType: number;
+        parentId: ObjectId | number | string;
+        domainId: string;
+        fid: string;
+        owner: number;
+        title: string;
+        content: string;
         filename: string;           
         version: string;
         path: string;            
@@ -330,12 +349,20 @@ interface RepoDoc {
         lastModified: Date;      
         etag?: string;     
         tag: string[];   
-    }[];
-}                
-}         
-export type { RepoDoc } from './model/repo';
-export type RepoDict = NumericDictionary<RepoDoc>;
+        hidden: boolean;
+    }
+    }
 
+    export interface FileHistoryDoc {
+        title?: string;
+        content: string;
+        domainId: string;
+        docId: ObjectId;
+        /** Create time */
+        time: Date;
+        uid: number;
+        ip: string;
+    }
 export interface StatusDocBase {
     _id: ObjectId,
     docId: any,
@@ -765,6 +792,7 @@ declare module './service/db' {
             [K in keyof DocStatusType]: { docType: K } & DocStatusType[K];
         }[keyof DocStatusType];
         'discussion.history': DiscussionHistoryDoc;
+        'file.history': FileHistoryDoc;
         'user': Udoc;
         'user.preference': UserPreferenceDoc;
         'vuser': VUdoc;
@@ -810,6 +838,7 @@ export interface Model {
     oauth: typeof import('./model/oauth').default,
     storage: typeof import('./model/storage').default,
     rp: typeof import('./script/rating').RpTypes,
+    file: typeof import('./model/file').default,
 }
 
 export interface EjunzService {
