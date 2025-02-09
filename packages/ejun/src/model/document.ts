@@ -23,6 +23,7 @@ export const TYPE_DOCS: 100 = 100;
 export const TYPE_REPO: 110 = 110;
 export const TYPE_FILE_NODE: 120 = 120;
 export const TYPE_FILE: 121 = 121;
+export const TYPE_FILE_REPLY: 122 = 122;
 export const TYPE_PROBLEM: 10 = 10;
 export const TYPE_PROBLEM_SOLUTION: 11 = 11;
 export const TYPE_PROBLEM_LIST: 12 = 12;
@@ -40,6 +41,7 @@ export interface DocType {
     [TYPE_REPO]: RepoDoc;
     [TYPE_FILE]: FileDoc;
     [TYPE_FILE_NODE]: any;
+    [TYPE_FILE_REPLY]: any;
     [TYPE_PROBLEM]: ProblemDoc;
     [TYPE_PROBLEM_SOLUTION]: any;
     [TYPE_PROBLEM_LIST]: any;
@@ -516,4 +518,5 @@ global.Ejunz.model.document = {
     TYPE_REPO,
     TYPE_FILE,
     TYPE_FILE_NODE,
+    TYPE_FILE_REPLY,
 };

@@ -330,45 +330,51 @@ declare module './model/repo'{
     export type { RepoDoc } from './model/repo';
     export type RepoDict = NumericDictionary<RepoDoc>;
     
-    export type { FileDoc } from './model/file';        
-    declare module './model/file' {
-        interface FileDoc {
+export type { FileDoc } from './model/file';
+declare module './model/file' {
+    interface FileDoc {
         docType: document['TYPE_FILE'];
         docId: ObjectId;
         parentType: number;
         parentId: ObjectId | number | string;
-        domainId: string;
-        fid: string;
-        owner: number;
         title: string;
         content: string;
-        filename: string;           
-        version: string;
-        path: string;            
-        size: number;           
-        lastModified: Date;      
-        etag?: string;     
-        tag: string[];   
-        hidden: boolean;
-    }
-    }
-
-    export interface FileHistoryDoc {
-        title?: string;
-        content: string;
-        domainId: string;
-        docId: ObjectId;
-        /** Create time */
-        time: Date;
-        uid: number;
         ip: string;
+        pin: boolean;
+        highlight: boolean;
+        updateAt: Date;
+        nReply: number;
+        views: number;
+        edited?: boolean;
+        editor?: number;
+        react: Record<string, number>;
+        sort: number;
+        lastRCount: number;
+        lock?: boolean;
+        hidden?: boolean;
     }
-export interface StatusDocBase {
-    _id: ObjectId,
-    docId: any,
-    docType: number,
-    domainId: string,
-    uid: number,
+}
+
+export interface FileReplyDoc extends Document {
+    // docType: document['TYPE_DISCUSSION_REPLY'];
+    docId: ObjectId;
+    // parentType: document['TYPE_DISCUSSION'];
+    parentId: ObjectId;
+    ip: string;
+    content: string;
+    reply: FileTailReplyDoc[];
+    edited?: boolean;
+    editor?: number;
+    react: Record<string, number>;
+}
+
+export interface FileTailReplyDoc {
+    _id: ObjectId;
+    owner: number;
+    content: string;
+    ip: string;
+    edited?: boolean;
+    editor?: number;
 }
 
 export interface ProblemStatusDoc extends StatusDocBase {
@@ -768,6 +774,16 @@ export interface DiscussionHistoryDoc {
     ip: string;
 }
 
+export interface FileHistoryDoc {
+    title?: string;
+    content: string;
+    domainId: string;
+    docId: ObjectId;
+    /** Create time */
+    time: Date;
+    uid: number;
+    ip: string;
+}
 export interface ContestBalloonDoc {
     _id: ObjectId;
     domainId: string;
