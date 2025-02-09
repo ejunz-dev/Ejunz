@@ -1,5 +1,5 @@
 {% extends "layout/basic.html" %}
-{% import "components/comments_discussion.html" as comments with context %}
+{% import "components/comments_file.html" as comments with context %}
 {% block content %}
 <div class="row">
   <div class="medium-9 columns">
@@ -7,10 +7,10 @@
       <div class="section__body">
         <ul class="supplementary list">
           <li>
-            <a class="discussion-node-tag" href="{{ url('discussion_node', type=model.discussion.typeDisplay[vnode.type], name=vnode.id) }}">
-            {% if ddoc.parentType == model.document.TYPE_DISCUSSION_NODE %}
+            <a class="discussion-node-tag" href="{{ url('file_node', type=model.file.typeDisplay[vnode.type], name=vnode.id) }}">
+            {% if ddoc.parentType == model.document.TYPE_FILE_NODE %}
               <span class="v-center icon icon-tag"></span>
-              {{ _('Discussion:') }}
+              {{ _('File:') }}
             {% elif ddoc.parentType == model.document.TYPE_CONTEST %}
               <span class="v-center icon icon-award"></span>
               {{ _('Contest:') }}
@@ -34,18 +34,18 @@
             {{ datetimeSpan(ddoc._id)|safe }}
           </li>
         </ul>
-        <div class="typo topic__content richmedia" data-emoji-enabled data-raw-url="{{ url('discussion_raw', did=ddoc.docId) }}">
+        <div class="typo topic__content richmedia" data-emoji-enabled data-raw-url="{{ url('file_raw', did=ddoc.docId) }}">
           {{ ddoc.content|markdown|safe }}
         </div>
       </div>
       <ul class="section__footer supplementary dot list">
       {% if handler.user.hasPerm(perm.PERM_EDIT_DISCUSSION) or (handler.user.own(ddoc) and handler.user.hasPerm(perm.PERM_EDIT_DISCUSSION_SELF)) %}
-        <li><a href="{{ url('discussion_edit', did=ddoc.docId) }}">
+        <li><a href="{{ url('file_edit', did=ddoc.docId) }}">
           <span class="icon icon-edit"></span> {{ _('Edit') }}
         </a></li>
       {% endif %}
       {% if ddoc.edited %}
-        <li data-discussion-history data-raw-url="{{ url('discussion_raw', did=ddoc.docId) }}">{{ _('Edited') }}</li>
+        <li data-file-history data-raw-url="{{ url('file_raw', did=ddoc.docId) }}">{{ _('Edited') }}</li>
       {% endif %}
         <li>{{ _('{0} views').format(ddoc.views) }}</li>
       {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
