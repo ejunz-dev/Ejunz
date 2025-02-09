@@ -3,7 +3,7 @@ import { Filter, ObjectId } from 'mongodb';
 import { Context } from '../context';
 import { DiscussionNodeNotFoundError, DocumentNotFoundError } from '../error';
 import {
-    DiscussionHistoryDoc, DiscussionReplyDoc, DiscussionTailReplyDoc, Document, FileHistoryDoc
+    FileHistoryDoc, FileReplyDoc, FileTailReplyDoc, Document
 } from '../interface';
 import * as bus from '../service/bus';
 import db from '../service/db';
@@ -16,22 +16,20 @@ import problem from './problem';
 import * as training from './training';
 import { User } from './user';
 import DocsModel from './doc';
-
 export interface FileDoc extends Document { }
 export type Field = keyof FileDoc;
 
 export const PROJECTION_LIST: Field[] = [
-    '_id', 'domainId', 'docType', 'docId', 'fid',
-    'owner', 'title', 'filename', 'version', 'path',
-    'size', 'lastModified', 'etag', 'tag', 'parentId', 'parentType','hidden'
+    '_id', 'domainId', 'docType', 'docId', 'highlight',
+    'nReply', 'views', 'pin', 'updateAt', 'owner',
+    'parentId', 'parentType', 'title', 'hidden',
 ];
-
 export const PROJECTION_PUBLIC: Field[] = [
-    ...PROJECTION_LIST, 'content',
+    ...PROJECTION_LIST, 'content', 'edited', 'react', 'maintainer',
+    'lock',
 ];
-
-export const FILE_HISTORY_PROJECTION_PUBLIC: (keyof FileHistoryDoc)[] = [
-    'title', 'content', 'docId'
+export const HISTORY_PROJECTION_PUBLIC: (keyof FileHistoryDoc)[] = [
+    'title', 'content', 'docId', 'uid', 'time',
 ];
 
 export const typeDisplay = {
@@ -43,32 +41,29 @@ export const typeDisplay = {
     [document.TYPE_DOCS]: 'docs',
 };
 
-
 export const coll = db.collection('file.history');
 
-
 export async function add(
-    domainId: string, docId: ObjectId, parentType: number, parentId: ObjectId | number | string,
-    owner: number, title: string, content: string, filename: string,
-    version: string, path: string, size: number, lastModified: Date, 
-    ip: string | null = null, etag?: string, tag: string[] = [], hidden = false,    
+    domainId: string, parentType: number, parentId: ObjectId | number | string,
+    owner: number, title: string, content: string,
+    ip: string | null = null, highlight: boolean, pin: boolean, hidden = false,
 ): Promise<ObjectId> {
     const time = new Date();
     const payload: Partial<FileDoc> = {
         domainId,
-        docId,
         content,
         owner,
+        editor: owner,
         parentType,
         parentId,
         title,
-        filename,
-        version,
-        path,
-        size,
-        lastModified,
-        etag,
-        tag,
+        ip,
+        nReply: 0,
+        highlight,
+        pin,
+        updateAt: time,
+        views: 0,
+        sort: 100,
         hidden,
     };
     await bus.parallel('file/before-add', payload);
@@ -76,40 +71,46 @@ export async function add(
         payload.domainId!, payload.content!, payload.owner!, document.TYPE_FILE,
         null, payload.parentType, payload.parentId, omit(payload, ['domainId', 'content', 'owner', 'parentType', 'parentId']),
     );
+    await coll.insertOne({
+        domainId, docId: res, content, uid: owner, ip, time: new Date(),
+    });
     payload.docId = res;
     await bus.parallel('file/add', payload);
     return payload.docId;
 }
 
 export async function get<T extends Field>(
-    domainId: string, docId: ObjectId, projection: T[] = PROJECTION_PUBLIC as any,
+    domainId: string, did: ObjectId, projection: T[] = PROJECTION_PUBLIC as any,
 ): Promise<Pick<FileDoc, T>> {
-    return await document.get(domainId, document.TYPE_FILE, docId, projection);
+    return await document.get(domainId, document.TYPE_FILE, did, projection);
 }
 
-export async function edit(domainId: string, docId: ObjectId, $set: Partial<FileDoc>) {
-    return document.set(domainId, document.TYPE_FILE, docId, $set);
+export async function edit(domainId: string, did: ObjectId, $set: Partial<FileDoc>) {
+    await coll.insertOne({
+        domainId, docId: did, content: $set.content, uid: $set.editor, ip: $set.ip, time: new Date(),
+    });
+    return document.set(domainId, document.TYPE_FILE, did, $set);
 }
 
 export function inc(
-    domainId: string, docId: ObjectId, key: NumberKeys<FileDoc>, value: number,
+    domainId: string, did: ObjectId, key: NumberKeys<FileDoc>, value: number,
 ): Promise<FileDoc | null> {
-    return document.inc(domainId, document.TYPE_FILE, docId, key, value);
+    return document.inc(domainId, document.TYPE_FILE, did, key, value);
 }
 
-export async function del(domainId: string, docId: ObjectId): Promise<void> {
+export async function del(domainId: string, did: ObjectId): Promise<void> {
     const [ddoc, drdocs] = await Promise.all([
-        document.get(domainId, document.TYPE_FILE, docId),
-        document.getMulti(domainId, document.TYPE_FILE, {   
-            parentType: document.TYPE_FILE, parentId: docId,
+        document.get(domainId, document.TYPE_FILE, did),
+        document.getMulti(domainId, document.TYPE_FILE_REPLY, {
+            parentType: document.TYPE_FILE, parentId: did,
         }).project({ _id: 1, 'reply._id': 1 }).toArray(),
     ]) as any;
     await Promise.all([
-        document.deleteOne(domainId, document.TYPE_FILE, docId),
-        document.deleteMulti(domainId, document.TYPE_FILE, {
-            parentType: document.TYPE_FILE, parentId: docId,
+        document.deleteOne(domainId, document.TYPE_FILE, did),
+        document.deleteMulti(domainId, document.TYPE_FILE_REPLY, {
+            parentType: document.TYPE_FILE, parentId: did,
         }),
-        document.deleteMultiStatus(domainId, document.TYPE_FILE, { docId: docId }),
+        document.deleteMultiStatus(domainId, document.TYPE_FILE, { docId: did }),
         coll.deleteMany({ domainId, docId: { $in: [ddoc._id, ...(drdocs.reply?.map((i) => i._id) || [])] } }),
     ]) as any;
 }
@@ -124,6 +125,138 @@ export function getMulti(domainId: string, query: Filter<FileDoc> = {}, projecti
         .project<FileDoc>(buildProjection(projection));
 }
 
+export async function addReply(
+    domainId: string, did: ObjectId, owner: number,
+    content: string, ip: string,
+): Promise<ObjectId> {
+    const time = new Date();
+    const [drid] = await Promise.all([
+        document.add(
+            domainId, content, owner, document.TYPE_FILE_REPLY,
+            null, document.TYPE_FILE, did, { ip, editor: owner },
+        ),
+        document.incAndSet(domainId, document.TYPE_FILE, did, 'nReply', 1, { updateAt: time }),
+    ]);
+    await coll.insertOne({
+        domainId, docId: drid, content, uid: owner, ip, time,
+    });
+    return drid;
+}
+
+export function getReply(domainId: string, drid: ObjectId): Promise<FileReplyDoc | null> {
+    return document.get(domainId, document.TYPE_FILE_REPLY, drid);
+}
+
+export async function editReply(
+    domainId: string, drid: ObjectId, content: string, uid: number, ip: string,
+): Promise<FileReplyDoc | null> {
+    await coll.insertOne({
+        domainId, docId: drid, content, uid, ip, time: new Date (),
+    });
+    return document.set(domainId, document.TYPE_FILE_REPLY, drid, { content, edited: true, editor: uid });
+}
+
+export async function delReply(domainId: string, drid: ObjectId) {
+    const drdoc = await getReply(domainId, drid);
+    if (!drdoc) throw new DocumentNotFoundError(domainId, drid);
+    return await Promise.all([
+        document.deleteOne(domainId, document.TYPE_FILE_REPLY, drid),
+        document.inc(domainId, document.TYPE_FILE, drdoc.parentId, 'nReply', -1),
+        coll.deleteMany({ domainId, docId: { $in: [drid, ...(drdoc.reply?.map((i) => i._id) || [])] } }),
+    ]);
+}
+
+export function getMultiReply(domainId: string, did: ObjectId) {
+    return document.getMulti(
+        domainId, document.TYPE_FILE_REPLY,
+        { parentType: document.TYPE_FILE, parentId: did },
+    ).sort('_id', -1);
+}
+
+export function getListReply(domainId: string, did: ObjectId): Promise<FileReplyDoc[]> {
+    return getMultiReply(domainId, did).toArray();
+}
+
+export async function react(domainId: string, docType: keyof document.DocType, did: ObjectId, id: string, uid: number, reverse = false) {
+    let doc;
+    const sdoc = await document.setIfNotStatus(domainId, docType, did, uid, `react.${id}`, reverse ? 0 : 1, reverse ? 0 : 1, {});
+    if (sdoc) doc = await document.inc(domainId, docType, did, `react.${id}`, reverse ? -1 : 1);
+    else doc = await document.get(domainId, docType, did, ['react']);
+    return [doc, sdoc];
+}
+
+export async function getReaction(domainId: string, docType: keyof document.DocType, did: ObjectId, uid: number) {
+    const doc = await document.getStatus(domainId, docType, did, uid);
+    return doc?.react || {};
+}
+
+export async function addTailReply(
+    domainId: string, drid: ObjectId,
+    owner: number, content: string, ip: string,
+): Promise<[FileReplyDoc, ObjectId]> {
+    const time = new Date();
+    const [drdoc, subId] = await document.push(
+        domainId, document.TYPE_FILE_REPLY, drid,
+        'reply', content, owner, { ip, editor: owner },
+    );
+    await Promise.all([
+        coll.insertOne({
+            domainId, docId: subId, content, uid: owner, ip, time: new Date(),
+        }),
+        document.set(
+            domainId, document.TYPE_FILE, drdoc.parentId,
+            { updateAt: time },
+        ),
+    ]);
+    return [drdoc, subId];
+}
+
+export function getTailReply(
+    domainId: string, drid: ObjectId, drrid: ObjectId,
+): Promise<[FileReplyDoc, FileTailReplyDoc] | [null, null]> {
+    return document.getSub(domainId, document.TYPE_FILE_REPLY, drid, 'reply', drrid);
+}
+
+export async function editTailReply(
+    domainId: string, drid: ObjectId, drrid: ObjectId, content: string, uid: number, ip: string,
+): Promise<FileTailReplyDoc> {
+    const [, drrdoc] = await Promise.all([
+        coll.insertOne({
+            domainId, docId: drrid, content, uid, time: new Date(), ip,
+        }),
+        document.setSub(domainId, document.TYPE_FILE_REPLY, drid,
+            'reply', drrid, { content, edited: true, editor: uid }),
+    ]);
+    return drrdoc;
+}
+
+export async function delTailReply(domainId: string, drid: ObjectId, drrid: ObjectId) {
+    return Promise.all([
+        document.deleteSub(domainId, document.TYPE_FILE_REPLY, drid, 'reply', drrid),
+        coll.deleteMany({ domainId, docId: drrid }),
+    ]);
+}
+
+export function getHistory(
+    domainId: string, docId: ObjectId, query: Filter<FileHistoryDoc> = {},
+    projection = HISTORY_PROJECTION_PUBLIC,
+) {
+    return coll.find({ domainId, docId, ...query })
+        .sort({ time: -1 }).project(buildProjection(projection))
+        .toArray();
+}
+
+export function setStar(domainId: string, did: ObjectId, uid: number, star: boolean) {
+    return document.setStatus(domainId, document.TYPE_FILE, did, uid, { star });
+}
+
+export function getStatus(domainId: string, did: ObjectId, uid: number) {
+    return document.getStatus(domainId, document.TYPE_FILE, did, uid);
+}
+
+export function setStatus(domainId: string, did: ObjectId, uid: number, $set) {
+    return document.setStatus(domainId, document.TYPE_FILE, did, uid, $set);
+}
 
 export function addNode(domainId: string, _id: string, category: string, args: any = {}) {
     return document.add(
@@ -206,7 +339,7 @@ if (type === document.TYPE_DOCS) {
         owner: 1,
     };
 }
-    
+
 
 export function getNodes(domainId: string) {
     return document.getMulti(domainId, document.TYPE_FILE_NODE).toArray();
@@ -238,22 +371,22 @@ export function checkVNodeVisibility(type: number, vnode: any, user: User) {
 export function apply(ctx: Context) {
     ctx.on('problem/delete', async (domainId, docId) => {
         const dids = await document.getMulti(
-            domainId, document.TYPE_DISCUSSION,
+            domainId, document.TYPE_FILE,
             { parentType: document.TYPE_PROBLEM, parentId: docId },
         ).project({ docId: 1 }).map((ddoc) => ddoc.docId).toArray();
         const drids = await document.getMulti(
-            domainId, document.TYPE_DISCUSSION_REPLY,
-            { parentType: document.TYPE_DISCUSSION, parentId: { $in: dids } },
+            domainId, document.TYPE_FILE_REPLY,
+            { parentType: document.TYPE_FILE, parentId: { $in: dids } },
         ).project({ docId: 1 }).map((drdoc) => drdoc.docId).toArray();
         return await Promise.all([
-            document.deleteMultiStatus(domainId, document.TYPE_DISCUSSION, { docId: { $in: dids } }),
-            document.deleteMulti(domainId, document.TYPE_DISCUSSION, { docId: { $in: dids } }),
-            document.deleteMulti(domainId, document.TYPE_DISCUSSION_REPLY, { docId: { $in: drids } }),
+            document.deleteMultiStatus(domainId, document.TYPE_FILE, { docId: { $in: dids } }),
+            document.deleteMulti(domainId, document.TYPE_FILE, { docId: { $in: dids } }),
+            document.deleteMulti(domainId, document.TYPE_FILE_REPLY, { docId: { $in: drids } }),
         ]);
     });
     ctx.on('problem/edit', async (result) => {
         const dids = await document.getMulti(
-            result.domainId, document.TYPE_DISCUSSION,
+            result.domainId, document.TYPE_FILE,
             { parentType: document.TYPE_PROBLEM, parentId: result.docId },
         ).project({ docId: 1 }).map((ddoc) => ddoc.docId).toArray();
         return await document.coll.updateMany({ _id: { $in: dids } }, { $set: { hidden: result.hidden } });
@@ -265,7 +398,7 @@ global.Ejunz.model.file = {
     typeDisplay,
     PROJECTION_LIST,
     PROJECTION_PUBLIC,
-    FILE_HISTORY_PROJECTION_PUBLIC,
+    HISTORY_PROJECTION_PUBLIC,
 
     apply,
     add,
@@ -275,6 +408,22 @@ global.Ejunz.model.file = {
     del,
     count,
     getMulti,
+    addReply,
+    getReply,
+    editReply,
+    delReply,
+    getMultiReply,
+    getListReply,
+    addTailReply,
+    getTailReply,
+    editTailReply,
+    delTailReply,
+    react,
+    getReaction,
+    getHistory,
+    setStar,
+    getStatus,
+    setStatus,
     addNode,
     getNode,
     flushNodes,
