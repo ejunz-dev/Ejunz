@@ -16,6 +16,8 @@ import problem from './problem';
 import * as training from './training';
 import { User } from './user';
 import DocsModel from './doc';
+import { FileData } from '../interface';
+import storage from '../model/storage';
 export interface FileDoc extends Document { }
 export type Field = keyof FileDoc;
 
@@ -368,6 +370,41 @@ export function checkVNodeVisibility(type: number, vnode: any, user: User) {
     return true;
 }
 
+export async function addWithFile(
+    domainId: string, did: ObjectId, owner: number,
+    content: string, ip: string, 
+    filename: string,
+    path: string,
+    size: number,
+    lastModified: Date,
+    etag: string,
+): Promise<ObjectId> {
+    const time = new Date();
+
+    // 创建 FileData 对象
+    const fileData: FileData = {
+        filename,
+        path,
+        size,
+        lastModified,
+        etag,
+    };
+
+    const [drid] = await Promise.all([
+        document.add(
+            domainId, content, owner, document.TYPE_FILE_REPLY,
+            null, document.TYPE_FILE, did, { ip, editor: owner, files: [fileData] },
+        ),
+        document.incAndSet(domainId, document.TYPE_FILE, did, 'nReply', 1, { updateAt: time }),
+    ]);
+
+    await coll.insertOne({
+        domainId, docId: drid, content, uid: owner, ip, time, files: [fileData],
+    });
+
+    return drid;
+}
+
 export function apply(ctx: Context) {
     ctx.on('problem/delete', async (domainId, docId) => {
         const dids = await document.getMulti(
@@ -399,7 +436,7 @@ global.Ejunz.model.file = {
     PROJECTION_LIST,
     PROJECTION_PUBLIC,
     HISTORY_PROJECTION_PUBLIC,
-
+    addWithFile,
     apply,
     add,
     get,

@@ -40,7 +40,7 @@
       </div>
       <ul class="section__footer supplementary dot list">
       {% if handler.user.hasPerm(perm.PERM_EDIT_DISCUSSION) or (handler.user.own(ddoc) and handler.user.hasPerm(perm.PERM_EDIT_DISCUSSION_SELF)) %}
-        <li><a href="{{ url('file_edit', did=ddoc.docId) }}">
+        <li><a href="{{ url('hub_edit', did=ddoc.docId) }}">
           <span class="icon icon-edit"></span> {{ _('Edit') }}
         </a></li>
       {% endif %}
