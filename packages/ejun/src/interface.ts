@@ -324,7 +324,15 @@ declare module './model/repo'{
         react: Record<string, number>;
         isIterative?: boolean;
         tag: string[];    
-        files: FileDoc[];
+        files: {
+            filename: string;           
+            version: string;
+            path: string;            
+            size: number;           
+            lastModified: Date;      
+            etag?: string;     
+            tag: string[];   
+        }[];
     }                
     }         
     export type { RepoDoc } from './model/repo';
@@ -366,6 +374,14 @@ export interface FileReplyDoc extends Document {
     edited?: boolean;
     editor?: number;
     react: Record<string, number>;
+
+    files: {
+        filename: string;           
+        path: string;            
+        size: number;           
+        lastModified: Date;      
+        etag?: string;     
+    }[];
 }
 
 export interface FileTailReplyDoc {
@@ -375,7 +391,15 @@ export interface FileTailReplyDoc {
     ip: string;
     edited?: boolean;
     editor?: number;
-}
+    files: {
+        filename: string;           
+        path: string;            
+        size: number;           
+        lastModified: Date;      
+        etag?: string;     
+    }[];
+}                
+
 
 export interface ProblemStatusDoc extends StatusDocBase {
     docId: number;
@@ -783,6 +807,7 @@ export interface FileHistoryDoc {
     time: Date;
     uid: number;
     ip: string;
+    files: FileData[];
 }
 export interface ContestBalloonDoc {
     _id: ObjectId;
