@@ -2,7 +2,7 @@ import { isSafeInteger } from 'lodash';
 import { ObjectId } from 'mongodb';
 import {
     DiscussionLockedError, DiscussionNodeNotFoundError, DiscussionNotFoundError, DocumentNotFoundError,
-    PermissionError,
+    PermissionError,ValidationError,
 } from '../error';
 import { FileDoc, FileReplyDoc, FileTailReplyDoc } from '../interface';
 import { PERM, PRIV } from '../model/builtin';
@@ -12,6 +12,8 @@ import message from '../model/message';
 import * as oplog from '../model/oplog';
 import user from '../model/user';
 import { Handler, param, Types } from '../service/server';
+import storage from '../model/storage';
+import * as File from '../model/file';
 
 export const typeMapper = {
     problem: document.TYPE_PROBLEM,
@@ -267,21 +269,69 @@ class DiscussionDetailHandler extends DiscussionHandler {
 
     @param('did', Types.ObjectId)
     @param('content', Types.Content)
-    async postReply(domainId: string, did: ObjectId, content: string) {
+    @param('filename', Types.String)
+    async postReply(domainId: string, did: ObjectId, content: string, filename: string) {
+        console.log('Received filename:', filename); // 调试输出
+
         this.checkPerm(PERM.PERM_REPLY_DISCUSSION);
         if (this.ddoc.lock) throw new DiscussionLockedError(domainId, did);
         await this.limitRate('add_discussion', 3600, 60);
-        const targets = new Set(Array.from(content.matchAll(/@\[\]\(\/user\/(\d+)\)/g)).map((i) => +i[1]));
-        const uids = Object.keys(await user.getList(domainId, Array.from(targets))).map((i) => +i);
-        const msg = JSON.stringify({
-            message: 'User {0} mentioned you in {1:link}',
-            params: [this.user.uname, `/d/${domainId}${this.request.path}`],
-        });
-        for (const uid of uids) {
-            message.send(1, uid, msg, message.FLAG_RICHTEXT | message.FLAG_UNREAD);
+
+        // 验证 filename 是否为空或不符合规则
+        if (!filename || typeof filename !== 'string') {
+            throw new ValidationError('Filename is required and must be a string.');
         }
-        const drid = await discussion.addReply(domainId, did, this.user._id, content, this.request.ip);
+
+        const file = this.request.files?.file;
+        if (!file) {
+            throw new ValidationError('A file must be uploaded to create a repo.');
+        }
+    
+
+        const filePath = `hub/${domainId}/${did}/${filename}`;
+        await storage.put(filePath, file.filepath, this.user._id);
+        const fileMeta = await storage.getMeta(filePath);
+        if (!fileMeta) {
+            throw new ValidationError(`Failed to retrieve metadata for the uploaded file: ${filename}`);
+        }
+
+        const fileData = {
+            filename: filename,
+            path: filePath,
+            size: fileMeta.size ?? 0,
+            lastModified: fileMeta.lastModified ?? new Date(),
+            etag: fileMeta.etag ?? '',
+        };
+
+        // 调用 addWithFile 时传递所有必需的参数
+        const drid = await File.addWithFile(
+            domainId,
+            did,
+            this.user._id,
+            content,
+            this.request.ip,
+            filename,
+            filePath,
+            fileMeta.size ?? 0,
+            fileMeta.lastModified ?? new Date(),
+            fileMeta.etag ?? ''
+        );
         this.back({ drid });
+
+        const replyDoc: FileReplyDoc = {
+            docId: did,
+            parentId: this.ddoc.parentId,
+            ip: this.request.ip,
+            content: content,
+            reply: [],
+            react: {},
+            files: [fileData],
+        };
+
+        this.response.body = { replyDoc };
+        this.response.redirect = this.url('hub_detail', { did });
+        console.log('files', fileData);
+        console.log('replyDoc', replyDoc);
     }
 
     @param('drid', Types.ObjectId)

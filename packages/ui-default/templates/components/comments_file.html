@@ -46,10 +46,14 @@
       {% if ddoc.lock %}
         <textarea class="textbox" name="dczcomments__dummy-box" readonly placeholder="{{ _('The file is locked, you can not reply anymore.') }}"></textarea>
       {% else %}
-      <div class="hasjs--hide">
-        <form method="post" class="dczcomments__box" name="dczcomments__box__form" data-hotkey="ctrl+enter:submit,esc:vjCommentBoxCancel">
+      <div class="medium-12 columns">
+        <form method="post" enctype="multipart/form-data" >
           <div>
             <textarea name="content" class="textbox" data-markdown required></textarea>
+          </div>
+          <div>
+            <input type="file" name="file" class="textbox" data-markdown required>
+            <input type="text" name="filename" class="textbox" data-markdown required>
           </div>
           <div>
             <input type="submit" class="rounded primary button dczcomments__box__submit" value="{{ _(comment_post_text) }} (Ctrl+Enter)" data-value-reply="{{ _(reply_post_text) }} (Ctrl+Enter)" data-value-comment="{{ _(comment_post_text) }} (Ctrl+Enter)" data-value-comment-update="{{ _(comment_edit_text) }} (Ctrl+Enter)" data-value-reply-update="{{ _(reply_edit_text) }} (Ctrl+Enter)">
