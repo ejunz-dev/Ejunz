@@ -198,7 +198,7 @@ console.log('vnode:', this.vnode);
 
     }
 }
-export class FSDownloadHandler extends Handler {
+class HUBFSDownloadHandler extends Handler {
     noCheckPermView = true;
 
     async get({did, filename }: { did: string, filename: string }) {
@@ -577,5 +577,5 @@ export async function apply(ctx) {
     ctx.Route('hub_tail_reply_raw', '/hub/:did/:drid/:drrid/raw', DiscussionRawHandler);
     ctx.Route('hub_node', '/hub/:type/:name', DiscussionNodeHandler);
     ctx.Route('hub_create', '/hub/:type/:name/create', DiscussionCreateHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_CREATE_DISCUSSION);
-    ctx.Route('fs_download', '/file/:did/:filename', FSDownloadHandler);
+    ctx.Route('hub_fs_download', '/hub/:did/file/:filename', HUBFSDownloadHandler);
 }
