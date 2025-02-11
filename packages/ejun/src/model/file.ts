@@ -16,7 +16,6 @@ import problem from './problem';
 import * as training from './training';
 import { User } from './user';
 import DocsModel from './doc';
-import { FileData } from '../interface';
 import storage from '../model/storage';
 export interface FileDoc extends Document { }
 export type Field = keyof FileDoc;
@@ -168,7 +167,7 @@ export async function delReply(domainId: string, drid: ObjectId) {
     ]);
 }
 
-export function getMultiReply(domainId: string, did: ObjectId) {
+export function getMultiReplyWiFile(domainId: string, did: ObjectId) {
     return document.getMulti(
         domainId, document.TYPE_FILE_REPLY,
         { parentType: document.TYPE_FILE, parentId: did },
@@ -176,7 +175,7 @@ export function getMultiReply(domainId: string, did: ObjectId) {
 }
 
 export function getListReply(domainId: string, did: ObjectId): Promise<FileReplyDoc[]> {
-    return getMultiReply(domainId, did).toArray();
+    return getMultiReplyWiFile(domainId, did).toArray();
 }
 
 export async function react(domainId: string, docType: keyof document.DocType, did: ObjectId, id: string, uid: number, reverse = false) {
@@ -449,7 +448,7 @@ global.Ejunz.model.file = {
     getReply,
     editReply,
     delReply,
-    getMultiReply,
+    getMultiReplyWiFile,
     getListReply,
     addTailReply,
     getTailReply,
