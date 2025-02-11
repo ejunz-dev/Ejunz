@@ -161,6 +161,16 @@
         </li>
       {%- endfor -%}
       </ul>
+      {% if doc.files %}
+        <div class="file-list">
+          <strong>Files:</strong>
+          <ul>
+            {% for file in doc.files %}
+              <li>{{ file.filename }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
     </div>
   </div>
 </li>
