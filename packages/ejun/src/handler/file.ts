@@ -2,7 +2,7 @@ import { isSafeInteger } from 'lodash';
 import { ObjectId } from 'mongodb';
 import {
     DiscussionLockedError, DiscussionNodeNotFoundError, DiscussionNotFoundError, DocumentNotFoundError,
-    PermissionError,ValidationError,
+    PermissionError,ValidationError,NotFoundError
 } from '../error';
 import { FileDoc, FileReplyDoc, FileTailReplyDoc } from '../interface';
 import { PERM, PRIV } from '../model/builtin';
@@ -14,7 +14,8 @@ import user from '../model/user';
 import { Handler, param, Types } from '../service/server';
 import storage from '../model/storage';
 import * as File from '../model/file';
-
+import { lookup } from 'mime-types';
+import { encodeRFC5987ValueChars } from '../service/storage';
 export const typeMapper = {
     problem: document.TYPE_PROBLEM,
     contest: document.TYPE_CONTEST,
@@ -89,11 +90,12 @@ class DiscussionMainHandler extends Handler {
             discussion.getListVnodes(domainId, ddocs, this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN), this.user.group),
             discussion.getNodes(domainId),
         ]);
+
         this.response.template = 'hub_main_or_node.html';
         this.response.body = {
             ddocs, dpcount, udict, page, page_name: 'hub_main', vndict, vnode: {}, vnodes,
         };
-        console.log('response',this.response.body)
+        
     }
 }
 
@@ -196,7 +198,41 @@ console.log('vnode:', this.vnode);
 
     }
 }
+export class FSDownloadHandler extends Handler {
+    noCheckPermView = true;
 
+    async get({did, filename }: { did: string, filename: string }) {
+        const domainId = this.args?.domainId || this.context?.domainId || 'default_domain';
+        console.log('Resolved params:', { domainId, filename });
+
+        console.log("Entering DomainFSDownloadHandler.get...");
+        console.log("Received domainId:", domainId, "filename:", filename);
+
+
+        const target = `hub/${domainId}/${did}/${filename}`;
+        const file = await storage.getMeta(target);
+        if (!file) {
+            throw new NotFoundError(`File "${filename}" does not exist.`);
+        }
+        console.log("Generated target path:", target);
+
+        const mimeType = lookup(filename) || 'application/octet-stream';
+        console.log("File MIME type:", mimeType);
+
+        try {
+            this.response.body = await storage.get(target);
+            this.response.type = mimeType;
+
+            if (!['application/pdf', 'image/jpeg', 'image/png'].includes(mimeType)) {
+                this.response.disposition = `attachment; filename="${encodeRFC5987ValueChars(filename)}"`;
+            }
+        } catch (e) {
+            throw new Error(`Error streaming file "${filename}": ${e.message}`);
+        }
+
+        console.log("File streamed successfully:", file);
+    }
+}
 
 class DiscussionDetailHandler extends DiscussionHandler {
     @param('did', Types.ObjectId)
@@ -236,11 +272,14 @@ class DiscussionDetailHandler extends DiscussionHandler {
             [this.vnode.title, 'hub_node', { type: discussion.typeDisplay[this.ddoc.parentType], name: this.ddoc.parentId }, true],
             [this.ddoc.title, null, null, true],
         ];
+        const urlForFile = (filename: string) =>
+            this.url('domain_fs_download', { domainId, filename });
+        
         this.response.template = 'hub_detail.html';
         this.response.body = {
-            path, ddoc: this.ddoc, dsdoc, drdocs, page, pcount, drcount, udict, vnode: this.vnode, reactions,
+            path, ddoc: this.ddoc, dsdoc, drdocs, page, pcount, drcount, udict, vnode: this.vnode, reactions, urlForFile,
         };
-        console.log('response',this.response.body)
+        console.log('urlForFile',urlForFile)
     }
 
 
@@ -538,4 +577,5 @@ export async function apply(ctx) {
     ctx.Route('hub_tail_reply_raw', '/hub/:did/:drid/:drrid/raw', DiscussionRawHandler);
     ctx.Route('hub_node', '/hub/:type/:name', DiscussionNodeHandler);
     ctx.Route('hub_create', '/hub/:type/:name/create', DiscussionCreateHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_CREATE_DISCUSSION);
+    ctx.Route('fs_download', '/file/:did/:filename', FSDownloadHandler);
 }

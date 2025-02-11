@@ -161,16 +161,19 @@
         </li>
       {%- endfor -%}
       </ul>
-      {% if doc.files %}
-        <div class="file-list">
-          <strong>Files:</strong>
-          <ul>
-            {% for file in doc.files %}
-              <li>{{ file.filename }}</li>
-            {% endfor %}
-          </ul>
-        </div>
-      {% endif %}
+         <tbody>
+              {%- for file in doc.files -%}
+              <tr data-filename="{{ file.filename or 'Unknown' }}" data-size="{{ file.size or 0 }}">
+                <td class="col--name" data-preview>
+                  <a href="{{ url('fs_download', {did: doc.parentId, filename: file.filename }) }}">{{ file.filename or 'Unknown' }}</a>
+                </td>
+                <td class="col--size">{{ size(file.size or 0) }}</td>
+                <td class="col--operation">
+                  <a href="{{ url('fs_download', {did: doc.parentId, filename: file.filename }) }}" class="icon icon-download"></a>
+                </td>
+              </tr> 
+              {%- endfor -%}
+            </tbody>
     </div>
   </div>
 </li>
