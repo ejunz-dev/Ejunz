@@ -206,7 +206,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
             ? await discussion.getStatus(domainId, did, this.user._id)
             : null;
         const [drdocs, pcount, drcount] = await this.paginate(
-            discussion.getMultiReply(domainId, did),
+            File.getMultiReplyWiFile(domainId, did),
             page,
             'reply',
         );
@@ -240,8 +240,9 @@ class DiscussionDetailHandler extends DiscussionHandler {
         this.response.body = {
             path, ddoc: this.ddoc, dsdoc, drdocs, page, pcount, drcount, udict, vnode: this.vnode, reactions,
         };
-        console.log('typeDisplay',{ type: discussion.typeDisplay[this.ddoc.parentType], name: this.ddoc.parentId })
+        console.log('response',this.response.body)
     }
+
 
     async post() {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
@@ -282,7 +283,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
             throw new ValidationError('Filename is required and must be a string.');
         }
 
-        const file = this.request.files?.file;
+         const file = this.request.files?.file;
         if (!file) {
             throw new ValidationError('A file must be uploaded to create a repo.');
         }
