@@ -10,7 +10,7 @@ import type { ProblemDoc } from './model/problem';
 import type { DocsDoc } from './model/doc';
 import type { RepoDoc } from './model/repo'; 
 import type { Handler } from './service/server';
-import type { FileDoc } from './model/file';
+import type { HubDoc } from './model/hub';
 
 type document = typeof import('./model/document');
 
@@ -338,10 +338,10 @@ declare module './model/repo'{
     export type { RepoDoc } from './model/repo';
     export type RepoDict = NumericDictionary<RepoDoc>;
     
-export type { FileDoc } from './model/file';
-declare module './model/file' {
-    interface FileDoc {
-        docType: document['TYPE_FILE'];
+export type { HubDoc } from './model/hub';
+declare module './model/hub' {
+    interface HubDoc {
+        docType: document['TYPE_HUB'];
         docId: ObjectId;
         parentType: number;
         parentId: ObjectId | number | string;
@@ -363,42 +363,43 @@ declare module './model/file' {
     }
 }
 
-export interface FileReplyDoc extends Document {
+export interface HubReplyDoc extends Document {
     // docType: document['TYPE_DISCUSSION_REPLY'];
     docId: ObjectId;
     // parentType: document['TYPE_DISCUSSION'];
     parentId: ObjectId;
     ip: string;
     content: string;
-    reply: FileTailReplyDoc[];
+    reply: HubTailReplyDoc[];
     edited?: boolean;
     editor?: number;
     react: Record<string, number>;
-
-    files: {
-        filename: string;           
-        path: string;            
-        size: number;           
-        lastModified: Date;      
-        etag?: string;     
-    }[];
+    additional_file: HubFileInfo[];
+    data: HubFileInfo[];
 }
 
-export interface FileTailReplyDoc {
+export interface HubTailReplyDoc {
     _id: ObjectId;
     owner: number;
     content: string;
     ip: string;
     edited?: boolean;
     editor?: number;
-    files: {
-        filename: string;           
-        path: string;            
-        size: number;           
-        lastModified: Date;      
-        etag?: string;     
-    }[];
+    additional_file: HubFileInfo[];
+    data: HubFileInfo[];
 }                
+
+export interface HubFileInfo extends FileInfo {
+   /** storage path */
+   _id: string,
+   /** filename */
+   name: string,
+   /** file size (in bytes) */
+   size: number,
+   etag: string,
+   lastModified: Date,
+}
+
 
 
 export interface ProblemStatusDoc extends StatusDocBase {
@@ -798,7 +799,7 @@ export interface DiscussionHistoryDoc {
     ip: string;
 }
 
-export interface FileHistoryDoc {
+export interface HubHistoryDoc {
     title?: string;
     content: string;
     domainId: string;
@@ -807,7 +808,6 @@ export interface FileHistoryDoc {
     time: Date;
     uid: number;
     ip: string;
-    files: FileData[];
 }
 export interface ContestBalloonDoc {
     _id: ObjectId;
@@ -833,7 +833,7 @@ declare module './service/db' {
             [K in keyof DocStatusType]: { docType: K } & DocStatusType[K];
         }[keyof DocStatusType];
         'discussion.history': DiscussionHistoryDoc;
-        'file.history': FileHistoryDoc;
+        'hub.history': HubHistoryDoc;
         'user': Udoc;
         'user.preference': UserPreferenceDoc;
         'vuser': VUdoc;
@@ -879,7 +879,7 @@ export interface Model {
     oauth: typeof import('./model/oauth').default,
     storage: typeof import('./model/storage').default,
     rp: typeof import('./script/rating').RpTypes,
-    file: typeof import('./model/file').default,
+    hub: typeof import('./model/hub'),
 }
 
 export interface EjunzService {
