@@ -7,10 +7,10 @@
       <div class="section__body">
         <ul class="supplementary list">
           <li>
-            <a class="discussion-node-tag" href="{{ url('file_node', type=model.file.typeDisplay[vnode.type], name=vnode.id) }}">
-            {% if ddoc.parentType == model.document.TYPE_FILE_NODE %}
+            <a class="discussion-node-tag" href="{{ url('hub_node', type=model.hub.typeDisplay[vnode.type], name=vnode.id) }}">
+            {% if ddoc.parentType == model.document.TYPE_HUB_NODE %}
               <span class="v-center icon icon-tag"></span>
-              {{ _('File:') }}
+              {{ _('Hub:') }}
             {% elif ddoc.parentType == model.document.TYPE_CONTEST %}
               <span class="v-center icon icon-award"></span>
               {{ _('Contest:') }}
@@ -34,7 +34,7 @@
             {{ datetimeSpan(ddoc._id)|safe }}
           </li>
         </ul>
-        <div class="typo topic__content richmedia" data-emoji-enabled data-raw-url="{{ url('file_raw', did=ddoc.docId) }}">
+        <div class="typo topic__content richmedia" data-emoji-enabled data-raw-url="{{ url('hub_raw', did=ddoc.docId) }}">
           {{ ddoc.content|markdown|safe }}
         </div>
       </div>

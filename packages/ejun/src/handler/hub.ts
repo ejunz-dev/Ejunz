@@ -4,31 +4,38 @@ import {
     DiscussionLockedError, DiscussionNodeNotFoundError, DiscussionNotFoundError, DocumentNotFoundError,
     PermissionError,ValidationError,NotFoundError
 } from '../error';
-import { FileDoc, FileReplyDoc, FileTailReplyDoc } from '../interface';
+import { HubDoc, HubReplyDoc, HubTailReplyDoc } from '../interface';
 import { PERM, PRIV } from '../model/builtin';
 import * as discussion from '../model/discussion';
 import * as document from '../model/document';
 import message from '../model/message';
 import * as oplog from '../model/oplog';
 import user from '../model/user';
-import { Handler, param, Types } from '../service/server';
+import { Handler, param, Types,post} from '../service/server';
 import storage from '../model/storage';
-import * as File from '../model/file';
+import * as Hub from '../model/hub';
 import { lookup } from 'mime-types';
 import { encodeRFC5987ValueChars } from '../service/storage';
+import AdmZip from 'adm-zip';
+import sanitize from 'sanitize-filename';
+import { statSync } from 'fs';
+import { FileLimitExceededError } from '../error';
+import * as HubModel from '../model/hub';
+import * as FileModel from '../model/file';
+
 export const typeMapper = {
     problem: document.TYPE_PROBLEM,
     contest: document.TYPE_CONTEST,
-    node: document.TYPE_FILE_NODE,
+    node: document.TYPE_HUB_NODE,
     training: document.TYPE_TRAINING,
     homework: document.TYPE_CONTEST,
     docs: document.TYPE_DOCS,
 };
 
 class DiscussionHandler extends Handler {
-    ddoc?: FileDoc;
-    drdoc?: FileReplyDoc;
-    drrdoc?: FileTailReplyDoc;
+    ddoc?: HubDoc;
+    drdoc?: HubReplyDoc;
+    drrdoc?: HubTailReplyDoc;
     vnode?: any;
 
     @param('type', Types.Range(Object.keys(typeMapper)), true)
@@ -238,11 +245,12 @@ class DiscussionDetailHandler extends DiscussionHandler {
     @param('did', Types.ObjectId)
     @param('page', Types.PositiveInt, true)
     async get(domainId: string, did: ObjectId, page = 1) {
+        console.log('Context:', this.context);
         const dsdoc = this.user.hasPriv(PRIV.PRIV_USER_PROFILE)
             ? await discussion.getStatus(domainId, did, this.user._id)
             : null;
         const [drdocs, pcount, drcount] = await this.paginate(
-            File.getMultiReplyWiFile(domainId, did),
+            Hub.getMultiReplyWiFile(domainId, did),
             page,
             'reply',
         );
@@ -317,7 +325,6 @@ class DiscussionDetailHandler extends DiscussionHandler {
         if (this.ddoc.lock) throw new DiscussionLockedError(domainId, did);
         await this.limitRate('add_discussion', 3600, 60);
 
-        // 验证 filename 是否为空或不符合规则
         if (!filename || typeof filename !== 'string') {
             throw new ValidationError('Filename is required and must be a string.');
         }
@@ -343,8 +350,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
             etag: fileMeta.etag ?? '',
         };
 
-        // 调用 addWithFile 时传递所有必需的参数
-        const drid = await File.addWithFile(
+        const drid = await Hub.addWithFile(
             domainId,
             did,
             this.user._id,
@@ -358,7 +364,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
         );
         this.back({ drid });
 
-        const replyDoc: FileReplyDoc = {
+        const replyDoc: HubReplyDoc = {
             docId: did,
             parentId: this.ddoc.parentId,
             ip: this.request.ip,
@@ -374,12 +380,55 @@ class DiscussionDetailHandler extends DiscussionHandler {
         console.log('replyDoc', replyDoc);
     }
 
+
+
+
+
+
     @param('drid', Types.ObjectId)
     @param('content', Types.Content)
-    async postTailReply(domainId: string, drid: ObjectId, content: string) {
+    async postTailReply(domainId: string, drid: ObjectId, content: string, filename: string) {
         this.checkPerm(PERM.PERM_REPLY_DISCUSSION);
         if (this.ddoc.lock) throw new DiscussionLockedError(domainId, this.ddoc.docId);
         await this.limitRate('add_discussion', 3600, 60);
+
+        if (!filename || typeof filename !== 'string') {
+            throw new ValidationError('Filename is required and must be a string.');
+        }
+
+        const file = this.request.files?.file;
+        if (!file) {
+            throw new ValidationError('A file must be uploaded to create a reply.');
+        }
+
+        const filePath = `hub/${domainId}/${drid}/${filename}`;
+        await storage.put(filePath, file.filepath, this.user._id);
+        const fileMeta = await storage.getMeta(filePath);
+        if (!fileMeta) {
+            throw new ValidationError(`Failed to retrieve metadata for the uploaded file: ${filename}`);
+        }
+
+        const fileData = {
+            filename: filename,
+            path: filePath,
+            size: fileMeta.size ?? 0,
+            lastModified: fileMeta.lastModified ?? new Date(),
+            etag: fileMeta.etag ?? '',
+        };
+
+        await Hub.addTailReplyWithFile(
+            domainId,
+            drid,
+            this.user._id,
+            content,
+            this.request.ip,
+            filename,
+            filePath,
+            fileMeta.size ?? 0,
+            fileMeta.lastModified ?? new Date(),
+            fileMeta.etag ?? ''
+        );
+
         const targets = new Set(Array.from(content.matchAll(/@\[\]\(\/user\/(\d+)\)/g)).map((i) => +i[1]));
         const uids = Object.keys(await user.getList(domainId, Array.from(targets))).map((i) => +i);
         const msg = JSON.stringify({
@@ -389,7 +438,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
         for (const uid of uids) {
             message.send(1, uid, msg, message.FLAG_RICHTEXT | message.FLAG_UNREAD);
         }
-        await discussion.addTailReply(domainId, drid, this.user._id, content, this.request.ip);
+
         this.back();
     }
 
@@ -570,12 +619,13 @@ class DiscussionEditHandler extends DiscussionHandler {
 
 export async function apply(ctx) {
     ctx.Route('hu_main', '/hub', DiscussionMainHandler);
-    ctx.Route('hub_detail', '/hub/:did', DiscussionDetailHandler);
+    ctx.Route('hub_detail', '/hub/:did/files', DiscussionDetailHandler);
     ctx.Route('hub_edit', '/hub/:did/edit', DiscussionEditHandler);
     ctx.Route('hub_raw', '/hub/:did/raw', DiscussionRawHandler);
     ctx.Route('hub_reply_raw', '/hub/:did/:drid/raw', DiscussionRawHandler);
     ctx.Route('hub_tail_reply_raw', '/hub/:did/:drid/:drrid/raw', DiscussionRawHandler);
     ctx.Route('hub_node', '/hub/:type/:name', DiscussionNodeHandler);
     ctx.Route('hub_create', '/hub/:type/:name/create', DiscussionCreateHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_CREATE_DISCUSSION);
-    ctx.Route('hub_fs_download', '/hub/:did/file/:filename', HUBFSDownloadHandler);
+    ctx.Route('hub_fs_download', '/hub/:did/files/:filename', HUBFSDownloadHandler);
 }
+
