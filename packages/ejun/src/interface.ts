@@ -338,56 +338,54 @@ declare module './model/repo'{
     export type { RepoDoc } from './model/repo';
     export type RepoDict = NumericDictionary<RepoDoc>;
     
-export type { HubDoc } from './model/hub';
-declare module './model/hub' {
-    interface HubDoc {
-        docType: document['TYPE_HUB'];
+    export type { HubDoc } from './model/hub';
+    declare module './model/hub' {
+        interface HubDoc {
+            docType: document['TYPE_HUB'];
+            docId: ObjectId;
+            parentType: number;
+            parentId: ObjectId | number | string;
+            title: string;
+            content: string;
+            ip: string;
+            pin: boolean;
+            highlight: boolean;
+            updateAt: Date;
+            nReply: number;
+            views: number;
+            edited?: boolean;
+            editor?: number;
+            react: Record<string, number>;
+            sort: number;
+            lastRCount: number;
+            lock?: boolean;
+            hidden?: boolean;
+        }
+    }
+    
+    export interface HubReplyDoc extends Document {
+        // docType: document['TYPE_HUB_REPLY'];
         docId: ObjectId;
-        parentType: number;
-        parentId: ObjectId | number | string;
-        title: string;
-        content: string;
+        // parentType: document['TYPE_HUB'];
+        parentId: ObjectId;
         ip: string;
-        pin: boolean;
-        highlight: boolean;
-        updateAt: Date;
-        nReply: number;
-        views: number;
+        content: string;
+        reply: HubTailReplyDoc[];
         edited?: boolean;
         editor?: number;
         react: Record<string, number>;
-        sort: number;
-        lastRCount: number;
-        lock?: boolean;
-        hidden?: boolean;
+        files: HubFileInfo[];
     }
-}
-
-export interface HubReplyDoc extends Document {
-    // docType: document['TYPE_DISCUSSION_REPLY'];
-    docId: ObjectId;
-    // parentType: document['TYPE_DISCUSSION'];
-    parentId: ObjectId;
-    ip: string;
-    content: string;
-    reply: HubTailReplyDoc[];
-    edited?: boolean;
-    editor?: number;
-    react: Record<string, number>;
-    additional_file: HubFileInfo[];
-    data: HubFileInfo[];
-}
-
-export interface HubTailReplyDoc {
-    _id: ObjectId;
-    owner: number;
-    content: string;
-    ip: string;
-    edited?: boolean;
-    editor?: number;
-    additional_file: HubFileInfo[];
-    data: HubFileInfo[];
-}                
+    
+    export interface HubTailReplyDoc {
+        _id: ObjectId;
+        owner: number;
+        content: string;
+        ip: string;
+        edited?: boolean;
+        editor?: number;
+        files: HubFileInfo[];
+    }
 
 export interface HubFileInfo extends FileInfo {
    /** storage path */
@@ -880,6 +878,7 @@ export interface Model {
     storage: typeof import('./model/storage').default,
     rp: typeof import('./script/rating').RpTypes,
     hub: typeof import('./model/hub'),
+    file: typeof import('./model/file').default,
 }
 
 export interface EjunzService {

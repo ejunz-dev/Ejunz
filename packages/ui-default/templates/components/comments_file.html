@@ -35,7 +35,7 @@
   reactions = {},
   ddoc = {}
 ) %}
-<ul class="dczcomments__list view--file">
+<ul class="dczcomments__list view--discussion">
 {% if handler.user.hasPerm(comment_post_perm) %}
 <li class="dczcomments__item">
   <div class="media">
@@ -44,16 +44,12 @@
     </div>
     <div class="media__body top">
       {% if ddoc.lock %}
-        <textarea class="textbox" name="dczcomments__dummy-box" readonly placeholder="{{ _('The file is locked, you can not reply anymore.') }}"></textarea>
+        <textarea class="textbox" name="dczcomments__dummy-box" readonly placeholder="{{ _('The discussion is locked, you can not reply anymore.') }}"></textarea>
       {% else %}
-      <div class="medium-12 columns">
-        <form method="post" enctype="multipart/form-data" >
+      <div class="hasjs--hide">
+        <form method="post" class="dczcomments__box" name="dczcomments__box__form" data-hotkey="ctrl+enter:submit,esc:vjCommentBoxCancel">
           <div>
             <textarea name="content" class="textbox" data-markdown required></textarea>
-          </div>
-          <div>
-            <input type="file" name="file" class="textbox" data-markdown required>
-            <input type="text" name="filename" class="textbox" data-markdown required>
           </div>
           <div>
             <input type="submit" class="rounded primary button dczcomments__box__submit" value="{{ _(comment_post_text) }} (Ctrl+Enter)" data-value-reply="{{ _(reply_post_text) }} (Ctrl+Enter)" data-value-comment="{{ _(comment_post_text) }} (Ctrl+Enter)" data-value-comment-update="{{ _(comment_edit_text) }} (Ctrl+Enter)" data-value-reply-update="{{ _(reply_edit_text) }} (Ctrl+Enter)">
@@ -96,7 +92,7 @@
           {{ user.render_inline(udoc, avatar=false) }}
           @ {{ datetimeSpan(doc['_id'])|safe }}
           {% if doc.edited %}
-            <div class="history" data-file-history data-raw-url="{{ url('file_reply_raw', did=doc.parentId, drid=doc._id) }}"><a>{{ _('Edited') }}</a></div>
+            <div class="history" data-discussion-history data-raw-url="{{ url('hub_reply_raw', did=doc.parentId, drid=doc._id) }}"><a>{{ _('Edited') }}</a></div>
           {% endif %}
         </div>
         <div class="dczcomments__operations nojs--hide">
@@ -114,7 +110,7 @@
         {% endif %}
         </div>
       </div>
-      <div class="typo richmedia" data-emoji-enabled data-drid="{{ doc.docId }}" data-raw-url="{{ url('file_reply_raw', did=doc.parentId, drid=doc._id) }}">
+      <div class="typo richmedia" data-emoji-enabled data-drid="{{ doc.docId }}" data-raw-url="{{ url('discussion_reply_raw', did=doc.parentId, drid=doc._id) }}">
         {{ doc['content']|markdown|safe }}
         <div class="reactions list" data-type="drid" data-drid="{{ doc._id }}">
           {% for e in Object.entries(doc.react or {})|sort(true, false, 1)|selectattr(1) %}
@@ -137,7 +133,7 @@
                   {{ user.render_inline(udoc, avatar=false) }}
                   @ {{ datetimeSpan(rdoc._id)|safe }}
                   {% if rdoc.edited %} 
-                    <div class="history" data-file-history data-raw-url="{{ url('file_tail_reply_raw', did=doc.parentId, drid=doc._id, drrid=rdoc._id) }}"><a>{{ _('Edited') }}</a></div>
+                    <div class="history" data-discussion-history data-raw-url="{{ url('hub_tail_reply_raw', did=doc.parentId, drid=doc._id, drrid=rdoc._id) }}"><a>{{ _('Edited') }}</a></div>
                   {% endif %}
                 </div>
                 <div class="dczcomments__operations nojs--hide">
@@ -152,7 +148,7 @@
                 {% endif %}
                 </div>
               </div>
-              <div class="typo richmedia" data-emoji-enabled data-raw-url="{{ url('file_tail_reply_raw', did=doc.parentId, drid=doc._id, drrid=rdoc._id) }}">
+              <div class="typo richmedia" data-emoji-enabled data-raw-url="{{ url('hub_tail_reply_raw', did=doc.parentId, drid=doc._id, drrid=rdoc._id) }}">
                 {{ rdoc.content|markdown|safe }}
               </div>
               <div class="commentbox-edit-target"></div>
@@ -161,52 +157,6 @@
         </li>
       {%- endfor -%}
       </ul>
-      <div class="section__body no-padding files" data-fragment-id="files">
-        {% if doc.files and doc.files.length %}
-          <table class="data-table">
-            <colgroup>
-              <col class="col--checkbox">
-              <col class="col--name">
-              <col class="col--size">
-            </colgroup>
-            <thead>
-              <tr>
-                <th class="col--checkbox">
-                  <label class="compact checkbox">
-                    <input type="checkbox" name="select_all" data-checkbox-toggle="files">
-                  </label>
-                </th>
-                <th class="col--name">{{ _('Filename') }}</th>
-                <th class="col--size">{{ _('Size') }}</th>
-                <th class="col--operation"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {%- for file in doc.files -%}
-              <tr data-filename="{{ file.filename or 'Unknown' }}" data-size="{{ file.size or 0 }}">
-                <td class="col--checkbox">
-                  <label class="compact checkbox">
-                    <input type="checkbox" data-checkbox-group="files" data-checkbox-range>
-                  </label>
-                </td>
-                <td class="col--name" data-preview>
-                  <a href="{{ url('hub_fs_download', did=doc.parentId, filename=file.filename) }}">{{ file.filename or 'Unknown' }}</a>
-                </td>
-                <td class="col--size">{{ size(file.size or 0) }}</td>
-                <td class="col--operation">
-                  <a href="{{ url('hub_fs_download', did=doc.parentId, filename=file.filename) }}" class="icon icon-download"></a>
-                </td>
-              </tr>
-              {%- endfor -%}
-            </tbody>
-          </table>
-        {% else %}
-          <div class="no-files">
-            <i class="icon icon-files-empty"></i>
-            <p>{{ _('There are no files currently.') }}</p>
-          </div>
-        {% endif %}
-      </div>
     </div>
   </div>
 </li>

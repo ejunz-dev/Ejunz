@@ -304,7 +304,7 @@ export async function getDocsByAssociatedDocumentId(domainId: string, associated
         domainId,
         lid: associatedDocumentId, // 用 lid 作为查询条件
     };
-    console.log(`Querying docs with:`, query);
+    
     return await DocsModel.getMulti(domainId, query).toArray(); // 确保返回完整文档
 }
 

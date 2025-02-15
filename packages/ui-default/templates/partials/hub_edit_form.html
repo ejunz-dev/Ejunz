@@ -15,7 +15,7 @@
       <label class="checkbox">
         <input type="checkbox" name="highlight" value="on" class="checkbox"
           {%- if ddoc.highlight %} checked{% endif -%}
-          {%- if not handler.user.hasPerm(perm.PERM_HIGHLIGHT_DISCUSSION) %} disabled{% endif -%}
+          {%- if not handler.user.hasPerm(perm.PERM_HIGHLIGHT_HUB) %} disabled{% endif -%}
         >{{ _('Highlight') }}
       </label>
     </label>
@@ -26,7 +26,7 @@
       <label class="checkbox">
         <input type="checkbox" name="pin" value="on" class="checkbox"
           {%- if ddoc.pin %} checked{% endif -%}
-          {%- if not handler.user.hasPerm(perm.PERM_PIN_DISCUSSION) %} disabled{% endif -%}
+          {%- if not handler.user.hasPerm(perm.PERM_PIN_HUB) %} disabled{% endif -%}
         >{{ _('Pin') }}
       </label>
     </label>

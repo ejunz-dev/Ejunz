@@ -1,7 +1,7 @@
 import { omit } from 'lodash';
 import { Filter, ObjectId } from 'mongodb';
 import { Context } from '../context';
-import { DiscussionNodeNotFoundError, DocumentNotFoundError } from '../error';
+import { HubNodeNotFoundError, DocumentNotFoundError } from '../error';
 import {
     HubHistoryDoc, HubReplyDoc, HubTailReplyDoc, Document
 } from '../interface';
@@ -16,7 +16,6 @@ import problem from './problem';
 import * as training from './training';
 import { User } from './user';
 import DocsModel from './doc';
-import storage from '../model/storage';
 export interface HubDoc extends Document { }
 export type Field = keyof HubDoc;
 
@@ -42,7 +41,7 @@ export const typeDisplay = {
     [document.TYPE_DOCS]: 'docs',
 };
 
-export const coll = db.collection('hub.history');
+export const coll = db.collection('discussion.history');
 
 export async function add(
     domainId: string, parentType: number, parentId: ObjectId | number | string,
@@ -67,7 +66,7 @@ export async function add(
         sort: 100,
         hidden,
     };
-    await bus.parallel('file/before-add', payload);
+    await bus.parallel('hub/before-add', payload);
     const res = await document.add(
         payload.domainId!, payload.content!, payload.owner!, document.TYPE_HUB,
         null, payload.parentType, payload.parentId, omit(payload, ['domainId', 'content', 'owner', 'parentType', 'parentId']),
@@ -76,7 +75,7 @@ export async function add(
         domainId, docId: res, content, uid: owner, ip, time: new Date(),
     });
     payload.docId = res;
-    await bus.parallel('file/add', payload);
+    await bus.parallel('hub/add', payload);
     return payload.docId;
 }
 
@@ -107,9 +106,9 @@ export async function del(domainId: string, did: ObjectId): Promise<void> {
         }).project({ _id: 1, 'reply._id': 1 }).toArray(),
     ]) as any;
     await Promise.all([
-        document.deleteOne(domainId, document.TYPE_HUB, did),
+        document.deleteOne(domainId, document.TYPE_DISCUSSION, did),
         document.deleteMulti(domainId, document.TYPE_HUB_REPLY, {
-                parentType: document.TYPE_HUB, parentId: did,
+            parentType: document.TYPE_HUB, parentId: did,
         }),
         document.deleteMultiStatus(domainId, document.TYPE_HUB, { docId: did }),
         coll.deleteMany({ domainId, docId: { $in: [ddoc._id, ...(drdocs.reply?.map((i) => i._id) || [])] } }),
@@ -152,7 +151,7 @@ export async function editReply(
     domainId: string, drid: ObjectId, content: string, uid: number, ip: string,
 ): Promise<HubReplyDoc | null> {
     await coll.insertOne({
-        domainId, docId: drid, content, uid, ip, time: new Date (),
+        domainId, docId: drid, content, uid, ip, time: new Date(),
     });
     return document.set(domainId, document.TYPE_HUB_REPLY, drid, { content, edited: true, editor: uid });
 }
@@ -167,7 +166,7 @@ export async function delReply(domainId: string, drid: ObjectId) {
     ]);
 }
 
-export function getMultiReplyWiFile(domainId: string, did: ObjectId) {
+export function getMultiReply(domainId: string, did: ObjectId) {
     return document.getMulti(
         domainId, document.TYPE_HUB_REPLY,
         { parentType: document.TYPE_HUB, parentId: did },
@@ -175,7 +174,7 @@ export function getMultiReplyWiFile(domainId: string, did: ObjectId) {
 }
 
 export function getListReply(domainId: string, did: ObjectId): Promise<HubReplyDoc[]> {
-    return getMultiReplyWiFile(domainId, did).toArray();
+    return getMultiReply(domainId, did).toArray();
 }
 
 export async function react(domainId: string, docType: keyof document.DocType, did: ObjectId, id: string, uid: number, reverse = false) {
@@ -191,75 +190,25 @@ export async function getReaction(domainId: string, docType: keyof document.DocT
     return doc?.react || {};
 }
 
-export async function addTailReplyWithFile(
+export async function addTailReply(
     domainId: string, drid: ObjectId,
     owner: number, content: string, ip: string,
-    filename: string,
-    path: string,
-    size: number,
-    lastModified: Date,
-    etag: string,
 ): Promise<[HubReplyDoc, ObjectId]> {
     const time = new Date();
-    const fileData = {
-        filename,
-        path,
-        size,
-        lastModified,
-        etag,
-    };
-
     const [drdoc, subId] = await document.push(
         domainId, document.TYPE_HUB_REPLY, drid,
-        'reply', content, owner, { ip, editor: owner, files: [fileData] },
+        'reply', content, owner, { ip, editor: owner },
     );
-
     await Promise.all([
         coll.insertOne({
-            domainId, docId: subId, content, uid: owner, ip, time: new Date(), files: [fileData],
+            domainId, docId: subId, content, uid: owner, ip, time: new Date(),
         }),
         document.set(
             domainId, document.TYPE_HUB, drdoc.parentId,
             { updateAt: time },
         ),
     ]);
-
     return [drdoc, subId];
-}
-
-export async function addWithFile(
-    domainId: string, did: ObjectId, owner: number,
-    content: string, ip: string, 
-    filename: string,
-    path: string,
-    size: number,
-    lastModified: Date,
-    etag: string,
-): Promise<ObjectId> {
-    const time = new Date();
-
-    // 创建 FileData 对象
-    const fileData: FileData = {
-        filename,
-        path,
-        size,
-        lastModified,
-        etag,
-    };
-
-    const [drid] = await Promise.all([
-        document.add(
-            domainId, content, owner, document.TYPE_HUB_REPLY,
-            null, document.TYPE_HUB, did, { ip, editor: owner, files: [fileData] },
-        ),
-        document.incAndSet(domainId, document.TYPE_HUB, did, 'nReply', 1, { updateAt: time }),
-    ]);
-
-    await coll.insertOne({
-        domainId, docId: drid, content, uid: owner, ip, time, files: [fileData],
-    });
-
-    return drid;
 }
 
 export function getTailReply(
@@ -327,15 +276,15 @@ export function flushNodes(domainId: string) {
 export async function getVnode(domainId: string, type: number, id: string, uid?: number) {
     if (type === document.TYPE_PROBLEM) {
         const pdoc = await problem.get(domainId, Number.isSafeInteger(+id) ? +id : id, problem.PROJECTION_LIST);
-        if (!pdoc) throw new DiscussionNodeNotFoundError(id);
+        if (!pdoc) throw new HubNodeNotFoundError(id);
         return { ...pdoc, type, id: pdoc.docId };
     }
     if ([document.TYPE_CONTEST, document.TYPE_TRAINING].includes(type as any)) {
         const model = type === document.TYPE_TRAINING ? training : contest;
-        if (!ObjectId.isValid(id)) throw new DiscussionNodeNotFoundError(id);
+        if (!ObjectId.isValid(id)) throw new HubNodeNotFoundError(id);
         const _id = new ObjectId(id);
         const tdoc = await model.get(domainId, _id);
-        if (!tdoc) throw new DiscussionNodeNotFoundError(id);
+        if (!tdoc) throw new HubNodeNotFoundError(id);
         if (uid) {
             const tsdoc = await model.getStatus(domainId, _id, uid);
             tdoc.attend = tsdoc?.attend || tsdoc?.enroll;
@@ -346,7 +295,6 @@ export async function getVnode(domainId: string, type: number, id: string, uid?:
     }
 
 if (type === document.TYPE_DOCS) {
-    console.log(`Processing TYPE_DOCS node with id: ${id}`); // Log the ID being processed
 
     // 检查 id 是否为数字类型
     let ddoc;
@@ -362,7 +310,6 @@ if (type === document.TYPE_DOCS) {
     }
 
     if (!ddoc) {
-        console.error(`Docs document not found for id: ${id}`);
         throw new Error(`Docs document not found for id: ${id}`);
     }
 
@@ -375,13 +322,8 @@ if (type === document.TYPE_DOCS) {
         views: ddoc.views,
         replies: ddoc.nReply,
     };
-    console.log(`Returning Docs node:`, result); // Log the final result
-    console.log('ddoc',ddoc)
     return result;
 }
-
-    
-
     return {
         title: id,
         ...await getNode(domainId, id),
@@ -390,6 +332,7 @@ if (type === document.TYPE_DOCS) {
         owner: 1,
     };
 }
+
 
 export function getNodes(domainId: string) {
     return document.getMulti(domainId, document.TYPE_HUB_NODE).toArray();
@@ -417,7 +360,6 @@ export function checkVNodeVisibility(type: number, vnode: any, user: User) {
     }
     return true;
 }
-
 
 export function apply(ctx: Context) {
     ctx.on('problem/delete', async (domainId, docId) => {
@@ -450,7 +392,7 @@ global.Ejunz.model.hub = {
     PROJECTION_LIST,
     PROJECTION_PUBLIC,
     HISTORY_PROJECTION_PUBLIC,
-    addWithFile,
+
     apply,
     add,
     get,
@@ -463,9 +405,9 @@ global.Ejunz.model.hub = {
     getReply,
     editReply,
     delReply,
-    getMultiReplyWiFile,
+    getMultiReply,
     getListReply,
-    addTailReplyWithFile,
+    addTailReply,
     getTailReply,
     editTailReply,
     delTailReply,

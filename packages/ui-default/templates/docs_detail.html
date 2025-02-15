@@ -81,24 +81,24 @@
     <!-- Files 侧边栏 -->
     <div class="section">
       <div class="section__header">
-        <h1 class="section__title">{{ _('Files') }}</h1>
+        <h1 class="section__title">{{ _('Hubs') }}</h1>
       </div>
       <div class="section__body">
         <ul class="menu">
-          {% if handler.user.hasPerm(perm.PERM_VIEW_DISCUSSION) %}
+          {% if handler.user.hasPerm(perm.PERM_VIEW_HUB) %}
           <li class="menu__item">
             <a class="menu__link{% if page_name == 'hub_node' or page_name == 'hub_detail' %} active{% endif %}" 
               href="{{ url('hub_node', type='docs', name=ddoc.docId) }}">
               <span class="icon icon-file--text"></span> 
               {{ _('View Files') }}
-              {% if fileCount is defined %} ({{ fileCount }}){% endif %}
+              {% if hubCount is defined %} ({{ hubCount }}){% endif %}
             </a>
           </li>
           {% endif %}
-          {% if handler.user.hasPerm(perm.PERM_CREATE_DISCUSSION) %}
+          {% if handler.user.hasPerm(perm.PERM_CREATE_HUB) %}
           <li class="menu__item">
             <a class="menu__link highlight" href="{{ url('hub_create', type='docs', name=ddoc.docId) }}">
-              <span class="icon icon-add"></span> {{ _('Create a File') }}
+              <span class="icon icon-add"></span> {{ _('Create a Hub') }}
             </a>
           </li>
           {% endif %}
