@@ -96,12 +96,8 @@ function getResourceTitle(resourceUrl) {
           }
       }
   }
-
-  console.warn(`❌ Title not found for: ${resourceUrl}`);
   return decodeURIComponent(resourceUrl.split('/').pop()) || "Unkown"; 
 }
-
-
 declare module 'ejun' {
   interface ModuleInterfaces {
     richmedia: {
@@ -148,11 +144,7 @@ export function Media(md: MarkdownIt, getHostname?: () => string) {
 md.renderer.rules.import_resource = function (tokens, idx) {
   const token = tokens[idx];
   const resourceUrl = token.attrGet('resourceUrl') || '';
-  const resourceTitle = getResourceTitle(resourceUrl); // ✅ 确保从 UiContext 解析名称
-
-  
-  console.log(`🎯 Rendering import: ${resourceTitle} (${resourceUrl})`);
-
+  const resourceTitle = getResourceTitle(resourceUrl);
   return `
     <a href="${resourceUrl}" class="discussion-node-tag media-link resource-link" 
        target="_blank" rel="noopener noreferrer">
@@ -160,12 +152,6 @@ md.renderer.rules.import_resource = function (tokens, idx) {
     </a>
   `;
 };
-
-
-
-
-
-  
   md.renderer.rules.video = function tokenizeReturn(tokens, idx) {
     let src = md.utils.escapeHtml(tokens[idx].attrGet('src'));
     const service = md.utils.escapeHtml(tokens[idx].attrGet('service')).toLowerCase();

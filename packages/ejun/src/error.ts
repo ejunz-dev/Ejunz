@@ -47,6 +47,7 @@ export const DomainJoinAlreadyMemberError = Err('DomainJoinAlreadyMemberError', 
 export const InvalidJoinInvitationCodeError = Err('InvalidJoinInvitationCodeError', ForbiddenError, 'The invitation code you provided is invalid.');
 export const CurrentPasswordError = Err('CurrentPasswordError', ForbiddenError, "Current password doesn't match.");
 export const DiscussionLockedError = Err('DiscussionLockedError', ForbiddenError, 'The discussion is locked, you can not reply anymore.');
+export const HubLockedError = Err('HubLockedError', ForbiddenError, 'The hub is locked, you can not reply anymore.');
 export const NotAssignedError = Err('NotAssignedError', ForbiddenError, 'You are not assigned to this {0}.');
 export const FileLimitExceededError = Err('FileLimitExceededError', ForbiddenError, 'File {0} limit exceeded.');
 export const FileUploadError = Err('FileUploadError', ForbiddenError, 'File upload failed.');
@@ -79,5 +80,8 @@ export const TrainingNotFoundError = Err('TrainingNotFoundError', DocumentNotFou
 export const ContestNotFoundError = Err('ContestNotFoundError', DocumentNotFoundError, 'Contest {1} not found.');
 export const DiscussionNotFoundError = Err('DiscussionNotFoundError', DocumentNotFoundError, 'Discussion {1} not found.');
 export const DiscussionNodeNotFoundError = Err('DiscussionNodeNotFoundError', DocumentNotFoundError, 'Discussion node {1} not found.');
+export const HubNotFoundError = Err('HubNotFoundError', DocumentNotFoundError, 'Hub {1} not found.');
+export const HubNodeNotFoundError = Err('HubNodeNotFoundError', DocumentNotFoundError, 'Hub node {1} not found.');
 
 export const NotLaunchedByPM2Error = Err('NotLaunchedByPM2Error', BadRequestError, 'Not launched by PM2.');
+

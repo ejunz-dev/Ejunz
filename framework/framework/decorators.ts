@@ -45,9 +45,6 @@ function _descriptor(v: ParamOption<any>) {
             const domainIdStyle = firstArg.toLowerCase().startsWith('domainid');
             target.__param[target.constructor.name][funcName] = [];
             obj.value = function validate(this: Handler, rawArgs: any, ...extra: any[]) {
-                console.log('Validating parameters...');
-                console.log('Raw Arguments:', rawArgs);
-                console.log('Extra Arguments:', extra);
 
                 if (typeof rawArgs !== 'object' || extra.length) return originalMethod.call(this, rawArgs, ...extra);
                 const c = [];
@@ -62,7 +59,7 @@ function _descriptor(v: ParamOption<any>) {
                                 ? { ...this.request.params, domainId: this.args.domainId }
                                 : this.request.body;
                     const value = src[item.name];
-                    console.log(`Validating parameter: ${item.name}, Value: ${value}`);
+                    
                     if (!item.isOptional || value) {
                         if (value === undefined || value === null || value === '') throw new ValidationError(item.name);
                         if (item.validate && !item.validate(value)) throw new ValidationError(item.name);
