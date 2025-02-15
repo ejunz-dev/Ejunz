@@ -102,8 +102,14 @@ export interface EventMap extends KnownHandlerEvents {
 
     'file/before-add': (payload: Partial<FileDoc>) => VoidReturn
     'file/add': (payload: Partial<FileDoc>) => VoidReturn
+
+    'hub/addAdditionalFile': (domainId: string, did: ObjectId, name: string, payload: Omit<FileInfo, '_id'>) => VoidReturn
+    'hub/add': (payload: Partial<HubDoc>) => VoidReturn
+    'hub/edit': (payload: Partial<HubDoc>) => VoidReturn
+    'hub/del': (domainId: string, did: ObjectId) => VoidReturn
+    'hub/get': (doc: HubDoc) => VoidReturn
     
-    
+
 }
 /* eslint-enable @typescript-eslint/naming-convention */
 declare module 'cordis' {

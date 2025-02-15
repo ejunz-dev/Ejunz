@@ -27,8 +27,8 @@
       </div>
       <div class="section__body">
         <p>{{ _('This section contains discussions related to the docs content.') }}</p>
-        {% if handler.user.hasPerm(perm.PERM_CREATE_DISCUSSION) %}
-      
+        {% if handler.user.hasPerm(perm.PERM_CREATE_HUB) %}
+          <p><a href="{{ url('hub_create', type=model.hub.typeDisplay[vnode.type], name=vnode.id) }}" class="expanded primary button">{{ _('Create a Discussion') }}</a></p>
         {% else %}
           {% if not handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
             <p><a href="javascript:showSignInDialog();" class="expanded primary button">{{ _('Login to Create a Discussion') }}</a></p>
@@ -40,23 +40,23 @@
     </div>
   {% else %}
     <div class="section side">
-      {% if vnode.pic %}<div class="file-node__bg {{ vnode.pic }}"></div>{% endif %}
+      {% if vnode.pic %}<div class="discussion-node__bg {{ vnode.pic }}"></div>{% endif %}
       <div class="section__header">
-        <h1 class="section__title">{{ vnode['title'] or _('Create File') }}</h1>
+        <h1 class="section__title">{{ vnode['title'] or _('Create Discussion') }}</h1>
       </div>
       <div class="section__body">
       {% if vnode._id %}
-        {% if handler.user.hasPerm(perm.PERM_CREATE_DISCUSSION) %}
-          <p><a href="{{ url('file_create', type=model.file.typeDisplay[vnode.type], name=vnode.id) }}" class="expanded primary button">{{ _('Create a File') }}</a></p>
+        {% if handler.user.hasPerm(perm.PERM_CREATE_HUB) %}
+          <p><a href="{{ url('hub_create', type=model.hub.typeDisplay[vnode.type], name=vnode.id) }}" class="expanded primary button">{{ _('Create a Discussion') }}</a></p>
         {% else %}
           {% if not handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
-            <p><a href="javascript:showSignInDialog();" class="expanded primary button">{{ _('Login to Create a File') }}</a></p>
+            <p><a href="javascript:showSignInDialog();" class="expanded primary button">{{ _('Login to Create a Discussion') }}</a></p>
           {% else %}
-            <p><a href="javascript:;" class="disabled expanded primary button">{{ _('No Permission to Create a File') }}</a></p>
+            <p><a href="javascript:;" class="disabled expanded primary button">{{ _('No Permission to Create a Discussion') }}</a></p>
           {% endif %}
         {% endif %}
       {% else %}
-        <p>{{ _('Select a node to create file.') }}</p>
+        <p>{{ _('Select a node to create discussion.') }}</p>
       {% endif %}
       </div>
     </div>

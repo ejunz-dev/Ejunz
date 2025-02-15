@@ -68,6 +68,22 @@ export const PERM = {
     PERM_DELETE_DISCUSSION_REPLY_SELF_DISCUSSION: 1n << 40n,
     PERM_LOCK_DISCUSSION: 1n << 64n,
 
+    // Hub
+    PERM_VIEW_HUB: 1n << 27n,
+    PERM_CREATE_HUB: 1n << 28n,
+    PERM_HIGHLIGHT_HUB: 1n << 29n,
+    PERM_PIN_HUB: 1n << 61n,
+    PERM_EDIT_HUB: 1n << 30n,
+    PERM_EDIT_HUB_SELF: 1n << 31n,
+    PERM_DELETE_HUB: 1n << 32n,
+    PERM_DELETE_HUB_SELF: 1n << 33n,
+    PERM_REPLY_HUB: 1n << 34n,
+    PERM_EDIT_HUB_REPLY_SELF: 1n << 36n,
+    PERM_DELETE_HUB_REPLY: 1n << 38n,
+    PERM_DELETE_HUB_REPLY_SELF: 1n << 39n,
+    PERM_DELETE_HUB_REPLY_SELF_HUB: 1n << 40n,
+    PERM_LOCK_HUB: 1n << 64n,
+
     // Contest
     PERM_VIEW_CONTEST: 1n << 41n,
     PERM_VIEW_CONTEST_SCOREBOARD: 1n << 42n,

@@ -295,7 +295,6 @@ export async function getVnode(domainId: string, type: number, id: string, uid?:
     }
 
 if (type === document.TYPE_DOCS) {
-    console.log(`Processing TYPE_DOCS node with id: ${id}`); // Log the ID being processed
 
     // 检查 id 是否为数字类型
     let ddoc;
@@ -311,7 +310,7 @@ if (type === document.TYPE_DOCS) {
     }
 
     if (!ddoc) {
-        console.error(`Docs document not found for id: ${id}`);
+        
         throw new Error(`Docs document not found for id: ${id}`);
     }
 
@@ -324,13 +323,8 @@ if (type === document.TYPE_DOCS) {
         views: ddoc.views,
         replies: ddoc.nReply,
     };
-    console.log(`Returning Docs node:`, result); // Log the final result
-    console.log('ddoc',ddoc)
     return result;
 }
-
-    
-
     return {
         title: id,
         ...await getNode(domainId, id),
