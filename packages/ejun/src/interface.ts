@@ -374,7 +374,8 @@ declare module './model/repo'{
         edited?: boolean;
         editor?: number;
         react: Record<string, number>;
-        files: HubFileInfo[];
+        commentfile: HubFileInfo[];
+        replyfile: HubFileInfo[];
     }
     
     export interface HubTailReplyDoc {
@@ -384,7 +385,7 @@ declare module './model/repo'{
         ip: string;
         edited?: boolean;
         editor?: number;
-        files: HubFileInfo[];
+        replyfile: HubFileInfo[];
     }
 
 export interface HubFileInfo extends FileInfo {

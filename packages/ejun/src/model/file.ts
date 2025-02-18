@@ -23,25 +23,41 @@ import { ArrayKeys } from '../typeutils';
 
 export class FileModel {
     
-static async addAdditionalFile(
-    domainId: string, did: ObjectId, name: string,
-    f: Readable | Buffer | string, operator = 1, skipUpload = false,
-) {
-    name = name.trim();
-    const [[, fileinfo]] = await Promise.all([
-        document.getSub(domainId, document.TYPE_HUB_REPLY, did, 'additional_file', name),
-        skipUpload ? '' : storage.put(`hub/${domainId}/${did}/additional_file/${name}`, f, operator),
-    ]);
-    const meta = await storage.getMeta(`hub/${domainId}/${did}/additional_file/${name}`);
-    const payload = { name, ...pick(meta, ['size', 'lastModified', 'etag']) };
-    if (!fileinfo) await this.push(domainId, did, 'additional_file', { _id: name, ...payload });
-    else await document.setSub(domainId, document.TYPE_HUB_REPLY, did, 'additional_file', name, payload);
-    await bus.emit('hub/addAdditionalFile', domainId, did, name, payload);
-}
+    static async addCommentFile(
+        domainId: string, drid: ObjectId, name: string,
+        f: Readable | Buffer | string, operator = 1, skipUpload = false,
+    ) {
+        name = name.trim();
+        const [[, HubFileInfo]] = await Promise.all([
+            document.getSub(domainId, document.TYPE_HUB_REPLY, drid, 'commentfile', name),
+            skipUpload ? '' : storage.put(`hub/${domainId}/${drid}/commentfile/${name}`, f, operator),
+        ]);
+        const meta = await storage.getMeta(`hub/${domainId}/${drid}/commentfile/${name}`);
+        const payload = { name, ...pick(meta, ['size', 'lastModified', 'etag']) };
+        if (!HubFileInfo) await this.push(domainId, drid, 'commentfile', { _id: name, ...payload });
+        else await document.setSub(domainId, document.TYPE_HUB_REPLY, drid, 'commentfile', name, payload);
+        
+    }
 
-static push<T extends ArrayKeys<HubReplyDoc>>(domainId: string, did: ObjectId, key: ArrayKeys<HubReplyDoc>, value: HubReplyDoc[T][0]) {
-    return document.push(domainId, document.TYPE_HUB_REPLY, did, key, value);
-}
+    static async addReplyFile(
+        domainId: string, drrid: ObjectId, name: string,
+        f: Readable | Buffer | string, operator = 1, skipUpload = false,
+    ) {
+        name = name.trim();
+        const [[, Hubfileinfo]] = await Promise.all([
+            document.getSub(domainId, document.TYPE_HUB_REPLY, drrid, 'replyfile', name),
+            skipUpload ? '' : storage.put(`hub/${domainId}/${drrid}/replyfile/${name}`, f, operator),
+        ]);
+        const meta = await storage.getMeta(`hub/${domainId}/${drrid}/replyfile/${name}`);
+        const payload = { name, ...pick(meta, ['size', 'lastModified', 'etag']) };
+        if (!Hubfileinfo) await this.push(domainId, drrid, 'replyfile', { _id: name, ...payload });
+        else await document.setSub(domainId, document.TYPE_HUB_REPLY, drrid, 'replyfile', name, payload);
+        
+    }
+
+    static push<T extends ArrayKeys<HubTailReplyDoc>>(domainId: string, _id: ObjectId, key: ArrayKeys<HubTailReplyDoc>, value: HubTailReplyDoc[T][0]) {
+        return document.push(domainId, document.TYPE_HUB_REPLY, _id, key, value);
+    }
 }
 global.Ejunz.model.file = FileModel;
 export default FileModel;
