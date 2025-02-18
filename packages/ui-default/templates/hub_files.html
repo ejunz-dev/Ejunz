@@ -1,0 +1,73 @@
+{% import "components/nothing.html" as nothing with context %}
+{% import "components/comments_file.html" as comments with context %}
+{% set _files = commentfile if filetype == 'commentfile' else replyfile %}
+
+<div class="medium-6 columns">
+  <div class="section">
+    <div class="section__header">
+      <h1 class="section__title">{{ _('Files') }}</h1>
+      <div class="section__tools">
+        <button 
+          data-op="upload" 
+          data-type="replyfile" 
+          data-did="{{ doc.parentId }}"
+          data-drid="{{ doc.docId }}" 
+          data-drrid="{{ rdoc._id }}">
+          {{ _('Upload File') }}
+        </button>
+      </div>
+    </div>
+    {# 注释掉权限相关的条件 #}
+    {# {% set can_edit = (handler.user.own(pdoc, perm.PERM_EDIT_PROBLEM_SELF) or handler.user.hasPerm(perm.PERM_EDIT_PROBLEM)) and not reference %} #}
+    <div class="section__body">
+      {% if reference %}
+        <blockquote class="note">
+          <p>{{ _('This is a copy of another problem.') }}</p>
+        </blockquote>
+      {% endif %}
+      {% if _files.length %}
+        <table class="data-table {{ filetype }}-table">
+          <colgroup>
+            <col class="col--name">
+            <col class="col--size">
+            {# {% if can_edit %}<col class="col--operation">{% endif %} #}
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="col--name">{{ _('Filename') }}</th>
+              <th class="col--size">{{ _('Size') }}</th>
+              {# {% if can_edit %}<th class="col--operation"><span class="icon icon-wrench"></span></th>{% endif %} #}
+            </tr>
+          </thead>
+          <tbody>
+            {%- for file in _files -%}
+            <tr data-filename="{{ file.name }}" data-size="{{ file.size }}">
+              <td class="col--name" data-preview="{{ filetype }}">
+                
+                  <a href="{{ url('hub_file_download', {did: ddoc.docId, filename: file.name, query:{type:filetype} }) }}">{{ file.name }}</a>
+
+              </td>
+              <td class="col--size">{{ size(file.size) }}</td>
+              {# {% if can_edit %} #}
+              <td class="col--operation">
+                <a href="javascript:;" name="{{ filetype }}__rename"><span class="icon icon-edit"></span></a>
+                <a href="javascript:;" name="{{ filetype }}__delete"><span class="icon icon-delete"></span></a>
+              </td>
+              {# {% endif %} #}
+            </tr>
+            {%- endfor -%}
+          </tbody>
+        </table>
+      {% elif not reference %}
+        {{ nothing.render('No {0} at current.', compact=sidebar, args=[_(filetype)]) }}
+      {% endif %}
+    </div>
+    <div class="section__body">
+      <button class="rounded button" name="download_selected_file">{{ _('Download Selected') }}</button>
+      {# {% if (handler.user.own(pdoc, perm.PERM_EDIT_PROBLEM_SELF) or handler.user.hasPerm(perm.PERM_EDIT_PROBLEM)) and not reference %} #}
+      <button class="rounded button" name="remove_selected_file">{{ _('Remove Selected') }}</button>
+      <button class="rounded button" name="rename_selected_file">{{ _('Rename Selected') }}</button>
+      {# {% endif %} #}
+    </div>
+  </div>
+</div>

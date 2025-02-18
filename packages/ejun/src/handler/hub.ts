@@ -12,6 +12,15 @@ import message from '../model/message';
 import * as oplog from '../model/oplog';
 import user from '../model/user';
 import { Handler, param, Types } from '../service/server';
+import { sortFiles, streamToBuffer } from '@ejunz/utils/lib/utils';
+import { post } from '../service/server';
+import { ValidationError } from '../error';
+import sanitize from 'sanitize-filename';
+import AdmZip from 'adm-zip';
+import { Readable } from 'stream';
+import { statSync } from 'fs-extra';
+import FileModel from '../model/file';
+
 
 export const typeMapper = {
     problem: document.TYPE_PROBLEM,
@@ -234,11 +243,40 @@ class HubDetailHandler extends HubHandler {
             [this.vnode.title, 'hub_node', { type: hub.typeDisplay[this.ddoc.parentType], name: this.ddoc.parentId }, true],
             [this.ddoc.title, null, null, true],
         ];
+        
+        // 创建 UiContext 对象
+        this.UiContext.commentUrls = {
+            commentUrls: drdocs.map(doc => {
+                const parentId = doc.parentId.toHexString();
+                const docId = doc.docId.toHexString();
+                const url = `/${parentId}/${docId}`;
+                doc.url = url; // 将 URL 插入到 drdoc 中
+                return url;
+            })
+        }
+
+
+        console.log('UiContext:', this.UiContext);
+
+        drdocs.forEach(doc => {
+            console.log(`URL: ${doc.url}`);
+            console.log('Replies:');
+            if (doc.reply) {
+                doc.reply.forEach((reply, index) => {
+                    console.log(`Reply ${index + 1}:`, reply);
+                });
+            } else {
+                console.log('No replies');
+            }
+        });
+
         this.response.template = 'hub_detail.html';
         this.response.body = {
-            path, ddoc: this.ddoc, dsdoc, drdocs, page, pcount, drcount, udict, vnode: this.vnode, reactions,
+            path, ddoc: this.ddoc, dsdoc, drdocs, page, pcount, drcount, udict, vnode: this.vnode, reactions
         };
-        console.log('typeDisplay',{ type: hub.typeDisplay[this.ddoc.parentType], name: this.ddoc.parentId })
+
+
+
     }
 
     async post() {
@@ -302,7 +340,6 @@ class HubDetailHandler extends HubHandler {
         await hub.addTailReply(domainId, drid, this.user._id, content, this.request.ip);
         this.back();
     }
-
     @param('drid', Types.ObjectId)
     @param('content', Types.Content)
     async postEditReply(domainId: string, drid: ObjectId, content: string) {
@@ -471,10 +508,59 @@ class HubEditHandler extends HubHandler {
             hub.del(domainId, did),
         ]);
         this.response.body = { type: this.ddoc.parentType, parent: this.ddoc.parentId };
-        this.response.redirect = this.url('discussion_node', {
+        this.response.redirect = this.url('hub_node', {
             type: hub.typeDisplay[this.ddoc.parentType],
             name: this.ddoc.parentId,
         });
+    }
+}
+
+class HubFileHandler extends Handler {
+
+
+    @post('filename', Types.Filename, true)
+    @param('did', Types.ObjectId, true)
+    @param('drid', Types.ObjectId, true)
+    @param('drrid', Types.ObjectId, true)
+    @post('type', Types.Range(['commentfile', 'replyfile']), true)
+    
+    async postUploadFile(domainId: string, filename: string,did: ObjectId, drid: ObjectId, drrid: ObjectId, type = 'commentfile') {
+        console.log('postUploadFile',domainId, filename, did, drid, drrid, type)
+        if (!this.request.files.file) throw new ValidationError('file');
+        filename ||= this.request.files.file.originalFilename || String.random(16);
+        const files = [];
+        if (filename.endsWith('.zip') && type === 'commentfile') {
+            let zip: AdmZip;
+            try {
+                zip = new AdmZip(this.request.files.file.filepath);
+            } catch (e) {
+                throw new ValidationError('zip', null, e.message);
+            }
+            const entries = zip.getEntries();
+            for (const entry of entries) {
+                if (!entry.name || entry.isDirectory) continue;
+                files.push({
+                    type,
+                    name: sanitize(entry.name),
+                    size: entry.header.size,
+                    data: () => entry.getData(),
+                });
+            }
+        } else {
+            files.push({
+                type,
+                name: filename,
+                size: statSync(this.request.files.file.filepath).size,
+                data: () => this.request.files.file.filepath,
+            });
+        }
+
+        for (const entry of files) {
+            const method = entry.type === 'commentfile' ? 'addCommentFile' : 'addReplyFile';
+            // eslint-disable-next-line no-await-in-loop
+            await FileModel[method](domainId, drrid, entry.name, entry.data(), this.user._id);
+        }
+        this.back();
     }
 }
 
@@ -487,4 +573,5 @@ export async function apply(ctx) {
     ctx.Route('hub_tail_reply_raw', '/hub/:did/:drid/:drrid/raw', HubRawHandler);
     ctx.Route('hub_node', '/hub/:type/:name', HubNodeHandler);
     ctx.Route('hub_create', '/hub/:type/:name/create', HubCreateHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_CREATE_HUB);
+    ctx.Route('hub_upload_reply_file', '/hub/:did/:drid/:drrid/file', HubFileHandler);
 }

@@ -83,6 +83,7 @@ export const PERM = {
     PERM_DELETE_HUB_REPLY_SELF: 1n << 39n,
     PERM_DELETE_HUB_REPLY_SELF_HUB: 1n << 40n,
     PERM_LOCK_HUB: 1n << 64n,
+    PERM_UPLOAD_HUB_REPLY: 1n << 41n,
 
     // Contest
     PERM_VIEW_CONTEST: 1n << 41n,
