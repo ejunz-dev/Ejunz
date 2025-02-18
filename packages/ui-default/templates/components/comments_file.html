@@ -8,7 +8,6 @@
   <span class="icon icon-{{ icon }}"></span>
 </a>
 {% endmacro %}
-
 {% macro render(
   view, docs, udict,
   comment_ref,
@@ -32,9 +31,13 @@
   reply_edit_text = 'Update',
   comment_delete_op = 'delete_reply',
   reply_delete_op = 'delete_tail_reply',
+  reply_upload_op = 'upload_file_reply',
+  comment_upload_op = 'upload_file_comment',
   reactions = {},
   ddoc = {}
+  
 ) %}
+
 <ul class="dczcomments__list view--discussion">
 {% if handler.user.hasPerm(comment_post_perm) %}
 <li class="dczcomments__item">
@@ -108,6 +111,9 @@
         {% if (handler.user.hasPerm(perm.PERM_ADD_REACTION)) %}
           {{ action('', 'react', 'comment', {operation: 'reaction', nodeType: 'drid', id: doc._id}, 'emoji') }}
         {% endif %}
+        {% if handler.user.hasPerm(perm.PERM_ADD_REACTION) %}
+          {{ action(_('Upload File'), 'upload', 'commentfile', {operation: comment_upload_op, drid: doc._id}, 'upload') }}
+        {% endif %}
         </div>
       </div>
       <div class="typo richmedia" data-emoji-enabled data-drid="{{ doc.docId }}" data-raw-url="{{ url('discussion_reply_raw', did=doc.parentId, drid=doc._id) }}">
@@ -146,10 +152,21 @@
                 {% if (handler.user.own(rdoc) and handler.user.hasPerm(reply_delete_self_perm)) or handler.user.hasPerm(reply_delete_perm) %}
                   {{ action(_('Delete'), 'delete', 'reply', {operation: reply_delete_op, drid: doc._id, drrid: rdoc._id}, 'delete') }}
                 {% endif %}
+
                 </div>
               </div>
               <div class="typo richmedia" data-emoji-enabled data-raw-url="{{ url('hub_tail_reply_raw', did=doc.parentId, drid=doc._id, drrid=rdoc._id) }}">
                 {{ rdoc.content|markdown|safe }}
+    <!-- 在侧边栏中渲染文件列表 -->
+        <!--sb1 -->
+                  {% include "hub_files.html" %}
+          <!--sb2 -->
+     
+              <!--sb3 -->
+       
+        <!--sb4 -->
+
+ 
               </div>
               <div class="commentbox-edit-target"></div>
             </div>
