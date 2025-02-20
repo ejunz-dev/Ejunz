@@ -227,7 +227,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
                 discussion.inc(domainId, did, 'views', 1),
                 discussion.setStatus(domainId, did, this.user._id, { view: true }),
             ]);
-        }a
+        }
         const path = [
             ['Ejunz', 'homepage'],
             ['discussion_main', 'discussion_main'],
