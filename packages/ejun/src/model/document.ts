@@ -203,15 +203,45 @@ export async function push(
     domainId: string, docType: number, docId: DocID, key: string,
     arg0: any, arg1?: any, arg2?: any,
 ) {
+
     const _id = arg2?._id || arg0?._id || new ObjectId();
     const v = arg1
         ? { _id, ...arg2, content: arg0, owner: arg1 }
         : { _id, ...arg0 };
+
     const doc = await coll.findOneAndUpdate(
         { domainId, docType, docId },
         // @ts-ignore
         { $push: { [key]: v } },
-        { returnDocument: 'after' },
+        { returnDocument: 'after' }
+    );
+
+    return [doc.value, _id];
+}
+
+export async function pushwithid<K extends keyof DocType>(
+    domainId: string, docType: K, _id: DocType[K]['_id'],
+    key: ArrayKeys<DocType[K]>, value: DocType[K][0],
+): Promise<[DocType[K], ObjectId]>;
+export async function pushwithid<K extends keyof DocType, T extends keyof DocType[K]>(
+    domainId: string, docType: K, _id: DocType[K]['_id'],
+    key: keyof DocType[K], content: string, owner: number, args?: DocType[K][T][0],
+): Promise<[DocType[K], ObjectId]>;
+export async function pushwithid(
+    domainId: string, docType: number, _id: ObjectId, key: string,
+    arg0: any, arg1?: any, arg2?: any,
+) {
+
+    const v = arg1
+        ? { _id, ...arg2, content: arg0, owner: arg1 }
+        : { _id, ...arg0 };
+
+    const doc = await coll.findOneAndUpdate(
+        {
+            "reply": { $elemMatch: { "_id": _id } }
+        },
+        { $push: { [`reply.$.${key}`]: v } as any },
+        { returnDocument: 'after' }
     );
     return [doc.value, _id];
 }
