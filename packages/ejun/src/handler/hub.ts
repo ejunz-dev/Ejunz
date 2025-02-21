@@ -13,14 +13,14 @@ import * as oplog from '../model/oplog';
 import user from '../model/user';
 import { Handler, param, Types } from '../service/server';
 import { sortFiles, streamToBuffer } from '@ejunz/utils/lib/utils';
-import { post } from '../service/server';
+import { post, query } from '../service/server';
 import { ValidationError } from '../error';
 import sanitize from 'sanitize-filename';
 import AdmZip from 'adm-zip';
 import { Readable } from 'stream';
 import { statSync } from 'fs-extra';
 import FileModel from '../model/file';
-
+import storage from '../model/storage';
 
 export const typeMapper = {
     problem: document.TYPE_PROBLEM,
@@ -244,39 +244,10 @@ class HubDetailHandler extends HubHandler {
             [this.ddoc.title, null, null, true],
         ];
         
-        // 创建 UiContext 对象
-        this.UiContext.commentUrls = {
-            commentUrls: drdocs.map(doc => {
-                const parentId = doc.parentId.toHexString();
-                const docId = doc.docId.toHexString();
-                const url = `/${parentId}/${docId}`;
-                doc.url = url; // 将 URL 插入到 drdoc 中
-                return url;
-            })
-        }
-
-
-        console.log('UiContext:', this.UiContext);
-
-        drdocs.forEach(doc => {
-            console.log(`URL: ${doc.url}`);
-            console.log('Replies:');
-            if (doc.reply) {
-                doc.reply.forEach((reply, index) => {
-                    console.log(`Reply ${index + 1}:`, reply);
-                });
-            } else {
-                console.log('No replies');
-            }
-        });
-
         this.response.template = 'hub_detail.html';
         this.response.body = {
-            path, ddoc: this.ddoc, dsdoc, drdocs, page, pcount, drcount, udict, vnode: this.vnode, reactions
+            path, ddoc: this.ddoc, dsdoc, drdocs,page, pcount, drcount, udict, vnode: this.vnode, reactions
         };
-
-
-
     }
 
     async post() {
@@ -517,7 +488,6 @@ class HubEditHandler extends HubHandler {
 
 class HubFileHandler extends Handler {
 
-
     @post('filename', Types.Filename, true)
     @param('did', Types.ObjectId, true)
     @param('drid', Types.ObjectId, true)
@@ -560,9 +530,11 @@ class HubFileHandler extends Handler {
             // eslint-disable-next-line no-await-in-loop
             await FileModel[method](domainId, drrid, entry.name, entry.data(), this.user._id);
         }
-        this.back();
+
+        this.response.redirect = this.url('hub_detail', { did });
     }
 }
+export class HubFileDownloadHandler extends HubHandler {}
 
 export async function apply(ctx) {
     ctx.Route('hub_main', '/hub', HubMainHandler);
@@ -574,4 +546,5 @@ export async function apply(ctx) {
     ctx.Route('hub_node', '/hub/:type/:name', HubNodeHandler);
     ctx.Route('hub_create', '/hub/:type/:name/create', HubCreateHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_CREATE_HUB);
     ctx.Route('hub_upload_reply_file', '/hub/:did/:drid/:drrid/file', HubFileHandler);
+    ctx.Route('hub_download_reply_file', '/hub/:did/:drid/:drrid/file/download', HubFileDownloadHandler);
 }
