@@ -248,6 +248,7 @@ class HubDetailHandler extends HubHandler {
         this.response.body = {
             path, ddoc: this.ddoc, dsdoc, drdocs,page, pcount, drcount, udict, vnode: this.vnode, reactions
         };
+        console.log('response',this.response.body)
     }
 
     async post() {
