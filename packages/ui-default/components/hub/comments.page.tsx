@@ -9,6 +9,8 @@ import {
 } from 'vj/utils';
 import uploadFiles from 'vj/components/upload'; 
 import Notification from 'vj/components/notification';
+import initD3 from "vj/components/d3map/d3";
+
 
 
 const $replyTemplate = $('.commentbox-container').eq(0).clone();
@@ -207,6 +209,9 @@ async function onCommentClickUploadReplyFile(ev, type, did, drid, drrid, files?)
 
 
 const commentsPage = new AutoloadPage('commentsPage', () => {
+  $(document).ready(() => {
+    initD3();
+  });
   $(document).on('click', '[name="dczcomments__dummy-box"]', onClickDummyBox);
   $(document).on('click', '[data-op="reply"][data-type="comment"]', onCommentClickReplyComment);
   $(document).on('click', '[data-op="reply"][data-type="reply"]', onCommentClickReplyReply);
