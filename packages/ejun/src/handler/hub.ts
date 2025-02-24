@@ -239,26 +239,29 @@ class HubDetailHandler extends HubHandler {
         }
         const nodesSet = new Set<string>();
         const links: { source: string; target: string }[] = [];
-
-        const nodesContent = new Map<string, string>();
+        const nodesContent = new Map<string, { content: string, type: string }>();
 
         drdocs.forEach(drdoc => {
             const docId = drdoc._id.toHexString();
             const content = drdoc.content;
             nodesSet.add(docId);
-            nodesContent.set(docId, content);
+            nodesContent.set(docId, { content, type: 'main' });
 
             if (drdoc.reply) {
                 drdoc.reply.forEach(reply => {
                     const replyId = reply._id.toHexString();
                     nodesSet.add(replyId);
-                    nodesContent.set(replyId, reply.content);
+                    nodesContent.set(replyId, { content: reply.content, type: 'sub' });
                     links.push({ source: docId, target: replyId });
                 });
             }
         });
 
-        const nodes = Array.from(nodesSet).map((id) => ({ id, content: nodesContent.get(id) }));
+        const nodes = Array.from(nodesSet).map((id) => ({
+            id,
+            content: nodesContent.get(id).content,
+            type: nodesContent.get(id).type
+        }));
 
         console.log('D3.js Data:', { nodes, links });
 
