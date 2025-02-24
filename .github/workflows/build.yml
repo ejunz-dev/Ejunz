@@ -47,6 +47,8 @@ jobs:
         git config --global user.email 496806255@qq.com
         yarn
         yarn dedupe
+        yarn upgrade unicorn-magic
+        echo '{"exports": "./index.js"}' > node_modules/unicorn-magic/package.json
       env:
         LICENSE_KEY: ${{ secrets.MAXMIND_KEY }}
 
