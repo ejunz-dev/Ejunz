@@ -240,21 +240,25 @@ class HubDetailHandler extends HubHandler {
         const nodesSet = new Set<string>();
         const links: { source: string; target: string }[] = [];
 
+        const nodesContent = new Map<string, string>();
+
         drdocs.forEach(drdoc => {
             const docId = drdoc._id.toHexString();
+            const content = drdoc.content;
             nodesSet.add(docId);
+            nodesContent.set(docId, content);
 
             if (drdoc.reply) {
                 drdoc.reply.forEach(reply => {
                     const replyId = reply._id.toHexString();
                     nodesSet.add(replyId);
+                    nodesContent.set(replyId, reply.content);
                     links.push({ source: docId, target: replyId });
                 });
             }
         });
 
-        // 转换为数组
-        const nodes = Array.from(nodesSet).map(id => ({ id }));
+        const nodes = Array.from(nodesSet).map((id) => ({ id, content: nodesContent.get(id) }));
 
         console.log('D3.js Data:', { nodes, links });
 

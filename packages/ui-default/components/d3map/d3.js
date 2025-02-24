@@ -37,6 +37,14 @@ export default function initD3() {
     .append("circle")
     .attr("r", 5)
     .attr("fill", "steelblue")
+    .on("mouseover", (event, d) => {
+      d3.select("#info-display").text(
+        `Node ${d.id}: \nContent: ${d.content}`
+      );
+    })
+    .on("mouseout", () => {
+      d3.select("#info-display").text("");
+    })
     .on("click", (event, d) => {
       const targetElement = document.getElementById(`comment-${d.id}`);
       if (targetElement) {
