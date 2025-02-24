@@ -10,17 +10,18 @@ export default function initD3() {
     .attr("height", height)
     .attr("style", "max-width: 100%; height: auto;");
 
-  // 力导向图
-  const simulation = d3.forceSimulation()
-    .force("charge", d3.forceManyBody())
-    .force("x", d3.forceX())
-    .force("y", d3.forceY())
+  
+  const nodes = UiContext.nodes;
+  const links = UiContext.links;
+
+  const simulation = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(d => d.id).distance(30))
+    .force("charge", d3.forceManyBody().strength(1))
+    .force("center", d3.forceCenter(0, 0))
+    .force("radial", d3.forceRadial(80, 0, 0))
     .on("tick", ticked);
 
-  let nodes = [{ id: "A" }, { id: "B" }, { id: "C" }];
-  let links = [{ source: "A", target: "B" }, { source: "B", target: "C" }];
-
-  let link = svg.append("g")
+  const link = svg.append("g")
     .attr("stroke", "#999")
     .attr("stroke-opacity", 0.6)
     .selectAll("line")
@@ -28,7 +29,7 @@ export default function initD3() {
     .enter()
     .append("line");
 
-  let node = svg.append("g")
+  const node = svg.append("g")
     .attr("stroke", "#fff")
     .attr("stroke-width", 1.5)
     .selectAll("circle")
@@ -55,14 +56,14 @@ export default function initD3() {
     );
 
   function ticked() {
-    node.attr("cx", d => d.x).attr("cy", d => d.y);
-    link.attr("x1", d => d.source.x)
-        .attr("y1", d => d.source.y)
-        .attr("x2", d => d.target.x)
-        .attr("y2", d => d.target.y);
-  }
+    link
+      .attr("x1", d => d.source.x)
+      .attr("y1", d => d.source.y)
+      .attr("x2", d => d.target.x)
+      .attr("y2", d => d.target.y);
 
-  simulation.nodes(nodes);
-  simulation.force("link", d3.forceLink().id(d => d.id).links(links));
-  simulation.alpha(1).restart();
+    node
+      .attr("cx", d => d.x)
+      .attr("cy", d => d.y);
+  }
 }

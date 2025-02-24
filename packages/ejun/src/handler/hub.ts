@@ -237,6 +237,27 @@ class HubDetailHandler extends HubHandler {
                 hub.setStatus(domainId, did, this.user._id, { view: true }),
             ]);
         }
+        const nodesSet = new Set<string>();
+        const links: { source: string; target: string }[] = [];
+
+        drdocs.forEach(drdoc => {
+            const docId = drdoc._id.toHexString();
+            nodesSet.add(docId);
+
+            if (drdoc.reply) {
+                drdoc.reply.forEach(reply => {
+                    const replyId = reply._id.toHexString();
+                    nodesSet.add(replyId);
+                    links.push({ source: docId, target: replyId });
+                });
+            }
+        });
+
+        // 转换为数组
+        const nodes = Array.from(nodesSet).map(id => ({ id }));
+
+        console.log('D3.js Data:', { nodes, links });
+
         const path = [
             ['Ejunz', 'homepage'],
             ['hub_main', 'hub_main'],
@@ -246,9 +267,10 @@ class HubDetailHandler extends HubHandler {
         
         this.response.template = 'hub_detail.html';
         this.response.body = {
-            path, ddoc: this.ddoc, dsdoc, drdocs,page, pcount, drcount, udict, vnode: this.vnode, reactions
-        };
-        console.log('response',this.response.body)
+            path, ddoc: this.ddoc, dsdoc, drdocs,page, pcount, drcount, udict, vnode: this.vnode, reactions, nodes, links
+        }
+        this.UiContext.nodes = nodes;
+        this.UiContext.links = links;
     }
 
     async post() {
