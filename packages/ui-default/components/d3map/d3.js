@@ -35,8 +35,8 @@ export default function initD3() {
     .data(nodes)
     .enter()
     .append("circle")
-    .attr("r", 5)
-    .attr("fill", "steelblue")
+    .attr("r", d => d.type === 'main' ? 8 : 5)
+    .attr("fill", d => d.type === 'main' ? "steelblue" : "lightgray")
     .on("mouseover", (event, d) => {
       d3.select("#info-display").text(
         `Node ${d.id}: \nContent: ${d.content}`
