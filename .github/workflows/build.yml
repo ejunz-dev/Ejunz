@@ -47,8 +47,7 @@ jobs:
         git config --global user.email 496806255@qq.com
         yarn
         yarn dedupe
-        yarn add unicorn-magic
-        echo '{"exports": "./index.js"}' > node_modules/unicorn-magic/package.json
+        
       env:
         LICENSE_KEY: ${{ secrets.MAXMIND_KEY }}
 
@@ -74,6 +73,7 @@ jobs:
         set -x
         if [[ ${{ steps.ui-changed-files.outputs.any_changed }} == true ]] || [[ $(npm info @ejunz/ui-default version) != $(node -e 'console.log(require("./packages/ui-default/package.json").version)') ]]
         then
+        echo '{"exports": "./index.js"}' > node_modules/unicorn-magic/package.json
           yarn build:ui:iconfont
           parallel --tty -j+0 yarn ::: build build:ui:production:webpack || true 
         else
