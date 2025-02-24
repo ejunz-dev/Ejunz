@@ -35,8 +35,16 @@ export default function initD3() {
     .data(nodes)
     .enter()
     .append("circle")
-    .attr("r", d => d.type === 'main' ? 8 : 5)
-    .attr("fill", d => d.type === 'main' ? "steelblue" : "lightgray")
+    .attr("r", d => {
+      if (d.type === 'main') return 8;
+      if (d.type === 'sub') return 5;
+      return 4; 
+    })
+    .attr("fill", d => {
+      if (d.type === 'main') return "steelblue";
+      if (d.type === 'sub') return "green";
+      return "orange"; 
+    })
     .on("mouseover", (event, d) => {
       d3.select("#info-display").text(
         `Node ${d.id}: \nContent: ${d.content}`
