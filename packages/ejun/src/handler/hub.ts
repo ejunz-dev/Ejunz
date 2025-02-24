@@ -253,6 +253,15 @@ class HubDetailHandler extends HubHandler {
                     nodesSet.add(replyId);
                     nodesContent.set(replyId, { content: reply.content, type: 'sub' });
                     links.push({ source: docId, target: replyId });
+
+                    if (reply.replyfile) {
+                        reply.replyfile.forEach(file => {
+                            const filename = file.name; // Assuming file._id is a string
+                            nodesSet.add(filename);
+                            nodesContent.set(filename, { content: filename, type: 'file' });
+                            links.push({ source: replyId, target: filename });
+                        });
+                    }
                 });
             }
         });
