@@ -10,7 +10,6 @@ export default function initD3() {
     .attr("height", height)
     .attr("style", "max-width: 100%; height: auto;");
 
-  
   const nodes = UiContext.nodes;
   const links = UiContext.links;
 
@@ -38,6 +37,12 @@ export default function initD3() {
     .append("circle")
     .attr("r", 5)
     .attr("fill", "steelblue")
+    .on("click", (event, d) => {
+      const targetElement = document.getElementById(`comment-${d.id}`);
+      if (targetElement) {
+        targetElement.scrollIntoView({ behavior: "smooth" });
+      }
+    })
     .call(d3.drag()
       .on("start", (event, d) => {
         if (!event.active) simulation.alphaTarget(0.3).restart();
