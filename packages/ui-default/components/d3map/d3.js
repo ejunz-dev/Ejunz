@@ -6,9 +6,8 @@ export default function initD3() {
 
   const svg = d3.select("#d3-test")
     .attr("viewBox", [-width / 2, -height / 2, width, height])
-    .attr("width", width)
-    .attr("height", height)
-    .attr("style", "max-width: 100%; height: auto;");
+    .attr("preserveAspectRatio", "xMidYMid meet")
+    .attr("style", "width: 100%; height: 100%;");
 
   const nodes = UiContext.nodes;
   const links = UiContext.links;
@@ -36,14 +35,14 @@ export default function initD3() {
     .enter()
     .append("circle")
     .attr("r", d => {
-      if (d.type === 'main') return 8;
-      if (d.type === 'sub') return 5;
-      return 4; 
+      if (d.type === 'main') return 6;
+      if (d.type === 'sub') return 4;
+      return 3;
     })
     .attr("fill", d => {
       if (d.type === 'main') return "steelblue";
       if (d.type === 'sub') return "green";
-      return "orange"; 
+      return "orange";
     })
     .on("mouseover", (event, d) => {
       d3.select("#info-display").text(
