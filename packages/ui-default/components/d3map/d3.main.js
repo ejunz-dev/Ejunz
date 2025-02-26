@@ -9,31 +9,16 @@ export default function D3Main() {
     .attr("preserveAspectRatio", "xMidYMid meet")
     .attr("style", "width: 100%; height: 100%;");
 
-  const nodes = UiContext.nodes;
-  const links = UiContext.links;
+  // 深拷贝数据以避免共享引用
+  const nodes = JSON.parse(JSON.stringify(UiContext.nodes));
 
-  const simulation = d3.forceSimulation(nodes)
-    .force("link", d3.forceLink(links).id(d => d.id).distance(30))
-    .force("charge", d3.forceManyBody().strength(1))
-    .force("center", d3.forceCenter(0, 0))
-    .force("radial", d3.forceRadial(80, 0, 0))
-    .on("tick", ticked);
-
-  const mainLinks = links.filter(link => 
-    nodes.some(node => node.id === link.source) &&
-    nodes.some(node => node.id === link.target)
-  );
-
-  const link = svg.append("g")
-    .attr("stroke", "#999")
-    .attr("stroke-opacity", 0.6)
-    .selectAll("line")
-    .data(mainLinks)
-    .enter()
-    .append("line");
-
+  // 过滤出所有 main 节点
   const mainNodes = nodes.filter(node => node.type === 'main');
 
+  // 清除之前的内容
+  svg.selectAll("*").remove();
+
+  // 渲染 main 节点
   const node = svg.append("g")
     .attr("stroke", "#fff")
     .attr("stroke-width", 1.5)
@@ -59,7 +44,6 @@ export default function D3Main() {
     })
     .call(d3.drag()
       .on("start", (event, d) => {
-        if (!event.active) simulation.alphaTarget(0.3).restart();
         d.fx = d.x;
         d.fy = d.y;
       })
@@ -68,21 +52,19 @@ export default function D3Main() {
         d.fy = event.y;
       })
       .on("end", (event, d) => {
-        if (!event.active) simulation.alphaTarget(0);
         d.fx = null;
         d.fy = null;
       })
     );
 
   function ticked() {
-    link
-      .attr("x1", d => d.source.x)
-      .attr("y1", d => d.source.y)
-      .attr("x2", d => d.target.x)
-      .attr("y2", d => d.target.y);
-
     node
       .attr("cx", d => d.x)
       .attr("cy", d => d.y);
   }
+
+  // 创建一个独立的力模拟
+  const simulation = d3.forceSimulation(mainNodes)
+    .force("center", d3.forceCenter(0, 0))
+    .on("tick", ticked);
 }
