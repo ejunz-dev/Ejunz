@@ -1,6 +1,6 @@
 import * as d3 from "d3";
 
-export default function initD3() {
+export default function initD3(selectedMainNodeId) {
   const width = 200;
   const height = 200;
 
@@ -12,18 +12,11 @@ export default function initD3() {
   const nodes = UiContext.nodes;
   const links = UiContext.links;
 
-  // 随机选择一个 main 节点
-  const mainNodes = nodes.filter(node => node.type === 'main');
-  const randomMainNode = mainNodes[Math.floor(Math.random() * mainNodes.length)];
-
-  if (!randomMainNode) {
-    console.error("No main nodes available for rendering.");
+  if (!selectedMainNodeId) {
+    console.error("No main node ID provided for rendering.");
     return;
   }
 
-  const selectedMainNodeId = randomMainNode.id;
-
-  // 过滤出相关的节点和链接
   const filteredNodes = nodes.filter(d => {
     return d.id === selectedMainNodeId || d.relatedMainId === selectedMainNodeId;
   });
@@ -33,10 +26,8 @@ export default function initD3() {
            filteredNodes.some(node => node.id === d.target);
   });
 
-  // 清除之前的内容
   svg.selectAll("*").remove();
 
-  // 使用过滤后的数据创建模拟
   const simulation = d3.forceSimulation(filteredNodes)
     .force("link", d3.forceLink(filteredLinks).id(d => d.id).distance(30))
     .force("charge", d3.forceManyBody().strength(1))
