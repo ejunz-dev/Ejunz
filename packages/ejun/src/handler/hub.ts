@@ -239,26 +239,26 @@ class HubDetailHandler extends HubHandler {
         }
         const nodesSet = new Set<string>();
         const links: { source: string; target: string }[] = [];
-        const nodesContent = new Map<string, { content: string, type: string }>();
+        const nodesContent = new Map<string, { content: string, type: string, relatedMainId?: string }>();
 
         drdocs.forEach(drdoc => {
             const docId = drdoc._id.toHexString();
             const content = drdoc.content;
             nodesSet.add(docId);
-            nodesContent.set(docId, { content, type: 'main' });
+            nodesContent.set(docId, { content, type: 'main', relatedMainId: docId });
 
             if (drdoc.reply) {
                 drdoc.reply.forEach(reply => {
                     const replyId = reply._id.toHexString();
                     nodesSet.add(replyId);
-                    nodesContent.set(replyId, { content: reply.content, type: 'sub' });
+                    nodesContent.set(replyId, { content: reply.content, type: 'sub', relatedMainId: docId });
                     links.push({ source: docId, target: replyId });
 
                     if (reply.replyfile) {
                         reply.replyfile.forEach(file => {
                             const filename = file.name; // Assuming file._id is a string
                             nodesSet.add(filename);
-                            nodesContent.set(filename, { content: filename, type: 'file' });
+                            nodesContent.set(filename, { content: filename, type: 'file', relatedMainId: docId });
                             links.push({ source: replyId, target: filename });
                         });
                     }
@@ -269,7 +269,8 @@ class HubDetailHandler extends HubHandler {
         const nodes = Array.from(nodesSet).map((id) => ({
             id,
             content: nodesContent.get(id).content,
-            type: nodesContent.get(id).type
+            type: nodesContent.get(id).type,
+            relatedMainId: nodesContent.get(id).relatedMainId,
         }));
 
         console.log('D3.js Data:', { nodes, links });

@@ -12,8 +12,33 @@ export default function initD3() {
   const nodes = UiContext.nodes;
   const links = UiContext.links;
 
-  const simulation = d3.forceSimulation(nodes)
-    .force("link", d3.forceLink(links).id(d => d.id).distance(30))
+  // 随机选择一个 main 节点
+  const mainNodes = nodes.filter(node => node.type === 'main');
+  const randomMainNode = mainNodes[Math.floor(Math.random() * mainNodes.length)];
+
+  if (!randomMainNode) {
+    console.error("No main nodes available for rendering.");
+    return;
+  }
+
+  const selectedMainNodeId = randomMainNode.id;
+
+  // 过滤出相关的节点和链接
+  const filteredNodes = nodes.filter(d => {
+    return d.id === selectedMainNodeId || d.relatedMainId === selectedMainNodeId;
+  });
+
+  const filteredLinks = links.filter(d => {
+    return filteredNodes.some(node => node.id === d.source) &&
+           filteredNodes.some(node => node.id === d.target);
+  });
+
+  // 清除之前的内容
+  svg.selectAll("*").remove();
+
+  // 使用过滤后的数据创建模拟
+  const simulation = d3.forceSimulation(filteredNodes)
+    .force("link", d3.forceLink(filteredLinks).id(d => d.id).distance(30))
     .force("charge", d3.forceManyBody().strength(1))
     .force("center", d3.forceCenter(0, 0))
     .force("radial", d3.forceRadial(80, 0, 0))
@@ -23,7 +48,7 @@ export default function initD3() {
     .attr("stroke", "#999")
     .attr("stroke-opacity", 0.6)
     .selectAll("line")
-    .data(links)
+    .data(filteredLinks)
     .enter()
     .append("line");
 
@@ -31,7 +56,7 @@ export default function initD3() {
     .attr("stroke", "#fff")
     .attr("stroke-width", 1.5)
     .selectAll("circle")
-    .data(nodes)
+    .data(filteredNodes)
     .enter()
     .append("circle")
     .attr("r", d => {
