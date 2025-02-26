@@ -9,8 +9,8 @@ export default function initD3(selectedMainNodeId) {
     .attr("preserveAspectRatio", "xMidYMid meet")
     .attr("style", "width: 100%; height: 100%;");
 
-  const nodes = UiContext.nodes;
-  const links = UiContext.links;
+  const nodes = JSON.parse(JSON.stringify(UiContext.nodes));
+  const links = JSON.parse(JSON.stringify(UiContext.links));
 
   if (!selectedMainNodeId) {
     console.error("No main node ID provided for rendering.");
@@ -18,7 +18,7 @@ export default function initD3(selectedMainNodeId) {
   }
 
   const filteredNodes = nodes.filter(d => {
-    return d.id === selectedMainNodeId || d.relatedMainId === selectedMainNodeId;
+    return (d.relatedMainId === selectedMainNodeId) && (d.type !== 'main');
   });
 
   const filteredLinks = links.filter(d => {
@@ -51,12 +51,10 @@ export default function initD3(selectedMainNodeId) {
     .enter()
     .append("circle")
     .attr("r", d => {
-      if (d.type === 'main') return 6;
       if (d.type === 'sub') return 4;
       return 3;
     })
     .attr("fill", d => {
-      if (d.type === 'main') return "steelblue";
       if (d.type === 'sub') return "green";
       return "orange";
     })
