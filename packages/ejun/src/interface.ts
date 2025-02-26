@@ -376,6 +376,8 @@ declare module './model/repo'{
         react: Record<string, number>;
         commentfile: HubFileInfo[];
         replyfile: HubFileInfo[];
+        x: number;
+        y: number;
     }
     
     export interface HubTailReplyDoc {
@@ -807,6 +809,8 @@ export interface HubHistoryDoc {
     time: Date;
     uid: number;
     ip: string;
+    x: number;
+    y: number;
 }
 export interface ContestBalloonDoc {
     _id: ObjectId;
