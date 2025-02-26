@@ -239,19 +239,19 @@ class HubDetailHandler extends HubHandler {
         }
         const nodesSet = new Set<string>();
         const links: { source: string; target: string }[] = [];
-        const nodesContent = new Map<string, { content: string, type: string, relatedMainId?: string }>();
+        const nodesContent = new Map<string, { content: string, type: string, relatedMainId?: string, x?: number, y?: number }>();
 
         drdocs.forEach(drdoc => {
             const docId = drdoc._id.toHexString();
             const content = drdoc.content;
             nodesSet.add(docId);
-            nodesContent.set(docId, { content, type: 'main', relatedMainId: docId });
+            nodesContent.set(docId, { content, type: 'main', relatedMainId: docId, x: drdoc.x, y: drdoc.y });
 
             if (drdoc.reply) {
                 drdoc.reply.forEach(reply => {
                     const replyId = reply._id.toHexString();
                     nodesSet.add(replyId);
-                    nodesContent.set(replyId, { content: reply.content, type: 'sub', relatedMainId: docId });
+                    nodesContent.set(replyId, { content: reply.content, type: 'sub', relatedMainId: docId, x: reply.x, y: reply.y });
                     links.push({ source: docId, target: replyId });
 
                     if (reply.replyfile) {
@@ -271,6 +271,8 @@ class HubDetailHandler extends HubHandler {
             content: nodesContent.get(id).content,
             type: nodesContent.get(id).type,
             relatedMainId: nodesContent.get(id).relatedMainId,
+            x: nodesContent.get(id).x,
+            y: nodesContent.get(id).y,
         }));
 
         console.log('D3.js Data:', { nodes, links });
@@ -284,7 +286,7 @@ class HubDetailHandler extends HubHandler {
         
         this.response.template = 'hub_detail.html';
         this.response.body = {
-            path, ddoc: this.ddoc, dsdoc, drdocs,page, pcount, drcount, udict, vnode: this.vnode, reactions, nodes, links
+            path, ddoc: this.ddoc, dsdoc, drdocs, page, pcount, drcount, udict, vnode: this.vnode, reactions, nodes, links
         }
         this.UiContext.nodes = nodes;
         this.UiContext.links = links;
@@ -339,6 +341,7 @@ class HubDetailHandler extends HubHandler {
         this.checkPerm(PERM.PERM_REPLY_HUB);
         if (this.ddoc.lock) throw new HubLockedError(domainId, this.ddoc.docId);
         await this.limitRate('add_hub', 3600, 60);
+
         const targets = new Set(Array.from(content.matchAll(/@\[\]\(\/user\/(\d+)\)/g)).map((i) => +i[1]));
         const uids = Object.keys(await user.getList(domainId, Array.from(targets))).map((i) => +i);
         const msg = JSON.stringify({
@@ -348,9 +351,15 @@ class HubDetailHandler extends HubHandler {
         for (const uid of uids) {
             message.send(1, uid, msg, message.FLAG_RICHTEXT | message.FLAG_UNREAD);
         }
-        await hub.addTailReply(domainId, drid, this.user._id, content, this.request.ip);
+
+        // 设置默认居中坐标
+        const x = 250; // 中心 x 坐标
+        const y = 250; // 中心 y 坐标
+
+        await hub.addTailReply(domainId, drid, this.user._id, content, this.request.ip, x, y);
         this.back();
     }
+
     @param('drid', Types.ObjectId)
     @param('content', Types.Content)
     async postEditReply(domainId: string, drid: ObjectId, content: string) {

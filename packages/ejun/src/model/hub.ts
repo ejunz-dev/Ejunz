@@ -41,7 +41,7 @@ export const typeDisplay = {
     [document.TYPE_DOCS]: 'docs',
 };
 
-export const coll = db.collection('discussion.history');
+export const coll = db.collection('hub.history');
 
 export async function add(
     domainId: string, parentType: number, parentId: ObjectId | number | string,
@@ -106,7 +106,7 @@ export async function del(domainId: string, did: ObjectId): Promise<void> {
         }).project({ _id: 1, 'reply._id': 1 }).toArray(),
     ]) as any;
     await Promise.all([
-        document.deleteOne(domainId, document.TYPE_DISCUSSION, did),
+        document.deleteOne(domainId, document.T, did),
         document.deleteMulti(domainId, document.TYPE_HUB_REPLY, {
             parentType: document.TYPE_HUB, parentId: did,
         }),
@@ -193,21 +193,25 @@ export async function getReaction(domainId: string, docType: keyof document.DocT
 export async function addTailReply(
     domainId: string, drid: ObjectId,
     owner: number, content: string, ip: string,
+    x: number, y: number
 ): Promise<[HubReplyDoc, ObjectId]> {
     const time = new Date();
+    console.log('Inserting reply with coordinates:', { x, y });
     const [drdoc, subId] = await document.push(
         domainId, document.TYPE_HUB_REPLY, drid,
-        'reply', content, owner, { ip, editor: owner },
+        'reply', content, owner, { ip, editor: owner, x, y },
     );
     await Promise.all([
         coll.insertOne({
             domainId, docId: subId, content, uid: owner, ip, time: new Date(),
+            x, y
         }),
         document.set(
             domainId, document.TYPE_HUB, drdoc.parentId,
             { updateAt: time },
         ),
     ]);
+    console.log('Document inserted:', await coll.findOne({ docId: subId }));
     return [drdoc, subId];
 }
 
