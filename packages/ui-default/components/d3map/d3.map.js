@@ -30,7 +30,8 @@ export default function initD3(selectedMainNodeId) {
 
   const simulation = d3.forceSimulation(filteredNodes)
     .force("link", d3.forceLink(filteredLinks).id(d => d.id).distance(30))
-    .force("charge", d3.forceManyBody().strength(1))
+    .force("charge", d3.forceManyBody()
+      .strength(d => d.type === 'file' ? -30 : -10))
     .force("center", d3.forceCenter(0, 0))
     .force("radial", d3.forceRadial(80, 0, 0))
     .on("tick", ticked);
