@@ -65,7 +65,7 @@ export default function initD3(selectedMainNodeId) {
     })
     .on("mouseover", (event, d) => {
       d3.select("#info-display").text(
-        `Node ${d.id}: \nContent: ${d.content}`
+        `Node ${d.id}: \nContent: ${d.content}\nX: ${d.x}, Y: ${d.y}`
       );
     })
     .on("mouseout", () => {
