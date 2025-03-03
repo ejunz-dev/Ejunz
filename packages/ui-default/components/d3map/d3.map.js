@@ -12,6 +12,7 @@ export default function initD3(selectedMainNodeId) {
     .style("background-size", "cover")
     .style("background-position", "center");
 
+
   const nodes = JSON.parse(JSON.stringify(UiContext.nodes));
   const links = JSON.parse(JSON.stringify(UiContext.links));
 
@@ -22,12 +23,6 @@ export default function initD3(selectedMainNodeId) {
 
   const filteredNodes = nodes.filter(d => {
     return (d.relatedMainId === selectedMainNodeId) && (d.type !== 'main');
-  });
-
-  filteredNodes.forEach(node => {
-    console.log(`Node ID: ${node.id}, X: ${node.x}, Y: ${node.y}`);
-    node.initialX = node.x;
-    node.initialY = node.y;
   });
 
   const filteredLinks = links.filter(d => {
@@ -44,14 +39,6 @@ export default function initD3(selectedMainNodeId) {
     .force("center", d3.forceCenter(0, 0))
     .force("radial", d3.forceRadial(80, 0, 0))
     .on("tick", ticked);
-
-  const attractionStrength = 0.002; // 进一步减小吸引力强度
-  simulation.force("attract", () => {
-    filteredNodes.forEach(node => {
-      node.vx += (node.initialX - node.x) * attractionStrength;
-      node.vy += (node.initialY - node.y) * attractionStrength;
-    });
-  });
 
   const link = svg.append("g")
     .attr("stroke", "#999")
@@ -76,11 +63,9 @@ export default function initD3(selectedMainNodeId) {
       if (d.type === 'sub') return "green";
       return "orange";
     })
-    .attr("cx", d => d.x)
-    .attr("cy", d => d.y)
     .on("mouseover", (event, d) => {
       d3.select("#info-display").text(
-        `Node ${d.id}: \nContent: ${d.content}\nX: ${d.x}, Y: ${d.y}`
+        `Node ${d.id}: \nContent: ${d.content}`
       );
     })
     .on("mouseout", () => {
@@ -95,8 +80,8 @@ export default function initD3(selectedMainNodeId) {
     .call(d3.drag()
       .on("start", (event, d) => {
         if (!event.active) simulation.alphaTarget(0.3).restart();
-        d.fx = null; // 允许节点自由移动
-        d.fy = null;
+        d.fx = d.x;
+        d.fy = d.y;
       })
       .on("drag", (event, d) => {
         d.fx = event.x;
@@ -104,7 +89,7 @@ export default function initD3(selectedMainNodeId) {
       })
       .on("end", (event, d) => {
         if (!event.active) simulation.alphaTarget(0);
-        d.fx = null; // 确保节点未被固定
+        d.fx = null;
         d.fy = null;
       })
     );
