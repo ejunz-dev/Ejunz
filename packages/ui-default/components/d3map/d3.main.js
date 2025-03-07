@@ -28,9 +28,11 @@ export default function D3Main() {
     .append("circle")
     .attr("r", 6)
     .attr("fill", "steelblue")
+    .attr("cx", d => d.x)
+    .attr("cy", d => d.y)
     .on("mouseover", (event, d) => {
       d3.select("#info-display").text(
-        `Node ${d.id}: \nContent: ${d.content}`
+        `Node ${d.id}: \nContent: ${d.content} \nX: ${d.x} \nY: ${d.y}`
       );
     })
     .on("mouseout", () => {
@@ -38,30 +40,5 @@ export default function D3Main() {
     })
     .on("click", (event, d) => {
       initD3(d.id);
-
-    })
-    .call(d3.drag()
-      .on("start", (event, d) => {
-        d.fx = d.x;
-        d.fy = d.y;
-      })
-      .on("drag", (event, d) => {
-        d.fx = event.x;
-        d.fy = event.y;
-      })
-      .on("end", (event, d) => {
-        d.fx = null;
-        d.fy = null;
-      })
-    );
-
-  function ticked() {
-    node
-      .attr("cx", d => d.x)
-      .attr("cy", d => d.y);
-  }
-
-  const simulation = d3.forceSimulation(mainNodes)
-    .force("center", d3.forceCenter(0, 0))
-    .on("tick", ticked);
+    });
 }
