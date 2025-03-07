@@ -128,17 +128,19 @@ export function getMulti(domainId: string, query: Filter<HubDoc> = {}, projectio
 export async function addReply(
     domainId: string, did: ObjectId, owner: number,
     content: string, ip: string,
+    x: number, y: number
 ): Promise<ObjectId> {
     const time = new Date();
     const [drid] = await Promise.all([
         document.add(
             domainId, content, owner, document.TYPE_HUB_REPLY,
-            null, document.TYPE_HUB, did, { ip, editor: owner },
+            null, document.TYPE_HUB, did, { ip, editor: owner,x,y },
         ),
         document.incAndSet(domainId, document.TYPE_HUB, did, 'nReply', 1, { updateAt: time }),
     ]);
     await coll.insertOne({
         domainId, docId: drid, content, uid: owner, ip, time,
+        x, y
     });
     return drid;
 }
