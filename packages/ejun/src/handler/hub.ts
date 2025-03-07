@@ -458,7 +458,6 @@ class HubD3EditHandler extends HubHandler {
     @param('did', Types.ObjectId)
     @param('page', Types.PositiveInt, true)
     async get(domainId: string, did: ObjectId, page = 1) {
-
         console.log('domainId:', domainId);
         console.log('Fetching replies for did:', did);
         const [drdocs, pcount, drcount] = await this.paginate(
@@ -476,10 +475,8 @@ class HubD3EditHandler extends HubHandler {
             const content = drdoc.content;
             nodesSet.add(docId);
             nodesContent.set(docId, { content, type: 'main', relatedMainId: docId, x: drdoc.x, y: drdoc.y });
-
         });
         console.log('drdocs:', drdocs);
-
 
         const nodes = Array.from(nodesSet).map((id) => ({
             id,
@@ -492,17 +489,27 @@ class HubD3EditHandler extends HubHandler {
 
         console.log('D3.js Data:', { nodes, links });
 
-
         this.response.template = 'hub_node_main_edit.html';
-        this.response.body = {ddoc: this.ddoc, drdocs,page, pcount, drcount,nodes, links};
+        this.response.body = {ddoc: this.ddoc, drdocs, page, pcount, drcount, nodes, links};
         console.log('this.response.body:', this.response.body);
         this.UiContext.nodes = nodes;
         this.UiContext.links = links;
     }
-    async postUpdateMainNodes(domainId: string, did: ObjectId) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
-    }
 
+    async post(domainId: string, did: ObjectId) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+
+        const updatedNodes = this.request.body.nodes;
+
+        for (const node of updatedNodes) {
+            const { id, x, y } = node;
+            await hub.editReplyCoordinates(domainId, id, x, y, this.user._id, this.request.ip);
+            console.log('Updated node:', { id, x, y });
+        }
+
+        this.response.body = { success: true };
+        this.back();
+    }
 }
 
 
