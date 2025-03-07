@@ -449,6 +449,58 @@ class HubDetailHandler extends HubHandler {
         this.back({ star: false });
     }
 }
+class HubD3EditHandler extends HubHandler {
+    @param('did', Types.ObjectId)
+    @param('page', Types.PositiveInt, true)
+    async get(domainId: string, did: ObjectId, page = 1) {
+
+        console.log('domainId:', domainId);
+        console.log('Fetching replies for did:', did);
+        const [drdocs, pcount, drcount] = await this.paginate(
+            hub.getMultiReply(domainId, did),
+            page,
+            'reply',
+        );
+        console.log('Fetched drdocs:', drdocs);
+        const nodesSet = new Set<string>();
+        const nodesContent = new Map<string, { content: string, type: string, relatedMainId?: string, x?: number, y?: number }>();
+        const links: { source: string; target: string }[] = [];
+        
+        drdocs.forEach(drdoc => {
+            const docId = drdoc._id.toHexString();
+            const content = drdoc.content;
+            nodesSet.add(docId);
+            nodesContent.set(docId, { content, type: 'main', relatedMainId: docId, x: drdoc.x, y: drdoc.y });
+
+        });
+        console.log('drdocs:', drdocs);
+
+
+        const nodes = Array.from(nodesSet).map((id) => ({
+            id,
+            content: nodesContent.get(id).content,
+            type: nodesContent.get(id).type,
+            relatedMainId: nodesContent.get(id).relatedMainId,
+            x: nodesContent.get(id).x,
+            y: nodesContent.get(id).y,
+        }));
+
+        console.log('D3.js Data:', { nodes, links });
+
+
+        this.response.template = 'hub_node_main_edit.html';
+        this.response.body = {ddoc: this.ddoc, drdocs,page, pcount, drcount,nodes, links};
+        console.log('this.response.body:', this.response.body);
+        this.UiContext.nodes = nodes;
+        this.UiContext.links = links;
+    }
+    async postUpdateMainNodes(domainId: string, did: ObjectId) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+    }
+
+}
+
+
 
 class HubRawHandler extends HubHandler {
     @param('did', Types.ObjectId, true)
@@ -596,4 +648,5 @@ export async function apply(ctx) {
     ctx.Route('hub_create', '/hub/:type/:name/create', HubCreateHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_CREATE_HUB);
     ctx.Route('hub_upload_reply_file', '/hub/:did/:drid/:drrid/file', HubFileHandler);
     ctx.Route('hub_download_reply_file', '/hub/:did/:drid/:drrid/file/download', HubFileDownloadHandler);
+    ctx.Route('hub_node_main_edit', '/hub/:did/main_node/edit', HubD3EditHandler);
 }
