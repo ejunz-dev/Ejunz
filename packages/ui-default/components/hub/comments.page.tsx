@@ -11,7 +11,7 @@ import uploadFiles from 'vj/components/upload';
 import Notification from 'vj/components/notification';
 import initD3 from "vj/components/d3map/d3.map";
 import D3Main from "vj/components/d3map/d3.main";
-
+import D3MainEdit from "vj/components/d3map/d3.main.edit";
 
 
 const $replyTemplate = $('.commentbox-container').eq(0).clone();
@@ -213,6 +213,7 @@ const commentsPage = new AutoloadPage('commentsPage', () => {
   $(document).ready(() => {
     initD3();
     D3Main();
+    D3MainEdit();
   });
   $(document).on('click', '[name="dczcomments__dummy-box"]', onClickDummyBox);
   $(document).on('click', '[data-op="reply"][data-type="comment"]', onCommentClickReplyComment);

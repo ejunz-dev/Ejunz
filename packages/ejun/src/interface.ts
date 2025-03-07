@@ -388,6 +388,8 @@ declare module './model/repo'{
         edited?: boolean;
         editor?: number;
         replyfile: HubFileInfo[];
+        x: number;
+        y: number;
     }
 
 export interface HubFileInfo extends FileInfo {

@@ -1,10 +1,18 @@
 {% extends "layout/basic.html" %}
 {% block content %}
 
-  <div class="medium-9 columns">
+  <div class="medium-6 columns">
     <div class="section">
       <h3>Node Info</h3>
-      <svg id="d3-main" style="width: 100%; height: 400px;"></svg>
+      <svg id="d3-main-edit" style="width: 100%; height: 400px;"></svg>
+      
+      <!-- 隐藏的表单字段用于存储节点坐标 -->
+      <form id="node-edit-form" method="post" action="/update-node">
+        <input type="hidden" id="node-coordinates" name="node_coordinates">
+        
+        <!-- 添加更新按钮 -->
+        <button type="submit" class="button">Update Node</button>
+      </form>
     </div>
   </div>
 
