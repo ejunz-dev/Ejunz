@@ -13,8 +13,8 @@ export default function initD3(selectedMainNodeId) {
     .style("background-position", "center");
 
 
-  const nodes = JSON.parse(JSON.stringify(UiContext.nodes));
-  const links = JSON.parse(JSON.stringify(UiContext.links));
+  const nodes = UiContext.nodes ? JSON.parse(JSON.stringify(UiContext.nodes)) : [];
+  const links = UiContext.links ? JSON.parse(JSON.stringify(UiContext.links)) : [];
 
   if (!selectedMainNodeId) {
     console.error("No main node ID provided for rendering.");

@@ -331,7 +331,12 @@ class HubDetailHandler extends HubHandler {
         for (const uid of uids) {
             message.send(1, uid, msg, message.FLAG_RICHTEXT | message.FLAG_UNREAD);
         }
-        const drid = await hub.addReply(domainId, did, this.user._id, content, this.request.ip);
+        
+        // 添加默认坐标
+        const x = 0; // 默认的 x 坐标
+        const y = 0; // 默认的 y 坐标
+
+        const drid = await hub.addReply(domainId, did, this.user._id, content, this.request.ip, x, y);
         this.back({ drid });
     }
 
