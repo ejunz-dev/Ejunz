@@ -6,11 +6,13 @@
       <h3>Node Info</h3>
       <svg id="d3-main-edit" style="width: 100%; height: 400px;"></svg>
       
-      <!-- 隐藏的表单字段用于存储节点坐标 -->
-      <form id="node-edit-form" method="post" action="/update-node">
+      <div id="node-coordinates-display">
+        <p>实时坐标: <span id="current-coordinates">X: 0, Y: 0</span></p>
+      </div>
+      
+      <form id="node-edit-form" method="post" action="">
         <input type="hidden" id="node-coordinates" name="node_coordinates">
         
-        <!-- 添加更新按钮 -->
         <button type="submit" class="button">Update Node</button>
       </form>
     </div>

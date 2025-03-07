@@ -27,44 +27,38 @@ export default function D3MainEdit() {
     .append("circle")
     .attr("r", 6)
     .attr("fill", "steelblue")
+    .attr("cx", d => d.x)
+    .attr("cy", d => d.y)
     .on("mouseover", (event, d) => {
       d3.select("#info-display").text(
         `Node ${d.id}: \nContent: ${d.content}`
       );
     })
+    .on("mousemove", (event, d) => {
+      d3.select("#current-coordinates").text(`X: ${d.x}, Y: ${d.y}`);
+    })
     .on("mouseout", () => {
       d3.select("#info-display").text("");
+      d3.select("#current-coordinates").text("X: 0, Y: 0");
     })
     .on("click", (event, d) => {
       initD3(d.id);
     })
     .call(d3.drag()
-      .on("start", (event, d) => {
-        d.fx = d.x;
-        d.fy = d.y;
+      .on("start", function(event, d) {
+        d3.select(this).raise().attr("stroke", "black");
       })
-      .on("drag", (event, d) => {
-        d.fx = event.x;
-        d.fy = event.y;
-        d3.select(this).attr("cx", d.fx).attr("cy", d.fy); // 实时更新坐标
+      .on("drag", function(event, d) {
+        const [x, y] = d3.pointer(event, svg.node());
+        d.x = x;
+        d.y = y;
+        d3.select(this).attr("cx", d.x).attr("cy", d.y);
+        d3.select("#current-coordinates").text(`X: ${d.x}, Y: ${d.y}`);
       })
-      .on("end", (event, d) => {
-        d.x = d.fx;
-        d.y = d.fy;
-        d.fx = null;
-        d.fy = null;
-        // 更新隐藏的表单字段
+      .on("end", function(event, d) {
+        d3.select(this).attr("stroke", "#fff");
         document.getElementById("node-coordinates").value = JSON.stringify(mainNodes.map(node => ({ id: node.id, x: node.x, y: node.y })));
       })
     );
 
-  function ticked() {
-    node
-      .attr("cx", d => d.x)
-      .attr("cy", d => d.y);
-  }
-
-  const simulation = d3.forceSimulation(mainNodes)
-    .force("center", d3.forceCenter(0, 0))
-    .on("tick", ticked);
 }
