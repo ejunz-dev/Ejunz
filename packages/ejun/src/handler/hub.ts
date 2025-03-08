@@ -496,16 +496,26 @@ class HubD3EditHandler extends HubHandler {
         this.UiContext.links = links;
     }
 
-    async post(domainId: string, did: ObjectId) {
+    async post({domainId}) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-
-        const updatedNodes = this.request.body.nodes;
-
-        for (const node of updatedNodes) {
-            const { id, x, y } = node;
-            await hub.editReplyCoordinates(domainId, id, x, y, this.user._id, this.request.ip);
-            console.log('Updated node:', { id, x, y });
+        console.log('Domain ID:', domainId);
+        console.log('this.request.body:', this.request.body);
+        const nodes = this.request.body.nodes;
+        console.log('nodes:', nodes);
+        if (!Array.isArray(nodes)) {
+            this.response.body = { success: false, message: "Invalid data format" };
+            return;
         }
+
+        const updatePromises = nodes.map(node => {
+            const { id, x, y } = node;
+            const drid = new ObjectId(id);
+            console.log('Updating node:', { domainId, id, x, y });
+            return hub.editReplyCoordinates(domainId, drid, x, y, this.user._id, this.request.ip)
+                .then(() => console.log('Updated node:', { id, x, y }));
+        });
+
+        await Promise.all(updatePromises);
 
         this.response.body = { success: true };
         this.back();
