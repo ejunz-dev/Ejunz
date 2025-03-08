@@ -161,10 +161,7 @@ export async function editReply(
 export async function editReplyCoordinates(
     domainId: string, drid: ObjectId, x: number, y: number, uid: number, ip: string,
 ): Promise<HubReplyDoc | null> {
-    await coll.insertOne({
-        domainId, docId: drid, x, y, uid, ip, time: new Date(),
-    });
-    return document.set(domainId, document.TYPE_HUB_REPLY, drid, { x, y });
+    return document.set(domainId, document.TYPE_HUB_REPLY, drid, { x, y,  edited: true, editor: uid});
 }
 
 export async function delReply(domainId: string, drid: ObjectId) {

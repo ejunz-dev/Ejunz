@@ -57,8 +57,14 @@ export default function D3MainEdit() {
       })
       .on("end", function(event, d) {
         d3.select(this).attr("stroke", "#fff");
-        document.getElementById("node-coordinates").value = JSON.stringify(mainNodes.map(node => ({ id: node.id, x: node.x, y: node.y })));
+        const updatedNodes = mainNodes.map(node => ({
+          id: node.id,
+          x: node.x,
+          y: node.y
+        }));
+        const jsonData = JSON.stringify({ nodes: updatedNodes });
+        document.getElementById("node-coordinates").value = jsonData;
+        document.getElementById("form-data-display").textContent = jsonData;
       })
     );
-
 }
