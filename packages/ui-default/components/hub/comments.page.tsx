@@ -207,6 +207,41 @@ async function onCommentClickUploadReplyFile(ev, type, did, drid, drrid, files?)
   await uploadFiles(uploadUrl, files, { type, pjax: true });
 }
 
+async function submitD3FormData() {
+  const action = await new ConfirmDialog({
+    $body: tpl.typoMsg(i18n('Are you sure you want to submit this form?')),
+  }).open();
+  
+  if (action !== 'yes') return;
+
+  const coordinatesInput = (document.getElementById("node-coordinates") as HTMLInputElement).value;
+  let formData;
+  
+  try {
+    formData = JSON.parse(coordinatesInput);
+  } catch (error) {
+    Notification.error(i18n('Invalid form data.'));
+    return;
+  }
+
+  try {
+    console.log('Submitting data:', coordinatesInput);
+    document.getElementById("form-data-display").textContent = coordinatesInput;
+    document.getElementById("form-data-display").textContent = coordinatesInput;
+
+    const response = await request.post('', coordinatesInput, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log('Form submission response:', response);
+    Notification.success(i18n('Form submitted successfully.'));
+  } catch (error) {
+    console.error('Form submission error:', error);
+    Notification.error(i18n('Failed to submit form.'));
+  }
+}
 
 
 const commentsPage = new AutoloadPage('commentsPage', () => {
@@ -227,6 +262,10 @@ const commentsPage = new AutoloadPage('commentsPage', () => {
     const drid = $(this).data('drid');
     const drrid = $(this).data('drrid');
     onCommentClickUploadReplyFile(ev, 'replyfile', did, drid, drrid);
+  });
+  $(document).on('submit', '#node-edit-form', function(ev) {
+    ev.preventDefault();
+    submitD3FormData();
   });
 
 });
