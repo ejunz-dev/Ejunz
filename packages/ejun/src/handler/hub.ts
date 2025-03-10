@@ -293,6 +293,7 @@ class HubDetailHandler extends HubHandler {
         this.response.body = {
             path, ddoc: this.ddoc, dsdoc, drdocs, page, pcount, drcount, udict, vnode: this.vnode, reactions, nodes, links
         }
+        this.UiContext.urlForHubImage = this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
         this.UiContext.nodes = nodes;
         this.UiContext.links = links;
     }
@@ -501,7 +502,7 @@ class HubD3EditHandler extends HubHandler {
             links, 
             hubimage: sortFiles(this.ddoc.hubimage), 
             urlForHubImage: (filename: string) => {
-                return this.url('fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
+                return this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
             },
         };
 
@@ -510,6 +511,7 @@ class HubD3EditHandler extends HubHandler {
         
         this.UiContext.nodes = nodes;
         this.UiContext.links = links;
+        this.UiContext.urlForHubImage = this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
     }
 
     async post({domainId}) {
@@ -557,7 +559,7 @@ class HubD3EditHandler extends HubHandler {
         this.back();
     }
 }
-export class FSDownloadHandler extends Handler {
+export class HubFSDownloadHandler extends HubHandler {
     noCheckPermView = true;
     @param('did', Types.ObjectId)
     @param('filename', Types.Filename)
@@ -721,7 +723,6 @@ class HubRRFileHandler extends Handler {
         this.response.redirect = this.url('hub_detail', { did });
     }
 }
-export class HubFileDownloadHandler extends HubHandler {}
 
 export async function apply(ctx) {
     ctx.Route('hub_main', '/hub', HubMainHandler);
@@ -733,7 +734,7 @@ export async function apply(ctx) {
     ctx.Route('hub_node', '/hub/:type/:name', HubNodeHandler);
     ctx.Route('hub_create', '/hub/:type/:name/create', HubCreateHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_CREATE_HUB);
     ctx.Route('hub_upload_reply_file', '/hub/:did/:drid/:drrid/file', HubRRFileHandler);
-    ctx.Route('hub_download_reply_file', '/hub/:did/:drid/:drrid/file/download', HubFileDownloadHandler);
+    // ctx.Route('hub_download_reply_file', '/hub/:did/:drid/:drrid/file/download', HubFileDownloadHandler);
     ctx.Route('hub_node_main_edit', '/hub/:did/main_node/edit', HubD3EditHandler);
-    ctx.Route('fs_download', '/hub/:did/:filename', FSDownloadHandler);
+    ctx.Route('hub_fs_download', '/hub/:did/main_node/edit/:filename', HubFSDownloadHandler);
 }
