@@ -21,6 +21,10 @@ import { Readable } from 'stream';
 import { statSync } from 'fs-extra';
 import FileModel from '../model/file';
 import storage from '../model/storage';
+import { NotFoundError } from '../error';   
+import { lookup } from 'mime-types';
+import { pick } from 'lodash';
+import domain from '../model/domain';
 
 export const typeMapper = {
     problem: document.TYPE_PROBLEM,
@@ -256,7 +260,7 @@ class HubDetailHandler extends HubHandler {
 
                     if (reply.replyfile) {
                         reply.replyfile.forEach(file => {
-                            const filename = file.name; // Assuming file._id is a string
+                            const filename = file.name;
                             nodesSet.add(filename);
                             nodesContent.set(filename, { content: filename, type: 'file', relatedMainId: docId });
                             links.push({ source: replyId, target: filename });
@@ -332,9 +336,8 @@ class HubDetailHandler extends HubHandler {
             message.send(1, uid, msg, message.FLAG_RICHTEXT | message.FLAG_UNREAD);
         }
         
-        // 添加默认坐标
-        const x = 0; // 默认的 x 坐标
-        const y = 0; // 默认的 y 坐标
+        const x = 0;
+        const y = 0;
 
         const drid = await hub.addReply(domainId, did, this.user._id, content, this.request.ip, x, y);
         this.back({ drid });
@@ -357,9 +360,8 @@ class HubDetailHandler extends HubHandler {
             message.send(1, uid, msg, message.FLAG_RICHTEXT | message.FLAG_UNREAD);
         }
 
-        // 设置默认居中坐标
-        const x = 250; // 中心 x 坐标
-        const y = 250; // 中心 y 坐标
+        const x = 250;
+        const y = 250;
 
         await hub.addTailReply(domainId, drid, this.user._id, content, this.request.ip, x, y);
         this.back();
@@ -457,7 +459,7 @@ class HubDetailHandler extends HubHandler {
 class HubD3EditHandler extends HubHandler {
     @param('did', Types.ObjectId)
     @param('page', Types.PositiveInt, true)
-    async get(domainId: string, did: ObjectId, page = 1) {
+    async get(domainId: string, did: ObjectId, page = 1) {  
         console.log('domainId:', domainId);
         console.log('Fetching replies for did:', did);
         const [drdocs, pcount, drcount] = await this.paginate(
@@ -490,7 +492,9 @@ class HubD3EditHandler extends HubHandler {
         console.log('D3.js Data:', { nodes, links });
 
         this.response.template = 'hub_node_main_edit.html';
-        this.response.body = {ddoc: this.ddoc, drdocs, page, pcount, drcount, nodes, links};
+        this.response.body = {ddoc: this.ddoc, drdocs, page, pcount, drcount, nodes, links, 
+            files: sortFiles(this.ddoc.hubimage), 
+            urlForHubImage: (filename: string) => this.url('fs_download', { did: this.ddoc.docId, filename }),};
         console.log('this.response.body:', this.response.body);
         this.UiContext.nodes = nodes;
         this.UiContext.links = links;
@@ -520,9 +524,27 @@ class HubD3EditHandler extends HubHandler {
         this.response.body = { success: true };
         this.back();
     }
+    @post('filename', Types.Filename)
+    async postUploadFile(domainId: string, filename: string) {
+        this.checkPriv(PRIV.PRIV_CREATE_FILE);
+        const file = this.request.files?.file;
+        if (!file) {
+            throw new Error('No file uploaded');
+        }
+
+        await storage.put(`hub/${this.ddoc.docId}/${filename}`, file.filepath, this.user._id);
+        const meta = await storage.getMeta(`hub/${this.ddoc.docId}/${filename}`);
+        const payload = { name: filename, ...pick(meta, ['size', 'lastModified', 'etag']) };
+
+        if (!Array.isArray(this.ddoc.hubimage)) {
+            this.ddoc.hubimage = [];
+        }
+
+        this.ddoc.hubimage.push({ _id: filename, ...payload });
+        await hub.edit(domainId, this.ddoc.docId, { hubimage: this.ddoc.hubimage });
+        this.back();
+    }
 }
-
-
 
 class HubRawHandler extends HubHandler {
     @param('did', Types.ObjectId, true)
@@ -609,7 +631,7 @@ class HubEditHandler extends HubHandler {
     }
 }
 
-class HubFileHandler extends Handler {
+class HubRRFileHandler extends Handler {
 
     @post('filename', Types.Filename, true)
     @param('did', Types.ObjectId, true)
@@ -668,7 +690,7 @@ export async function apply(ctx) {
     ctx.Route('hub_tail_reply_raw', '/hub/:did/:drid/:drrid/raw', HubRawHandler);
     ctx.Route('hub_node', '/hub/:type/:name', HubNodeHandler);
     ctx.Route('hub_create', '/hub/:type/:name/create', HubCreateHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_CREATE_HUB);
-    ctx.Route('hub_upload_reply_file', '/hub/:did/:drid/:drrid/file', HubFileHandler);
+    ctx.Route('hub_upload_reply_file', '/hub/:did/:drid/:drrid/file', HubRRFileHandler);
     ctx.Route('hub_download_reply_file', '/hub/:did/:drid/:drrid/file/download', HubFileDownloadHandler);
     ctx.Route('hub_node_main_edit', '/hub/:did/main_node/edit', HubD3EditHandler);
 }
