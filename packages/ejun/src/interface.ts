@@ -360,6 +360,7 @@ declare module './model/repo'{
             lastRCount: number;
             lock?: boolean;
             hidden?: boolean;
+            hubimage: HubFileInfo[];
         }
     }
     
