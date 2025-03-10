@@ -293,7 +293,9 @@ class HubDetailHandler extends HubHandler {
         this.response.body = {
             path, ddoc: this.ddoc, dsdoc, drdocs, page, pcount, drcount, udict, vnode: this.vnode, reactions, nodes, links
         }
-        this.UiContext.urlForHubImage = this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
+        if (this.ddoc.hubimage) {
+            this.UiContext.urlForHubImage = this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
+        }
         this.UiContext.nodes = nodes;
         this.UiContext.links = links;
     }
@@ -505,13 +507,11 @@ class HubD3EditHandler extends HubHandler {
                 return this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
             },
         };
-
-        
-        console.log('this.response.body.hubimage[0].name:', this.response.body.hubimage[0].name);
-        
         this.UiContext.nodes = nodes;
         this.UiContext.links = links;
-        this.UiContext.urlForHubImage = this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
+        if (this.ddoc.hubimage) {
+            this.UiContext.urlForHubImage = this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
+        }
     }
 
     async post({domainId}) {

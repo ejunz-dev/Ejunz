@@ -9,6 +9,7 @@
       <div id="node-coordinates-display">
         <p>实时坐标: <span id="current-coordinates">X: 0, Y: 0</span></p>
         <p>表单数据: <span id="form-data-display"></span></p>
+        <div id="info-display"></div>
       </div>
       
       <form id="node-edit-form" method="post" action="">
@@ -22,7 +23,11 @@
   <div class="medium-6 columns">
     <div class="section">
       <h3>Node Files</h3>
-      <a href="{{ urlForHubImage(hubimage[0].name or '') }}">{{ hubimage[0].name or 'Unknown' }}</a>
+      {% if hubimage[0].name %}
+        <a href="{{ urlForHubImage(hubimage[0].name) }}">{{ hubimage[0].name }}</a>
+      {% else %}
+        <p>No image uploaded</p>
+      {% endif %}
     </div>
   </div>
 
