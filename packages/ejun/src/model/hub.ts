@@ -23,6 +23,7 @@ export const PROJECTION_LIST: Field[] = [
     '_id', 'domainId', 'docType', 'docId', 'highlight',
     'nReply', 'views', 'pin', 'updateAt', 'owner',
     'parentId', 'parentType', 'title', 'hidden',
+    'hubimage',
 ];
 export const PROJECTION_PUBLIC: Field[] = [
     ...PROJECTION_LIST, 'content', 'edited', 'react', 'maintainer',
