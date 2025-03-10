@@ -5,11 +5,13 @@ export default function D3Main() {
   const width = 200;
   const height = 200;
 
+  const urlForHubImage = UiContext.urlForHubImage;
+
   const svg = d3.select("#d3-main")
     .attr("viewBox", [-width / 2, -height / 2, width, height])
     .attr("preserveAspectRatio", "xMidYMid meet")
     .attr("style", "width: 100%; height: 100%;")
-    .style("background-image", "url('https://picsum.photos/400/300')")
+    .style("background-image", `url(${urlForHubImage})`)
     .style("background-size", "cover")
     .style("background-position", "center");
 
