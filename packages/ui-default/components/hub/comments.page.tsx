@@ -9,7 +9,7 @@ import {
 } from 'vj/utils';
 import uploadFiles from 'vj/components/upload'; 
 import Notification from 'vj/components/notification';
-import initD3 from "vj/components/d3map/d3.map";
+import initD3 from "vj/components/d3map/d3.sub";
 import D3Main from "vj/components/d3map/d3.main";
 import D3MainEdit from "vj/components/d3map/d3.main.edit";
 
