@@ -4,7 +4,7 @@ export default function initD3(selectedMainNodeId) {
   const width = 200;
   const height = 200;
 
-  const svg = d3.select("#d3-test")
+  const svg = d3.select("#d3-sub")
     .attr("viewBox", [-width / 2, -height / 2, width, height])
     .attr("preserveAspectRatio", "xMidYMid meet")
     .attr("style", "width: 100%; height: 100%;")

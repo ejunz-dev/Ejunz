@@ -1,5 +1,5 @@
 import * as d3 from "d3";
-import initD3 from "./d3.map";
+import initD3 from "./d3.sub";
 
 export default function D3MainEdit() {
   const width = 200;
