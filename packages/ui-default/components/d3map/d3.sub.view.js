@@ -12,7 +12,6 @@ export default function initD3(selectedMainNodeId) {
     .style("background-size", "cover")
     .style("background-position", "center");
 
-
   const nodes = UiContext.nodes ? JSON.parse(JSON.stringify(UiContext.nodes)) : [];
   const links = UiContext.links ? JSON.parse(JSON.stringify(UiContext.links)) : [];
 
@@ -32,21 +31,17 @@ export default function initD3(selectedMainNodeId) {
 
   svg.selectAll("*").remove();
 
-  const simulation = d3.forceSimulation(filteredNodes)
-    .force("link", d3.forceLink(filteredLinks).id(d => d.id).distance(30))
-    .force("charge", d3.forceManyBody()
-      .strength(d => d.type === 'file' ? -30 : -10))
-    .force("center", d3.forceCenter(0, 0))
-    .force("radial", d3.forceRadial(80, 0, 0))
-    .on("tick", ticked);
-
   const link = svg.append("g")
     .attr("stroke", "#999")
     .attr("stroke-opacity", 0.6)
     .selectAll("line")
     .data(filteredLinks)
     .enter()
-    .append("line");
+    .append("line")
+    .attr("x1", d => d.source.x)
+    .attr("y1", d => d.source.y)
+    .attr("x2", d => d.target.x)
+    .attr("y2", d => d.target.y);
 
   const node = svg.append("g")
     .attr("stroke", "#fff")
@@ -63,6 +58,8 @@ export default function initD3(selectedMainNodeId) {
       if (d.type === 'sub') return "green";
       return "orange";
     })
+    .attr("cx", d => d.x)
+    .attr("cy", d => d.y)
     .on("mouseover", (event, d) => {
       d3.select("#info-display").text(
         `Node ${d.id}: \nContent: ${d.content}`
@@ -76,33 +73,5 @@ export default function initD3(selectedMainNodeId) {
       if (targetElement) {
         targetElement.scrollIntoView({ behavior: "smooth" });
       }
-    })
-    .call(d3.drag()
-      .on("start", (event, d) => {
-        if (!event.active) simulation.alphaTarget(0.3).restart();
-        d.fx = d.x;
-        d.fy = d.y;
-      })
-      .on("drag", (event, d) => {
-        d.fx = event.x;
-        d.fy = event.y;
-      })
-      .on("end", (event, d) => {
-        if (!event.active) simulation.alphaTarget(0);
-        d.fx = null;
-        d.fy = null;
-      })
-    );
-
-  function ticked() {
-    link
-      .attr("x1", d => d.source.x)
-      .attr("y1", d => d.source.y)
-      .attr("x2", d => d.target.x)
-      .attr("y2", d => d.target.y);
-
-    node
-      .attr("cx", d => d.x)
-      .attr("cy", d => d.y);
-  }
+    });
 }
