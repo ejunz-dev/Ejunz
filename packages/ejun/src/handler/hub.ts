@@ -460,35 +460,6 @@ class HubDetailHandler extends HubHandler {
         this.back({ star: false });
     }
 }
-export class HubFSDownloadHandler extends HubHandler {
-    noCheckPermView = true;
-    @param('did', Types.ObjectId)
-    @param('filename', Types.Filename)
-    async get(domainId: string, did: ObjectId, filename: string) {
-        const target = `hub/${did}/${filename}`;
-        const file = await storage.getMeta(target);
-        if (!file) {
-            throw new NotFoundError(`File "${filename}" does not exist.`);
-        }
-        console.log("Generated target path:", target);
-
-        const mimeType = lookup(filename) || 'application/octet-stream';
-        console.log("File MIME type:", mimeType);
-
-        try {
-            this.response.body = await storage.get(target);
-            this.response.type = mimeType;
-
-            if (!['application/pdf', 'image/jpeg', 'image/png'].includes(mimeType)) {
-                this.response.disposition = `attachment; filename="${encodeRFC5987ValueChars(filename)}"`;
-            }
-        } catch (e) {
-            throw new Error(`Error streaming file "${filename}": ${e.message}`);
-        }
-
-        console.log("File streamed successfully:", file);
-    }
-}
 
 
 class HubRawHandler extends HubHandler {
@@ -734,13 +705,11 @@ class HubD3SubEditHandler extends HubHandler {
     @param('drid', Types.ObjectId)
     @param('page', Types.PositiveInt, true)
     async get(domainId: string, did: ObjectId, drid: ObjectId, page = 1) {  
-        console.log('ddoc:', this.ddoc);
         const [drdocs, pcount, drcount] = await this.paginate(
             hub.getMultiReply(domainId, did),
             page,
             'reply',
         );
-        console.log('Fetched drdocs:', drdocs);
         const nodesSet = new Set<string>();
         const nodesContent = new Map<string, { content: string, type: string, relatedMainId?: string, x?: number, y?: number }>();
         const links: { source: string; target: string }[] = [];
@@ -789,25 +758,24 @@ class HubD3SubEditHandler extends HubHandler {
             drcount, 
             nodes, 
             links, 
-            // hubimage: sortFiles(this.ddoc.hubimage), 
-            // urlForHubImage: (filename: string) => {
-            //     return this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
-            // },
+            hubSubImage: sortFiles(this.drdoc.hubSubImage), 
+            urlForHubSubImage: (filename: string) => {
+                return this.url('hub_sub_download', { did: this.ddoc.docId, drid: drid, filename: this.drdoc.hubSubImage[0].name });
+            },
         };
+        this.UiContext.drid = drid;
         this.UiContext.nodes = nodes;
         this.UiContext.links = links;
-        // if (this.ddoc.hubimage) {
-        //     this.UiContext.urlForHubImage = this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
-        // }
-        console.log('this.UiContext.nodes:', this.UiContext.nodes);
+        if (this.drdoc.hubSubImage) {
+            this.UiContext.urlForHubImage = this.url('hub_sub_download', { did: this.ddoc.docId, drid: drid, filename: this.drdoc.hubSubImage[0].name });
+        }
+        console.log('this.drdoc:', this.drdoc);
+        console.log('this.drdoc.hubSubImage:', this.drdoc.hubSubImage);
     }
 
     async post({domainId, drid}) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        console.log('Domain ID:', domainId);
-        console.log('this.request.body:', this.request.body);
         const nodes = this.request.body.nodes;
-        console.log('nodes:', nodes);
         if (!Array.isArray(nodes)) {
             this.response.body = { success: false, message: "Invalid data format" };
             return;
@@ -816,7 +784,6 @@ class HubD3SubEditHandler extends HubHandler {
         const updatePromises = nodes.map(node => {
             const { id, x, y } = node;
             const drrid = new ObjectId(id);
-            console.log('Updating node:', { domainId, id, x, y });
             return hub.editTailCoordinates(domainId,drid, drrid, x, y, this.user._id, this.request.ip)
                 .then(() => console.log('Updated node:', { id, x, y }));
         });
@@ -829,27 +796,91 @@ class HubD3SubEditHandler extends HubHandler {
         this.response.body = { success: true };
         this.back();
     }
+    @param('drid', Types.ObjectId)
     @post('filename', Types.Filename)
-    async postUploadFile(domainId: string, filename: string) {
+    async postUploadFile(domainId: string, drid: ObjectId, filename: string) {
         this.checkPriv(PRIV.PRIV_CREATE_FILE);
         const file = this.request.files?.file;
         if (!file) {
             throw new Error('No file uploaded');
         }
-
-        await storage.put(`hub/${this.ddoc.docId}/${filename}`, file.filepath, this.user._id);
-        const meta = await storage.getMeta(`hub/${this.ddoc.docId}/${filename}`);
+        
+        await storage.put(`hub/${this.ddoc.docId}/${drid}/${filename}`, file.filepath, this.user._id);
+        console.log('File uploaded:', `hub/${this.ddoc.docId}/${drid}/${filename}`);
+        const meta = await storage.getMeta(`hub/${this.ddoc.docId}/${drid}/${filename}`);
         const payload = { name: filename, ...pick(meta, ['size', 'lastModified', 'etag']) };
-
-        if (!Array.isArray(this.ddoc.hubimage)) {
-            this.ddoc.hubimage = [];
+        console.log('payload:', payload);
+        if (!Array.isArray(this.drdoc.hubSubImage)) {
+            this.drdoc.hubSubImage = [];
         }
-
-        this.ddoc.hubimage.push({ _id: filename, ...payload });
-        await hub.edit(domainId, this.ddoc.docId, { hubimage: this.ddoc.hubimage });
+        console.log('this.drdoc.hubSubImage:', this.drdoc.hubSubImage);
+       
+        this.drdoc.hubSubImage.push({ _id: filename, ...payload });
+        await hub.editReply(domainId, this.drdoc.docId, { hubSubImage: this.drdoc.hubSubImage }, this.user._id, this.request.ip);
         this.back();
     }
 }
+export class HubMainFSDownloadHandler extends HubHandler {
+    noCheckPermView = true;
+    @param('did', Types.ObjectId)
+    @param('filename', Types.Filename)
+    async get(domainId: string, did: ObjectId, filename: string) {
+        const target = `hub/${did}/${filename}`;
+        const file = await storage.getMeta(target);
+        if (!file) {
+            throw new NotFoundError(`File "${filename}" does not exist.`);
+        }
+        console.log("Generated target path:", target);
+
+        const mimeType = lookup(filename) || 'application/octet-stream';
+        console.log("File MIME type:", mimeType);
+
+        try {
+            this.response.body = await storage.get(target);
+            this.response.type = mimeType;
+
+            if (!['application/pdf', 'image/jpeg', 'image/png'].includes(mimeType)) {
+                this.response.disposition = `attachment; filename="${encodeRFC5987ValueChars(filename)}"`;
+            }
+        } catch (e) {
+            throw new Error(`Error streaming file "${filename}": ${e.message}`);
+        }
+
+        console.log("File streamed successfully:", file);
+    }
+}
+
+export class HubSubFSDownloadHandler extends HubHandler {
+    noCheckPermView = true;
+    @param('did', Types.ObjectId)
+    @param('drid', Types.ObjectId)
+    @param('filename', Types.Filename)
+    async get(domainId: string, did: ObjectId, drid: ObjectId, filename: string) {
+        const target = `hub/${did}/${drid}/${filename}`;
+        const file = await storage.getMeta(target);
+        if (!file) {
+            throw new NotFoundError(`File "${filename}" does not exist.`);
+        }
+        console.log("Generated target path:", target);
+
+        const mimeType = lookup(filename) || 'application/octet-stream';
+        console.log("File MIME type:", mimeType);
+
+        try {
+            this.response.body = await storage.get(target);
+            this.response.type = mimeType;
+
+            if (!['application/pdf', 'image/jpeg', 'image/png'].includes(mimeType)) {
+                this.response.disposition = `attachment; filename="${encodeRFC5987ValueChars(filename)}"`;
+            }
+        } catch (e) {
+            throw new Error(`Error streaming file "${filename}": ${e.message}`);
+        }
+
+        console.log("File streamed successfully:", file);
+    }
+}
+
 
 export async function apply(ctx) {
     ctx.Route('hub_main', '/hub', HubMainHandler);
@@ -863,6 +894,7 @@ export async function apply(ctx) {
     ctx.Route('hub_upload_reply_file', '/hub/:did/:drid/:drrid/file', HubRRFileHandler);
     // ctx.Route('hub_download_reply_file', '/hub/:did/:drid/:drrid/file/download', HubFileDownloadHandler);
     ctx.Route('hub_node_main_edit', '/hub/:did/main_node/edit', HubD3MainEditHandler);
-    ctx.Route('hub_fs_download', '/hub/:did/main_node/edit/:filename', HubFSDownloadHandler);
+    ctx.Route('hub_fs_download', '/hub/:did/main_node/edit/:filename', HubMainFSDownloadHandler);
     ctx.Route('hub_node_sub_edit', '/hub/:did/:drid/sub_node/edit', HubD3SubEditHandler);
+    ctx.Route('hub_sub_download', '/hub/:did/:drid/sub_node/edit/:filename', HubSubFSDownloadHandler);
 }

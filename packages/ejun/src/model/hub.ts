@@ -151,12 +151,12 @@ export function getReply(domainId: string, drid: ObjectId): Promise<HubReplyDoc 
 }
 
 export async function editReply(
-    domainId: string, drid: ObjectId, content: string, uid: number, ip: string,
+    domainId: string, drid: ObjectId, update: Partial<HubReplyDoc>, uid: number, ip: string,
 ): Promise<HubReplyDoc | null> {
     await coll.insertOne({
-        domainId, docId: drid, content, uid, ip, time: new Date(),
+        domainId, docId: drid, ...update, uid, ip, time: new Date(),
     });
-    return document.set(domainId, document.TYPE_HUB_REPLY, drid, { content, edited: true, editor: uid });
+    return document.set(domainId, document.TYPE_HUB_REPLY, drid, { ...update, edited: true, editor: uid });
 }
 
 export async function editReplyCoordinates(

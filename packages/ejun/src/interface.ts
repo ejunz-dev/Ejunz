@@ -377,6 +377,7 @@ declare module './model/repo'{
         react: Record<string, number>;
         commentfile: HubFileInfo[];
         replyfile: HubFileInfo[];
+        hubSubImage: HubFileInfo[];
         x: number;
         y: number;
     }
