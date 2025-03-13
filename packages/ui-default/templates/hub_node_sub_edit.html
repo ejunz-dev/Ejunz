@@ -23,12 +23,11 @@
   <div class="medium-6 columns">
     <div class="section">
       <h3>Node Files</h3>
-      {% if hubSubImage[0].name %}
-        <a href="{{ urlForHubSubImage(hubSubImage[0].name) }}">{{ hubSubImage[0].name }}</a>
+      {% if hubimage[0].name %}
+        <a href="{{ urlForHubImage(hubimage[0].name) }}">{{ hubimage[0].name }}</a>
       {% else %}
         <p>No image uploaded</p>
       {% endif %}
     </div>
   </div>
-
 {% endblock %}
