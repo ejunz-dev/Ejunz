@@ -760,14 +760,14 @@ class HubD3SubEditHandler extends HubHandler {
             links, 
             hubSubImage: sortFiles(this.drdoc.hubSubImage), 
             urlForHubSubImage: (filename: string) => {
-                return this.url('hub_sub_download', { did: this.ddoc.docId, drid: drid, filename: this.drdoc.hubSubImage[0].name });
+                return this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
             },
         };
         this.UiContext.drid = drid;
         this.UiContext.nodes = nodes;
         this.UiContext.links = links;
-        if (this.drdoc.hubSubImage) {
-            this.UiContext.urlForHubImage = this.url('hub_sub_download', { did: this.ddoc.docId, drid: drid, filename: this.drdoc.hubSubImage[0].name });
+        if (this.ddoc.hubimage) {
+            this.UiContext.urlForHubImage = this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
         }
         console.log('this.drdoc:', this.drdoc);
         console.log('this.drdoc.hubSubImage:', this.drdoc.hubSubImage);
