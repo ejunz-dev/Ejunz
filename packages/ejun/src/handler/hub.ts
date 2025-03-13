@@ -711,34 +711,41 @@ class HubD3SubEditHandler extends HubHandler {
             'reply',
         );
         const nodesSet = new Set<string>();
-        const nodesContent = new Map<string, { content: string, type: string, relatedMainId?: string, x?: number, y?: number }>();
+        const nodesContent = new Map<string, { content: string, type: string, relatedMainId?: string, x?: number, y?: number, files?: { name: string, url: string }[] }>();
         const links: { source: string; target: string }[] = [];
         
         drdocs.forEach(drdoc => {
             const docId = drdoc._id.toHexString();
             const content = drdoc.content;
             nodesSet.add(docId);
-            nodesContent.set(docId, { content, type: 'main', relatedMainId: docId, x: drdoc.x, y: drdoc.y });
+            nodesContent.set(docId, { content, type: 'main', relatedMainId: docId, x: drdoc.x, y: drdoc.y, files: [] });
 
             if (drdoc.reply) {
                 drdoc.reply.forEach(reply => {
                     const replyId = reply._id.toHexString();
                     nodesSet.add(replyId);
-                    nodesContent.set(replyId, { content: reply.content, type: 'sub', relatedMainId: docId, x: reply.x, y: reply.y });
+                    nodesContent.set(replyId, { content: reply.content, type: 'sub', relatedMainId: docId, x: reply.x, y: reply.y, files: [] });
                     links.push({ source: docId, target: replyId });
 
                     if (reply.replyfile) {
                         reply.replyfile.forEach(file => {
                             const filename = file.name;
+                            const fileUrl = this.url('hub_fs_download', { did: this.ddoc.docId, drid: replyId, filename });
                             nodesSet.add(filename);
                             nodesContent.set(filename, { content: filename, type: 'file', relatedMainId: docId });
                             links.push({ source: replyId, target: filename });
+
+                            const replyNode = nodesContent.get(replyId);
+                            if (replyNode) {
+                                replyNode.files.push({ name: filename, url: fileUrl });
+                            }
                         });
                     }
                 });
             }
         });
-
+        const files = await hub.getFiles(domainId, did, drid);
+        console.log('files:', files);
         const nodes = Array.from(nodesSet).map((id) => ({
             id,
             content: nodesContent.get(id).content,
@@ -763,14 +770,13 @@ class HubD3SubEditHandler extends HubHandler {
                 return this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
             },
         };
-        this.UiContext.drid = drid;
+        this.UiContext.files = files;
         this.UiContext.nodes = nodes;
         this.UiContext.links = links;
         if (this.ddoc.hubimage) {
             this.UiContext.urlForHubImage = this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
         }
-        console.log('this.drdoc:', this.drdoc);
-        console.log('this.drdoc.hubSubImage:', this.drdoc.hubSubImage);
+
     }
 
     async post({domainId, drid}) {
@@ -856,7 +862,7 @@ export class HubSubFSDownloadHandler extends HubHandler {
     @param('drid', Types.ObjectId)
     @param('filename', Types.Filename)
     async get(domainId: string, did: ObjectId, drid: ObjectId, filename: string) {
-        const target = `hub/${did}/${drid}/${filename}`;
+        const target = `hub/${domainId}/${drid}/replyfile/${filename}`;
         const file = await storage.getMeta(target);
         if (!file) {
             throw new NotFoundError(`File "${filename}" does not exist.`);
