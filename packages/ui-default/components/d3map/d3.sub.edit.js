@@ -6,7 +6,6 @@ export default function D3MainEdit() {
   const height = 200;
 
   const urlForHubImage = UiContext.urlForHubImage;
-
   const svg = d3.select("#d3-sub-edit")
     .attr("viewBox", [-width / 2, -height / 2, width, height])
     .attr("preserveAspectRatio", "xMidYMid meet")
@@ -44,7 +43,13 @@ export default function D3MainEdit() {
       d3.select("#current-coordinates").text("X: 0, Y: 0");
     })
     .on("click", (event, d) => {
-      initD3(d.id);
+      const relatedFiles = UiContext.files.filter(file => file.drrid === d.id);
+      const fileDisplay = document.getElementById("file-display");
+      fileDisplay.innerHTML = `<h4>Files for Node ${d.id}</h4><ul>${
+        relatedFiles.map(file => {
+          return `<li><a href="${file.url}">${file.name}</a></li>`;
+        }).join('')
+      }</ul>`;
     })
     .call(d3.drag()
       .on("start", function(event, d) {

@@ -179,6 +179,20 @@ export async function editTailCoordinates(
     return drrdoc;
 }
 
+export async function getFiles(domainId: string, did: ObjectId, drid: ObjectId) {
+    const drdoc = await getReply(domainId, drid);
+    console.log('drdoc:', drdoc);
+    if (!drdoc) throw new DocumentNotFoundError(domainId, drid);
+
+    return drdoc.reply?.flatMap(reply => 
+        reply.replyfile?.map(file => ({
+            ...file,
+            drrid: reply._id,
+            url: `hub/${domainId}/${drid}/replyfile/${file.name}`
+        })) || []
+    ) || [];
+}
+
 export async function delReply(domainId: string, drid: ObjectId) {
     const drdoc = await getReply(domainId, drid);
     if (!drdoc) throw new DocumentNotFoundError(domainId, drid);
