@@ -364,8 +364,8 @@ class HubDetailHandler extends HubHandler {
             message.send(1, uid, msg, message.FLAG_RICHTEXT | message.FLAG_UNREAD);
         }
 
-        const x = 250;
-        const y = 250;
+        const x = 0;
+        const y = 0;
 
         await hub.addTailReply(domainId, drid, this.user._id, content, this.request.ip, x, y);
         this.back();
@@ -458,105 +458,6 @@ class HubDetailHandler extends HubHandler {
     async postUnstar(domainId: string, did: ObjectId) {
         await hub.setStar(domainId, did, this.user._id, false);
         this.back({ star: false });
-    }
-}
-class HubD3EditHandler extends HubHandler {
-    @param('did', Types.ObjectId)
-    @param('page', Types.PositiveInt, true)
-    async get(domainId: string, did: ObjectId, page = 1) {  
-        console.log('ddoc:', this.ddoc);
-        const [drdocs, pcount, drcount] = await this.paginate(
-            hub.getMultiReply(domainId, did),
-            page,
-            'reply',
-        );
-        console.log('Fetched drdocs:', drdocs);
-        const nodesSet = new Set<string>();
-        const nodesContent = new Map<string, { content: string, type: string, relatedMainId?: string, x?: number, y?: number }>();
-        const links: { source: string; target: string }[] = [];
-        
-        drdocs.forEach(drdoc => {
-            const docId = drdoc._id.toHexString();
-            const content = drdoc.content;
-            nodesSet.add(docId);
-            nodesContent.set(docId, { content, type: 'main', relatedMainId: docId, x: drdoc.x, y: drdoc.y });
-        });
-        console.log('drdocs:', drdocs);
-
-        const nodes = Array.from(nodesSet).map((id) => ({
-            id,
-            content: nodesContent.get(id).content,
-            type: nodesContent.get(id).type,
-            relatedMainId: nodesContent.get(id).relatedMainId,
-            x: nodesContent.get(id).x,
-            y: nodesContent.get(id).y,
-        }));
-
-        console.log('D3.js Data:', { nodes, links });
-        this.response.template = 'hub_node_main_edit.html';
-        this.response.body = {
-            ddoc: this.ddoc, 
-            drdocs, 
-            page, 
-            pcount, 
-            drcount, 
-            nodes, 
-            links, 
-            hubimage: sortFiles(this.ddoc.hubimage), 
-            urlForHubImage: (filename: string) => {
-                return this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
-            },
-        };
-        this.UiContext.nodes = nodes;
-        this.UiContext.links = links;
-        if (this.ddoc.hubimage) {
-            this.UiContext.urlForHubImage = this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
-        }
-    }
-
-    async post({domainId}) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        console.log('Domain ID:', domainId);
-        console.log('this.request.body:', this.request.body);
-        const nodes = this.request.body.nodes;
-        console.log('nodes:', nodes);
-        if (!Array.isArray(nodes)) {
-            this.response.body = { success: false, message: "Invalid data format" };
-            return;
-        }
-
-        const updatePromises = nodes.map(node => {
-            const { id, x, y } = node;
-            const drid = new ObjectId(id);
-            console.log('Updating node:', { domainId, id, x, y });
-            return hub.editReplyCoordinates(domainId, drid, x, y, this.user._id, this.request.ip)
-                .then(() => console.log('Updated node:', { id, x, y }));
-        });
-
-        await Promise.all(updatePromises);
-
-        this.response.body = { success: true };
-        this.back();
-    }
-    @post('filename', Types.Filename)
-    async postUploadFile(domainId: string, filename: string) {
-        this.checkPriv(PRIV.PRIV_CREATE_FILE);
-        const file = this.request.files?.file;
-        if (!file) {
-            throw new Error('No file uploaded');
-        }
-
-        await storage.put(`hub/${this.ddoc.docId}/${filename}`, file.filepath, this.user._id);
-        const meta = await storage.getMeta(`hub/${this.ddoc.docId}/${filename}`);
-        const payload = { name: filename, ...pick(meta, ['size', 'lastModified', 'etag']) };
-
-        if (!Array.isArray(this.ddoc.hubimage)) {
-            this.ddoc.hubimage = [];
-        }
-
-        this.ddoc.hubimage.push({ _id: filename, ...payload });
-        await hub.edit(domainId, this.ddoc.docId, { hubimage: this.ddoc.hubimage });
-        this.back();
     }
 }
 export class HubFSDownloadHandler extends HubHandler {
@@ -724,6 +625,232 @@ class HubRRFileHandler extends Handler {
     }
 }
 
+class HubD3MainEditHandler extends HubHandler {
+    @param('did', Types.ObjectId)
+    @param('page', Types.PositiveInt, true)
+    async get(domainId: string, did: ObjectId, page = 1) {  
+        console.log('ddoc:', this.ddoc);
+        const [drdocs, pcount, drcount] = await this.paginate(
+            hub.getMultiReply(domainId, did),
+            page,
+            'reply',
+        );
+        console.log('Fetched drdocs:', drdocs);
+        const nodesSet = new Set<string>();
+        const nodesContent = new Map<string, { content: string, type: string, relatedMainId?: string, x?: number, y?: number }>();
+        const links: { source: string; target: string }[] = [];
+        
+        drdocs.forEach(drdoc => {
+            const docId = drdoc._id.toHexString();
+            const content = drdoc.content;
+            nodesSet.add(docId);
+            nodesContent.set(docId, { content, type: 'main', relatedMainId: docId, x: drdoc.x, y: drdoc.y });
+        });
+        console.log('drdocs:', drdocs);
+
+        const nodes = Array.from(nodesSet).map((id) => ({
+            id,
+            content: nodesContent.get(id).content,
+            type: nodesContent.get(id).type,
+            relatedMainId: nodesContent.get(id).relatedMainId,
+            x: nodesContent.get(id).x,
+            y: nodesContent.get(id).y,
+        }));
+
+        console.log('D3.js Data:', { nodes, links });
+        this.response.template = 'hub_node_main_edit.html';
+        this.response.body = {
+            ddoc: this.ddoc, 
+            drdocs, 
+            page, 
+            pcount, 
+            drcount, 
+            nodes, 
+            links, 
+            hubimage: sortFiles(this.ddoc.hubimage), 
+            urlForHubImage: (filename: string) => {
+                return this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
+            },
+        };
+        this.UiContext.nodes = nodes;
+        this.UiContext.links = links;
+        if (this.ddoc.hubimage) {
+            this.UiContext.urlForHubImage = this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
+        }
+    }
+
+    async post({domainId}) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        console.log('Domain ID:', domainId);
+        console.log('this.request.body:', this.request.body);
+        const nodes = this.request.body.nodes;
+        console.log('nodes:', nodes);
+        if (!Array.isArray(nodes)) {
+            this.response.body = { success: false, message: "Invalid data format" };
+            return;
+        }
+
+        const updatePromises = nodes.map(node => {
+            const { id, x, y } = node;
+            const drid = new ObjectId(id);
+            console.log('Updating node:', { domainId, id, x, y });
+            return hub.editReplyCoordinates(domainId, drid, x, y, this.user._id, this.request.ip)
+                .then(() => console.log('Updated node:', { id, x, y }));
+        });
+
+        await Promise.all(updatePromises).catch(error => {
+            console.error("Error updating nodes:", error);
+            this.response.body = { success: false, message: "Error updating nodes" };
+        });
+
+        this.response.body = { success: true };
+        this.back();
+    }
+    @post('filename', Types.Filename)
+    async postUploadFile(domainId: string, filename: string) {
+        this.checkPriv(PRIV.PRIV_CREATE_FILE);
+        const file = this.request.files?.file;
+        if (!file) {
+            throw new Error('No file uploaded');
+        }
+
+        await storage.put(`hub/${this.ddoc.docId}/${filename}`, file.filepath, this.user._id);
+        const meta = await storage.getMeta(`hub/${this.ddoc.docId}/${filename}`);
+        const payload = { name: filename, ...pick(meta, ['size', 'lastModified', 'etag']) };
+
+        if (!Array.isArray(this.ddoc.hubimage)) {
+            this.ddoc.hubimage = [];
+        }
+
+        this.ddoc.hubimage.push({ _id: filename, ...payload });
+        await hub.edit(domainId, this.ddoc.docId, { hubimage: this.ddoc.hubimage });
+        this.back();
+    }
+}
+
+
+class HubD3SubEditHandler extends HubHandler {
+    @param('did', Types.ObjectId)
+    @param('drid', Types.ObjectId)
+    @param('page', Types.PositiveInt, true)
+    async get(domainId: string, did: ObjectId, drid: ObjectId, page = 1) {  
+        console.log('ddoc:', this.ddoc);
+        const [drdocs, pcount, drcount] = await this.paginate(
+            hub.getMultiReply(domainId, did),
+            page,
+            'reply',
+        );
+        console.log('Fetched drdocs:', drdocs);
+        const nodesSet = new Set<string>();
+        const nodesContent = new Map<string, { content: string, type: string, relatedMainId?: string, x?: number, y?: number }>();
+        const links: { source: string; target: string }[] = [];
+        
+        drdocs.forEach(drdoc => {
+            const docId = drdoc._id.toHexString();
+            const content = drdoc.content;
+            nodesSet.add(docId);
+            nodesContent.set(docId, { content, type: 'main', relatedMainId: docId, x: drdoc.x, y: drdoc.y });
+
+            if (drdoc.reply) {
+                drdoc.reply.forEach(reply => {
+                    const replyId = reply._id.toHexString();
+                    nodesSet.add(replyId);
+                    nodesContent.set(replyId, { content: reply.content, type: 'sub', relatedMainId: docId, x: reply.x, y: reply.y });
+                    links.push({ source: docId, target: replyId });
+
+                    if (reply.replyfile) {
+                        reply.replyfile.forEach(file => {
+                            const filename = file.name;
+                            nodesSet.add(filename);
+                            nodesContent.set(filename, { content: filename, type: 'file', relatedMainId: docId });
+                            links.push({ source: replyId, target: filename });
+                        });
+                    }
+                });
+            }
+        });
+
+        const nodes = Array.from(nodesSet).map((id) => ({
+            id,
+            content: nodesContent.get(id).content,
+            type: nodesContent.get(id).type,
+            relatedMainId: nodesContent.get(id).relatedMainId,
+            x: nodesContent.get(id).x,
+            y: nodesContent.get(id).y,
+        })).filter(node => node.relatedMainId === drid.toHexString() && node.type === 'sub');
+
+
+        this.response.template = 'hub_node_sub_edit.html';
+        this.response.body = {
+            ddoc: this.ddoc, 
+            drdocs, 
+            page, 
+            pcount, 
+            drcount, 
+            nodes, 
+            links, 
+            // hubimage: sortFiles(this.ddoc.hubimage), 
+            // urlForHubImage: (filename: string) => {
+            //     return this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
+            // },
+        };
+        this.UiContext.nodes = nodes;
+        this.UiContext.links = links;
+        // if (this.ddoc.hubimage) {
+        //     this.UiContext.urlForHubImage = this.url('hub_fs_download', { did: this.ddoc.docId, filename: this.ddoc.hubimage[0].name });
+        // }
+        console.log('this.UiContext.nodes:', this.UiContext.nodes);
+    }
+
+    async post({domainId, drid}) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        console.log('Domain ID:', domainId);
+        console.log('this.request.body:', this.request.body);
+        const nodes = this.request.body.nodes;
+        console.log('nodes:', nodes);
+        if (!Array.isArray(nodes)) {
+            this.response.body = { success: false, message: "Invalid data format" };
+            return;
+        }
+
+        const updatePromises = nodes.map(node => {
+            const { id, x, y } = node;
+            const drrid = new ObjectId(id);
+            console.log('Updating node:', { domainId, id, x, y });
+            return hub.editTailCoordinates(domainId,drid, drrid, x, y, this.user._id, this.request.ip)
+                .then(() => console.log('Updated node:', { id, x, y }));
+        });
+
+        await Promise.all(updatePromises).catch(error => {
+            console.error("Error updating nodes:", error);
+            this.response.body = { success: false, message: "Error updating nodes" };
+        });
+
+        this.response.body = { success: true };
+        this.back();
+    }
+    @post('filename', Types.Filename)
+    async postUploadFile(domainId: string, filename: string) {
+        this.checkPriv(PRIV.PRIV_CREATE_FILE);
+        const file = this.request.files?.file;
+        if (!file) {
+            throw new Error('No file uploaded');
+        }
+
+        await storage.put(`hub/${this.ddoc.docId}/${filename}`, file.filepath, this.user._id);
+        const meta = await storage.getMeta(`hub/${this.ddoc.docId}/${filename}`);
+        const payload = { name: filename, ...pick(meta, ['size', 'lastModified', 'etag']) };
+
+        if (!Array.isArray(this.ddoc.hubimage)) {
+            this.ddoc.hubimage = [];
+        }
+
+        this.ddoc.hubimage.push({ _id: filename, ...payload });
+        await hub.edit(domainId, this.ddoc.docId, { hubimage: this.ddoc.hubimage });
+        this.back();
+    }
+}
+
 export async function apply(ctx) {
     ctx.Route('hub_main', '/hub', HubMainHandler);
     ctx.Route('hub_detail', '/hub/:did', HubDetailHandler);
@@ -735,6 +862,7 @@ export async function apply(ctx) {
     ctx.Route('hub_create', '/hub/:type/:name/create', HubCreateHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_CREATE_HUB);
     ctx.Route('hub_upload_reply_file', '/hub/:did/:drid/:drrid/file', HubRRFileHandler);
     // ctx.Route('hub_download_reply_file', '/hub/:did/:drid/:drrid/file/download', HubFileDownloadHandler);
-    ctx.Route('hub_node_main_edit', '/hub/:did/main_node/edit', HubD3EditHandler);
+    ctx.Route('hub_node_main_edit', '/hub/:did/main_node/edit', HubD3MainEditHandler);
     ctx.Route('hub_fs_download', '/hub/:did/main_node/edit/:filename', HubFSDownloadHandler);
+    ctx.Route('hub_node_sub_edit', '/hub/:did/:drid/sub_node/edit', HubD3SubEditHandler);
 }
