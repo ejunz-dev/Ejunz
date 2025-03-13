@@ -300,8 +300,8 @@ export async function setSub<T extends keyof DocType, K extends NormalArrayKeys<
         {
             domainId,
             docType,
-            docId,
-            [key]: { $elemMatch: { _id: subId } },
+            docId: new ObjectId(docId),
+            [key]: { $elemMatch: { _id: new ObjectId(subId) } },
         },
         { $set },
         { returnDocument: 'after' },

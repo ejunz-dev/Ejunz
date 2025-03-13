@@ -5,18 +5,16 @@ export default function D3MainEdit() {
   const width = 200;
   const height = 200;
 
-  const urlForHubImage = UiContext.urlForHubImage;
-
-  const svg = d3.select("#d3-main-edit")
+  const svg = d3.select("#d3-sub-edit")
     .attr("viewBox", [-width / 2, -height / 2, width, height])
     .attr("preserveAspectRatio", "xMidYMid meet")
     .attr("style", "width: 100%; height: 100%;")
-    .style("background-image", `url(${urlForHubImage})`)
+    .style("background-image", "url('https://picsum.photos/400/300')")
     .style("background-size", "cover")
     .style("background-position", "center");
 
   const nodes = JSON.parse(JSON.stringify(UiContext.nodes));
-  const mainNodes = nodes.filter(node => node.type === 'main');
+  const subNodes = nodes.filter(node => node.type === 'sub');
 
   svg.selectAll("*").remove();
 
@@ -24,7 +22,7 @@ export default function D3MainEdit() {
     .attr("stroke", "#fff")
     .attr("stroke-width", 1.5)
     .selectAll("circle")
-    .data(mainNodes)
+    .data(subNodes)
     .enter()
     .append("circle")
     .attr("r", 6)
@@ -59,7 +57,7 @@ export default function D3MainEdit() {
       })
       .on("end", function(event, d) {
         d3.select(this).attr("stroke", "#fff");
-        const updatedNodes = mainNodes.map(node => ({
+        const updatedNodes = subNodes.map(node => ({
           id: node.id,
           x: node.x,
           y: node.y

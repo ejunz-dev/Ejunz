@@ -9,10 +9,10 @@ import {
 } from 'vj/utils';
 import uploadFiles from 'vj/components/upload'; 
 import Notification from 'vj/components/notification';
-import initD3 from "vj/components/d3map/d3.sub";
-import D3Main from "vj/components/d3map/d3.main";
+import initD3 from "vj/components/d3map/d3.sub.view";
+import D3Main from "vj/components/d3map/d3.main.view";
 import D3MainEdit from "vj/components/d3map/d3.main.edit";
-
+import D3SubEdit from "vj/components/d3map/d3.sub.edit";
 
 const $replyTemplate = $('.commentbox-container').eq(0).clone();
 
@@ -249,6 +249,7 @@ const commentsPage = new AutoloadPage('commentsPage', () => {
     initD3();
     D3Main();
     D3MainEdit();
+    D3SubEdit();
   });
   $(document).on('click', '[name="dczcomments__dummy-box"]', onClickDummyBox);
   $(document).on('click', '[data-op="reply"][data-type="comment"]', onCommentClickReplyComment);
