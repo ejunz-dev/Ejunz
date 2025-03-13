@@ -162,7 +162,21 @@ export async function editReply(
 export async function editReplyCoordinates(
     domainId: string, drid: ObjectId, x: number, y: number, uid: number, ip: string,
 ): Promise<HubReplyDoc | null> {
-    return document.set(domainId, document.TYPE_HUB_REPLY, drid, { x, y,  edited: true, editor: uid});
+    const result = await document.set(domainId, document.TYPE_HUB_REPLY, drid, { x, y, edited: true, editor: uid });
+    return result;
+}
+  
+export async function editTailCoordinates(
+    domainId: string, drid: ObjectId, drrid: ObjectId, x: number, y: number, uid: number, ip: string
+): Promise<HubTailReplyDoc> {
+    const [, drrdoc] = await Promise.all([
+        coll.insertOne({
+            domainId, docId: drrid, x, y, uid, time: new Date(), ip,
+        }),
+        document.setSub(domainId, document.TYPE_HUB_REPLY, drid,
+            'reply', drrid, { x, y, edited: true, editor: uid }),
+    ]);
+    return drrdoc;
 }
 
 export async function delReply(domainId: string, drid: ObjectId) {
@@ -411,6 +425,8 @@ global.Ejunz.model.hub = {
     get,
     inc,
     edit,
+    editReplyCoordinates,
+    editTailCoordinates,
     del,
     count,
     getMulti,

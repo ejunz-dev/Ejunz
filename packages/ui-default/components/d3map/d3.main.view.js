@@ -1,5 +1,5 @@
 import * as d3 from "d3";
-import initD3 from "./d3.sub";
+import initD3 from "./d3.sub.view";
 
 export default function D3Main() {
   const width = 200;
@@ -42,5 +42,13 @@ export default function D3Main() {
     })
     .on("click", (event, d) => {
       initD3(d.id);
+
+      // 更新 Edit Sub Node 链接的 href 属性
+      const editSubNodeLink = document.getElementById('edit-sub-node-link');
+      if (editSubNodeLink) {
+        const currentHref = editSubNodeLink.href;
+        const newHref = currentHref.replace('DRID_PLACEHOLDER', d.id);
+        editSubNodeLink.href = newHref;
+      }
     });
 }
