@@ -246,10 +246,18 @@ async function submitD3FormData() {
 
 const commentsPage = new AutoloadPage('commentsPage', () => {
   $(document).ready(() => {
-    initD3();
-    D3Main();
-    D3MainEdit();
-    D3SubEdit();
+    if ($('#d3-main').length > 0) {
+      D3Main();
+    }
+    if ($('#d3-main-edit').length > 0) {
+      D3MainEdit();
+    }
+    if ($('#d3-sub').length > 0) {
+      initD3();
+    }
+    if ($('#d3-sub-edit').length > 0) {
+      D3SubEdit();
+    }
   });
   $(document).on('click', '[name="dczcomments__dummy-box"]', onClickDummyBox);
   $(document).on('click', '[data-op="reply"][data-type="comment"]', onCommentClickReplyComment);
