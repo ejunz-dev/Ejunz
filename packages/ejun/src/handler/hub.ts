@@ -744,6 +744,7 @@ class HubD3SubEditHandler extends HubHandler {
                 });
             }
         });
+
         const files = await hub.getFiles(domainId, did, drid);
         console.log('files:', files);
         const nodes = Array.from(nodesSet).map((id) => ({
@@ -860,9 +861,11 @@ export class HubSubFSDownloadHandler extends HubHandler {
     noCheckPermView = true;
     @param('did', Types.ObjectId)
     @param('drid', Types.ObjectId)
+    @param('drrid', Types.ObjectId)
     @param('filename', Types.Filename)
-    async get(domainId: string, did: ObjectId, drid: ObjectId, filename: string) {
-        const target = `hub/${domainId}/${drid}/replyfile/${filename}`;
+    async get(domainId: string, did: ObjectId, drid: ObjectId, drrid: ObjectId, filename: string) {
+        console.log('HubSubFSDownloadHandler:', domainId, did, drid, drrid, filename);
+        const target = `hub/${domainId}/${drrid}/replyfile/${filename}`;
         const file = await storage.getMeta(target);
         if (!file) {
             throw new NotFoundError(`File "${filename}" does not exist.`);
@@ -902,5 +905,5 @@ export async function apply(ctx) {
     ctx.Route('hub_node_main_edit', '/hub/:did/main_node/edit', HubD3MainEditHandler);
     ctx.Route('hub_fs_download', '/hub/:did/main_node/edit/:filename', HubMainFSDownloadHandler);
     ctx.Route('hub_node_sub_edit', '/hub/:did/:drid/sub_node/edit', HubD3SubEditHandler);
-    ctx.Route('hub_sub_download', '/hub/:did/:drid/sub_node/edit/:filename', HubSubFSDownloadHandler);
+    ctx.Route('hub_sub_download', '/hub/:did/:drid/:drrid/sub_node/edit/:filename', HubSubFSDownloadHandler);
 }

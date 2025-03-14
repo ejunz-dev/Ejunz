@@ -188,7 +188,7 @@ export async function getFiles(domainId: string, did: ObjectId, drid: ObjectId) 
         reply.replyfile?.map(file => ({
             ...file,
             drrid: reply._id,
-            url: `hub/${domainId}/${drid}/replyfile/${file.name}`
+            url: `/hub/${did}/${drid}/${reply._id}/sub_node/edit/${file.name}`
         })) || []
     ) || [];
 }
