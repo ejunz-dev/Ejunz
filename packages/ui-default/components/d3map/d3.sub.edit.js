@@ -45,11 +45,45 @@ export default function D3MainEdit() {
     .on("click", (event, d) => {
       const relatedFiles = UiContext.files.filter(file => file.drrid === d.id);
       const fileDisplay = document.getElementById("file-display");
-      fileDisplay.innerHTML = `<h4>Files for Node ${d.id}</h4><ul>${
-        relatedFiles.map(file => {
-          return `<li><a href="${file.url}">${file.name}</a></li>`;
-        }).join('')
-      }</ul>`;
+      fileDisplay.innerHTML = `
+        <h4>Files for Node ${d.id}</h4>
+        <table class="data-table">
+          <colgroup>
+            <col class="col--checkbox">
+            <col class="col--name">
+            <col class="col--size">
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="col--checkbox">
+                <label class="compact checkbox">
+                  <input type="checkbox" name="select_all" data-checkbox-toggle="files">
+                </label>
+              </th>
+              <th class="col--name">Filename</th>
+              <th class="col--size">Size</th>
+              <th class="col--operation"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${relatedFiles.map(file => `
+              <tr data-filename="${file.name || 'Unknown'}" data-size="${file.size || 0}">
+                <td class="col--checkbox">
+                  <label class="compact checkbox">
+                    <input type="checkbox" data-checkbox-group="files" data-checkbox-range>
+                  </label>
+                </td>
+                <td class="col--name" data-preview>
+                  <a href="${file.url}">${file.name || 'Unknown'}</a>
+                </td>
+                <td class="col--size">${file.size || 0}</td>
+                <td class="col--operation">
+                  <a href="${file.url}" class="icon icon-download"></a>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`;
     })
     .call(d3.drag()
       .on("start", function(event, d) {
