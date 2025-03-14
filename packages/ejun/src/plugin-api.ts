@@ -61,3 +61,4 @@ export * as docs from './model/doc';
 import * as system from './model/system';
 export {RepoModel} from './model/repo';
 export {DocsModel} from './model/doc';
+export {inject, nodes, getNodes} from './lib/ui';
