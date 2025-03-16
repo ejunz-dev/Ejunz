@@ -62,3 +62,4 @@ import * as system from './model/system';
 export {RepoModel} from './model/repo';
 export {DocsModel} from './model/doc';
 export {inject, nodes, getNodes} from './lib/ui';
+export {loadedPlugins} from './entry/common';

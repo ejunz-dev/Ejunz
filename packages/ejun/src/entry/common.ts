@@ -13,6 +13,7 @@ import { PRIV } from '../model/builtin';
 import { unwrapExports } from '../utils';
 
 const logger = new Logger('common');
+const loadedPlugins = [];
 
 async function getFiles(folder: string, base = ''): Promise<string[]> {
     const files = [];
@@ -41,8 +42,12 @@ const getLoader = (type: LoadTask, filename: string) => async function loader(pe
             const name = type.replace(/^(.)/, (t) => t.toUpperCase());
             try {
                 const m = unwrapExports(require(p));
-                if (m.apply) ctx.loader.reloadPlugin(ctx, p, {});
-                else logger.info(`${name} init: %s`, i);
+                if (m.apply) {
+                    ctx.loader.reloadPlugin(ctx, p, {});
+                    loadedPlugins.push({ name: i, path: p, type });
+                } else {
+                    logger.info(`${name} init: %s`, i);
+                }
             } catch (e) {
                 fail.push(i);
                 app.injectUI(
@@ -56,6 +61,7 @@ const getLoader = (type: LoadTask, filename: string) => async function loader(pe
     }
 };
 
+export { loadedPlugins };
 export const handler = getLoader('handler', 'handler');
 export const addon = getLoader('addon', 'index');
 export const model = getLoader('model', 'model');
