@@ -51,6 +51,11 @@
             <a class="typo-a" href="{{ url('homepage', domainId=ddoc['_id']) }}">{{ _('Visit') }}</a>
           {% if canManage[ddoc['_id']] %}
             · <a class="typo-a" href="{{ url('domain_dashboard', domainId=ddoc['_id']) }}">{{ _('Manage') }}</a>
+            {% for item in ui.getNodes('Home_Domain') %}
+             · <a class="typo-a" 
+                href="{{ url(item.name, { domainId: ddoc['_id'] }) }}" 
+              >{{ _(item.displayName or item.name) }}</a>
+              {% endfor %}
           {% endif %}
           </td>
         </tr>
