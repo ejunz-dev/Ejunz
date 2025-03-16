@@ -489,6 +489,29 @@ class ContestModeHandler extends Handler {
         }
     }
 }
+class UserHomeHandler extends Handler {
+    @param('uid', Types.Int)
+    async get(domainId: string, uid: number) {
+        if (uid === 0) throw new UserNotFoundError(0);
+        const isSelfProfile = this.user._id === uid;
+        const userDomains = await domain.getDictUserByDomainId(uid);
+        const [udoc, sdoc, union] = await Promise.all([
+            user.getById(domainId, uid),
+            token.getMostRecentSessionByUid(uid, ['createAt', 'updateAt']),
+            domain.get(domainId),
+        ]);
+        if (!udoc) throw new UserNotFoundError(uid);
+       
+        
+        this.response.template = 'user_home.html';
+        this.response.body = {
+            isSelfProfile, udoc, sdoc, userDomains,
+        };
+        console.log(userDomains);
+        this.UiContext.extraTitleContent = udoc.uname;
+    }
+}
+
 
 export async function apply(ctx: Context) {
     ctx.Route('user_login', '/login', UserLoginHandler);
@@ -503,6 +526,7 @@ export async function apply(ctx: Context) {
     ctx.Route('user_lostpass_with_code', '/lostpass/:code', UserLostPassWithCodeHandler);
     ctx.Route('user_delete', '/user/delete', UserDeleteHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('user_detail', '/user/:uid(-?\\d+)', UserDetailHandler);
+    ctx.Route('user_home', '/user/:uid(-?\\d+)/home', UserHomeHandler);
     if (system.get('server.contestmode')) {
         ctx.Route('contest_mode', '/contestmode', ContestModeHandler, PRIV.PRIV_EDIT_SYSTEM);
     }
