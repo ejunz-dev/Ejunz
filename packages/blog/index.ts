@@ -241,7 +241,7 @@ export async function apply(ctx: Context) {
     }), PRIV.PRIV_USER_PROFILE);
 
     // 注入到用户的 Detail 页
-    ctx.injectUI('ProfileHeaderContact', 'blog_main', (h) => ({
+    ctx.injectUI('', 'blog_main', (h) => ({
         icon: 'book',
         displayName: 'Go Blog',
         uid: h.udoc._id.toString()
