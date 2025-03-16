@@ -65,6 +65,11 @@
             </a>
           </li>
           <li class="menu__item">
+            <a href="{{ url('user_home', uid=handler.user._id) }}" class="menu__link">
+              <span class="icon icon-wrench"></span> {{ _('Home') }}
+            </a>
+          </li>
+          <li class="menu__item">
             <a href="{{ url('home_messages') }}" class="menu__link">
               <span class="icon icon-comment--multiple"></span> {{ _('home_messages') }}
             </a>

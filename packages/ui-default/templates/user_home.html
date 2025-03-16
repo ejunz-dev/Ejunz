@@ -1,0 +1,45 @@
+{% import "components/home.html" as home with context %}
+{% extends "layout/basic.html" %}
+{% block content %}
+{{ set(UiContext, 'udoc', udoc) }}
+<style>
+  .user-profile-bg {
+    background-image: url("{{ udoc.backgroundImage }}"), url("/components/profile/backgrounds/1.jpg");
+  }
+</style>
+
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="profile-header user-profile-bg">
+        <div class="profile-header__content">
+          <h1>{{ udoc['uname'] }}</h1>
+          <p>{{ _('UID') }}: {{ udoc['_id'] }}</p>
+        </div>
+      </div>
+      <div class="profile-content">
+        <div class="section__tab-container immersive">
+          <ul class="section__tabs">
+            <li class="section__tab-item">
+              <h1 class="section__tab-title">{{ _('Joined Domains') }}</h1>
+              <div class="section__tab-main">
+                <div class="section__body typo richmedia">
+                  {% if userDomains %}
+                    <ul>
+                      {% for domainId, domainInfo in userDomains %}
+                        <li>{{ _('Domain ID') }}: {{ domainId }}, {{ _('Role') }}: {{ domainInfo.role }}</li>
+                      {% endfor %}
+                    </ul>
+                  {% else %}
+                    <p>{{ _('No domains joined.') }}</p>
+                  {% endif %}
+                </div>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
