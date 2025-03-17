@@ -512,7 +512,6 @@ class UserHomeHandler extends Handler {
     }
 }
 
-
 export async function apply(ctx: Context) {
     ctx.Route('user_login', '/login', UserLoginHandler);
     ctx.Route('user_oauth', '/oauth/:type', OauthHandler);
