@@ -56,6 +56,7 @@ Accepted: 已通过
 Access Control: 访问控制
 Action: 动作
 Active Sessions: 活动会话
+Activity: 动态
 Add blacklist by ip, uid: 封禁 IP / 将对应 uid 的用户拉入黑名单
 Add module: 添加模块
 Add new data: 添加新数据

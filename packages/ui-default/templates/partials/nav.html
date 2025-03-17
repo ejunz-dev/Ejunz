@@ -63,6 +63,11 @@
         <span class="nav__item"><span class="icon"><img class="small user-profile-avatar v-center" loading="lazy" src="{{ avatarUrl(UiContext.domain.avatar|default('')) }}" width="20" height="20"></span> {{ UiContext.domain.name }} <span class="icon icon-expand_more nojs--hide"></span></span>
         <ol class="dropdown-target menu" id="menu-nav-domain">
           {%- if handler.user.domains|length -%}
+           <li class="menu__item">
+            <a href="{{ url('user_activity', uid=handler.user._id) }}" class="menu__link">
+              <span class="icon icon-comment--multiple"></span> {{ _('My Activity') }}
+            </a>
+          </li>
           {%- for ddoc in handler.user.domains -%}
             <li class="menu__item">
               <a href="{{ url('homepage', domainId=ddoc['_id']) }}" class="menu__link">
