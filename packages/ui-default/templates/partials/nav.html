@@ -68,6 +68,11 @@
               <span class="icon icon-comment--multiple"></span> {{ _('My Activity') }}
             </a>
           </li>
+          <li class="menu__item">
+            <a href="{{ url('user_task', uid=handler.user._id) }}" class="menu__link">
+              <span class="icon icon-comment--multiple"></span> {{ _('My Task') }}
+            </a>
+          </li>
           {%- for ddoc in handler.user.domains -%}
             <li class="menu__item">
               <a href="{{ url('homepage', domainId=ddoc['_id']) }}" class="menu__link">
