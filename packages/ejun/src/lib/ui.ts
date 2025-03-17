@@ -67,8 +67,8 @@ inject('Nav', 'record_main', {
         : ({})),
 });
 inject('Nav', 'ranking', { prefix: 'ranking' }, PERM.PERM_VIEW_RANKING);
-inject('Nav', 'domain_dashboard', { prefix: 'domain' }, PERM.PERM_EDIT_DOMAIN);
-inject('Nav', 'manage_dashboard', { prefix: 'manage' }, PRIV.PRIV_EDIT_SYSTEM);
+inject('NavDropdown', 'domain_dashboard', { prefix: 'domain' }, PERM.PERM_EDIT_DOMAIN);
+inject('NavDropdown', 'manage_dashboard', { prefix: 'manage' }, PRIV.PRIV_EDIT_SYSTEM);
 inject('ProblemAdd', 'problem_create', { icon: 'add', text: 'Create Problem' });
 inject('RepoAdd', 'repo_create', { icon: 'add', text: 'Create Repository' });
 inject('ControlPanel', 'manage_dashboard');

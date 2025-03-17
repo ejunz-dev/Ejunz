@@ -250,8 +250,8 @@ Logout All Sessions: 登出所有會話
 Logout This Session: 登出該會話
 Logout: 登出
 Lost Password: 忘記密碼
-manage_dashboard: 概況
-manage_domain: 管理域
+manage_dashboard: 系統管理
+manage_domain: 域管理
 manage_edit: 編輯域資料
 manage_join_applications: 加域申請
 manage_permission: 管理許可權
