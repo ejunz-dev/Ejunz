@@ -227,7 +227,7 @@ export async function apply(ctx: Context) {
     ctx.Route('docs_create', '/docs/create', DocsEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('docs_detail', '/docs/:lid', DocsDetailHandler);
     ctx.Route('docs_edit', '/docs/:lid/edit', DocsEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.injectUI('Nav', 'docs_domain', () => ({
+    ctx.injectUI('PluginDropdown', 'docs_domain', () => ({
         name: 'docs_domain',
         displayName: 'Docs',
         args: {},

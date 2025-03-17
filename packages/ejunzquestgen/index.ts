@@ -527,7 +527,7 @@ export async function apply(ctx: Context) {
         displayName: 'Question Generator',
         uid: handler.user._id.toString(),
     }), PRIV.PRIV_USER_PROFILE);
-    ctx.injectUI('Nav', 'generator_detail', () => ({
+    ctx.injectUI('PluginDropdown', 'generator_detail', () => ({
         name: 'generator_detail',
         displayName: 'Generator',
         args: {},
