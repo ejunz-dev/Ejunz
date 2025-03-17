@@ -133,7 +133,7 @@ export async function apply(ctx) {
     ctx.Route('domain_files', '/domainfile', DomainFilesHandler);
     ctx.Route('domain_fs_download', '/domainfile/:filename', DomainFSDownloadHandler);
 
-    ctx.injectUI('Nav', 'domain_files', () => ({
+    ctx.injectUI('PluginDropdown', 'domain_files', () => ({
         name: 'domain_files',
         displayName: 'domain_files',
         args: {},
