@@ -281,6 +281,7 @@ domain_role: 管理角色
 domain_user: 管理用户
 domain: 域
 Domain: 域
+Domain Plugins: 本域插件
 Don't have an account?: 还没有账户？
 Done: 已结束
 Download Dataset: 下载数据集
@@ -488,7 +489,7 @@ Method: 方法
 Month: 月
 Monthly Popular: 月度最受欢迎
 Most Upvoted Solutions: 最被赞同的题解
-My Domains: 我的域
+My Domains: 我加入的域
 My Files: 我的文件
 My Profile: 我的资料
 My Recent Submissions: 我的最近递交记录
