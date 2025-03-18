@@ -294,37 +294,37 @@ export async function getVnode(domainId: string, type: number, id: string, uid?:
         };
     }
 
-if (type === document.TYPE_DOCS) {
+// if (type === document.TYPE_DOCS) {
 
-    // 检查 id 是否为数字类型
-    let ddoc;
-    if (/^\d+$/.test(id)) {
-        console.log(`ID ${id} is a numeric lid.`);
-        ddoc = await DocsModel.get(domainId, parseInt(id, 10)); // 根据 lid 获取文档
-    } else if (ObjectId.isValid(id)) {
-        console.log(`ID ${id} is a valid ObjectId.`);
-        ddoc = await DocsModel.get(domainId, new ObjectId(id));
-    } else {
-        console.error(`Invalid ID format: ${id}`);
-        throw new Error(`Invalid ID format: ${id}`);
-    }
+//     // 检查 id 是否为数字类型
+//     let ddoc;
+//     if (/^\d+$/.test(id)) {
+//         console.log(`ID ${id} is a numeric lid.`);
+//         ddoc = await DocsModel.get(domainId, parseInt(id, 10)); // 根据 lid 获取文档
+//     } else if (ObjectId.isValid(id)) {
+//         console.log(`ID ${id} is a valid ObjectId.`);
+//         ddoc = await DocsModel.get(domainId, new ObjectId(id));
+//     } else {
+//         console.error(`Invalid ID format: ${id}`);
+//         throw new Error(`Invalid ID format: ${id}`);
+//     }
 
-    if (!ddoc) {
+//     if (!ddoc) {
         
-        throw new Error(`Docs document not found for id: ${id}`);
-    }
+//         throw new Error(`Docs document not found for id: ${id}`);
+//     }
 
-    const result = {
-        title: ddoc.title,
-        type: ddoc.docType,
-        id: ddoc.docId, // 使用 lid 返回
-        owner: ddoc.owner,
-        content: ddoc.content,
-        views: ddoc.views,
-        replies: ddoc.nReply,
-    };
-    return result;
-}
+//     const result = {
+//         title: ddoc.title,
+//         type: ddoc.docType,
+//         id: ddoc.docId, // 使用 lid 返回
+//         owner: ddoc.owner,
+//         content: ddoc.content,
+//         views: ddoc.views,
+//         replies: ddoc.nReply,
+//     };
+//     return result;
+// }
     return {
         title: id,
         ...await getNode(domainId, id),

@@ -48,12 +48,22 @@ class UserActivityHandler extends Handler {
         return domainArray.map((d) => d.domainId);
     }
     async getDiscussion(domainId: string, limit = 20) {
-        if (!this.user.hasPerm(PERM.PERM_VIEW_DISCUSSION)) return [[], {}];
-        const ddocs = await discussion.getMulti(domainId).limit(limit).toArray();
-        const vndict = await discussion.getListVnodes(domainId, ddocs, this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN), this.user.group);
-        this.collectUser(ddocs.map((ddoc) => ddoc.owner));
-        console.log(ddocs);
-        return [ddocs, vndict];
+        const domainIds = await this.getUserDomainIds();
+        console.log('DOMAINID',domainIds);
+
+        const allDdocs = [];
+        const allVndict = {};
+
+        for (const domainId of domainIds) {
+            const ddocs = await discussion.getMulti(domainId).limit(limit).toArray();
+            const vndict = await discussion.getListVnodes(domainId, ddocs, this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN), this.user.group);
+            this.collectUser(ddocs.map((ddoc) => ddoc.owner));
+            allDdocs.push(...ddocs);
+            Object.assign(allVndict, vndict);
+        }
+        console.log('allDdocs',allDdocs);
+        console.log('allVndict',allVndict);
+        return [allDdocs, allVndict];
     }
     async get({ domainId }) {
         const homepageConfig = this.ctx.setting.get('ejun.homepage');
