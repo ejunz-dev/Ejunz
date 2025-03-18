@@ -26,6 +26,9 @@ import user, { deleteUserCache } from '../model/user';
 import {
     Handler, param, post, Types,
 } from '../service/server';
+import * as discussion from '../model/discussion';
+import yaml from 'js-yaml';
+import { camelCase, md5 } from '../utils';
 
 class UserLoginHandler extends Handler {
     noCheckPermView = true;
@@ -489,28 +492,85 @@ class ContestModeHandler extends Handler {
         }
     }
 }
+
 class UserHomeHandler extends Handler {
-    @param('uid', Types.Int)
-    async get(domainId: string, uid: number) {
-        if (uid === 0) throw new UserNotFoundError(0);
-        const isSelfProfile = this.user._id === uid;
-        const userDomains = await domain.getDictUserByDomainId(uid);
-        const [udoc, sdoc, union] = await Promise.all([
-            user.getById(domainId, uid),
-            token.getMostRecentSessionByUid(uid, ['createAt', 'updateAt']),
-            domain.get(domainId),
-        ]);
-        if (!udoc) throw new UserNotFoundError(uid);
-       
-        
-        this.response.template = 'user_home.html';
-        this.response.body = {
-            isSelfProfile, udoc, sdoc, userDomains,
-        };
-        console.log(userDomains);
-        this.UiContext.extraTitleContent = udoc.uname;
+    uids = new Set<number>();
+
+    collectUser(uids: number[]) {
+        for (const uid of uids) this.uids.add(uid);
     }
-}
+
+    async getUserDomainIds() {
+        const userDomains = await domain.getDictUserByDomainId(this.user._id);
+        const domainArray = Object.values(userDomains);
+        if (!Array.isArray(domainArray)) {
+            throw new Error('domainArray is not an array');
+        }
+        return domainArray.map((d) => d.domainId);
+    }
+    async getDiscussion(domainId: string, limit = 20) {
+        const domainIds = await this.getUserDomainIds();
+        console.log('DOMAINID',domainIds);
+
+        const allDdocs = [];
+        const allVndict = {};
+
+        for (const domainId of domainIds) {
+            const ddocs = await discussion.getMulti(domainId).limit(limit).toArray();
+            const vndict = await discussion.getListVnodes(domainId, ddocs, this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN), this.user.group);
+            this.collectUser(ddocs.map((ddoc) => ddoc.owner));
+            allDdocs.push(...ddocs);
+            Object.assign(allVndict, vndict);
+        }
+        return [allDdocs, allVndict];
+    }
+    async get({ domainId }) {
+        const homepageConfig = [
+            {
+                width: 9,
+                discussion: 20,
+            },
+        ];
+        console.log('homepageConfig',homepageConfig);
+        const info = homepageConfig;
+        const contents = [];
+    
+        for (const column of info) {
+            const tasks = [];
+    
+            for (const name in column) {
+                if (name === 'width') continue;
+                const func = `get${camelCase(name).replace(/^[a-z]/, (i) => i.toUpperCase())}`;
+
+                if (!this[func]) {
+                    tasks.push([name, column[name]]);
+                } else {
+                    tasks.push(
+                        this[func](domainId, column[name])
+                            .then((res) => [name, res])
+                            .catch((err) => ['error', err.message]),
+                    );
+                }
+            }
+    
+            const sections = await Promise.all(tasks);
+            
+            contents.push({
+                width: column.width,
+                sections,
+            });
+        }
+    
+        const udict = await user.getList(domainId, Array.from(this.uids));
+        this.response.template = 'activity_main.html';
+        this.response.body = {
+            contents,
+            udict,
+            domain: this.domain,
+        };
+        
+    }
+}    
 
 export async function apply(ctx: Context) {
     ctx.Route('user_login', '/login', UserLoginHandler);

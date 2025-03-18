@@ -1,4 +1,7 @@
 {% import "components/home.html" as home with context %}
+{% import "components/contest.html" as contest with context %}
+{% import "components/problem.html" as problem with context %}
+{% import "components/user.html" as user with context %}
 {% extends "layout/basic.html" %}
 {% block content %}
 {{ set(UiContext, 'udoc', udoc) }}
@@ -42,4 +45,6 @@
     </div>
   </div>
 </div>
+
+
 {% endblock %}
