@@ -128,6 +128,7 @@ class UserTaskHandler extends Handler {
             udict,
             domain: this.domain,
         };
+        console.log(this.response.body);
         
     }
 }    

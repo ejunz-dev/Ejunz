@@ -1,4 +1,4 @@
-{% set page_name = "homepage" %}
+{% set page_name = "taskpage" %}
 {% extends "layout/basic.html" %}
 {% import "components/contest.html" as contest with context %}
 {% import "components/problem.html" as problem with context %}
@@ -8,12 +8,12 @@
   {% for column in contents %}
     <div class="large-{{ column.width }} columns">
       {% for s in column.sections %}
-        {% if templateExists("partials/homepage/" + s[0] + ".html") %}
+        {% if templateExists("partials/taskpage/" + s[0] + ".html") %}
           {% set payload = s[1] %}
-          {% include "partials/homepage/" + s[0] + ".html" %}
+          {% include "partials/taskpage/" + s[0] + ".html" %}
         {% else %}
           {% set payload = _("Template {0} not found.").format(s[0]) %}
-          {% include "partials/homepage/error.html" %}
+          {% include "partials/taskpage/error.html" %}
         {% endif %}
       {% endfor %}
     </div>
