@@ -39,29 +39,21 @@ class UserActivityHandler extends Handler {
         for (const uid of uids) this.uids.add(uid);
     }
 
-    async getHomework(domainId: string, limit = 5) {
-        if (!this.user.hasPerm(PERM.PERM_VIEW_HOMEWORK)) return [[], {}];
-        const groups = (await user.listGroup(domainId, this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK) ? undefined : this.user._id))
-            .map((i) => i.name);
-        const tdocs = await contest.getMulti(domainId, {
-            rule: 'homework',
-            ...this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)
-                ? {}
-                : {
-                    $or: [
-                        { maintainer: this.user._id },
-                        { owner: this.user._id },
-                        { assign: { $in: groups } },
-                        { assign: { $size: 0 } },
-                    ],
-                },
-        }).sort({
-            penaltySince: -1, endAt: -1, beginAt: -1, _id: -1,
-        }).limit(limit).toArray();
-        const tsdict = await contest.getListStatus(
-            domainId, this.user._id, tdocs.map((tdoc) => tdoc.docId),
-        );
-        return [tdocs, tsdict];
+    async getUserDomainIds() {
+        const userDomains = await domain.getDictUserByDomainId(this.user._id);
+        const domainArray = Object.values(userDomains);
+        if (!Array.isArray(domainArray)) {
+            throw new Error('domainArray is not an array');
+        }
+        return domainArray.map((d) => d.domainId);
+    }
+    async getDiscussion(domainId: string, limit = 20) {
+        if (!this.user.hasPerm(PERM.PERM_VIEW_DISCUSSION)) return [[], {}];
+        const ddocs = await discussion.getMulti(domainId).limit(limit).toArray();
+        const vndict = await discussion.getListVnodes(domainId, ddocs, this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN), this.user.group);
+        this.collectUser(ddocs.map((ddoc) => ddoc.owner));
+        console.log(ddocs);
+        return [ddocs, vndict];
     }
     async get({ domainId }) {
         const homepageConfig = this.ctx.setting.get('ejun.homepage');
