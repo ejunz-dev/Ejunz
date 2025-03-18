@@ -134,25 +134,14 @@ class DiscussionNodeHandler extends DiscussionHandler {
 
 class DiscussionCreateHandler extends DiscussionHandler {
     async get({ type, name }) {
-        // 强制转换 name 为数字
-        const resolvedName = typeof name === 'string' ? parseInt(name, 10) : name;
-        if (isNaN(resolvedName)) {
-            throw new Error(`Invalid name (lid): ${name}`);
-        }
-
-        console.log('Resolved name (lid):', resolvedName, 'Type:', typeof resolvedName);
-
         const path = [
             ['Ejunz', 'homepage'],
             ['discussion_main', 'discussion_main'],
-            [this.vnode.title, 'discussion_node', { type, name: resolvedName }, true],
+            [this.vnode.title, 'discussion_node', { type, name }, true],
             ['discussion_create', null],
         ];
-
         this.response.template = 'discussion_create.html';
         this.response.body = { path, vnode: this.vnode };
-        console.log('ddoc:', this.ddoc);
-console.log('vnode:', this.vnode);
     }
 
     @param('type', Types.Range(Object.keys(typeMapper)))
@@ -165,33 +154,15 @@ console.log('vnode:', this.vnode);
         content: string, highlight = false, pin = false,
     ) {
         await this.limitRate('add_discussion', 3600, 60);
-
         if (highlight) this.checkPerm(PERM.PERM_HIGHLIGHT_DISCUSSION);
         if (pin) this.checkPerm(PERM.PERM_PIN_DISCUSSION);
-
-        // 确保 vnode.id 是数字
-        let resolvedId = this.vnode.id;
-        if (typeof resolvedId === 'string') {
-            resolvedId = parseInt(resolvedId, 10);
-        }
-        if (isNaN(resolvedId)) {
-            throw new Error(`Invalid vnode.id: ${this.vnode.id}`);
-        }
-
-        console.log('Resolved vnode.id:', resolvedId, 'Type:', typeof resolvedId);
-
         const hidden = this.vnode.hidden ?? false;
         const did = await discussion.add(
-            domainId, typeMapper[type], resolvedId, this.user._id,
+            domainId, typeMapper[type], this.vnode.id, this.user._id,
             title, content, this.request.ip, highlight, pin, hidden,
         );
-
         this.response.body = { did };
         this.response.redirect = this.url('discussion_detail', { did });
-
-console.log('vnode:', this.vnode);
-
-
     }
 }
 
