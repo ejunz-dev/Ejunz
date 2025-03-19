@@ -493,84 +493,6 @@ class ContestModeHandler extends Handler {
     }
 }
 
-class UserHomeHandler extends Handler {
-    uids = new Set<number>();
-
-    collectUser(uids: number[]) {
-        for (const uid of uids) this.uids.add(uid);
-    }
-
-    async getUserDomainIds() {
-        const userDomains = await domain.getDictUserByDomainId(this.user._id);
-        const domainArray = Object.values(userDomains);
-        if (!Array.isArray(domainArray)) {
-            throw new Error('domainArray is not an array');
-        }
-        return domainArray.map((d) => d.domainId);
-    }
-    async getDiscussion(domainId: string, limit = 20) {
-        const domainIds = await this.getUserDomainIds();
-        console.log('DOMAINID',domainIds);
-
-        const allDdocs = [];
-        const allVndict = {};
-
-        for (const domainId of domainIds) {
-            const ddocs = await discussion.getMulti(domainId).limit(limit).toArray();
-            const vndict = await discussion.getListVnodes(domainId, ddocs, this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN), this.user.group);
-            this.collectUser(ddocs.map((ddoc) => ddoc.owner));
-            allDdocs.push(...ddocs);
-            Object.assign(allVndict, vndict);
-        }
-        return [allDdocs, allVndict];
-    }
-    async get({ domainId }) {
-        const homepageConfig = [
-            {
-                width: 9,
-                discussion: 20,
-            },
-        ];
-        console.log('homepageConfig',homepageConfig);
-        const info = homepageConfig;
-        const contents = [];
-    
-        for (const column of info) {
-            const tasks = [];
-    
-            for (const name in column) {
-                if (name === 'width') continue;
-                const func = `get${camelCase(name).replace(/^[a-z]/, (i) => i.toUpperCase())}`;
-
-                if (!this[func]) {
-                    tasks.push([name, column[name]]);
-                } else {
-                    tasks.push(
-                        this[func](domainId, column[name])
-                            .then((res) => [name, res])
-                            .catch((err) => ['error', err.message]),
-                    );
-                }
-            }
-    
-            const sections = await Promise.all(tasks);
-            
-            contents.push({
-                width: column.width,
-                sections,
-            });
-        }
-    
-        const udict = await user.getList(domainId, Array.from(this.uids));
-        this.response.template = 'activity_main.html';
-        this.response.body = {
-            contents,
-            udict,
-            domain: this.domain,
-        };
-        
-    }
-}    
 
 export async function apply(ctx: Context) {
     ctx.Route('user_login', '/login', UserLoginHandler);
@@ -585,7 +507,6 @@ export async function apply(ctx: Context) {
     ctx.Route('user_lostpass_with_code', '/lostpass/:code', UserLostPassWithCodeHandler);
     ctx.Route('user_delete', '/user/delete', UserDeleteHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('user_detail', '/user/:uid(-?\\d+)', UserDetailHandler);
-    ctx.Route('user_home', '/user/:uid(-?\\d+)/home', UserHomeHandler);
     if (system.get('server.contestmode')) {
         ctx.Route('contest_mode', '/contestmode', ContestModeHandler, PRIV.PRIV_EDIT_SYSTEM);
     }

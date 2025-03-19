@@ -32,6 +32,7 @@ import {
 } from '../service/server';
 import { camelCase, md5 } from '../utils';
 
+
 class UserActivityHandler extends Handler {
     uids = new Set<number>();
 
@@ -61,13 +62,17 @@ class UserActivityHandler extends Handler {
             allDdocs.push(...ddocs);
             Object.assign(allVndict, vndict);
         }
-        console.log('allDdocs',allDdocs);
-        console.log('allVndict',allVndict);
         return [allDdocs, allVndict];
     }
     async get({ domainId }) {
-        const homepageConfig = this.ctx.setting.get('ejun.homepage');
-        const info = yaml.load(homepageConfig) as any;
+        const homepageConfig = [
+            {
+                width: 9,
+                discussion: 20,
+            },
+        ];
+        console.log('homepageConfig',homepageConfig);
+        const info = homepageConfig;
         const contents = [];
     
         for (const column of info) {
