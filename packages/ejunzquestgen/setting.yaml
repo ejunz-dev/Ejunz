@@ -1,0 +1,5 @@
+ejunzquestgen:
+  type: text
+  name: ejunzquestgen
+  desc: Ejunzquestgen
+  default: http://localhost:3000

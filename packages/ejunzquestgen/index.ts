@@ -8,6 +8,9 @@ import fs from 'fs';
 import path from 'path';
 import { Logger } from '@ejunz/utils/lib/utils';
 import {DocsModel} from 'ejun';
+import { SystemModel } from 'ejun';
+
+
 
 function sortable(source: string) {
     return source.replace(/(\d+)/g, (str) => (str.length >= 6 ? str : ('0'.repeat(6 - str.length) + str)));
@@ -49,6 +52,9 @@ declare module 'ejun' {
     }
     interface DocType {
         [TYPE_QUESTION]: QuestionDoc;
+    }
+    interface SystemKeys {
+        'ejunzquestgen.api_url': string;
     }
 }
 
@@ -174,6 +180,11 @@ export class QuestionModel {
 }
 
 function loadApiConfig() {
+    const apiUrl = SystemModel.get('ejunzquestgen.ejunzquestgen');
+    if (apiUrl) {
+        return apiUrl;
+    }
+
     const configPath = path.resolve(require('os').homedir(), '.ejunz', 'apiConfig.json');
     if (!fs.existsSync(configPath)) {
         throw new Error(`Configuration file not found at ${configPath}. Please create it.`);
@@ -262,6 +273,7 @@ if (isNaN(selected_document_id) || selected_document_id === 0) {
 
         try {
             const apiUrl = loadApiConfig();
+            console.log('apiUrlpost', apiUrl);
 
             // 调用外部 API 生成问题
             const response = await fetch(`${apiUrl}/generate-mcq`, {
@@ -515,8 +527,17 @@ export class StagingQuestionHandler extends Handler {
         this.response.status = successCount > 0 ? 200 : 400;
     }
 }
-
 export async function apply(ctx: Context) {
+    ctx.on('app/started', () => {
+        try {
+            const apiUrl = loadApiConfig();
+            console.log(`API URL: ${apiUrl}`);
+            // 你可以在这里使用 apiUrl 进行其他初始化操作
+        } catch (error) {
+            console.error(`Error loading API URL: ${error.message}`);
+        }
+    });
+
     ctx.Route('generator_detail', '/questgen', QuestionHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('generator_main', '/questgen/mcq', Question_MCQ_Handler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('staging_push', '/questgen/stage_push', StagingPushHandler, PRIV.PRIV_USER_PROFILE);
