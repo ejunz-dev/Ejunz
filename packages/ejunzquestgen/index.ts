@@ -532,48 +532,54 @@ export async function apply(ctx: Context) {
         try {
             const apiUrl = loadApiConfig();
             console.log(`API URL: ${apiUrl}`);
-            // 你可以在这里使用 apiUrl 进行其他初始化操作
         } catch (error) {
             console.error(`Error loading API URL: ${error.message}`);
         }
     });
 
-    ctx.Route('generator_detail', '/questgen', QuestionHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('generator_main', '/questgen/mcq', Question_MCQ_Handler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('staging_push', '/questgen/stage_push', StagingPushHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('staging_questions', '/questgen/stage_list', StagingQuestionHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('staging_questions_publish', '/questgen/stage_publish', StagingQuestionHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.injectUI('UserDropdown', 'generator_detail', (handler) => ({
-        icon: 'create',
-        displayName: 'Question Generator',
-        uid: handler.user._id.toString(),
-    }), PRIV.PRIV_USER_PROFILE);
-    ctx.injectUI('PluginDropdown', 'generator_detail', () => ({
-        name: 'generator_detail',
-        displayName: 'Generator',
-        args: {},
-        checker: (handler) => handler.user.hasPriv(PRIV.PRIV_USER_PROFILE),
-    }));
-    ctx.i18n.load('zh', {
-        question: '生成器',
-        generator_detail: '生成器',
-        'Question Generator': '生成器',
-        'Welcome to the MCQ Question Generator!': '欢迎使用选择题生成器！',
-        'Input Text': '输入文本',
-        'Max Questions': '最多问题',
-        'Generated Questions': '生成的问题',
-        'Submit': '提交',
-        'Invalid input. Please provide valid input text and a positive number for max questions.': '输入无效，请提供有效的输入文本和正数的问题数量。',
+    ctx.on('handler/after', (that) => {
+        console.log('that', that);
+        if (that.args.domainId.includes('A001')) {
+            ctx.Route('generator_detail', '/questgen', QuestionHandler, PRIV.PRIV_USER_PROFILE);
+            ctx.Route('generator_main', '/questgen/mcq', Question_MCQ_Handler, PRIV.PRIV_USER_PROFILE);
+            ctx.Route('staging_push', '/questgen/stage_push', StagingPushHandler, PRIV.PRIV_USER_PROFILE);
+            ctx.Route('staging_questions', '/questgen/stage_list', StagingQuestionHandler, PRIV.PRIV_USER_PROFILE);
+            ctx.Route('staging_questions_publish', '/questgen/stage_publish', StagingQuestionHandler, PRIV.PRIV_USER_PROFILE);
+            ctx.injectUI('UserDropdown', 'generator_detail', (handler) => ({
+                icon: 'create',
+                displayName: 'Question Generator',
+                uid: handler.user._id.toString(),
+            }), PRIV.PRIV_USER_PROFILE);
+            ctx.injectUI('PluginDropdown', 'generator_detail', () => ({
+                name: 'generator_detail',
+                displayName: 'Generator',
+                args: {},
+                checker: (handler) => handler.user.hasPriv(PRIV.PRIV_USER_PROFILE),
+            }));
+            ctx.i18n.load('zh', {
+                question: '生成器',
+                generator_detail: '生成器',
+                'Question Generator': '生成器',
+                'Welcome to the MCQ Question Generator!': '欢迎使用选择题生成器！',
+                'Input Text': '输入文本',
+                'Max Questions': '最多问题',
+                'Generated Questions': '生成的问题',
+                'Submit': '提交',
+                'Invalid input. Please provide valid input text and a positive number for max questions.': '输入无效，请提供有效的输入文本和正数的问题数量。',
+            });
+            ctx.i18n.load('en', {
+                question: 'Generator',
+                generator_detail: 'Generator',
+                'Question Generator': 'Generator',
+                'Welcome to the Question Generator!': 'Welcome to the Question Generator!',
+                'Input Text': 'Input Text',
+                'Max Questions': 'Max Questions',
+                'Generated Questions': 'Generated Questions',
+                'Submit': 'Submit',
+                'Invalid input. Please provide valid input text and a positive number for max questions.': 'Invalid input. Please provide valid input text and a positive number for max questions.',
+            });
+        }
     });
-    ctx.i18n.load('en', {
-        question: 'Generator',
-        generator_detail: 'Generator',
-        'Question Generator': 'Generator',
-        'Welcome to the Question Generator!': 'Welcome to the Question Generator!',
-        'Input Text': 'Input Text',
-        'Max Questions': 'Max Questions',
-        'Generated Questions': 'Generated Questions',
-        'Submit': 'Submit',
-        'Invalid input. Please provide valid input text and a positive number for max questions.': 'Invalid input. Please provide valid input text and a positive number for max questions.',
-    });
+
+
 }
