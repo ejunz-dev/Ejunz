@@ -528,6 +528,16 @@ export class StagingQuestionHandler extends Handler {
     }
 }
 export async function apply(ctx: Context) {
+    const PERM = {
+        PERM_VIEW_QUESTGEN: 1n << 73n, 
+    };
+
+    global.Ejunz.model.builtin.registerPermission(
+        'questgen', 
+        PERM.PERM_VIEW_QUESTGEN, 
+        'View question generator'
+    );
+
     ctx.on('app/started', () => {
         try {
             const apiUrl = loadApiConfig();
@@ -537,25 +547,23 @@ export async function apply(ctx: Context) {
         }
     });
 
-    ctx.on('handler/after', (that) => {
-        console.log('that', that);
-        if (that.args.domainId.includes('A001')) {
-            ctx.Route('generator_detail', '/questgen', QuestionHandler, PRIV.PRIV_USER_PROFILE);
-            ctx.Route('generator_main', '/questgen/mcq', Question_MCQ_Handler, PRIV.PRIV_USER_PROFILE);
-            ctx.Route('staging_push', '/questgen/stage_push', StagingPushHandler, PRIV.PRIV_USER_PROFILE);
-            ctx.Route('staging_questions', '/questgen/stage_list', StagingQuestionHandler, PRIV.PRIV_USER_PROFILE);
-            ctx.Route('staging_questions_publish', '/questgen/stage_publish', StagingQuestionHandler, PRIV.PRIV_USER_PROFILE);
+            ctx.Route('generator_detail', '/questgen', QuestionHandler, PERM.PERM_VIEW_QUESTGEN,PRIV.PRIV_USER_PROFILE);
+            ctx.Route('generator_main', '/questgen/mcq', Question_MCQ_Handler, PERM.PERM_VIEW_QUESTGEN,PRIV.PRIV_USER_PROFILE);
+            ctx.Route('staging_push', '/questgen/stage_push', StagingPushHandler, PERM.PERM_VIEW_QUESTGEN,PRIV.PRIV_USER_PROFILE);
+            ctx.Route('staging_questions', '/questgen/stage_list', StagingQuestionHandler, PERM.PERM_VIEW_QUESTGEN,PRIV.PRIV_USER_PROFILE);
+            ctx.Route('staging_questions_publish', '/questgen/stage_publish', StagingQuestionHandler, PERM.PERM_VIEW_QUESTGEN,PRIV.PRIV_USER_PROFILE);
             ctx.injectUI('UserDropdown', 'generator_detail', (handler) => ({
                 icon: 'create',
                 displayName: 'Question Generator',
                 uid: handler.user._id.toString(),
             }), PRIV.PRIV_USER_PROFILE);
-            ctx.injectUI('PluginDropdown', 'generator_detail', () => ({
-                name: 'generator_detail',
-                displayName: 'Generator',
-                args: {},
-                checker: (handler) => handler.user.hasPriv(PRIV.PRIV_USER_PROFILE),
-            }));
+            global.Ejunz.ui.inject('NavDropdown', 'generator_detail', { prefix: 'manage' }, PERM.PERM_VIEW_QUESTGEN);
+            // ctx.injectUI('PluginDropdown', 'generator_detail', () => ({
+            //     name: 'generator_detail',
+            //     displayName: 'Generator',
+            //     args: {},
+            //     checker: (handler) => handler.user.hasPerm(PERM.PERM_VIEW_QUESTGEN),
+            // }));
             ctx.i18n.load('zh', {
                 question: '生成器',
                 generator_detail: '生成器',
@@ -579,7 +587,3 @@ export async function apply(ctx: Context) {
                 'Invalid input. Please provide valid input text and a positive number for max questions.': 'Invalid input. Please provide valid input text and a positive number for max questions.',
             });
         }
-    });
-
-
-}
