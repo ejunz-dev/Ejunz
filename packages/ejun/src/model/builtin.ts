@@ -201,6 +201,14 @@ for (const p of PERMS) {
     else PERMS_BY_FAMILY[p.family].push(p);
 }
 
+const PLUGIN_PERMS = [];
+
+export const PLUGINS_PERMS_BY_FAMILY = {};
+for (const p of PLUGIN_PERMS) {
+    if (!PLUGINS_PERMS_BY_FAMILY[p.family]) PLUGINS_PERMS_BY_FAMILY[p.family] = [p];
+    else PLUGINS_PERMS_BY_FAMILY[p.family].push(p);
+}
+
 PERM.PERM_BASIC = PERM.PERM_VIEW
     | PERM.PERM_VIEW_PROBLEM
     | PERM.PERM_VIEW_PROBLEM_SOLUTION
@@ -484,7 +492,6 @@ export const CATEGORIES = {
     ],
 };
 export function registerPermission(family: string, key: bigint, desc: string) {
-    // 检查是否已经存在该权限
     const exists = PERMS.some((perm) => perm.key === key);
     if (exists) {
         const existingPerm = PERMS.find((perm) => perm.key === key);
@@ -494,20 +501,39 @@ export function registerPermission(family: string, key: bigint, desc: string) {
         return;
     }
 
-
-    // 初始化 family 分类
     if (!PERMS_BY_FAMILY[family]) {
         PERMS_BY_FAMILY[family] = [];
     }
 
-    // 创建权限对象
     const permission = { family, key, desc };
 
-    // 添加到 PERMS 和 PERMS_BY_FAMILY
     PERMS.push(permission);
     PERMS_BY_FAMILY[family].push(permission);
     logger.info(`Registered permission: family="${family}", key="${key.toString()}", desc="${desc}"`);
 }
+
+export function registerPlugin(family: string, key: bigint, desc: string) {
+
+    const exists = PLUGIN_PERMS.some((plugin) => plugin.key === key);
+    if (exists) {
+        const existingPerm = PLUGIN_PERMS.find((plugin) => plugin.key === key);
+        logger.warn(
+            `Permission key ${key.toString()} already exists in family "${existingPerm?.family}" with description "${existingPerm?.desc}". Skipping registration.`
+        );
+        return;
+    }
+
+    if (!PLUGINS_PERMS_BY_FAMILY[family]) {
+        PLUGINS_PERMS_BY_FAMILY[family] = [];
+    }
+
+    const permission = { family, key, desc };
+
+    PERMS.push(permission);
+    PLUGINS_PERMS_BY_FAMILY[family].push(permission);
+    logger.info(`Registered permission: family="${family}", key="${key.toString()}", desc="${desc}"`);
+}
+
 
 
 // 初始化全局对象
@@ -515,9 +541,11 @@ global.Ejunz.model.builtin = {
     Permission,
     getScoreColor,
     registerPermission,
+    registerPlugin,
     PERM,
     PERMS,
     PERMS_BY_FAMILY,
+    PLUGINS_PERMS_BY_FAMILY,
     PRIV,
     LEVELS,
     BUILTIN_ROLES,
