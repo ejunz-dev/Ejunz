@@ -552,12 +552,8 @@ export async function apply(ctx: Context) {
             ctx.Route('staging_push', '/questgen/stage_push', StagingPushHandler, PERM.PERM_VIEW_QUESTGEN,PRIV.PRIV_USER_PROFILE);
             ctx.Route('staging_questions', '/questgen/stage_list', StagingQuestionHandler, PERM.PERM_VIEW_QUESTGEN,PRIV.PRIV_USER_PROFILE);
             ctx.Route('staging_questions_publish', '/questgen/stage_publish', StagingQuestionHandler, PERM.PERM_VIEW_QUESTGEN,PRIV.PRIV_USER_PROFILE);
-            ctx.injectUI('UserDropdown', 'generator_detail', (handler) => ({
-                icon: 'create',
-                displayName: 'Question Generator',
-                uid: handler.user._id.toString(),
-            }), PRIV.PRIV_USER_PROFILE);
-            global.Ejunz.ui.inject('NavDropdown', 'generator_detail', { prefix: 'manage' }, PERM.PERM_VIEW_QUESTGEN);
+
+            global.Ejunz.ui.inject('PluginDropdown', 'generator_detail', { prefix: 'manage' }, PERM.PERM_VIEW_QUESTGEN);
             // ctx.injectUI('PluginDropdown', 'generator_detail', () => ({
             //     name: 'generator_detail',
             //     displayName: 'Generator',
