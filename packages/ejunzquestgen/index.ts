@@ -528,15 +528,16 @@ export class StagingQuestionHandler extends Handler {
     }
 }
 export async function apply(ctx: Context) {
-    const PERM = {
+    const PLUGIN_PERMS = {
         PERM_VIEW_QUESTGEN: 1n << 73n, 
     };
 
-    global.Ejunz.model.builtin.registerPermission(
-        'questgen', 
-        PERM.PERM_VIEW_QUESTGEN, 
+    global.Ejunz.model.builtin.registerPlugin(
+        'Question Generator',
+        PLUGIN_PERMS.PERM_VIEW_QUESTGEN, 
         'View question generator'
     );
+
 
     ctx.on('app/started', () => {
         try {
@@ -547,13 +548,13 @@ export async function apply(ctx: Context) {
         }
     });
 
-            ctx.Route('generator_detail', '/questgen', QuestionHandler, PERM.PERM_VIEW_QUESTGEN,PRIV.PRIV_USER_PROFILE);
-            ctx.Route('generator_main', '/questgen/mcq', Question_MCQ_Handler, PERM.PERM_VIEW_QUESTGEN,PRIV.PRIV_USER_PROFILE);
-            ctx.Route('staging_push', '/questgen/stage_push', StagingPushHandler, PERM.PERM_VIEW_QUESTGEN,PRIV.PRIV_USER_PROFILE);
-            ctx.Route('staging_questions', '/questgen/stage_list', StagingQuestionHandler, PERM.PERM_VIEW_QUESTGEN,PRIV.PRIV_USER_PROFILE);
-            ctx.Route('staging_questions_publish', '/questgen/stage_publish', StagingQuestionHandler, PERM.PERM_VIEW_QUESTGEN,PRIV.PRIV_USER_PROFILE);
+            ctx.Route('generator_detail', '/questgen', QuestionHandler, PLUGIN_PERMS.PERM_VIEW_QUESTGEN);
+            ctx.Route('generator_main', '/questgen/mcq', Question_MCQ_Handler, PLUGIN_PERMS.PERM_VIEW_QUESTGEN);
+            ctx.Route('staging_push', '/questgen/stage_push', StagingPushHandler, PLUGIN_PERMS.PERM_VIEW_QUESTGEN);
+            ctx.Route('staging_questions', '/questgen/stage_list', StagingQuestionHandler, PLUGIN_PERMS.PERM_VIEW_QUESTGEN);
+            ctx.Route('staging_questions_publish', '/questgen/stage_publish', StagingQuestionHandler, PLUGIN_PERMS.PERM_VIEW_QUESTGEN);
 
-            global.Ejunz.ui.inject('PluginDropdown', 'generator_detail', { prefix: 'manage' }, PERM.PERM_VIEW_QUESTGEN);
+            global.Ejunz.ui.inject('PluginDropdown', 'generator_detail', { prefix: 'manage' }, PLUGIN_PERMS.PERM_VIEW_QUESTGEN);
             // ctx.injectUI('PluginDropdown', 'generator_detail', () => ({
             //     name: 'generator_detail',
             //     displayName: 'Generator',
