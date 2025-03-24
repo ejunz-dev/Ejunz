@@ -1,7 +1,7 @@
 import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter, DomainModel, ProblemModel, ProblemDoc, bus,
     Handler, NumberKeys, ObjectId, OplogModel, paginate, post, query, route, Projection, buildProjection,
-    param, PRIV, Types, UserModel, PERM, PERMS_BY_FAMILY, Permission, BadRequestError, PermissionError, NotFoundError
+    param, PRIV, Types, UserModel, PERM, PERMS_BY_FAMILY, Permission, BadRequestError, PermissionError, NotFoundError, AccessDeniedError
 } from 'ejun';
 import * as document from 'ejun/src/model/document';
 import fs from 'fs';
@@ -9,6 +9,7 @@ import path from 'path';
 import { Logger } from '@ejunz/utils/lib/utils';
 import {DocsModel} from 'ejun';
 import { SystemModel } from 'ejun';
+import yaml from 'js-yaml';
 
 
 
@@ -203,6 +204,14 @@ function loadApiConfig() {
 
 class QuestionHandler extends Handler {
     async get() {
+        const allowedDomains = this.ctx.setting.get('ejunzquestgen.allowed_domains');
+        const info = yaml.load(allowedDomains) as string[];
+        const currentDomainId = this.context.domainId;
+
+        if (!info.includes(currentDomainId)) {
+            throw new AccessDeniedError('Plugin Access denied for this domain');
+        }
+
         this.response.template = 'generator_detail.html';
         this.response.body = {
             message: 'Welcome to the Question Generator!',
@@ -210,7 +219,7 @@ class QuestionHandler extends Handler {
     }
 }
 
-class Question_MCQ_Handler extends Handler {
+class Question_MCQ_Handler extends QuestionHandler {
     async get() {
         const domainId = this.args?.domainId || this.context?.domainId || 'system';
         this.context.domainId = domainId;
@@ -528,13 +537,13 @@ export class StagingQuestionHandler extends Handler {
     }
 }
 export async function apply(ctx: Context) {
-    const PLUGIN_PERMS = {
+    const PERM = {
         PERM_VIEW_QUESTGEN: 1n << 73n, 
     };
 
-    global.Ejunz.model.builtin.registerPlugin(
+    global.Ejunz.model.builtin.registerPermission(
         'Question Generator',
-        PLUGIN_PERMS.PERM_VIEW_QUESTGEN, 
+        PERM.PERM_VIEW_QUESTGEN, 
         'View question generator'
     );
 
@@ -547,20 +556,56 @@ export async function apply(ctx: Context) {
             console.error(`Error loading API URL: ${error.message}`);
         }
     });
+    // ctx.on('system/setting', (args) => {
+    //     if (args.ejunzquestgen.allowed_domains) {
+    //         const allowedDomains = yaml.load(args.ejunzquestgen.allowed_domains) as string[];
+    //         console.log('ALLOWEDDomains', allowedDomains);
+    //     }
+    // });
+    // ctx.on('handler/after/SystemSetting#post', async (that) => {
+    //     const allowedDomains = SystemModel.get('ejunzquestgen.allowed_domains');
+    //     if (allowedDomains) {
+    //         const allowedDomainsArray = yaml.load(allowedDomains) as string[];
+    //         const currentDomainId = that.domain._id;
 
-            ctx.Route('generator_detail', '/questgen', QuestionHandler, PLUGIN_PERMS.PERM_VIEW_QUESTGEN);
-            ctx.Route('generator_main', '/questgen/mcq', Question_MCQ_Handler, PLUGIN_PERMS.PERM_VIEW_QUESTGEN);
-            ctx.Route('staging_push', '/questgen/stage_push', StagingPushHandler, PLUGIN_PERMS.PERM_VIEW_QUESTGEN);
-            ctx.Route('staging_questions', '/questgen/stage_list', StagingQuestionHandler, PLUGIN_PERMS.PERM_VIEW_QUESTGEN);
-            ctx.Route('staging_questions_publish', '/questgen/stage_publish', StagingQuestionHandler, PLUGIN_PERMS.PERM_VIEW_QUESTGEN);
+    //         // Ensure getRoles returns a valid object or handle undefined
+    //         const rolesArray = await DomainModel.getRoles(currentDomainId);
+    //         if (!rolesArray) {
+    //             console.error(`Failed to retrieve roles for domain: ${currentDomainId}`);
+    //             return;
+    //         }
 
-            global.Ejunz.ui.inject('PluginDropdown', 'generator_detail', { prefix: 'manage' }, PLUGIN_PERMS.PERM_VIEW_QUESTGEN);
-            // ctx.injectUI('PluginDropdown', 'generator_detail', () => ({
-            //     name: 'generator_detail',
-            //     displayName: 'Generator',
-            //     args: {},
-            //     checker: (handler) => handler.user.hasPerm(PERM.PERM_VIEW_QUESTGEN),
-            // }));
+    //         console.log('rolesArray', rolesArray);
+
+    //         // Transform the array into an object if necessary
+    //         const roles: Record<string, bigint> = {};
+    //         for (const role of rolesArray) {
+    //             roles[role.name] = role.permissions;
+    //         }
+
+    //         for (const role in roles) {
+    //             if (allowedDomainsArray.includes(currentDomainId)) {
+    //                 // Add permission if the domain is allowed
+    //                 roles[role] |= PERM.PERM_VIEW_QUESTGEN;
+    //             } else {
+    //                 // Remove permission if the domain is not allowed
+    //                 roles[role] &= ~PERM.PERM_VIEW_QUESTGEN;
+    //             }
+    //         }
+
+    //         console.log('Updated roles:', roles);
+
+    //         await DomainModel.setRoles(currentDomainId, roles);
+    //     }
+    // });
+            ctx.Route('generator_detail', '/questgen', QuestionHandler, PERM.PERM_VIEW_QUESTGEN);
+            ctx.Route('generator_main', '/questgen/mcq', Question_MCQ_Handler, PERM.PERM_VIEW_QUESTGEN);
+            ctx.Route('staging_push', '/questgen/stage_push', StagingPushHandler, PERM.PERM_VIEW_QUESTGEN);
+            ctx.Route('staging_questions', '/questgen/stage_list', StagingQuestionHandler, PERM.PERM_VIEW_QUESTGEN);
+            ctx.Route('staging_questions_publish', '/questgen/stage_publish', StagingQuestionHandler, PERM.PERM_VIEW_QUESTGEN);
+
+            
+            global.Ejunz.ui.inject('PluginDropdown', 'generator_detail', { prefix: 'manage' }, PERM.PERM_VIEW_QUESTGEN);
             ctx.i18n.load('zh', {
                 question: '生成器',
                 generator_detail: '生成器',
