@@ -201,14 +201,6 @@ for (const p of PERMS) {
     else PERMS_BY_FAMILY[p.family].push(p);
 }
 
-const PLUGIN_PERMS = [];
-
-export const PLUGINS_PERMS_BY_FAMILY = {};
-for (const p of PLUGIN_PERMS) {
-    if (!PLUGINS_PERMS_BY_FAMILY[p.family]) PLUGINS_PERMS_BY_FAMILY[p.family] = [p];
-    else PLUGINS_PERMS_BY_FAMILY[p.family].push(p);
-}
-
 PERM.PERM_BASIC = PERM.PERM_VIEW
     | PERM.PERM_VIEW_PROBLEM
     | PERM.PERM_VIEW_PROBLEM_SOLUTION
@@ -512,27 +504,6 @@ export function registerPermission(family: string, key: bigint, desc: string) {
     logger.info(`Registered permission: family="${family}", key="${key.toString()}", desc="${desc}"`);
 }
 
-export function registerPlugin(family: string, key: bigint, desc: string) {
-
-    const exists = PLUGIN_PERMS.some((plugin) => plugin.key === key);
-    if (exists) {
-        const existingPerm = PLUGIN_PERMS.find((plugin) => plugin.key === key);
-        logger.warn(
-            `Permission key ${key.toString()} already exists in family "${existingPerm?.family}" with description "${existingPerm?.desc}". Skipping registration.`
-        );
-        return;
-    }
-
-    if (!PLUGINS_PERMS_BY_FAMILY[family]) {
-        PLUGINS_PERMS_BY_FAMILY[family] = [];
-    }
-
-    const permission = { family, key, desc };
-
-    PERMS.push(permission);
-    PLUGINS_PERMS_BY_FAMILY[family].push(permission);
-    logger.info(`Registered permission: family="${family}", key="${key.toString()}", desc="${desc}"`);
-}
 
 
 
@@ -541,11 +512,9 @@ global.Ejunz.model.builtin = {
     Permission,
     getScoreColor,
     registerPermission,
-    registerPlugin,
     PERM,
     PERMS,
     PERMS_BY_FAMILY,
-    PLUGINS_PERMS_BY_FAMILY,
     PRIV,
     LEVELS,
     BUILTIN_ROLES,

@@ -1164,13 +1164,13 @@ export class BranchfileDownloadHandler extends Handler {
 }
 export async function apply(ctx: Context) {
 
-    const PLUGIN_PERMS = {
+    const PERM = {
         PERM_VIEW_TREE: 1n << 74n,
     };
 
-    global.Ejunz.model.builtin.registerPlugin(
+    global.Ejunz.model.builtin.registerPermission(
         'Tree',
-        PLUGIN_PERMS.PERM_VIEW_TREE, 
+        PERM.PERM_VIEW_TREE, 
         'View tree'
     );
     ctx.Route('forest_domain', '/forest', ForestDomainHandler);

@@ -3,3 +3,9 @@ ejunzquestgen:
   name: ejunzquestgen
   desc: Ejunzquestgen
   default: http://localhost:3000
+
+allowed_domains:
+  type: yaml
+  name: allowed_domains
+  desc: Allowed domains
+  default: [system]

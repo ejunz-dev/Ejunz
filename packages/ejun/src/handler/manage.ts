@@ -150,7 +150,6 @@ class SystemSettingHandler extends SystemHandler {
         for (const s of this.response.body.settings) {
             this.response.body.current[s.key] = system.get(s.key);
         }
-        console.log('this.response.body', this.response.body);
     }
 
     @requireSudo
