@@ -556,56 +556,36 @@ export async function apply(ctx: Context) {
             console.error(`Error loading API URL: ${error.message}`);
         }
     });
-    // ctx.on('system/setting', (args) => {
-    //     if (args.ejunzquestgen.allowed_domains) {
-    //         const allowedDomains = yaml.load(args.ejunzquestgen.allowed_domains) as string[];
-    //         console.log('ALLOWEDDomains', allowedDomains);
-    //     }
-    // });
-    // ctx.on('handler/after/SystemSetting#post', async (that) => {
-    //     const allowedDomains = SystemModel.get('ejunzquestgen.allowed_domains');
-    //     if (allowedDomains) {
-    //         const allowedDomainsArray = yaml.load(allowedDomains) as string[];
-    //         const currentDomainId = that.domain._id;
-
-    //         // Ensure getRoles returns a valid object or handle undefined
-    //         const rolesArray = await DomainModel.getRoles(currentDomainId);
-    //         if (!rolesArray) {
-    //             console.error(`Failed to retrieve roles for domain: ${currentDomainId}`);
-    //             return;
-    //         }
-
-    //         console.log('rolesArray', rolesArray);
-
-    //         // Transform the array into an object if necessary
-    //         const roles: Record<string, bigint> = {};
-    //         for (const role of rolesArray) {
-    //             roles[role.name] = role.permissions;
-    //         }
-
-    //         for (const role in roles) {
-    //             if (allowedDomainsArray.includes(currentDomainId)) {
-    //                 // Add permission if the domain is allowed
-    //                 roles[role] |= PERM.PERM_VIEW_QUESTGEN;
-    //             } else {
-    //                 // Remove permission if the domain is not allowed
-    //                 roles[role] &= ~PERM.PERM_VIEW_QUESTGEN;
-    //             }
-    //         }
-
-    //         console.log('Updated roles:', roles);
-
-    //         await DomainModel.setRoles(currentDomainId, roles);
-    //     }
-    // });
             ctx.Route('generator_detail', '/questgen', QuestionHandler, PERM.PERM_VIEW_QUESTGEN);
             ctx.Route('generator_main', '/questgen/mcq', Question_MCQ_Handler, PERM.PERM_VIEW_QUESTGEN);
             ctx.Route('staging_push', '/questgen/stage_push', StagingPushHandler, PERM.PERM_VIEW_QUESTGEN);
             ctx.Route('staging_questions', '/questgen/stage_list', StagingQuestionHandler, PERM.PERM_VIEW_QUESTGEN);
             ctx.Route('staging_questions_publish', '/questgen/stage_publish', StagingQuestionHandler, PERM.PERM_VIEW_QUESTGEN);
 
+            const customChecker = (handler) => {
+                // 获取允许的域列表
+                const allowedDomains = SystemModel.get('ejunzquestgen.allowed_domains');
+                const allowedDomainsArray = yaml.load(allowedDomains) as string[];
+
+                // 检查当前域是否在允许的域列表中
+                if (!allowedDomainsArray.includes(handler.domain._id)) {
+                    console.log('不在允许的域中', handler.domain._id);
+                    return false; // 如果不在允许的域中，返回 false
+                }
+                console.log('在允许的域中', handler.domain._id);
+
+                // 检查用户是否具有特定权限
+                const hasPermission = handler.user.hasPerm(PERM.PERM_VIEW_QUESTGEN);
+                console.log(`User ${handler.user._id} has permission: ${hasPermission}`);
+                return hasPermission;
+            };
             
-            global.Ejunz.ui.inject('PluginDropdown', 'generator_detail', { prefix: 'manage' }, PERM.PERM_VIEW_QUESTGEN);
+            ctx.injectUI('PluginDropdown', 'generator_detail', () => ({
+                name: 'generator_detail',
+                displayName: 'generator_detail',
+                
+            }),customChecker);
+
             ctx.i18n.load('zh', {
                 question: '生成器',
                 generator_detail: '生成器',
