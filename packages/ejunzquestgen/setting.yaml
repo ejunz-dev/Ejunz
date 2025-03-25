@@ -1,11 +1,13 @@
 ejunzquestgen:
+  family: system_plugins
   type: text
   name: ejunzquestgen
-  desc: Ejunzquestgen
+  desc: api url
   default: http://localhost:3000
 
 allowed_domains:
+  family: system_plugins
   type: yaml
-  name: allowed_domains
+  name: ejunzquestgen
   desc: Allowed domains
   default: [system]
