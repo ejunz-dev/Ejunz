@@ -539,13 +539,21 @@ export class StagingQuestionHandler extends Handler {
 export async function apply(ctx: Context) {
     const PERM = {
         PERM_VIEW_QUESTGEN: 1n << 73n, 
-        PERM_VIEW_QUESTGEN_MCQ: 1n << 74n,
+        PERM_EDIT_QUESTGEN: 1n << 74n,
+        PERM_VIEW_QUESTGEN_MCQ: 1n << 75n,
     };
 
     global.Ejunz.model.builtin.registerPermission(
         'plugins',
         PERM.PERM_VIEW_QUESTGEN, 
         'Entry permission',
+        true,
+        'ejunzQuestgen',
+    );
+    global.Ejunz.model.builtin.registerPermission(
+        'plugins',
+        PERM.PERM_EDIT_QUESTGEN, 
+        'Config permission',
         true,
         'ejunzQuestgen',
     );
