@@ -1,7 +1,8 @@
 import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter, DomainModel, ProblemModel, ProblemDoc, bus,
     Handler, NumberKeys, ObjectId, OplogModel, paginate, post, query, route, Projection, buildProjection,
-    param, PRIV, Types, UserModel, PERM, PERMS_BY_FAMILY, Permission, BadRequestError, PermissionError, NotFoundError, AccessDeniedError
+    param, PRIV, Types, UserModel, PERM, PERMS_BY_FAMILY, Permission, BadRequestError, PermissionError, NotFoundError, AccessDeniedError,
+    SettingModel,Setting
 } from 'ejun';
 import * as document from 'ejun/src/model/document';
 import fs from 'fs';
@@ -563,6 +564,11 @@ export async function apply(ctx: Context) {
         'use mcq',
         true,
         'ejunzQuestgen',
+    );
+
+    SettingModel.DomainPluginSetting(
+        SettingModel.Setting('plugins', 'ejunzquestgen', [''], 'text', 'API URL'),
+    
     );
 
     ctx.on('app/started', () => {
