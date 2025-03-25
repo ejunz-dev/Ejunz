@@ -4,6 +4,7 @@ import {
     param, PRIV,PERM, Types, UserModel, DomainModel, StorageModel, ProblemModel, NotFoundError,DocsModel,RepoModel,
     parseMemoryMB,ContestModel,DiscussionModel,TrainingModel,buildProjection,RepoDoc,encodeRFC5987ValueChars
 } from 'ejun';
+import { SettingModel, Setting } from 'ejun';
 import { lookup } from 'mime-types';
 export const TYPE_BR: 1 = 1;
 export const TYPE_TR: 6 = 6;
@@ -1175,6 +1176,11 @@ export async function apply(ctx: Context) {
         true,
         'ejunzTree'
     );
+    
+    SettingModel.DomainPluginSetting(
+        SettingModel.Setting('plugins', 'ejunzTree', [''], 'yaml', 'tree_map'),
+    );
+
     ctx.Route('forest_domain', '/forest', ForestDomainHandler);
     ctx.Route('forest_edit', '/forest/:docId/edit', ForestEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('forest_create', '/forest/create', ForestEditHandler, PRIV.PRIV_USER_PROFILE);
