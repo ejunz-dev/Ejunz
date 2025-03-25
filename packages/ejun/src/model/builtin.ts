@@ -483,7 +483,7 @@ export const CATEGORIES = {
         '莫队',
     ],
 };
-export function registerPermission(family: string, key: bigint, desc: string, plugin?: boolean) {
+export function registerPermission(family: string, key: bigint, desc: string, plugin?: boolean, name?: string) {
     if (plugin) {
         family = 'plugins';
     }
@@ -500,11 +500,11 @@ export function registerPermission(family: string, key: bigint, desc: string, pl
         PERMS_BY_FAMILY[family] = [];
     }
 
-    const permission = { family, key, desc };
+    const permission = { family, key, desc, name };
 
     PERMS.push(permission);
     PERMS_BY_FAMILY[family].push(permission);
-    logger.info(`Registered permission: family="${family}", key="${key.toString()}", desc="${desc}"`);
+    logger.info(`Registered permission: family="${family}", key="${key.toString()}", desc="${desc}", name="${name}"`);
 }
 
 
