@@ -483,7 +483,10 @@ export const CATEGORIES = {
         '莫队',
     ],
 };
-export function registerPermission(family: string, key: bigint, desc: string) {
+export function registerPermission(family: string, key: bigint, desc: string, plugin?: boolean) {
+    if (plugin) {
+        family = 'plugins';
+    }
     const exists = PERMS.some((perm) => perm.key === key);
     if (exists) {
         const existingPerm = PERMS.find((perm) => perm.key === key);

@@ -544,7 +544,8 @@ export async function apply(ctx: Context) {
     global.Ejunz.model.builtin.registerPermission(
         'Question Generator',
         PERM.PERM_VIEW_QUESTGEN, 
-        'View question generator'
+        'View question generator',
+        true
     );
 
 

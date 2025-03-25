@@ -1171,7 +1171,8 @@ export async function apply(ctx: Context) {
     global.Ejunz.model.builtin.registerPermission(
         'Tree',
         PERM.PERM_VIEW_TREE, 
-        'View tree'
+        'View tree',
+        true
     );
     ctx.Route('forest_domain', '/forest', ForestDomainHandler);
     ctx.Route('forest_edit', '/forest/:docId/edit', ForestEditHandler, PRIV.PRIV_USER_PROFILE);
