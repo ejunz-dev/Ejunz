@@ -58,7 +58,6 @@ export * as bus from './service/bus';
 export {encodeRFC5987ValueChars} from './service/storage';
 export * as domain from './model/domain';
 export * as docs from './model/doc';
-import * as system from './model/system';
 export {RepoModel} from './model/repo';
 export {DocsModel} from './model/doc';
 export {inject, nodes, getNodes} from './lib/ui';
