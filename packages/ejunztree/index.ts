@@ -1178,7 +1178,7 @@ export async function apply(ctx: Context) {
     );
     
     SettingModel.DomainPluginSetting(
-        SettingModel.Setting('plugins', 'ejunzTree', [''], 'yaml', 'tree_map'),
+        SettingModel.Setting('plugins', 'ejunztree', [''], 'yaml', 'tree_map'),
     );
 
     ctx.Route('forest_domain', '/forest', ForestDomainHandler);
