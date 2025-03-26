@@ -221,7 +221,7 @@ DomainSetting(
     Setting('setting_storage', 'host', '', 'text', 'Custom host', null, FLAG_HIDDEN | FLAG_DISABLED),
 );
 DomainPluginSetting(
-    Setting('setting_domain_on_plugins', 'plugins', [''], 'yaml', 'Allowed plugins'),
+    Setting('setting_domain_on_plugins', 'plugins', ['- example'], 'yaml', 'Allowed plugins'),
 
 );
 
