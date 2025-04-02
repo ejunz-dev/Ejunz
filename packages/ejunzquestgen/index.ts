@@ -549,21 +549,21 @@ export async function apply(ctx: Context) {
         PERM.PERM_VIEW_QUESTGEN, 
         'Entry permission',
         true,
-        'ejunzQuestgen',
+        'ejunzquestgen',
     );
     global.Ejunz.model.builtin.registerPermission(
         'plugins',
         PERM.PERM_EDIT_QUESTGEN, 
         'Config permission',
         true,
-        'ejunzQuestgen',
+        'ejunzquestgen',
     );
     global.Ejunz.model.builtin.registerPermission(
         'plugins',
         PERM.PERM_VIEW_QUESTGEN_MCQ, 
         'use mcq',
         true,
-        'ejunzQuestgen',
+        'ejunzquestgen',
     );
 
     SettingModel.DomainPluginSetting(
@@ -592,14 +592,14 @@ export async function apply(ctx: Context) {
 
                 // 检查当前域是否在允许的域列表中
                 if (!allowedDomainsArray.includes(handler.domain._id)) {
-                    console.log('不在允许的域中', handler.domain._id);
+                    // console.log('不在允许的域中', handler.domain._id);
                     return false; // 如果不在允许的域中，返回 false
                 }
-                console.log('在允许的域中', handler.domain._id);
+                // console.log('在允许的域中', handler.domain._id);
 
                 // 检查用户是否具有特定权限
                 const hasPermission = handler.user.hasPerm(PERM.PERM_VIEW_QUESTGEN);
-                console.log(`User ${handler.user._id} has permission: ${hasPermission}`);
+                // console.log(`User ${handler.user._id} has permission: ${hasPermission}`);
                 return hasPermission;
             };
             
