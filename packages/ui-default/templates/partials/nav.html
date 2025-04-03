@@ -9,6 +9,22 @@
 <nav class="nav slideout-menu" id="menu">
   <div class="row"><div class="columns clearfix">
     <ol class="nav__list nav__list--main clearfix">
+              <li class="nav__list-item" data-dropdown-pos="bottom right" data-dropdown-custom-class="nav__dropdown" data-dropdown-target="#menu-nav-dropdown" data-dropdown-disabledconstrainToWindow data-dropdown-trigger-desktop-only>
+      <a href="javascript:;" class="nav__item">
+      {{ _('Centers') }} <span class="icon icon-expand_more"></span> 
+      </a>
+      <ol class="dropdown-target menu" id="menu-nav-dropdown">
+        {%- for item in ui.getNodes('NavMainDropdown') -%}
+          {% if item.checker(handler) %}
+            <li class="menu__item">
+              <a href="{{ url(item.name, item.args) }}" class="menu__link">
+                {{ _(item.displayName or item.name) }}
+              </a>
+            </li>
+          {% endif %}
+        {%- endfor -%}
+      </ol>
+    </li>
       <li class="nav__list-item">
         <a href="/"><img class="nav__logo" src="{{ ctx.setting.get('ui-default.nav_logo_dark') }}"></a>
       </li>

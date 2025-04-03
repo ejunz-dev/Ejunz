@@ -32,6 +32,25 @@ import {
 } from '../service/server';
 import { camelCase, md5 } from '../utils';
 
+
+export class GrowthBaseHandler extends Handler {
+    async after(domainId: string) {
+        this.response.body.overrideNav = [
+            {
+                name: 'homepage',
+                args: {},
+                displayName: 'Back to homepage',
+                checker: () => true,
+            },
+        ];
+    }
+}
+export class GrowthHandler extends GrowthBaseHandler {
+    async get() {
+        this.response.template = 'growth_main.html';
+    }
+}
+
 export class HomeHandler extends Handler {
     uids = new Set<number>();
 
@@ -606,6 +625,7 @@ export async function apply(ctx: Context) {
         geoip = g.geoip;
     });
     ctx.Route('homepage', '/', HomeHandler);
+    ctx.Route('growth_main', '/growth', GrowthHandler);
     ctx.Route('home_security', '/home/security', HomeSecurityHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('user_changemail_with_code', '/home/changeMail/:code', UserChangemailWithCodeHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('home_settings', '/home/settings/:category', HomeSettingsHandler, PRIV.PRIV_USER_PROFILE);
