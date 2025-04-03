@@ -543,6 +543,20 @@ export async function apply(ctx: Context) {
         PERM_EDIT_QUESTGEN: 1n << 74n,
         PERM_VIEW_QUESTGEN_MCQ: 1n << 75n,
     };
+    ctx.on('handler/after/Production#get', async (h) => {
+        if (!h.response.body.overrideNav) {
+            h.response.body.overrideNav = [];
+        }
+        
+        h.response.body.overrideNav.push(
+            {
+                name: 'generator_detail',
+                args: {},
+                displayName: 'generator_detail',
+                checker: () => true,
+            }
+        );
+    });
 
     global.Ejunz.model.builtin.registerPermission(
         'plugins',
