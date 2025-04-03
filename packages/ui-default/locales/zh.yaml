@@ -268,6 +268,7 @@ Domain {0} is bulit-in and cannot be modified.: 域 {0} 为内置，不可修改
 Domain {0} not found.: 域 {0} 不存在。
 Domain ID cannot be changed once the domain is created.: 在创建后不能更改 ID。
 Domain ID: 域 ID
+Domain Plugins: 本域插件
 domain_create: 创建域
 domain_dashboard: 本域管理
 domain_discussion: 讨论节点
@@ -282,7 +283,6 @@ domain_role: 管理角色
 domain_user: 管理用户
 domain: 域
 Domain: 域
-Domain Plugins: 本域插件
 Don't have an account?: 还没有账户？
 Done: 已结束
 Download Dataset: 下载数据集
@@ -444,6 +444,8 @@ LaTeX Expressions: LaTeX 表达式
 Learn More: 了解更多
 Leave blank to use numeric pid.: 留空来使用数字题号。
 Leave Edit Mode: 离开编辑模式
+library_main: 资料库
+library: 资料库
 Limit And Hint: 数据范围与提示
 Limitations: 限制
 Links: 链接
@@ -627,6 +629,10 @@ problem.import.problem_description: '## 题枝描述'
 Problems per page: 每页展示的题枝数量
 Problems Sets: 题库
 Problems: 题枝
+processing_main: 加工中心
+processing: 加工中心
+production_main: 生产中心
+production: 生产中心
 Profile Background Image: 背景图片
 Progress: 进度
 Properties: 属性
@@ -776,7 +782,11 @@ Submitted: 已递交
 Support: 支持
 Sync problem filelist from s3 service: 从 S3 同步题枝文件列表。
 Tags: 标签
+talkspace_main: 讨论空间
+talkspace: 讨论空间
 Target: 目标
+teamspace_main: 团队空间
+teamspace: 团队空间
 Technical Information: 技术信息
 Technical Issue: 技术问题
 Temporary session: 临时会话

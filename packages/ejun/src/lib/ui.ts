@@ -55,10 +55,9 @@ export const RepoAdd = (name, args, icon = 'add', text = 'Create Repository') =>
 };
 inject('NavMainDropdown', 'production_main', { prefix: 'productionhub' }, PERM.PERM_EDIT_DOMAIN);
 inject('NavMainDropdown', 'processing_main', { prefix: 'processinghub' }, PERM.PERM_EDIT_DOMAIN);
-inject('NavMainDropdown', 'growth_main', { prefix: 'growthhub' }, PERM.PERM_EDIT_DOMAIN);
 inject('NavMainDropdown', 'teamspace_main', { prefix: 'teamspace' }, PERM.PERM_EDIT_DOMAIN);
+inject('NavMainDropdown', 'talkspace_main', { prefix: 'talkspace' }, PERM.PERM_EDIT_DOMAIN);
 inject('NavMainDropdown', 'library_main', { prefix: 'storagehub' }, PERM.PERM_EDIT_DOMAIN);
-inject('NavMainDropdown', 'issue_main', { prefix: 'discussionhub' }, PERM.PERM_EDIT_DOMAIN);
 
 inject('Nav', 'homepage', { prefix: 'homepage' });
 inject('Nav', 'problem_main', { prefix: 'problem' }, PERM.PERM_VIEW_PROBLEM);
