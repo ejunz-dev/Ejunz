@@ -553,10 +553,11 @@ export async function apply(ctx: Context) {
                 name: 'generator_detail',
                 args: {},
                 displayName: 'generator_detail',
-                checker: () => true,
+                checker: customChecker,
             }
         );
     });
+    
 
     global.Ejunz.model.builtin.registerPermission(
         'plugins',
