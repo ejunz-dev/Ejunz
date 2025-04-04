@@ -538,12 +538,32 @@ export class StagingQuestionHandler extends QuestionHandler {
     }
 }
 export async function apply(ctx: Context) {
-    const PERM = {
-        PERM_VIEW_QUESTGEN: 1n << 73n, 
-        PERM_EDIT_QUESTGEN: 1n << 74n,
-        PERM_VIEW_QUESTGEN_MCQ: 1n << 75n,
-    };
+    const customChecker = (handler) => {
+        // 获取允许的域列表
+        const allowedDomains = SystemModel.get('ejunzquestgen.allowed_domains');
+        const allowedDomainsArray = yaml.load(allowedDomains) as string[];
 
+        // 检查当前域是否在允许的域列表中
+        if (!allowedDomainsArray.includes(handler.domain._id)) {
+            console.log('不在允许的域中', handler.domain._id);
+            return false; // 如果不在允许的域中，返回 false
+        }
+        console.log('在允许的域中', handler.domain._id);
+
+        // 检查用户是否具有特定权限
+        console.log('当前用户 ID:', handler.user._id); // 打印用户 ID
+
+        if (handler.user._id === 2) {
+            console.log('用户是superadmin', handler.user._id);
+            return true;
+        } else {
+            const hasPermission = handler.user.hasPerm(PERM.PERM_VIEW_QUESTGEN);
+            console.log(`User ${handler.user._id} has permission: ${hasPermission}`);
+            return hasPermission;
+        }
+        
+    };
+    
     function ToOverrideNav(h) {
         if (!h.response.body.overrideNav) {
             h.response.body.overrideNav = [];
@@ -593,7 +613,13 @@ export async function apply(ctx: Context) {
         ToOverrideNav(h);
         }
     });
+    const PERM = {
+        PERM_VIEW_QUESTGEN: 1n << 73n, 
+        PERM_EDIT_QUESTGEN: 1n << 74n,
+        PERM_VIEW_QUESTGEN_MCQ: 1n << 75n,
+    };
 
+    
     global.Ejunz.model.builtin.registerPermission(
         'plugins',
         PERM.PERM_VIEW_QUESTGEN, 
@@ -635,32 +661,7 @@ export async function apply(ctx: Context) {
             ctx.Route('staging_questions', '/questgen/stage_list', StagingQuestionHandler, PERM.PERM_VIEW_QUESTGEN);
             ctx.Route('staging_questions_publish', '/questgen/stage_publish', StagingQuestionHandler, PERM.PERM_VIEW_QUESTGEN);
 
-            const customChecker = (handler) => {
-                // 获取允许的域列表
-                const allowedDomains = SystemModel.get('ejunzquestgen.allowed_domains');
-                const allowedDomainsArray = yaml.load(allowedDomains) as string[];
-
-                // 检查当前域是否在允许的域列表中
-                if (!allowedDomainsArray.includes(handler.domain._id)) {
-                    console.log('不在允许的域中', handler.domain._id);
-                    return false; // 如果不在允许的域中，返回 false
-                }
-                console.log('在允许的域中', handler.domain._id);
-
-                // 检查用户是否具有特定权限
-                console.log('当前用户 ID:', handler.user._id); // 打印用户 ID
-
-                if (handler.user._id === 2) {
-                    console.log('用户是superadmin', handler.user._id);
-                    return true;
-                } else {
-                    const hasPermission = handler.user.hasPerm(PERM.PERM_VIEW_QUESTGEN);
-                    console.log(`User ${handler.user._id} has permission: ${hasPermission}`);
-                    return hasPermission;
-                }
-                
-            };
-            
+          
            
             ctx.i18n.load('zh', {
                 question: '生成器',
