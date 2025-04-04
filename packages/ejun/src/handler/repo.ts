@@ -369,13 +369,6 @@ export async function apply(ctx: Context) {
     ctx.Route('repo_edit', '/repo/:rid/edit', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
 
     
-    ctx.injectUI('PluginDropdown', 'repo_domain', () => ({
-        name: 'repo_domain',
-        displayName: 'Repo',
-        args: {},
-        checker: (handler) => handler.user.hasPriv(PRIV.PRIV_USER_PROFILE),
-    }));
-
     ctx.i18n.load('en', {
         repo_domain: 'Repository',
         repo_detail: 'Repository Detail',

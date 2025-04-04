@@ -925,7 +925,7 @@ export interface Lib extends Record<string, any> {
 }
 
 export type UIInjectableFields = 
-'ProblemAdd' |'RepoAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel' | 'ProfileHeaderContact' | 'Home_Domain' | 'NavDropdown' | 'PluginDropdown' | 'NavMainDropdown'
+'ProblemAdd' |'RepoAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel' | 'ProfileHeaderContact' | 'Home_Domain' | 'NavDropdown' | 'NavMainDropdown'
 export interface UI {
     template: Record<string, string>,
     nodes: Record<UIInjectableFields, any[]>,

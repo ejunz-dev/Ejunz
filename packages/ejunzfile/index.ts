@@ -133,12 +133,7 @@ export async function apply(ctx) {
     ctx.Route('domain_files', '/domainfile', DomainFilesHandler);
     ctx.Route('domain_fs_download', '/domainfile/:filename', DomainFSDownloadHandler);
 
-    ctx.injectUI('PluginDropdown', 'domain_files', () => ({
-        name: 'domain_files',
-        displayName: 'domain_files',
-        args: {},
-        checker: (handler) => handler.user.hasPriv(PRIV.PRIV_USER_PROFILE),
-    }));
+
     ctx.i18n.load('zh', {
         "{0}'s domain_files": '{0} 的文件',
         domain_files: '域文件',
