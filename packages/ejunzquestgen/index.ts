@@ -322,7 +322,7 @@ if (isNaN(selected_document_id) || selected_document_id === 0) {
 }
 
 
-export class StagingPushHandler extends Handler {
+export class StagingPushHandler extends QuestionHandler {
     async post() {
         const domainId = this.context.domainId;
         const payload = this.request.body.questions_payload;
@@ -448,7 +448,7 @@ export class StagingPushHandler extends Handler {
 
 
 
-export class StagingQuestionHandler extends Handler {
+export class StagingQuestionHandler extends QuestionHandler {
     async get({ domainId, page = 1, pageSize = 10 }) {
         domainId = this.args?.domainId || this.context?.domainId || 'system';
         const query = {};
@@ -543,11 +543,12 @@ export async function apply(ctx: Context) {
         PERM_EDIT_QUESTGEN: 1n << 74n,
         PERM_VIEW_QUESTGEN_MCQ: 1n << 75n,
     };
-    ctx.on('handler/after/Production#get', async (h) => {
+
+    function ToOverrideNav(h) {
         if (!h.response.body.overrideNav) {
             h.response.body.overrideNav = [];
         }
-        
+
         h.response.body.overrideNav.push(
             {
                 name: 'generator_detail',
@@ -556,8 +557,28 @@ export async function apply(ctx: Context) {
                 checker: customChecker,
             }
         );
+    }
+
+    ctx.on('handler/after/Production#get', async (h) => {
+        ToOverrideNav(h);
     });
-    
+
+    ctx.on('handler/after', async (h) => {
+        if (h.request.path.includes('/questgen')) {
+        if (!h.response.body.overrideNav) {
+            h.response.body.overrideNav = [];
+        }
+        h.response.body.overrideNav.push(
+            {
+                name: 'production_main',
+                args: {},
+                displayName: 'production_main',
+                checker: () => true, 
+            }
+        );
+        ToOverrideNav(h);
+        }
+    });
 
     global.Ejunz.model.builtin.registerPermission(
         'plugins',
@@ -607,15 +628,23 @@ export async function apply(ctx: Context) {
 
                 // 检查当前域是否在允许的域列表中
                 if (!allowedDomainsArray.includes(handler.domain._id)) {
-                    // console.log('不在允许的域中', handler.domain._id);
+                    console.log('不在允许的域中', handler.domain._id);
                     return false; // 如果不在允许的域中，返回 false
                 }
-                // console.log('在允许的域中', handler.domain._id);
+                console.log('在允许的域中', handler.domain._id);
 
                 // 检查用户是否具有特定权限
-                const hasPermission = handler.user.hasPerm(PERM.PERM_VIEW_QUESTGEN);
-                // console.log(`User ${handler.user._id} has permission: ${hasPermission}`);
-                return hasPermission;
+                console.log('当前用户 ID:', handler.user._id); // 打印用户 ID
+
+                if (handler.user._id === 2) {
+                    console.log('用户是superadmin', handler.user._id);
+                    return true;
+                } else {
+                    const hasPermission = handler.user.hasPerm(PERM.PERM_VIEW_QUESTGEN);
+                    console.log(`User ${handler.user._id} has permission: ${hasPermission}`);
+                    return hasPermission;
+                }
+                
             };
             
             ctx.injectUI('PluginDropdown', 'generator_detail', () => ({
