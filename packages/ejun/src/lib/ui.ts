@@ -54,6 +54,7 @@ export const RepoAdd = (name, args, icon = 'add', text = 'Create Repository') =>
     inject('RepoAdd', name, { ...args, icon, text });
 };
 
+inject('NavMainDropdown', 'homepage', { prefix: 'homepage' }, PERM.PERM_EDIT_DOMAIN);
 inject('NavMainDropdown', 'workspace_main', { prefix: 'workspace' }, PERM.PERM_EDIT_DOMAIN);
 inject('NavMainDropdown', 'production_main', { prefix: 'productionhub' }, PERM.PERM_EDIT_DOMAIN);
 inject('NavMainDropdown', 'processing_main', { prefix: 'processinghub' }, PERM.PERM_EDIT_DOMAIN);
@@ -62,7 +63,7 @@ inject('NavMainDropdown', 'talkspace_main', { prefix: 'talkspace' }, PERM.PERM_E
 inject('NavMainDropdown', 'library_main', { prefix: 'storagehub' }, PERM.PERM_EDIT_DOMAIN);
 
 
-inject('Nav', 'forest_main', { prefix: 'forest' }, PERM.PERM_EDIT_DOMAIN);
+inject('Nav', 'forest_domain', { prefix: 'forest' }, PERM.PERM_EDIT_DOMAIN);
 
 inject('NavDropdown', 'domain_dashboard', { prefix: 'domain' }, PERM.PERM_EDIT_DOMAIN);
 inject('NavDropdown', 'manage_dashboard', { prefix: 'manage' }, PRIV.PRIV_EDIT_SYSTEM);

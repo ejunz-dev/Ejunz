@@ -603,6 +603,11 @@ class HomeMessagesConnectionHandler extends ConnectionHandler {
 }
 
 export async function apply(ctx: Context) {
+    ctx.on('handler/after', async (h) => {
+        if (h.request.path === '/') {
+            h.UiContext.spacename = 'homepage';
+        }
+    });
     ctx.inject(['geoip'], (g) => {
         geoip = g.geoip;
     });
