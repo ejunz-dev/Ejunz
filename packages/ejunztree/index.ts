@@ -2,8 +2,10 @@ import {
     _, Context, DiscussionNotFoundError, DocumentModel, Filter,
     Handler, NumberKeys, ObjectId, OplogModel, paginate,
     param, PRIV,PERM, Types, UserModel, DomainModel, StorageModel, ProblemModel, NotFoundError,DocsModel,RepoModel,
-    parseMemoryMB,ContestModel,DiscussionModel,TrainingModel,buildProjection,RepoDoc,encodeRFC5987ValueChars
+    parseMemoryMB,ContestModel,DiscussionModel,TrainingModel,buildProjection,RepoDoc,encodeRFC5987ValueChars,
+    SystemModel
 } from 'ejun';
+import yaml from 'js-yaml';
 import { SettingModel, Setting } from 'ejun';
 import { lookup } from 'mime-types';
 export const TYPE_BR: 1 = 1;
@@ -1164,6 +1166,69 @@ export class BranchfileDownloadHandler extends Handler {
     }
 }
 export async function apply(ctx: Context) {
+    const customChecker = (handler) => {
+        // 获取允许的域列表
+        const allowedDomains = SystemModel.get('ejunztree.allowed_domains');
+        const allowedDomainsArray = yaml.load(allowedDomains) as string[];
+
+        // 检查当前域是否在允许的域列表中
+        if (!allowedDomainsArray.includes(handler.domain._id)) {
+            console.log('不在允许的域中', handler.domain._id);
+            return false; // 如果不在允许的域中，返回 false
+        }
+        console.log('在允许的域中', handler.domain._id);
+
+        // 检查用户是否具有特定权限
+        console.log('当前用户 ID:', handler.user._id); // 打印用户 ID
+
+        if (handler.user._id === 2) {
+            console.log('用户是superadmin', handler.user._id);
+            return true;
+        } else {
+            const hasPermission = handler.user.hasPerm(PERM.PERM_VIEW_TREE);
+            console.log(`User ${handler.user._id} has permission: ${hasPermission}`);
+            return hasPermission;
+        }
+        
+    };
+    
+    function ToOverrideNav(h) {
+        if (!h.response.body.overrideNav) {
+            h.response.body.overrideNav = [];
+        }
+
+        h.response.body.overrideNav.push(
+            {
+                name: 'forest_domain',
+                args: {},
+                displayName: 'forest_domain',
+                checker: customChecker,
+            },
+
+        );
+        
+    }
+
+    ctx.on('handler/after/Processing#get', async (h) => {
+        ToOverrideNav(h);
+    });
+
+    ctx.on('handler/after', async (h) => {
+        if (h.request.path.includes('/tree')||h.request.path.includes('/forest')) {
+            if (!h.response.body.overrideNav) {
+                h.response.body.overrideNav = [];
+            }
+            h.response.body.overrideNav.push(
+                {
+                    name: 'processing_main',
+                    args: {},
+                    displayName: 'processing_main',
+                    checker: () => true, 
+                }
+            );
+        ToOverrideNav(h);
+        }
+    });
 
     const PERM = {
         PERM_VIEW_TREE: 1n << 75n,
@@ -1195,4 +1260,28 @@ export async function apply(ctx: Context) {
     ctx.Route('branch_resource_edit', '/tree/:trid/branch/:docId/edit/resources', BranchResourceEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('branch_file_download', '/tree/:trid/branch/:docId/repo/:rid/:filename', BranchfileDownloadHandler);
 
+    ctx.i18n.load('zh', {
+        forest_domain: '森林',
+        tree_create: '创建树',
+        tree_detail: '树详情',
+        tree_edit: '编辑树',
+        tree_branch: '树分支',
+        branch_create_subbranch: '创建子分支',
+        branch_detail: '分支详情',  
+        branch_edit: '编辑分支',
+        branch_resource_edit: '编辑分支资源',
+        branch_file_download: '下载分支文件',
+    });
+    ctx.i18n.load('en', {
+        forest_domain: 'Forest',
+        tree_create: 'Create Tree',
+        tree_detail: 'Tree Detail',
+        tree_edit: 'Edit Tree',
+        tree_branch: 'Tree Branch',
+        branch_create_subbranch: 'Create Subbranch',
+        branch_detail: 'Branch Detail',
+        branch_edit: 'Edit Branch',
+        branch_resource_edit: 'Edit Branch Resources',
+        branch_file_download: 'Download Branch File',
+    });
 }
