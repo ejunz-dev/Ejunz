@@ -130,8 +130,71 @@ export class DomainFSDownloadHandler extends Handler {
 
 
 export async function apply(ctx) {
-    ctx.Route('domain_files', '/domainfile', DomainFilesHandler);
-    ctx.Route('domain_fs_download', '/domainfile/:filename', DomainFSDownloadHandler);
+    const PERM = {
+        PERM_VIEW_DOMAIN_FILES: 1n << 76n,
+    };
+
+    ctx.Route('domain_files', '/domainfile', DomainFilesHandler,PERM.PERM_VIEW_DOMAIN_FILES);
+    ctx.Route('domain_fs_download', '/domainfile/:filename', DomainFSDownloadHandler,PERM.PERM_VIEW_DOMAIN_FILES);
+
+
+    global.Ejunz.model.builtin.registerPermission(
+        'plugins',
+        PERM.PERM_VIEW_DOMAIN_FILES, 
+        'View domain files',
+        true,
+        'ejunzfile'
+    );
+
+
+    const customChecker = (handler) => {
+        if (handler.user._id === 2) {
+            console.log('用户是superadmin', handler.user._id);
+            return true;
+        } else {
+            const hasPermission = handler.user.hasPerm(PERM.PERM_VIEW_DOMAIN_FILES);
+            console.log(`User ${handler.user._id} has permission: ${hasPermission}`);
+            return hasPermission;
+        }
+        
+    };
+    
+    function ToOverrideNav(h) {
+        if (!h.response.body.overrideNav) {
+            h.response.body.overrideNav = [];
+        }
+
+        h.response.body.overrideNav.push(
+            {
+                name: 'domain_files',
+                args: {},
+                displayName: 'domain_files',
+                checker: customChecker,
+            },
+
+        );
+        
+    }
+
+    ctx.on('handler/after/Library#get', async (h) => {
+        ToOverrideNav(h);
+    });
+
+    ctx.on('handler/after', async (h) => {
+        if (h.request.path.includes('/domainfile')) {
+            if (!h.response.body.overrideNav) {
+                h.response.body.overrideNav = [];
+            }
+            h.response.body.overrideNav.push(
+                {
+                    name: 'domain_files',
+                    args: {},
+                    displayName: 'domain_files',
+                    checker: customChecker,
+                }
+            );
+        }
+    });
 
 
     ctx.i18n.load('zh', {
