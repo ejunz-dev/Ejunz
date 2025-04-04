@@ -1194,10 +1194,5 @@ export async function apply(ctx: Context) {
     ctx.Route('branch_edit', '/tree/:trid/branch/:docId/editbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('branch_resource_edit', '/tree/:trid/branch/:docId/edit/resources', BranchResourceEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('branch_file_download', '/tree/:trid/branch/:docId/repo/:rid/:filename', BranchfileDownloadHandler);
-    ctx.injectUI('PluginDropdown', 'forest_domain', () => ({
-        name: 'forest_domain',
-        displayName: 'forest_domain',
-        args: {},
-        checker: (handler) => handler.user.hasPriv(PRIV.PRIV_USER_PROFILE),
-    }));
+
 }

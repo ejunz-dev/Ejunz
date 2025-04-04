@@ -555,8 +555,22 @@ export async function apply(ctx: Context) {
                 args: {},
                 displayName: 'generator_detail',
                 checker: customChecker,
-            }
+            },
+            {
+                name: 'generator_main',
+                args: {},
+                displayName: 'generator_main',
+                checker: customChecker,
+            },
+            {
+                name: 'staging_questions',
+                args: {},
+                displayName: 'staging_questions',
+                checker: customChecker,
+            },
+
         );
+        
     }
 
     ctx.on('handler/after/Production#get', async (h) => {
@@ -647,15 +661,12 @@ export async function apply(ctx: Context) {
                 
             };
             
-            ctx.injectUI('PluginDropdown', 'generator_detail', () => ({
-                name: 'generator_detail',
-                displayName: 'generator_detail',
-                
-            }),customChecker);
-
+           
             ctx.i18n.load('zh', {
                 question: '生成器',
-                generator_detail: '生成器',
+                generator_detail: '题目生成器',
+                generator_main: '单选生成器',
+                staging_questions: '暂存区',
                 'Question Generator': '生成器',
                 'Welcome to the MCQ Question Generator!': '欢迎使用选择题生成器！',
                 'Input Text': '输入文本',
@@ -666,7 +677,9 @@ export async function apply(ctx: Context) {
             });
             ctx.i18n.load('en', {
                 question: 'Generator',
-                generator_detail: 'Generator',
+                generator_detail: 'Question Generator',
+                generator_main: 'MCQ Generator',
+                staging_questions: 'Staging',
                 'Question Generator': 'Generator',
                 'Welcome to the Question Generator!': 'Welcome to the Question Generator!',
                 'Input Text': 'Input Text',

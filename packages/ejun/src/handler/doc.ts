@@ -227,13 +227,7 @@ export async function apply(ctx: Context) {
     ctx.Route('docs_create', '/docs/create', DocsEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('docs_detail', '/docs/:lid', DocsDetailHandler);
     ctx.Route('docs_edit', '/docs/:lid/edit', DocsEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.injectUI('PluginDropdown', 'docs_domain', () => ({
-        name: 'docs_domain',
-        displayName: 'Docs',
-        args: {},
-        checker: (handler) => handler.user.hasPriv(PRIV.PRIV_USER_PROFILE),
-    }));
-    
+ 
     ctx.i18n.load('zh', {
         "{0}'s docs": '{0} 的文档',
         Docs: '文档',
