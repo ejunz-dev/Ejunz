@@ -129,12 +129,12 @@ export class TalkspaceHandler extends TalkspaceBaseHandler {
 }
 
 
+
 export async function apply(ctx: Context) {
     ctx.Route('production_main', '/production', ProductionHandler);
     ctx.Route('processing_main', '/processing', ProcessingHandler);
     ctx.Route('teamspace_main', '/teamspace', TeamspaceHandler);
     ctx.Route('library_main', '/library', LibraryHandler);
     ctx.Route('talkspace_main', '/talkspace', TalkspaceHandler);
-    
 }
 
