@@ -300,9 +300,6 @@ Edit discussion replies of own discussion: 修改自己讨论中的回复
 Edit discussion replies: 修改讨论的回复
 Edit discussions: 修改讨论
 Edit domain settings: 编辑域设置
-workspace: 工作空间
-Workspace: 工作空间
-workspace_main: 工作空间
 Edit Domain: 编辑域
 Edit Homework: 编辑作业
 Edit own contests: 修改自己的比赛
@@ -447,8 +444,7 @@ LaTeX Expressions: LaTeX 表达式
 Learn More: 了解更多
 Leave blank to use numeric pid.: 留空来使用数字题号。
 Leave Edit Mode: 离开编辑模式
-library_main: 资料库
-library: 资料库
+
 Limit And Hint: 数据范围与提示
 Limitations: 限制
 Links: 链接

@@ -269,4 +269,10 @@ export async function apply(ctx: Context) {
         );
         
     });
+
+    // ctx.i18n.load('zh', {
+    //     workspace: '工作空间',
+    //     Workspace: '工作空间',
+    //     workspace_main: '工作空间',
+    // });
 }

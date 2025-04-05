@@ -363,22 +363,24 @@ export class RepoEditHandler extends RepoMainHandler {
 
 
 export async function apply(ctx: Context) {
-    ctx.Route('repo_domain', '/repo', RepoMainHandler);
-    ctx.Route('repo_create', '/repo/create', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('repo_detail', '/repo/:rid', RepoDetailHandler);
-    ctx.Route('repo_edit', '/repo/:rid/edit', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
-
-    
     ctx.i18n.load('en', {
         repo_domain: 'Repository',
         repo_detail: 'Repository Detail',
         repo_edit: 'Edit Repository',
     });
     ctx.i18n.load('zh', {
-        repo_domain: '资料库',
-        repo_detail: '资料详情',
-        repo_edit: '编辑资料',
+        repo_domain: '指导库',
+        repo_detail: '指导详情',
+        repo_edit: '编辑指导',
     });
+    
+    ctx.Route('repo_domain', '/repo', RepoMainHandler);
+    ctx.Route('repo_create', '/repo/create', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('repo_detail', '/repo/:rid', RepoDetailHandler);
+    ctx.Route('repo_edit', '/repo/:rid/edit', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
+
+    
+
     ctx.inject(['api'], ({ api }) => {
         api.value('Repo', [
             ['docId', 'Int!'],
