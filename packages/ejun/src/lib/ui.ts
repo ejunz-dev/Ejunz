@@ -53,13 +53,13 @@ export const ProblemAdd = (name, args, icon = 'add', text = 'Create Problem') =>
 export const RepoAdd = (name, args, icon = 'add', text = 'Create Repository') => {
     inject('RepoAdd', name, { ...args, icon, text });
 };
-inject('NavMainDropdown', 'homepage', { prefix: 'homepage' },PERM.PERM_EDIT_DOMAIN);
-inject('NavMainDropdown', 'workspace_main', { prefix: 'workspace' }, PERM.PERM_EDIT_DOMAIN);
-inject('NavMainDropdown', 'production_main', { prefix: 'productionhub' }, PERM.PERM_EDIT_DOMAIN);
-inject('NavMainDropdown', 'processing_main', { prefix: 'processinghub' }, PERM.PERM_EDIT_DOMAIN);
-inject('NavMainDropdown', 'teamspace_main', { prefix: 'teamspace' }, PERM.PERM_EDIT_DOMAIN);
-inject('NavMainDropdown', 'talkspace_main', { prefix: 'talkspace' }, PERM.PERM_EDIT_DOMAIN);
-inject('NavMainDropdown', 'filespace_main', { prefix: 'storagehub' }, PERM.PERM_EDIT_DOMAIN);
+inject('NavMainDropdown', 'homepage', { prefix: 'homepage' });
+inject('NavMainDropdown', 'workspace_main', { prefix: 'workspace' });
+inject('NavMainDropdown', 'production_main', { prefix: 'productionhub' });
+inject('NavMainDropdown', 'processing_main', { prefix: 'processinghub' });
+inject('NavMainDropdown', 'teamspace_main', { prefix: 'teamspace' });
+inject('NavMainDropdown', 'talkspace_main', { prefix: 'talkspace' });
+inject('NavMainDropdown', 'filespace_main', { prefix: 'storagehub' });
 
 // inject('Nav', 'homepage', { prefix: 'homepage' });
 // inject('Nav', 'problem_main', { prefix: 'problem' }, PERM.PERM_VIEW_PROBLEM);
