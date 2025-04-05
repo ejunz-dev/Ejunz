@@ -196,7 +196,6 @@ export async function apply(ctx) {
         }
     });
 
-
     ctx.i18n.load('zh', {
         "{0}'s domain_files": '{0} 的文件',
         domain_files: '域文件',
