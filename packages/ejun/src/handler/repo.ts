@@ -374,6 +374,22 @@ export async function apply(ctx: Context) {
         );
     });
 
+    ctx.on('handler/after', async (h) => {
+        if (h.request.path.includes('/repo')) {
+        if (!h.response.body.overrideNav) {
+            h.response.body.overrideNav = [];
+        }
+        h.response.body.overrideNav.push(
+            {
+                name: 'repo_domain',
+                args: {},
+                displayName: 'repo_domain',
+                checker: () => true, 
+            }
+        );
+        }
+    });
+
 
     ctx.inject(['api'], ({ api }) => {
         api.value('Repo', [
