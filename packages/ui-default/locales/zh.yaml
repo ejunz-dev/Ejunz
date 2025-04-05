@@ -528,6 +528,15 @@ Not Claimed: 未认领
 Not Enrolled: 未参加
 Not started with a number: 不以数字开头
 Not wrapped with space: 两侧不含空格
+Spaces: 空间
+workspace_main: 工作空间
+workspace: 工作空间
+filespace_main: 文件中心
+filespace: 文件中心
+repo_domain: 指导库
+repo: 指导库
+hub_main: 地图工具
+hub: 地图工具
 Numeric PID: 数字题号
 Oh, the user doesn't have any contributions!: 啊哦，这个用户还没贡献过题枝~
 Oh, the user hasn't created any discussions yet!: 这个用户还没有发布过讨论
