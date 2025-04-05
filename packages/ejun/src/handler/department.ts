@@ -303,5 +303,55 @@ export async function apply(ctx: Context) {
     ctx.Route('filespace_main', '/filespace', FilespaceHandler);
     ctx.Route('talkspace_main', '/talkspace', TalkspaceHandler);
     ctx.Route('workspace_main', '/workspace', WorkspaceHandler);
+
+    // Workspace
+    ctx.on('handler/after', async (h) => {
+        const paths = ['/p','/problem', '/contest', '/training','/record', '/training', '/homework'];
+        if (!h.response.body.overrideNav) {
+            h.response.body.overrideNav = [];
+        }//DONT DELETE THIS
+        if (paths.includes(h.request.path)) {
+            h.response.body.overrideNav.push(
+                {
+                    name: 'problem_main',
+                    args: {},
+                    displayName: 'problem_main',
+                    checker: () => true,
+                },
+                {
+                    name: 'training_main',
+                    args: {},
+                    displayName: 'training_main',
+                    checker: () => true,
+                },
+                {
+                    name: 'contest_main',
+                    args: {},
+                    displayName: 'contest_main',
+                    checker: () => true,
+                },
+                {
+                    name: 'homework_main',
+                    args: {},
+                    displayName: 'homework_main',
+                    checker: () => true,
+                },
+                {
+                    name: 'record_main',
+                    args: {},
+                    displayName: 'record_main',
+                    checker: () => true,
+                },
+                {
+                    name: 'ranking',
+                    args: {},
+                    displayName: 'ranking',
+                    checker: () => true,
+                },
+            );
+        }
+    });
+
     
+
 }
