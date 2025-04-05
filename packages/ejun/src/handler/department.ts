@@ -352,6 +352,37 @@ export async function apply(ctx: Context) {
         }
     });
 
-    
+    ctx.on('handler/after', async (h) => {
+        const homePaths = ['/','/home'];
+        const workspacePaths = ['/workspace', '/problem', '/p', '/training', '/contest', '/homework', '/record', '/ranking'];
+        const productionPaths = ['/production', '/questgen'];
+        const processingPaths = ['/processing', '/repo'];
+        const teamspacePaths = ['/teamspace', '/hub'];
+        const filespacePaths = ['/filespace', '/domainfile'];
+        const talkspacePaths = ['/talkspace', '/discussion'];
+
+        if (homePaths.some(path => h.request.path.includes(path))) {
+            h.UiContext.spacename = 'homepage';
+        }
+        if (workspacePaths.some(path => h.request.path.includes(path))) {
+            h.UiContext.spacename = 'workspace';
+        }
+        if (productionPaths.some(path => h.request.path.includes(path))) {
+            h.UiContext.spacename = 'production';
+        }
+        if (processingPaths.some(path => h.request.path.includes(path))) {
+            h.UiContext.spacename = 'processing';
+        }
+        if (teamspacePaths.some(path => h.request.path.includes(path))) {
+            h.UiContext.spacename = 'teamspace';
+        }
+        if (filespacePaths.some(path => h.request.path.includes(path))) {
+            h.UiContext.spacename = 'filespace';
+        }
+        if (talkspacePaths.some(path => h.request.path.includes(path))) {
+            h.UiContext.spacename = 'talkspace';
+        }
+
+    });
 
 }
