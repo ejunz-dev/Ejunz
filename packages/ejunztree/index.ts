@@ -1199,11 +1199,6 @@ export async function apply(ctx: Context) {
     });
 
 
-    ctx.on('handler/after', async (h) => {
-        if (h.request.path === '/workspace') {
-            h.UiContext.spacename = 'workspace';
-        }
-    });
     
     
     const urlChecker = (h) => {
