@@ -52,7 +52,6 @@
       </li>
     {% else %}
 
-
     {% if model.system.get('ui-default.domainNavigation') %}
       <li class="nav__list-item" data-dropdown-pos="bottom right" data-dropdown-custom-class="nav__dropdown" data-dropdown-target="#menu-nav-domain" data-dropdown-disabledconstrainToWindow data-dropdown-trigger-desktop-only>
         <span class="nav__item"><span class="icon"><img class="small user-profile-avatar v-center" loading="lazy" src="{{ avatarUrl(UiContext.domain.avatar|default('')) }}" width="20" height="20"></span> {{ UiContext.domain.name }} <span class="icon icon-expand_more nojs--hide"></span></span>
@@ -86,23 +85,9 @@
         </ol>
       </li>
     {% endif %}
-        <li class="nav__list-item" data-dropdown-pos="bottom right" data-dropdown-custom-class="nav__dropdown" data-dropdown-target="#menu-nav-dropdown" data-dropdown-disabledconstrainToWindow data-dropdown-trigger-desktop-only>
-      <a href="javascript:;" class="nav__item">
-      {{ _('Manage') }} <span class="icon icon-expand_more"></span> 
-      </a>
-      <ol class="dropdown-target menu" id="menu-nav-dropdown">
-        {%- for item in ui.getNodes('NavDropdown') -%}
-          {% if item.checker(handler) %}
-            <li class="menu__item">
-              <a href="{{ url(item.name, item.args) }}" class="menu__link">
-                {{ _(item.displayName or item.name) }}
-              </a>
-            </li>
-          {% endif %}
-        {%- endfor -%}
-      </ol>
-    </li>
-         <li class="nav__list-item" data-dropdown-pos="bottom right" data-dropdown-custom-class="nav__dropdown" data-dropdown-target="#menu-nav-user" data-dropdown-disabledconstrainToWindow data-dropdown-trigger-desktop-only>
+
+
+      <li class="nav__list-item" data-dropdown-pos="bottom right" data-dropdown-custom-class="nav__dropdown" data-dropdown-target="#menu-nav-user" data-dropdown-disabledconstrainToWindow data-dropdown-trigger-desktop-only>
         <a href="{{ url('user_detail', uid=handler.user._id) }}" class="nav__item">
          <img src="{{ avatarUrl(handler.user.avatar, 20) }}" width="20" height="20" class="small user-profile-avatar v-center">
          {{ handler.user.uname }} 
@@ -179,6 +164,44 @@
           </li>
         </ol>
       </li>
+    {% endif %}
+
+    {% if handler.user.hasPriv(PRIV.PRIV_MOD_BADGE) %}
+            <li class="nav__list-item" data-dropdown-pos="bottom right" data-dropdown-custom-class="nav__dropdown" data-dropdown-target="#menu-nav-dropdown" data-dropdown-disabledconstrainToWindow data-dropdown-trigger-desktop-only>
+      <a href="javascript:;" class="nav__item">
+     <span class="profile-header__contact-item user-profile-badge badge--su">SU</span>
+       <span class="icon icon-expand_more"></span> 
+      </a>
+      <ol class="dropdown-target menu" id="menu-nav-dropdown">
+        {%- for item in ui.getNodes('NavDropdown') -%}
+          {% if item.checker(handler) %}
+            <li class="menu__item">
+              <a href="{{ url(item.name, item.args) }}" class="menu__link">
+                {{ _(item.displayName or item.name) }}
+              </a>
+            </li>
+          {% endif %}
+        {%- endfor -%}
+      </ol>
+    </li>
+    {% elif handler.user.hasPerm(perm.PERM_MOD_BADGE) %}
+    <li class="nav__list-item" data-dropdown-pos="bottom right" data-dropdown-custom-class="nav__dropdown" data-dropdown-target="#menu-nav-dropdown" data-dropdown-disabledconstrainToWindow data-dropdown-trigger-desktop-only>
+      <a href="javascript:;" class="nav__item">
+     <span class="profile-header__contact-item user-profile-badge badge--mod">MOD</span>
+       <span class="icon icon-expand_more"></span> 
+      </a>
+      <ol class="dropdown-target menu" id="menu-nav-dropdown">
+        {%- for item in ui.getNodes('NavDropdown') -%}
+          {% if item.checker(handler) %}
+            <li class="menu__item">
+              <a href="{{ url(item.name, item.args) }}" class="menu__link">
+                {{ _(item.displayName or item.name) }}
+              </a>
+            </li>
+          {% endif %}
+        {%- endfor -%}
+      </ol>
+    </li>
     {% endif %}
     </ol>
   </div></div>
