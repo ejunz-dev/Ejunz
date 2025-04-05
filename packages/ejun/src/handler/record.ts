@@ -444,4 +444,10 @@ export async function apply(ctx) {
     ctx.Route('record_detail', '/record/:rid', RecordDetailHandler);
     ctx.Connection('record_conn', '/record-conn', RecordMainConnectionHandler);
     ctx.Connection('record_detail_conn', '/record-detail-conn', RecordDetailConnectionHandler);
+
+    ctx.on('handler/after/Workspace', async (h) => {
+        h.response.body.overrideNav.push(
+            { name: 'record_main', args: {}, checker: () => true },
+        );
+    });
 }

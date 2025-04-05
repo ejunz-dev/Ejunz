@@ -906,4 +906,10 @@ export async function apply(ctx) {
     ctx.Route('hub_fs_download', '/hub/:did/main_node/edit/:filename', HubMainFSDownloadHandler);
     ctx.Route('hub_node_sub_edit', '/hub/:did/:drid/sub_node/edit', HubD3SubEditHandler);
     ctx.Route('hub_sub_download', '/hub/:did/:drid/:drrid/sub_node/edit/:filename', HubSubFSDownloadHandler);
+
+    ctx.on('handler/after/Teamspace', async (h) => {
+        h.response.body.overrideNav.push(
+            { name: 'hub_main', args: {}, checker: () => true },
+        );
+    });
 }
