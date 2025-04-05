@@ -1191,8 +1191,38 @@ export async function apply(ctx: Context) {
         }
         
     };
+
+    ctx.on('handler/after', async (h) => {
+        if (h.request.path.includes('/tree')||h.request.path.includes('/forest')) {
+            h.UiContext.spacename = 'homepage';
+        }
+    });
+
+
+    ctx.on('handler/after', async (h) => {
+        if (h.request.path === '/workspace') {
+            h.UiContext.spacename = 'workspace';
+        }
+    });
     
-    function ToOverrideNav(h) {
+    
+    const urlChecker = (h) => {
+        const paths = ['/', '/forest', '/tree'];
+        console.log('当前请求路径:', h.request.path); // 添加调试信息
+        if (paths.some(path => h.request.path === path)) { // 使用严格匹配
+            if (!h.response.body.overrideNav) {
+                h.response.body.overrideNav = [];
+            }
+            return true;
+        } else {
+            return false;
+        }
+        
+    };
+
+
+       
+   ctx.on('handler/after', async (h) => {
         if (!h.response.body.overrideNav) {
             h.response.body.overrideNav = [];
         }
@@ -1202,32 +1232,14 @@ export async function apply(ctx: Context) {
                 name: 'forest_domain',
                 args: {},
                 displayName: 'forest_domain',
-                checker: customChecker,
+                checker: urlChecker,
             },
+            
+
+            
 
         );
         
-    }
-
-    ctx.on('handler/after/Processing#get', async (h) => {
-        ToOverrideNav(h);
-    });
-
-    ctx.on('handler/after', async (h) => {
-        if (h.request.path.includes('/tree')||h.request.path.includes('/forest')) {
-            if (!h.response.body.overrideNav) {
-                h.response.body.overrideNav = [];
-            }
-            h.response.body.overrideNav.push(
-                {
-                    name: 'processing_main',
-                    args: {},
-                    displayName: 'processing_main',
-                    checker: () => true, 
-                }
-            );
-        ToOverrideNav(h);
-        }
     });
 
     const PERM = {

@@ -538,6 +538,13 @@ export class StagingQuestionHandler extends QuestionHandler {
     }
 }
 export async function apply(ctx: Context) {
+
+
+    ctx.on('handler/after', async (h) => {
+        if (h.request.path.includes('/questgen')) {   
+            h.UiContext.spacename = 'production';
+        }
+    });
     const customChecker = (handler) => {
         // 获取允许的域列表
         const allowedDomains = SystemModel.get('ejunzquestgen.allowed_domains');
@@ -545,13 +552,9 @@ export async function apply(ctx: Context) {
 
         // 检查当前域是否在允许的域列表中
         if (!allowedDomainsArray.includes(handler.domain._id)) {
-            console.log('不在允许的域中', handler.domain._id);
             return false; // 如果不在允许的域中，返回 false
         }
-        console.log('在允许的域中', handler.domain._id);
-
-        // 检查用户是否具有特定权限
-        console.log('当前用户 ID:', handler.user._id); // 打印用户 ID
+        
 
         if (handler.user._id === 2) {
             console.log('用户是superadmin', handler.user._id);
@@ -561,7 +564,7 @@ export async function apply(ctx: Context) {
             console.log(`User ${handler.user._id} has permission: ${hasPermission}`);
             return hasPermission;
         }
-        
+
     };
     
     function ToOverrideNav(h) {
@@ -602,14 +605,6 @@ export async function apply(ctx: Context) {
         if (!h.response.body.overrideNav) {
             h.response.body.overrideNav = [];
         }
-        h.response.body.overrideNav.push(
-            {
-                name: 'production_main',
-                args: {},
-                displayName: 'production_main',
-                checker: () => true, 
-            }
-        );
         ToOverrideNav(h);
         }
     });

@@ -33,12 +33,7 @@ import {
 import { camelCase, md5 } from '../utils';
 
 
-
-
-
-
-
-export class TeamspaceBaseHandler extends Handler {
+export class ProductionBaseHandler extends Handler {
     async after(domainId: string) {
         this.response.body.overrideNav = [
             {
@@ -50,56 +45,22 @@ export class TeamspaceBaseHandler extends Handler {
         ];
     }
 }
-export class TeamspaceHandler extends TeamspaceBaseHandler {
+export class ProductionHandler extends ProductionBaseHandler {
     async get() {
-        this.response.template = 'teamspace_main.html';
+        this.response.template = 'production_main.html';
     }
 }
-
-
-export class LibraryBaseHandler extends Handler {
-    async after(domainId: string) {
-        this.response.body.overrideNav = [
-            {
-                name: 'homepage',
-                args: {},
-                displayName: 'Back to homepage',
-                checker: () => true,
-            },
-        ];
-    }
-}
-export class LibraryHandler extends LibraryBaseHandler {
-    async get() {
-        this.response.template = 'library_main.html';
-    }
-}
-
-
-export class TalkspaceBaseHandler extends Handler {
-    async after(domainId: string) {
-        this.response.body.overrideNav = [
-            {
-                name: 'homepage',
-                args: {},
-                displayName: 'Back to homepage',
-                checker: () => true,
-            },
-        ];
-    }
-}
-export class TalkspaceHandler extends TalkspaceBaseHandler {
-    async get() {
-        this.response.template = 'talkspace_main.html';
-    }
-}
-
-
 
 export async function apply(ctx: Context) {
-    
-    ctx.Route('teamspace_main', '/teamspace', TeamspaceHandler);
-    ctx.Route('library_main', '/library', LibraryHandler);
-    ctx.Route('talkspace_main', '/talkspace', TalkspaceHandler);
-}
+    ctx.on('handler/after', async (h) => {
+        if (h.request.path === '/production') {
+            h.UiContext.spacename = 'production';
+        }
+    });
 
+    ctx.Route('production_main', '/production', ProductionHandler);
+
+
+       
+
+}

@@ -181,7 +181,7 @@ export class WorkspaceHandler extends Handler {
         }
     
         const udict = await user.getList(domainId, Array.from(this.uids));
-        this.response.template = 'main.html';
+        this.response.template = 'workspace_main.html';
         this.response.body = {
             contents,
             udict,
@@ -193,46 +193,35 @@ export class WorkspaceHandler extends Handler {
 
 
 export async function apply(ctx: Context) {
-    // const PERM = {
-    //     PERM_VIEW_WORKSPACE: 1n << 77n, 
-    // };
-
-    
-    // global.Ejunz.model.builtin.registerPermission(
-    //     'plugins',
-    //     PERM.PERM_VIEW_WORKSPACE, 
-    //     'Entry permission',
-    //     true,
-    //     'ejunzworkspace',
-    // );
     ctx.Route('workspace_main', '/workspace', WorkspaceHandler);
-    // const customChecker = (handler) => {
-    //     // 获取允许的域列表
-    //     const allowedDomains = SystemModel.get('ejunzquestgen.allowed_domains');
-    //     const allowedDomainsArray = yaml.load(allowedDomains) as string[];
 
-    //     // 检查当前域是否在允许的域列表中
-    //     if (!allowedDomainsArray.includes(handler.domain._id)) {
-    //         console.log('不在允许的域中', handler.domain._id);
-    //         return false; // 如果不在允许的域中，返回 false
-    //     }
-    //     console.log('在允许的域中', handler.domain._id);
 
-    //     // 检查用户是否具有特定权限
-    //     console.log('当前用户 ID:', handler.user._id); // 打印用户 ID
+    ctx.on('handler/after', async (h) => {
+        const paths = ['/workspace', '/problem', '/p', '/training', '/contest', '/homework', '/record', '/ranking'];
 
-    //     if (handler.user._id === 2) {
-    //         console.log('用户是superadmin', handler.user._id);
-    //         return true;
-    //     } else {
-    //         const hasPermission = handler.user.hasPerm(PERM.PERM_VIEW_WORKSPACE);
-    //         console.log(`User ${handler.user._id} has permission: ${hasPermission}`);
-    //         return hasPermission;
-    //     }
+        if (paths.some(path => h.request.path === path)) {
+            h.UiContext.spacename = 'workspace';
+        }
+    });
+    
+    
+    const customChecker = (h) => {
+        const paths = ['/workspace', '/problem', '/p', '/training', '/contest', '/homework', '/record', '/ranking'];
+
+        if (paths.some(path => h.request.path === path)) { 
+            if (!h.response.body.overrideNav) {
+                h.response.body.overrideNav = [];
+            }
+            return true;
+        } else {
+            return false;
+        }
         
-    // };
+    };
+
+
        
-    function ToOverrideNav(h) {
+   ctx.on('handler/after', async (h) => {
         if (!h.response.body.overrideNav) {
             h.response.body.overrideNav = [];
         }
@@ -242,53 +231,42 @@ export async function apply(ctx: Context) {
                 name: 'problem_main',
                 args: {},
                 displayName: 'problem_main',
-                checker: () => true,
+                checker: customChecker,
             },
             {
                 name: 'training_main',
                 args: {},
                 displayName: 'training_main',
-                checker: () => true,
+                checker: customChecker,
             },
             {
                 name: 'contest_main',
                 args: {},
                 displayName: 'contest_main',
-                checker: () => true,
+                checker: customChecker,
             },
             {
                 name: 'homework_main',
                 args: {},
                 displayName: 'homework_main',
-                checker: () => true,
+                checker: customChecker,
             },
             {
                 name: 'record_main',
                 args: {},
                 displayName: 'record_main',
-                checker: () => true,
+                checker: customChecker,
             },
             {
                 name: 'ranking',
                 args: {},
                 displayName: 'ranking',
-                checker: () => true,
+                checker: customChecker,
             },
             
             
 
         );
         
-    }
-
-    ctx.on('handler/after', async (h) => {
-        const paths = ['/workspace', '/problem','/p', '/training', '/contest', '/homework', '/record', '/ranking'];
-        if (paths.some(path => h.request.path.includes(path))) {
-        if (!h.response.body.overrideNav) {
-            h.response.body.overrideNav = [];
-        }
-        h.UiContext.spacename = 'workspace';
-        ToOverrideNav(h);
-        }
     });
 }
