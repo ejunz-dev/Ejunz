@@ -1181,4 +1181,11 @@ export async function apply(ctx: Context) {
             (arg, c) => problem.edit(c.args.domainId, c.pdoc.docId, arg),
         );
     });
+
+    ctx.on('handler/after/Workspace', async (h) => {
+        h.response.body.overrideNav.push(
+            { name: 'problem_main', args: {}, checker: () => true },
+        );
+    });
+
 }

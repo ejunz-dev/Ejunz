@@ -53,24 +53,28 @@ export const ProblemAdd = (name, args, icon = 'add', text = 'Create Problem') =>
 export const RepoAdd = (name, args, icon = 'add', text = 'Create Repository') => {
     inject('RepoAdd', name, { ...args, icon, text });
 };
+inject('NavMainDropdown', 'homepage', { prefix: 'homepage' },PERM.PERM_EDIT_DOMAIN);
+inject('NavMainDropdown', 'workspace_main', { prefix: 'workspace' }, PERM.PERM_EDIT_DOMAIN);
 inject('NavMainDropdown', 'production_main', { prefix: 'productionhub' }, PERM.PERM_EDIT_DOMAIN);
 inject('NavMainDropdown', 'processing_main', { prefix: 'processinghub' }, PERM.PERM_EDIT_DOMAIN);
 inject('NavMainDropdown', 'teamspace_main', { prefix: 'teamspace' }, PERM.PERM_EDIT_DOMAIN);
 inject('NavMainDropdown', 'talkspace_main', { prefix: 'talkspace' }, PERM.PERM_EDIT_DOMAIN);
-inject('NavMainDropdown', 'library_main', { prefix: 'storagehub' }, PERM.PERM_EDIT_DOMAIN);
+inject('NavMainDropdown', 'filespace_main', { prefix: 'storagehub' }, PERM.PERM_EDIT_DOMAIN);
 
-inject('Nav', 'homepage', { prefix: 'homepage' });
-inject('Nav', 'problem_main', { prefix: 'problem' }, PERM.PERM_VIEW_PROBLEM);
-inject('Nav', 'training_main', { prefix: 'training' }, PERM.PERM_VIEW_TRAINING);
-inject('Nav', 'contest_main', { prefix: 'contest' }, PERM.PERM_VIEW_CONTEST);
-inject('Nav', 'homework_main', { prefix: 'homework' }, PERM.PERM_VIEW_HOMEWORK);
-inject('Nav', 'record_main', {
-    prefix: 'record',
-    query: (handler) => (handler.user.hasPriv(PRIV.PRIV_USER_PROFILE)
-        ? ({ uidOrName: handler.user._id })
-        : ({})),
-});
-inject('Nav', 'ranking', { prefix: 'ranking' }, PERM.PERM_VIEW_RANKING);
+// inject('Nav', 'homepage', { prefix: 'homepage' });
+// inject('Nav', 'problem_main', { prefix: 'problem' }, PERM.PERM_VIEW_PROBLEM);
+// inject('Nav', 'training_main', { prefix: 'training' }, PERM.PERM_VIEW_TRAINING);
+// inject('Nav', 'contest_main', { prefix: 'contest' }, PERM.PERM_VIEW_CONTEST);
+// inject('Nav', 'homework_main', { prefix: 'homework' }, PERM.PERM_VIEW_HOMEWORK);
+// inject('Nav', 'record_main', {
+//     prefix: 'record',
+//     query: (handler) => (handler.user.hasPriv(PRIV.PRIV_USER_PROFILE)
+//         ? ({ uidOrName: handler.user._id })
+//         : ({})),
+// });
+// inject('Nav', 'ranking', { prefix: 'ranking' }, PERM.PERM_VIEW_RANKING);
+
+inject('Nav', 'forest_domain', { prefix: 'tree' }, PERM.PERM_EDIT_DOMAIN);
 
 inject('NavDropdown', 'domain_dashboard', { prefix: 'domain' }, PERM.PERM_EDIT_DOMAIN);
 inject('NavDropdown', 'manage_dashboard', { prefix: 'manage' }, PRIV.PRIV_EDIT_SYSTEM);
