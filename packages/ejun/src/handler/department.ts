@@ -307,10 +307,10 @@ export async function apply(ctx: Context) {
     // Workspace
     ctx.on('handler/after', async (h) => {
         const paths = ['/p','/problem', '/contest', '/training','/record', '/training', '/homework'];
-        if (!h.response.body.overrideNav) {
-            h.response.body.overrideNav = [];
-        }//DONT DELETE THIS
         if (paths.includes(h.request.path)) {
+            if (!h.response.body.overrideNav) {
+                h.response.body.overrideNav = [];
+            }//DONT DELETE THIS
             h.response.body.overrideNav.push(
                 {
                     name: 'problem_main',
