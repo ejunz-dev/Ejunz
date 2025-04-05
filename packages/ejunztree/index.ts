@@ -1192,43 +1192,43 @@ export async function apply(ctx: Context) {
         
     };
     
-    function ToOverrideNav(h) {
-        if (!h.response.body.overrideNav) {
-            h.response.body.overrideNav = [];
-        }
+    // function ToOverrideNav(h) {
+    //     if (!h.response.body.overrideNav) {
+    //         h.response.body.overrideNav = [];
+    //     }
 
-        h.response.body.overrideNav.push(
-            {
-                name: 'forest_domain',
-                args: {},
-                displayName: 'forest_domain',
-                checker: customChecker,
-            },
+    //     h.response.body.overrideNav.push(
+    //         {
+    //             name: 'forest_domain',
+    //             args: {},
+    //             displayName: 'forest_domain',
+    //             checker: customChecker,
+    //         },
 
-        );
+    //     );
         
-    }
+    // }
 
-    ctx.on('handler/after/Processing#get', async (h) => {
-        ToOverrideNav(h);
-    });
+    // ctx.on('handler/after/Processing#get', async (h) => {
+    //     ToOverrideNav(h);
+    // });
 
-    ctx.on('handler/after', async (h) => {
-        if (h.request.path.includes('/tree')||h.request.path.includes('/forest')) {
-            if (!h.response.body.overrideNav) {
-                h.response.body.overrideNav = [];
-            }
-            h.response.body.overrideNav.push(
-                {
-                    name: 'processing_main',
-                    args: {},
-                    displayName: 'processing_main',
-                    checker: () => true, 
-                }
-            );
-        ToOverrideNav(h);
-        }
-    });
+    // ctx.on('handler/after', async (h) => {
+    //     if (h.request.path.includes('/tree')||h.request.path.includes('/forest')) {
+    //         if (!h.response.body.overrideNav) {
+    //             h.response.body.overrideNav = [];
+    //         }
+    //         h.response.body.overrideNav.push(
+    //             {
+    //                 name: 'processing_main',
+    //                 args: {},
+    //                 displayName: 'processing_main',
+    //                 checker: () => true, 
+    //             }
+    //         );
+    //     ToOverrideNav(h);
+    //     }
+    // });
 
     const PERM = {
         PERM_VIEW_TREE: 1n << 75n,

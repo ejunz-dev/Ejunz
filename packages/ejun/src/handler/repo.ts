@@ -368,17 +368,13 @@ export async function apply(ctx: Context) {
     ctx.Route('repo_detail', '/repo/:rid', RepoDetailHandler);
     ctx.Route('repo_edit', '/repo/:rid/edit', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
 
-    
-    ctx.i18n.load('en', {
-        repo_domain: 'Repository',
-        repo_detail: 'Repository Detail',
-        repo_edit: 'Edit Repository',
+    ctx.on('handler/after/Processing', async (h) => {
+        h.response.body.overrideNav.push(
+            { name: 'repo_domain', args: {}, checker: () => true },
+        );
     });
-    ctx.i18n.load('zh', {
-        repo_domain: '资料库',
-        repo_detail: '资料详情',
-        repo_edit: '编辑资料',
-    });
+
+
     ctx.inject(['api'], ({ api }) => {
         api.value('Repo', [
             ['docId', 'Int!'],

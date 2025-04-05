@@ -1,3 +1,4 @@
+
 __id: zh
 __langname: 简体中文
 '"{data}" copied to clipboard!': “{data}”已复制到剪贴板！
@@ -344,6 +345,9 @@ Field {0} or {1} validation failed. ({2}): 字段 {0} 或 {1} 验证失败。 ({
 Field {0} or {1} validation failed.: 字段 {0} 或 {1} 验证失败。
 Field {0} validation failed. ({2}): 字段 {0} 验证失败。 ({2})
 Field {0} validation failed.: 字段 {0} 验证失败。
+filespace_main: 文件中心
+filespace: 文件中心
+Filespace: 文件中心
 Filter: 过滤
 Footer: 页脚
 Forgot Password and/or Username: 忘记密码和/或用户名
@@ -391,6 +395,7 @@ Homework: 作业
 Homeworks per page: 每页展示的作业数量
 Host: 主办人
 hour(s): 小时
+hub_main: 地图工具
 If enabled, source code will be emailed to you after the submission is accepted.: 如果启用，在您通过题枝后，源代码会以 Email 的形式发送给您。
 If left blank, the built-in template of the corresponding language will be used.: 若留空，则将使用对应语言的内置代码模板。
 Images: 图片
@@ -444,8 +449,6 @@ LaTeX Expressions: LaTeX 表达式
 Learn More: 了解更多
 Leave blank to use numeric pid.: 留空来使用数字题号。
 Leave Edit Mode: 离开编辑模式
-library_main: 资料库
-library: 资料库
 Limit And Hint: 数据范围与提示
 Limitations: 限制
 Links: 链接
@@ -672,7 +675,12 @@ Reply discussions: 回复讨论
 Reply problem solutions: 回复题解
 reply: 回复
 Reply: 回复
+repo_detail: 指导书详情
+repo_domain: 指导库
+repo_edit: 编辑指导书
 Report: 举报
+repository: 指导书
+Repository: 指导书
 required: 必填
 Reset Password or Find Username: 重置密码或找回用户名
 Reset Password: 重置密码
@@ -758,6 +766,7 @@ Solutions per page: 每页展示的题解数量
 Sorry: 对不起
 Sort by: 排序
 Source type: 来源类型
+Spaces: 空间
 Split View: 分屏预览
 Star Topic: 收藏讨论
 Star: 收藏
@@ -933,6 +942,8 @@ Will be used as the domain icon.: 将被用作系统图标。
 With this feature, you can copy problems that you can view from a domain to some other domain. Their title, content, tags and categories will be copied. However, their test data are not copied directly.: 您可以通过这个功能将某域下您能查看的题枝复制到其它域中，题枝的标题、描述、标签与分类将被复制过来。但是测试数据不会被直接复制。
 With this feature, you can import problems that you can view from a site to here. Their title, content, tags and categories will be imported. However, their test data are not copied directly.: 您可以通过这个功能将其他 OJ 的题枝导入到本站。题枝的标题、题面、标签和分类将会被直接导入，测试数据将会在后台自动导入。
 With this feature, you can import problems that you can view from a site to here. Their title, content, tags and categories will be imported.: 您可以通过这个功能将其他 OJ 的题枝导入到本站。题枝的标题、题面、标签和分类都将会被自动导入。
+workspace_main: 工作空间
+workspace: 工作空间
 Write Your Comment: 发表您的评论
 Write Your Solution: 发表您的题解
 WYSIWYG: 所见即所得
