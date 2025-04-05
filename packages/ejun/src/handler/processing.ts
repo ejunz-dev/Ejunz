@@ -37,14 +37,7 @@ import { camelCase, md5 } from '../utils';
 
 export class ProcessingBaseHandler extends Handler {
     async after(domainId: string) {
-        this.response.body.overrideNav = [
-            {
-                name: 'homepage',
-                args: {},
-                displayName: 'Back to homepage',
-                checker: () => true,
-            },
-        ];
+        this.response.body.overrideNav = [];
     }
 }
 export class ProcessingHandler extends ProcessingBaseHandler {
