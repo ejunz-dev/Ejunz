@@ -286,7 +286,7 @@ export class WorkspaceHandler extends WorkspaceBaseHandler {
         }
     
         const udict = await user.getList(domainId, Array.from(this.uids));
-        this.response.template = 'main.html';
+        this.response.template = 'workspace_main.html';
         this.response.body = {
             contents,
             udict,
@@ -352,11 +352,12 @@ export async function apply(ctx: Context) {
         }
     });
 
+    // For Core
     ctx.on('handler/after', async (h) => {
         const homePaths = ['/','/home'];
         const workspacePaths = ['/workspace', '/problem', '/p', '/training', '/contest', '/homework', '/record', '/ranking'];
         const productionPaths = ['/production', '/questgen'];
-        const processingPaths = ['/processing', '/repo'];
+        const processingPaths = ['/processing', '/docs', '/repo'];
         const teamspacePaths = ['/teamspace', '/hub'];
         const filespacePaths = ['/filespace', '/domainfile'];
         const talkspacePaths = ['/talkspace', '/discussion'];
@@ -372,6 +373,13 @@ export async function apply(ctx: Context) {
         }
         if (processingPaths.some(path => h.request.path.includes(path))) {
             h.UiContext.spacename = 'processing';
+            if (!h.response.body.overrideNav) {
+                h.response.body.overrideNav = [];
+            }
+            h.response.body.overrideNav.push(
+                { name: 'docs_domain', args: {}, checker: () => true },
+                { name: 'repo_domain', args: {}, checker: () => true },
+            );
         }
         if (teamspacePaths.some(path => h.request.path.includes(path))) {
             h.UiContext.spacename = 'teamspace';
