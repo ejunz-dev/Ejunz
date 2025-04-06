@@ -2,7 +2,7 @@ import $ from 'jquery';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n, request, tpl } from 'vj/utils';
 
-export default new NamedPage('homepage', () => {
+export default new NamedPage('workspace','talkspace', () => {
   function getHitokoto($containers) {
     $containers.get().forEach((container) => {
       request.get('https://v1.hitokoto.cn?c=a&c=b&c=c&c=d&c=e&c=f')

@@ -597,22 +597,6 @@ export async function apply(ctx: Context) {
         ToOverrideNav(h);
     });
 
-    ctx.on('handler/after', async (h) => {
-        if (h.request.path.includes('/questgen')) {
-        if (!h.response.body.overrideNav) {
-            h.response.body.overrideNav = [];
-        }
-        h.response.body.overrideNav.push(
-            {
-                name: 'production_main',
-                args: {},
-                displayName: 'production_main',
-                checker: () => true, 
-            }
-        );
-        ToOverrideNav(h);
-        }
-    });
     const PERM = {
         PERM_VIEW_QUESTGEN: 1n << 73n, 
         PERM_EDIT_QUESTGEN: 1n << 74n,
