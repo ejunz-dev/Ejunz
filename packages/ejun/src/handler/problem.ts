@@ -1182,10 +1182,5 @@ export async function apply(ctx: Context) {
         );
     });
 
-    ctx.on('handler/after/Workspace', async (h) => {
-        h.response.body.overrideNav.push(
-            { name: 'problem_main', args: {}, checker: () => true },
-        );
-    });
 
 }

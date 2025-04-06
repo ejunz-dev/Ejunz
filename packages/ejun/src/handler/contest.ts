@@ -716,11 +716,6 @@ export async function apply(ctx: Context) {
     ctx.Route('contest_user', '/contest/:tid/user', ContestUserHandler, PERM.PERM_VIEW_CONTEST);
     ctx.Route('contest_balloon', '/contest/:tid/balloon', ContestBalloonHandler, PERM.PERM_VIEW_CONTEST);
 
-    ctx.on('handler/after/Workspace', async (h) => {
-        h.response.body.overrideNav.push(
-            { name: 'contest_main', args: {}, checker: () => true },
-        );
-    });
     ctx.worker.addHandler('contest', async (doc) => {
         const tdoc = await contest.get(doc.domainId, doc.tid);
         if (!tdoc) return;

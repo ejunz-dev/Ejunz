@@ -310,9 +310,4 @@ export async function apply(ctx) {
     ctx.Route('training_files', '/training/:tid/file', TrainingFilesHandler, PERM.PERM_VIEW_TRAINING);
     ctx.Route('training_file_download', '/training/:tid/file/:filename', TrainingFileDownloadHandler, PERM.PERM_VIEW_TRAINING);
 
-    ctx.on('handler/after/Workspace', async (h) => {
-        h.response.body.overrideNav.push(
-            { name: 'training_main', args: {}, checker: () => true },
-        );
-    });
 }
