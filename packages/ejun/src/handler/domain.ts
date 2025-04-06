@@ -335,11 +335,6 @@ export async function apply(ctx: Context) {
     ctx.Route('domain_join', '/domain/join', DomainJoinHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('domain_search', '/domain/search', DomainSearchHandler, PRIV.PRIV_USER_PROFILE);
 
-    ctx.on('handler/after/Workspace', async (h) => {
-        h.response.body.overrideNav.push(
-            { name: 'ranking', args: {}, checker: () => true },
-        );
-    });
 
     ctx.inject(['api'], ({ api }) => {
         api.value('GroupInfo', [

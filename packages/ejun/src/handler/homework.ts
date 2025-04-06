@@ -314,9 +314,5 @@ export async function apply(ctx) {
     ctx.Route('homework_files', '/homework/:tid/file', HomeworkFilesHandler, PERM.PERM_VIEW_HOMEWORK);
     ctx.Route('homework_file_download', '/homework/:tid/file/:filename', ContestFileDownloadHandler, PERM.PERM_VIEW_HOMEWORK);
 
-    ctx.on('handler/after/Workspace', async (h) => {
-        h.response.body.overrideNav.push(
-            { name: 'homework_main', args: {}, checker: () => true },
-        );
-    });
+
 }
