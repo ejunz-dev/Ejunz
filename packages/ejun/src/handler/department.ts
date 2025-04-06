@@ -1060,7 +1060,7 @@ export async function apply(ctx: Context) {
     ctx.Route('workspace_main', '/workspace', WorkspaceHandler);
 
     // ctx.on('handler/after', async (h) => {
-    //     const workspacePaths = ['/workspace'];
+    //     const workspacePaths = ['/p'];
     //     if (workspacePaths.some(path => h.request.path.includes(path))) {
     //         console.log('h.request.path', h.request.path);
     //         h.UiContext.spacename = 'workspace';
@@ -1082,7 +1082,7 @@ export async function apply(ctx: Context) {
     // For Core
     ctx.on('handler/after', async (h) => {
         const homePaths = ['/','/home'];
-        const workspacePaths = ['/workspace'];
+        const workspacePaths = ['/workspace', '/training', '/contest', '/homework', '/record', '/ranking'];
         const productionPaths = ['/production', '/questgen'];
         const processingPaths = ['/processing', '/docs', '/repo'];
         const teamspacePaths = ['/teamspace', '/hub'];
