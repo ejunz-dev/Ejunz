@@ -304,54 +304,6 @@ export async function apply(ctx: Context) {
     ctx.Route('talkspace_main', '/talkspace', TalkspaceHandler);
     ctx.Route('workspace_main', '/workspace', WorkspaceHandler);
 
-    // Workspace
-    ctx.on('handler/after', async (h) => {
-        const paths = ['/p','/problem', '/contest', '/training','/record', '/training', '/homework'];
-        if (paths.includes(h.request.path)) {
-            if (!h.response.body.overrideNav) {
-                h.response.body.overrideNav = [];
-            }//DONT DELETE THIS
-            h.response.body.overrideNav.push(
-                {
-                    name: 'problem_main',
-                    args: {},
-                    displayName: 'problem_main',
-                    checker: () => true,
-                },
-                {
-                    name: 'training_main',
-                    args: {},
-                    displayName: 'training_main',
-                    checker: () => true,
-                },
-                {
-                    name: 'contest_main',
-                    args: {},
-                    displayName: 'contest_main',
-                    checker: () => true,
-                },
-                {
-                    name: 'homework_main',
-                    args: {},
-                    displayName: 'homework_main',
-                    checker: () => true,
-                },
-                {
-                    name: 'record_main',
-                    args: {},
-                    displayName: 'record_main',
-                    checker: () => true,
-                },
-                {
-                    name: 'ranking',
-                    args: {},
-                    displayName: 'ranking',
-                    checker: () => true,
-                },
-            );
-        }
-    });
-
     // For Core
     ctx.on('handler/after', async (h) => {
         const homePaths = ['/','/home'];
@@ -367,6 +319,17 @@ export async function apply(ctx: Context) {
         }
         if (workspacePaths.some(path => h.request.path.includes(path))) {
             h.UiContext.spacename = 'workspace';
+            if (!h.response.body.overrideNav) {
+                h.response.body.overrideNav = [];
+            }
+            h.response.body.overrideNav.push(
+                { name: 'problem_main', args: {}, checker: () => true },
+                { name: 'training_main', args: {}, checker: () => true },
+                { name: 'contest_main', args: {}, checker: () => true },
+                { name: 'homework_main', args: {}, checker: () => true },
+                { name: 'record_main', args: {}, checker: () => true },
+                { name: 'ranking', args: {}, checker: () => true },
+            );
         }
         if (productionPaths.some(path => h.request.path.includes(path))) {
             h.UiContext.spacename = 'production';
