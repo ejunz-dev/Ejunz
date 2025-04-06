@@ -368,29 +368,6 @@ export async function apply(ctx: Context) {
     ctx.Route('repo_detail', '/repo/:rid', RepoDetailHandler);
     ctx.Route('repo_edit', '/repo/:rid/edit', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
 
-    ctx.on('handler/after/Processing', async (h) => {
-        h.response.body.overrideNav.push(
-            { name: 'repo_domain', args: {}, checker: () => true },
-        );
-    });
-
-    ctx.on('handler/after', async (h) => {
-        if (h.request.path.includes('/repo')) {
-        if (!h.response.body.overrideNav) {
-            h.response.body.overrideNav = [];
-        }
-        h.response.body.overrideNav.push(
-            {
-                name: 'repo_domain',
-                args: {},
-                displayName: 'repo_domain',
-                checker: () => true, 
-            }
-        );
-        }
-    });
-
-
     ctx.inject(['api'], ({ api }) => {
         api.value('Repo', [
             ['docId', 'Int!'],
