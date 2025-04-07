@@ -1234,7 +1234,7 @@ export async function apply(ctx: Context) {
         PERM_VIEW_TREE: 1n << 75n,
     };
 
-    global.Ejunz.model.builtin.registerPermission(
+    global.Ejunz.model.builtin.registerPluginPermission(
         'plugins',
         PERM.PERM_VIEW_TREE, 
         'View tree',

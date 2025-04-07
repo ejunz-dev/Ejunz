@@ -23,6 +23,11 @@
             </li>
           {% endif %}
         {%- endfor -%}
+                  <li class="menu__item">
+            <a href="{{ url('user_activity', uid=handler.user._id) }}" class="menu__link">
+              <span class="icon icon-wrench"></span> {{ _('Manage Spaces') }}
+            </a>
+          </li>
       </ol>
     </li>
       <li class="nav__list-item">

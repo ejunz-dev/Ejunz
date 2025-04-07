@@ -5,7 +5,7 @@ ejunzquestgen:
   desc: api url
   default: http://localhost:3000
 
-allowed_domains:
+plugins_allowed_domains:
   family: system_plugins
   type: yaml
   name: ejunzquestgen
