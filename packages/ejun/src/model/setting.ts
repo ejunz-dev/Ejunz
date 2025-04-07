@@ -37,6 +37,7 @@ export const ACCOUNT_SETTINGS: _Setting[] = [];
 export const DOMAIN_SETTINGS: _Setting[] = [];
 export const DOMAIN_USER_SETTINGS: _Setting[] = [];
 export const DOMAIN_PLUGIN_SETTINGS: _Setting[] = [];
+export const DOMAIN_SPACE_SETTINGS: _Setting[] = [];
 export const SYSTEM_SETTINGS: _Setting[] = [];
 export const SETTINGS: _Setting[] = [];
 export const SETTINGS_BY_KEY: SettingDict = {};
@@ -44,6 +45,7 @@ export const DOMAIN_USER_SETTINGS_BY_KEY: SettingDict = {};
 export const DOMAIN_SETTINGS_BY_KEY: SettingDict = {};
 export const SYSTEM_SETTINGS_BY_KEY: SettingDict = {};
 export const DOMAIN_PLUGIN_SETTINGS_BY_KEY: SettingDict = {};
+export const DOMAIN_SPACE_SETTINGS_BY_KEY: SettingDict = {};
 // eslint-disable-next-line max-len
 export type SettingType = 'text' | 'yaml' | 'number' | 'float' | 'markdown' | 'password' | 'boolean' | 'textarea' | [string, string][] | Record<string, string> | 'json';
 
@@ -147,6 +149,14 @@ export const DomainPluginSetting = (...settings: _Setting[]) => {
     }
 };
 
+export const DomainSpaceSetting = (...settings: _Setting[]) => {
+    for (const setting of settings) {
+        if (DOMAIN_SPACE_SETTINGS.find((s) => s.key === setting.key)) logger.warn(`Duplicate setting key: ${setting.key}`);
+        DOMAIN_SPACE_SETTINGS.push(setting);
+        DOMAIN_SPACE_SETTINGS_BY_KEY[setting.key] = setting;
+    }
+};
+
 export const SystemSetting = (...settings: _Setting[]) => {
     for (const setting of settings) {
         if (SYSTEM_SETTINGS.find((s) => s.key === setting.key)) logger.warn(`Duplicate setting key: ${setting.key}`);
@@ -223,6 +233,9 @@ DomainSetting(
 DomainPluginSetting(
     Setting('setting_domain_on_plugins', 'plugins', ['- example'], 'yaml', 'Allowed plugins'),
 
+);
+DomainSpaceSetting(
+    Setting('setting_domain_on_spaces', 'spaces', ['- example'], 'yaml', 'Allowed spaces'),
 );
 
 DomainUserSetting(
@@ -372,6 +385,8 @@ global.Ejunz.model.setting = {
     DomainSetting,
     DomainUserSetting,
     DomainPluginSetting,
+    DomainSpaceSetting,
+    
     SystemSetting,
     FLAG_HIDDEN,
     FLAG_DISABLED,
@@ -389,5 +404,7 @@ global.Ejunz.model.setting = {
     DOMAIN_USER_SETTINGS_BY_KEY,
     DOMAIN_PLUGIN_SETTINGS,
     DOMAIN_PLUGIN_SETTINGS_BY_KEY,
+    DOMAIN_SPACE_SETTINGS,
+    DOMAIN_SPACE_SETTINGS_BY_KEY,
     langs,
 };

@@ -138,7 +138,7 @@ export async function apply(ctx) {
     ctx.Route('domain_fs_download', '/domainfile/:filename', DomainFSDownloadHandler,PERM.PERM_VIEW_DOMAIN_FILES);
 
 
-    global.Ejunz.model.builtin.registerPermission(
+    global.Ejunz.model.builtin.registerPluginPermission(
         'plugins',
         PERM.PERM_VIEW_DOMAIN_FILES, 
         'View domain files',

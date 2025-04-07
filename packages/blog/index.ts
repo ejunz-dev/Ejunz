@@ -215,13 +215,13 @@ export async function apply(ctx: Context) {
     };
 
     // 动态注册权限
-    global.Ejunz.model.builtin.registerPermission(
+    global.Ejunz.model.builtin.registerPluginPermission(
         'blog', 
         PERM.PERM_VIEW_BLOG, 
         'View blogs'
     );
 
-    global.Ejunz.model.builtin.registerPermission(
+    global.Ejunz.model.builtin.registerPluginPermission(
         'blog', 
         PERM.PERM_VIEW_BLOG_DETAILED, 
         'View detailed blogs'
