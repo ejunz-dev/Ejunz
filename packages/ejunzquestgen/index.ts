@@ -205,7 +205,7 @@ function loadApiConfig() {
 
 class QuestionHandler extends Handler {
     async get() {
-        const allowedDomains = this.ctx.setting.get('ejunzquestgen.allowed_domains');
+        const allowedDomains = this.ctx.setting.get('ejunzquestgen.plugins_allowed_domains');
         const info = yaml.load(allowedDomains) as string[];
         const currentDomainId = this.context.domainId;
 
@@ -540,7 +540,7 @@ export class StagingQuestionHandler extends QuestionHandler {
 export async function apply(ctx: Context) {
     const customChecker = (handler) => {
         // 获取允许的域列表
-        const allowedDomains = SystemModel.get('ejunzquestgen.allowed_domains');
+        const allowedDomains = SystemModel.get('ejunzquestgen.plugins_allowed_domains');
         const allowedDomainsArray = yaml.load(allowedDomains) as string[];
 
         // 检查当前域是否在允许的域列表中
@@ -604,21 +604,21 @@ export async function apply(ctx: Context) {
     };
 
     
-    global.Ejunz.model.builtin.registerPermission(
+    global.Ejunz.model.builtin.registerPluginPermission(
         'plugins',
         PERM.PERM_VIEW_QUESTGEN, 
         'Entry permission',
         true,
         'ejunzquestgen',
     );
-    global.Ejunz.model.builtin.registerPermission(
+    global.Ejunz.model.builtin.registerPluginPermission(
         'plugins',
         PERM.PERM_EDIT_QUESTGEN, 
         'Config permission',
         true,
         'ejunzquestgen',
     );
-    global.Ejunz.model.builtin.registerPermission(
+    global.Ejunz.model.builtin.registerPluginPermission(
         'plugins',
         PERM.PERM_VIEW_QUESTGEN_MCQ, 
         'use mcq',

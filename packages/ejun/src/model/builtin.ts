@@ -483,7 +483,7 @@ export const CATEGORIES = {
         '莫队',
     ],
 };
-export function registerPermission(family: string, key: bigint, desc: string, plugin?: boolean, name?: string) {
+export function registerPluginPermission(family: string, key: bigint, desc: string, plugin?: boolean, space?: boolean, name?: string) {
     if (plugin) {
         family = 'plugins';
     }
@@ -507,14 +507,37 @@ export function registerPermission(family: string, key: bigint, desc: string, pl
     logger.info(`Registered permission: family="${family}", key="${key.toString()}", desc="${desc}", name="${name}"`);
 }
 
+export function registerSpacePermission(family: string, key: bigint, desc: string, space?: boolean, name?: string) {
+    if (space) {
+        family = 'spaces';
+    }
+    const exists = PERMS.some((perm) => perm.key === key);
+    if (exists) {
+        const existingPerm = PERMS.find((perm) => perm.key === key);
+        logger.warn(
+            `Permission key ${key.toString()} already exists in family "${existingPerm?.family}" with description "${existingPerm?.desc}". Skipping registration.`
+        );
+        return;
+    }
 
+    if (!PERMS_BY_FAMILY[family]) {
+        PERMS_BY_FAMILY[family] = [];
+    }
+
+    const permission = { family, key, desc, name };
+
+    PERMS.push(permission);
+    PERMS_BY_FAMILY[family].push(permission);
+    logger.info(`Registered permission: family="${family}", key="${key.toString()}", desc="${desc}", name="${name}"`);
+}
 
 
 // 初始化全局对象
 global.Ejunz.model.builtin = {
     Permission,
     getScoreColor,
-    registerPermission,
+    registerPluginPermission,
+    registerSpacePermission,
     PERM,
     PERMS,
     PERMS_BY_FAMILY,

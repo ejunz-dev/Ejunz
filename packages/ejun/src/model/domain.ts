@@ -181,6 +181,8 @@ class DomainModel {
         }
         deleteUserCache(domainId);
         bus.broadcast('domain/delete-cache', domainId.toLowerCase());
+        console.log('reset roles');
+        console.log('current.roles',current.roles);
         return await coll.updateOne({ _id: domainId }, { $set: { roles: current.roles } });
     }
 
