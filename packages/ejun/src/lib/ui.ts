@@ -59,7 +59,7 @@ inject('NavMainDropdown', 'production_main', { prefix: 'productionhub' });
 inject('NavMainDropdown', 'processing_main', { prefix: 'processinghub' });
 inject('NavMainDropdown', 'teamspace_main', { prefix: 'teamspace' });
 inject('NavMainDropdown', 'talkspace_main', { prefix: 'talkspace' });
-inject('NavMainDropdown', 'filespace_main', { prefix: 'storagehub' });
+
 
 // inject('Nav', 'homepage', { prefix: 'homepage' });
 // inject('Nav', 'problem_main', { prefix: 'problem' }, PERM.PERM_VIEW_PROBLEM);
