@@ -746,7 +746,7 @@ export async function apply(ctx: Context) {
         const productionPaths = ['/production', '/questgen'];
         const processingPaths = ['/processing', '/docs', '/repo'];
         const teamspacePaths = ['/teamspace', '/hub'];
-        const filespacePaths = ['/filespace', '/domainfile'];
+
         const talkspacePaths = ['/talkspace', '/discussion'];
 
         if (homePaths.some(path => h.request.path.includes(path))) {
@@ -782,9 +782,6 @@ export async function apply(ctx: Context) {
         }
         if (teamspacePaths.some(path => h.request.path.includes(path))) {
             h.UiContext.spacename = 'teamspace';
-        }
-        if (filespacePaths.some(path => h.request.path.includes(path))) {
-            h.UiContext.spacename = 'filespace';
         }
         if (talkspacePaths.some(path => h.request.path.includes(path))) {
             h.UiContext.spacename = 'talkspace';
