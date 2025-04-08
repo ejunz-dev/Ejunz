@@ -544,180 +544,12 @@ export class TalkspaceHandler extends TalkspaceBaseHandler {
     }
 }    
 
-export class WorkspaceBaseHandler extends Handler {
-    async after(domainId: string) {
-        this.response.body.overrideNav = [
-            {
-                name: 'homepage',
-                args: {},
-                displayName: 'Back to homepage',
-                checker: () => true,
-            },
-        ];
-    }
-}
-export class WorkspaceHandler extends WorkspaceBaseHandler {
-    uids = new Set<number>();
-
-    collectUser(uids: number[]) {
-        for (const uid of uids) this.uids.add(uid);
-    }
-
-    async getHomework(domainId: string, limit = 5) {
-        if (!this.user.hasPerm(PERM.PERM_VIEW_HOMEWORK)) return [[], {}];
-        const groups = (await user.listGroup(domainId, this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK) ? undefined : this.user._id))
-            .map((i) => i.name);
-        const tdocs = await contest.getMulti(domainId, {
-            rule: 'homework',
-            ...this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)
-                ? {}
-                : {
-                    $or: [
-                        { maintainer: this.user._id },
-                        { owner: this.user._id },
-                        { assign: { $in: groups } },
-                        { assign: { $size: 0 } },
-                    ],
-                },
-        }).sort({
-            penaltySince: -1, endAt: -1, beginAt: -1, _id: -1,
-        }).limit(limit).toArray();
-        const tsdict = await contest.getListStatus(
-            domainId, this.user._id, tdocs.map((tdoc) => tdoc.docId),
-        );
-        return [tdocs, tsdict];
-    }
-
-    async getContest(domainId: string, limit = 10) {
-        if (!this.user.hasPerm(PERM.PERM_VIEW_CONTEST)) return [[], {}];
-        const rules = Object.keys(contest.RULES).filter((i) => !contest.RULES[i].hidden);
-        const groups = (await user.listGroup(domainId, this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST) ? undefined : this.user._id))
-            .map((i) => i.name);
-        const q = {
-            rule: { $in: rules },
-            ...this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST)
-                ? {}
-                : {
-                    $or: [
-                        { maintainer: this.user._id },
-                        { owner: this.user._id },
-                        { assign: { $in: groups } },
-                        { assign: { $size: 0 } },
-                    ],
-                },
-        };
-        const tdocs = await contest.getMulti(domainId, q).sort({ endAt: -1, beginAt: -1, _id: -1 })
-            .limit(limit).toArray();
-        const tsdict = await contest.getListStatus(
-            domainId, this.user._id, tdocs.map((tdoc) => tdoc.docId),
-        );
-        return [tdocs, tsdict];
-    }
-
-    async getTraining(domainId: string, limit = 10) {
-        if (!this.user.hasPerm(PERM.PERM_VIEW_TRAINING)) return [[], {}];
-        const tdocs = await training.getMulti(domainId)
-            .sort({ pin: -1, _id: 1 }).limit(limit).toArray();
-        const tsdict = await training.getListStatus(
-            domainId, this.user._id, tdocs.map((tdoc) => tdoc.docId),
-        );
-        return [tdocs, tsdict];
-    }
-
-    async getDiscussion(domainId: string, limit = 20) {
-        if (!this.user.hasPerm(PERM.PERM_VIEW_DISCUSSION)) return [[], {}];
-        const ddocs = await discussion.getMulti(domainId).limit(limit).toArray();
-        const vndict = await discussion.getListVnodes(domainId, ddocs, this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN), this.user.group);
-        this.collectUser(ddocs.map((ddoc) => ddoc.owner));
-        return [ddocs, vndict];
-    }
-
-    async getRanking(domainId: string, limit = 50) {
-        if (!this.user.hasPerm(PERM.PERM_VIEW_RANKING)) return [];
-        const dudocs = await domain.getMultiUserInDomain(domainId, { uid: { $gt: 1 }, rp: { $gt: 0 } })
-            .sort({ rp: -1 }).project({ uid: 1 }).limit(limit).toArray();
-        const uids = dudocs.map((dudoc) => dudoc.uid);
-        this.collectUser(uids);
-        return uids;
-    }
-
-    async getStarredProblems(domainId: string, limit = 50) {
-        if (!this.user.hasPerm(PERM.PERM_VIEW_PROBLEM)) return [[], {}];
-        const psdocs = await ProblemModel.getMultiStatus(domainId, { uid: this.user._id, star: true })
-            .sort('_id', 1).limit(limit).toArray();
-        const psdict = {};
-        for (const psdoc of psdocs) psdict[psdoc.docId] = psdoc;
-        const pdict = await ProblemModel.getList(
-            domainId, psdocs.map((pdoc) => pdoc.docId),
-            this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN) || this.user._id, false,
-        );
-        const pdocs = Object.keys(pdict).filter((i) => +i).map((i) => pdict[i]);
-        return [pdocs, psdict];
-    }
-
-    async getRecentProblems(domainId: string, limit = 10) {
-        if (!this.user.hasPerm(PERM.PERM_VIEW_PROBLEM)) return [[], {}];
-        const pdocs = await ProblemModel.getMulti(domainId, { hidden: false })
-            .sort({ _id: -1 }).limit(limit).toArray();
-        const psdict = this.user.hasPriv(PRIV.PRIV_USER_PROFILE)
-            ? await ProblemModel.getListStatus(domainId, this.user._id, pdocs.map((pdoc) => pdoc.docId))
-            : {};
-        return [pdocs, psdict];
-    }
-
-    getDiscussionNodes(domainId: string) {
-        return discussion.getNodes(domainId);
-    }
-
-    async get({ domainId }) {
-        const workspaceConfig = this.ctx.setting.get('ejun.workspace');
-        console.log('workspaceConfig', workspaceConfig);
-        const info = yaml.load(workspaceConfig) as any;
-        const contents = [];
-    
-        for (const column of info) {
-            const tasks = [];
-    
-            for (const name in column) {
-                if (name === 'width') continue;
-                const func = `get${camelCase(name).replace(/^[a-z]/, (i) => i.toUpperCase())}`;
-
-                if (!this[func]) {
-                    tasks.push([name, column[name]]);
-                } else {
-                    tasks.push(
-                        this[func](domainId, column[name])
-                            .then((res) => [name, res])
-                            .catch((err) => ['error', err.message]),
-                    );
-                }
-            }
-    
-            // 等待所有任务完成
-            const sections = await Promise.all(tasks);
-            
-            contents.push({
-                width: column.width,
-                sections,
-            });
-        }
-    
-        const udict = await user.getList(domainId, Array.from(this.uids));
-        this.response.template = 'workspace_main.html';
-        this.response.body = {
-            contents,
-            udict,
-            domain: this.domain,
-        };
-        
-    }
-}    
 
 export async function apply(ctx: Context) {
     ctx.Route('production_main', '/production', ProductionHandler);
     ctx.Route('teamspace_main', '/teamspace', TeamspaceHandler);
     ctx.Route('talkspace_main', '/talkspace', TalkspaceHandler);
-    ctx.Route('workspace_main', '/workspace', WorkspaceHandler);
+    
 
     // ctx.on('handler/after', async (h) => {
     //     const workspacePaths = ['/p'];
@@ -742,7 +574,6 @@ export async function apply(ctx: Context) {
     // For Core
     ctx.on('handler/after', async (h) => {
         const homePaths = ['/','/home'];
-        const workspacePaths = ['/workspace', '/training', '/contest', '/homework', '/record', '/ranking'];
         const productionPaths = ['/production', '/questgen'];
         const teamspacePaths = ['/teamspace', '/hub'];
 
@@ -751,21 +582,7 @@ export async function apply(ctx: Context) {
         if (homePaths.some(path => h.request.path.includes(path))) {
             h.UiContext.spacename = 'homepage';
         }
-        if (workspacePaths.some(path => h.request.path.includes(path))) {
-            h.UiContext.spacename = 'workspace';
-            if (!h.response.body.overrideNav) {
-                h.response.body.overrideNav = [];
-            }
-            h.response.body.overrideNav.push(
-                { name: 'problem_main', args: {}, checker: () => true },
-                { name: 'training_main', args: {}, checker: () => true },
-                { name: 'contest_main', args: {}, checker: () => true },
-                { name: 'homework_main', args: {}, checker: () => true },
-                { name: 'record_main', args: {}, checker: () => true },
-                { name: 'ranking', args: {}, checker: () => true },
-            );
-        }
-
+        
         if (productionPaths.some(path => h.request.path.includes(path))) {
             h.UiContext.spacename = 'production';
         }
