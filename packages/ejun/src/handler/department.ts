@@ -744,7 +744,6 @@ export async function apply(ctx: Context) {
         const homePaths = ['/','/home'];
         const workspacePaths = ['/workspace', '/training', '/contest', '/homework', '/record', '/ranking'];
         const productionPaths = ['/production', '/questgen'];
-        const processingPaths = ['/processing', '/docs', '/repo'];
         const teamspacePaths = ['/teamspace', '/hub'];
 
         const talkspacePaths = ['/talkspace', '/discussion'];
@@ -769,16 +768,6 @@ export async function apply(ctx: Context) {
 
         if (productionPaths.some(path => h.request.path.includes(path))) {
             h.UiContext.spacename = 'production';
-        }
-        if (processingPaths.some(path => h.request.path.includes(path))) {
-            h.UiContext.spacename = 'processing';
-            if (!h.response.body.overrideNav) {
-                h.response.body.overrideNav = [];
-            }
-            h.response.body.overrideNav.push(
-                { name: 'docs_domain', args: {}, checker: () => true },
-                { name: 'repo_domain', args: {}, checker: () => true },
-            );
         }
         if (teamspacePaths.some(path => h.request.path.includes(path))) {
             h.UiContext.spacename = 'teamspace';
