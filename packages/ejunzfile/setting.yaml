@@ -1,0 +1,15 @@
+plugins_allowed_domains:
+  family: system_plugins
+  type: yaml
+  name: ejunzfile
+  desc: Allowed domains
+  default: [system]
+
+plugin_context_config:
+  family: system_plugins
+  type: yaml
+  name: ejunzfile
+  desc: Share config
+  default:
+    - route: /domainfile
+      entry: domain_files
