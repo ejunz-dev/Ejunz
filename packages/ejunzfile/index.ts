@@ -159,42 +159,42 @@ export async function apply(ctx) {
         
     };
     
-    function ToOverrideNav(h) {
-        if (!h.response.body.overrideNav) {
-            h.response.body.overrideNav = [];
-        }
+    // function ToOverrideNav(h) {
+    //     if (!h.response.body.overrideNav) {
+    //         h.response.body.overrideNav = [];
+    //     }
 
-        h.response.body.overrideNav.push(
-            {
-                name: 'domain_files',
-                args: {},
-                displayName: 'domain_files',
-                checker: customChecker,
-            },
+    //     h.response.body.overrideNav.push(
+    //         {
+    //             name: 'domain_files',
+    //             args: {},
+    //             displayName: 'domain_files',
+    //             checker: customChecker,
+    //         },
 
-        );
+    //     );
         
-    }
+    // }
 
-    ctx.on('handler/after/Filespace#get', async (h) => {
-        ToOverrideNav(h);
-    });
+    // ctx.on('handler/after/Filespace#get', async (h) => {
+    //     ToOverrideNav(h);
+    // });
 
-    ctx.on('handler/after', async (h) => {
-        if (h.request.path.includes('/domainfile')) {
-            if (!h.response.body.overrideNav) {
-                h.response.body.overrideNav = [];
-            }
-            h.response.body.overrideNav.push(
-                {
-                    name: 'domain_files',
-                    args: {},
-                    displayName: 'domain_files',
-                    checker: customChecker,
-                }
-            );
-        }
-    });
+    // ctx.on('handler/after', async (h) => {
+    //     if (h.request.path.includes('/domainfile')) {
+    //         if (!h.response.body.overrideNav) {
+    //             h.response.body.overrideNav = [];
+    //         }
+    //         h.response.body.overrideNav.push(
+    //             {
+    //                 name: 'domain_files',
+    //                 args: {},
+    //                 displayName: 'domain_files',
+    //                 checker: customChecker,
+    //             }
+    //         );
+    //     }
+    // });
 
 
     ctx.i18n.load('zh', {
