@@ -225,12 +225,37 @@ export async function apply(ctx: Context) {
     const CheckSpaceStore = (h) => {
         const availableSpaces = new Set(yaml.load(h.domain.spaces) as string[]);
         if (availableSpaces.has('homepage')) {
+            console.log('Homepage Domain pass');
             return true;
         }
+        console.log('Homepage Domain fail');
         return false;
     }
 
-   ctx.injectUI('NavMainDropdown', 'homepage', { prefix: 'homepage' }, CheckSpaceStore);
+    const CheckSystemConfig = (h) => {
+        const systemspaces = SettingModel.SYSTEM_SETTINGS.filter(s => s.family === 'system_spaces');
+        for (const s of systemspaces) {
+            if (s.name == 'homepage') {
+                const beforeSystemSpace = SystemModel.get(s.key);
+                const parsedBeforeSystemSpace = yaml.load(beforeSystemSpace) as any[];
+                console.log('Homepage SystemConfig', parsedBeforeSystemSpace);
+                if (parsedBeforeSystemSpace.includes(h.domain._id)) {
+                    console.log('Homepage SystemConfig pass');
+                    return true;
+                }else{
+                    console.log('Homepage SystemConfig fail');
+                    return false;
+                }
+            }
+        }
+       
+    }
+
+    const CheckAll = (h) => {
+        return CheckSpaceStore(h) && CheckSystemConfig(h);
+    }
+
+   ctx.injectUI('NavMainDropdown', 'homepage', { prefix: 'homepage' }, CheckAll);
 
 
     ctx.Route('homepage', '/', HomeHandler);
