@@ -8,6 +8,7 @@ import { getAddons, writeAddons } from '../options';
 
 const logger = new Logger('addon');
 const addonDir = path.resolve(os.homedir(), '.ejunz', 'addons');
+const pluginDir = path.resolve(os.homedir(), 'Dev/ejunz/plugins/');
 
 export function register(cli: CAC) {
     cli.command('addon [operation] [name]').action((operation, name) => {
@@ -17,7 +18,7 @@ export function register(cli: CAC) {
         }
         let addons = getAddons();
         if (operation === 'create') {
-            const dir = `${addonDir}/${name || 'addon'}`;
+            const dir = `${pluginDir}/${name || 'addon'}`;
             fs.mkdirSync(dir, { recursive: true });
             child.execSync('yarn init -y', { cwd: dir });
             fs.mkdirSync(`${dir}/templates`);
