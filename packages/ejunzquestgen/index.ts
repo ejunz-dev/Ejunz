@@ -564,38 +564,7 @@ export async function apply(ctx: Context) {
         
     };
     
-    function ToOverrideNav(h) {
-        if (!h.response.body.overrideNav) {
-            h.response.body.overrideNav = [];
-        }
 
-        h.response.body.overrideNav.push(
-            {
-                name: 'generator_detail',
-                args: {},
-                displayName: 'generator_detail',
-                checker: customChecker,
-            },
-            {
-                name: 'generator_main',
-                args: {},
-                displayName: 'generator_main',
-                checker: customChecker,
-            },
-            {
-                name: 'staging_questions',
-                args: {},
-                displayName: 'staging_questions',
-                checker: customChecker,
-            },
-
-        );
-        
-    }
-
-    ctx.on('handler/after/Production#get', async (h) => {
-        ToOverrideNav(h);
-    });
 
     const PERM = {
         PERM_VIEW_QUESTGEN: 1n << 73n, 
