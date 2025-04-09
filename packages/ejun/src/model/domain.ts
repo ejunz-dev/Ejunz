@@ -104,7 +104,6 @@ class DomainModel {
             await bus.parallel('domain/update', domainId, $set, result.value);
             bus.broadcast('domain/delete-cache', domainId);
         }
-        console.log('result.value',result.value);
         return result.value;
     }
 
