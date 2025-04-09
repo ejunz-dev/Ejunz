@@ -546,7 +546,6 @@ export class TalkspaceHandler extends TalkspaceBaseHandler {
 
 
 export async function apply(ctx: Context) {
-    ctx.Route('production_main', '/production', ProductionHandler);
     ctx.Route('teamspace_main', '/teamspace', TeamspaceHandler);
     ctx.Route('talkspace_main', '/talkspace', TalkspaceHandler);
     
@@ -573,19 +572,11 @@ export async function apply(ctx: Context) {
 
     // For Core
     ctx.on('handler/after', async (h) => {
-        const homePaths = ['/','/home'];
-        const productionPaths = ['/production', '/questgen'];
+
         const teamspacePaths = ['/teamspace', '/hub'];
 
         const talkspacePaths = ['/talkspace', '/discussion'];
 
-        if (homePaths.some(path => h.request.path.includes(path))) {
-            h.UiContext.spacename = 'homepage';
-        }
-        
-        if (productionPaths.some(path => h.request.path.includes(path))) {
-            h.UiContext.spacename = 'production';
-        }
         if (teamspacePaths.some(path => h.request.path.includes(path))) {
             h.UiContext.spacename = 'teamspace';
         }
