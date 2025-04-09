@@ -53,12 +53,12 @@ export const ProblemAdd = (name, args, icon = 'add', text = 'Create Problem') =>
 export const RepoAdd = (name, args, icon = 'add', text = 'Create Repository') => {
     inject('RepoAdd', name, { ...args, icon, text });
 };
-inject('NavMainDropdown', 'homepage', { prefix: 'homepage' });
-inject('NavMainDropdown', 'workspace_main', { prefix: 'workspace' });
-inject('NavMainDropdown', 'production_main', { prefix: 'productionhub' });
-inject('NavMainDropdown', 'processing_main', { prefix: 'processinghub' });
-inject('NavMainDropdown', 'teamspace_main', { prefix: 'teamspace' });
-inject('NavMainDropdown', 'talkspace_main', { prefix: 'talkspace' });
+// inject('NavMainDropdown', 'homepage', { prefix: 'homepage' });
+// inject('NavMainDropdown', 'workspace_main', { prefix: 'workspace' });
+// inject('NavMainDropdown', 'production_main', { prefix: 'productionhub' });
+// inject('NavMainDropdown', 'processing_main', { prefix: 'processinghub' });
+// inject('NavMainDropdown', 'teamspace_main', { prefix: 'teamspace' });
+// inject('NavMainDropdown', 'talkspace_main');
 
 
 // inject('Nav', 'homepage', { prefix: 'homepage' });
