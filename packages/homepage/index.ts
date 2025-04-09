@@ -222,6 +222,16 @@ export async function apply(ctx: Context) {
         ),
     );
 
+    const CheckSpaceStore = (h) => {
+        const availableSpaces = new Set(yaml.load(h.domain.spaces) as string[]);
+        if (availableSpaces.has('homepage')) {
+            return true;
+        }
+        return false;
+    }
+
+   ctx.injectUI('NavMainDropdown', 'homepage', { prefix: 'homepage' }, CheckSpaceStore);
+
 
     ctx.Route('homepage', '/', HomeHandler);
 
