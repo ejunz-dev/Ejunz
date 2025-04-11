@@ -1121,22 +1121,22 @@ export async function apply(ctx: Context) {
     ctx.Route('problem_statistics', '/p/:pid/stat', ProblemStatisticsHandler, PERM.PERM_VIEW_PROBLEM);
     ctx.Route('problem_create', '/problem/create', ProblemCreateHandler, PERM.PERM_CREATE_PROBLEM);
 
-    ctx.on('handler/after', async (h) => {
-        if (h.request.path === '/p' || h.request.path.includes('/p/')) {
-            h.UiContext.spacename = 'workspace';
-            if (!h.response.body.overrideNav) {
-                h.response.body.overrideNav = [];
-            }
-            h.response.body.overrideNav.push(
-                { name: 'problem_main', args: {}, checker: () => true },
-                { name: 'training_main', args: {}, checker: () => true },
-                { name: 'contest_main', args: {}, checker: () => true },
-                { name: 'homework_main', args: {}, checker: () => true },
-                { name: 'record_main', args: {}, checker: () => true },
-                { name: 'ranking', args: {}, checker: () => true },
-            );
-        }
-    });
+    // ctx.on('handler/after', async (h) => {
+    //     if (h.request.path === '/p' || h.request.path.includes('/p/')) {
+    //         h.UiContext.spacename = 'workspace';
+    //         if (!h.response.body.overrideNav) {
+    //             h.response.body.overrideNav = [];
+    //         }
+    //         h.response.body.overrideNav.push(
+    //             { name: 'problem_main', args: {}, checker: () => true },
+    //             { name: 'training_main', args: {}, checker: () => true },
+    //             { name: 'contest_main', args: {}, checker: () => true },
+    //             { name: 'homework_main', args: {}, checker: () => true },
+    //             { name: 'record_main', args: {}, checker: () => true },
+    //             { name: 'ranking', args: {}, checker: () => true },
+    //         );
+    //     }
+    // });
     ctx.inject(['api'], ({ api }) => {
         api.value('FileInfo', [
             ['_id', 'String!'],
