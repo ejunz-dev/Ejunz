@@ -66,7 +66,7 @@ window.onload = async () => {
     Object.assign(window.UserContext, JSON.parse(window.UserContextNew || '{}'));
     window.EjunzExports = await import('./api');
     console.log("EjunzExports:", window.EjunzExports);  // 验证导入内容
-    // await window._ejunzLoad();
+    await window._ejunzLoad();
     await window.EjunzExports.initPageLoader();
   } catch (e) {
     console.error("加载出现问题:", e);
