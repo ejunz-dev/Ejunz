@@ -50,7 +50,7 @@ function Reaction({ payload, ele }) {
                 key={emoji}
                 className={`medium-${12 / elesPerRow} small-${12 / elesPerRow} columns popover-reaction-item`}
                 onClick={() => handleEmojiClick(payload, emoji, ele).then(() => updateFinish(true))}
-              >z
+              >
                 {emoji}
               </div>
             ))}
