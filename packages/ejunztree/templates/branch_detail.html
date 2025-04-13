@@ -41,15 +41,18 @@
 
         <div class="section">
           <div class="section__header">
+            {% if docs|length > 0 %}
             <h3>{{ _("Hooked Resources") }}</h3>
+            {% else %}
+            <h3>{{ _("No Hooked Resources") }}</h3>
+            {% endif %}
             <div class="section__body">
-              <h4>{{ _("Docs:") }}</h4>
               <ul>
                 {% for doc in docs %}
                 <li>
                   <a class="discussion-node-tag media-link" 
                      href="{{ url('docs_detail', domainId=ddoc.domainId, lid=doc.lid | default(doc.docId)) }}">
-                    <span class="v-center icon icon-problem"></span> {{ doc.title }}
+                    <span class="v-center icon icon-problem"></span> {{ _('Docs') }} {{ doc.title }}
                   </a>
                 </li>
                  <li>
@@ -111,14 +114,14 @@
               {% endif %}
               {% for repo in repos %}
               <div class="repo-section">
-                  {% if repo.files|length > 0 %}
-                  <h4>{{ _("Files in Repository:") }}
+                  <h4>{{ _("Repository:") }}
                     <a class="discussion-node-tag media-link" href="{{ url('repo_detail', domainId=ddoc.domainId, rid=repo.rid) }}">
                           <span class="v-center icon icon-repo"></span> {{ repo.title }}
                       </a>
                   </h4>
                   <table class="table">
                       <tbody>
+                        {% if repo.Filemode == true %}
                           {% for file in repo.files %}
                           <tr data-filename="{{ file.filename }}" data-size="{{ file.size }}">
                             
@@ -132,11 +135,15 @@
                           
                           </tr>
                           {% endfor %}
+                        {% endif %}
                       </tbody>
                   </table>
-                  {% else %}
-                  <p>{{ _("No files available.") }}</p>
-                  {% endif %}
+                  <li>
+                  <a class="menu__link{% if page_name == 'discussion_node' or page_name == 'discussion_detail' %} active{% endif %}" 
+              href="{{ url('discussion_node', type='repo', name=repo.title) }}">
+                    <span class="v-center icon icon-problem"></span> {{ _('View Related Discussions') }}
+                  </a>
+                </li>
               </div>
               {% endfor %}
         
