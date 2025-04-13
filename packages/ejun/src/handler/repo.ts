@@ -246,7 +246,7 @@ export class RepoEditHandler extends Handler {
 
     ddoc: RepoDoc | null = null; 
     
-    @param('rid', Types.RepoId)
+    @param('rid', Types.RepoId, true)
     async get(domainId: string, rid: string) {
         const repo = await Repo.get(domainId, rid);
         console.log('repo', repo);
