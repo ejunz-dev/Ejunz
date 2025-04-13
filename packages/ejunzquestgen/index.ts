@@ -576,7 +576,7 @@ export async function apply(ctx: Context) {
     global.Ejunz.model.builtin.registerPluginPermission(
         'plugins',
         PERM.PERM_VIEW_QUESTGEN, 
-        'Entry permission',
+        'Questgen Entry',
         true,
         false,
         'ejunzquestgen',
@@ -584,7 +584,7 @@ export async function apply(ctx: Context) {
     global.Ejunz.model.builtin.registerPluginPermission(
         'plugins',
         PERM.PERM_EDIT_QUESTGEN, 
-        'Config permission',
+        'Questgen Config',
         true,
         false,
         'ejunzquestgen',
@@ -592,7 +592,7 @@ export async function apply(ctx: Context) {
     global.Ejunz.model.builtin.registerPluginPermission(
         'plugins',
         PERM.PERM_VIEW_QUESTGEN_MCQ, 
-        'use mcq',
+        'Questgen MCQ',
         true,
         false,
         'ejunzquestgen',
