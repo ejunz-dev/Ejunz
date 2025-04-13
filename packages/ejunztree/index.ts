@@ -844,6 +844,7 @@ export class BranchDetailHandler extends BranchHandler {
             dsdoc,
             udoc,
             docs,
+            
             repos: reposWithFiles, 
             problems,
             pids,
@@ -1120,8 +1121,8 @@ export class BranchResourceEditHandler extends BranchHandler {
     }
 
     @param('docId', Types.ObjectId)
-@param('lids', Types.String)
-@param('rids', Types.String)
+@param('lids', Types.String, true)
+@param('rids', Types.String, true)
 async postUpdateResources(domainId: string, docId: ObjectId, lids: string, rids: string) {
     const parsedLids = lids ? lids.split(',').map(Number).filter(n => !isNaN(n)) : [];
     const parsedRids = rids ? rids.split(',').map(Number).filter(n => !isNaN(n)) : [];
