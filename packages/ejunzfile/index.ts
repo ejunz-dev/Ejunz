@@ -143,6 +143,7 @@ export async function apply(ctx) {
         PERM.PERM_VIEW_DOMAIN_FILES, 
         'View domain files',
         true,
+        false,
         'ejunzfile'
     );
 

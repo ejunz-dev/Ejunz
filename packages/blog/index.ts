@@ -218,13 +218,19 @@ export async function apply(ctx: Context) {
     global.Ejunz.model.builtin.registerPluginPermission(
         'blog', 
         PERM.PERM_VIEW_BLOG, 
-        'View blogs'
+        'View blogs',
+        true,
+        false,
+        'ejunzblog'
     );
 
     global.Ejunz.model.builtin.registerPluginPermission(
         'blog', 
         PERM.PERM_VIEW_BLOG_DETAILED, 
-        'View detailed blogs'
+        'View detailed blogs',
+        true,
+        false,
+        'ejunzblog'
     );
 
     // 定义路由并绑定权限
