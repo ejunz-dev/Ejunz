@@ -25,7 +25,7 @@
             <option value="" disabled selected>{{ _('Select a document') }}</option>
             {% if documents and documents.length %}
               {% for doc in documents %}
-              <option value="{{ doc.docId }}" {% if doc == documents[0] %}selected{% endif %}>
+              <option value="{{ doc.content }}" {% if doc == documents[0] %}selected{% endif %}>
                 {{ doc.title }}
               </option>
               {% endfor %}
