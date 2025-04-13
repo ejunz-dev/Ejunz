@@ -273,7 +273,7 @@ Domain Plugins: 本域插件
 domain_create: 创建域
 domain_dashboard: 本域管理
 domain_discussion: 话题节点
-domain_edit: 编辑域资料
+domain_edit: 域设置
 domain_file: 我的文件
 domain_group: 管理小组
 domain_join_applications: 加域申请

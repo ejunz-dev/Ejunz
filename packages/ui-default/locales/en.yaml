@@ -18,15 +18,15 @@ discussion_main: Discussion
 discussion_node: Discussion
 display_name: Display Name
 domain_create: Create Domain
-domain_dashboard: Dashboard
+domain_dashboard: Domain Dashboard
 domain_discussion: Discussion Nodes
-domain_edit: Edit Info
-domain_group: Manage Groups
+domain_edit: Domain Settings
+domain_group: Domain Groups
 domain_join_applications: Join Applications
 domain_main: Main
-domain_permission: System Permission
-domain_role: System Role
-domain_user: System User
+domain_permission: Domain Permission
+domain_role: Domain Role
+domain_user: Domain User
 fs_upload: File Upload
 home_account: Account Settings
 home_domain_account: Profile @ Domain
@@ -44,7 +44,7 @@ homework_scoreboard: Scoreboard
 judge_playground: Judge Playground
 main: Home
 manage_config: System Configurations
-manage_dashboard: System
+manage_dashboard: System Dashboard
 manage_module: Module Management
 manage_script: Scripts
 manage_setting: System Settings
@@ -89,6 +89,7 @@ problem.import.problem_description: '## Description'
 ranking: Ranking
 record_detail: Record Detail
 record_main: Record
+repo_domain: Repository
 setting_customize: Customize
 setting_display: Display Preference
 setting_function: Function
