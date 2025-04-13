@@ -1232,7 +1232,7 @@ export async function apply(ctx: Context) {
     // });
 
     const PERM = {
-        PERM_VIEW_TREE: 1n << 75n,
+        PERM_VIEW_TREE: 1n << 80n,
     };
 
     global.Ejunz.model.builtin.registerPluginPermission(
@@ -1240,7 +1240,8 @@ export async function apply(ctx: Context) {
         PERM.PERM_VIEW_TREE, 
         'View tree',
         true,
-        'ejunzTree'
+        false,
+        'ejunztree'
     );
     
     SettingModel.DomainPluginSetting(
