@@ -578,6 +578,7 @@ export async function apply(ctx: Context) {
         PERM.PERM_VIEW_QUESTGEN, 
         'Entry permission',
         true,
+        false,
         'ejunzquestgen',
     );
     global.Ejunz.model.builtin.registerPluginPermission(
@@ -585,6 +586,7 @@ export async function apply(ctx: Context) {
         PERM.PERM_EDIT_QUESTGEN, 
         'Config permission',
         true,
+        false,
         'ejunzquestgen',
     );
     global.Ejunz.model.builtin.registerPluginPermission(
@@ -592,6 +594,7 @@ export async function apply(ctx: Context) {
         PERM.PERM_VIEW_QUESTGEN_MCQ, 
         'use mcq',
         true,
+        false,
         'ejunzquestgen',
     );
 
