@@ -241,17 +241,17 @@ export async function apply(ctx: Context) {
         Docs: '部落格',
         docs_detail: '部落格詳情',
         docs_edit: '編輯部落格',
-        docs_main: '部落格',
+        docs_domain: '部落格',
     });
     ctx.i18n.load('kr', {
         "{0}'s docs": '{0}의 블로그',
         Docs: '블로그',
-        docs_main: '블로그',
+        docs_domain: '블로그',
         docs_detail: '블로그 상세',
         docs_edit: '블로그 수정',
     });
     ctx.i18n.load('en', {
-        docs_main: 'Docs',
+        docs_domain: 'Docs',
         docs_detail: 'Docs Detail',
         docs_edit: 'Edit Docs',
     });
