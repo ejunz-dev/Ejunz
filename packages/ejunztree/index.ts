@@ -1250,16 +1250,16 @@ export async function apply(ctx: Context) {
     ctx.Route('forest_domain', '/forest', ForestDomainHandler);
     ctx.Route('forest_edit', '/forest/:docId/edit', ForestEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('forest_create', '/forest/create', ForestEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('tree_create', '/tree/create', TreeEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('tree_detail', '/tree/:trid', TreeDetailHandler);
-    ctx.Route('tree_create_trunk', '/tree/:trid/createtrunk', TreeCreateTrunkHandler);
-    ctx.Route('tree_edit', '/tree/:trid/edit', TreeEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('tree_branch', '/tree/:trid/branch', TreeBranchHandler);
-    ctx.Route('branch_create_subbranch', '/tree/:trid/branch/:parentId/createsubbranch', BranchCreateSubbranchHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('branch_detail', '/tree/:trid/branch/:docId', BranchDetailHandler);
-    ctx.Route('branch_edit', '/tree/:trid/branch/:docId/editbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('branch_resource_edit', '/tree/:trid/branch/:docId/edit/resources', BranchResourceEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('branch_file_download', '/tree/:trid/branch/:docId/repo/:rid/:filename', BranchfileDownloadHandler);
+    ctx.Route('tree_create', '/forest/tree/create', TreeEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('tree_detail', '/forest/tree/:trid', TreeDetailHandler);
+    ctx.Route('tree_create_trunk', '/forest/tree/:trid/createtrunk', TreeCreateTrunkHandler);
+    ctx.Route('tree_edit', '/forest/tree/:trid/edit', TreeEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('tree_branch', '/forest/tree/:trid/branch', TreeBranchHandler);
+    ctx.Route('branch_create_subbranch', '/forest/tree/:trid/branch/:parentId/createsubbranch', BranchCreateSubbranchHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('branch_detail', '/forest/tree/:trid/branch/:docId', BranchDetailHandler);
+    ctx.Route('branch_edit', '/forest/tree/:trid/branch/:docId/editbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('branch_resource_edit', '/forest/tree/:trid/branch/:docId/edit/resources', BranchResourceEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('branch_file_download', '/forest/tree/:trid/branch/:docId/repo/:rid/:filename', BranchfileDownloadHandler);
 
     ctx.i18n.load('zh', {
         forest_domain: '森林',
