@@ -323,6 +323,7 @@ declare module './model/repo'{
         reply: any[];
         react: Record<string, number>;
         isIterative?: boolean;
+        isFileMode?: boolean;
         tag: string[];    
         files: {
             filename: string;           

@@ -81,7 +81,8 @@ export class RepoModel {
         content: string,
         ip?: string,
         meta: Partial<RepoDoc> = {},
-        isIterative: boolean = true
+        isIterative: boolean = true,
+        isFileMode: boolean = false
     ): Promise<string> {
         const rid = await RepoModel.generateNextRid(domainId);
 
@@ -101,6 +102,7 @@ export class RepoModel {
             updateAt: new Date(),
             views: 0,
             isIterative: false,
+            isFileMode: false,
             tag: meta.tag || [],
             ...meta, 
         };
@@ -126,10 +128,11 @@ export class RepoModel {
         content: string, 
         ip?: string, 
         isIterative: boolean = true,
+        isFileMode: boolean = false,
         tags: string[] = []
     ): Promise<string> {
         const docId = await RepoModel.generateNextDocId(domainId);
-        return RepoModel.addWithId(domainId, docId, owner, title, content, ip, { tag: tags }, isIterative);
+        return RepoModel.addWithId(domainId, docId, owner, title, content, ip, { tag: tags }, isIterative, isFileMode);
     }
 
     static async getByRid(domainId: string, rid: string): Promise<RepoDoc | null> {
