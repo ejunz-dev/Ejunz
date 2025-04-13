@@ -43,7 +43,7 @@
           <div class="section__header">
             <h3>{{ _("Hooked Resources") }}</h3>
             <div class="section__body">
-              <h4>{{ _("Related Docs") }}</h4>
+              <h4>{{ _("Docs:") }}</h4>
               <ul>
                 {% for doc in docs %}
                 <li>
@@ -52,10 +52,17 @@
                     <span class="v-center icon icon-problem"></span> {{ doc.title }}
                   </a>
                 </li>
+                 <li>
+                  <a class="menu__link{% if page_name == 'discussion_node' or page_name == 'discussion_detail' %} active{% endif %}" 
+              href="{{ url('discussion_node', type='docs', name=doc.title) }}">
+                    <span class="v-center icon icon-problem"></span> {{ _('View Related Discussions') }}
+                  </a>
+                </li>
                 {% endfor %}
+
               </ul>
                    {% if problems|length > 0 %}
-              <h4>{{ _("Related Problems") }}</h4>
+              <h4>{{ _("Problems:") }}</h4>
               <ul>
                 {% for problem in problems %}
                 <li>
@@ -67,7 +74,7 @@
               </ul>
               {% endif %}
               {% if htdocs|length > 0 %}
-              <h4>{{ _("Related Homework") }}</h4>
+              <h4>{{ _("Homework:") }}</h4>
               <ul>
                 {% for htdoc in htdocs %}
                 <li>
@@ -79,7 +86,7 @@
               </ul>
               {% endif %}
               {% if tdocs|length > 0 %}
-              <h4>{{ _("Problems Related Training Plans") }}</h4>
+              <h4>{{ _("Problems Training Plans:") }}</h4>
               <ul>
                 {% for tdoc in tdocs %}
                 <li>
@@ -91,7 +98,7 @@
               </ul>
               {% endif %}
               {% if ctdocs|length > 0 %}
-              <h4>{{ _("Related Contest") }}</h4>
+              <h4>{{ _("Contest:") }}</h4>
               <ul>
                 {% for ctdoc in ctdocs %}
                 <li>
@@ -105,7 +112,7 @@
               {% for repo in repos %}
               <div class="repo-section">
                   {% if repo.files|length > 0 %}
-                  <h4>{{ _("Files in Repository") }}:
+                  <h4>{{ _("Files in Repository:") }}
                     <a class="discussion-node-tag media-link" href="{{ url('repo_detail', domainId=ddoc.domainId, rid=repo.rid) }}">
                           <span class="v-center icon icon-repo"></span> {{ repo.title }}
                       </a>
