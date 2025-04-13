@@ -208,35 +208,35 @@ class BlogEditHandler extends BlogHandler {
 }
 
 export async function apply(ctx: Context) {
-    // 定义插件权限标识符
-    const PERM = {
-        PERM_VIEW_BLOG: 1n << 71n, // 查看博客权限
-        PERM_VIEW_BLOG_DETAILED: 1n << 72n, // 查看详细博客权限
-    };
+    // // 定义插件权限标识符
+    // const PERM = {
+    //     PERM_VIEW_BLOG: 1n << 71n, // 查看博客权限
+    //     PERM_VIEW_BLOG_DETAILED: 1n << 72n, // 查看详细博客权限
+    // };
 
-    // 动态注册权限
-    global.Ejunz.model.builtin.registerPluginPermission(
-        'blog', 
-        PERM.PERM_VIEW_BLOG, 
-        'View blogs',
-        true,
-        false,
-        'ejunzblog'
-    );
+    // // 动态注册权限
+    // global.Ejunz.model.builtin.registerPluginPermission(
+    //     'blog', 
+    //     PERM.PERM_VIEW_BLOG, 
+    //     'Blog View',
+    //     true,
+    //     false,
+    //     'ejunzblog'
+    // );
 
-    global.Ejunz.model.builtin.registerPluginPermission(
-        'blog', 
-        PERM.PERM_VIEW_BLOG_DETAILED, 
-        'View detailed blogs',
-        true,
-        false,
-        'ejunzblog'
-    );
+    // global.Ejunz.model.builtin.registerPluginPermission(
+    //     'blog', 
+    //     PERM.PERM_VIEW_BLOG_DETAILED, 
+    //     'Blog Detailed View',
+    //     true,
+    //     false,
+    //     'ejunzblog'
+    // );
 
     // 定义路由并绑定权限
-    ctx.Route('blog_main', '/blog/:uid', BlogUserHandler, PERM.PERM_VIEW_BLOG);
+    ctx.Route('blog_main', '/blog/:uid', BlogUserHandler);
     ctx.Route('blog_create', '/blog/:uid/create', BlogEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('blog_detail', '/blog/:uid/:did', BlogDetailHandler, PERM.PERM_VIEW_BLOG_DETAILED);
+    ctx.Route('blog_detail', '/blog/:uid/:did', BlogDetailHandler);
     ctx.Route('blog_edit', '/blog/:uid/:did/edit', BlogEditHandler, PRIV.PRIV_USER_PROFILE);
 
     // 注入到用户的 UserDropdown
