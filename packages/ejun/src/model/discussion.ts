@@ -39,6 +39,7 @@ export const typeDisplay = {
     [document.TYPE_TRAINING]: 'training',
     [document.TYPE_HOMEWORK]: 'homework',
     [document.TYPE_DOCS]: 'docs',
+    [document.TYPE_REPO]: 'repo',
 };
 
 export const coll = db.collection('discussion.history');

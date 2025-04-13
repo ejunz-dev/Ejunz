@@ -27,6 +27,7 @@ import { User } from '../model/user';
 import * as system from '../model/system';
 import parser from '@ejunz/utils/lib/search';
 import { RepoSearchOptions } from '../interface';
+import user from '../model/user';
 export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
 
 function buildQuery(udoc: User) {
@@ -223,6 +224,7 @@ export class RepoDetailHandler extends Handler {
             ddoc.files = [];
         }
         console.log(`[RepoDetailHandler] Retrieved files:`, JSON.stringify(ddoc.files, null, 2));
+        const udoc = await user.getById(domainId, ddoc.owner);
 
         this.response.template = 'repo_detail.html';
         this.response.body = {
@@ -230,6 +232,7 @@ export class RepoDetailHandler extends Handler {
             rid: ddoc.rid, 
             ddoc,
             files: ddoc.files, 
+            udoc,
         };
         console.log('tag', ddoc.files.map(file => ({
             ...file,
@@ -238,44 +241,48 @@ export class RepoDetailHandler extends Handler {
     }
 }
 
-export class RepoEditHandler extends RepoMainHandler {
+export class RepoEditHandler extends Handler {
+
+
     ddoc: RepoDoc | null = null; 
     
-    async get() {
-        const domainId = this.context.domainId || 'default_domain';
+    @param('rid', Types.RepoId)
+    async get(domainId: string, rid: string) {
+        const repo = await Repo.get(domainId, rid);
+        console.log('repo', repo);
 
-        if (!this.ddoc) {
+        if (!repo) {
             console.warn(`[RepoEditHandler.get] No ddoc found, skipping repo_edit.`);
             this.response.template = 'repo_edit.html';
             this.response.body = { ddoc: null, files: [], urlForFile: null };
             return;
         }
-    
-        const docId = this.ddoc?.docId;
-        if (!docId) {
-            throw new ValidationError('Missing docId');
-        }
-    
-        const files = await storage.list(`repo/${domainId}/${docId}`);
-        const urlForFile = (filename: string) => `/d/${domainId}/${docId}/${filename}`;
+        const udoc = await user.getById(domainId, repo.owner);
 
     
+        const files = await storage.list(`repo/${domainId}/${repo.docId}`);
+        const urlForFile = (filename: string) => `/d/${domainId}/${repo.docId}/${filename}`;
+
         this.response.template = 'repo_edit.html';
         this.response.body = {
-            ddoc: this.ddoc,
+            ddoc: repo,
             files,
             urlForFile,
-            tag: tag,
+            tag: repo.tag,
+            isFileMode: repo.isFileMode,
+            isIterative: repo.isIterative,
+            udoc,
         };
     }
     
 
     @param('title', Types.Title)
     @param('content', Types.Content)
-    @param('filename', Types.String)
+    @param('filename', Types.String, true)
     @param('version', Types.String, true)
     @post('tag', Types.Content, true, null, parseCategory)
-    @param('isIterative', Types.Boolean)
+    @param('isIterative', Types.Boolean, true)
+    @param('isFileMode', Types.Boolean, true)
     async postCreate(
         domainId: string,
         title: string,
@@ -283,7 +290,8 @@ export class RepoEditHandler extends RepoMainHandler {
         filename: string,
         version: string,
         tag: string[] = [],
-        isIterative: boolean = false
+        isIterative: boolean = false,
+        isFileMode: boolean = false
     ) {
         await this.limitRate('add_repo', 3600, 60);
     
