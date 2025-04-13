@@ -43,53 +43,66 @@
                value: ddoc['tag']|default([])|join(', ')
              }) }}
 
-          {% if not ddoc %}
           <div class="row">
             <div class="medium-12 columns">
               <label>
-                {{ _('Upload File') }}
-                <input type="file" name="file" class="textbox">
+                <input type="checkbox" name="isFilemode" id="isFilemodeCheckbox" {% if ddoc.isFilemode %}checked{% endif %}>
+                {{ _('Enable File Mode') }}
               </label>
             </div>
           </div>
 
-          <div class="row">
-            <div class="medium-12 columns">
-              <label>
-                {{ _('Custom File Name (Optional)') }}
-                <input 
-                  name="filename" 
-                  placeholder="{{ _('Enter custom file name') }}" 
-                  value="" 
-                  class="textbox">
-              </label>
-            </div>
-          </div>
-          
-          <div class="row version-row" style="display: none;">
-            <div class="medium-12 columns">
-              <label>
-                {{ _('File Version (Optional)') }}
-                <input 
-                  name="version" 
-                  placeholder="{{ _('Enter file version') }}" 
-                  value="" 
-                  class="textbox">
-              </label>
-            </div>
-          </div>
-          {% endif %}
+          <input type="hidden" name="isFilemode" value="false">
 
-          <div class="row">
-            <div class="medium-12 columns">
-              <label>
-                <input type="checkbox" name="isIterative" id="isIterativeCheckbox" {% if ddoc.isIterative %}checked{% endif %}>
-                {{ _('Enable Iterative Mode') }}
-              </label>
+          <div id="advancedOptions" style="display: none;">
+            <div class="row">
+              <div class="medium-12 columns">
+                <label>
+                  <input type="checkbox" name="isIterative" id="isIterativeCheckbox" {% if ddoc.isIterative %}checked{% endif %}>
+                  {{ _('Enable Iterative Mode') }}
+                </label>
+              </div>
             </div>
-          </div>
 
-          <input type="hidden" name="isIterative" value="false">
+            <input type="hidden" name="isIterative" value="false">
+
+            {% if not ddoc %}
+            <div class="row">
+              <div class="medium-12 columns">
+                <label>
+                  {{ _('Upload File') }}
+                  <input type="file" name="file" class="textbox">
+                </label>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="medium-12 columns">
+                <label>
+                  {{ _('Custom File Name (Optional)') }}
+                  <input 
+                    name="filename" 
+                    placeholder="{{ _('Enter custom file name') }}" 
+                    value="" 
+                    class="textbox">
+                </label>
+              </div>
+            </div>
+            
+            <div class="row version-row" style="display: none;">
+              <div class="medium-12 columns">
+                <label>
+                  {{ _('File Version (Optional)') }}
+                  <input 
+                    name="version" 
+                    placeholder="{{ _('Enter file version') }}" 
+                    value="" 
+                    class="textbox">
+                </label>
+              </div>
+            </div>
+            {% endif %}
+          </div>
 
           <div class="row">
             <div class="columns">
@@ -129,9 +142,19 @@
 
 <script>
   document.addEventListener('DOMContentLoaded', function() {
+    const isFilemodeCheckbox = document.getElementById('isFilemodeCheckbox');
+    const advancedOptions = document.getElementById('advancedOptions');
     const isIterativeCheckbox = document.getElementById('isIterativeCheckbox');
     const versionRow = document.querySelector('.version-row');
     const hiddenField = document.querySelector('input[name="isIterative"][type="hidden"]');
+
+    function toggleAdvancedOptions() {
+      if (isFilemodeCheckbox.checked) {
+        advancedOptions.style.display = 'block';
+      } else {
+        advancedOptions.style.display = 'none';
+      }
+    }
 
     function toggleVersionRow() {
       if (isIterativeCheckbox.checked) {
@@ -141,10 +164,13 @@
       }
     }
 
+    isFilemodeCheckbox.addEventListener('change', toggleAdvancedOptions);
     isIterativeCheckbox.addEventListener('change', function() {
       hiddenField.disabled = isIterativeCheckbox.checked;
       toggleVersionRow();
     });
+
+    toggleAdvancedOptions(); // 初始化时调用一次
     toggleVersionRow(); // 初始化时调用一次
   });
 </script>

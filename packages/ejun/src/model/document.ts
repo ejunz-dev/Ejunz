@@ -503,7 +503,6 @@ export async function apply(ctx: Context) {
 global.Ejunz.model.document = {
     coll,
     collStatus,
-
     add,
     addToSet,
     cappedIncStatus,

@@ -12,7 +12,6 @@ import message from '../model/message';
 import * as oplog from '../model/oplog';
 import user from '../model/user';
 import { Handler, param, Types } from '../service/server';
-import SystemModel from '../model/system';
 import yaml from 'js-yaml';
 
 export const typeMapper = {
@@ -22,6 +21,7 @@ export const typeMapper = {
     training: document.TYPE_TRAINING,
     homework: document.TYPE_CONTEST,
     docs: document.TYPE_DOCS,
+    repo: document.TYPE_REPO,
 };
 
 class DiscussionHandler extends Handler {
@@ -102,6 +102,8 @@ class DiscussionNodeHandler extends DiscussionHandler {
     @param('name', Types.String)
     @param('page', Types.PositiveInt, true)
     async get(domainId: string, type: string, _name: string, page = 1) {
+        console.log('type',type)
+        console.log('name',_name)
         let name: ObjectId | string | number;
         if (ObjectId.isValid(_name)) name = new ObjectId(_name);
         else if (isSafeInteger(parseInt(_name, 10))) name = parseInt(_name, 10);
@@ -130,7 +132,6 @@ class DiscussionNodeHandler extends DiscussionHandler {
             page_name: 'discussion_node',
             vnodes,
         };
-        console.log('response',this.response.body)
     }
 }
 
