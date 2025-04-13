@@ -60,7 +60,7 @@
           {% if handler.user.hasPerm(perm.PERM_VIEW_DISCUSSION) %}
           <li class="menu__item">
             <a class="menu__link{% if page_name == 'discussion_node' or page_name == 'discussion_detail' %} active{% endif %}" 
-              href="{{ url('discussion_node', type='docs', name=ddoc.docId) }}">
+              href="{{ url('discussion_node', type='docs', name=ddoc.title) }}">
               <span class="icon icon-comment--text"></span> 
               {{ _('View Discussions') }}
               {% if discussionCount is defined %} ({{ discussionCount }}){% endif %}
