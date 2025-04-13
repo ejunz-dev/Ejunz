@@ -1238,7 +1238,7 @@ export async function apply(ctx: Context) {
     global.Ejunz.model.builtin.registerPluginPermission(
         'plugins',
         PERM.PERM_VIEW_FOREST, 
-        'View tree',
+        'Forest View',
         true,
         false,
         'ejunztree'
