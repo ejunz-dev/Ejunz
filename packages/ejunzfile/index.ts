@@ -134,10 +134,6 @@ export async function apply(ctx) {
         PERM_VIEW_DOMAIN_FILES: 1n << 76n,
     };
 
-    ctx.Route('domain_files', '/domainfile', DomainFilesHandler,PERM.PERM_VIEW_DOMAIN_FILES);
-    ctx.Route('domain_fs_download', '/domainfile/:filename', DomainFSDownloadHandler,PERM.PERM_VIEW_DOMAIN_FILES);
-
-
     global.Ejunz.model.builtin.registerPluginPermission(
         'plugins',
         PERM.PERM_VIEW_DOMAIN_FILES, 
@@ -146,6 +142,12 @@ export async function apply(ctx) {
         false,
         'ejunzfile'
     );
+
+    ctx.Route('domain_files', '/domainfile', DomainFilesHandler,PERM.PERM_VIEW_DOMAIN_FILES);
+    ctx.Route('domain_fs_download', '/domainfile/:filename', DomainFSDownloadHandler,PERM.PERM_VIEW_DOMAIN_FILES);
+
+
+
 
 
     const customChecker = (handler) => {
