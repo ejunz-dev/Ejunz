@@ -9,7 +9,7 @@ const {
     CI, GITHUB_EVENT_NAME, GITHUB_REF,
 } = process.env;
 
-const tag = GITHUB_REF === 'refs/heads/main' ? 'latest' : GITHUB_REF === 'refs/heads/develop' ? 'dev' : undefined;
+const tag = GITHUB_REF === 'refs/heads/master' ? 'latest' : GITHUB_REF === 'refs/heads/develop' ? 'dev' : undefined;
 
 if (CI && (!tag || GITHUB_EVENT_NAME !== 'push')) {
     console.log('publish skipped.');
