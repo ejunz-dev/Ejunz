@@ -70,7 +70,7 @@ jobs:
         
     - name: Build And Lint
       run: |
-        yarn update
+        yarn upgrade
         set -x
         if [[ ${{ steps.ui-changed-files.outputs.any_changed }} == true ]] || [[ $(npm info @ejunz/ui-default version) != $(node -e 'console.log(require("./packages/ui-default/package.json").version)') ]]
         then
