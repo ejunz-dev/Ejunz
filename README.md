@@ -5,3 +5,6 @@
 
 # Docs
 - [中文文档](https://docs.ejunz.com/zh)/[English](https://docs.ejunz.com/en)
+
+# Domains status
+- [中文](https://docs.ejunz.com/zh/domains)/[English](https://docs.ejunz.com/en/domains)
