@@ -1,5 +1,3 @@
-# Notice
-Setting up muti-reverse-proxy, please visit sites later.
 
 # Based
 
