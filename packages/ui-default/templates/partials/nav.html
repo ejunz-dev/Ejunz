@@ -207,6 +207,12 @@
         {%- endfor -%}
       </ol>
     </li>
+    {% else %}
+    <li class="nav__list-item">
+         <a href="javascript:;" class="nav__item">
+     <span class="profile-header__contact-item user-profile-badge v-center badge--lv0">GUEST</span>
+      </a>
+    </li>
     {% endif %}
     </ol>
   </div></div>
