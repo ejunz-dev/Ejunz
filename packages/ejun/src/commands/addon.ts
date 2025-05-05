@@ -8,7 +8,7 @@ import { getAddons, writeAddons } from '../options';
 
 const logger = new Logger('addon');
 const addonDir = path.resolve(os.homedir(), '.ejunz', 'addons');
-const pluginDir = path.resolve(os.homedir(), 'Dev/ejunz/plugins/');
+const pluginDir = path.resolve(os.homedir(), 'root/ejunz/plugins/');
 
 export function register(cli: CAC) {
     cli.command('addon [operation] [name]').action((operation, name) => {
