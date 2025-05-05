@@ -1248,10 +1248,10 @@ export async function apply(ctx: Context) {
         SettingModel.Setting('plugins', 'ejunztree', [''], 'yaml', 'tree_map'),
     );
 
-    ctx.Route('forest_domain', '/forest', ForestDomainHandler, PERM.PERM_VIEW_FOREST);
+    ctx.Route('forest_domain', '/forest', ForestDomainHandler);
     ctx.Route('forest_edit', '/forest/:docId/edit', ForestEditHandler, PERM.PERM_VIEW_FOREST);
     ctx.Route('forest_create', '/forest/create', ForestEditHandler, PERM.PERM_VIEW_FOREST);
-    ctx.Route('tree_create', '/forest/tree/create', TreeEditHandler, PERM.PERM_VIEW_FOREST);
+    ctx.Route('tree_create', '/forest/tree/create', TreeEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('tree_detail', '/forest/tree/:trid', TreeDetailHandler);
     ctx.Route('tree_create_trunk', '/forest/tree/:trid/createtrunk', TreeCreateTrunkHandler);
     ctx.Route('tree_edit', '/forest/tree/:trid/edit', TreeEditHandler, PERM.PERM_VIEW_FOREST);
