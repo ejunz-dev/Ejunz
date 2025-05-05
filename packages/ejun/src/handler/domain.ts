@@ -62,12 +62,14 @@ class DomainEditHandler extends ManageHandler {
 }
 
 class DomainDashboardHandler extends ManageHandler {
+    @requireSudo
     async get() {
         const owner = await user.getById(this.domain._id, this.domain.owner);
         this.response.template = 'domain_dashboard.html';
         this.response.body = { domain: this.domain, owner };
     }
 
+    @requireSudo
     async postInitDiscussionNode({ domainId }) {
         const nodes = load(system.get('discussion.nodes'));
         await discussion.flushNodes(domainId);
