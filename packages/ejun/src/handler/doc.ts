@@ -164,15 +164,10 @@ export async function getProblemsByDocsId(domainId: string, lid: string|number) 
 export class DocsEditHandler extends DocsHandler {
     async get() {
         const domainId = this.context.domainId || 'default_domain';
-        const files = await storage.list(`domain/${domainId}/`);
-
-        const urlForFile = (filename: string) => `/d/${domainId}/domainfile/${encodeURIComponent(filename)}`;
 
         this.response.template = 'docs_edit.html';
         this.response.body = {
             ddoc: this.ddoc,
-            files,
-            urlForFile, 
         };
     }
 
