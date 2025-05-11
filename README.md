@@ -1,6 +1,5 @@
-# Notice
-- Content filtering and database backup features are currently being implemented. 
-- Registration is temporarily closed until these are completed.
+# Wiki
+- [Wiki](https://deepwiki.com/ejunz-dev/Ejunz)
 
 # Docs
 - [中文文档](https://docs.ejunz.com/zh)/[English](https://docs.ejunz.com/en)
