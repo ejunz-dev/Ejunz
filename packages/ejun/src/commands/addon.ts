@@ -9,10 +9,11 @@ import { getAddons, writeAddons } from '../options';
 const logger = new Logger('addon');
 const addonDir = path.resolve(os.homedir(), '.ejunz', 'addons');
 const pluginDir = path.resolve(os.homedir(), 'root/ejunz/plugins/');
+const customDir = path.resolve(os.homedir(), 'ejunz/plugins/Custom_domains');
 
 export function register(cli: CAC) {
     cli.command('addon [operation] [name]').action((operation, name) => {
-        if (operation && !['add', 'remove', 'create', 'list'].includes(operation)) {
+        if (operation && !['add', 'remove', 'create', 'list', 'domain'].includes(operation)) {
             console.log('Unknown operation.');
             return;
         }
@@ -28,6 +29,25 @@ export function register(cli: CAC) {
             fs.symlinkSync(dir, path.resolve(os.homedir(), name || 'addon'), 'dir');
             addons.push(dir);
             logger.success(`Addon created at ${dir}`);
+        } else if (operation === 'domain') {
+            const dir = `${customDir}/${name || 'addon'}`;
+            fs.mkdirSync(dir, { recursive: true });
+            fs.mkdirSync(`${dir}/main`, { recursive: true });
+            fs.mkdirSync(`${dir}/plugins`, { recursive: true });
+            fs.mkdirSync(`${dir}/spaces`, { recursive: true });
+            child.execSync('yarn init -y', { cwd: `${dir}/main` });
+            fs.mkdirSync(`${dir}/main/templates`);
+            fs.mkdirSync(`${dir}/main/locales`);
+            fs.mkdirSync(`${dir}/main/public`);
+            fs.mkdirSync(`${dir}/main/frontend`);
+
+            const symlinkPath = path.resolve(os.homedir(), name || 'addon');
+            if (!fs.existsSync(symlinkPath)) {
+                fs.symlinkSync(`${dir}/main`, symlinkPath, 'dir');
+            }
+            
+            addons.push(`${dir}/main`);
+            logger.success(`Domain addon created at ${dir}/main`);
         } else if (operation && name) {
             for (let i = 0; i < addons.length; i++) {
                 if (addons[i] === name) {
