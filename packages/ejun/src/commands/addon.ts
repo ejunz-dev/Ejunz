@@ -10,10 +10,11 @@ const logger = new Logger('addon');
 const addonDir = path.resolve(os.homedir(), '.ejunz', 'addons');
 const pluginDir = path.resolve(os.homedir(), 'root/ejunz/plugins/');
 const customDir = path.resolve(os.homedir(), 'ejunz/plugins/Custom_domains');
+const domainDir = path.resolve(os.homedir(), 'ejunz/plugins/Custom_domains/B001');
 
 export function register(cli: CAC) {
     cli.command('addon [operation] [name]').action((operation, name) => {
-        if (operation && !['add', 'remove', 'create', 'list', 'domain'].includes(operation)) {
+        if (operation && !['add', 'remove', 'create', 'list', 'domain', 'plugin', 'space'].includes(operation)) {
             console.log('Unknown operation.');
             return;
         }
@@ -48,7 +49,29 @@ export function register(cli: CAC) {
             
             addons.push(`${dir}/main`);
             logger.success(`Domain addon created at ${dir}/main`);
-        } else if (operation && name) {
+        } else if (operation === 'plugin') {
+            const dir = `${domainDir}/plugins/${name || 'addon'}`;
+            fs.mkdirSync(dir, { recursive: true });
+            child.execSync('yarn init -y', { cwd: dir });
+            fs.mkdirSync(`${dir}/templates`);
+            fs.mkdirSync(`${dir}/frontend`);
+            fs.mkdirSync(`${dir}/index.ts`);
+            fs.mkdirSync(`${dir}/setting.yaml`);
+            addons.push(dir);
+            logger.success(`Plugin addon created at ${dir}`);
+        }
+        else if (operation === 'space') {
+            const dir = `${domainDir}/spaces/${name || 'addon'}`;
+            fs.mkdirSync(dir, { recursive: true });
+            child.execSync('yarn init -y', { cwd: dir });
+            fs.mkdirSync(`${dir}/templates`);
+            fs.mkdirSync(`${dir}/frontend`);
+            fs.mkdirSync(`${dir}/index.ts`);
+            fs.mkdirSync(`${dir}/setting.yaml`);
+            addons.push(dir);
+            logger.success(`Space addon created at ${dir}`);
+        }
+         else if (operation && name) {
             for (let i = 0; i < addons.length; i++) {
                 if (addons[i] === name) {
                     addons.splice(i, 1);
