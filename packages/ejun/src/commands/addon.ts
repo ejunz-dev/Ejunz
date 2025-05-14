@@ -55,8 +55,8 @@ export function register(cli: CAC) {
             child.execSync('yarn init -y', { cwd: dir });
             fs.mkdirSync(`${dir}/templates`);
             fs.mkdirSync(`${dir}/frontend`);
-            fs.mkdirSync(`${dir}/index.ts`);
-            fs.mkdirSync(`${dir}/setting.yaml`);
+            fs.writeFileSync(`${dir}/index.ts`, '');
+            fs.writeFileSync(`${dir}/setting.yaml`, '');
             addons.push(dir);
             logger.success(`Plugin addon created at ${dir}`);
         }
@@ -66,8 +66,8 @@ export function register(cli: CAC) {
             child.execSync('yarn init -y', { cwd: dir });
             fs.mkdirSync(`${dir}/templates`);
             fs.mkdirSync(`${dir}/frontend`);
-            fs.mkdirSync(`${dir}/index.ts`);
-            fs.mkdirSync(`${dir}/setting.yaml`);
+            fs.writeFileSync(`${dir}/index.ts`, '');
+            fs.writeFileSync(`${dir}/setting.yaml`, '');
             addons.push(dir);
             logger.success(`Space addon created at ${dir}`);
         }
