@@ -304,22 +304,36 @@ export const BUILTIN_ROLES = {
 };
 
 export const DEFAULT_NODES = {
-    团队空间: [
-        { pic: 'team', name: 'Game' },
-        { pic: 'team', name: 'Sport' },
-        { pic: 'team', name: 'Project' },
-    ],
-    Ejunz: [
+    易君: [
         { pic: 'ejunz', name: 'Ejunz' },
-        { pic: 'ejunz', name: 'domains' },
+        { pic: 'ejunz', name: '管理' },
+        { pic: 'ejunz', name: '开发' },
+        { pic: 'ejunz', name: '定制' },
+        { pic: 'ejunz', name: '建议' },
     ],
-    知识库: [
-        { pic: 'knowledge', name: 'Skills' },
-        { pic: 'knowledge', name: 'Subject' },
-        { pic: 'knowledge', name: 'Book' },
+    公开域: [
+        { name: 'CS2' },
+        { name: 'IELTS'}
     ],
-    建议: [
-        { pic: 'suggestion', name: 'Suggestion' },
+    社区: [
+        { name: '封禁' },
+        { name: '举报' },
+        { name: '建议' },
+    ],
+    域: [
+        { name: '管理' },
+        { name: '配置' },
+        { name: '插件' },
+        { name: '空间' },
+    ],
+    开发: [
+        { name: '教程' },
+        { name: '文档' },
+    ],
+    服务: [
+        { name: '会员' },
+        { name: '定制' },
+        { name: '咨询' },
     ],
 };
 
