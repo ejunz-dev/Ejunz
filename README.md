@@ -4,6 +4,6 @@
 # Docs
 - [中文文档](https://docs.ejunz.com/zh)/[English](https://docs.ejunz.com/en)
 
-# Based
-- [Hydro](https://github.com/hydro-dev/Hydro): Providing Core & Ui Plugin
-- [Cordis](https://github.com/cordiverse/cordis): Providing Meta Framework 
+# Credits
+- **[Hydro](https://github.com/hydro-dev/Hydro)** – Modified & extended from.
+- **[Cordis](https://github.com/cordiverse/cordis)** – Used as-is as the underlying meta-framework.
