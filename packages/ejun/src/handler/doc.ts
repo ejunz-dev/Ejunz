@@ -224,32 +224,6 @@ export async function apply(ctx: Context) {
     ctx.Route('docs_detail', '/docs/:lid', DocsDetailHandler);
     ctx.Route('docs_edit', '/docs/:lid/edit', DocsEditHandler, PRIV.PRIV_USER_PROFILE);
  
-    ctx.i18n.load('zh', {
-        "{0}'s docs": '{0} 的文档',
-        Docs: '文档',
-        docs_detail: '文档详情',
-        docs_edit: '编辑文档',
-        docs_domain: '文档',
-    });
-    ctx.i18n.load('zh_TW', {
-        "{0}'s docs": '{0} 的部落格',
-        Docs: '部落格',
-        docs_detail: '部落格詳情',
-        docs_edit: '編輯部落格',
-        docs_domain: '部落格',
-    });
-    ctx.i18n.load('kr', {
-        "{0}'s docs": '{0}의 블로그',
-        Docs: '블로그',
-        docs_domain: '블로그',
-        docs_detail: '블로그 상세',
-        docs_edit: '블로그 수정',
-    });
-    ctx.i18n.load('en', {
-        docs_domain: 'Docs',
-        docs_detail: 'Docs Detail',
-        docs_edit: 'Edit Docs',
-    });
     ctx.inject(['api'], ({ api }) => {
         api.value('Doc', [
             ['docId', 'Int!'],
