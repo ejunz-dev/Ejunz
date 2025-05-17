@@ -70,7 +70,16 @@ export class RepoModel {
         const lastRid = String(lastDoc[0].rid);
         const lastRidNumber = parseInt(lastRid.match(/\d+/)?.[0] || "0", 10);
 
-        return `R${lastRidNumber + 1}`;
+        const allDocs = await document.getMulti(domainId, document.TYPE_REPO, {})
+            .project({ rid: 1 })
+            .toArray();
+
+        const allNumbers = allDocs
+            .map(doc => parseInt(String(doc.rid).match(/\d+/)?.[0] || "0", 10))
+            .filter(num => !isNaN(num));
+
+        const maxNumber = Math.max(...allNumbers, 0);
+        return `R${maxNumber + 1}`;
     }
 
     static async addWithId(
