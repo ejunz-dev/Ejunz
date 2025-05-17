@@ -1,3 +1,5 @@
+
+
 __id: zh
 __langname: 简体中文
 '"{data}" copied to clipboard!': “{data}”已复制到剪贴板！
@@ -263,6 +265,11 @@ Display name {1} you want to set is used by others.: 您想要设置的显示名
 Display Name: 显示名
 display_name: 显示名
 Do not discuss solutions otherwise you will be regarded as cheating and then lose qualifications.: 请勿话题解法，否则以作弊论处并且将失去参赛资格。
+docs_detail: 源详情
+docs_domain: 源
+docs_edit: 编辑源
+docs: 源
+Docs: 源
 Document {2} not found.: 文档 {2} 不存在。
 Domain {0} already exists.: 域 {0} 已经存在。
 Domain {0} is bulit-in and cannot be modified.: 域 {0} 为内置，不可修改。
@@ -677,9 +684,9 @@ Reply discussions: 回复话题
 Reply problem solutions: 回复题解
 reply: 回复
 Reply: 回复
-repo_domain: 指导库
-repo_detail: 指导库详情
-repo: 指导库
+repo_detail: 知库详情
+repo_domain: 知库
+repo: 知库
 Report: 举报
 required: 必填
 Reset Password or Find Username: 重置密码或找回用户名
