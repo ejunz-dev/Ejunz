@@ -104,11 +104,7 @@ export class ProblemMainHandler extends Handler {
     async get(domainId: string, page = 1, q = '', limit: number, pjax = false, quick = false) {
         this.response.template = 'problem_main.html';
         if (!limit || limit > this.ctx.setting.get('pagination.problem') || page > 1) limit = this.ctx.setting.get('pagination.problem');
-        
-        console.log('Initial Query Context:', this.queryContext);
-
         this.queryContext.query = buildQuery(this.user);
-        console.log('Query after buildQuery:', this.queryContext.query);
 
         const query = this.queryContext.query;
         const psdict = {};
@@ -122,7 +118,6 @@ export class ProblemMainHandler extends Handler {
 
         const category = parsed.category || [];
         const text = (parsed.text || []).join(' ');
-        console.log('Parsed Query:', { category, text });
 
         if (parsed.difficulty?.every((i) => Number.isSafeInteger(+i))) {
             query.difficulty = { $in: parsed.difficulty.map(Number) };
@@ -147,7 +142,6 @@ export class ProblemMainHandler extends Handler {
             this.queryContext.sort = result.hits;
         }
 
-        console.log('Final Query Context:', this.queryContext);
 
         const sort = this.queryContext.sort;
         await this.ctx.parallel('problem/list', query, this, sort);
@@ -161,8 +155,6 @@ export class ProblemMainHandler extends Handler {
             );
 
         
-        console.log('ppcount:', ppcount);
-        console.log('pcount:', pcount);
         
 
         if (total) {
@@ -204,7 +196,6 @@ export class ProblemMainHandler extends Handler {
                 psdict,
                 qs: q,
             };
-            console.log('Response Body:', this.response.body);
         }
     }
 
@@ -299,7 +290,6 @@ export class ProblemRandomHandler extends Handler {
     }
 }
 export async function getDocsByAssociatedDocumentId(domainId: string, associatedDocumentId: number) {
-    console.log(`Fetching docs for associatedDocumentId: ${associatedDocumentId}`);
     const query = {
         domainId,
         lid: associatedDocumentId, // 用 lid 作为查询条件
@@ -328,7 +318,6 @@ export class ProblemDetailHandler extends ContestDetailBaseHandler {
                 title: docs.title,
                 domainId: docs.domainId,
             }));
-            console.log(`Fetched relatedDocs:`, this.response.body.relatedDocs);
         }
         
         
@@ -791,7 +780,6 @@ export class ProblemFilesHandler extends ProblemDetailHandler {
     @post('filename', Types.Filename, true)
     @post('type', Types.Range(['testdata', 'additional_file']), true)
     async postUploadFile(domainId: string, filename: string, type = 'testdata') {
-        console.log('postUploadFile',domainId, filename, type)
         if (!this.request.files.file) throw new ValidationError('file');
         filename ||= this.request.files.file.originalFilename || String.random(16);
         const files = [];

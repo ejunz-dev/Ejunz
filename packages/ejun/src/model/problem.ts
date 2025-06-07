@@ -622,7 +622,6 @@ export class ProblemModel {
     }
 
     static async export(domainId: string) {
-        console.log('Exporting problems...');
         const tmpdir = path.join(os.tmpdir(), 'ejunz', `${Math.random()}.export`);
         await fs.mkdir(tmpdir);
         const pdocs = await ProblemModel.getMulti(domainId, {}, ProblemModel.PROJECTION_PUBLIC).toArray();
@@ -677,7 +676,6 @@ export class ProblemModel {
         if (res.error) throw res.error;
         if (res.status) throw new Error(`Error: Exited with code ${res.status}`);
         const stat = fs.statSync(target);
-        console.log(`Domain ${domainId} problems export saved at ${target} , size: ${size(stat.size)}`);
     }
 }
 

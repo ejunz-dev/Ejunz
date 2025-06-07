@@ -32,9 +32,6 @@ export class DomainFilesHandler extends Handler {
 
     @post('filename', Types.Filename)
     async postUploadFile(domainId: string, filename: string) {
-        console.log("Uploading file:", filename, "to domainId:", domainId);
-        console.log('Decorators applied on postUploadFile:', { domainId, filename });
-
         const userId = this.user._id;
 
         const domain = await DomainModel.get(domainId);
@@ -63,7 +60,6 @@ export class DomainFilesHandler extends Handler {
 
         domain.files.push(payload);
         await DomainModel.edit(domainId, { files: domain.files });
-        console.log("File uploaded and metadata saved successfully:", payload);
         this.back();
     }
 
@@ -95,20 +91,13 @@ export class DomainFSDownloadHandler extends Handler {
 
     async get({ filename }: { filename: string }) {
         const domainId = this.args?.domainId || this.context?.domainId || 'default_domain';
-        console.log('Resolved params:', { domainId, filename });
-
-        console.log("Entering DomainFSDownloadHandler.get...");
-        console.log("Received domainId:", domainId, "filename:", filename);
 
         const target = `domain/${domainId}/${filename}`;
         const file = await StorageModel.getMeta(target);
         if (!file) {
             throw new NotFoundError(`File "${filename}" does not exist.`);
         }
-        console.log("Generated target path:", target);
-
         const mimeType = lookup(filename) || 'application/octet-stream';
-        console.log("File MIME type:", mimeType);
 
         try {
             this.response.body = await StorageModel.get(target);
@@ -119,9 +108,7 @@ export class DomainFSDownloadHandler extends Handler {
             }
         } catch (e) {
             throw new Error(`Error streaming file "${filename}": ${e.message}`);
-        }
-
-        console.log("File streamed successfully:", file);
+        }   
     }
 }
 

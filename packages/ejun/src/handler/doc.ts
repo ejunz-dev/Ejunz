@@ -45,11 +45,9 @@ class DocsHandler extends Handler {
         if (lid) {
             const normalizedLid: number | string = /^\d+$/.test(lid) ? Number(lid) : lid;
 
-            console.log(`[DocsHandler] Querying document with ${typeof normalizedLid === 'number' ? 'docId' : 'lid'} = ${normalizedLid}`);
 
             this.ddoc = await docs.get(domainId, normalizedLid);
             if (!this.ddoc) {
-                console.error(`[DocsHandler] Document with ${typeof normalizedLid === 'number' ? 'docId' : 'lid'}=${normalizedLid} not found in domain=${domainId}`);
                 throw new NotFoundError(domainId, lid);
             }
         }
@@ -59,7 +57,6 @@ class DocsHandler extends Handler {
 
 export class DocsDomainHandler extends Handler {
     async get({ domainId, page = 1, pageSize = 10 }) {
-        console.log(`[DocsDomainHandler] Fetching documents for domain: ${domainId}, Page: ${page}, PageSize: ${pageSize}`);
 
         domainId = this.args?.domainId || this.context?.domainId || 'system';
         page = parseInt(page as any, 10) || 1;
@@ -77,9 +74,6 @@ export class DocsDomainHandler extends Handler {
                 domainId, query, page, pageSize, docs.PROJECTION_LIST
             );
 
-            console.log(`[DocsDomainHandler] Documents fetched successfully.`);
-            console.log(`Total Documents: ${totalCount}, Total Pages: ${totalPages}`);
-            console.log(`First 3 docs:`, JSON.stringify(ddocs.slice(0, 3), null, 2));
 
             this.response.template = 'docs_domain.html';
             this.response.body = {
@@ -92,7 +86,6 @@ export class DocsDomainHandler extends Handler {
                 totalCount,
             };
         } catch (error) {
-            console.error(`[DocsDomainHandler] Error fetching documents for domainId: ${domainId}`, error);
             this.response.template = 'error.html';
             this.response.body = {
                 error: `Failed to fetch documents for the domain: ${error.message}`,
@@ -105,15 +98,12 @@ export class DocsDomainHandler extends Handler {
 class DocsDetailHandler extends DocsHandler {
     @param('lid', Types.String) 
     async get(domainId: string, lid: string) {
-        console.log(`[DocsDetailHandler] Looking for doc with lid=${lid} in domain=${domainId}`);
 
         const normalizedLid: number | string = Number.isSafeInteger(+lid) ? +lid : lid;
 
-        console.log(`[DocsDetailHandler] Querying document by ${typeof normalizedLid === 'number' ? 'docId' : 'lid'} = ${normalizedLid}`);
 
         const ddoc = await docs.get(domainId, normalizedLid);
         if (!ddoc) {
-            console.error(`[DocsDetailHandler] Document with ${typeof normalizedLid === 'number' ? 'docId' : 'lid'}=${normalizedLid} not found in domain=${domainId}`);
             throw new NotFoundError(domainId, lid);
         }
 
@@ -130,7 +120,6 @@ class DocsDetailHandler extends DocsHandler {
             ]);
         }
 
-        console.log(`[DocsDetailHandler] Fetching related problems for docs lid: ${ddoc.lid}`);
         const problems = await getProblemsByDocsId(domainId, ddoc.docId);
 
         this.response.template = 'docs_detail.html';
@@ -140,7 +129,6 @@ class DocsDetailHandler extends DocsHandler {
             udoc,
             problems,
         };
-        console.log(`ddoc:`, ddoc);
     }
 }
 
@@ -149,12 +137,10 @@ class DocsDetailHandler extends DocsHandler {
 
 
 export async function getProblemsByDocsId(domainId: string, lid: string|number) {
-    console.log(`Fetching problems for docs ID: ${lid}`);
     const query = {
         domainId,
         associatedDocumentId: lid // 这里 `lid` 现在是字符串
     };
-    console.log(`Querying problems with:`, query);
     return await problem.getMulti(domainId, query).toArray();
 }
 

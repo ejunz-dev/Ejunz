@@ -96,10 +96,8 @@ export class RepoMainHandler extends Handler {
         this.response.template = 'repo_domain.html';
         if (!limit || limit > this.ctx.setting.get('pagination.problem') || page > 1) limit = this.ctx.setting.get('pagination.problem');
         
-        console.log('Initial Query Context:', this.queryContext);
 
         this.queryContext.query = buildQuery(this.user);
-        console.log('Query after buildQuery:', this.queryContext.query);
 
         const query = this.queryContext.query;
         const psdict = {};
@@ -113,7 +111,6 @@ export class RepoMainHandler extends Handler {
 
         const category = parsed.category || [];
         const text = (parsed.text || []).join(' ');
-        console.log('Parsed Query:', { category, text });
 
         if (parsed.difficulty?.every((i) => Number.isSafeInteger(+i))) {
             query.difficulty = { $in: parsed.difficulty.map(Number) };
@@ -138,7 +135,6 @@ export class RepoMainHandler extends Handler {
             this.queryContext.sort = result.hits;
         }
 
-        console.log('Final Query Context:', this.queryContext);
 
         const sort = this.queryContext.sort;
         await this.ctx.parallel('repo/list', query, this, sort);
@@ -184,7 +180,6 @@ export class RepoMainHandler extends Handler {
                 psdict,
                 qs: q,
             };
-            console.log('Response Body:', this.response.body);
         }
     }
 }   
@@ -199,11 +194,9 @@ export class RepoDetailHandler extends Handler {
         if (!rid) return;
 
         const normalizedId: number | string = /^\d+$/.test(rid) ? Number(rid) : rid;
-        console.log(`[RepoDetailHandler] Querying document with ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
 
         this.ddoc = await Repo.get(domainId, normalizedId);
         if (!this.ddoc) {
-            console.error(`[RepoDetailHandler] Repository not found for ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
             throw new NotFoundError(`Repository not found for ${typeof normalizedId === 'number' ? 'docId' : 'rid'}: ${normalizedId}`);
         }
     }
@@ -212,7 +205,6 @@ export class RepoDetailHandler extends Handler {
     async get(domainId: string, rid: string) {
         const normalizedId: number | string = /^\d+$/.test(rid) ? Number(rid) : rid;
 
-        console.log(`[RepoDetailHandler] Querying document with ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
 
         const ddoc = await Repo.get(domainId, normalizedId);
         if (!ddoc) {
@@ -223,7 +215,6 @@ export class RepoDetailHandler extends Handler {
             console.warn(`[RepoDetailHandler] Warning: ddoc.files is not an array, resetting to empty array.`);
             ddoc.files = [];
         }
-        console.log(`[RepoDetailHandler] Retrieved files:`, JSON.stringify(ddoc.files, null, 2));
         const udoc = await user.getById(domainId, ddoc.owner);
 
         this.response.template = 'repo_detail.html';
@@ -234,10 +225,7 @@ export class RepoDetailHandler extends Handler {
             files: ddoc.files, 
             udoc,
         };
-        console.log('tag', ddoc.files.map(file => ({
-            ...file,
-            tag: file.tag || []
-        })));
+
     }
 }
 
@@ -249,7 +237,6 @@ export class RepoEditHandler extends Handler {
     @param('rid', Types.RepoId, true)
     async get(domainId: string, rid: string) {
         const repo = await Repo.get(domainId, rid);
-        console.log('repo', repo);
 
         if (!repo) {
             console.warn(`[RepoEditHandler.get] No ddoc found, skipping repo_edit.`);
@@ -306,7 +293,6 @@ export class RepoEditHandler extends Handler {
         }
     
         const docId = await Repo.generateNextDocId(domainId);
-        console.log(`[RepoEditHandler] Created new docId=${docId}`);
     
         const providedFilename = filename || file.originalFilename;
         const filePath = `repo/${domainId}/${docId}/${providedFilename}`;
@@ -336,7 +322,6 @@ export class RepoEditHandler extends Handler {
             this.request.ip,
             { files: [fileData], isIterative, tag: tag ?? [] }
         );
-        console.log(`[RepoEditHandler] Created repository: docId=${docId}, rid=${rid}`);
         
         this.response.body = { rid };
         this.response.redirect = this.url('repo_detail', { uid: this.user._id, rid });
@@ -349,7 +334,6 @@ export class RepoEditHandler extends Handler {
     async postUpdate(domainId: string, rid: string, title: string, content: string, tag: string[] = []) {
         const normalizedId: number | string = /^\d+$/.test(rid) ? Number(rid) : rid;
     
-        console.log(`[RepoEditHandler] Updating repo with ${typeof normalizedId === 'number' ? 'docId' : 'rid'}=${normalizedId}`);
     
         const repo = await Repo.get(domainId, normalizedId);
         if (!repo) {
@@ -359,7 +343,6 @@ export class RepoEditHandler extends Handler {
         const repoRid = repo.rid;
         const updatedRepo = await Repo.edit(domainId, repoRid, { title, content, tag: tag ?? [] });
     
-        console.log('Repo updated successfully:', updatedRepo);
     
         this.response.body = { rid: repoRid };
         this.response.redirect = this.url('repo_detail', { uid: this.user._id, rid: repoRid });
