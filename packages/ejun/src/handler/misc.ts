@@ -84,8 +84,6 @@ export class FSDownloadHandler extends Handler {
     @param('filename', Types.Filename)
     @param('noDisposition', Types.Boolean)
     async get(domainId: string, uid: number, filename: string, noDisposition = false) {
-        console.log(' param :', { uid, filename });
-        console.log("Request path:", this.request.path);
 
         const target = `user/${uid}/${filename}`;
         const file = await storage.getMeta(target);

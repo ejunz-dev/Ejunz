@@ -236,7 +236,6 @@ class Question_MCQ_Handler extends QuestionHandler {
             domainId,
             userId: this.user?._id || null,
         };
-        console.log('documents', documents);
     }
 
     async post() {
@@ -258,9 +257,6 @@ class Question_MCQ_Handler extends QuestionHandler {
             selectedDocumentId, // 直接从请求体获取
         } = this.request.body;
 
-        console.log('Request Body:', this.request.body);
-
-        console.log('selectedDocumentId', selectedDocumentId);
         // 确保 selectedDocumentId 为数字类型
         const selected_document_id = parseInt(this.request.body.selectedDocumentId || '0', 10);
 if (isNaN(selected_document_id) || selected_document_id === 0) {
@@ -278,13 +274,8 @@ if (isNaN(selected_document_id) || selected_document_id === 0) {
             selected_document_id,
         };
 
-        console.log(`Received params: ${JSON.stringify(params)}`);
-        console.log(`Selected Document ID (selected_document_id): ${selected_document_id}`);
-
         try {
             const apiUrl = loadApiConfig();
-            console.log('apiUrlpost', apiUrl);
-
             // 调用外部 API 生成问题
             const response = await fetch(`${apiUrl}/generate-mcq`, {
                 method: 'POST',
@@ -298,7 +289,6 @@ if (isNaN(selected_document_id) || selected_document_id === 0) {
 
             const data = await response.json();
 
-            console.log(`Received data: ${JSON.stringify(data)}`);
             this.context.selected_document_id = data.selected_document_id;
 
             this.response.template = 'generator_main.html';
@@ -310,7 +300,6 @@ if (isNaN(selected_document_id) || selected_document_id === 0) {
                 documents: await DocsModel.getMulti(domainId, {}).project({ _id: 1, lid: 1, title: 1, content: 1 }).toArray(),
             };
         } catch (error) {
-            console.error(`Error in generating questions: ${error.message}`);
             this.response.template = 'generator_main.html';
             this.response.body = {
                 error: `Failed to generate questions: ${error.message}`,
@@ -327,8 +316,6 @@ export class StagingPushHandler extends QuestionHandler {
         const domainId = this.context.domainId;
         const payload = this.request.body.questions_payload;
         const selectedDocumentId = Number(this.request.body.selected_document_id); // 确保转换为数字
-
-        console.log(`Received selected_document_id from frontend: ${selectedDocumentId}`);
 
         if (!payload) {
             this.response.status = 400;
@@ -402,7 +389,6 @@ export class StagingPushHandler extends QuestionHandler {
                     }
                 );
 
-                console.log(`[Saved] Question document with docId: ${newDocId}, associatedDocumentId: ${selectedDocumentId}`);
                 savedIds.push(newDocId);
             }
 
@@ -545,20 +531,13 @@ export async function apply(ctx: Context) {
 
         // 检查当前域是否在允许的域列表中
         if (!allowedDomainsArray.includes(handler.domain._id)) {
-            console.log('不在允许的域中', handler.domain._id);
             return false; // 如果不在允许的域中，返回 false
         }
-        console.log('在允许的域中', handler.domain._id);
-
-        // 检查用户是否具有特定权限
-        console.log('当前用户 ID:', handler.user._id); // 打印用户 ID
 
         if (handler.user._id === 2) {
-            console.log('用户是superadmin', handler.user._id);
             return true;
         } else {
             const hasPermission = handler.user.hasPerm(PERM.PERM_VIEW_QUESTGEN);
-            console.log(`User ${handler.user._id} has permission: ${hasPermission}`);
             return hasPermission;
         }
         

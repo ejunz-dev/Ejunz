@@ -147,7 +147,6 @@ export class RepoModel {
     static async getByRid(domainId: string, rid: string): Promise<RepoDoc | null> {
         const query = /^\d+$/.test(rid) ? { docId: Number(rid) } : { rid };
     
-        console.log(`[RepoModel.getByRid] Querying repository with`, query);
     
         const doc = await document.getMulti(domainId, document.TYPE_REPO, query)
             .project<RepoDoc>(buildProjection(RepoModel.PROJECTION_DETAIL)) 
@@ -210,7 +209,6 @@ export class RepoModel {
             count += ccount;
         }
         return [files, Math.ceil(count / pageSize), count];
-        console.log('files', files);
     }
 
 

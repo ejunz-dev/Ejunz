@@ -141,8 +141,6 @@ export class HomeHandler extends HomeBaseHandler {
 
     async get({ domainId }) {
         const homepageConfig = this.domain.homepage_config;
-        console.log('homepageConfig', homepageConfig);
-
         // 检查 processingConfig 是否为 undefined
         if (!homepageConfig) {
             this.response.body = {
@@ -153,9 +151,7 @@ export class HomeHandler extends HomeBaseHandler {
             return;
         }
 
-        console.log('homepageConfig', homepageConfig);
         const info = yaml.load(homepageConfig) as any;
-        console.log('info', info);
         
         const contents = [];
     
@@ -176,11 +172,9 @@ export class HomeHandler extends HomeBaseHandler {
                     );
                 }
             }
-            console.log('column', column);
     
             // 等待所有任务完成
             const sections = await Promise.all(tasks);
-            console.log('sections', sections);
             
             contents.push({
                 width: column.width,
@@ -195,7 +189,6 @@ export class HomeHandler extends HomeBaseHandler {
             udict,
             domain: this.domain,
         };
-        console.log('this.response.body.contents', this.response.body.contents);
     }
 
 }    
@@ -225,10 +218,8 @@ export async function apply(ctx: Context) {
     const CheckSpaceStore = (h) => {
         const availableSpaces = new Set(yaml.load(h.domain.spaces) as string[]);
         if (availableSpaces.has('homepage')) {
-            console.log('Homepage Domain pass');
             return true;
         }
-        console.log('Homepage Domain fail');
         return false;
     }
 
@@ -238,12 +229,9 @@ export async function apply(ctx: Context) {
             if (s.name == 'homepage') {
                 const beforeSystemSpace = SystemModel.get(s.key);
                 const parsedBeforeSystemSpace = yaml.load(beforeSystemSpace) as any[];
-                console.log('Homepage SystemConfig', parsedBeforeSystemSpace);
                 if (parsedBeforeSystemSpace.includes(h.domain._id)) {
-                    console.log('Homepage SystemConfig pass');
                     return true;
                 }else{
-                    console.log('Homepage SystemConfig fail');
                     return false;
                 }
             }
