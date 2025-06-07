@@ -50,7 +50,6 @@ class UserActivityHandler extends Handler {
     }
     async getDiscussion(domainId: string, limit = 20) {
         const domainIds = await this.getUserDomainIds();
-        console.log('DOMAINID',domainIds);
 
         const allDdocs = [];
         const allVndict = {};
@@ -71,7 +70,6 @@ class UserActivityHandler extends Handler {
                 discussion: 20,
             },
         ];
-        console.log('homepageConfig',homepageConfig);
         const info = homepageConfig;
         const contents = [];
     

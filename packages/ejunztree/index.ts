@@ -253,9 +253,6 @@ export class BranchModel {
         if (lids !== undefined) updateFields.lids = lids;
         if (rids !== undefined) updateFields.rids = rids;
     
-        console.log(`Updating resources for docId: ${docId}`);
-        console.log(`Lids: ${lids}`);
-        console.log(`Rids: ${rids}`);
     
         await DocumentModel.set(domainId, TYPE_BR, docId, updateFields);
     }
@@ -411,49 +408,39 @@ export class BranchModel {
     }
 }
 export async function getDocsByDomain (domainId: string) {
-    console.log(`Fetching docs for domain: ${domainId}`);
     return await DocsModel.getMulti(domainId, {}).toArray();
 }
 
 export async function getDocsByIds (domainId: string, ids: ObjectId[]) {
-    console.log(`Fetching docs for ids: ${ids}`);
     return await DocsModel.getMulti(domainId, { _id: { $in: ids } }).toArray();
 }
 
 export async function getDocsByDocId(domainId: string, docIds: number | number[]) {
-    console.log(`Fetching docs for docIds: ${JSON.stringify(docIds)}`);
 
     const query = {
         domainId,
         docId: Array.isArray(docIds) ? { $in: docIds } : docIds, // 直接使用 docIds
     };
 
-    console.log(`Querying docs with:`, JSON.stringify(query, null, 2));
-
     const results = await DocsModel.getMulti(domainId, query)
         .project(buildProjection(DocsModel.PROJECTION_PUBLIC)) // 仅获取必要字段
         .toArray();
-
-    console.log(`Fetched docs:`, results);
 
     return results;
 }
 
 export async function getReposByDocId(domainId: string, docId: number | number[]) {
-    console.log(`Fetching repos for rids: ${JSON.stringify(docId)}`);
 
     const query = {
         domainId,
         docId: Array.isArray(docId) ? { $in: docId } : docId, // 使用 rid 进行查询
     };
 
-    console.log(`Querying repos with:`, JSON.stringify(query, null, 2));
 
     const results = await RepoModel.getMulti(domainId, query)
         .project(buildProjection(RepoModel.PROJECTION_PUBLIC)) // 仅获取必要字段
         .toArray();
 
-    console.log(`Fetched repos:`, JSON.stringify(results, null, 2));
 
     return results;
 }
@@ -462,12 +449,10 @@ export async function getReposByDocId(domainId: string, docId: number | number[]
 
 
 export async function getProblemsByDocsId(domainId: string, lid: number) {
-    console.log(`Fetching problems for docs ID: ${lid}`);
     const query = {
         domainId,
         associatedDocumentId: lid 
     };
-    console.log(`Querying problems with:`, query);
     return await ProblemModel.getMulti(domainId, query).toArray();
 }
 
@@ -497,7 +482,6 @@ export class ForestDomainHandler extends Handler {
         
         try {
             const forest = await ForestModel.getForest(domainId);
-            console.log("Fetched forest:", forest);  
 
             if (!forest) {
                 console.warn(`No forest found for domain: ${domainId}`);
@@ -507,13 +491,11 @@ export class ForestDomainHandler extends Handler {
                     forest: { docId: null, title: 'Default Forest', content: 'No content available.', trids: [] },
                     trees: []  
                 };
-                console.log('forest',forest);
                 return;
             }
 
             
             const trees = await TreeModel.getAllTrees(domainId);
-            console.log("Fetched trees:", trees); 
 
             
             this.response.template = 'forest_domain.html';
@@ -522,7 +504,6 @@ export class ForestDomainHandler extends Handler {
                 forest,
                 trees  
             };
-            console.log("trees.length:", trees.length);
             
         } catch (error) {
             console.error("Error fetching forest:", error);
@@ -594,7 +575,6 @@ export class TreeEditHandler extends Handler {
 
         this.response.template = 'tree_edit.html';
         this.response.body = { tree };
-        console.log('tree:', this.response.body.tree);
     }
 
     @param('title', Types.Title)
@@ -638,7 +618,6 @@ export class TreeEditHandler extends Handler {
        await TreeModel.edit(domainId, trid, title, content);
         this.response.body = { trid };
         this.response.redirect = this.url('tree_detail', { domainId, trid });
-        console.log('docId:', this.response.body.docId);
 
     }
     
@@ -652,7 +631,6 @@ export class TreeDetailHandler extends Handler {
         if (!trid) {
             throw new NotFoundError(`Invalid request: docId is missing`);
         }
-        console.log(`Fetching tree with docId: ${trid}`);
 
         // 获取当前树的信息
         const tree = await TreeModel.getTreeByTrid(domainId, trid);
@@ -661,7 +639,6 @@ export class TreeDetailHandler extends Handler {
         }
 
         // 获取所有的 treeBranches
-        console.log(`Fetching entire tree for trid: ${tree.trid}`);
         const treeBranches = await TreeModel.getBranchesByTree(domainId, tree.trid);
 
         
@@ -703,9 +680,7 @@ export class TreeDetailHandler extends Handler {
             branchHierarchy,
         };
 
-       console.log('tree', this.response.body.tree);
-       console.log('trunk', this.response.body.trunk);
-       console.log("branchHierarchy:", JSON.stringify(branchHierarchy, null, 2));
+      
 
     }
 
@@ -743,7 +718,7 @@ export class TreeBranchHandler extends Handler {
             this.response.template = 'error.html';
             this.response.body = { error: error.message || 'An unexpected error occurred.' };
         }
-        console.log('ddocs', this.response.body.ddocs);
+        
     }
 }
 
@@ -755,7 +730,7 @@ export class BranchDetailHandler extends BranchHandler {
             throw new NotFoundError(`Invalid request: docId is missing`);
         }
 
-        console.log(`Fetching details for branch docId: ${docId}`);
+        
 
         const ddoc = await BranchModel.get(domainId, docId);
         if (!ddoc) {
@@ -765,7 +740,6 @@ export class BranchDetailHandler extends BranchHandler {
         if (Array.isArray(ddoc.trid)) {
             ddoc.trid = ddoc.trid[0]; 
         }
-        console.log('trunk trid:', ddoc.trid);
         
         
 
@@ -774,12 +748,9 @@ export class BranchDetailHandler extends BranchHandler {
 
         const pathLevels = ddoc.path?.split('/').filter(Boolean) || [];
         const pathBranches = await BranchModel.getBranchesByIds(domainId, pathLevels.map(Number));
-        console.log('pathBranches', pathBranches);
-        console.log('pathLevels', pathLevels);
 
-        console.log(`Fetching entire tree for trid: ${ddoc.trid}`);
         const treeBranches = await TreeModel.getBranchesByTree(domainId, ddoc.trid);
-        console.log('treeBranches', treeBranches);
+
 
         const branchHierarchy = {};
 
@@ -802,7 +773,6 @@ export class BranchDetailHandler extends BranchHandler {
         };
 
         branchHierarchy[ddoc.trid] = buildHierarchy(trunkBid, treeBranches);
-        console.log('branchHierarchy', branchHierarchy);
 
         const docs = ddoc.lids?.length
             ? await getDocsByDocId(domainId, ddoc.lids.filter(lid => lid != null).map(Number))
@@ -875,7 +845,6 @@ export class TreeCreateTrunkHandler extends BranchHandler {
         const parentId = Number(this.args?.parentId);
         const trid = Number(this.args?.trid);
 
-        console.log(`Debug: Opening sub-branch creation for parentId: ${parentId}, trid: ${trid}`);
 
         this.response.template = 'branch_edit.html';
         this.response.body = {
@@ -903,7 +872,6 @@ export class TreeCreateTrunkHandler extends BranchHandler {
         }
         const parsedTrid = tridArray[0]; // 取数组的第一个值
 
-        console.log(`Debug: Creating Trunk for trid ${parsedTrid}`);
 
         const bid = await BranchModel.generateNextBid(domainId);
 
@@ -920,7 +888,6 @@ export class TreeCreateTrunkHandler extends BranchHandler {
             rids
         );
 
-        console.log(`Debug: Created Trunk docId=${docId}, bid=${bid}`);
 
         this.response.body = { docId };
         this.response.redirect = this.url('branch_detail', { uid: this.user._id, trid: parsedTrid, docId });
@@ -937,7 +904,6 @@ export class BranchCreateSubbranchHandler extends BranchHandler {
         const parentId = Number(this.args?.parentId);
         const trid = Number(this.args?.trid);
 
-        console.log(`Debug: Opening sub-branch creation for parentId: ${parentId}, trid: ${trid}`);
 
         this.response.template = 'branch_edit.html';
         this.response.body = {
@@ -961,7 +927,6 @@ export class BranchCreateSubbranchHandler extends BranchHandler {
         await this.limitRate('add_subbranch', 3600, 60);
         const tridArray = trid.split(',').map(Number).filter(n => !isNaN(n));
 
-        console.log(`Debug: Creating sub-branch under trid ${trid}, parentId ${parentId}`);
 
         const bid = await BranchModel.generateNextBid(domainId);
         const docId = await BranchModel.addBranchNode(
@@ -991,7 +956,6 @@ export class BranchEditHandler extends BranchHandler {
             throw new NotFoundError(`Invalid request: docId is missing`);
         }
 
-        console.log(`Fetching details for branch docId: ${docId}`);
 
         const ddoc = await BranchModel.get(domainId, docId);
         if (!ddoc) {
@@ -1053,7 +1017,6 @@ export class BranchEditHandler extends BranchHandler {
             }
         });
 
-        console.log("Resources Mapping:", resources);
 
         this.response.template = 'branch_edit.html';
 
@@ -1104,7 +1067,6 @@ export class BranchResourceEditHandler extends BranchHandler {
             throw new NotFoundError(`Invalid request: docId is missing`);
         }
 
-        console.log(`Fetching resources for branch docId: ${docId}`);
 
         const ddoc = await BranchModel.get(domainId, docId);
         if (!ddoc) {
@@ -1153,8 +1115,6 @@ export class BranchfileDownloadHandler extends Handler {
         const actualDocId = repo.docId ?? docId;  
         const filePath = `repo/${domainId}/${actualDocId}/${filename}`;
 
-        console.log(`[BranchfileDownloadHandler] Checking filePath=${filePath}`);
-
         const fileMeta = await StorageModel.getMeta(filePath);
         if (!fileMeta) throw new NotFoundError(`File "${filename}" does not exist in repository "${rid}".`);
 
@@ -1174,20 +1134,12 @@ export async function apply(ctx: Context) {
 
         // 检查当前域是否在允许的域列表中
         if (!allowedDomainsArray.includes(handler.domain._id)) {
-            console.log('不在允许的域中', handler.domain._id);
             return false; // 如果不在允许的域中，返回 false
         }
-        console.log('在允许的域中', handler.domain._id);
-
-        // 检查用户是否具有特定权限
-        console.log('当前用户 ID:', handler.user._id); // 打印用户 ID
-
         if (handler.user._id === 2) {
-            console.log('用户是superadmin', handler.user._id);
             return true;
         } else {
             const hasPermission = handler.user.hasPerm(PERM.PERM_VIEW_TREE);
-            console.log(`User ${handler.user._id} has permission: ${hasPermission}`);
             return hasPermission;
         }
         

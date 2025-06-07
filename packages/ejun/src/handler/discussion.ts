@@ -71,10 +71,6 @@ class DiscussionMainHandler extends Handler {
     @param('page', Types.PositiveInt, true)
     @param('all', Types.Boolean)
     async get(domainId: string, page = 1, all = false) {
-        console.log('Resolved domainId:', domainId);
-    console.log('Request headers:', this.request.headers);
-    console.log('Request query:', this.request.query);
-    console.log('Context domain:', this.context.EjunzContext.domain);
 
         // Limit to known types
         const parentType = { $in: Object.keys(typeMapper).map((i) => typeMapper[i]) };
@@ -93,7 +89,6 @@ class DiscussionMainHandler extends Handler {
         this.response.body = {
             ddocs, dpcount, udict, page, page_name: 'discussion_main', vndict, vnode: {}, vnodes,
         };
-        console.log('response',this.response.body)
     }
 }
 
@@ -102,8 +97,6 @@ class DiscussionNodeHandler extends DiscussionHandler {
     @param('name', Types.String)
     @param('page', Types.PositiveInt, true)
     async get(domainId: string, type: string, _name: string, page = 1) {
-        console.log('type',type)
-        console.log('name',_name)
         let name: ObjectId | string | number;
         if (ObjectId.isValid(_name)) name = new ObjectId(_name);
         else if (isSafeInteger(parseInt(_name, 10))) name = parseInt(_name, 10);
@@ -212,7 +205,6 @@ class DiscussionDetailHandler extends DiscussionHandler {
         this.response.body = {
             path, ddoc: this.ddoc, dsdoc, drdocs, page, pcount, drcount, udict, vnode: this.vnode, reactions,
         };
-        console.log('typeDisplay',{ type: discussion.typeDisplay[this.ddoc.parentType], name: this.ddoc.parentId })
     }
 
     async post() {

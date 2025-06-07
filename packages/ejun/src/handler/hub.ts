@@ -83,11 +83,6 @@ class HubMainHandler extends Handler {
     @param('page', Types.PositiveInt, true)
     @param('all', Types.Boolean)
     async get(domainId: string, page = 1, all = false) {
-        console.log('Resolved domainId:', domainId);
-    console.log('Request headers:', this.request.headers);
-    console.log('Request query:', this.request.query);
-    console.log('Context domain:', this.context.EjunzContext.domain);
-
         // Limit to known types
         const parentType = { $in: Object.keys(typeMapper).map((i) => typeMapper[i]) };
         all &&= this.user.hasPerm(PERM.PERM_MOD_BADGE);
@@ -105,7 +100,6 @@ class HubMainHandler extends Handler {
         this.response.body = {
             ddocs, dpcount, udict, page, page_name: 'hub_main', vndict, vnode: {}, vnodes,
         };
-        console.log('response',this.response.body)
     }
 }
 
@@ -142,7 +136,6 @@ class HubNodeHandler extends HubHandler {
             page_name: 'hub_node',
             vnodes,
         };
-        console.log('response',this.response.body)
     }
 }
 
@@ -154,7 +147,6 @@ class HubCreateHandler extends HubHandler {
             throw new Error(`Invalid name (lid): ${name}`);
         }
 
-        console.log('Resolved name (lid):', resolvedName, 'Type:', typeof resolvedName);
 
         const path = [
             ['Ejunz', 'homepage'],
@@ -165,8 +157,7 @@ class HubCreateHandler extends HubHandler {
 
         this.response.template = 'hub_create.html';
         this.response.body = { path, vnode: this.vnode };
-        console.log('ddoc:', this.ddoc);
-console.log('vnode:', this.vnode);
+
     }
 
     @param('type', Types.Range(Object.keys(typeMapper)))
@@ -192,7 +183,6 @@ console.log('vnode:', this.vnode);
             throw new Error(`Invalid vnode.id: ${this.vnode.id}`);
         }
 
-        console.log('Resolved vnode.id:', resolvedId, 'Type:', typeof resolvedId);
 
         const hidden = this.vnode.hidden ?? false;
         const did = await hub.add(
@@ -202,8 +192,6 @@ console.log('vnode:', this.vnode);
 
         this.response.body = { did };
         this.response.redirect = this.url('hub_detail', { did });
-
-console.log('vnode:', this.vnode);
 
 
     }
@@ -280,7 +268,6 @@ class HubDetailHandler extends HubHandler {
             y: nodesContent.get(id).y,
         }));
 
-        console.log('D3.js Data:', { nodes, links });
 
         const path = [
             ['Ejunz', 'homepage'],
@@ -556,7 +543,6 @@ class HubRRFileHandler extends Handler {
     @post('type', Types.Range(['commentfile', 'replyfile']), true)
     
     async postUploadFile(domainId: string, filename: string,did: ObjectId, drid: ObjectId, drrid: ObjectId, type = 'commentfile') {
-        console.log('postUploadFile',domainId, filename, did, drid, drrid, type)
         if (!this.request.files.file) throw new ValidationError('file');
         filename ||= this.request.files.file.originalFilename || String.random(16);
         const files = [];
@@ -600,13 +586,11 @@ class HubD3MainEditHandler extends HubHandler {
     @param('did', Types.ObjectId)
     @param('page', Types.PositiveInt, true)
     async get(domainId: string, did: ObjectId, page = 1) {  
-        console.log('ddoc:', this.ddoc);
         const [drdocs, pcount, drcount] = await this.paginate(
             hub.getMultiReply(domainId, did),
             page,
             'reply',
         );
-        console.log('Fetched drdocs:', drdocs);
         const nodesSet = new Set<string>();
         const nodesContent = new Map<string, { content: string, type: string, relatedMainId?: string, x?: number, y?: number }>();
         const links: { source: string; target: string }[] = [];
@@ -617,7 +601,6 @@ class HubD3MainEditHandler extends HubHandler {
             nodesSet.add(docId);
             nodesContent.set(docId, { content, type: 'main', relatedMainId: docId, x: drdoc.x, y: drdoc.y });
         });
-        console.log('drdocs:', drdocs);
 
         const nodes = Array.from(nodesSet).map((id) => ({
             id,
@@ -628,7 +611,6 @@ class HubD3MainEditHandler extends HubHandler {
             y: nodesContent.get(id).y,
         }));
 
-        console.log('D3.js Data:', { nodes, links });
         this.response.template = 'hub_node_main_edit.html';
         this.response.body = {
             ddoc: this.ddoc, 
@@ -652,10 +634,7 @@ class HubD3MainEditHandler extends HubHandler {
 
     async post({domainId}) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        console.log('Domain ID:', domainId);
-        console.log('this.request.body:', this.request.body);
         const nodes = this.request.body.nodes;
-        console.log('nodes:', nodes);
         if (!Array.isArray(nodes)) {
             this.response.body = { success: false, message: "Invalid data format" };
             return;
@@ -664,13 +643,11 @@ class HubD3MainEditHandler extends HubHandler {
         const updatePromises = nodes.map(node => {
             const { id, x, y } = node;
             const drid = new ObjectId(id);
-            console.log('Updating node:', { domainId, id, x, y });
             return hub.editReplyCoordinates(domainId, drid, x, y, this.user._id, this.request.ip)
                 .then(() => console.log('Updated node:', { id, x, y }));
         });
 
         await Promise.all(updatePromises).catch(error => {
-            console.error("Error updating nodes:", error);
             this.response.body = { success: false, message: "Error updating nodes" };
         });
 
@@ -746,7 +723,6 @@ class HubD3SubEditHandler extends HubHandler {
         });
 
         const files = await hub.getFiles(domainId, did, drid);
-        console.log('files:', files);
         const nodes = Array.from(nodesSet).map((id) => ({
             id,
             content: nodesContent.get(id).content,
@@ -796,7 +772,6 @@ class HubD3SubEditHandler extends HubHandler {
         });
 
         await Promise.all(updatePromises).catch(error => {
-            console.error("Error updating nodes:", error);
             this.response.body = { success: false, message: "Error updating nodes" };
         });
 
@@ -813,14 +788,11 @@ class HubD3SubEditHandler extends HubHandler {
         }
         
         await storage.put(`hub/${this.ddoc.docId}/${drid}/${filename}`, file.filepath, this.user._id);
-        console.log('File uploaded:', `hub/${this.ddoc.docId}/${drid}/${filename}`);
         const meta = await storage.getMeta(`hub/${this.ddoc.docId}/${drid}/${filename}`);
         const payload = { name: filename, ...pick(meta, ['size', 'lastModified', 'etag']) };
-        console.log('payload:', payload);
         if (!Array.isArray(this.drdoc.hubSubImage)) {
             this.drdoc.hubSubImage = [];
         }
-        console.log('this.drdoc.hubSubImage:', this.drdoc.hubSubImage);
        
         this.drdoc.hubSubImage.push({ _id: filename, ...payload });
         await hub.editReply(domainId, this.drdoc.docId, { hubSubImage: this.drdoc.hubSubImage }, this.user._id, this.request.ip);
@@ -837,10 +809,8 @@ export class HubMainFSDownloadHandler extends HubHandler {
         if (!file) {
             throw new NotFoundError(`File "${filename}" does not exist.`);
         }
-        console.log("Generated target path:", target);
 
         const mimeType = lookup(filename) || 'application/octet-stream';
-        console.log("File MIME type:", mimeType);
 
         try {
             this.response.body = await storage.get(target);
@@ -852,8 +822,6 @@ export class HubMainFSDownloadHandler extends HubHandler {
         } catch (e) {
             throw new Error(`Error streaming file "${filename}": ${e.message}`);
         }
-
-        console.log("File streamed successfully:", file);
     }
 }
 
@@ -864,16 +832,13 @@ export class HubSubFSDownloadHandler extends HubHandler {
     @param('drrid', Types.ObjectId)
     @param('filename', Types.Filename)
     async get(domainId: string, did: ObjectId, drid: ObjectId, drrid: ObjectId, filename: string) {
-        console.log('HubSubFSDownloadHandler:', domainId, did, drid, drrid, filename);
         const target = `hub/${domainId}/${drrid}/replyfile/${filename}`;
         const file = await storage.getMeta(target);
         if (!file) {
             throw new NotFoundError(`File "${filename}" does not exist.`);
         }
-        console.log("Generated target path:", target);
 
         const mimeType = lookup(filename) || 'application/octet-stream';
-        console.log("File MIME type:", mimeType);
 
         try {
             this.response.body = await storage.get(target);
@@ -885,8 +850,6 @@ export class HubSubFSDownloadHandler extends HubHandler {
         } catch (e) {
             throw new Error(`Error streaming file "${filename}": ${e.message}`);
         }
-
-        console.log("File streamed successfully:", file);
     }
 }
 

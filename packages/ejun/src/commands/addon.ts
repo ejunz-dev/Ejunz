@@ -9,8 +9,8 @@ import { getAddons, writeAddons } from '../options';
 const logger = new Logger('addon');
 const addonDir = path.resolve(os.homedir(), '.ejunz', 'addons');
 const pluginDir = path.resolve(os.homedir(), 'root/ejunz/plugins/');
-const customDir = path.resolve(os.homedir(), 'ejunz/plugins/Custom_domains');
-const domainDir = path.resolve(os.homedir(), 'ejunz/plugins/Custom_domains/B001');
+const customDir = path.resolve(os.homedir(), 'ejunz/private/');
+const domainDir = path.resolve(os.homedir(), 'ejunz/plugins/ejunz.com/Premium/');
 
 export function register(cli: CAC) {
     cli.command('addon [operation] [name]').action((operation, name) => {

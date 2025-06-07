@@ -181,7 +181,6 @@ export async function editTailCoordinates(
 
 export async function getFiles(domainId: string, did: ObjectId, drid: ObjectId) {
     const drdoc = await getReply(domainId, drid);
-    console.log('drdoc:', drdoc);
     if (!drdoc) throw new DocumentNotFoundError(domainId, drid);
 
     return drdoc.reply?.flatMap(reply => 
@@ -233,7 +232,6 @@ export async function addTailReply(
     x: number, y: number
 ): Promise<[HubReplyDoc, ObjectId]> {
     const time = new Date();
-    console.log('Inserting reply with coordinates:', { x, y });
     const [drdoc, subId] = await document.push(
         domainId, document.TYPE_HUB_REPLY, drid,
         'reply', content, owner, { ip, editor: owner, x, y },
@@ -248,7 +246,6 @@ export async function addTailReply(
             { updateAt: time },
         ),
     ]);
-    console.log('Document inserted:', await coll.findOne({ docId: subId }));
     return [drdoc, subId];
 }
 
@@ -340,13 +337,10 @@ if (type === document.TYPE_DOCS) {
     // 检查 id 是否为数字类型
     let ddoc;
     if (/^\d+$/.test(id)) {
-        console.log(`ID ${id} is a numeric lid.`);
         ddoc = await DocsModel.get(domainId, parseInt(id, 10)); // 根据 lid 获取文档
     } else if (ObjectId.isValid(id)) {
-        console.log(`ID ${id} is a valid ObjectId.`);
         ddoc = await DocsModel.get(domainId, new ObjectId(id));
     } else {
-        console.error(`Invalid ID format: ${id}`);
         throw new Error(`Invalid ID format: ${id}`);
     }
 
