@@ -1,5 +1,4 @@
 {% extends "layout/basic.html" %}
-
 {% block content %}
 <div class="row">
   <div class="medium-9 columns">
@@ -34,52 +33,9 @@
               <h3>{{ _("Tree Map") }}</h3>
             </div>
             <div class="section__body">
-              {% if branchHierarchy and branchHierarchy.trunk %}
-
-                {# 🏗️ 递归渲染子节点树结构 #}
-                {% macro render_tree(branches, level=0) %}
-                  {% if branches and branches|length > 0 %}
-                    <div style="display: flex; justify-content: center; align-items: flex-end; gap: 50px; {% if level == 0 %}flex-wrap: wrap;{% endif %}">
-
-                      {% for branch in branches %}
-                        <div style="text-align: center; position: relative;">
-                          {% if branch.subBranches and branch.subBranches|length > 0 %}
-                            <div style="display: flex; flex-direction: column-reverse; align-items: center;">
-                              {{ render_tree(branch.subBranches, level + 1) }}
-                            </div>
-                          {% endif %}
-                          <div>
-                            {% if branch.subBranches and branch.subBranches|length > 0 %} 🌿 {% else %} 🌱 {% endif %}
-                            <a href="{{ url('branch_detail', domainId=tree.domainId, trid=tree.trid, docId=branch.docId) }}">
-                              {{ branch.title }}
-                            </a>
-                          </div>
-                        </div>
-                      {% endfor %}
-                    </div>
-                  {% endif %}
-                {% endmacro %}
-
-                <div style="display: flex; flex-direction: column; align-items: center;">
-                  {# 🏗️ **先渲染 branches** #}
-                  {{ render_tree(branchHierarchy.branches) }}
-
-                  {# 🌳 **然后渲染 trunk（始终放在最底部）** #}
-                  {% if branchHierarchy.trunk %}
-                    <div style="display: flex; justify-content: center; margin-top: 20px;">
-                      <div style="text-align: center;">
-                        🌳
-                        <a href="{{ url('branch_detail', domainId=tree.domainId, trid=tree.trid, docId=branchHierarchy.trunk.docId) }}">
-                          {{ branchHierarchy.trunk.title }}
-                        </a>
-                      </div>
-                    </div>
-                  {% endif %}
-                </div>
-
-              {% else %}
-                <p>{{ _("No branches available.") }}</p>
-              {% endif %}
+              <div style="overflow-x: auto;">
+                <svg id="d3-tree"></svg>
+              </div>
             </div>
           </div>
 
@@ -87,7 +43,6 @@
           <p>{{ _("Tree not found.") }}</p>
         {% endif %}
       </div>
-    
     </div>
   </div>
 
@@ -97,13 +52,10 @@
         <h2 class="section__title">{{ _("Actions") }}</h2>
       </div>
       <div class="section__body">
-        <!-- ✅ 只有当 Tree 存在时才显示 -->
         {% if tree %}
           <a href="{{ url('tree_edit', domainId=tree.domainId, trid=tree.trid) }}" class="button primary expanded">
             {{ _('Edit Tree') }}
           </a>
-
-          <!-- ✅ 只有当 Trunk 为空时才显示 Create Trunk 按钮 -->
           {% if not branchHierarchy.trunk %}
             <a href="{{ url('tree_create_trunk', domainId=tree.domainId, trid=tree.trid) }}" class="button success expanded">
               {{ _('Create Trunk') }}

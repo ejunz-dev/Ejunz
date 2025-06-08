@@ -623,71 +623,98 @@ export class TreeEditHandler extends Handler {
     
 }
 
-
-
 export class TreeDetailHandler extends Handler {
     @param('trid', Types.Int)
     async get(domainId: string, trid: number) {
-        if (!trid) {
-            throw new NotFoundError(`Invalid request: docId is missing`);
-        }
-
-        // 获取当前树的信息
-        const tree = await TreeModel.getTreeByTrid(domainId, trid);
-        if (!tree) {
-            throw new NotFoundError(`Tree with docId ${trid} not found.`);
-        }
-
-        // 获取所有的 treeBranches
-        const treeBranches = await TreeModel.getBranchesByTree(domainId, tree.trid);
-
-        
-        const trunk = treeBranches.find(branch => branch.parentId === null || branch.path.split('/').length === 1);
-
-        
-        const buildHierarchy = (parentId: number | null, branches: any[]) => {
-            return branches
-                .filter(branch => branch.parentId === parentId)
-                .map(branch => ({
-                    ...branch,
-                    subBranches: buildHierarchy(branch.bid, branches)
-                }));
-        };
-
-        
-        const branchHierarchy = {
-            trunk: trunk || null,
-            branches: trunk ? buildHierarchy(trunk.bid, treeBranches) : [],
-        };
-
-        
-        const childrenBranchesCursor = await BranchModel.getBranch(domainId, { parentId: trunk?.bid });
-        const childrenBranches = await childrenBranchesCursor.toArray();
-
-        // 解析路径
-        const pathLevels = trunk?.path?.split('/').filter(Boolean) || [];
-        const pathBranches = await BranchModel.getBranchesByIds(domainId, pathLevels.map(Number));
+      if (!trid) {
+        throw new NotFoundError(`Invalid request: docId is missing`);
+      }
+  
+      // 获取树信息
+      const tree = await TreeModel.getTreeByTrid(domainId, trid);
+      if (!tree) {
+        throw new NotFoundError(`Tree with docId ${trid} not found.`);
+      }
+  
+      // 获取所有分支
+      const treeBranches = await TreeModel.getBranchesByTree(domainId, tree.trid);
+      const trunk = treeBranches.find(branch => branch.parentId === null || branch.path.split('/').length === 1);
+  
+      // 构造递归层级结构
+      const buildHierarchy = (parentId: number | null, branches: any[]) => {
+        return branches
+          .filter(branch => branch.parentId === parentId)
+          .map(branch => ({
+            ...branch,
+            subBranches: buildHierarchy(branch.bid, branches)
+          }));
+      };
+  
+      const branchHierarchy = {
+        trunk: trunk || null,
+        branches: trunk ? buildHierarchy(trunk.bid, treeBranches) : [],
+      };
 
 
-        this.response.template = 'tree_detail.html';
-        this.response.pjax = 'tree_detail.html';
-        this.response.body = {
-            tree,
-            trunk,
-            childrenBranches,
-            pathBranches,
-            treeBranches,
-            branchHierarchy,
-        };
-
+      // 转为 D3.js 树图结构
+      const toD3TreeNode = (branch: any): any => ({
+        name: branch.title,
+        docId: branch.docId,
+        url: this.url('branch_detail', {
+          domainId: domainId,
+          trid: tree.trid,
+          docId: branch.docId
+        }),
+        children: (branch.subBranches || []).map(toD3TreeNode)
+      });
       
-
+  
+      const d3TreeData = trunk
+  ? {
+      name: trunk.title,
+      docId: trunk.docId,
+      url: this.url('branch_detail', {
+        domainId: domainId,
+        trid: tree.trid,
+        docId: trunk.docId
+      }),
+      children: branchHierarchy.branches.map(toD3TreeNode)
     }
-
+  : null;
+  
+      // 其他必要数据
+      const childrenBranchesCursor = await BranchModel.getBranch(domainId, { parentId: trunk?.bid });
+      const childrenBranches = await childrenBranchesCursor.toArray();
+  
+      const pathLevels = trunk?.path?.split('/').filter(Boolean) || [];
+      const pathBranches = await BranchModel.getBranchesByIds(domainId, pathLevels.map(Number));
+  
+      // 设置响应数据
+      this.response.template = 'tree_detail.html';
+      this.response.pjax = 'tree_detail.html';
+      this.response.body = {
+        tree,
+        trunk,
+        childrenBranches,
+        pathBranches,
+        treeBranches,
+        branchHierarchy,
+      };
+  
+      // 注入给前端用的 D3 结构
+      this.UiContext.d3TreeData = d3TreeData;
+      this.UiContext.tree = {
+        domainId: tree.domainId,
+        trid: tree.trid
+      };
+      
+    }
+  
     async post() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+      this.checkPriv(PRIV.PRIV_USER_PROFILE);
     }
-}
+  }
+  
 
 
 export class TreeBranchHandler extends Handler {
