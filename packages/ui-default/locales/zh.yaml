@@ -57,6 +57,7 @@ Accepted Ratio: 通过率
 Accepted: 已通过
 Access Control: 访问控制
 Action: 动作
+Actions: 操作
 Active Sessions: 活动会话
 Activity: 动态
 Add blacklist by ip, uid: 封禁 IP / 将对应 uid 的用户拉入黑名单
@@ -96,6 +97,7 @@ Auto format code: 自动格式化代码
 Auto organize input: 自动整理输入
 Avatar: 头像
 Back to contest list: 返回比赛列表
+Back to Tree: 返回树
 Be Copied: 被复制
 Begin at: 开始于
 Begin Date: 开始日期
@@ -105,6 +107,8 @@ Bio Visibility: 个人简介可见性
 Bio: 个人简介
 Bold: 加粗
 Boom!: 炸了！
+Branch Info: 分支信息
+Branch Path: 分支路径
 Browser: 浏览器
 Built-in: 内置
 Bulletin: 公告
@@ -200,8 +204,10 @@ Create problem solutions: 创建题解
 Create Problem: 创建题枝
 Create problems: 创建题枝
 Create Role: 创建角色
+Create Sub-Branch: 创建子分支
 Create Training Plan: 创建训练计划
 Create training plans: 创建训练计划
+Create Tree: 创建树
 Create: 创建
 Created By: 创建人
 Current dataset comes from: 当前数据集来自
@@ -302,6 +308,7 @@ Duration (hours): 持续时间 (小时)
 Duration: 持续时间
 Edit any contests: 修改任意的比赛
 Edit any homework: 修改任意的作业
+Edit Content: 编辑内容
 Edit Contest: 编辑比赛
 Edit description of this domain: 修改此域描述
 Edit discussion replies of own discussion: 修改自己话题中的回复
@@ -309,6 +316,7 @@ Edit discussion replies: 修改话题的回复
 Edit discussions: 修改话题
 Edit domain settings: 编辑域设置
 Edit Domain: 编辑域
+Edit Forest: 编辑森林
 Edit Homework: 编辑作业
 Edit own contests: 修改自己的比赛
 Edit own discussion replies: 修改话题中自己的回复
@@ -324,7 +332,9 @@ Edit problem solutions: 修改题解
 Edit Problem: 编辑题枝
 Edit problems: 修改题枝
 Edit Profile: 编辑个人信息
+Edit Resources: 编辑资源
 Edit training plans: 修改训练计划
+Edit Tree: 编辑树
 Edit: 编辑
 Email Visibility: Email 可见性
 Email: 电子邮件
@@ -356,6 +366,7 @@ filespace_main: 文件中心
 filespace: 文件中心
 Filter: 过滤
 Footer: 页脚
+Forest Overview: 森林概览
 Forgot Password and/or Username: 忘记密码和/或用户名
 Forgot password or username?: 忘记密码或者用户名？
 Formula blocks: 公式区块
@@ -399,6 +410,7 @@ homework_scoreboard: 作业成绩表
 homework_status: 作业成绩表
 Homework: 作业
 Homeworks per page: 每页展示的作业数量
+Hooked Resources: 挂钩资源
 Host: 主办人
 hour(s): 小时
 hub_main: 地图工具
@@ -529,6 +541,7 @@ No Permission to Create a Discussion: 您没有权限创建话题
 No Permission to Submit: 您没有权限递交
 No problem.: 没有题枝。
 No solutions so far...: 目前还没有题解...
+No sub-branches available: 没有子分支
 No Submissions: 没有递交
 No testdata at current.: 暂无测试数据。
 No user is allowed to join this domain: 没有用户可以自助加入此域
@@ -689,6 +702,7 @@ repo_domain: 知库
 repo_edit: 编辑知库
 repo: 知库
 Report: 举报
+Repository: 知库
 required: 必填
 Reset Password or Find Username: 重置密码或找回用户名
 Reset Password: 重置密码
@@ -790,6 +804,8 @@ Storage engine endPoint: 存储桶 endPoint
 Storage engine region: 存储桶地域
 Storage engine secret: 存储桶 secretKey
 Student ID: 学号
+Sub-Branch: 子分支
+Sub-Branches: 子分支
 Subject: 主题
 Submission Statistics: 递交统计
 Submission: 递交
@@ -857,6 +873,11 @@ training_files: 训练文件
 training_main: 训练
 Training: 训练
 Trainings per page: 每页展示的训练数量
+Tree Content: 树内容
+Tree Details: 树详情
+Tree List: 树列表
+Tree Map: 树枝图
+Tree: 树
 Type: 类型
 UI Language: 用户界面语言
 Uncompleted: 未完成
