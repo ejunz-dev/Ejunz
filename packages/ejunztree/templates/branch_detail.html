@@ -10,25 +10,6 @@
 {% block content %}
 <div class="row">
   <div class="medium-9 columns">
-    <div class="section">
-      <div class="section__header">
-        <h1 class="section__title">{{ ddoc.title }}</h1>
-      </div>
-      <div class="section__body">
-            <div class="section">
-        <div class="section__header">
-          <h3>{{ _("Content") }}</h3>
-        </div>
-        <div class="section__body current-branch">
-          <div class="typo richmedia topic__content" data-emoji-enabled>
-            {{ ddoc.content|markdown|safe }}
-          </div>
-        </div>
-      </div>
-
-
-
-        <!-- 🌳 Tree Map -->
         <div class="section">
           <div class="section__header">
             <h3>{{ _("Tree Map") }}</h3>
@@ -37,6 +18,20 @@
             {% include "tree_map.html" %}
           </div>
         </div>
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ ddoc.title }}</h1>
+      </div>
+      <div class="section__body">
+            <div class="section">
+        <div class="section__header">
+        </div>
+        <div class="section__body current-branch">
+          <div class="typo richmedia topic__content" data-emoji-enabled>
+            {{ ddoc.content|markdown|safe }}
+          </div>
+        </div>
+      </div>
       </div>
     </div>
   </div>
