@@ -9,7 +9,6 @@
 </script>
 {% block content %}
 <div class="row">
-
   <div class="medium-9 columns">
     <div class="section">
       <div class="section__header">
@@ -18,40 +17,36 @@
       <div class="section__body">
         {% if forest %}
           <h3>{{ forest.title }}</h3>
-         <div class="typo richmedia topic__content" data-emoji-enabled>
-          {{ forest.content|markdown|safe }}
-        </div>
+          <div class="typo richmedia topic__content" data-emoji-enabled>
+            {{ forest.content|markdown|safe }}
+          </div>
         {% else %}
           <p>{{ _("No forest exists. You can create one.") }}</p>
         {% endif %}
       </div>
     </div>
-  </div>
 
-
-  <div class="medium-9 columns">
     <div class="section">
-        <div class="section__header">
-            <h2 class="section__title">{{ _("Tree List") }}</h2>
-        </div>
-        <div class="section__body">
-            {% if trees and trees|length > 0 %}
-            <ul>
-                {% for tree in trees %}
-                <li>
-                    <a href="{{ url('tree_detail', domainId=tree.domainId, trid=tree.trid) }}">
-                        {{ tree.title }} (ID: {{ tree.trid }})
-                    </a>
-                </li>
-                {% endfor %}
-            </ul>
-            {% else %}
-            <p>{{ _("No trees available.") }}</p>
-            {% endif %}
-        </div>
+      <div class="section__header">
+        <h2 class="section__title">{{ _("Tree List") }}</h2>
+      </div>
+      <div class="section__body">
+        {% if trees and trees|length > 0 %}
+          <ul>
+            {% for tree in trees %}
+              <li>
+                <a href="{{ url('tree_detail', domainId=tree.domainId, trid=tree.trid) }}">
+                  {{ tree.title }} (ID: {{ tree.trid }})
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p>{{ _("No trees available.") }}</p>
+        {% endif %}
+      </div>
     </div>
-</div>
-
+  </div>
 
   <div class="medium-3 columns">
     <div class="section side">
@@ -59,22 +54,20 @@
         <h2 class="section__title">{{ _("Actions") }}</h2>
       </div>
       <div class="section__body">
-
         {% if not forest %}
           <a href="{{ url('forest_create', domainId=domainId) }}" class="button success expanded">
             {{ _('Create Forest') }}
           </a>
         {% else %}
-
-          <a href="{{ url('forest_edit', domainId=domainId, docId=forest.docId) }}" class="button secondary expanded">
-            {{ _('Edit Forest') }}
-          </a>
-
+          {% if forest.docId %}
+            <a href="{{ url('forest_edit', domainId=domainId, docId=forest.docId) }}" class="button secondary expanded">
+              {{ _('Edit Forest') }}
+            </a>
+          {% endif %}
           <a href="{{ url('tree_create', domainId=domainId) }}" class="button primary expanded">
             {{ _('Create Tree') }}
           </a>
         {% endif %}
-
       </div>
     </div>
   </div>
