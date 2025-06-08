@@ -12,32 +12,19 @@
   <div class="medium-9 columns">
     <div class="section">
       <div class="section__header">
-        <h2 class="section__title">{{ _("Branch Details") }}</h2>
+        <h1 class="section__title">{{ ddoc.title }}</h1>
       </div>
       <div class="section__body">
-        <h2>{{ _("Tree ID") }}: {{ ddoc.trid }}</h2>
-
             <div class="section">
         <div class="section__header">
-          <h3>{{ _("Current Branch") }}</h3>
+          <h3>{{ _("Content") }}</h3>
         </div>
         <div class="section__body current-branch">
-          <p><strong>{{ _("Title") }}:</strong> {{ ddoc.title }}</p>
-          <p><strong>{{ _("Branch ID") }}:</strong> {{ ddoc.bid }}</p>
-          <p><strong>{{ _("Type") }}:</strong> 
-            {% if ddoc.parentId %}
-              <span class="badge secondary">{{ _("Sub-Branch") }}</span>
-            {% else %}
-              <span class="badge primary">{{ _("Trunk") }}</span>
-            {% endif %}
-          </p>
-          <p><strong>{{ _("Content") }}:</strong></p>
           <div class="typo richmedia topic__content" data-emoji-enabled>
-          {{ ddoc.content|markdown|safe }}
-        </div>
+            {{ ddoc.content|markdown|safe }}
+          </div>
         </div>
       </div>
-
 
         <div class="section">
           <div class="section__header">
@@ -161,45 +148,57 @@
             {% include "tree_map.html" %}
           </div>
         </div>
+      </div>
+    </div>
+  </div>
 
-        <!-- 🔹 Branch Path -->
-        <div class="section">
-          <div class="section__header">
-            <h3>{{ _("Branch Path") }}</h3>
-          </div>
-          <div class="section__body path-container">
-            <nav class="breadcrumb">
-              {% for pathBranch in pathBranches %}
-                {% if pathBranch.docId == ddoc.docId %}
-                  <strong>{{ pathBranch.title }}</strong>
-                {% else %}
-                  <a href="{{ url('branch_detail', domainId=ddoc.domainId,trid=ddoc.trid, docId=pathBranch.docId) }}">
-                    {{ pathBranch.title }}
-                  </a>
-                {% endif %}
-                {% if not loop.last %} - {% endif %}
-              {% endfor %}
-            </nav>
-          </div>
+  <div class="medium-3 columns">
+    <div class="section side">
+      <div class="section__header">
+        <h2 class="section__title">{{ _("Branch Info") }}</h2>
+      </div>
+      <div class="section__body">
+        <p><strong>{{ _("Title") }}:</strong> {{ ddoc.title }}</p>
+        <p><strong>{{ _("Type") }}:</strong> 
+          {% if ddoc.parentId %}
+            <span class="badge secondary">{{ _("Sub-Branch") }}</span>
+          {% else %}
+            <span class="badge primary">{{ _("Trunk") }}</span>
+          {% endif %}
+        </p>
+
+        <div class="section__header">
+          <h3>{{ _("Branch Path") }}</h3>
+        </div>
+        <div class="section__body path-container">
+          <nav class="breadcrumb">
+            {% for pathBranch in pathBranches %}
+              {% if pathBranch.docId == ddoc.docId %}
+                <strong>{{ pathBranch.title }}</strong>
+              {% else %}
+                <a href="{{ url('branch_detail', domainId=ddoc.domainId,trid=ddoc.trid, docId=pathBranch.docId) }}">
+                  {{ pathBranch.title }}
+                </a>
+              {% endif %}
+              {% if not loop.last %} - {% endif %}
+            {% endfor %}
+          </nav>
         </div>
 
-        <!-- 🔹 Sub-Branches -->
-        <div class="section">
-          <div class="section__header">
-            <h3>{{ _("Sub-Branches") }}</h3>
-          </div>
-          <div class="section__body sub-branches">
-            {% if childrenBranches and childrenBranches|length > 0 %}
-              {% for branch in childrenBranches %}
-                <a href="{{ url('branch_detail', domainId=ddoc.domainId,trid=ddoc.trid, docId=branch.docId) }}">
-                  {{ branch.title }}
-                </a>
-                {% if not loop.last %} | {% endif %}
-              {% endfor %}
-            {% else %}
-              <p>{{ _("No sub-branches available.") }}</p>
-            {% endif %}
-          </div>
+        <div class="section__header">
+          <h3>{{ _("Sub-Branches") }}</h3>
+        </div>
+        <div class="section__body sub-branches">
+          {% if childrenBranches and childrenBranches|length > 0 %}
+            {% for branch in childrenBranches %}
+              <a href="{{ url('branch_detail', domainId=ddoc.domainId,trid=ddoc.trid, docId=branch.docId) }}">
+                {{ branch.title }}
+              </a>
+              {% if not loop.last %} | {% endif %}
+            {% endfor %}
+          {% else %}
+            <p>{{ _("No sub-branches available.") }}</p>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -214,10 +213,9 @@
         <a href="{{ url('branch_edit', domainId=ddoc.domainId,trid=ddoc.trid, docId=ddoc.docId) }}" class="button primary expanded">
           {{ _('Edit Content') }}
         </a>
-      <a href="{{ url('branch_resource_edit', domainId=ddoc.domainId,trid=ddoc.trid, docId=ddoc.docId ) }}" class="button primary expanded">
-                  {{ _('Edit Resources') }}
-                </a>
-
+        <a href="{{ url('branch_resource_edit', domainId=ddoc.domainId,trid=ddoc.trid, docId=ddoc.docId ) }}" class="button primary expanded">
+          {{ _('Edit Resources') }}
+        </a>
         <a href="{{ url('forest_domain', domainId=ddoc.domainId,trid=ddoc.trid) }}" class="button expanded">
           {{ _('Back to Tree') }}
         </a>
