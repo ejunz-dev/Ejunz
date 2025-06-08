@@ -100,12 +100,6 @@
                     <span class="v-center icon icon-problem"></span> {{ _('Docs') }} {{ doc.title }}
                   </a>
                 </li>
-                 <li>
-                  <a class="menu__link{% if page_name == 'discussion_node' or page_name == 'discussion_detail' %} active{% endif %}" 
-              href="{{ url('discussion_node', type='docs', name=doc.title) }}">
-                    <span class="v-center icon icon-problem"></span> {{ _('View Related Discussions') }}
-                  </a>
-                </li>
                 {% endfor %}
 
               </ul>
@@ -183,12 +177,6 @@
                         {% endif %}
                       </tbody>
                   </table>
-                  <li>
-                  <a class="menu__link{% if page_name == 'discussion_node' or page_name == 'discussion_detail' %} active{% endif %}" 
-              href="{{ url('discussion_node', type='repo', name=repo.title) }}">
-                    <span class="v-center icon icon-problem"></span> {{ _('View Related Discussions') }}
-                  </a>
-                </li>
               </div>
               {% endfor %}
         
