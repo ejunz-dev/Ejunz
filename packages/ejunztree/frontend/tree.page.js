@@ -17,9 +17,8 @@ addPage(new AutoloadPage('tree_detail,tree_map', async () => {
       return;
     }
     
-  
-    const dx = 80;   // 垂直方向每层间距
-    const dy = 180;  // 水平方向兄弟节点间距
+    const dx = 80;
+    const dy = 220;
   
     const svg = d3.select("#d3-tree");
     svg.selectAll("*").remove();
@@ -30,8 +29,6 @@ addPage(new AutoloadPage('tree_detail,tree_map', async () => {
     .separation((a, b) => (a.parent === b.parent ? 1.2 : 2));
     treeLayout(root);
 
-  
-    // 自动计算尺寸范围
     const x0 = d3.min(root.descendants(), d => d.x);
     const x1 = d3.max(root.descendants(), d => d.x);
     const y0 = 0;
@@ -50,7 +47,6 @@ addPage(new AutoloadPage('tree_detail,tree_map', async () => {
   
     const g = svg.append("g");
   
-    // 连接线（竖向）
     g.selectAll(".link")
       .data(root.links())
       .enter()
@@ -64,7 +60,6 @@ addPage(new AutoloadPage('tree_detail,tree_map', async () => {
         .y(d => -d.y)
       );
   
-    // 节点
     const node = g.selectAll(".node")
       .data(root.descendants())
       .enter()
@@ -91,7 +86,7 @@ addPage(new AutoloadPage('tree_detail,tree_map', async () => {
         : `hsl(210, 80%, ${Math.min(30 + d.depth * 10, 70)}%)`
     )
     .style("font-weight", d => d.data.docId === currentDocId ? "bold" : "normal")
-    .style("font-size", d => d.data.docId === currentDocId ? "13.5px" : "12px")
+    .style("font-size", d => d.data.docId === currentDocId ? "14px" : "13px")
     .style("cursor", "pointer")
 
     .on("click", (event, d) => {
@@ -105,7 +100,6 @@ addPage(new AutoloadPage('tree_detail,tree_map', async () => {
         }
     })
     .on("mousedown", function(event) {
-        // 阻止中键拖拽行为
         if (event.button === 1) event.preventDefault();
     })
     .on("mouseover", function () {
@@ -116,8 +110,18 @@ addPage(new AutoloadPage('tree_detail,tree_map', async () => {
         d3.select(this).style("font-weight", "normal");
       }
     });
-    
-
-            
+    const zoom = d3.zoom()
+    .scaleExtent([0.5, 3])
+    .on("zoom", event => {
+      g.attr("transform", event.transform);
+    });
+  
+  svg
+    .on("wheel.zoom", (event) => {
+      event.preventDefault();
+    }, { passive: false })
+    .call(zoom)
+    .call(zoom.transform, d3.zoomIdentity.translate(padding, padding));
+              
   }));
   
