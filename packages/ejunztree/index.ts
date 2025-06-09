@@ -482,27 +482,13 @@ export class ForestDomainHandler extends Handler {
         
         try {
             const forest = await ForestModel.getForest(domainId);
-
-            if (!forest) {
-                console.warn(`No forest found for domain: ${domainId}`);
-                this.response.template = 'forest_domain.html';
-                this.response.body = { 
-                    domainId,
-                    forest: { docId: null, title: 'Default Forest', content: 'No content available.', trids: [] },
-                    trees: []  
-                };
-                return;
-            }
-
-            
             const trees = await TreeModel.getAllTrees(domainId);
 
-            
             this.response.template = 'forest_domain.html';
             this.response.body = { 
                 domainId, 
-                forest,
-                trees  
+                forest: forest || null,
+                trees: trees || []  
             };
             
         } catch (error) {
