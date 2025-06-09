@@ -795,8 +795,14 @@ export class BranchDetailHandler extends BranchHandler {
 
             return branches.map(branch => ({
                 ...branch,
+                url: this.url('branch_detail', {
+                  domainId: domainId,
+                  trid: ddoc.trid,
+                  docId: branch.docId
+                }),
                 subBranches: buildHierarchy(branch.bid, branchList)
-            }));
+              }));
+              
         };
 
         branchHierarchy[ddoc.trid] = buildHierarchy(trunkBid, treeBranches);
@@ -833,7 +839,36 @@ export class BranchDetailHandler extends BranchHandler {
                 resources[file.filename] = `/tree/branch/${ddoc.docId}/repo/${repo.rid}/${encodeURIComponent(file.filename)}`;
             });
         });
-
+        // ✅ 转为 D3.js 树图结构
+const toD3TreeNode = (branch: any): any => ({
+    name: branch.title,
+    docId: branch.docId,
+    url: this.url('branch_detail', {
+      domainId: domainId,
+      trid: ddoc.trid,
+      docId: branch.docId
+    }),
+    children: (branch.subBranches || []).map(toD3TreeNode)
+  });
+  
+  const d3TreeData = {
+    name: ddoc.title,
+    docId: ddoc.docId,
+    url: this.url('branch_detail', {
+      domainId: domainId,
+      trid: ddoc.trid,
+      docId: ddoc.docId
+    }),
+    children: branchHierarchy[ddoc.trid]?.map(toD3TreeNode) || []
+  };
+  
+  this.UiContext.d3TreeData = d3TreeData;
+  
+        this.UiContext.tree = {
+            domainId: domainId,
+            trid: ddoc.trid
+          };
+          
         this.response.template = 'branch_detail.html';
         this.response.pjax = 'branch_detail.html';
         this.response.body = {
