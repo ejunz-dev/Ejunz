@@ -1,37 +1,9 @@
-{% macro render_tree(branchHierarchy, branches, level=0, index=0, total=1, prefix="") %}
-  {% if branches %}
-    <div style="display: flex; justify-content: center; align-items: flex-end; gap: 50px;">
-      {% for branch in branches %}
-        <div style="text-align: center; position: relative;">
-
-          {% if branch.subBranches and branch.subBranches|length > 0 %}
-            <div style="display: flex; flex-direction: column-reverse; align-items: center;">
-              {{ render_tree(branchHierarchy, branch.subBranches, level + 1, loop.index0, loop.length, prefix + "    ") }}
-            </div>
-          {% endif %}
-
-          <div>
-            {{ prefix }}{% if level == 0 %} 🌳 {% elif branch.subBranches and branch.subBranches|length > 0 %} 🌿 {% else %} 🌱 {% endif %}
-            <a href="{{ url('branch_detail', domainId=ddoc.domainId, trid=ddoc.trid,docId=branch.docId) }}">
-              {{ branch.title }}
-            </a>
-          </div>
-
-          {% if level > 0 %}
-            <div>
-              {{ prefix }}*
-            </div>
-          {% endif %}
-
-        </div>
-      {% endfor %}
+<div class="section__body">
+  {% if branchHierarchy and branchHierarchy[ddoc.trid] %}
+    <!-- ✅ D3.js Tree 渲染容器 -->
+    <div style="overflow-x: auto;">
+      <svg id="d3-tree"></svg>
     </div>
-  {% endif %}
-{% endmacro %}
-
-<div style="display: flex; flex-direction: column; align-items: center;">
-  {% if branchHierarchy[ddoc.trid] %}
-    {{ render_tree(branchHierarchy, branchHierarchy[ddoc.trid]) }}
   {% else %}
     <p>{{ _("No branches available.") }}</p>
   {% endif %}

@@ -4,7 +4,7 @@ import {
   AutoloadPage,
   addPage
 } from '@ejunz/ui-default';
-addPage(new AutoloadPage('tree_detail', async () => {
+addPage(new AutoloadPage('tree_detail,tree_map', async () => {
     const data = UiContext.d3TreeData;
     if (!data) return;
   
