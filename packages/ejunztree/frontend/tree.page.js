@@ -61,18 +61,29 @@ addPage(new AutoloadPage('tree_detail,tree_map', async () => {
       .append("g")
       .attr("class", "node")
       .attr("transform", d => `translate(${d.x},${-d.y})`);
-  
+
+    const currentDocId = UiContext.ddoc?.docId;
+
     node.append("circle")
-      .attr("r", 5)
-      .attr("fill", "#4682B4");
+    .attr("r", d => d.data.docId === currentDocId ? 7 : 5)
+    .attr("fill", "#4682B4")
+    .attr("stroke", d => d.data.docId === currentDocId ? "#00cc66" : "none")
+    .attr("stroke-width", d => d.data.docId === currentDocId ? 3 : 0);
+
   
     node.append("text")
     .attr("dy", "-0.8em")
     .attr("text-anchor", "middle")
     .text(d => d.data.name)
-    .style("fill", d => `hsl(210, 80%, ${Math.min(30 + d.depth * 10, 70)}%)`)
-    .style("font-size", "12px")
+    .style("fill", d =>
+      d.data.docId === currentDocId
+        ? "#00ff88"
+        : `hsl(210, 80%, ${Math.min(30 + d.depth * 10, 70)}%)`
+    )
+    .style("font-weight", d => d.data.docId === currentDocId ? "bold" : "normal")
+    .style("font-size", d => d.data.docId === currentDocId ? "13.5px" : "12px")
     .style("cursor", "pointer")
+
     .on("click", (event, d) => {
         if (!d.data.url) return;
 
@@ -90,9 +101,12 @@ addPage(new AutoloadPage('tree_detail,tree_map', async () => {
     .on("mouseover", function () {
         d3.select(this).style("font-weight", "bold");
     })
-    .on("mouseout", function () {
+    .on("mouseout", function (event, d) {
+      if (d.data.docId !== currentDocId) {
         d3.select(this).style("font-weight", "normal");
+      }
     });
+    
 
             
   }));
