@@ -68,22 +68,6 @@
             {% endfor %}
           </nav>
         </div>
-
-        <div class="section__header">
-          <h3>{{ _("Sub-Branches") }}</h3>
-        </div>
-        <div class="section__body sub-branches">
-          {% if childrenBranches and childrenBranches|length > 0 %}
-            {% for branch in childrenBranches %}
-              <a href="{{ url('branch_detail', domainId=ddoc.domainId,trid=ddoc.trid, docId=branch.docId) }}">
-                {{ branch.title }}
-              </a>
-              {% if not loop.last %} | {% endif %}
-            {% endfor %}
-          {% else %}
-            <p>{{ _("No sub-branches available.") }}</p>
-          {% endif %}
-        </div>
       </div>
     </div>
   </div>
@@ -92,95 +76,96 @@
           <div class="section__header">
             <h3>{{ _("Hooked Resources") }}</h3>
             <div class="section__body">
-              <ul>
-                {% for doc in docs %}
-                <li>
-                  <a class="discussion-node-tag media-link" 
-                     href="{{ url('docs_detail', domainId=ddoc.domainId, lid=doc.lid | default(doc.docId)) }}">
-                    <span class="v-center icon icon-problem"></span> {{ _('Docs') }} {{ doc.title }}
-                  </a>
-                </li>
-                {% endfor %}
-
-              </ul>
-                   {% if problems|length > 0 %}
-              <h4>{{ _("Problems:") }}</h4>
-              <ul>
-                {% for problem in problems %}
-                <li>
-                  <a class="discussion-node-tag media-link" href="{{ url('problem_detail', domainId=problem.domainId, pid=problem.docId) }}">
-                    <span class="v-center icon icon-problem"></span>{{ problem.title }}
-                  </a>
-                </li>
-                {% endfor %}
-              </ul>
-              {% endif %}
-              {% if htdocs|length > 0 %}
-              <h4>{{ _("Homework:") }}</h4>
-              <ul>
-                {% for htdoc in htdocs %}
-                <li>
-                  <a class="discussion-node-tag media-link" href="{{ url('homework_detail', domainId=htdoc.domainId, tid=htdoc.docId) }}">
-                    <span class="v-center icon icon-homework"></span>{{ htdoc.title }}
-                  </a>
-                </li>
-                {% endfor %}
-              </ul>
-              {% endif %}
-              {% if tdocs|length > 0 %}
-              <h4>{{ _("Problems Training Plans:") }}</h4>
-              <ul>
-                {% for tdoc in tdocs %}
-                <li>
-                  <a class="discussion-node-tag media-link" href="{{ url('training_detail', domainId=tdoc.domainId, tid=tdoc.docId) }}">
-                    <span class="v-center icon icon-training"></span>{{ tdoc.title }}
-                  </a>
-                </li>
-                {% endfor %}
-              </ul>
-              {% endif %}
-              {% if ctdocs|length > 0 %}
-              <h4>{{ _("Contest:") }}</h4>
-              <ul>
-                {% for ctdoc in ctdocs %}
-                <li>
-                  <a class="discussion-node-tag media-link" href="{{ url('contest_detail', domainId=ctdoc.domainId, tid=ctdoc.docId) }}">
-                    <span class="v-center icon icon-contest"></span>{{ ctdoc.title }}
-                  </a>
-                </li>
-                {% endfor %}
-              </ul>
-              {% endif %}
-              {% for repo in repos %}
-              <div class="repo-section">
-                  <h4>{{ _("Repository:") }}
-                    <a class="discussion-node-tag media-link" href="{{ url('repo_detail', domainId=ddoc.domainId, rid=repo.rid) }}">
-                          <span class="v-center icon icon-repo"></span> {{ repo.title }}
-                      </a>
-                  </h4>
-                  <table class="table">
-                      <tbody>
-                        {% if repo.Filemode == true %}
-                          {% for file in repo.files %}
-                          <tr data-filename="{{ file.filename }}" data-size="{{ file.size }}">
+              {% if docs|length > 0 or problems|length > 0 or htdocs|length > 0 or tdocs|length > 0 or ctdocs|length > 0 or repos|length > 0 %}
+                <ul>
+                  {% for doc in docs %}
+                  <li>
+                    <a class="discussion-node-tag media-link" 
+                       href="{{ url('docs_detail', domainId=ddoc.domainId, lid=doc.lid | default(doc.docId)) }}">
+                      <span class="v-center icon icon-problem"></span> {{ _('Docs') }} {{ doc.title }}
+                    </a>
+                  </li>
+                  {% endfor %}
+                </ul>
+                {% if problems|length > 0 %}
+                <h4>{{ _("Problems") }}:</h4>
+                <ul>
+                  {% for problem in problems %}
+                  <li>
+                    <a class="discussion-node-tag media-link" href="{{ url('problem_detail', domainId=problem.domainId, pid=problem.docId) }}">
+                      <span class="v-center icon icon-problem"></span>{{ problem.title }}
+                    </a>
+                  </li>
+                  {% endfor %}
+                </ul>
+                {% endif %}
+                {% if htdocs|length > 0 %}
+                <h4>{{ _("Homework") }}:</h4>
+                <ul>
+                  {% for htdoc in htdocs %}
+                  <li>
+                    <a class="discussion-node-tag media-link" href="{{ url('homework_detail', domainId=htdoc.domainId, tid=htdoc.docId) }}">
+                      <span class="v-center icon icon-homework"></span>{{ htdoc.title }}
+                    </a>
+                  </li>
+                  {% endfor %}
+                </ul>
+                {% endif %}
+                {% if tdocs|length > 0 %}
+                <h4>{{ _("Problems Training Plans") }}:</h4>
+                <ul>
+                  {% for tdoc in tdocs %}
+                  <li>
+                    <a class="discussion-node-tag media-link" href="{{ url('training_detail', domainId=tdoc.domainId, tid=tdoc.docId) }}">
+                      <span class="v-center icon icon-training"></span>{{ tdoc.title }}
+                    </a>
+                  </li>
+                  {% endfor %}
+                </ul>
+                {% endif %}
+                {% if ctdocs|length > 0 %}
+                <h4>{{ _("Contest") }}</h4>:
+                <ul>
+                  {% for ctdoc in ctdocs %}
+                  <li>
+                    <a class="discussion-node-tag media-link" href="{{ url('contest_detail', domainId=ctdoc.domainId, tid=ctdoc.docId) }}">
+                      <span class="v-center icon icon-contest"></span>{{ ctdoc.title }}
+                    </a>
+                  </li>
+                  {% endfor %}
+                </ul>
+                {% endif %}
+                {% for repo in repos %}
+                <div class="repo-section">
+                    <h4>{{ _("Repository") }}:
+                      <a class="discussion-node-tag media-link" href="{{ url('repo_detail', domainId=ddoc.domainId, rid=repo.rid) }}">
+                            <span class="v-center icon icon-repo"></span> {{ repo.title }}
+                        </a>
+                    </h4>
+                    <table class="table">
+                        <tbody>
+                          {% if repo.Filemode == true %}
+                            {% for file in repo.files %}
+                            <tr data-filename="{{ file.filename }}" data-size="{{ file.size }}">
+                              
+                                <td class="col--name" data-preview>
+                                    <a class="discussion-node-tag media-link"
+                                      href="{{ url('branch_file_download', { docId: ddoc.docId,trid: ddoc.trid, rid: repo.rid, filename: file.filename }) }}"
+                                      data-preview="{{ url('branch_file_download', { docId: ddoc.docId,trid: ddoc.trid, rid: repo.rid, filename: file.filename }) }}">
+                                        <span class="v-center icon icon-file"></span> {{ file.filename }} (v{{ file.version }})
+                                    </a>
+                                </td>
                             
-                              <td class="col--name" data-preview>
-                                  <a class="discussion-node-tag media-link"
-                                    href="{{ url('branch_file_download', { docId: ddoc.docId,trid: ddoc.trid, rid: repo.rid, filename: file.filename }) }}"
-                                    data-preview="{{ url('branch_file_download', { docId: ddoc.docId,trid: ddoc.trid, rid: repo.rid, filename: file.filename }) }}">
-                                      <span class="v-center icon icon-file"></span> {{ file.filename }} (v{{ file.version }})
-                                  </a>
-                              </td>
-                          
-                          </tr>
-                          {% endfor %}
-                        {% endif %}
-                      </tbody>
-                  </table>
-              </div>
-              {% endfor %}
-        
-              
+                            </tr>
+                            {% endfor %}
+                          {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endfor %}
+              {% else %}
+                <p>{{ _("No hooked resources available.") }}</p>
+              {% endif %}
             </div>
           </div>
         </div>

@@ -1,5 +1,3 @@
-
-
 __id: zh
 __langname: 简体中文
 '"{data}" copied to clipboard!': “{data}”已复制到剪贴板！
@@ -107,8 +105,11 @@ Bio Visibility: 个人简介可见性
 Bio: 个人简介
 Bold: 加粗
 Boom!: 炸了！
+Branch Content: 树枝内容
 Branch Info: 分支信息
 Branch Path: 分支路径
+Branch Title: 树枝标题
+Branch: 树枝
 Browser: 浏览器
 Built-in: 内置
 Bulletin: 公告
@@ -190,13 +191,17 @@ Copyright Complaint: 版权申诉
 CPU Info: CPU信息
 Create a contest: 创建一个比赛
 Create a Discussion: 创建一个话题
+Create a New Document: 创建一个新源库
+Create a New Repository: 创建一个新知库
 Create a problem: 创建一个题枝
+Create Branch: 创建树枝
 Create Contest: 创建比赛
 Create contests: 创建比赛
 Create Discussion in {0}: 在 {0} 下创建话题
 Create Discussion: 创建话题
 Create discussions: 创建话题
 Create Domain: 创建域
+Create Forest: 创建森林
 Create homework: 创建作业
 Create Homework: 创建作业
 Create Link: 创建链接
@@ -208,6 +213,7 @@ Create Sub-Branch: 创建子分支
 Create Training Plan: 创建训练计划
 Create training plans: 创建训练计划
 Create Tree: 创建树
+Create Trunk: 创建树干
 Create: 创建
 Created By: 创建人
 Current dataset comes from: 当前数据集来自
@@ -308,6 +314,7 @@ Duration (hours): 持续时间 (小时)
 Duration: 持续时间
 Edit any contests: 修改任意的比赛
 Edit any homework: 修改任意的作业
+Edit Branch: 编辑树枝
 Edit Content: 编辑内容
 Edit Contest: 编辑比赛
 Edit description of this domain: 修改此域描述
@@ -332,6 +339,7 @@ Edit problem solutions: 修改题解
 Edit Problem: 编辑题枝
 Edit problems: 修改题枝
 Edit Profile: 编辑个人信息
+Edit Resources for Branch: 编辑树枝的关联资源
 Edit Resources: 编辑资源
 Edit training plans: 修改训练计划
 Edit Tree: 编辑树
@@ -367,6 +375,7 @@ filespace: 文件中心
 Filter: 过滤
 Footer: 页脚
 Forest Overview: 森林概览
+Forest: 森林
 Forgot Password and/or Username: 忘记密码和/或用户名
 Forgot password or username?: 忘记密码或者用户名？
 Formula blocks: 公式区块
@@ -535,6 +544,7 @@ New: 创建
 No comments so far...: 目前还没有评论...
 No dataset at present.: 暂无测试数据。
 No discussion yet...: 目前没有话题…
+No hooked resources available.: 没有关联上的资源。
 No Permission to Attend Contest: 您没有权限参加比赛
 No Permission to Claim Homework: 您没有权限认领作业
 No Permission to Create a Discussion: 您没有权限创建话题
@@ -685,6 +695,8 @@ Rejudge problems: 重测题枝
 Rejudge records: 重测记录
 Rejudge: 重测
 Related Discussions: 相关话题
+Related Docs: 关联文档
+Related Repositories: 关联知库
 Related: 相关
 Relax and try to remember your password.: 放松，尝试回忆您设置的密码。
 Remember me: 记住我
@@ -702,6 +714,7 @@ repo_domain: 知库
 repo_edit: 编辑知库
 repo: 知库
 Report: 举报
+Repos: 知库
 Repository: 知库
 required: 必填
 Reset Password or Find Username: 重置密码或找回用户名
@@ -878,6 +891,7 @@ Tree Details: 树详情
 Tree List: 树列表
 Tree Map: 树枝图
 Tree: 树
+Trunk: 树干
 Type: 类型
 UI Language: 用户界面语言
 Uncompleted: 未完成
@@ -891,6 +905,7 @@ Unsaved session expire seconds: 未保存的会话的过期秒数
 Unstar Topic: 取消收藏
 Unstar: 取消收藏
 Update Permission: 更新权限
+Update Resources: 更新关联资源
 Update Settings: 更新设置
 Update: 更新
 Upload File: 上传文件

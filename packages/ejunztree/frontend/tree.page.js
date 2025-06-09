@@ -6,7 +6,17 @@ import {
 } from '@ejunz/ui-default';
 addPage(new AutoloadPage('tree_detail,tree_map', async () => {
     const data = UiContext.d3TreeData;
-    if (!data) return;
+    if (!data) {
+      d3.select("#d3-tree")
+        .append("text")
+        .attr("x", 20)
+        .attr("y", 40)
+        .style("fill", "#888")
+        .style("font-size", "16px")
+        .text("暂无树结构数据, 请先创建一个树干");
+      return;
+    }
+    
   
     const dx = 80;   // 垂直方向每层间距
     const dy = 180;  // 水平方向兄弟节点间距

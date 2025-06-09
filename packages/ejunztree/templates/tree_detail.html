@@ -8,13 +8,10 @@
       </div>
       <div class="section__body">
         {% if tree %}
-          <h3>{{ _("Tree Title") }}: {{ tree.title }}</h3>
-          <p><strong>{{ _("Tree ID") }}:</strong> {{ tree.trid }}</p>
 
-          <!-- ✅ 显示 Tree 内容 -->
           <div class="section">
             <div class="section__header">
-              <h3>{{ _("Tree Content") }}</h3>
+              <h3>{{ _(tree.title) }}</h3>
             </div>
             <div class="section__body">
               {% if tree.content %}
@@ -27,7 +24,6 @@
             </div>
           </div>
 
-          <!-- 🌳 Tree Map -->
           <div class="section">
             <div class="section__header">
               <h3>{{ _("Tree Map") }}</h3>
