@@ -122,6 +122,33 @@ addPage(new AutoloadPage('tree_detail,tree_map', async () => {
     }, { passive: false })
     .call(zoom)
     .call(zoom.transform, d3.zoomIdentity.translate(padding, padding));
+
+    if (currentDocId) {
+      const currentNode = root.descendants().find(d => d.data.docId === currentDocId);
+      if (currentNode) {
+        const x = currentNode.x;
+        const y = -currentNode.y;
+        const scale = 1.5;
+
+        const [vbX, vbY, vbWidth, vbHeight] = svg.attr('viewBox').split(/\\s+|,/).map(Number);
+
+        const allX = root.descendants().map(d => d.x);
+        const avgX = (Math.min(...allX) + Math.max(...allX)) / 2;
+        const centerX = avgX;
+        const centerY = vbY + vbHeight / 2;
+
+        const translateX = centerX - x * scale;
+        const translateY = centerY - y * scale;
+
+        const transform = d3.zoomIdentity
+          .translate(translateX, translateY)
+          .scale(scale);
+
+        svg.transition()
+          .duration(750)
+          .call(zoom.transform, transform);
+      }
+    }
               
   }));
   
