@@ -478,27 +478,49 @@ class BranchHandler extends Handler {
 }
 export class ForestDomainHandler extends Handler {
     async get({ domainId }) {
-        domainId = this.args?.domainId || this.context?.domainId || 'system';
-        
-        try {
-            const forest = await ForestModel.getForest(domainId);
-            const trees = await TreeModel.getAllTrees(domainId);
-
-            this.response.template = 'forest_domain.html';
-            this.response.body = { 
-                domainId, 
-                forest: forest || null,
-                trees: trees || []  
-            };
-            
-        } catch (error) {
-            console.error("Error fetching forest:", error);
-            this.response.template = 'error.html';
-            this.response.body = { error: "Failed to fetch forest" };
-        }
+      domainId = this.args?.domainId || this.context?.domainId || 'system';
+  
+      try {
+        const forest = await ForestModel.getForest(domainId);
+        const trees = await TreeModel.getAllTrees(domainId);
+  
+        const nodes = [
+          {
+            id: "forest-root",
+            name: "Forest",
+            type: "forest",
+            url: this.url("forest_domain", { domainId })
+          },
+          ...trees.map(tree => ({
+            id: `tree-${tree.trid}`,
+            name: tree.title,
+            type: 'tree',
+            url: this.url('tree_detail', { domainId, trid: tree.trid }),
+          }))
+        ];
+  
+        const links = trees.map(tree => ({
+          source: "forest-root",
+          target: `tree-${tree.trid}`
+        }));
+  
+        this.UiContext.forceGraphData = { nodes, links };
+  
+        this.response.template = 'forest_domain.html';
+        this.response.body = {
+          domainId,
+          forest: forest || null,
+          trees: trees || []
+        };
+  
+      } catch (error) {
+        console.error("Error fetching forest:", error);
+        this.response.template = 'error.html';
+        this.response.body = { error: "Failed to fetch forest" };
+      }
     }
-}
-
+  }
+  
 
 
 export class ForestEditHandler extends Handler {
