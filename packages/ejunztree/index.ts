@@ -204,6 +204,14 @@ export class TreeModel {
             content: content || '',   
         });
     }
+
+    static async deleteTree(domainId: string, trid: number): Promise<void> {
+        const treeDoc = await this.getTreeByTrid(domainId, trid);
+        if (!treeDoc) {
+            throw new Error(`Tree with trid ${trid} not found in domain ${domainId}`);
+        }
+        await DocumentModel.deleteOne(domainId, TYPE_TR, treeDoc.docId);
+    }
     
 
 
@@ -627,6 +635,14 @@ export class TreeEditHandler extends Handler {
         this.response.body = { trid };
         this.response.redirect = this.url('tree_detail', { domainId, trid });
 
+    }
+
+    @param('trid', Types.Int)
+    async postDelete(domainId: string, trid: number) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        await TreeModel.deleteTree(domainId, trid);
+        this.response.body = { trid };
+        this.response.redirect = this.url('forest_domain', { domainId });
     }
     
 }
