@@ -11,14 +11,6 @@
 <div class="row">
   <div class="medium-9 columns">
         <div class="section">
-          <div class="section__header">
-            <h3>{{ _("Tree Map") }}</h3>
-          </div>
-          <div class="section__body">
-            {% include "tree_map.html" %}
-          </div>
-        </div>
-    <div class="section">
       <div class="section__header">
         <h1 class="section__title">{{ ddoc.title }}</h1>
       </div>
@@ -34,6 +26,14 @@
       </div>
       </div>
     </div>
+        <div class="section">
+          <div class="section__header">
+            <h3>{{ _("Tree Map") }}</h3>
+          </div>
+          <div class="section__body">
+            {% include "tree_map.html" %}
+          </div>
+        </div>
   </div>
 
   <div class="medium-3 columns">
