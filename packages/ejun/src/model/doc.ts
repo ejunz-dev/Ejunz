@@ -63,13 +63,19 @@ export class DocsModel {
     }
 
     static async generateNextLid(domainId: string): Promise<string> {
-        const lastDoc = await document.getMulti(domainId, document.TYPE_DOCS, {})
-            .sort({ lid: -1 })
-            .limit(1)
+        const docs = await document.getMulti(domainId, document.TYPE_DOCS, {})
             .project({ lid: 1 })
             .toArray();
-        const lastLidNumber = parseInt(lastDoc[0]?.lid?.match(/\d+/)?.[0] || '0', 10);
-        return `D${lastLidNumber + 1}`;
+        
+        const numbers = docs
+            .map(doc => {
+                const match = doc.lid?.match(/\d+/);
+                return match ? parseInt(match[0], 10) : 0;
+            })
+            .filter(n => !isNaN(n));
+        
+        const maxNumber = Math.max(0, ...numbers);
+        return `D${maxNumber + 1}`;
     }
 
     static async addWithId(
