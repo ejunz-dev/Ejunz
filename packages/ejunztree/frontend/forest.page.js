@@ -107,7 +107,7 @@ addPage(new AutoloadPage('forest_domain', async () => {
     .attr("font-size", "12px")
     .attr("dy", "-1.2em")
     .attr("text-anchor", "middle")
-    .style("fill", "#ddd")
+    .attr("fill", "green")
     .style("pointer-events", "auto")
     .style("cursor", "pointer")
     .on("click", (event, d) => {
