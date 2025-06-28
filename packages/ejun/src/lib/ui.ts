@@ -86,7 +86,6 @@ inject('ControlPanel', 'manage_user_priv');
 inject('ControlPanel', 'manage_setting');
 inject('ControlPanel', 'manage_config');
 inject('DomainManage', 'domain_dashboard', { family: 'Properties', icon: 'info' });
-inject('DomainManage', 'domain_edit', { family: 'Properties', icon: 'info' });
 inject('DomainManage', 'domain_join_applications', { family: 'Properties', icon: 'info' });
 inject('DomainManage', 'domain_role', { family: 'Access Control', icon: 'user' });
 inject('DomainManage', 'domain_user', { family: 'Access Control', icon: 'user' });
