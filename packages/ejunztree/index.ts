@@ -1063,10 +1063,6 @@ export class BranchEditHandler extends BranchHandler {
         });
 
         const repos = ddoc.rids ? await getReposByDocId(domainId, ddoc.rids) : [];
-        const reposWithFiles = repos.map(repo => ({
-            ...repo,
-            files: repo.files || []
-        }));
         const problems = ddoc.lids?.length ? await getProblemsByDocsId(domainId, ddoc.lids[0]) : [];
         const pids = problems.map(p => Number(p.docId));
         const [ctdocs, htdocs, tdocs] = await Promise.all([
@@ -1077,36 +1073,34 @@ export class BranchEditHandler extends BranchHandler {
 
         const resources = {};
 
-        docs.forEach(doc => {
-            resources[doc.title] = `/d/system/docs/${doc.docId}`;
+        repos.forEach(repo => {
+            resources[repo.title] = `/d/${domainId}/repo/${repo.docId}`;
         });
 
-        reposWithFiles.forEach(repo => {
-            resources[repo.title] = `/d/system/repo/${repo.docId}`;
-            repo.files.forEach(file => {
-                resources[file.filename] = `/repo/${repo.docId}/file/${encodeURIComponent(file.filename)}`;
-            });
+        docs.forEach(doc => {
+            resources[doc.title] = `/d/${domainId}/docs/${doc.docId}`;
         });
+
         problems.forEach(problem => {
-            resources[problem.title] = `/p/${problem.docId}`;
+            resources[problem.title] = `/p/${domainId}/${problem.docId}`;
         }
         );
 
         ctdocs.flat().forEach(contest => {
             if (contest && contest.docId && contest.title) {
-                resources[contest.title] = `/contest/${contest.docId}`;
+                resources[contest.title] = `/contest/${domainId}/${contest.docId}`;
             }
         });
 
         htdocs.flat().forEach(homework => {
             if (homework && homework.docId && homework.title) {
-                resources[homework.title] = `/homework/${homework.docId}`;
+                resources[homework.title] = `/homework/${domainId}/${homework.docId}`;
             }
         });
 
         tdocs.flat().forEach(training => {
             if (training && training.docId && training.title) {
-                resources[training.title] = `/training/${training.docId}`;
+                resources[training.title] = `/training/${domainId}/${training.docId}`;
             }
         });
 
@@ -1120,7 +1114,7 @@ export class BranchEditHandler extends BranchHandler {
             ctdocs: ctdocs.flat(),
             htdocs: htdocs.flat(),
             tdocs: tdocs.flat(),
-            repos: reposWithFiles,
+            repos,
             problems,
             trid: this.args.trid,
             resources,
