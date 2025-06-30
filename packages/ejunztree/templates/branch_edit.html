@@ -1,7 +1,6 @@
 {% import "components/form.html" as form with context %}
 {% extends "layout/basic.html" %}
 {% block content %}
-
 <script>
   {{ set(UiContext, {
     ddoc: ddoc,
@@ -9,7 +8,64 @@
     repos: repos,
     resources: resources
   }) }}
+
+function updateResourceLinks() {
+  if (!window.UiContext.resources) {
+    console.warn("UiContext.resources is empty, cannot update resource links");
+    return;
+  }
+
+  document.querySelectorAll(".resource-link").forEach((el) => {
+    const resourceName = el.dataset.resource?.trim();
+    if (!resourceName) return;
+
+    if (window.UiContext.resources[resourceName]) {
+      el.setAttribute("data-url", window.UiContext.resources[resourceName]); // Store relative URL
+    } else {
+      console.warn(`Resource not found: ${resourceName}`);
+    }
+  });
+}
+
+function copyResourceUrl(el) {
+  const resourceName = el.dataset.resource;
+  const url = window.UiContext.resources ? window.UiContext.resources[resourceName] : null;
+
+  if (!url) {
+    console.warn("Resource URL not found for:", resourceName);
+    return;
+  }
+
+  let markdownLink = `[${resourceName}](${url})`;
+
+
+  if (/\/contest\/[a-zA-Z0-9]+$/.test(url)) {
+    markdownLink = `@[${resourceName}](${url})`;
+  } else if (/\/homework\/[a-zA-Z0-9]+$/.test(url)) {
+    markdownLink = `@[${resourceName}](${url})`;
+  } else if (/\/training\/[a-zA-Z0-9]+$/.test(url)) {
+    markdownLink = `@[${resourceName}](${url})`;
+  } else if (/\/repo\/\d+\/file\/.+/.test(url)) {
+    markdownLink = `@[${resourceName}](${url})`;
+  }
+
+  if (!navigator.clipboard || !navigator.clipboard.writeText) {
+    console.warn("Clipboard API not supported, using prompt method");
+    prompt("Copy resource path manually:", markdownLink);
+    return;
+  }
+
+  navigator.clipboard.writeText(markdownLink)
+    .then(() => {
+      alert(`Resource path copied: ${markdownLink}`);
+    })
+    .catch((err) => {
+      console.error("Copy failed:", err);
+      alert("Copy failed, please copy manually: " + markdownLink);
+    });
+}
 </script>
+
 
 <div class="row" style="display: flex; flex-wrap: nowrap; align-items: flex-start;">
   {% if docs or problems or htdocs or tdocs or ctdocs or repos %}
@@ -134,22 +190,6 @@
               <span class="v-center icon icon-repo"></span> {{ repo.title }}
             </a>
           </h5>
-          {% if repo.files and repo.files|length > 0 %}
-          <ul>
-            {% for file in repo.files %}
-            <li>
-              <a class="resource-link"
-                 data-resource="{{ file.filename }}"
-                 href="javascript:void(0)"
-                 onclick="copyResourceUrl(this)">
-                <span class="v-center icon icon-file"></span> {{ file.filename }} (v{{ file.version }})
-              </a>
-            </li>
-            {% endfor %}
-          </ul>
-          {% else %}
-          <p>{{ _("No files available.") }}</p>
-          {% endif %}
         </div>
         {% endfor %}
       </div>
@@ -232,62 +272,4 @@
     {% include 'components/md_hint.html' %}
   </div>
 </div>
-
-<script>
-function updateResourceLinks() {
-  if (!window.UiContext.resources) {
-    console.warn("🚨 UiContext.resources 为空，无法更新资源链接");
-    return;
-  }
-
-  document.querySelectorAll(".resource-link").forEach((el) => {
-    const resourceName = el.dataset.resource?.trim();
-    if (!resourceName) return;
-
-    if (window.UiContext.resources[resourceName]) {
-      el.setAttribute("data-url", window.UiContext.resources[resourceName]); // 存储相对 URL
-    } else {
-      console.warn(`🚨 资源未找到: ${resourceName}`);
-    }
-  });
-}
-
-function copyResourceUrl(el) {
-  const resourceName = el.dataset.resource;
-  const url = window.UiContext.resources ? window.UiContext.resources[resourceName] : null;
-
-  if (!url) {
-    console.warn("🚨 Resource URL not found for:", resourceName);
-    return;
-  }
-
-  let markdownLink = `@[import](${url})`;
-
-
-  if (/\/contest\/[a-zA-Z0-9]+$/.test(url)) {
-    markdownLink = `@[import](${url})`; // Contest 格式
-  } else if (/\/homework\/[a-zA-Z0-9]+$/.test(url)) {
-    markdownLink = `@[import](${url})`; // Homework 格式
-  } else if (/\/training\/[a-zA-Z0-9]+$/.test(url)) {
-    markdownLink = `@[import](${url})`; // Training 格式
-  } else if (/\/repo\/\d+\/file\/.+/.test(url)) {
-    markdownLink = `@[import](${url})`; // Repo 文件格式
-  }
-
-  if (!navigator.clipboard || !navigator.clipboard.writeText) {
-    console.warn("📋 Clipboard API 不支持，使用 prompt 方式");
-    prompt("手动复制资源路径:", markdownLink);
-    return;
-  }
-
-  navigator.clipboard.writeText(markdownLink)
-    .then(() => {
-      alert(`📋 资源路径已复制: ${markdownLink}`);
-    })
-    .catch((err) => {
-      console.error("❌ 复制失败:", err);
-      alert("复制失败，请手动复制: " + markdownLink);
-    });
-}
-</script>
 {% endblock %}
