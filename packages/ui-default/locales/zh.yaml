@@ -227,6 +227,7 @@ Current password doesn't match.: 当前密码输入错误。
 Current Password: 当前密码
 Current Status: 当前状态
 currently offline: 目前离线
+Custom File Name (Optional): 自定义文件名（可选）
 Data of Problem {0} not found.: 题枝 {0} 的数据缺失。
 Data of problem {1} not found.: 题枝 {1} 的数据未找到。
 Data of record {0} not found.: 记录 {0} 的数据未找到。
@@ -350,6 +351,8 @@ Edit Tree: 编辑树
 Edit: 编辑
 Email Visibility: Email 可见性
 Email: 电子邮件
+Enable File Mode: 启用文件模式
+Enable Iterative Mode: 启用迭代模式
 Enabled: 开启
 End at: 结束于
 End Date: 结束日期
@@ -360,7 +363,9 @@ Enroll Training: 参加训练
 Enrolled: 已参加
 Enrollees: 参加人数
 Enter branch title: 输入分支标题
+Enter custom file name: 输入自定义文件名
 Enter Edit Mode: 进入编辑模式
+Enter repository title: 输入库名
 error: 错误
 Evaluated difficulty: 估计的难度
 expand: 展开
@@ -718,6 +723,7 @@ repo_detail: 知库详情
 repo_domain: 知库
 repo_edit: 编辑知库
 repo: 知库
+Reponame: 库名
 Report: 举报
 Repos: 知库
 Repository: 知库
@@ -808,6 +814,7 @@ Sorry: 对不起
 Sort by: 排序
 Source type: 来源类型
 Spaces: 空间
+Split by: 分隔符
 Split View: 分屏预览
 Star Topic: 收藏讨论
 Star: 收藏
