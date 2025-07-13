@@ -114,6 +114,7 @@
     </div>
     {% endif %}
 
+    {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
     <div class="section">
       <div class="section__header">
         <h2>{{ _('Actions') }}</h2>
@@ -124,6 +125,8 @@
         </a>
       </div>
     </div>
+    {% endif %}
+    
 
     <div class="section">
       <div class="section__header">
@@ -141,7 +144,7 @@
             </a>
           </li>
           {% endif %}
-          {% if handler.user.hasPerm(perm.PERM_CREATE_DISCUSSION) %}
+          {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
           <li class="menu__item">
             <a class="menu__link highlight" href="{{ url('discussion_create', type='repo', name=ddoc.title) }}">
               <span class="icon icon-add"></span> {{ _('Create a Discussion') }}
