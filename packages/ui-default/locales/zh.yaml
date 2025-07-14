@@ -380,6 +380,7 @@ Field {0} or {1} validation failed. ({2}): 字段 {0} 或 {1} 验证失败。 ({
 Field {0} or {1} validation failed.: 字段 {0} 或 {1} 验证失败。
 Field {0} validation failed. ({2}): 字段 {0} 验证失败。 ({2})
 Field {0} validation failed.: 字段 {0} 验证失败。
+File Version (Optional): 文件版本（可选）
 filespace_main: 文件中心
 filespace: 文件中心
 Filter: 过滤
@@ -510,6 +511,7 @@ Logout: 登出
 Lost Password: 忘记密码
 Lucky: 手气不错
 Mail From: 发件人
+Manage Spaces: 管理空间
 manage_dashboard: 系统管理
 manage_join_applications: 加域申请
 manage_module: 管理模块
@@ -535,12 +537,14 @@ Method: 方法
 Month: 月
 Monthly Popular: 月度最受欢迎
 Most Upvoted Solutions: 最被赞同的题解
+My Activity: 我的活动
 My Domains: 我加入的域
 My Files: 我的文件
 My Profile: 我的资料
 My Recent Submissions: 我的最近递交记录
 My Role: 我的角色
 My status: 我的状态
+My Task: 我的任务
 name: 名称
 Name: 名称
 Network error: 网络错误
@@ -839,6 +843,7 @@ Submissions: 递交
 Submit: 递交
 Submitted: 已递交
 Support: 支持
+Switch account: 切换账户
 Sync problem filelist from s3 service: 从 S3 同步题枝文件列表。
 Tags: 标签
 talkspace_main: 讨论空间
