@@ -199,6 +199,7 @@ export class RepoDetailHandler extends Handler {
         if (!this.ddoc) {
             throw new NotFoundError(`Repository not found for ${typeof normalizedId === 'number' ? 'docId' : 'rid'}: ${normalizedId}`);
         }
+        this.UiContext.extraTitleContent = this.ddoc.title;
     }
 
     @param('rid', Types.RepoId)
