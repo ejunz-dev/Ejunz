@@ -261,6 +261,7 @@ export class RepoEditHandler extends Handler {
             isIterative: repo.isIterative,
             udoc,
         };
+        this.UiContext.extraTitleContent = repo.title;
     }
     
 
