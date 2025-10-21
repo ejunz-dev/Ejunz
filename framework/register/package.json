@@ -1,9 +1,12 @@
 {
     "name": "@ejunz/register",
-    "version": "0.3.0",
+    "version": "0.3.2",
     "license": "MIT",
     "main": "index.js",
-    "repository": "https://github.com/ejunz-dev/Ejunz.git",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ejunz-dev/Ejunz.git"
+    },
     "author": "Jacka10086 <i@jacka10086.me>",
     "engines": {
         "node": ">=16"
