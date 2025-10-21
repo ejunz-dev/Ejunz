@@ -4,12 +4,17 @@ import type { StatusUpdate } from '@ejunz/utils/lib/sysinfo';
 import * as sysinfo from '@ejunz/utils/lib/sysinfo';
 import { Context } from '../context';
 import { Logger } from '../logger';
-import * as bus from './bus';
+import bus from './bus';
 import db from './db';
 
 const coll = db.collection('status');
 const logger = new Logger('monitor');
 
+// We use this endpoint to push security notifications based on
+// component versions and configurations to administrators.
+// Removing this logic is not recommended.
+// 我们使用此端点向服务器管理员根据所安装的版本与配置推送安全通知。
+// 不建议删除此逻辑。
 export async function feedback(): Promise<[string, StatusUpdate]> {
     const {
         system, domain, document, user, record,
@@ -34,7 +39,7 @@ export async function feedback(): Promise<[string, StatusUpdate]> {
         problemCount,
         discussionCount,
         recordCount,
-        addons: global.addons,
+        addons: Object.values(global.addons),
         memory: inf.memory,
         osinfo: inf.osinfo,
         cpu: inf.cpu,
@@ -93,17 +98,14 @@ export async function updateJudge(args) {
     );
 }
 
-export function apply(ctx: Context) {
+export async function apply(ctx: Context) {
     if (process.env.NODE_APP_INSTANCE !== '0') return;
-    ctx.on('app/started', async () => {
-        sysinfo.get().then((info) => {
-            coll.updateOne(
-                { mid: info.mid, type: 'server' },
-                { $set: { ...info, updateAt: new Date(), type: 'server' } },
-                { upsert: true },
-            );
-            feedback();
-            setInterval(update, 1800 * 1000);
-        });
-    });
+    const info = await sysinfo.get();
+    coll.updateOne(
+        { mid: info.mid, type: 'server' },
+        { $set: { ...info, updateAt: new Date(), type: 'server' } },
+        { upsert: true },
+    );
+    feedback();
+    return ctx.interval(update, 1800 * 1000); // eslint-disable-line
 }

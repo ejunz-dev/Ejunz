@@ -13,12 +13,10 @@ import record from '../model/record';
 import * as setting from '../model/setting';
 import * as system from '../model/system';
 import user from '../model/user';
-import { check } from '../service/check';
 import {
     ConnectionHandler, Handler, param, requireSudo, Types,
 } from '../service/server';
-import { configSource, saveConfig, SystemSettings } from '../settings';
-// import * as judge from './judge';
+import { JudgeResultCallbackContext } from './judge';
 
 const logger = new Logger('manage');
 
@@ -71,11 +69,11 @@ class SystemCheckConnHandler extends ConnectionHandler {
         const log = (payload: any) => this.send({ type: 'log', payload });
         const warn = (payload: any) => this.send({ type: 'warn', payload });
         const error = (payload: any) => this.send({ type: 'error', payload });
-        await check.run(this, log, warn, error, (id) => { this.id = id; });
+        await this.ctx.check.run(this, log, warn, error, (id) => { this.id = id; });
     }
 
     async cleanup() {
-        check.cancel(this.id);
+        this.ctx.check.cancel(this.id);
     }
 }
 
@@ -106,33 +104,25 @@ class SystemScriptHandler extends SystemHandler {
             args = global.Ejunz.script[id].validate(args);
         }
         const rid = await record.add(domainId, -1, this.user._id, '-', id, false, { input: raw, type: 'pretest' });
-        const report = (data) => judge.next({ domainId, rid, ...data });
-        report({ message: `Running script: ${id} `, status: STATUS.STATUS_JUDGING });
+        const c = new JudgeResultCallbackContext(this.ctx, { type: 'judge', domainId, rid });
+        c.next({ message: `Running script: ${id} `, status: STATUS.STATUS_JUDGING });
         const start = Date.now();
         // Maybe async?
-        global.Ejunz.script[id].run(args, report)
-            .then((ret: any) => {
-                const time = new Date().getTime() - start;
-                judge.end({
-                    domainId,
-                    rid,
-                    status: STATUS.STATUS_ACCEPTED,
-                    message: inspect(ret, false, 10, true),
-                    judger: 1,
-                    time,
-                    memory: 0,
-                });
-            })
+        global.Ejunz.script[id].run(args, (data) => c.next(data))
+            .then((ret: any) => c.end({
+                status: STATUS.STATUS_ACCEPTED,
+                message: inspect(ret, false, 10, true),
+                judger: 1,
+                time: Date.now() - start,
+                memory: 0,
+            }))
             .catch((err: Error) => {
-                const time = new Date().getTime() - start;
                 logger.error(err);
-                judge.end({
-                    domainId,
-                    rid,
+                c.end({
                     status: STATUS.STATUS_SYSTEM_ERROR,
                     message: `${err.message} \n${(err as any).params || []} \n${err.stack} `,
                     judger: 1,
-                    time,
+                    time: Date.now() - start,
                     memory: 0,
                 });
             });
@@ -184,27 +174,57 @@ class SystemConfigHandler extends SystemHandler {
     @requireSudo
     async get() {
         this.response.template = 'manage_config.html';
-        let value = configSource;
+        let value = this.ctx.setting.configSource;
+
+        const processNode = (node: any, schema: Schema<any, any>, parent?: any, accessKey?: string) => {
+            if (['union', 'intersect'].includes(schema.type)) {
+                for (const item of schema.list) processNode(node, item, parent, accessKey);
+            }
+            if (parent && (schema.meta.secret === true || schema.meta.role === 'secret')) {
+                if (schema.type === 'string') parent[accessKey] = '[hidden]';
+                // TODO support more types
+            }
+            if (schema.type === 'object') {
+                for (const key in schema.dict) processNode(node[key], schema.dict[key], node, key);
+            }
+        };
+
         try {
-            value = yaml.dump(Schema.intersect(SystemSettings)(yaml.load(configSource)));
+            const temp = yaml.load(this.ctx.setting.configSource);
+            for (const schema of this.ctx.setting.settings) processNode(temp, schema);
+            value = yaml.dump(temp);
         } catch (e) { }
         this.response.body = {
-            schema: Schema.intersect(SystemSettings).toJSON(),
+            schema: Schema.intersect(this.ctx.setting.settings).toJSON(),
             value,
         };
     }
 
     @requireSudo
     @param('value', Types.String)
-    async post(domainId: string, value: string) {
+    async post({ }, value: string) {
+        const oldConfig = yaml.load(this.ctx.setting.configSource);
         let config;
+        const processNode = (node: any, old: any, schema: Schema<any, any>, parent?: any, accessKey?: string) => {
+            if (['union', 'intersect'].includes(schema.type)) {
+                for (const item of schema.list) processNode(node, old, item, parent, accessKey);
+            }
+            if (parent && (schema.meta.secret === true || schema.meta.role === 'secret')) {
+                if (node === '[hidden]') parent[accessKey] = old;
+                // TODO support more types
+            }
+            if (schema.type === 'object') {
+                for (const key in schema.dict) processNode(node[key] || {}, old[key] || {}, schema.dict[key], node, key);
+            }
+        };
+
         try {
             config = yaml.load(value);
-            Schema.intersect(SystemSettings)(config);
+            for (const schema of this.ctx.setting.settings) processNode(config, oldConfig, schema, null, '');
         } catch (e) {
-            throw new ValidationError('value');
+            throw new ValidationError('value', '', e.message);
         }
-        await saveConfig(config);
+        await this.ctx.setting.saveConfig(config);
     }
 }
 
@@ -219,10 +239,10 @@ class SystemUserImportHandler extends SystemHandler {
     @param('draft', Types.Boolean)
     async post(domainId: string, _users: string, draft: boolean) {
         const users = _users.split('\n');
-        const udocs: { email: string, username: string, password: string, displayName?: string, payload?: any }[] = [];
+        const udocs: { email: string, username: string, password: string, displayName?: string, [key: string]: any }[] = [];
         const messages = [];
-        const mapping = {};
-        const groups: Record<string, string[]> = {};
+        const mapping = Object.create(null);
+        const groups: Record<string, string[]> = Object.create(null);
         for (const i in users) {
             const u = users[i];
             if (!u.trim()) continue;
@@ -248,12 +268,13 @@ class SystemUserImportHandler extends SystemHandler {
                             groups[data.group] ||= [];
                             groups[data.group].push(email);
                         }
-                        if (data.school) payload.school = data.school;
-                        if (data.studentId) payload.studentId = data.studentId;
+                        Object.assign(payload, data);
                     } catch (e) { }
-                    udocs.push({
-                        email, username, password, displayName, payload,
+                    Object.assign(payload, {
+                        email, username, password, displayName,
                     });
+                    await this.ctx.serial('user/import/parse', payload);
+                    udocs.push(payload);
                 }
             } else messages.push(`Line ${+i + 1}: Input invalid.`);
         }
@@ -264,8 +285,9 @@ class SystemUserImportHandler extends SystemHandler {
                     const uid = await user.create(udoc.email, udoc.username, udoc.password);
                     mapping[udoc.email] = uid;
                     if (udoc.displayName) await domain.setUserInDomain(domainId, uid, { displayName: udoc.displayName });
-                    if (udoc.payload?.school) await user.setById(uid, { school: udoc.payload.school });
-                    if (udoc.payload?.studentId) await user.setById(uid, { studentId: udoc.payload.studentId });
+                    if (udoc.school) await user.setById(uid, { school: udoc.school });
+                    if (udoc.studentId) await user.setById(uid, { studentId: udoc.studentId });
+                    await this.ctx.serial('user/import/create', uid, udoc);
                 } catch (e) {
                     messages.push(e.message);
                 }
@@ -288,9 +310,12 @@ const allPriv = Math.sum(Object.values(Priv));
 
 class SystemUserPrivHandler extends SystemHandler {
     @requireSudo
-    async get() {
+    @param('extraIgnore', Types.NumericArray, true)
+    async get({ }, extraIgnore: number[] = []) {
         const defaultPriv = system.get('default.priv');
-        const udocs = await user.getMulti({ _id: { $gte: -1000, $ne: 1 }, priv: { $nin: [0, defaultPriv] } }).limit(1000).sort({ _id: 1 }).toArray();
+        const udocs = await user.getMulti({
+            _id: { $gte: -1000, $ne: 1 }, priv: { $nin: [0, defaultPriv, ...extraIgnore] },
+        }).limit(1000).sort({ _id: 1 }).toArray();
         const banudocs = await user.getMulti({ _id: { $gte: -1000, $ne: 1 }, priv: 0 }).limit(1000).sort({ _id: 1 }).toArray();
         this.response.body = {
             udocs: [...udocs, ...banudocs],
@@ -321,6 +346,7 @@ class SystemUserPrivHandler extends SystemHandler {
     }
 }
 
+export const inject = ['setting', 'check'];
 export async function apply(ctx) {
     ctx.Route('manage', '/manage', SystemMainHandler);
     ctx.Route('manage_dashboard', '/manage/dashboard', SystemDashboardHandler);
