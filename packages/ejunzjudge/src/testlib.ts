@@ -1,4 +1,4 @@
-import { STATUS } from '@ejunz/utils/lib/status';
+import { STATUS } from '@ejunz/common';
 
 const operation = /^\s*(status|score)\((\d+)\)\s*(.*)$/m;
 

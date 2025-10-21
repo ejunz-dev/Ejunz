@@ -1,6 +1,6 @@
 /* eslint-disable no-sequences */
 import { fs } from '@ejunz/utils';
-import { STATUS } from '@ejunz/utils/lib/status';
+import { STATUS } from '@ejunz/common';
 import checkers from '../checkers';
 import { del, runQueued } from '../sandbox';
 import signals from '../signals';

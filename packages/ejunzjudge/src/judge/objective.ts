@@ -1,6 +1,6 @@
 import assert from 'assert';
 import { fs, yaml } from '@ejunz/utils';
-import { STATUS } from '@ejunz/utils/lib/status';
+import { STATUS } from '@ejunz/common';
 import { FormatError } from '../error';
 import { Context } from './interface';
 

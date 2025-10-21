@@ -1,5 +1,5 @@
 import { fs } from '@ejunz/utils';
-import { STATUS } from '@ejunz/utils/lib/status';
+import { STATUS } from '@ejunz/common';
 import checkers from '../checkers';
 import { runFlow } from '../flow';
 import { del, runQueued } from '../sandbox';
