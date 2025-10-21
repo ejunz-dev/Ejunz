@@ -1,11 +1,16 @@
 import { PassThrough } from 'stream';
 import type { Next } from 'koa';
-import { pick } from 'lodash';
 import {
     EjunzRequest, EjunzResponse, KoaContext, serializer,
 } from '@ejunz/framework';
 import { errorMessage } from '@ejunz/utils/lib/utils';
 import { SystemError, UserFacingError } from './error';
+
+const pick = <T extends object, K extends keyof T>(obj: T, keys: K[]): Pick<T, K> => {
+    const result: Partial<Pick<T, K>> = {};
+    for (const key of keys) result[key] = obj[key];
+    return result as Pick<T, K>;
+};
 
 export default (logger, xff, xhost) => async (ctx: KoaContext, next: Next) => {
     // Base Layer
@@ -27,8 +32,8 @@ export default (logger, xff, xhost) => async (ctx: KoaContext, next: Next) => {
         template: null,
         redirect: null,
         attachment: (name, streamOrBuffer) => {
-            ctx.attachment(name);
-            if (streamOrBuffer instanceof Buffer) {
+            if (name) ctx.attachment(name);
+            if (streamOrBuffer instanceof Buffer || streamOrBuffer instanceof PassThrough) {
                 response.body = null;
                 ctx.body = streamOrBuffer;
             } else {
@@ -59,17 +64,22 @@ export default (logger, xff, xhost) => async (ctx: KoaContext, next: Next) => {
         }
         if (!response.type) {
             if (response.pjax && args.pjax) {
-                const html = await handler.renderHTML(response.pjax, response.body);
-                response.body = { fragments: [{ html }] };
+                const pjax = typeof response.pjax === 'string' ? [[response.pjax, {}]] : response.pjax;
+                response.body = {
+                    fragments: (await Promise.all(
+                        pjax.map(async ([template, extra]) => handler.renderHTML(template, { ...response.body, ...extra })),
+                    )).map((i) => ({ html: i })),
+                };
                 response.type = 'application/json';
             } else if (
                 request.json || response.redirect
                 || request.query.noTemplate || !response.template) {
                 // Send raw data
                 try {
-                    if (typeof response.body === 'object') {
-                        response.body.UiContext = UiContext;
-                        response.body.UserContext = user;
+                    if (typeof response.body === 'object' && request.headers['x-ejunz-inject']) {
+                        const inject = request.headers['x-ejunz-inject'].toString().toLowerCase().split(',').map((i) => i.trim());
+                        if (inject.includes('uicontext')) response.body.UiContext = UiContext;
+                        if (inject.includes('usercontext')) response.body.UserContext = user;
                     }
                     response.body = JSON.stringify(response.body, serializer(false, handler));
                 } catch (e) {
@@ -92,11 +102,17 @@ export default (logger, xff, xhost) => async (ctx: KoaContext, next: Next) => {
         if (request.json) response.body = { error };
         else {
             try {
-                response.body = await ctx.handler.renderHTML(
-                    error instanceof UserFacingError ? 'error.html' : 'bsod.html',
-                    { UserFacingError, error },
-                );
-                response.type = 'text/html';
+                if (ctx.handler) {
+                    response.body = await ctx.handler.renderHTML(
+                        error instanceof UserFacingError ? 'error.html' : 'bsod.html',
+                        { UserFacingError, error },
+                    );
+                    response.type = 'text/html';
+                } else {
+                    // 如果没有 handler，返回简单的错误响应
+                    response.body = JSON.stringify({ error: error.message });
+                    response.type = 'application/json';
+                }
             } catch (e) {
                 logger.error(e);
                 // this.response.body.error = {};
@@ -111,7 +127,7 @@ export default (logger, xff, xhost) => async (ctx: KoaContext, next: Next) => {
                 ctx.response.status = 302;
                 ctx.redirect(response.redirect);
             } else if (response.body) {
-                ctx.body = response.body;
+                ctx.body = response.body instanceof Blob ? Buffer.from(await response.body.arrayBuffer()) : response.body;
                 ctx.response.status = response.status || 200;
                 ctx.response.type = response.type
                     || (request.json

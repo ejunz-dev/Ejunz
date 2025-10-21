@@ -361,46 +361,46 @@ export async function apply(ctx: Context) {
     ctx.Route('repo_detail', '/repo/:rid', RepoDetailHandler);
     ctx.Route('repo_edit', '/repo/:rid/edit', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
 
-    ctx.inject(['api'], ({ api }) => {
-        api.value('Repo', [
-            ['docId', 'Int!'],
-            ['rid', 'String!'],
-            ['title', 'String!'],
-            ['content', 'String!'],
-            ['owner', 'Int!'],
-            ['updateAt', 'String!'],
-            ['views', 'Int!'],
-            ['nReply', 'Int!'],
-            ['files', '[File!]'],
-        ]);
+    // ctx.inject(['api'], ({ api }) => {
+    //     api.value('Repo', [
+    //         ['docId', 'Int!'],
+    //         ['rid', 'String!'],
+    //         ['title', 'String!'],
+    //         ['content', 'String!'],
+    //         ['owner', 'Int!'],
+    //         ['updateAt', 'String!'],
+    //         ['views', 'Int!'],
+    //         ['nReply', 'Int!'],
+    //         ['files', '[File!]'],
+    //     ]);
 
-        api.value('File', [
-            ['filename', 'String!'],
-            ['version', 'String!'],
-            ['path', 'String!'],
-            ['size', 'Int!'],
-            ['lastModified', 'String!'],
-            ['etag', 'String!'],
-        ]);
+    //     api.value('File', [
+    //         ['filename', 'String!'],
+    //         ['version', 'String!'],
+    //         ['path', 'String!'],
+    //         ['size', 'Int!'],
+    //         ['lastModified', 'String!'],
+    //         ['etag', 'String!'],
+    //     ]);
 
-        api.resolver(
-            'Query', 'repo(id: Int, title: String)', 'Repo',
-            async (arg, c) => {
-                c.checkPerm(PERM.PERM_VIEW);
-                const rdoc = await Repo.get(c.args.domainId, arg.title || arg.id);
-                if (!rdoc) return null;
-                c.rdoc = rdoc;
-                return rdoc;
-            },
-        );
-        api.resolver('Query', 'repos(ids: [Int])', '[Repo]', async (arg, c) => {
-            c.checkPerm(PERM.PERM_VIEW);
-            const res = await Repo.getList(c.args.domainId, arg.ids, undefined);
-            return Object.keys(res)
-                .map((id) => res[+id])
-                .filter((repo) => repo !== null && repo !== undefined); 
-        }, 'Get a list of docs by ids');
+    //     api.resolver(
+    //         'Query', 'repo(id: Int, title: String)', 'Repo',
+    //         async (arg, c) => {
+    //             c.checkPerm(PERM.PERM_VIEW);
+    //             const rdoc = await Repo.get(c.args.domainId, arg.title || arg.id);
+    //             if (!rdoc) return null;
+    //             c.rdoc = rdoc;
+    //             return rdoc;
+    //         },
+    //     );
+    //     api.resolver('Query', 'repos(ids: [Int])', '[Repo]', async (arg, c) => {
+    //         c.checkPerm(PERM.PERM_VIEW);
+    //         const res = await Repo.getList(c.args.domainId, arg.ids, undefined);
+    //         return Object.keys(res)
+    //             .map((id) => res[+id])
+    //             .filter((repo) => repo !== null && repo !== undefined); 
+    //     }, 'Get a list of docs by ids');
         
 
-    });
+    // });
 }

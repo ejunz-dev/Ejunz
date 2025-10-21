@@ -3,7 +3,7 @@
     "bin": "bin/ejunzjudge.js",
     "version": "0.0.1",
     "main": "./src/index.ts",
-    "repository": "https://github.com/ejunz-dev/EjunZ.git",
+    "repository": "https://github.com/ejunz-dev/Ejunz.git",
     "author": "Jacka10086 <i@jacka10086.me>",
     "dependencies": {
         "@ejunz/utils": "workspace:^",
