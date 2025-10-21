@@ -1,6 +1,6 @@
 import { basename, join } from 'path';
 import { fs } from '@ejunz/utils';
-import { STATUS } from '@ejunz/utils/lib/status';
+import { STATUS } from '@ejunz/common';
 import type {
     FileInfo, JudgeMeta, JudgeResultBody, TestCase,
 } from 'ejun';

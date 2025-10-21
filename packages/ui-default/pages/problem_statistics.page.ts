@@ -1,4 +1,4 @@
-import { getScoreColor } from '@ejunz/utils/lib/status';
+import { getScoreColor } from '@ejunz/common';
 import $ from 'jquery';
 import { NamedPage } from 'vj/misc/Page';
 import { getAvailableLangs, tpl } from 'vj/utils';

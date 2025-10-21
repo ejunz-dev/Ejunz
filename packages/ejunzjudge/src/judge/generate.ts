@@ -2,7 +2,7 @@
 import { tmpdir } from 'os';
 import path from 'path';
 import fs from 'fs-extra';
-import { STATUS } from '@ejunz/utils/lib/status';
+import { STATUS } from '@ejunz/common';
 import { SystemError } from '../error';
 import { CopyInFile, runQueued } from '../sandbox';
 import client from '../sandbox/client';

@@ -6,7 +6,7 @@ import superagent from 'superagent';
 import WebSocket from 'ws';
 import { fs, noop } from '@ejunz/utils';
 import { parseLang } from '@ejunz/utils/lib/lang';
-import { STATUS } from '@ejunz/utils/lib/status';
+import { STATUS } from '@ejunz/common';
 import type { JudgeResultBody } from 'ejun';
 import { getConfig } from '../config';
 import { FormatError, SystemError } from '../error';

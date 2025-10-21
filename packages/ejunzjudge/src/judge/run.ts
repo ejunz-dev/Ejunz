@@ -1,4 +1,4 @@
-import { STATUS } from '@ejunz/utils/lib/status';
+import { STATUS } from '@ejunz/common';
 import { runQueued } from '../sandbox';
 import signals from '../signals';
 import { JudgeTask } from '../task';

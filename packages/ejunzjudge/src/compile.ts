@@ -1,5 +1,5 @@
 import { LangConfig } from '@ejunz/utils/lib/lang';
-import { STATUS } from '@ejunz/utils/lib/status';
+import { STATUS } from '@ejunz/common';
 import { findFileSync } from '@ejunz/utils/lib/utils';
 import { CompileError, FormatError } from './error';
 import { Execute } from './interface';
