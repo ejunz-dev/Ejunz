@@ -1,5 +1,5 @@
 import Queue from 'p-queue';
-import { STATUS } from '@ejunz/utils/lib/status';
+import { STATUS } from '@ejunz/common';
 import type { JudgeResultBody } from 'ejun';
 import { getConfig } from './config';
 import { FormatError } from './error';

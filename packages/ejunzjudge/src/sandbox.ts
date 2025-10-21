@@ -2,7 +2,7 @@ import cac from 'cac';
 import PQueue from 'p-queue';
 import { gte } from 'semver';
 import { ParseEntry } from 'shell-quote';
-import { STATUS } from '@ejunz/utils/lib/status';
+import { STATUS } from '@ejunz/common';
 import * as sysinfo from '@ejunz/utils/lib/sysinfo';
 import { getConfig } from './config';
 import { FormatError, SystemError } from './error';

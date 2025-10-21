@@ -1,5 +1,5 @@
 /* eslint-disable no-template-curly-in-string */
-import { STATUS } from '@ejunz/utils/lib/status';
+import { STATUS } from '@ejunz/common';
 import { FormatError, SystemError } from './error';
 import { CopyInFile, runQueued } from './sandbox';
 import { parse } from './testlib';

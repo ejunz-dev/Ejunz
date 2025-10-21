@@ -1,4 +1,4 @@
-import { STATUS_TEXTS } from '@ejunz/utils/lib/status';
+import { STATUS_TEXTS } from '@ejunz/common';
 
 export default function reducer(state = {
   input: '',
