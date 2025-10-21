@@ -29,10 +29,11 @@ console.log(
 `
 );
 
-
 window.UiContext = JSON.parse(window.UiContext);
 window.UserContext = JSON.parse(window.UserContext);
-try { __webpack_public_path__ = UiContext.cdn_prefix; } catch (e) { }
+try {
+  __webpack_public_path__ = UiContext.cdn_prefix;
+} catch (e) { }
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/service-worker.js').then((registration) => {
     console.log('SW registered: ', registration);
@@ -59,17 +60,10 @@ if (process.env.NODE_ENV === 'production' && UiContext.sentry_dsn) {
   document.body.appendChild(script);
 }
 
-console.log("Script started");
-window.onload = async () => {
-  try {
-    Object.assign(window.UiContext, JSON.parse(window.UiContextNew || '{}'));
-    Object.assign(window.UserContext, JSON.parse(window.UserContextNew || '{}'));
-    window.EjunzExports = await import('./api');
-    console.log("EjunzExports:", window.EjunzExports);  // 验证导入内容
-    await window._ejunzLoad();
-    await window.EjunzExports.initPageLoader();
-  } catch (e) {
-    console.error("加载出现问题:", e);
-  }
-};
-
+document.addEventListener('DOMContentLoaded', async () => {
+  Object.assign(window.UiContext, JSON.parse(window.UiContextNew));
+  Object.assign(window.UserContext, JSON.parse(window.UserContextNew));
+  window.EjunzExports = await import('./api');
+  await window._ejunzLoad();
+  await window.EjunzExports.initPageLoader();
+}, false);

@@ -1,5 +1,5 @@
 import { IncomingMessage } from 'http';
-import KoaRouter from 'koa-router';
+import KoaRouter from '@koa/router';
 import { pathToRegexp } from 'path-to-regexp';
 import type WebSocket from 'ws';
 import type { KoaContext } from './server';

@@ -1,6 +1,6 @@
 import { ObjectId } from 'mongodb';
 import { SolutionNotFoundError } from '../error';
-import * as bus from '../service/bus';
+import bus from '../service/bus';
 import * as document from './document';
 
 class SolutionModel {
@@ -70,18 +70,17 @@ class SolutionModel {
     }
 
     static async vote(domainId: string, psid: ObjectId, uid: number, value: number) {
+        const doc = await document.get(domainId, document.TYPE_PROBLEM_SOLUTION, psid);
+        if (!doc) throw new SolutionNotFoundError(domainId, psid);
         const before = await document.setStatus(
             domainId, document.TYPE_PROBLEM_SOLUTION, psid, uid,
             { vote: value }, 'before',
         );
         let inc = value;
         if (before?.vote) inc -= before.vote;
-        return [
-            inc
-                ? await document.inc(domainId, document.TYPE_PROBLEM_SOLUTION, psid, 'vote', inc)
-                : await document.get(domainId, document.TYPE_PROBLEM_SOLUTION, psid),
-            await document.getStatus(domainId, document.TYPE_PROBLEM_SOLUTION, psid, uid),
-        ];
+        return inc
+            ? await document.inc(domainId, document.TYPE_PROBLEM_SOLUTION, psid, 'vote', inc)
+            : doc;
     }
 
     static async getListStatus(domainId: string, psids: ObjectId[], uid: number) {

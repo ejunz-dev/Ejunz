@@ -37,7 +37,3 @@ export async function sendMail(to: string, subject: string, text: string, html: 
     }
     return t;
 }
-
-global.Ejunz.lib.mail = {
-    sendMail,
-};

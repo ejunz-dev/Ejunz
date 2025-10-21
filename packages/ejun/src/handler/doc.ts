@@ -210,32 +210,32 @@ export async function apply(ctx: Context) {
     ctx.Route('docs_detail', '/docs/:lid', DocsDetailHandler);
     ctx.Route('docs_edit', '/docs/:lid/edit', DocsEditHandler, PRIV.PRIV_USER_PROFILE);
  
-    ctx.inject(['api'], ({ api }) => {
-        api.value('Doc', [
-            ['docId', 'Int!'],
-            ['lid', 'String!'],
-            ['title', 'String!'],
-            ['content', 'String!'],
-        ]);
+    // ctx.inject(['api'], ({ api }) => {
+    //     api.value('Doc', [
+    //         ['docId', 'Int!'],
+    //         ['lid', 'String!'],
+    //         ['title', 'String!'],
+    //         ['content', 'String!'],
+    //     ]);
     
-        api.resolver(
-            'Query', 'doc(id: Int, title: String)', 'Doc',
-            async (arg, c) => {
-                c.checkPerm(PERM.PERM_VIEW);
-                const ddoc = await docs.get(c.args.domainId, arg.title || arg.id);
-                if (!ddoc) return null;
-                c.ddoc = ddoc;
-                return ddoc;
-            },
-        );
-        api.resolver('Query', 'docs(ids: [Int])', '[Doc]', async (arg, c) => {
-            c.checkPerm(PERM.PERM_VIEW);
-            const res = await docs.getList(c.args.domainId, arg.ids, undefined);
-            return Object.keys(res)
-                .map((id) => res[+id])
-                .filter((doc) => doc !== null && doc !== undefined); 
-        }, 'Get a list of docs by ids');
+    //     api.resolver(
+    //         'Query', 'doc(id: Int, title: String)', 'Doc',
+    //         async (arg, c) => {
+    //             c.checkPerm(PERM.PERM_VIEW);
+    //             const ddoc = await docs.get(c.args.domainId, arg.title || arg.id);
+    //             if (!ddoc) return null;
+    //             c.ddoc = ddoc;
+    //             return ddoc;
+    //         },
+    //     );
+    //     api.resolver('Query', 'docs(ids: [Int])', '[Doc]', async (arg, c) => {
+    //         c.checkPerm(PERM.PERM_VIEW);
+    //         const res = await docs.getList(c.args.domainId, arg.ids, undefined);
+    //         return Object.keys(res)
+    //             .map((id) => res[+id])
+    //             .filter((doc) => doc !== null && doc !== undefined); 
+    //     }, 'Get a list of docs by ids');
         
-    });
+    // });
 }
     
