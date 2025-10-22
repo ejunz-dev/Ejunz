@@ -63,7 +63,7 @@ export async function apply(ctx: Context) {
     ctx.inject(['worker'], (c) => {
         ScheduleModel.Worker = c.worker;
         c.worker.addHandler('task.daily', async () => {
-            await RecordModel.coll.deleteMany({ contest: { $in: [RecordModel.RECORD_PRETEST, RecordModel.RECORD_GENERATE] } });
+            // await RecordModel.coll.deleteMany({ contest: { $in: [RecordModel.RECORD_PRETEST, RecordModel.RECORD_GENERATE] } });
             await global.Ejunz.script.rp?.run({}, new Logger('task/rp').debug);
             await global.Ejunz.script.problemStat?.run({}, new Logger('task/problem').debug);
             if (global.Ejunz.model.system.get('server.checkUpdate') && !(new Date().getDay() % 3)) {

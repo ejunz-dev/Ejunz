@@ -49,8 +49,7 @@ export async function apply(ctx: Context) {
         });
     });
     require('../lib/index');
-
-    ctx.plugin(require('../service/monitor'));
+    // ctx.plugin(require('../service/monitor'));
     ctx.plugin(require('../service/check').default);
     await service(pending, fail, ctx);
     await builtinModel(ctx);
@@ -76,18 +75,18 @@ export async function apply(ctx: Context) {
             // eslint-disable-next-line no-await-in-loop
             if (await fs.pathExists(dir)) await fs.copy(dir, staticDir);
         }
-        await new Promise((resolve, reject) => {
-            ctx.inject(['migration'], async (c) => {
-                c.migration.registerChannel('ejun', require('../upgrade').coreScripts);
-                try {
-                    await c.migration.doUpgrade();
-                    resolve(null);
-                } catch (e) {
-                    logger.error('Upgrade failed: %O', e);
-                    reject(e);
-                }
-            });
-        });
+        // await new Promise((resolve, reject) => {
+        //     ctx.inject(['migration'], async (c) => {
+        //         c.migration.registerChannel('ejun', require('../upgrade').coreScripts);
+        //         try {
+        //             await c.migration.doUpgrade();
+        //             resolve(null);
+        //         } catch (e) {
+        //             logger.error('Upgrade failed: %O', e);
+        //             reject(e);
+        //         }
+        //     });
+        // });
     }
     ctx.inject(['server'], async ({ server }) => {
         await server.listen();

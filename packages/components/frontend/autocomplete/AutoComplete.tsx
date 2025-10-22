@@ -11,10 +11,6 @@ import Icon from '../Icon';
 
 export interface AutoCompleteProps<Item> {
   width?: string;
-  /**
-   * if you need fix height, set to at least "30px"
-   * for Hydro, no less then "34px" can be better
-   */
   height?: string;
   disabled?: boolean;
   placeholder?: string;
