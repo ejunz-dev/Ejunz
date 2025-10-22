@@ -10,12 +10,8 @@ import db from '../service/db';
 import { NumberKeys } from '../typeutils';
 import { buildProjection } from '../utils';
 import { PERM } from './builtin';
-import * as contest from './contest';
 import * as document from './document';
-import problem from './problem';
-import * as training from './training';
 import { User } from './user';
-import DocsModel from './doc';
 export interface DiscussionDoc extends Document { }
 export type Field = keyof DiscussionDoc;
 
@@ -33,11 +29,7 @@ export const HISTORY_PROJECTION_PUBLIC: (keyof DiscussionHistoryDoc)[] = [
 ];
 
 export const typeDisplay = {
-    [document.TYPE_PROBLEM]: 'problem',
-    [document.TYPE_CONTEST]: 'contest',
     [document.TYPE_DISCUSSION_NODE]: 'node',
-    [document.TYPE_TRAINING]: 'training',
-    [document.TYPE_HOMEWORK]: 'homework',
     [document.TYPE_DOCS]: 'docs',
     [document.TYPE_REPO]: 'repo',
 };

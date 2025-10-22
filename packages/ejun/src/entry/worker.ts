@@ -77,20 +77,20 @@ export async function apply(ctx: Context) {
     await script(pending, fail, ctx);
     await ctx.lifecycle.flush();
     await ctx.parallel('app/started');
-    if (process.env.NODE_APP_INSTANCE === '0') {
-        await new Promise((resolve, reject) => {
-            ctx.inject(['migration'], async (c) => {
-                c.migration.registerChannel('ejun', require('../upgrade').coreScripts);
-                try {
-                    await c.migration.doUpgrade();
-                    resolve(null);
-                } catch (e) {
-                    logger.error('Upgrade failed: %O', e);
-                    reject(e);
-                }
-            });
-        });
-    }
+    // if (process.env.NODE_APP_INSTANCE === '0') {
+    //     await new Promise((resolve, reject) => {
+    //         ctx.inject(['migration'], async (c) => {
+    //             c.migration.registerChannel('ejun', require('../upgrade').coreScripts);
+    //             try {
+    //                 await c.migration.doUpgrade();
+    //                 resolve(null);
+    //             } catch (e) {
+    //                 logger.error('Upgrade failed: %O', e);
+    //                 reject(e);
+    //             }
+    //         });
+    //     });
+    // }
     for (const f of global.addons) {
         const dir = path.join(f, 'public');
         // eslint-disable-next-line no-await-in-loop

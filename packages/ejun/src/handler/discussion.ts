@@ -15,11 +15,7 @@ import { Handler, param, Types } from '../service/server';
 import yaml from 'js-yaml';
 
 export const typeMapper = {
-    problem: document.TYPE_PROBLEM,
-    contest: document.TYPE_CONTEST,
     node: document.TYPE_DISCUSSION_NODE,
-    training: document.TYPE_TRAINING,
-    homework: document.TYPE_CONTEST,
     docs: document.TYPE_DOCS,
     repo: document.TYPE_REPO,
 };
