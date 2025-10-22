@@ -2,7 +2,7 @@ import keyword from 'emojis-keywords';
 import list from 'emojis-list';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 import qface from 'qface';
-import { api, gql } from 'vj/utils';
+import { api } from 'vj/utils';
 
 function emoji(range) {
   return keyword.map((i, index) => ({
@@ -16,7 +16,7 @@ function emoji(range) {
 
 function qqEmoji(range) {
   return qface.data.flatMap((i) => {
-    const url = qface.getUrl(i.QSid, 'https://qq-face.vercel.app');
+    const url = qface.getUrl(i.QSid, 'https://koishi.js.org/QFace');
     return [i.QDes.substring(1), ...(i.Input || [])].map((input) => ({
       label: `/${input}`,
       kind: monaco.languages.CompletionItemKind.Keyword,
@@ -27,7 +27,7 @@ function qqEmoji(range) {
   });
 }
 
-monaco.editor.registerCommand('.openUserPage', (accesser, uid) => {
+monaco.editor.registerCommand('ejunz.openUserPage', (accesser, uid) => {
   window.open(`/user/${uid}`);
 });
 
@@ -40,20 +40,15 @@ monaco.languages.registerCodeLensProvider('markdown', {
         dispose: () => { },
       };
     }
-    const { data } = await api(gql`
-      users(ids: ${users.map((i) => +i.matches[1])}) {
-        _id
-        uname
-      }
-    `);
+    const data = await api('users', { ids: users.map((i) => +i.matches[1]) }, ['_id', 'uname']);
     return {
       lenses: users.map((i, index) => ({
         range: i.range,
         id: `${index}.${i.matches[1]}`,
         command: {
-          id: '.openUserPage',
+          id: 'ejunz.openUserPage',
           arguments: [i.matches[1]],
-          title: `@${data.users.find((doc) => doc._id.toString() === i.matches[1])?.uname || i.matches[1]}`,
+          title: `@${data.find((doc) => doc._id.toString() === i.matches[1])?.uname || i.matches[1]}`,
         },
       })),
       dispose: () => { },
@@ -82,14 +77,7 @@ monaco.languages.registerCompletionItemProvider('markdown', {
       endColumn: word.endColumn,
     };
     if (prefix === '@') {
-      const users = await api(gql`
-        users(search: ${word.word}) {
-          _id
-          uname
-          avatarUrl
-          priv
-        }
-      `, ['data', 'users']);
+      const users = await api('users', { search: word.word }, ['_id', 'uname']);
       return {
         suggestions: users.map((i) => ({
           label: { label: `@${i.uname}`, description: `UID=${i._id}` },
@@ -104,216 +92,6 @@ monaco.languages.registerCompletionItemProvider('markdown', {
     }
     return {
       suggestions: prefix === ':' ? emoji(range) : qqEmoji(range),
-    };
-  },
-});
-
-monaco.languages.registerCompletionItemProvider('markdown', {
-  async provideCompletionItems(model, position) {
-    const word = model.getWordAtPosition(position);
-    if (!word || word.word.length < 2) return { suggestions: [] };
-
-    const prefix = model.getValueInRange({
-      startLineNumber: position.lineNumber,
-      endLineNumber: position.lineNumber,
-      startColumn: word.startColumn - 1,
-      endColumn: word.startColumn,
-    });
-
-    if (prefix !== '@') return { suggestions: [] };
-
-    const range = {
-      startLineNumber: position.lineNumber,
-      endLineNumber: position.lineNumber,
-      startColumn: word.startColumn - 1,
-      endColumn: word.endColumn,
-    };
-
-    const text = model.getValueInRange(range);
-    const match = text.match(/@\[\]\(\/docs\/(\d+)\)/);
-
-    if (!match) return { suggestions: [] };
-
-    const docId = parseInt(match[1], 10);
-    if (isNaN(docId)) return { suggestions: [] }; // 避免无效 ID
-
-    console.log("Fetching title for docId:", docId);
-
-    // 通过 GraphQL 查询文档标题
-    const { data } = await api(gql`
-      query GetDocsTitle {
-        docs(ids: [${docId}]) {
-          docId
-          title
-        }
-      }
-    `, ['data', 'docs']);
-
-    console.log("GraphQL response:", data);
-
-    const doc = data?.docs?.[0];
-    const title = doc?.title || `📄 文档 ${docId}`;
-
-    return {
-      suggestions: [
-        {
-          label: `@${title}`,
-          kind: monaco.languages.CompletionItemKind.Text,
-          insertText: `@[](/docs/${docId}) `,
-          range,
-        },
-      ],
-    };
-  },
-});
-
-
-
-monaco.languages.registerCodeLensProvider('markdown', {
-  async provideCodeLenses(model) {
-    const docs = model.findMatches('@\\[\\]\\(/docs/(\\d+)\\)', true, true, true, null, true);
-    if (!docs.length) {
-      return { lenses: [], dispose: () => {} };
-    }
-
-    // 确保所有 docId 传入 GraphQL 之前转换为数字
-    const docIds = docs.map((d) => parseInt(d.matches[1], 10)).filter((id) => !isNaN(id));
-
-    console.log("Fetching docs for docIds:", docIds);
-
-    // 通过 GraphQL 查询 docs 标题
-    const { data } = await api(gql`
-      query GetDocsTitles {
-        docs(ids: [${docIds.join(',')}]) {
-          docId
-          title
-        }
-      }
-    `, ['data', 'docs']);
-
-    console.log("GraphQL response:", data);
-
-    // 生成 CodeLens 以展示文档标题
-    return {
-      lenses: docs.map((d, index) => {
-        const docId = parseInt(d.matches[1], 10);
-        const doc = data?.docs?.find((doc) => doc.docId === docId);
-        const title = doc?.title || `📄 文档 ${docId}`;
-
-        return {
-          range: d.range,
-          id: `${index}.${docId}`,
-          command: {
-            id: '.openDocPage',
-            arguments: [docId],
-            title: title,
-          },
-        };
-      }),
-      dispose: () => {},
-    };
-  },
-});
-
-monaco.languages.registerCodeLensProvider('markdown', {
-  async provideCodeLenses(model) {
-    const repos = model.findMatches('@\\[\\]\\(/repo/(\\d+)\\)', true, true, true, null, true);
-    if (!repos.length) {
-      return { lenses: [], dispose: () => {} };
-    }
-
-    // 确保 docId 是数字
-    const docIds = repos.map((r) => parseInt(r.matches[1], 10)).filter((id) => !isNaN(id));
-
-    console.log("Fetching repos for docIds:", docIds);
-
-    // 通过 GraphQL 查询 `repo` 标题
-    const { data } = await api(gql`
-      query GetRepoTitles {
-        repos(ids: [${docIds.join(',')}]) {
-          docId
-          title
-        }
-      }
-    `, ['data', 'repos']);
-
-    console.log("GraphQL response:", data);
-
-    return {
-      lenses: repos.map((r, index) => {
-        const docId = parseInt(r.matches[1], 10);
-        const repo = data?.repos?.find((repo) => repo.docId === docId);
-        const title = repo?.title || `📁 仓库 ${docId}`;
-
-        return {
-          range: r.range,
-          id: `${index}.${docId}`,
-          command: {
-            id: '.openRepoPage',
-            arguments: [docId],
-            title: title,
-          },
-        };
-      }),
-      dispose: () => {},
-    };
-  },
-});
-
-monaco.languages.registerCompletionItemProvider('markdown', {
-  async provideCompletionItems(model, position) {
-    const word = model.getWordAtPosition(position);
-    if (!word || word.word.length < 2) return { suggestions: [] };
-
-    const prefix = model.getValueInRange({
-      startLineNumber: position.lineNumber,
-      endLineNumber: position.lineNumber,
-      startColumn: word.startColumn - 1,
-      endColumn: word.startColumn,
-    });
-
-    if (prefix !== '@') return { suggestions: [] };
-
-    const range = {
-      startLineNumber: position.lineNumber,
-      endLineNumber: position.lineNumber,
-      startColumn: word.startColumn - 1,
-      endColumn: word.endColumn,
-    };
-
-    const text = model.getValueInRange(range);
-    const match = text.match(/@\[\]\(\/repo\/(\d+)\)/);
-
-    if (!match) return { suggestions: [] };
-
-    const docId = parseInt(match[1], 10);
-    if (isNaN(docId)) return { suggestions: [] };
-
-    console.log("Fetching title for repo docId:", docId);
-
-    const { data } = await api(gql`
-      query GetRepoTitle {
-        repos(ids: [${docId}]) {
-          docId
-          title
-        }
-      }
-    `, ['data', 'repos']);
-
-    console.log("GraphQL response:", data);
-
-    const repo = data?.repos?.[0];
-    const title = repo?.title || `📁 仓库 ${docId}`;
-
-    return {
-      suggestions: [
-        {
-          label: `@${title}`,
-          kind: monaco.languages.CompletionItemKind.Text,
-          insertText: `@[](/repo/${docId}) `,
-          range,
-        },
-      ],
     };
   },
 });
