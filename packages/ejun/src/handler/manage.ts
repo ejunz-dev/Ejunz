@@ -9,7 +9,6 @@ import {
 import { Logger } from '../logger';
 import { PRIV, STATUS } from '../model/builtin';
 import domain from '../model/domain';
-import record from '../model/record';
 import * as setting from '../model/setting';
 import * as system from '../model/system';
 import user from '../model/user';
@@ -18,7 +17,6 @@ import {
     ConnectionHandler, Handler, param, requireSudo, Types,
 } from '../service/server';
 import { configSource, saveConfig, SystemSettings } from '../settings';
-// import * as judge from './judge';
 
 const logger = new Logger('manage');
 
