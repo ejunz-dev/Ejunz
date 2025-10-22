@@ -10,10 +10,7 @@ import db from '../service/db';
 import { NumberKeys } from '../typeutils';
 import { buildProjection } from '../utils';
 import { PERM } from './builtin';
-import * as contest from './contest';
 import * as document from './document';
-import problem from './problem';
-import * as training from './training';
 import { User } from './user';
 import DocsModel from './doc';
 export interface DiscussionDoc extends Document { }

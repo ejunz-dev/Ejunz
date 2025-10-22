@@ -15,7 +15,6 @@ import {
 import {
     Handler, param, post, query, route, Types,
 } from '../service/server';
-import { ContestDetailBaseHandler } from './contest';
 import storage from '../model/storage';
 import Repo from '../model/repo';
 import { PERM, PRIV, STATUS } from '../model/builtin';

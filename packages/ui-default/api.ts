@@ -24,10 +24,8 @@ export default load;
 export interface EventMap { }
 
 import AutoComplete from './components/autocomplete';
-import AssignSelectAutoComplete from './components/autocomplete/AssignSelectAutoComplete';
 import CustomSelectAutoComplete from './components/autocomplete/CustomSelectAutoComplete';
 import DomainSelectAutoComplete from './components/autocomplete/DomainSelectAutoComplete';
-import ProblemSelectAutoComplete from './components/autocomplete/ProblemSelectAutoComplete';
 import UserSelectAutoComplete from './components/autocomplete/UserSelectAutoComplete';
 
 export {

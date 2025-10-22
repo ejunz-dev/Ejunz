@@ -66,7 +66,7 @@ function MonacoContainer({
     if (!element || initialized) return;
     setInitialized(true);
     // eslint-disable-next-line
-    const model = monaco.editor.createModel(config, 'yaml', monaco.Uri.parse('hydro://system/setting.yaml'));
+    const model = monaco.editor.createModel(config, 'yaml', monaco.Uri.parse('ejunz://system/setting.yaml'));
     setModel(model);
     const e = monaco.editor.create(element, {
       theme: dark ? 'vs-dark' : 'vs-light',
