@@ -16,16 +16,13 @@ import * as useragent from '../lib/useragent';
 import { verifyTFA } from '../lib/verifyTFA';
 // import BlackListModel from '../model/blacklist';
 import { PERM, PRIV } from '../model/builtin';
-import * as contest from '../model/contest';
 import * as discussion from '../model/discussion';
 import domain from '../model/domain';
 import message from '../model/message';
-import ProblemModel from '../model/problem';
 import * as setting from '../model/setting';
 import storage from '../model/storage';
 import * as system from '../model/system';
 import token from '../model/token';
-import * as training from '../model/training';
 import user from '../model/user';
 import {
     ConnectionHandler, Handler, param, query, requireSudo, subscribe, Types,

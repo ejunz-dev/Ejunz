@@ -17,24 +17,16 @@ import {
     RecordNotFoundError, SolutionNotFoundError, ValidationError,DiscussionNotFoundError
 } from '../error';
 import {
-    ProblemDoc, ProblemSearchOptions, ProblemStatusDoc, RecordDoc, User,DocsDoc
+    User,DocsDoc
 } from '../interface';
 import { PERM, PRIV, STATUS } from '../model/builtin';
-import * as contest from '../model/contest';
 import * as discussion from '../model/discussion';
 import domain from '../model/domain';
 import * as oplog from '../model/oplog';
-import problem from '../model/problem';
-import record from '../model/record';
-import * as setting from '../model/setting';
-import solution from '../model/solution';
-import storage from '../model/storage';
-import * as system from '../model/system';
 import user from '../model/user';
 import {
     Handler, param, post, query, route, Types,
 } from '../service/server';
-import { ContestDetailBaseHandler } from './contest';
 import docs from '../model/doc';
 
 class DocsHandler extends Handler {
