@@ -1,6 +1,5 @@
+import type { AttestationFormat, CredentialDeviceType, } from '@simplewebauthn/server';
 import type { AuthenticationExtensionsAuthenticatorOutputs } from '@simplewebauthn/server/esm/helpers/decodeAuthenticatorExtensions';
-import type { AttestationFormat } from '@simplewebauthn/server/helpers';
-import { CredentialDeviceType } from '@simplewebauthn/types';
 import type fs from 'fs';
 import type { Dictionary, NumericDictionary } from 'lodash';
 import type { Binary, FindCursor, ObjectId } from 'mongodb';
@@ -435,8 +434,6 @@ declare module './service/db' {
         'blacklist': BlacklistDoc;
         'domain': DomainDoc;
         'domain.user': any;
-        'record': RecordDoc;
-        'record.stat': RecordStatDoc;
         'document': any;
         'document.status': StatusDocBase & {
             [K in keyof DocStatusType]: { docType: K } & DocStatusType[K];
