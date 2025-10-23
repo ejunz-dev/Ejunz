@@ -3,6 +3,7 @@ import {
     STATUS_TEXTS, USER_GENDER_FEMALE, USER_GENDER_ICONS, USER_GENDER_MALE,
     USER_GENDER_OTHER, USER_GENDER_RANGE, USER_GENDERS,
 } from '@ejunz/common';
+import { logger } from '../logger';
 
 export * from '@ejunz/common/permission';
 export * from '@ejunz/common/status';
@@ -110,9 +111,60 @@ export const CATEGORIES = {
     其他: ['迁移内容', '临时记录', '未来构想'],
   };
 
+  export function registerPluginPermission(family: string, key: bigint, desc: string, plugin?: boolean, space?: boolean, name?: string) {
+    if (plugin) {
+        family = 'plugins';
+    }
+    const exists = PERMS.some((perm) => perm.key === key);
+    if (exists) {
+        const existingPerm = PERMS.find((perm) => perm.key === key);
+        logger.warn(
+            `Permission key ${key.toString()} already exists in family "${existingPerm?.family}" with description "${existingPerm?.desc}". Skipping registration.`
+        );
+        return;
+    }
+
+    if (!PERMS_BY_FAMILY[family]) {
+        PERMS_BY_FAMILY[family] = [];
+    }
+
+    const permission = { family, key, desc, name };
+
+    PERMS.push(permission);
+    PERMS_BY_FAMILY[family].push(permission);
+    logger.info(`Registered permission: family="${family}", key="${key.toString()}", desc="${desc}", name="${name}"`);
+}
+
+export function registerSpacePermission(family: string, key: bigint, desc: string, space?: boolean, name?: string) {
+    if (space) {
+        family = 'spaces';
+    }
+    const exists = PERMS.some((perm) => perm.key === key);
+    if (exists) {
+        const existingPerm = PERMS.find((perm) => perm.key === key);
+        logger.warn(
+            `Permission key ${key.toString()} already exists in family "${existingPerm?.family}" with description "${existingPerm?.desc}". Skipping registration.`
+        );
+        return;
+    }
+
+    if (!PERMS_BY_FAMILY[family]) {
+        PERMS_BY_FAMILY[family] = [];
+    }
+
+    const permission = { family, key, desc, name };
+
+    PERMS.push(permission);
+    PERMS_BY_FAMILY[family].push(permission);
+    logger.info(`Registered permission: family="${family}", key="${key.toString()}", desc="${desc}", name="${name}"`);
+}
+
+
 global.Ejunz.model.builtin = {
     Permission,
     getScoreColor,
+    registerPluginPermission,
+    registerSpacePermission,
     PERM,
     PERMS,
     PERMS_BY_FAMILY,

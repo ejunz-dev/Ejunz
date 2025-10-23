@@ -86,7 +86,7 @@ async function enableTfa() {
   }).open();
   const secret = secureRandomString(13, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567');
   $('#secret').on('click', () => $('#secret').html(secret));
-  const uri = `otpauth://totp/Hydro:${UserContext.uname}?secret=${secret}&issuer=Ejunz`;
+  const uri = `otpauth://totp/Ejunz:${UserContext.uname}?secret=${secret}&issuer=Ejunz`;
   const canvas = document.getElementById('qrcode');
   await QRCode.toCanvas(canvas, uri);
   const tfaAction = await enableTFA;
