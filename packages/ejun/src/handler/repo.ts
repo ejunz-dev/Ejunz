@@ -100,7 +100,7 @@ export class RepoMainHandler extends Handler {
 
         const query = this.queryContext.query;
         const psdict = {};
-        const search = global.Ejunz.lib.problemSearch || defaultSearch;
+        const search = defaultSearch;
         const parsed = parser.parse(q, {
             keywords: ['category', 'difficulty'],
             offsets: false,

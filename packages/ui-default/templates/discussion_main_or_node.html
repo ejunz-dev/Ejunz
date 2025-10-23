@@ -7,18 +7,7 @@
     </div>
   </div>
   <div class="medium-3 columns">
-  {% if vnode.type == model.document.TYPE_PROBLEM %}
-    {% set pdoc = vnode %}
-    {% set owner_udoc = udict[vnode.owner] %}
-    {% include "partials/problem_sidebar.html" %}
-  {% elif vnode.type == model.document.TYPE_CONTEST %}
-    {% set tdoc = vnode %}
-    {%- if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) -%}
-    {% set tsdoc = { attend: tdoc.attend } %}
-    {%- endif -%}
-    {% set owner_udoc = udict[vnode.owner] %}
-    {% include "partials/contest_sidebar.html" %}
-  {% elif vnode.type == 100 %}
+  {% if vnode.type == 100 %}
     {% set ddoc = vnode %}
     {% set owner_udoc = udict[vnode.owner] %}
     <div class="section side">

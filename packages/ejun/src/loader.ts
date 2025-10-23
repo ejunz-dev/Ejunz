@@ -156,7 +156,7 @@ async function preload() {
             // Is a npm package
             const packagejson = require.resolve(`${a}/package.json`);
             const payload = require(packagejson);
-            const name = payload.name.startsWith('@ejun/') ? payload.name.split('@ejun/')[1] : payload.name;
+            const name = payload.name.startsWith('@ejunz/') ? payload.name.split('@ejunz/')[1] : payload.name;
             global.Ejunz.version[name] = payload.version;
             const modulePath = path.dirname(packagejson);
             global.addons[name] = modulePath;
