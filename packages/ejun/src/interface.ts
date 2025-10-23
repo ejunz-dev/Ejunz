@@ -492,6 +492,22 @@ export interface GeoIP {
     lookup: (ip: string, locale?: string) => any,
 }
 
+export interface RepoSearchResponse {
+    hits: string[];
+    total: number;
+    countRelation: 'eq' | 'gte';
+}
+export interface RepoSearchOptions {
+    limit?: number;
+    skip?: number;
+}
+
+export type RepoSearch = (domainId: string, q: string, options?: RepoSearchOptions) => Promise<RepoSearchResponse>;
+
+export interface Lib {
+    repoSearch: RepoSearch;
+}
+
 
 export type UIInjectableFields = 
 'ProblemAdd' |'RepoAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel' | 'ProfileHeaderContact' | 'Home_Domain' | 'NavDropdown' | 'NavMainDropdown'
