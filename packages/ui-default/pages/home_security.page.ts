@@ -1,6 +1,5 @@
 import { browserSupportsWebAuthn, platformAuthenticatorIsAvailable, startRegistration } from '@simplewebauthn/browser';
 import $ from 'jquery';
-import { escape } from 'lodash';
 import QRCode from 'qrcode';
 import { ActionDialog } from 'vj/components/dialog';
 import Notification from 'vj/components/notification';
@@ -9,7 +8,57 @@ import {
   delay, i18n, request, secureRandomString, tpl,
 } from 'vj/utils';
 
-const t = (s) => escape(i18n(s));
+async function changeMail() {
+  const changeMailDialog = new ActionDialog({
+    $body: tpl(
+      <div className="typo" id="change-mail-dialog">
+        <label>{i18n('Current Password')}
+          <div className="textbox-container">
+            <input className="textbox" type="password" name="password" data-autofocus required></input>
+          </div>
+        </label>
+        <label>{i18n('Current Email')}
+          <div className="textbox-container">
+            <input className="textbox" type="text" name="currentEmail" value={UserContext.mail} disabled></input>
+          </div>
+        </label>
+        <label>{i18n('New Email')}
+          <div className="textbox-container">
+            <input className="textbox" type="text" name="mail" required></input>
+          </div>
+        </label>
+      </div>,
+    ),
+    onDispatch(action) {
+      if (action === 'ok') {
+        const $password = $('#change-mail-dialog [name="password"]');
+        const $mail = $('#change-mail-dialog [name="mail"]');
+        if (!$password.val() || !$mail.val()) {
+          if (!$password.val()) $password.focus();
+          else $mail.focus();
+          return false;
+        }
+      }
+      return true;
+    },
+  }).open();
+  const action = await changeMailDialog;
+  if (action !== 'ok') return;
+  try {
+    await request.post('', {
+      operation: 'change_mail',
+      password: $('#change-mail-dialog [name="password"]').val(),
+      mail: $('#change-mail-dialog [name="mail"]').val(),
+    });
+  } catch (err) {
+    Notification.error(err.message);
+    console.error(err);
+    return;
+  }
+  Notification.success(i18n('Successfully changed.'));
+  await delay(2000);
+  window.location.reload();
+}
 
 async function enableTfa() {
   const enableTFA = new ActionDialog({
@@ -37,7 +86,7 @@ async function enableTfa() {
   }).open();
   const secret = secureRandomString(13, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567');
   $('#secret').on('click', () => $('#secret').html(secret));
-  const uri = `otpauth://totp/Ejunz:${UserContext.uname}?secret=${secret}&issuer=Ejunz`;
+  const uri = `otpauth://totp/Hydro:${UserContext.uname}?secret=${secret}&issuer=Ejunz`;
   const canvas = document.getElementById('qrcode');
   await QRCode.toCanvas(canvas, uri);
   const tfaAction = await enableTFA;
@@ -68,7 +117,7 @@ async function enableAuthn(type: string) {
   let credential;
   try {
     console.log(authnInfo);
-    credential = await startRegistration(authnInfo.authOptions);
+    credential = await startRegistration({ optionsJSON: authnInfo.authOptions });
   } catch (err) {
     Notification.error(i18n('Failed to get credential: {0}', err));
     return;
@@ -109,38 +158,56 @@ async function enableAuthn(type: string) {
 }
 
 export default new NamedPage('home_security', () => {
-  const menuLink = (inner: string, action?: string) => `
-    <li class="menu__item" ${action ? '' : 'disabled'}>
-      <a class="menu__link" ${action ? `data-action="${action}"` : 'disabled'}>${inner}</a>
+  const MenuLink = ({ children, action, icon }: { children: React.ReactNode, action?: string, icon?: string }) => (
+    <li className={`menu__item ${action ? '' : 'disabled'}`}>
+      <a className={`menu__link ${action ? '' : 'disabled'}`} data-action={action}>
+        {icon && <span className={`icon icon-${icon}`} />}
+        {children}
+      </a>
     </li>
-  `;
-  const fingerprint = '<span class="icon icon-fingerprint"></span>';
+  );
 
   $(document).on('click', '[name="auth_enable"]', async () => {
-    let $body = `
+    const platformAvailable = browserSupportsWebAuthn() && await platformAuthenticatorIsAvailable();
+    const $body = tpl(
       <div>
-        <h3>${t('Choose Authenticator Type')}</h3>
-        <ol class="menu">
-          ${menuLink(`<span class="icon icon-platform--mobile"></span>${t('Two Factor Authentication')}`, 'tfa')}
-          <li class="menu__seperator"></li>
-    `;
-    if (!window.isSecureContext || !browserSupportsWebAuthn()) {
-      const message = window.isSecureContext
-        ? "Your browser doesn't support WebAuthn."
-        : 'Webauthn is not available in insecure context.';
-      $body += menuLink(`${fingerprint}${t(message)}`);
-    } else {
-      if (!await platformAuthenticatorIsAvailable()) {
-        $body += menuLink(`${fingerprint}${t("Your browser doesn't support platform authenticator.")}`);
-      } else {
-        $body += menuLink(`${fingerprint}${t('Your Device')}`, 'platform');
-      }
-      $body += menuLink(`<span class="icon icon-usb"></span>${t('Multi Platform Authenticator')}`, 'cross-platform');
-    }
-    $body += '</ol></div>';
+        <h3>{i18n('Choose Authenticator Type')}</h3>
+        <ol className="menu">
+          <MenuLink action="tfa" icon="platform--mobile">
+            {i18n('Two Factor Authentication')}
+          </MenuLink>
+          <li className="menu__seperator"></li>
+          {(!window.isSecureContext || !browserSupportsWebAuthn()) ? (
+            <MenuLink icon="fingerprint">
+              {window.isSecureContext
+                ? i18n("Your browser doesn't support WebAuthn.")
+                : i18n('Webauthn is not available in insecure context.')}
+            </MenuLink>
+          ) : (<>
+            {platformAvailable ? (
+              <MenuLink action="platform" icon="fingerprint">
+                {i18n('Your Device')}
+              </MenuLink>
+            ) : (
+              <MenuLink icon="fingerprint">
+                {i18n("Your browser doesn't support platform authenticator.")}
+              </MenuLink>
+            )}
+            <MenuLink action="cross-platform" icon="usb">
+              {i18n('Multi Platform Authenticator')}
+            </MenuLink>
+          </>)}
+        </ol>
+      </div>,
+    );
     const action = await new ActionDialog({ $body, $action: [] }).open();
     if (!action || action === 'cancel') return;
     if (action === 'tfa') enableTfa();
     else enableAuthn(action);
+  });
+
+  $(document).on('click', '[data-operation="change_mail"]', async (ev) => {
+    ev.preventDefault();
+    await changeMail();
   });
 });
