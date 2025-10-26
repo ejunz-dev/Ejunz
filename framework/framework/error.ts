@@ -1,5 +1,5 @@
 interface IEjunzError {
-    new(...args: any[]): EjunzError
+    new(...args: any[]): EjunzError;
 }
 
 export class EjunzError extends Error {
@@ -32,7 +32,7 @@ const Err = (name: string, Class: IEjunzError, ...info: Array<(() => string) | s
             msg = item;
         }
     }
-   
+    // eslint-disable-next-line ts/no-shadow
     return class EjunzError extends Class {
         name = name;
         constructor(...args: any[]) {

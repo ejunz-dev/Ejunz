@@ -1,10 +1,12 @@
-/* eslint-disable global-require */
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import {
   ContestModel, Context, Handler, ObjectId, param, PERM, PRIV, ProblemModel, Schema,
-  SettingModel, SystemModel, SystemSettings, Types, UserModel,DocsModel,RepoModel
+  SettingModel, SystemModel, Types, UserModel, yaml,
 } from 'ejun';
 import convert from 'schemastery-jsonschema';
 import markdown from './backendlib/markdown';
+import { TemplateService } from './backendlib/template';
 
 class WikiHelpHandler extends Handler {
   noCheckPermView = true;
@@ -20,9 +22,9 @@ class WikiAboutHandler extends Handler {
   async get() {
     let raw = SystemModel.get('ui-default.about') || '';
     // TODO template engine
-    raw = raw.replace(/{{ name }}/g, this.domain.ui?.name || SystemModel.get('server.name')).trim();
+    raw = raw.replace(/\{\{ name \}\}/g, this.domain.ui?.name || SystemModel.get('server.name')).trim();
     const lines = raw.split('\n');
-    const sections = [];
+    const sections: { id: string, title: string, content: string }[] = [];
     for (const line of lines) {
       if (line.startsWith('# ')) {
         const id = line.split(' ')[1];
@@ -53,7 +55,7 @@ class LegacyModeHandler extends Handler {
 
   @param('legacy', Types.Boolean)
   @param('nohint', Types.Boolean)
-  async get(domainId: string, legacy = false, nohint = false) {
+  async get({ }, legacy = false, nohint = false) {
     this.session.legacy = legacy;
     this.session.nohint = nohint;
     this.back();
@@ -74,7 +76,7 @@ class MarkdownHandler extends Handler {
 
 class SystemConfigSchemaHandler extends Handler {
   async get() {
-    const schema = convert(Schema.intersect(SystemSettings) as any, true);
+    const schema = convert(Schema.intersect(this.ctx.setting.settings) as any, true);
     this.response.body = schema;
   }
 }
@@ -114,48 +116,76 @@ class RichMediaHandler extends Handler {
     if (tdoc) return await this.renderHTML('partials/homework.html', { tdoc });
     return '';
   }
-  async renderDocs(domainId, payload) {
-    const ddoc = await DocsModel.get(payload.domainId || domainId, payload.id) || DocsModel.default;
-    return await this.renderHTML('partials/docs.html', { ddoc });
-}
-async renderRepo(domainId, payload) {
-  const docId = parseInt(payload.id, 10); // 确保 `docId` 是数字
-  if (isNaN(docId)) return '';
-
-  console.log(`[RichMediaHandler.renderRepo] Fetching repo for docId=${docId}`);
-
-  const rdoc = await RepoModel.get(domainId, docId) || RepoModel.default;
-  
-  console.log(`[RichMediaHandler.renderRepo] Retrieved repo:`, rdoc);
-
-  return await this.renderHTML('partials/repo.html', { rdoc });
-}
-
-
-
 
   async post({ domainId, items }) {
-    const res = [];
+    const res: any[] = [];
     for (const item of items || []) {
       if (item.domainId && item.domainId === domainId) delete item.domainId;
       if (item.type === 'user') res.push(this.renderUser(domainId, item).catch(() => ''));
       else if (item.type === 'problem') res.push(this.renderProblem(domainId, item).catch(() => ''));
       else if (item.type === 'contest') res.push(this.renderContest(domainId, item).catch(() => ''));
       else if (item.type === 'homework') res.push(this.renderHomework(domainId, item).catch(() => ''));
-      else if (item.type === 'docs') res.push(this.renderDocs(domainId, item).catch(() => ''));
-      else if (item.type === 'repo') res.push(this.renderRepo(domainId, item).catch(() => ''));
       else res.push('');
     }
     this.response.body = await Promise.all(res);
   }
 }
 
+/* eslint-disable style/quote-props */
+const fontRange = {
+  'Open Sans': 'Open Sans',
+  'Seravek': 'Seravek',
+  'Segoe UI': 'Segoe UI',
+  'Verdana': 'Verdana',
+  'PingFang SC': 'PingFang SC',
+  'Hiragino Sans GB': 'Hiragino Sans GB',
+  'Microsoft Yahei': 'Microsoft Yahei',
+  'WenQuanYi Micro Hei': 'WenQuanYi Micro Hei',
+  'sans': 'sans',
+  'XiaoLai SC': '小赖 SC',
+};
+const codeFontRange = {
+  'monaco': 'Monaco',
+  'Source Code Pro': 'Source Code Pro',
+  'Consolas': 'Consolas',
+  'Lucida Console': 'Lucida Console',
+  'Fira Code': 'Fira Code',
+  'Roboto Mono': 'Roboto Mono',
+  'Inconsolata': 'Inconsolata',
+  'Hack': 'Hack',
+  'Jetbrains Mono': 'Jetbrains Mono',
+  'DM Mono': 'DM Mono',
+  'Ubuntu Mono': 'Ubuntu Mono',
+  'PT Mono': 'PT Mono',
+  'SF Mono': 'SF Mono',
+};
+
+const defaultAbout = (yaml.load(readFileSync(join(__dirname, 'setting.yaml'), 'utf-8')) as any).about.value;
+
 export function apply(ctx: Context) {
   ctx.inject(['setting'], (c) => {
     c.setting.PreferenceSetting(
+      SettingModel.Setting('setting_display', 'rounded', false, 'boolean', 'Rounded Corners'),
       SettingModel.Setting('setting_display', 'skipAnimate', false, 'boolean', 'Skip Animation'),
       SettingModel.Setting('setting_display', 'showTimeAgo', true, 'boolean', 'Enable Time Ago'),
+      SettingModel.Setting('setting_display', 'fontFamily', 'Open Sans', fontRange, 'Font Family'),
+      SettingModel.Setting('setting_display', 'codeFontFamily', 'Source Code Pro', codeFontRange, 'Code Font Family'),
+      SettingModel.Setting('setting_display', 'theme', 'light', { light: 'Light', dark: 'Dark' }, 'Theme'),
+      SettingModel.Setting('setting_markdown', 'preferredEditorType', 'sv', { sv: 'Split View', monaco: 'Monaco Editor' }, 'Preferred Editor Type'),
+      SettingModel.Setting('setting_highlight', 'showInvisibleChar', false, 'boolean', 'Show Invisible Characters'),
+      SettingModel.Setting('setting_highlight', 'formatCode', true, 'boolean', 'Auto Format Code'),
     );
+    c.setting.SystemSetting(Schema.object({
+      'ui-default': Schema.object({
+        footer_extra_html: Schema.string().role('textarea').default(''),
+        nav_logo_dark: Schema.string().default('/components/navigation/nav-logo-small_dark.png'),
+        preload: Schema.string().default(''),
+        domainNavigation: Schema.boolean().default(true).description('Show Domain Navigation'),
+        about: Schema.string().role('markdown').default(defaultAbout),
+        enableScratchpad: Schema.boolean().default(true).description('Enable Scratchpad Mode'),
+      }),
+    }));
+    ctx.Route('config_schema', '/manage/config/schema.json', SystemConfigSchemaHandler, PRIV.PRIV_EDIT_SYSTEM);
   });
   if (process.env.EJUNZ_CLI) return;
   ctx.Route('wiki_help', '/wiki/help', WikiHelpHandler);
@@ -163,7 +193,6 @@ export function apply(ctx: Context) {
   ctx.Route('set_theme', '/set_theme/:theme', SetThemeHandler);
   ctx.Route('set_legacy', '/legacy', LegacyModeHandler);
   ctx.Route('markdown', '/markdown', MarkdownHandler);
-  ctx.Route('config_schema', '/manage/config/schema.json', SystemConfigSchemaHandler, PRIV.PRIV_EDIT_SYSTEM);
   ctx.Route('media', '/media', RichMediaHandler);
   ctx.on('handler/after/DiscussionRaw', async (that) => {
     if (that.args.render && that.response.type === 'text/markdown') {
@@ -184,6 +213,6 @@ export function apply(ctx: Context) {
       domains: SystemModel.get('ui-default.domains') || [],
     };
   });
-  ctx.plugin(require('./backendlib/template'));
+  ctx.plugin(TemplateService);
   ctx.plugin(require('./backendlib/builder'));
 }

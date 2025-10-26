@@ -1,7 +1,7 @@
-import { AnsiUp } from 'ansi_up';
 import { moment, ObjectId } from 'ejun';
+import { AnsiUp } from 'ansi_up';
 
-export { size, formatSeconds } from 'ejun';
+export { formatSeconds, size } from 'ejun';
 
 const AU = new AnsiUp();
 

@@ -1,20 +1,16 @@
+/* eslint-disable ts/no-unsafe-declaration-merging */
+import LoggerService from '@cordisjs/plugin-logger';
+import { TimerService } from '@cordisjs/plugin-timer';
 import * as cordis from 'cordis';
 import Schema from 'schemastery';
-import type { ServerEvents, WebService } from '@ejunz/framework';
 import type { DomainDoc, GeoIP, ModuleInterfaces } from './interface';
 import { inject } from './lib/ui';
 import { Loader } from './loader';
 import type { EventMap } from './service/bus';
-import type { CheckService } from './service/check';
+import type CheckService from './service/check';
 import type { } from './service/migration';
-import type { ConnectionHandler, Handler } from './service/server';
-import { Logger } from './logger'
 
-
-const logger = new Logger('Bus');
-
-
-export interface Events<C extends Context = Context> extends cordis.Events<C>, EventMap, ServerEvents<Handler, ConnectionHandler> { }
+export { EventMap as Events };
 
 function addScript<K>(name: string, description: string, validate: Schema<K>, run: (args: K, report: any) => boolean | Promise<boolean>) {
     if (global.Ejunz.script[name]) throw new Error(`duplicate script ${name} registered.`);
@@ -23,20 +19,17 @@ function addScript<K>(name: string, description: string, validate: Schema<K>, ru
 }
 
 function provideModule<T extends keyof ModuleInterfaces>(type: T, id: string, module: ModuleInterfaces[T]) {
-    if (global.Ejunz.module[type][id]) throw new Error(`duplicate script ${type}/${id} registered.`);
+    if (global.Ejunz.module[type][id]) throw new Error(`duplicate module ${type}/${id} registered.`);
     global.Ejunz.module[type as any][id] = module;
     return () => delete global.Ejunz.module[type][id];
 }
 
-export type EffectScope = cordis.EffectScope<Context>;
-export type ForkScope = cordis.ForkScope<Context>;
-export type MainScope = cordis.MainScope<Context>;
+export type Fiber = cordis.Fiber<Context>;
 
-export type { Disposable, ScopeStatus, Plugin } from 'cordis';
+export { Disposable, FiberState, Plugin } from 'cordis';
 
-export interface Context extends cordis.Context, Pick<WebService, 'Route' | 'Connection' | 'withHandlerClass'> {
-    // @ts-ignore
-    [Context.events]: Events<this>;
+export interface Context extends cordis.Context {
+    [Context.events]: EventMap & cordis.Events<Context>;
     loader: Loader;
     check: CheckService;
     setImmediate: typeof setImmediate;
@@ -47,63 +40,49 @@ export interface Context extends cordis.Context, Pick<WebService, 'Route' | 'Con
     geoip?: GeoIP;
 }
 
-export abstract class Service<T = any, C extends Context = Context> extends cordis.Service<T, C> {
-    [cordis.Service.setup]() {
-        this.ctx = new Context() as C;
-    }
+export abstract class Service<T = never> extends cordis.Service<T, Context> {
 }
 
 const T = <F extends (...args: any[]) => any>(origFunc: F, disposeFunc?) =>
     function method(this: cordis.Service, ...args: Parameters<F>) {
-        const res = origFunc(...args);
-        this[Context.current]?.on('dispose', () => (disposeFunc ? disposeFunc(res) : res()));
+        this.ctx.effect(() => {
+            const res = origFunc(...args);
+            return () => (disposeFunc ? disposeFunc(res) : res());
+        });
     };
 
-    export class ApiMixin extends Service {
-        addScript = T(addScript);
-        setImmediate = T(setImmediate, clearImmediate);
-        provideModule = T(provideModule);
-        injectUI = T(inject);
+export class ApiMixin extends Service {
+    addScript = T(addScript);
+    setImmediate = T(setImmediate, clearImmediate);
+    provideModule = T(provideModule);
+    injectUI = T(inject);
+    broadcast = (event: keyof EventMap, ...payload) =>
+        this.ctx.emit('bus/broadcast', event, payload, process.env.TRACE_BROADCAST ? new Error().stack : null);
 
-        registerEvent = (eventName: string, handler: (...args: any[]) => void) => {
-            this.ctx.on(eventName as keyof Events<Context>, handler);
-            logger.info(`Event "${eventName}" registered successfully.`);
-        };
-    
-        broadcast = (event: keyof EventMap, ...payload) => {
-            this.ctx.emit('bus/broadcast', event, payload);
-        };
-    
-        constructor(ctx) {
-            super(ctx, '$api', true);
-    
-            ctx.mixin('$api', [
-                'addScript',
-                'setImmediate',
-                'provideModule',
-                'injectUI',
-                'broadcast',
-                'registerEvent',
-            ]);
-        }
+    constructor(ctx) {
+        super(ctx, '$api');
+        ctx.mixin('$api', ['addScript', 'setImmediate', 'provideModule', 'injectUI', 'broadcast']);
     }
-    
+}
 
 export class Context extends cordis.Context {
     domain?: DomainDoc;
 
-    constructor(config: {} = {}) {
-        super(config);
+    constructor() {
+        super();
         this.plugin(ApiMixin);
+        this.plugin(TimerService);
+        this.plugin(LoggerService, {
+            console: {
+                showDiff: false,
+                showTime: 'dd hh:mm:ss',
+                label: {
+                    align: 'right',
+                    width: 9,
+                    margin: 1,
+                },
+                levels: { default: process.env.DEV ? 3 : 2 },
+            },
+        });
     }
 }
-
-const old = cordis.Registry.prototype.inject;
-cordis.Registry.prototype.using = old;
-cordis.Registry.prototype.inject = function wrapper(...args) {
-    if (typeof args[0] === 'string') {
-        console.warn('old functionality of ctx.inject is deprecated. please use ctx.injectUI instead.');
-        return T(inject).call(this, ...args as any) as any;
-    }
-    return old.call(this, ...args);
-};
