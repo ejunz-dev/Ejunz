@@ -1,18 +1,18 @@
-import { escapeRegExp, pick, uniq } from 'lodash';
+import { escapeRegExp, omit, pick, uniq } from 'lodash';
 import { LRUCache } from 'lru-cache';
 import { Collection, Filter, ObjectId } from 'mongodb';
 import { serializer } from '@ejunz/framework';
 import { LoginError, UserAlreadyExistError, UserNotFoundError } from '../error';
 import {
     Authenticator, BaseUserDict, FileInfo, GDoc,
-    ownerInfo, Udict, Udoc, VUdoc,
+    OwnerInfo, Udict, Udoc, VUdoc,
 } from '../interface';
 import avatar from '../lib/avatar';
 import pwhash from '../lib/hash.ejunz';
-import * as bus from '../service/bus';
+import bus from '../service/bus';
 import db from '../service/db';
 import { Value } from '../typeutils';
-import { ArgMethod, buildProjection } from '../utils';
+import { ArgMethod, buildProjection, randomstring, sleep } from '../utils';
 import { PERM, PRIV } from './builtin';
 import domain from './domain';
 import * as setting from './setting';
@@ -59,6 +59,8 @@ export class User {
     _loginip: string;
     _tfa: string;
     _authenticators: Authenticator[];
+    _privateFields: string[] = [];
+    _publicFields: string[] = [];
 
     mail: string;
     uname: string;
@@ -101,14 +103,15 @@ export class User {
         this.tfa = !!udoc.tfa;
         this.authn = (udoc.authenticators || []).length > 0;
         if (dudoc.group) this.group = dudoc.group;
-
-        for (const key in setting.SETTINGS_BY_KEY) {
-            this[key] = udoc[key] ?? (setting.SETTINGS_BY_KEY[key].value || system.get(`preference.${key}`));
-        }
-
-        for (const key in setting.DOMAIN_USER_SETTINGS_BY_KEY) {
-            this[key] = dudoc[key] ?? (setting.DOMAIN_USER_SETTINGS_BY_KEY[key].value || system.get(`preference.${key}`));
-        }
+        const load = (settings: Record<string, ReturnType<typeof setting.Setting>>, source: any) => {
+            for (const key in settings) {
+                this[key] = source[key] ?? (settings[key].value || system.get(`preference.${key}`));
+                if (settings[key].flag & setting.FLAG_PUBLIC) this._publicFields.push(key);
+                if (settings[key].flag & setting.FLAG_PRIVATE) this._privateFields.push(key);
+            }
+        };
+        load(setting.SETTINGS_BY_KEY, udoc);
+        load(setting.DOMAIN_USER_SETTINGS_BY_KEY, dudoc);
     }
 
     async init() {
@@ -116,9 +119,9 @@ export class User {
         return this;
     }
 
-    own<T extends ownerInfo>(doc: T, checkPerm: bigint): boolean;
-    own<T extends ownerInfo>(doc: T, exact: boolean): boolean;
-    own<T extends ownerInfo>(doc: T): boolean;
+    own<T extends OwnerInfo>(doc: T, checkPerm: bigint): boolean;
+    own<T extends OwnerInfo>(doc: T, exact: boolean): boolean;
+    own<T extends OwnerInfo>(doc: T): boolean;
     own<T extends { owner: number, maintainer?: number[] }>(doc: T): boolean;
     own(doc: any, arg1: any = false): boolean {
         if (typeof arg1 === 'bigint' && !this.hasPerm(arg1)) return false;
@@ -127,18 +130,12 @@ export class User {
             : doc.owner === this._id || (doc.maintainer || []).includes(this._id);
     }
 
-    hasPerm(...perm: bigint[]) {
-        for (const i in perm) {
-            if ((this.perm & this.scope & perm[i]) === perm[i]) return true;
-        }
-        return false;
+    hasPerm(...perms: bigint[]) {
+        return perms.some((perm) => (this.perm & this.scope & perm) === perm);
     }
 
-    hasPriv(...priv: number[]) {
-        for (const i in priv) {
-            if ((this.priv & priv[i]) === priv[i]) return true;
-        }
-        return false;
+    hasPriv(...privs: number[]) {
+        return privs.some((priv) => (this.priv & priv) === priv);
     }
 
     async checkPassword(password: string) {
@@ -149,7 +146,7 @@ export class User {
             throw new LoginError(this.uname);
         }
         if (this.hashType !== 'ejunz') {
-            // eslint-disable-next-line @typescript-eslint/no-use-before-define
+            // eslint-disable-next-line ts/no-use-before-define
             UserModel.setPassword(this._id, password);
         }
     }
@@ -165,11 +162,14 @@ export class User {
         return user;
     }
 
-    serialize(_, h) {
+    getFields(type: 'public' | 'private' = 'public') {
+        const fields = ['_id', 'uname', 'mail', 'perm', 'role', 'priv', 'regat', 'loginat', 'tfa', 'authn'].concat(this._publicFields);
+        return type === 'public' ? fields : fields.concat(this._privateFields);
+    }
+
+    serialize(h) {
         if (!this._isPrivate) {
-            const fields = ['_id', 'uname', 'mail', 'perm', 'role', 'priv', 'regat', 'loginat', 'tfa', 'authn'];
-            if (h?.user?.hasPerm(PERM.PERM_VIEW_DISPLAYNAME)) fields.push('displayName');
-            return pick(this, fields);
+            return pick(this, this.getFields(h?.user?.hasPerm(PERM.PERM_VIEW_USER_PRIVATE_INFO) ? 'private' : 'public'));
         }
         return JSON.stringify(this, serializer(true, h));
     }
@@ -195,6 +195,7 @@ async function initAndCache(udoc: Udoc, dudoc, scope: bigint = PERM.PERM_ALL) {
 
 class UserModel {
     static coll = coll;
+    static collGroup = collGroup;
     static User = User;
     static cache = cache;
     static defaultUser: Udoc = {
@@ -214,6 +215,9 @@ class UserModel {
         ip: ['127.0.0.1'],
         loginip: '127.0.0.1',
     };
+
+    static _handleMailLower = handleMailLower;
+    static _deleteUserCache = deleteUserCache;
 
     @ArgMethod
     static async getById(domainId: string, _id: number, scope: bigint | string = PERM.PERM_ALL): Promise<User> {
@@ -271,7 +275,7 @@ class UserModel {
             deleteUserCache(udoc);
         }
         const res = await coll.findOneAndUpdate({ _id: uid }, op, { returnDocument: 'after' });
-        deleteUserCache(res.value);
+        deleteUserCache(res);
         return res;
     }
 
@@ -287,24 +291,25 @@ class UserModel {
 
     @ArgMethod
     static async setPassword(uid: number, password: string): Promise<Udoc> {
-        const salt = String.random();
+        const salt = randomstring();
         const res = await coll.findOneAndUpdate(
             { _id: uid },
             { $set: { salt, hash: await pwhash(password, salt), hashType: 'ejunz' } },
             { returnDocument: 'after' },
         );
-        deleteUserCache(res.value);
-        return res.value;
+        deleteUserCache(res);
+        return res;
     }
 
     @ArgMethod
-    static async inc(_id: number, field: string, n: number = 1) {
-        if (_id < -999) return null;
-        const udoc = await coll.findOne({ _id });
-        if (!udoc) throw new UserNotFoundError(_id);
-        await coll.updateOne({ _id }, { $inc: { [field]: n } });
-        deleteUserCache(udoc);
-        return udoc;
+    static async inc(_id: number | number[], field: string, n: number = 1) {
+        const ids = (Array.isArray(_id) ? Array.from(new Set(_id)) : [_id]).filter((i) => i >= -999);
+        if (!ids.length) return null;
+        const udocs = await coll.find({ _id: { $in: ids } }).toArray();
+        if (udocs.length !== ids.length) throw new UserNotFoundError(_id);
+        await coll.updateMany({ _id: { $in: ids } }, { $inc: { [field]: n } });
+        for (const udoc of udocs) deleteUserCache(udoc);
+        return udocs;
     }
 
     @ArgMethod
@@ -318,8 +323,8 @@ class UserModel {
             uid = Math.max((udoc?._id || 0) + 1, 2);
             autoAlloc = true;
         }
-        const salt = String.random();
-        while (true) { // eslint-disable-line no-constant-condition
+        const salt = randomstring();
+        while (true) {
             try {
                 // eslint-disable-next-line no-await-in-loop
                 await coll.insertOne({
@@ -339,6 +344,19 @@ class UserModel {
                     priv,
                     avatar: `gravatar:${mail}`,
                 });
+                // eslint-disable-next-line no-await-in-loop
+                await domain.collUser.updateOne(
+                    { uid, domainId: 'system' },
+                    { $set: { join: true } },
+                    { upsert: true },
+                );
+                // make sure user is immediately available after creation
+                // give some time for database to sync in replicas
+                for (let i = 1; i <= 10; i++) {
+                    const udoc = await UserModel.getById('system', uid); // eslint-disable-line no-await-in-loop
+                    if (udoc) break;
+                    await sleep(500); // eslint-disable-line no-await-in-loop
+                }
                 return uid;
             } catch (e) {
                 if (e?.code === 11000) {
@@ -384,19 +402,26 @@ class UserModel {
         return projection ? coll.find(params).project<Udoc>(buildProjection(projection)) : coll.find(params);
     }
 
+    static async getListForRender(domainId: string, uids: number[], showPrivateInfo: boolean, extraFields?: string[]): Promise<BaseUserDict>;
     static async getListForRender(domainId: string, uids: number[], extraFields?: string[]): Promise<BaseUserDict>;
-    static async getListForRender(domainId: string, uids: number[], arg: string[] | boolean) {
-        const fields = ['_id', 'uname', 'mail', 'avatar', 'school', 'studentId'].concat(arg instanceof Array ? arg : []);
-        const showDisplayName = arg instanceof Array ? fields.includes('displayName') : arg;
+    static async getListForRender(domainId: string, uids: number[], arg: string[] | boolean, extraFields?: string[]) {
+        const _extraFields = Array.isArray(arg) ? arg : Array.isArray(extraFields) ? extraFields : [];
+        const showPrivateInfo = arg === true || _extraFields.includes('displayName');
+        const fields = Array.from(new Set([
+            ...(await UserModel.getById('system', 0)).getFields(showPrivateInfo ? 'private' : 'public'),
+            ..._extraFields,
+        ]));
         const [udocs, vudocs, dudocs] = await Promise.all([
             UserModel.getMulti({ _id: { $in: uids } }, fields).toArray(),
             collV.find({ _id: { $in: uids } }).toArray(),
-            domain.getDomainUserMulti(domainId, uids).project({ uid: 1, ...(showDisplayName ? { displayName: 1 } : {}) }).toArray(),
+            domain.getDomainUserMulti(domainId, uids).project(buildProjection(fields.concat('uid'))).toArray(),
         ]);
         const udict = {};
         for (const udoc of udocs) udict[udoc._id] = udoc;
         for (const udoc of vudocs) udict[udoc._id] = udoc;
-        if (showDisplayName) for (const dudoc of dudocs) udict[dudoc.uid].displayName = dudoc.displayName;
+        if (showPrivateInfo) {
+            for (const dudoc of dudocs) Object.assign(udict[dudoc.uid], omit(dudoc, ['_id', 'uid']));
+        }
         for (const uid of uids) udict[uid] ||= { ...UserModel.defaultUser };
         for (const key in udict) {
             udict[key].school ||= '';
@@ -424,8 +449,8 @@ class UserModel {
             { $set: { priv } },
             { returnDocument: 'after' },
         );
-        deleteUserCache(res.value);
-        return res.value;
+        deleteUserCache(res);
+        return res;
     }
 
     @ArgMethod
@@ -471,22 +496,24 @@ class UserModel {
     }
 }
 
-bus.on('ready', () => Promise.all([
-    db.ensureIndexes(
-        coll,
-        { key: { unameLower: 1 }, name: 'uname', unique: true },
-        { key: { mailLower: 1 }, name: 'mail', unique: true },
-    ),
-    db.ensureIndexes(
-        collV,
-        { key: { unameLower: 1 }, name: 'uname', unique: true },
-        { key: { mailLower: 1 }, name: 'mail', unique: true },
-    ),
-    db.ensureIndexes(
-        collGroup,
-        { key: { domainId: 1, name: 1 }, name: 'name', unique: true },
-        { key: { domainId: 1, uids: 1 }, name: 'uid' },
-    ),
-]));
+export async function apply() {
+    await Promise.all([
+        db.ensureIndexes(
+            coll,
+            { key: { unameLower: 1 }, name: 'uname', unique: true },
+            { key: { mailLower: 1 }, name: 'mail', unique: true },
+        ),
+        db.ensureIndexes(
+            collV,
+            { key: { unameLower: 1 }, name: 'uname', unique: true },
+            { key: { mailLower: 1 }, name: 'mail', unique: true },
+        ),
+        db.ensureIndexes(
+            collGroup,
+            { key: { domainId: 1, name: 1 }, name: 'name', unique: true },
+            { key: { domainId: 1, uids: 1 }, name: 'uid' },
+        ),
+    ]);
+}
 export default UserModel;
 global.Ejunz.model.user = UserModel;

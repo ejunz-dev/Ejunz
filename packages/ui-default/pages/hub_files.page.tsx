@@ -1,4 +1,4 @@
-import { STATUS } from '@ejunz/utils/lib/status';
+import { STATUS } from '@ejunz/common';
 import $ from 'jquery';
 import { map } from 'lodash';
 import React from 'react';

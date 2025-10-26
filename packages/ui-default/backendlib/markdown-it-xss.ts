@@ -19,7 +19,7 @@ const depedentTags = {
   dt: ['dl'],
   dd: ['dl'],
 };
-const whitelistClasses = ['row', 'columns', 'typo', 'note', 'warn'].concat(new Array(12).fill(0).map((_, i) => `medium-${i + 1}`));
+const whitelistClasses = ['row', 'columns', 'typo', 'note', 'warn'].concat(Array.from({ length: 12 }).fill(0).map((_, i) => `medium-${i + 1}`));
 
 const tagCheck = new FilterXSS({
   css: false,
@@ -121,7 +121,7 @@ export const xss = new FilterXSS({
     ...commonRules.whiteList,
     area: ['shape', 'coords', 'href', 'alt'],
     article: [],
-    audio: ['autoplay', 'controls', 'loop', 'preload', 'src'],
+    audio: ['controls', 'loop', 'preload', 'src'],
     col: ['align', 'valign', 'span', 'width'],
     colgroup: ['align', 'valign', 'span', 'width'],
     dd: [],
@@ -146,12 +146,12 @@ export const xss = new FilterXSS({
     thead: ['align', 'valign'],
     tr: ['rowspan', 'align', 'valign'],
     ul: [],
-    video: ['autoplay', 'controls', 'loop', 'preload', 'src', 'height', 'width'],
+    video: ['controls', 'loop', 'preload', 'src', 'height', 'width'],
   },
   css: cssFilterOptions,
   safeAttrValue(tag, name, value) {
     if (name === 'id') return escapeAttrValue(`xss-id-${value}`);
-    if (name === 'class') return value.split(' ').filter((i) => whitelistClasses.includes(i)).join(' ');
+    if (name === 'class') return value.split(' ').filter((i) => whitelistClasses.includes(i) || i.startsWith('language-')).join(' ');
     return safeAttrValue(tag, name, value, CssFilter);
   },
 });

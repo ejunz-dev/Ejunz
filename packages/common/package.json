@@ -1,0 +1,10 @@
+{
+    "name": "@ejunz/common",
+    "main": "./index.ts",
+    "version": "0.0.5",
+    "repository": "https://github.com/ejunz-dev/Ejunz",
+    "sideEffects": false,
+    "dependencies": {
+        "@ejunz/utils": "workspace:^"
+    }
+}
