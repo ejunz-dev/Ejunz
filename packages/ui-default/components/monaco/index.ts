@@ -8,6 +8,8 @@ import list from 'monaco-themes/themes/themelist.json';
 import { nanoid } from 'nanoid';
 import { i18n, request } from 'vj/utils';
 
+export { renderMarkdown } from 'monaco-editor/esm/vs/base/browser/markdownRenderer';
+
 export default monaco;
 export const customOptions: monaco.editor.IStandaloneDiffEditorConstructionOptions = JSON.parse(localStorage.getItem('editor.config') || '{}');
 export function saveCustomOptions() {
@@ -31,7 +33,7 @@ export const loadThemePromise = customOptions.theme
 class ChangeThemeAction extends EditorAction {
   constructor() {
     super({
-      id: '.changeEditorTheme',
+      id: 'ejunz.changeEditorTheme',
       label: i18n('Change Theme'),
       alias: 'Change Theme',
     });
@@ -141,7 +143,7 @@ export function registerAction(
 ) {
   if (element) {
     editor.addAction({
-      id: '.submitForm',
+      id: 'ejunz.submitForm',
       label: 'Submit',
       keybindings: [
         monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,

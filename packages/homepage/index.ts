@@ -33,82 +33,12 @@ export class HomeHandler extends HomeBaseHandler {
         for (const uid of uids) this.uids.add(uid);
     }
 
-    async getHomework(domainId: string, limit = 5) {
-        if (!this.user.hasPerm(PERM.PERM_VIEW_HOMEWORK)) return [[], {}];
-        const groups = (await UserModel.listGroup(domainId, this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK) ? undefined : this.user._id))
-            .map((i) => i.name);
-        const tdocs = await ContestModel.getMulti(domainId, {
-            rule: 'homework',
-            ...this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_HOMEWORK)
-                ? {}
-                : {
-                    $or: [
-                        { maintainer: this.user._id },
-                        { owner: this.user._id },
-                        { assign: { $in: groups } },
-                        { assign: { $size: 0 } },
-                    ],
-                },
-        }).sort({
-            penaltySince: -1, endAt: -1, beginAt: -1, _id: -1,
-        }).limit(limit).toArray();
-        const tsdict = await ContestModel.getListStatus(
-            domainId, this.user._id, tdocs.map((tdoc) => tdoc.docId),
-        );
-        return [tdocs, tsdict];
-    }
-
-    async getContest(domainId: string, limit = 10) {
-        if (!this.user.hasPerm(PERM.PERM_VIEW_CONTEST)) return [[], {}];
-        const rules = Object.keys(ContestModel.RULES).filter((i) => !ContestModel.RULES[i].hidden);
-        const groups = (await UserModel.listGroup(domainId, this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST) ? undefined : this.user._id))
-            .map((i) => i.name);
-        const q = {
-            rule: { $in: rules },
-            ...this.user.hasPerm(PERM.PERM_VIEW_HIDDEN_CONTEST)
-                ? {}
-                : {
-                    $or: [
-                        { maintainer: this.user._id },
-                        { owner: this.user._id },
-                        { assign: { $in: groups } },
-                        { assign: { $size: 0 } },
-                    ],
-                },
-        };
-        const tdocs = await ContestModel.getMulti(domainId, q).sort({ endAt: -1, beginAt: -1, _id: -1 })
-            .limit(limit).toArray();
-        const tsdict = await ContestModel.getListStatus(
-            domainId, this.user._id, tdocs.map((tdoc) => tdoc.docId),
-        );
-        return [tdocs, tsdict];
-    }
-
-    async getTraining(domainId: string, limit = 10) {
-        if (!this.user.hasPerm(PERM.PERM_VIEW_TRAINING)) return [[], {}];
-        const tdocs = await TrainingModel.getMulti(domainId)
-            .sort({ pin: -1, _id: 1 }).limit(limit).toArray();
-        const tsdict = await TrainingModel.getListStatus(
-            domainId, this.user._id, tdocs.map((tdoc) => tdoc.docId),
-        );
-        return [tdocs, tsdict];
-    }
-
     async getDiscussion(domainId: string, limit = 20) {
         if (!this.user.hasPerm(PERM.PERM_VIEW_DISCUSSION)) return [[], {}];
         const ddocs = await DiscussionModel.getMulti(domainId).limit(limit).toArray();
         const vndict = await DiscussionModel.getListVnodes(domainId, ddocs, this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN), this.user.group);
         this.collectUser(ddocs.map((ddoc) => ddoc.owner));
         return [ddocs, vndict];
-    }
-
-    async getRanking(domainId: string, limit = 50) {
-        if (!this.user.hasPerm(PERM.PERM_VIEW_RANKING)) return [];
-        const dudocs = await DomainModel.getMultiUserInDomain(domainId, { uid: { $gt: 1 }, rp: { $gt: 0 } })
-            .sort({ rp: -1 }).project({ uid: 1 }).limit(limit).toArray();
-        const uids = dudocs.map((dudoc) => dudoc.uid);
-        this.collectUser(uids);
-        return uids;
     }
 
     async getStarredProblems(domainId: string, limit = 50) {
@@ -122,16 +52,6 @@ export class HomeHandler extends HomeBaseHandler {
             this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN) || this.user._id, false,
         );
         const pdocs = Object.keys(pdict).filter((i) => +i).map((i) => pdict[i]);
-        return [pdocs, psdict];
-    }
-
-    async getRecentProblems(domainId: string, limit = 10) {
-        if (!this.user.hasPerm(PERM.PERM_VIEW_PROBLEM)) return [[], {}];
-        const pdocs = await ProblemModel.getMulti(domainId, { hidden: false })
-            .sort({ _id: -1 }).limit(limit).toArray();
-        const psdict = this.user.hasPriv(PRIV.PRIV_USER_PROFILE)
-            ? await ProblemModel.getListStatus(domainId, this.user._id, pdocs.map((pdoc) => pdoc.docId))
-            : {};
         return [pdocs, psdict];
     }
 

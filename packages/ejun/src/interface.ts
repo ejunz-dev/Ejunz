@@ -1,6 +1,5 @@
+import type { AttestationFormat, CredentialDeviceType, } from '@simplewebauthn/server';
 import type { AuthenticationExtensionsAuthenticatorOutputs } from '@simplewebauthn/server/esm/helpers/decodeAuthenticatorExtensions';
-import type { AttestationFormat } from '@simplewebauthn/server/helpers';
-import { CredentialDeviceType } from '@simplewebauthn/types';
 import type fs from 'fs';
 import type { Dictionary, NumericDictionary } from 'lodash';
 import type { Binary, FindCursor, ObjectId } from 'mongodb';
@@ -31,8 +30,6 @@ export interface SystemKeys {
     'server.xhost': string,
     'server.port': number,
     'server.language': string,
-    'limit.problem_files_max': number,
-    'problem.categories': string,
     'session.keys': string[],
     'session.saved_expire_seconds': number,
     'session.unsaved_expire_seconds': number,
@@ -151,6 +148,23 @@ export interface FileInfo {
     lastModified: Date,
 }
 
+export enum SubtaskType {
+    min = 'min',
+    max = 'max',
+    sum = 'sum',
+}
+
+export interface SubtaskConfig {
+    time?: string;
+    memory?: string;
+    score?: number;
+    if?: number[];
+    id?: number;
+    type?: SubtaskType;
+    cases?: TestCaseConfig[];
+}
+
+
 export interface PlainContentNode {
     type: 'Plain',
     subType: 'html' | 'markdown',
@@ -180,6 +194,8 @@ export interface Document {
     owner: number;
     maintainer?: number[];
 }
+
+
 declare module './model/doc'{
     interface DocsDoc {
         docType: document['TYPE_DOCS'];
@@ -233,7 +249,6 @@ declare module './model/repo'{
     export type { RepoDoc } from './model/repo';
     export type RepoDict = NumericDictionary<RepoDoc>;
     
-
 export interface DomainDoc extends Record<string, any> {
     _id: string,
     owner: number,
@@ -263,8 +278,6 @@ export interface BlacklistDoc {
     _id: string;
     expireAt: Date;
 }
-
-
 
 // Discussion
 export type { DiscussionDoc } from './model/discussion';
@@ -314,6 +327,18 @@ export interface DiscussionTailReplyDoc {
     editor?: number;
 }
 
+export interface ContestClarificationDoc extends Document {
+    // docType: document['TYPE_CONTEST_CLARIFICATION'];
+    docId: ObjectId;
+    // parentType: document['TYPE_CONTEST'];
+    parentId: ObjectId;
+    // -1: technique
+    subject: number;
+    ip: string;
+    content: string;
+    reply: DiscussionTailReplyDoc[];
+}
+
 export interface TokenDoc {
     _id: string,
     tokenType: number,
@@ -334,6 +359,14 @@ export interface Script {
     validate: any,
 }
 
+
+export interface Task {
+    _id: ObjectId;
+    type: string;
+    subType?: string;
+    priority: number;
+    [key: string]: any;
+}
 
 export interface Schedule {
     _id: ObjectId;
@@ -401,8 +434,6 @@ declare module './service/db' {
         'blacklist': BlacklistDoc;
         'domain': DomainDoc;
         'domain.user': any;
-        'record': RecordDoc;
-        'record.stat': RecordStatDoc;
         'document': any;
         'document.status': StatusDocBase & {
             [K in keyof DocStatusType]: { docType: K } & DocStatusType[K];
@@ -437,15 +468,15 @@ export interface Model {
     repo: typeof import('./model/repo').default,
     message: typeof import('./model/message').default,
     opcount: typeof import('./model/opcount'),
-    record: typeof import('./model/record').default,
     setting: typeof import('./model/setting'),
     system: typeof import('./model/system'),
+    task: typeof import('./model/task').default,
     schedule: typeof import('./model/schedule').default;
     oplog: typeof import('./model/oplog'),
+    token: typeof import('./model/token').default,
     user: typeof import('./model/user').default,
+    oauth: typeof import('./model/oauth').default,
     storage: typeof import('./model/storage').default,
-    rp: typeof import('./script/rating').RpTypes,
-    file: typeof import('./model/file').default,
 }
 
 export interface EjunzService {
@@ -461,13 +492,22 @@ export interface GeoIP {
     lookup: (ip: string, locale?: string) => any,
 }
 
-
-export interface Lib extends Record<string, any> {
-    difficulty: typeof import('./lib/difficulty').default;
-    buildContent: typeof import('./lib/content').buildContent;
-    // mail: typeof import('./lib/mail');
-    // rating: typeof import('./lib/rating').default;
+export interface RepoSearchResponse {
+    hits: string[];
+    total: number;
+    countRelation: 'eq' | 'gte';
 }
+export interface RepoSearchOptions {
+    limit?: number;
+    skip?: number;
+}
+
+export type RepoSearch = (domainId: string, q: string, options?: RepoSearchOptions) => Promise<RepoSearchResponse>;
+
+export interface Lib {
+    repoSearch: RepoSearch;
+}
+
 
 export type UIInjectableFields = 
 'ProblemAdd' |'RepoAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel' | 'ProfileHeaderContact' | 'Home_Domain' | 'NavDropdown' | 'NavMainDropdown'

@@ -17,16 +17,20 @@ import {
     RecordNotFoundError, SolutionNotFoundError, ValidationError,DiscussionNotFoundError
 } from '../error';
 import {
-    User,DocsDoc
+    ProblemDoc, ProblemSearchOptions, ProblemStatusDoc, RecordDoc, User,DocsDoc
 } from '../interface';
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import * as discussion from '../model/discussion';
 import domain from '../model/domain';
 import * as oplog from '../model/oplog';
+import * as setting from '../model/setting';
+import storage from '../model/storage';
+import * as system from '../model/system';
 import user from '../model/user';
 import {
     Handler, param, post, query, route, Types,
 } from '../service/server';
+import { ContestDetailBaseHandler } from './contest';
 import docs from '../model/doc';
 
 class DocsHandler extends Handler {
@@ -202,32 +206,32 @@ export async function apply(ctx: Context) {
     ctx.Route('docs_detail', '/docs/:lid', DocsDetailHandler);
     ctx.Route('docs_edit', '/docs/:lid/edit', DocsEditHandler, PRIV.PRIV_USER_PROFILE);
  
-    ctx.inject(['api'], ({ api }) => {
-        api.value('Doc', [
-            ['docId', 'Int!'],
-            ['lid', 'String!'],
-            ['title', 'String!'],
-            ['content', 'String!'],
-        ]);
+    // ctx.inject(['api'], ({ api }) => {
+    //     api.value('Doc', [
+    //         ['docId', 'Int!'],
+    //         ['lid', 'String!'],
+    //         ['title', 'String!'],
+    //         ['content', 'String!'],
+    //     ]);
     
-        api.resolver(
-            'Query', 'doc(id: Int, title: String)', 'Doc',
-            async (arg, c) => {
-                c.checkPerm(PERM.PERM_VIEW);
-                const ddoc = await docs.get(c.args.domainId, arg.title || arg.id);
-                if (!ddoc) return null;
-                c.ddoc = ddoc;
-                return ddoc;
-            },
-        );
-        api.resolver('Query', 'docs(ids: [Int])', '[Doc]', async (arg, c) => {
-            c.checkPerm(PERM.PERM_VIEW);
-            const res = await docs.getList(c.args.domainId, arg.ids, undefined);
-            return Object.keys(res)
-                .map((id) => res[+id])
-                .filter((doc) => doc !== null && doc !== undefined); 
-        }, 'Get a list of docs by ids');
+    //     api.resolver(
+    //         'Query', 'doc(id: Int, title: String)', 'Doc',
+    //         async (arg, c) => {
+    //             c.checkPerm(PERM.PERM_VIEW);
+    //             const ddoc = await docs.get(c.args.domainId, arg.title || arg.id);
+    //             if (!ddoc) return null;
+    //             c.ddoc = ddoc;
+    //             return ddoc;
+    //         },
+    //     );
+    //     api.resolver('Query', 'docs(ids: [Int])', '[Doc]', async (arg, c) => {
+    //         c.checkPerm(PERM.PERM_VIEW);
+    //         const res = await docs.getList(c.args.domainId, arg.ids, undefined);
+    //         return Object.keys(res)
+    //             .map((id) => res[+id])
+    //             .filter((doc) => doc !== null && doc !== undefined); 
+    //     }, 'Get a list of docs by ids');
         
-    });
+    // });
 }
     
