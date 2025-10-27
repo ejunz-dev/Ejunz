@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat Assistant</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .chat-message {
+            margin-bottom: 16px;
+            padding: 12px;
+            border-radius: 8px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .chat-message.user {
+            background: #007acc;
+            color: white;
+            margin-left: auto;
+            text-align: right;
+        }
+        .chat-message.assistant {
+            background: #e0e0e0;
+            color: #333;
+            margin-right: auto;
+        }
+        .chat-message.error {
+            background: #f48771;
+            color: white;
+            max-width: 100%;
+        }
+        .mcp-status {
+            font-size: 12px;
+            padding: 4px 12px;
+            border-radius: 4px;
+            background: #e0e0e0;
+        }
+        .mcp-status.connected {
+            background: #4caf50;
+            color: white;
+        }
+        .mcp-status.disconnected {
+            background: #f44336;
+            color: white;
+        }
+        .button:hover {
+            background: #005999;
+        }
+        .button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .loading {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid #ccc;
+            border-top-color: #007acc;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AI Chat Assistant</h1>
+        
+        <div style="margin-bottom: 16px;">
+            <span id="mcpStatus" class="mcp-status">MCP: Checking...</span>
+        </div>
+        
+        {% if not apiKey or apiKey == '' %}
+        <div style="padding: 12px; background: #f48771; color: white; border-radius: 4px; margin-bottom: 16px;">
+            <p>⚠️ API Key not configured. Please configure AI settings in system settings</p>
+        </div>
+        {% endif %}
+        
+        <div id="chatContainer" style="display: flex; flex-direction: column; height: 70vh; border: 1px solid #e0e0e0; border-radius: 8px; background: #f9f9f9;">
+            <div class="chat-messages" id="chatMessages" style="flex: 1; overflow-y: auto; padding: 16px;"></div>
+            <div style="display: flex; padding: 16px; border-top: 1px solid #e0e0e0; background: white;">
+                <textarea id="chatInput" placeholder="Type your message..." rows="3" style="flex: 1; margin-right: 12px; padding: 12px; border: 1px solid #e0e0e0; border-radius: 4px; resize: none; font-family: inherit;"></textarea>
+                <button id="sendButton" class="button" style="padding: 12px 24px; background: #007acc; color: white; border: none; border-radius: 4px; cursor: pointer; transition: background 0.2s;">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const sendButton = document.getElementById('sendButton');
+        const mcpStatus = document.getElementById('mcpStatus');
+        const historyInput = document.createElement('input');
+        historyInput.type = 'hidden';
+        historyInput.id = 'history';
+        document.body.appendChild(historyInput);
+
+        let history = [];
+
+        // 检查 MCP 服务状态
+        async function checkMcpStatus() {
+            try {
+                const response = await fetch('/client/mcp-tools/status', { 
+                    method: 'GET'
+                });
+                const data = await response.json();
+                if (data.connected) {
+                    mcpStatus.textContent = `MCP: Connected (${data.toolCount} tools)`;
+                    mcpStatus.className = 'mcp-status connected';
+                } else {
+                    mcpStatus.textContent = 'MCP: Disconnected';
+                    mcpStatus.className = 'mcp-status disconnected';
+                }
+            } catch (e) {
+                mcpStatus.textContent = 'MCP: Disconnected';
+                mcpStatus.className = 'mcp-status disconnected';
+            }
+        }
+
+        // 页面加载时检查 MCP 状态
+        checkMcpStatus();
+
+        function addMessage(role, content) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${role}`;
+            messageDiv.textContent = content;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function setLoading(loading) {
+            sendButton.disabled = loading;
+            if (loading && !sendButton.querySelector('.loading')) {
+                const loader = document.createElement('span');
+                loader.className = 'loading';
+                sendButton.innerHTML = 'Sending... ';
+                sendButton.appendChild(loader);
+            } else if (!loading) {
+                sendButton.textContent = 'Send';
+            }
+        }
+
+        async function sendMessage() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+
+            addMessage('user', message);
+            chatInput.value = '';
+            setLoading(true);
+
+            try {
+                const formData = new FormData();
+                formData.append('message', message);
+                formData.append('history', JSON.stringify(history));
+
+      const response = await fetch('/client', {
+        method: 'POST',
+        body: formData
+      });
+
+                const responseText = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (e) {
+                    console.error('Response is not JSON:', responseText);
+                    throw new Error('Server returned non-JSON response');
+                }
+                
+                if (data.error) {
+                    addMessage('error', data.error);
+                } else {
+                    addMessage('assistant', data.message);
+                    history = JSON.parse(data.history);
+                }
+            } catch (error) {
+                addMessage('error', 'Send failed: ' + error.message);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        sendButton.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    })();
+    </script>
+</body>
+</html>
