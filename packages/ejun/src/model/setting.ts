@@ -196,6 +196,7 @@ export const DomainUserSetting = (...settings: _Setting[] | Schema<any>[]) => {
         }
     };
 };
+
 export const DomainSetting = (...settings: _Setting[] | Schema<any>[]) => {
     settings = settings.flatMap((s) => (s instanceof Schema ? schemaToSettings(s) : s) as _Setting[]);
     for (const setting of settings) {
@@ -310,6 +311,9 @@ DomainSetting(
     Setting('setting_domain', 'bulletin', '', 'markdown', 'Bulletin'),
     Setting('setting_domain', 'langs', '', 'text', 'Allowed langs', null),
     Setting('setting_storage', 'host', '', 'text', 'Custom host', null, FLAG_HIDDEN | FLAG_DISABLED),
+    Setting('ai', 'apiKey', '', 'password', 'AI API Key', 'API密钥，用于AI聊天功能'),
+    Setting('ai', 'model', 'deepseek-chat', 'text', 'AI Model', 'AI模型名称'),
+    Setting('ai', 'apiUrl', 'https://api.deepseek.com/v1/chat/completions', 'text', 'AI API URL', 'AI API地址'),
 );
 DomainPluginSetting(
     Setting('setting_domain_on_plugins', 'plugins', ['- example'], 'yaml', 'Allowed plugins'),

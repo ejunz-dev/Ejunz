@@ -1,0 +1,6 @@
+# MCP Provider 配置
+plugins:
+  type: system_plugins
+  name: ejunzprovider
+  desc: MCP Provider for providing time and other services
+
