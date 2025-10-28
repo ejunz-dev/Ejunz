@@ -1,55 +1,8 @@
 import { Context, Handler, Logger, param, Types, PRIV } from 'ejun';
 import request from 'superagent';
+import { McpClient } from '../model/client';
 
 const ClientLogger = new Logger('client');
-
-interface ChatMessage {
-    role: 'user' | 'assistant' | 'system';
-    content: string;
-}
-
-interface McpTool {
-    name: string;
-    description: string;
-    inputSchema: {
-        type: string;
-        properties?: Record<string, any>;
-    };
-}
-
-class McpClient {
-    async getTools(): Promise<McpTool[]> {
-        try {
-            const ctx = (global as any).app || (global as any).Ejunz;
-            if (ctx) {
-                const tools = await ctx.serial('mcp/tools/list');
-                ClientLogger.info('Got tool list:', { toolCount: tools?.length || 0 });
-                return tools || [];
-            }
-            return [];
-        } catch (e) {
-            ClientLogger.error('Failed to get tool list', e);
-            return [];
-        }
-    }
-
-    async callTool(name: string, args: any): Promise<any> {
-        ClientLogger.info(`Calling tool: ${name}`, args);
-        
-        try {
-            const ctx = (global as any).app || (global as any).Ejunz;
-            if (ctx) {
-                const result = await ctx.serial('mcp/tool/call', { name, args });
-                ClientLogger.info('Got result from event:', result);
-                return result;
-            }
-            throw new Error('Context not available');
-        } catch (e) {
-            ClientLogger.error(`Failed to call tool: ${name}`, e);
-            throw e;
-        }
-    }
-}
 
 class McpStatusHandler extends Handler {
     async get() {
@@ -63,7 +16,7 @@ class McpStatusHandler extends Handler {
 }
 
 export class ClientHandler extends Handler {
-    async get({ domainId }) {
+    async get() {
         await this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
         const apiKey = (this.domain as any)['apiKey'] || '';
