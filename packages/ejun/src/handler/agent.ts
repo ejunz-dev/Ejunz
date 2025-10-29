@@ -13,10 +13,8 @@ import {
 import {
     Handler, param, post, query, route, Types,
 } from '../service/server';
-// removed file-related storage usage
 import Agent from '../model/agent';
 import { PERM, PRIV, STATUS } from '../model/builtin';
-// removed mime and storage helpers (file features removed)
 import { AgentDoc } from '../interface';
 import domain from '../model/domain';
 import { User } from '../model/user';
@@ -25,6 +23,7 @@ import parser from '@ejunz/utils/lib/search';
 import { RepoSearchOptions } from '../interface';
 import user from '../model/user';
 import request from 'superagent';
+import { randomstring } from '@ejunz/utils';
 import { McpClient, ChatMessage } from '../model/client';
 import { Logger } from '../logger';
 
@@ -220,12 +219,26 @@ export class AgentDetailHandler extends Handler {
         const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
 
 
-        const adoc = await Agent.get(domainId, normalizedId);
+        const adoc = await Agent.get(domainId, normalizedId, Agent.PROJECTION_DETAIL);
         if (!adoc) {
             throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
         }
 
         const udoc = await user.getById(domainId, adoc.owner);
+
+        let apiUrl = system.get('server.url');
+        if (apiUrl && apiUrl !== '/') {
+            apiUrl = apiUrl.replace(/\/$/, '');
+            apiUrl = `${apiUrl}/api/agent`;
+        } else {
+            const ctx = this.context.EjunzContext;
+            const isSecure = (this.request.headers['x-forwarded-proto'] === 'https') 
+                || (ctx.request && (ctx.request as any).secure)
+                || false;
+            const protocol = isSecure ? 'https' : 'http';
+            const host = this.request.host || this.request.headers.host || 'localhost';
+            apiUrl = `${protocol}://${host}/api/agent`;
+        }
 
         this.response.template = 'agent_detail.html';
         this.response.body = {
@@ -233,8 +246,53 @@ export class AgentDetailHandler extends Handler {
             aid: adoc.aid, 
             adoc,
             udoc,
+            apiUrl,
         };
 
+    }
+
+    @param('aid', Types.String)
+    async postGenerateApiKey(domainId: string, aid: string) {
+        this.response.template = null;
+        
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
+        const adoc = await Agent.get(domainId, normalizedId);
+        
+        if (!adoc) {
+            throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
+        }
+
+        if (!this.user.own(adoc) && !this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
+            throw new PermissionError('Only owner or system administrator can manage API keys');
+        }
+
+        const apiKey = randomstring(32);
+        await Agent.edit(domainId, adoc.aid, { apiKey });
+
+        this.response.body = { apiKey };
+    }
+
+    @param('aid', Types.String)
+    async postDeleteApiKey(domainId: string, aid: string) {
+        this.response.template = null;
+        
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
+        const adoc = await Agent.get(domainId, normalizedId);
+        
+        if (!adoc) {
+            throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
+        }
+
+        if (!this.user.own(adoc) && !this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
+            throw new PermissionError('Only owner or system administrator can manage API keys');
+        }
+        await Agent.edit(domainId, adoc.aid, { apiKey: null });
+
+        this.response.body = { success: true };
     }
 
 }
@@ -267,7 +325,6 @@ export class AgentChatHandler extends Handler {
 
         const udoc = await user.getById(domainId, adoc.owner);
 
-        // 读取API配置
         const apiKey = (this.domain as any)['apiKey'] || '';
         const model = (this.domain as any)['model'] || 'deepseek-chat';
         const apiUrl = (this.domain as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
@@ -317,7 +374,7 @@ export class AgentChatHandler extends Handler {
         try {
             chatHistory = JSON.parse(history);
         } catch (e) {
-            // ignore parse error
+            
         }
 
         const mcpClient = new McpClient();
@@ -448,6 +505,193 @@ export class AgentChatHandler extends Handler {
     }
 }
 
+export class AgentApiHandler extends Handler {
+    noCheckPermView = true;
+    allowCors = true;
+    
+    async all() {
+        this.response.template = null;
+        
+        // 从请求头或查询参数获取apiKey
+        const apiKey = this.request.headers['x-api-key'] 
+            || this.request.headers['authorization']?.replace(/^Bearer /i, '')
+            || this.request.query?.apiKey as string
+            || this.request.body?.apiKey;
+        
+        if (!apiKey) {
+            this.response.body = { error: 'API Key is required' };
+            this.response.status = 401;
+            return;
+        }
+
+        // 根据apiKey查找agent
+        const adoc = await Agent.getByApiKey(apiKey);
+        if (!adoc) {
+            this.response.body = { error: 'Invalid API Key' };
+            this.response.status = 401;
+            return;
+        }
+
+        // 获取domain配置
+        const domainInfo = await domain.get(adoc.domainId);
+        if (!domainInfo) {
+            this.response.body = { error: 'Domain not found' };
+            this.response.status = 500;
+            return;
+        }
+
+        const message = this.request.body?.message;
+        const history = this.request.body?.history || '[]';
+        
+        if (!message) {
+            this.response.body = { error: 'Message cannot be empty' };
+            this.response.status = 400;
+            return;
+        }
+
+        const aiApiKey = (domainInfo as any)['apiKey'] || '';
+        const model = (domainInfo as any)['model'] || 'deepseek-chat';
+        const apiUrl = (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
+        
+        if (!aiApiKey) {
+            this.response.body = { error: 'AI API Key not configured' };
+            this.response.status = 500;
+            return;
+        }
+
+        let chatHistory: ChatMessage[] = [];
+        try {
+            chatHistory = JSON.parse(history);
+        } catch (e) {
+            // ignore parse error
+        }
+
+        const mcpClient = new McpClient();
+        const tools = await mcpClient.getTools();
+        
+        const agentPrompt = adoc.content || '';
+        let systemMessage = agentPrompt;
+        if (tools.length > 0) {
+            const toolsInfo = '\n\n你可以使用以下工具。在适当时使用它们。\n\n' +
+              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n');
+            systemMessage = agentPrompt + toolsInfo;
+        }
+
+        try {
+            const requestBody: any = {
+                model,
+                max_tokens: 1024,
+                messages: [
+                    { role: 'system', content: systemMessage },
+                    ...chatHistory,
+                    { role: 'user', content: message },
+                ],
+            };
+
+            if (tools.length > 0) {
+                requestBody.tools = tools.map(tool => ({
+                    type: 'function',
+                    function: {
+                        name: tool.name,
+                        description: tool.description,
+                        parameters: tool.inputSchema,
+                    },
+                }));
+            }
+
+            const response = await request.post(apiUrl)
+                .send(requestBody)
+                .set('Authorization', `Bearer ${aiApiKey}`)
+                .set('content-type', 'application/json');
+
+            let assistantMessage = response.body.choices[0].message.content || '';
+            
+            if (typeof assistantMessage !== 'string') {
+                assistantMessage = typeof assistantMessage === 'object' 
+                    ? JSON.stringify(assistantMessage)
+                    : String(assistantMessage);
+            }
+            
+            const finishReason = response.body.choices[0].finish_reason;
+            
+            if (finishReason === 'tool_calls') {
+                const toolCalls = response.body.choices[0].message.tool_calls;
+                if (toolCalls && toolCalls.length > 0) {
+                    const toolCall = toolCalls[0];
+                    const toolResult = await mcpClient.callTool(toolCall.function.name, JSON.parse(toolCall.function.arguments));
+                    
+                    AgentLogger.info('Tool returned:', { toolResult });
+                    
+                    const toolContent = JSON.stringify(toolResult);
+                    
+                    const assistantMessageObj: any = {
+                        role: 'assistant',
+                        tool_calls: toolCalls
+                    };
+                    
+                    const toolMessage: any = {
+                        role: 'tool',
+                        content: toolContent,
+                        tool_call_id: toolCall.id
+                    };
+                    
+                    const messagesForTool = [
+                        { role: 'system', content: systemMessage },
+                        ...chatHistory,
+                        { role: 'user', content: message },
+                        assistantMessageObj,
+                        toolMessage
+                    ];
+                    
+                    const toolResponse = await request.post(apiUrl)
+                        .send({
+                            model,
+                            max_tokens: 1024,
+                            messages: messagesForTool,
+                        })
+                        .set('Authorization', `Bearer ${aiApiKey}`)
+                        .set('content-type', 'application/json');
+
+                    let finalMessage = toolResponse.body.choices[0].message.content || '';
+                    
+                    if (typeof finalMessage !== 'string') {
+                        finalMessage = typeof finalMessage === 'object'
+                            ? JSON.stringify(finalMessage)
+                            : String(finalMessage);
+                    }
+
+                    this.response.body = {
+                        message: finalMessage,
+                        history: JSON.stringify([
+                            ...chatHistory,
+                            { role: 'user', content: message },
+                            { role: 'assistant', content: finalMessage },
+                        ]),
+                    };
+                    return;
+                }
+            }
+
+            this.response.body = {
+                message: assistantMessage,
+                history: JSON.stringify([
+                    ...chatHistory,
+                    { role: 'user', content: message },
+                    { role: 'assistant', content: assistantMessage },
+                ]),
+            };
+        } catch (error: any) {
+            AgentLogger.error('AI Chat Error:', {
+                message: error.message,
+                response: error.response?.body,
+                stack: error.stack,
+            });
+            this.response.body = { error: JSON.stringify(error.response?.body || error.message) };
+            this.response.status = 500;
+        }
+    }
+}
+
 export class AgentEditHandler extends Handler {
 
 
@@ -540,47 +784,7 @@ export async function apply(ctx: Context) {
     ctx.Route('agent_chat', '/agent/:aid/chat', AgentChatHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_edit', '/agent/:aid/edit', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_mcp_status', '/agent/:aid/mcp-tools/status', AgentMcpStatusHandler);
+    ctx.Route('agent_api', '/api/agent', AgentApiHandler);
 
-    // ctx.inject(['api'], ({ api }) => {
-    //     api.value('Repo', [
-    //         ['docId', 'Int!'],
-    //         ['rid', 'String!'],
-    //         ['title', 'String!'],
-    //         ['content', 'String!'],
-    //         ['owner', 'Int!'],
-    //         ['updateAt', 'String!'],
-    //         ['views', 'Int!'],
-    //         ['nReply', 'Int!'],
-    //         ['files', '[File!]'],
-    //     ]);
-
-    //     api.value('File', [
-    //         ['filename', 'String!'],
-    //         ['version', 'String!'],
-    //         ['path', 'String!'],
-    //         ['size', 'Int!'],
-    //         ['lastModified', 'String!'],
-    //         ['etag', 'String!'],
-    //     ]);
-
-    //     api.resolver(
-    //         'Query', 'repo(id: Int, title: String)', 'Repo',
-    //         async (arg, c) => {
-    //             c.checkPerm(PERM.PERM_VIEW);
-    //             const adoc = await Repo.get(c.args.domainId, arg.title || arg.id);
-    //             if (!adoc) return null;
-    //             c.adoc = adoc;
-    //             return adoc;
-    //         },
-    //     );
-    //     api.resolver('Query', 'repos(ids: [Int])', '[Repo]', async (arg, c) => {
-    //         c.checkPerm(PERM.PERM_VIEW);
-    //         const res = await Repo.getList(c.args.domainId, arg.ids, undefined);
-    //         return Object.keys(res)
-    //             .map((id) => res[+id])
-    //             .filter((repo) => repo !== null && repo !== undefined); 
-    //     }, 'Get a list of docs by ids');
-        
-
-    // });
+    
 }
