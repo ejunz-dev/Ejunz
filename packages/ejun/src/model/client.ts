@@ -1,19 +1,10 @@
-import { Collection } from 'mongodb';
-import db from '../service/db';
 import { Logger } from '../logger';
 
-const ClientLogger = new Logger('client');
+const ClientLogger = new Logger('mcp');
 
 export interface ChatMessage {
     role: 'user' | 'assistant' | 'tool';
     content: string;
-}
-export interface ClientDoc {
-    _id: string;
-    domainId: string;
-    apiKey?: string;
-    model?: string;
-    apiUrl?: string;
 }
 
 export interface McpTool {
@@ -24,8 +15,6 @@ export interface McpTool {
         properties?: Record<string, any>;
     };
 }
-
-export const coll: Collection<ClientDoc> = db.collection('client');
 
 export class McpClient {
     async getTools(): Promise<McpTool[]> {
@@ -60,12 +49,4 @@ export class McpClient {
         }
     }
 }
-
-const ClientModel = {
-    coll,
-};
-
-export default ClientModel;
-
-global.Ejunz.model.client = ClientModel;
 

@@ -22,6 +22,16 @@
           {{ adoc['content']|markdown|safe }}
         </div>
 
+        {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+        <!-- Chat Link Section -->
+        <div class="section" style="margin-top: 20px;">
+          <div class="section__body">
+            <a href="{{ url('agent_chat', domainId=domainId, aid=adoc.aid) }}" class="button primary expanded">
+              <span class="icon icon-comment"></span> {{ _('Chat with Agent') }}
+            </a>
+          </div>
+        </div>
+        {% endif %}
         
         <!-- Footer Section -->
         <ul class="section__footer supplementary dot list">
