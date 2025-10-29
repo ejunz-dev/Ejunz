@@ -24,6 +24,11 @@ import * as system from '../model/system';
 import parser from '@ejunz/utils/lib/search';
 import { RepoSearchOptions } from '../interface';
 import user from '../model/user';
+import request from 'superagent';
+import { McpClient, ChatMessage } from '../model/client';
+import { Logger } from '../logger';
+
+const AgentLogger = new Logger('agent');
 export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
 
 function buildQuery(udoc: User) {
@@ -182,6 +187,18 @@ export class AgentMainHandler extends Handler {
 
 
 
+class AgentMcpStatusHandler extends Handler {
+    @param('aid', Types.String)
+    async get(domainId: string, aid: string) {
+        const mcpClient = new McpClient();
+        const tools = await mcpClient.getTools();
+        this.response.body = { 
+            connected: true, 
+            toolCount: tools.length 
+        };
+    }
+}
+
 export class AgentDetailHandler extends Handler {
     adoc?: AgentDoc;
 
@@ -218,6 +235,216 @@ export class AgentDetailHandler extends Handler {
             udoc,
         };
 
+    }
+
+}
+
+export class AgentChatHandler extends Handler {
+    adoc?: AgentDoc;
+
+    @param('aid', Types.String)
+    async _prepare(domainId: string, aid: string) {
+        if (!aid) return;
+
+        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
+
+        this.adoc = await Agent.get(domainId, normalizedId);
+        if (!this.adoc) {
+            throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
+        }
+        this.UiContext.extraTitleContent = `${this.adoc.title} - Chat`;
+    }
+
+    @param('aid', Types.String)
+    async get(domainId: string, aid: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
+        const adoc = await Agent.get(domainId, normalizedId);
+        if (!adoc) {
+            throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
+        }
+
+        const udoc = await user.getById(domainId, adoc.owner);
+
+        // 读取API配置
+        const apiKey = (this.domain as any)['apiKey'] || '';
+        const model = (this.domain as any)['model'] || 'deepseek-chat';
+        const apiUrl = (this.domain as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
+
+        this.response.template = 'agent_chat.html';
+        this.response.body = {
+            domainId,
+            aid: adoc.aid, 
+            adoc,
+            udoc,
+            apiKey,
+            model,
+            apiUrl,
+        };
+    }
+
+    @param('aid', Types.String)
+    async post(domainId: string, aid: string) {
+        this.response.template = null;
+        
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
+        const adoc = await Agent.get(domainId, normalizedId);
+        if (!adoc) {
+            throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
+        }
+
+        const message = this.request.body?.message;
+        const history = this.request.body?.history || '[]';
+        
+        if (!message) {
+            this.response.body = { error: 'Message cannot be empty' };
+            return;
+        }
+        
+        const apiKey = (this.domain as any)['apiKey'] || '';
+        const model = (this.domain as any)['model'] || 'deepseek-chat';
+        const apiUrl = (this.domain as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
+        
+        if (!apiKey) {
+            this.response.body = { error: 'API Key not configured' };
+            return;
+        }
+
+        let chatHistory: ChatMessage[] = [];
+        try {
+            chatHistory = JSON.parse(history);
+        } catch (e) {
+            // ignore parse error
+        }
+
+        const mcpClient = new McpClient();
+        const tools = await mcpClient.getTools();
+        
+        // 使用agent的content作为system prompt
+        const agentPrompt = adoc.content || '';
+        
+        // 构建system message：agent content + MCP tools信息
+        let systemMessage = agentPrompt;
+        if (tools.length > 0) {
+            const toolsInfo = '\n\n你可以使用以下工具。在适当时使用它们。\n\n' +
+              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n');
+            systemMessage = agentPrompt + toolsInfo;
+        }
+
+        try {
+            const requestBody: any = {
+                model,
+                max_tokens: 1024,
+                messages: [
+                    { role: 'system', content: systemMessage },
+                    ...chatHistory,
+                    { role: 'user', content: message },
+                ],
+            };
+
+            if (tools.length > 0) {
+                requestBody.tools = tools.map(tool => ({
+                    type: 'function',
+                    function: {
+                        name: tool.name,
+                        description: tool.description,
+                        parameters: tool.inputSchema,
+                    },
+                }));
+            }
+
+            const response = await request.post(apiUrl)
+                .send(requestBody)
+                .set('Authorization', `Bearer ${apiKey}`)
+                .set('content-type', 'application/json');
+
+            let assistantMessage = response.body.choices[0].message.content || '';
+            
+            if (typeof assistantMessage !== 'string') {
+                assistantMessage = typeof assistantMessage === 'object' 
+                    ? JSON.stringify(assistantMessage)
+                    : String(assistantMessage);
+            }
+            
+            const finishReason = response.body.choices[0].finish_reason;
+            
+            if (finishReason === 'tool_calls') {
+                const toolCalls = response.body.choices[0].message.tool_calls;
+                if (toolCalls && toolCalls.length > 0) {
+                    const toolCall = toolCalls[0];
+                    const toolResult = await mcpClient.callTool(toolCall.function.name, JSON.parse(toolCall.function.arguments));
+                    
+                    AgentLogger.info('Tool returned:', { toolResult });
+                    
+                    const toolContent = JSON.stringify(toolResult);
+                    
+                    const assistantMessage: any = {
+                        role: 'assistant',
+                        tool_calls: toolCalls
+                    };
+                    
+                    const toolMessage: any = {
+                        role: 'tool',
+                        content: toolContent,
+                        tool_call_id: toolCall.id
+                    };
+                    
+                    const messagesForTool = [
+                        { role: 'system', content: systemMessage },
+                        ...chatHistory,
+                        { role: 'user', content: message },
+                        assistantMessage,
+                        toolMessage
+                    ];
+                    
+                    const toolResponse = await request.post(apiUrl)
+                        .send({
+                            model,
+                            max_tokens: 1024,
+                            messages: messagesForTool,
+                        })
+                        .set('Authorization', `Bearer ${apiKey}`)
+                        .set('content-type', 'application/json');
+
+                    let finalMessage = toolResponse.body.choices[0].message.content || '';
+                    
+                    if (typeof finalMessage !== 'string') {
+                        finalMessage = typeof finalMessage === 'object'
+                            ? JSON.stringify(finalMessage)
+                            : String(finalMessage);
+                    }
+
+                    this.response.body = {
+                        message: finalMessage,
+                        history: JSON.stringify([
+                            ...chatHistory,
+                            { role: 'user', content: message },
+                            { role: 'assistant', content: finalMessage },
+                        ]),
+                    };
+                    return;
+                }
+            }
+
+            this.response.body = {
+                message: assistantMessage,
+                history: JSON.stringify([
+                    ...chatHistory,
+                    { role: 'user', content: message },
+                    { role: 'assistant', content: assistantMessage },
+                ]),
+            };
+        } catch (error: any) {
+            AgentLogger.error('AI Chat Error:', {
+                message: error.message,
+                response: error.response?.body,
+                stack: error.stack,
+            });
+            this.response.body = { error: JSON.stringify(error.response?.body || error.message) };
+        }
     }
 }
 
@@ -310,7 +537,9 @@ export async function apply(ctx: Context) {
     ctx.Route('agent_domain', '/agent', AgentMainHandler);
     ctx.Route('agent_create', '/agent/create', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_detail', '/agent/:aid', AgentDetailHandler);
+    ctx.Route('agent_chat', '/agent/:aid/chat', AgentChatHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_edit', '/agent/:aid/edit', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('agent_mcp_status', '/agent/:aid/mcp-tools/status', AgentMcpStatusHandler);
 
     // ctx.inject(['api'], ({ api }) => {
     //     api.value('Repo', [
