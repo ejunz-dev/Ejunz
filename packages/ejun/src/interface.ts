@@ -250,7 +250,6 @@ declare module './model/repo'{
     export type { RepoDoc } from './model/repo';
     export type RepoDict = NumericDictionary<RepoDoc>;
 
-
 declare module './model/agent'{
     interface AgentDoc {
         docType: document['TYPE_AGENT'];
@@ -545,20 +544,12 @@ export interface Lib {
 export type UIInjectableFields = 
     'ProblemAdd' |'RepoAdd' | 'AgentAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel' | 'ProfileHeaderContact' | 'Home_Domain' | 'NavDropdown' | 'NavMainDropdown'
 export interface UI {
-    template: Record<string, string>,
     nodes: Record<UIInjectableFields, any[]>,
     getNodes: typeof import('./lib/ui').getNodes,
     inject: typeof import('./lib/ui').inject,
 }
 
 export interface ModuleInterfaces {
-    oauth: {
-        text: string;
-        icon?: string;
-        get: (this: Handler) => Promise<void>;
-        callback: (this: Handler, args: Record<string, any>) => Promise<OAuthUserResponse>;
-        lockUsername?: boolean;
-    };
     hash: (password: string, salt: string, user: User) => boolean | string | Promise<string>;
 }
 
@@ -566,8 +557,6 @@ export interface EjunzGlobal {
     version: Record<string, string>;
     model: Model;
     script: Record<string, Script>;
-    service: EjunzService;
-    lib: Lib;
     module: { [K in keyof ModuleInterfaces]: Record<string, ModuleInterfaces[K]> };
     ui: UI;
     error: typeof import('./error');
@@ -576,21 +565,17 @@ export interface EjunzGlobal {
     locales: Record<string, Record<string, string> & Record<symbol, Record<string, string>>>;
 }
 
+
 declare global {
     namespace NodeJS {
         interface Global {
-            Ejunz: EjunzGlobal, 
-            addons: string[],
+            Ejunz: EjunzGlobal;
+            addons: string[];
         }
     }
     /** @deprecated */
     var bus: Context; // eslint-disable-line
     var app: Context; // eslint-disable-line
     var Ejunz: EjunzGlobal; // eslint-disable-line
-    var addons: string[]; // eslint-disable-line
-}
-
-export interface RepoSearchOptions {
-    limit?: number;
-    skip?: number;
+    var addons: Record<string, string>; // eslint-disable-line
 }
