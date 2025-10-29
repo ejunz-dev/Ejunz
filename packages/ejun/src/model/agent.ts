@@ -69,16 +69,7 @@ export class AgentModel {
         const lastAid = String(lastAgent[0].aid);
         const lastAidNumber = parseInt(lastAid.match(/\d+/)?.[0] || "0", 10);
 
-        const allDocs = await document.getMulti(domainId, document.TYPE_REPO, {})
-            .project({ rid: 1 })
-            .toArray();
-
-        const allNumbers = allDocs
-            .map(doc => parseInt(String(doc.rid).match(/\d+/)?.[0] || "0", 10))
-            .filter(num => !isNaN(num));
-
-        const maxNumber = Math.max(...allNumbers, 0);
-        return `R${maxNumber + 1}`;
+        return `A${lastAidNumber + 1}`;
     }
 
     static async addWithId(
