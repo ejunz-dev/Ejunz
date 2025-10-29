@@ -1,0 +1,99 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__body">
+            <ul class="supplementary list">
+          <li>
+            <a class="discussion-node-tag" href="{{ url('agent_domain', uid=udoc._id) }}">
+              <span class="v-center icon icon-flag"></span>
+              {{ _("{0}'s agent").format(udoc.uname) }}
+            </a>
+          </li>
+          <li><h2>{{ adoc.title }}</h2></li>
+          <li>
+            {{ user.render_inline(udoc) }}
+            @
+            {{ datetimeSpan(adoc._id)|safe }}
+          </li>
+        </ul>
+        <div class="typo richmedia topic__content" data-emoji-enabled>
+          {{ adoc['content']|markdown|safe }}
+        </div>
+
+        
+        <!-- Footer Section -->
+        <ul class="section__footer supplementary dot list">
+          {% if handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) or handler.user.own(adoc) %}
+            <li><a href="{{ url('agent_edit', domainId=domainId, aid=adoc.aid) }}">
+              <span class="icon icon-edit"></span> {{ _('Edit') }}
+            </a></li>
+          {% endif %}
+          <li>{{ _('{0} views').format(adoc.views) }}</li>
+          {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+            <li>
+              <form class="form--inline" method="post">
+                <input type="hidden" name="operation" value="{% if not dsdoc['star'] %}star{% else %}unstar{% endif %}">
+                <button class="star{% if dsdoc['star'] %} activated{% endif %}" type="submit">
+                  <span class="starred--hide"><span class="icon icon-star--outline"></span> {{ _('Star') }}</span>
+                  <span class="starred--show"><span class="icon icon-star"></span> {{ _('Unstar') }}</span>
+                </button>
+              </form>
+            </li>
+          {% endif %}
+          <li><a href="{{ url('wiki_help', anchor='contact') }}">
+            <span class="icon icon-warning"></span> {{ _('Report') }}
+          </a></li>
+        </ul>
+        <!-- End of Footer Section -->
+        
+      </div>
+    </div>
+  </div>
+
+  <div class="medium-3 columns">
+
+    {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+    <div class="section">
+      <div class="section__header">
+        <h2>{{ _('Actions') }}</h2>
+      </div>
+      <div class="section__body">
+        <a href="{{ url('agent_edit', domainId=domainId, aid=adoc.aid) }}" class="button primary expanded">
+          {{ _('Edit') }}
+        </a>
+      </div>
+    </div>
+    {% endif %}
+    
+
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Discussions') }}</h1>
+      </div>
+      <div class="section__body">
+        <ul class="menu">
+          {% if handler.user.hasPerm(perm.PERM_VIEW_DISCUSSION) %}
+          <li class="menu__item">
+            <a class="menu__link{% if page_name == 'discussion_node' or page_name == 'discussion_detail' %} active{% endif %}" 
+              href="{{ url('discussion_node', type='agent', name=adoc.title) }}">
+              <span class="icon icon-comment--text"></span> 
+              {{ _('View Discussions') }}
+              {% if discussionCount is defined %} ({{ discussionCount }}){% endif %}
+            </a>
+          </li>
+          {% endif %}
+          {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+          <li class="menu__item">
+            <a class="menu__link highlight" href="{{ url('discussion_create', type='agent', name=adoc.title) }}">
+              <span class="icon icon-add"></span> {{ _('Create a Discussion') }}
+            </a>
+          </li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

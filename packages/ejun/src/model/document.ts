@@ -6,7 +6,7 @@ import {
 import { Context } from '../context';
 import {
     Content, ContestClarificationDoc, DiscussionDoc,
-    DiscussionReplyDoc, DocsDoc,RepoDoc
+    DiscussionReplyDoc, DocsDoc,RepoDoc, AgentDoc
 } from '../interface';
 import * as bus from '../service/bus';
 import db from '../service/db';
@@ -23,8 +23,10 @@ export const TYPE_REPO: 110 = 110;
 export const TYPE_DISCUSSION_NODE: 20 = 20;
 export const TYPE_DISCUSSION: 21 = 21;
 export const TYPE_DISCUSSION_REPLY: 22 = 22;
+export const TYPE_AGENT: 10 = 10;
 
 export interface DocType {
+    [TYPE_AGENT]: AgentDoc;
     [TYPE_DOCS]: DocsDoc;
     [TYPE_REPO]: RepoDoc;
     [TYPE_DISCUSSION]: DiscussionDoc;
