@@ -76,6 +76,102 @@
       </div>
     </div>
     {% endif %}
+
+    {% if handler.user.own(adoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
+    <div class="section">
+      <div class="section__header">
+        <h2 class="section__title">{{ _('API Access') }}</h2>
+      </div>
+      <div class="section__body">
+        <div class="typo">
+          {% if adoc.apiKey %}
+          <p><strong>{{ _('API Key') }}:</strong></p>
+          <pre class="code"><code id="api-key-display">{{ adoc.apiKey }}</code></pre>
+          
+          <p style="margin-top: 15px;"><strong>{{ _('API Endpoint') }}:</strong></p>
+          <pre class="code"><code>{{ apiUrl }}</code></pre>
+          
+          <p style="margin-top: 15px;"><strong>{{ _('Usage Example') }}:</strong></p>
+          <pre class="code"><code>curl -X POST {{ apiUrl }} \
+  -H "X-API-Key: {{ adoc.apiKey }}" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello"}'</code></pre>
+          
+          <div style="margin-top: 15px;">
+            <form method="post" class="form--inline" onsubmit="event.preventDefault(); deleteApiKey('{{ domainId }}', '{{ adoc.aid }}'); return false;">
+              <input type="hidden" name="operation" value="deleteApiKey">
+              <button type="submit" class="button danger">{{ _('Delete API Key') }}</button>
+            </form>
+          </div>
+          {% else %}
+          <p>{{ _('No API key generated yet. Click the button below to generate one.') }}</p>
+          <div style="margin-top: 15px;">
+            <form method="post" class="form--inline" onsubmit="event.preventDefault(); generateApiKey('{{ domainId }}', '{{ adoc.aid }}'); return false;">
+              <input type="hidden" name="operation" value="generateApiKey">
+              <button type="submit" class="button primary">{{ _('Generate API Key') }}</button>
+            </form>
+          </div>
+          <div id="api-key-result" style="margin-top: 15px; display: none;"></div>
+          {% endif %}
+          
+          {% if adoc.apiKey %}
+          <p style="margin-top: 15px;"><strong>{{ _('Note') }}:</strong></p>
+          <p class="note">{{ _('Keep your API key secure. You can also use Authorization: Bearer header or pass apiKey in request body.') }}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <script>
+    async function generateApiKey(domainId, aid) {
+      try {
+        const response = await fetch(`/d/${domainId}/agent/${aid}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ operation: 'generateApiKey' }),
+        });
+        
+        const data = await response.json();
+        if (data.apiKey) {
+          location.reload();
+        } else {
+          alert('Failed to generate API key');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('Failed to generate API key');
+      }
+    }
+
+    async function deleteApiKey(domainId, aid) {
+      if (!confirm('{{ _("Are you sure you want to delete the API key? This action cannot be undone.") }}')) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/d/${domainId}/agent/${aid}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ operation: 'deleteApiKey' }),
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          location.reload();
+        } else {
+          alert('Failed to delete API key');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('Failed to delete API key');
+      }
+    }
+    </script>
     
 
     <div class="section">

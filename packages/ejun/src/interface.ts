@@ -265,6 +265,7 @@ declare module './model/agent'{
         reply: any[];
         domainId: string;
         owner: number;
+        apiKey?: string;
     }
 }
 export type { AgentDoc } from './model/agent';
