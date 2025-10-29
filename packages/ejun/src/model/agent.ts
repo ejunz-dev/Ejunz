@@ -8,6 +8,7 @@ import { pick } from 'lodash';
 import { Filter, ObjectId } from 'mongodb';
 import type { Readable } from 'stream';
 import { Logger, size, streamToBuffer } from '@ejunz/utils/lib/utils';
+import { Logger as AppLogger } from '../logger';
 import { randomstring } from '@ejunz/utils';
 import { Context } from '../context';
 import { FileUploadError, ProblemNotFoundError } from '../error';
@@ -371,3 +372,54 @@ export function apply(ctx: Context) {}
 
 global.Ejunz.model.agent = AgentModel;
 export default AgentModel;
+
+// --- MCP 客户端逻辑迁移自 client.ts ---
+
+export interface ChatMessage {
+    role: 'user' | 'assistant' | 'tool';
+    content: string;
+}
+
+export interface McpTool {
+    name: string;
+    description: string;
+    inputSchema: {
+        type: string;
+        properties?: Record<string, any>;
+    };
+}
+
+const ClientLogger = new AppLogger('mcp');
+
+export class McpClient {
+    async getTools(): Promise<McpTool[]> {
+        try {
+            const ctx = (global as any).app || (global as any).Ejunz;
+            if (ctx) {
+                const tools = await ctx.serial('mcp/tools/list');
+                ClientLogger.info('Got tool list:', { toolCount: tools?.length || 0 });
+                return tools || [];
+            }
+            return [];
+        } catch (e) {
+            ClientLogger.error('Failed to get tool list', e);
+            return [];
+        }
+    }
+
+    async callTool(name: string, args: any): Promise<any> {
+        ClientLogger.info(`Calling tool: ${name}`, args);
+        try {
+            const ctx = (global as any).app || (global as any).Ejunz;
+            if (ctx) {
+                const result = await ctx.serial('mcp/tool/call', { name, args });
+                ClientLogger.info('Got result from event:', result);
+                return result;
+            }
+            throw new Error('Context not available');
+        } catch (e) {
+            ClientLogger.error(`Failed to call tool: ${name}`, e);
+            throw e;
+        }
+    }
+}
