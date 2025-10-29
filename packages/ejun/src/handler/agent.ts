@@ -24,7 +24,7 @@ import { RepoSearchOptions } from '../interface';
 import user from '../model/user';
 import request from 'superagent';
 import { randomstring } from '@ejunz/utils';
-import { McpClient, ChatMessage } from '../model/client';
+import { McpClient, ChatMessage } from '../model/agent';
 import { Logger } from '../logger';
 
 const AgentLogger = new Logger('agent');
