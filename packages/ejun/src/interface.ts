@@ -7,6 +7,7 @@ import type { Context } from './context';
 import type { DocStatusType } from './model/document';
 import type { DocsDoc } from './model/doc';
 import type { RepoDoc } from './model/repo'; 
+import type { AgentDoc } from './model/agent';
 import type { Handler } from './service/server';
 
 type document = typeof import('./model/document');
@@ -248,7 +249,27 @@ declare module './model/repo'{
     }         
     export type { RepoDoc } from './model/repo';
     export type RepoDict = NumericDictionary<RepoDoc>;
-    
+
+
+declare module './model/agent'{
+    interface AgentDoc {
+        docType: document['TYPE_AGENT'];
+        docId: number;
+        aid: string;
+        title: string;
+        content: string;
+        tag?: string[];
+        ip: string;
+        updateAt: Date;
+        nReply: number;
+        views: number;
+        reply: any[];
+        domainId: string;
+        owner: number;
+    }
+}
+export type { AgentDoc } from './model/agent';
+
 export interface DomainDoc extends Record<string, any> {
     _id: string,
     owner: number,
@@ -477,6 +498,7 @@ export interface Model {
     domain: typeof import('./model/domain').default,
     doc: typeof import('./model/doc').default,
     repo: typeof import('./model/repo').default,
+    agent: typeof import('./model/agent').default,
     message: typeof import('./model/message').default,
     opcount: typeof import('./model/opcount'),
     setting: typeof import('./model/setting'),
@@ -521,7 +543,7 @@ export interface Lib {
 
 
 export type UIInjectableFields = 
-'ProblemAdd' |'RepoAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel' | 'ProfileHeaderContact' | 'Home_Domain' | 'NavDropdown' | 'NavMainDropdown'
+    'ProblemAdd' |'RepoAdd' | 'AgentAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel' | 'ProfileHeaderContact' | 'Home_Domain' | 'NavDropdown' | 'NavMainDropdown'
 export interface UI {
     template: Record<string, string>,
     nodes: Record<UIInjectableFields, any[]>,
