@@ -289,15 +289,6 @@ export interface MessageDoc {
     flag: number,
 }
 
-// Client
-export interface ClientDoc {
-    _id: string;
-    domainId: string;
-    apiKey?: string;
-    model?: string;
-    apiUrl?: string;
-}
-
 // Blacklist
 export interface BlacklistDoc {
     /**
@@ -461,7 +452,6 @@ export interface DiscussionHistoryDoc {
 declare module './service/db' {
     interface Collections {
         'blacklist': BlacklistDoc;
-        'client': ClientDoc;
         'domain': DomainDoc;
         'domain.user': any;
         'document': any;
@@ -491,7 +481,6 @@ declare module './service/db' {
 export interface Model {
     blacklist: typeof import('./model/blacklist').default,
     builtin: typeof import('./model/builtin'),
-    client: typeof import('./model/client').default,
     discussion: typeof import('./model/discussion'),
     document: Omit<typeof import('./model/document'), 'apply'>,
     domain: typeof import('./model/domain').default,
