@@ -8,7 +8,7 @@ import {
     Content, ContestClarificationDoc, DiscussionDoc,
     DiscussionReplyDoc, DocsDoc,RepoDoc, AgentDoc
 } from '../interface';
-import * as bus from '../service/bus';
+import bus from '../service/bus';
 import db from '../service/db';
 import { ArrayKeys, MaybeArray, NumberKeys, Projection } from '../typeutils';
 import { buildProjection } from '../utils';

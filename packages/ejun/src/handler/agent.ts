@@ -43,19 +43,19 @@ const defaultSearch = async (domainId: string, q: string, options?: RepoSearchOp
     const projection: (keyof AgentDoc)[] = ['domainId', 'docId', 'aid'];
     const $regex = new RegExp(q.length >= 2 ? escaped : `\\A${escaped}`, 'gmi');
     const filter = { $or: [{ aid: { $regex } }, { title: { $regex } }, { tag: q }] };
-    const rdocs = await Agent.getMulti(domainId, filter, projection)
+    const adocs = await Agent.getMulti(domainId, filter, projection)
         .skip(options.skip || 0).limit(options.limit || system.get('pagination.problem')).toArray();
     if (!options.skip) {
-        let rdoc = await Agent.get(domainId, Number.isSafeInteger(+q) ? +q : q, projection);
-        if (rdoc) rdocs.unshift(rdoc);
+        let adoc = await Agent.get(domainId, Number.isSafeInteger(+q) ? +q : q, projection);
+        if (adoc) adocs.unshift(adoc);
         else if (/^R\d+$/.test(q)) {
-            rdoc = await Agent.get(domainId, +q.substring(1), projection);
-            if (rdoc) rdocs.unshift(rdoc);
+            adoc = await Agent.get(domainId, +q.substring(1), projection);
+            if (adoc) adocs.unshift(adoc);
         }
     }
     return {
-        hits: Array.from(new Set(rdocs.map((i) => `${i.domainId}/${i.docId}`))),
-        total: Math.max(rdocs.length, await Agent.count(domainId, filter)),
+        hits: Array.from(new Set(adocs.map((i) => `${i.domainId}/${i.docId}`))),
+        total: Math.max(adocs.length, await Agent.count(domainId, filter)),
         countRelation: 'eq',
     };
 };
@@ -135,7 +135,7 @@ export class AgentMainHandler extends Handler {
         const sort = this.queryContext.sort;
         await (this.ctx as any).parallel('agent/list', query, this, sort);
 
-        let [rdocs, ppcount, pcount] = this.queryContext.fail
+        let [adocs, ppcount, pcount] = this.queryContext.fail
             ? [[], 0, 0]
             : await Agent.list(
                 domainId, query, sort.length ? 1 : page, limit,
@@ -150,8 +150,8 @@ export class AgentMainHandler extends Handler {
             pcount = total;
             ppcount = Math.ceil(total / limit);
         }
-        if (sort.length) rdocs = rdocs.sort((a, b) => sort.indexOf(`${a.domainId}/${a.docId}`) - sort.indexOf(`${b.domainId}/${b.docId}`));
-        if (text && pcount > rdocs.length) pcount = rdocs.length;
+        if (sort.length) adocs = adocs.sort((a, b) => sort.indexOf(`${a.domainId}/${a.docId}`) - sort.indexOf(`${b.domainId}/${b.docId}`));
+        if (text && pcount > adocs.length) pcount = adocs.length;
 
        
 
@@ -160,7 +160,7 @@ export class AgentMainHandler extends Handler {
                 title: this.renderTitle(this.translate('repo_domain')),
                 fragments: (await Promise.all([
                     this.renderHTML('partials/repo_list.html', {
-                        page, ppcount, pcount, rdocs, psdict, qs: q,
+                        page, ppcount, pcount, adocs, psdict, qs: q,
                     }),
                     this.renderHTML('partials/repo_stat.html', { pcount, pcountRelation: this.queryContext.pcountRelation }),
                     this.renderHTML('partials/repo_lucky.html', { qs: q }),
@@ -172,7 +172,7 @@ export class AgentMainHandler extends Handler {
                 pcount,
                 ppcount,
                 pcountRelation: this.queryContext.pcountRelation,
-                rdocs,
+                adocs,
                 psdict,
                 qs: q,
             };
@@ -338,10 +338,10 @@ export async function apply(ctx: Context) {
     //         'Query', 'repo(id: Int, title: String)', 'Repo',
     //         async (arg, c) => {
     //             c.checkPerm(PERM.PERM_VIEW);
-    //             const rdoc = await Repo.get(c.args.domainId, arg.title || arg.id);
-    //             if (!rdoc) return null;
-    //             c.rdoc = rdoc;
-    //             return rdoc;
+    //             const adoc = await Repo.get(c.args.domainId, arg.title || arg.id);
+    //             if (!adoc) return null;
+    //             c.adoc = adoc;
+    //             return adoc;
     //         },
     //     );
     //     api.resolver('Query', 'repos(ids: [Int])', '[Repo]', async (arg, c) => {
