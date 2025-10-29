@@ -53,6 +53,9 @@ export const ProblemAdd = (name, args, icon = 'add', text = 'Create Problem') =>
 export const RepoAdd = (name, args, icon = 'add', text = 'Create Repository') => {
     inject('RepoAdd', name, { ...args, icon, text });
 };
+export const AgentAdd = (name, args, icon = 'add', text = 'Create Agent') => {
+    inject('AgentAdd', name, { ...args, icon, text });
+};
 // inject('NavMainDropdown', 'homepage', { prefix: 'homepage' });
 // inject('NavMainDropdown', 'workspace_main', { prefix: 'workspace' });
 // inject('NavMainDropdown', 'production_main', { prefix: 'productionhub' });
@@ -79,6 +82,7 @@ inject('NavDropdown', 'domain_dashboard', { prefix: 'domain' }, PERM.PERM_EDIT_D
 inject('NavDropdown', 'manage_dashboard', { prefix: 'manage' }, PRIV.PRIV_EDIT_SYSTEM);
 inject('ProblemAdd', 'problem_create', { icon: 'add', text: 'Create Problem' });
 inject('RepoAdd', 'repo_create', { icon: 'add', text: 'Create Repository' });
+inject('AgentAdd', 'agent_create', { icon: 'add', text: 'Create Agent' });
 inject('ControlPanel', 'manage_dashboard');
 inject('ControlPanel', 'manage_script');
 inject('ControlPanel', 'manage_user_import');

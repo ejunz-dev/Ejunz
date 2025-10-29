@@ -1,0 +1,87 @@
+{% import "components/form.html" as form with context %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__body">
+        <form method="post">
+          <div class="row">
+            <div class="medium-12 columns">
+              <label>
+                {{ _('Agentname') }}
+                <input 
+                  name="title" 
+                  placeholder="{{ _('Enter agent title') }}"
+                  value="{{ adoc.title|default('') }}" 
+                  class="textbox" 
+                  required 
+                  autofocus>
+              </label>
+            </div>
+          </div>
+
+          {{ form.form_textarea({
+                columns: 12,
+                label: _('Content'),
+                name: 'content',
+                value: adoc.content|default(''),
+                hotkeys: 'ctrl+enter:submit',
+                markdown: true,
+                required: true,
+                extra_style: 'height: 500px',
+                extra_textarea_class: 'auto-resize',
+                id: 'content-textarea'
+              }) }}
+
+          {{ form.form_text({
+               row: false,
+               columns: 9,
+               label: _('Tags'),
+               help_text: _('Split by \', \'.'),
+               name: 'tag',
+               value: adoc['tag']|default([])|join(', ')
+             }) }}
+
+          
+
+          <div class="row">
+            <div class="columns">
+              <button 
+                name="operation" 
+                value="{{ 'update' if adoc else 'create' }}" 
+                data-default-submit 
+                type="submit" 
+                class="rounded primary button">
+                {{ _('Update') if adoc else _('Create') }} (Ctrl+Enter)
+              </button>
+              {% if adoc and (handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) or handler.user.own(adoc)) %}
+              <button name="operation" value="delete" type="submit" class="rounded button">
+                {{ _('Delete') }}
+              </button>
+              {% endif %}
+              <button type="button" class="rounded button" onclick="window.history.go(-1)">
+                {{ _('Cancel') }}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="medium-3 columns">
+    <div class="section side visiable nojs--hide section--problem-sidebar-tags">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Categories') }} ({{ _('click to add') }})</h1>
+      </div>
+      <div class="section__body problem-sidebar-tags__detail">
+        {% include "partials/category.html" %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 文件/迭代/版本相关功能已移除，无需前端交互脚本
+</script>
+{% endblock %}
