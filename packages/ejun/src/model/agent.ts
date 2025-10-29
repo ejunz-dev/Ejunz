@@ -8,6 +8,7 @@ import { pick } from 'lodash';
 import { Filter, ObjectId } from 'mongodb';
 import type { Readable } from 'stream';
 import { Logger, size, streamToBuffer } from '@ejunz/utils/lib/utils';
+import { randomstring } from '@ejunz/utils';
 import { Context } from '../context';
 import { FileUploadError, ProblemNotFoundError } from '../error';
 import type {
@@ -25,6 +26,7 @@ import storage from './storage';
 import * as SystemModel from './system';
 import user from './user';
 import * as document from './document';
+import db from '../service/db';
 import _ from 'lodash';
 
 export type Field = keyof AgentDoc;
@@ -36,7 +38,7 @@ export class AgentModel {
 
     static PROJECTION_DETAIL: Field[] = [
         ...AgentModel.PROJECTION_LIST,
-       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply'
+       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey'
     ];
 
     static PROJECTION_PUBLIC: Field[] = [
@@ -136,6 +138,15 @@ export class AgentModel {
             console.log(`[AgentModel.getByAid] Retrieved document:`, JSON.stringify(doc, null, 2));
         }
     
+        return doc || null;
+    }
+
+    static async getByApiKey(apiKey: string): Promise<AgentDoc | null> {
+        const coll = db.collection('document');
+        const doc = await coll.findOne<AgentDoc>(
+            { docType: document.TYPE_AGENT, apiKey },
+            { projection: buildProjection(AgentModel.PROJECTION_DETAIL) }
+        );
         return doc || null;
     }
     
