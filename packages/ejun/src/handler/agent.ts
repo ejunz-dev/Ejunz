@@ -413,85 +413,90 @@ export class AgentChatHandler extends Handler {
                 }));
             }
 
-            const response = await request.post(apiUrl)
+            let messagesForTurn: any[] = [
+                { role: 'system', content: systemMessage },
+                ...chatHistory,
+                { role: 'user', content: message },
+            ];
+
+            let currentResponse = await request.post(apiUrl)
                 .send(requestBody)
                 .set('Authorization', `Bearer ${apiKey}`)
                 .set('content-type', 'application/json');
 
-            let assistantMessage = response.body.choices[0].message.content || '';
-            
-            if (typeof assistantMessage !== 'string') {
-                assistantMessage = typeof assistantMessage === 'object' 
-                    ? JSON.stringify(assistantMessage)
-                    : String(assistantMessage);
-            }
-            
-            const finishReason = response.body.choices[0].finish_reason;
-            
-            if (finishReason === 'tool_calls') {
-                const toolCalls = response.body.choices[0].message.tool_calls;
-                if (toolCalls && toolCalls.length > 0) {
-                    const toolCall = toolCalls[0];
-                    const toolResult = await mcpClient.callTool(toolCall.function.name, JSON.parse(toolCall.function.arguments));
-                    
-                    AgentLogger.info('Tool returned:', { toolResult });
-                    
-                    const toolContent = JSON.stringify(toolResult);
-                    
-                    const assistantMessage: any = {
-                        role: 'assistant',
-                        tool_calls: toolCalls
-                    };
-                    
-                    const toolMessage: any = {
-                        role: 'tool',
-                        content: toolContent,
-                        tool_call_id: toolCall.id
-                    };
-                    
-                    const messagesForTool = [
-                        { role: 'system', content: systemMessage },
-                        ...chatHistory,
-                        { role: 'user', content: message },
-                        assistantMessage,
-                        toolMessage
+            let iterations = 0;
+            const maxIterations = 5;
+
+            while (true) {
+                const choice = currentResponse.body.choices?.[0] || {};
+                const finishReason = choice.finish_reason;
+                const msg = choice.message || {};
+
+                if (finishReason === 'tool_calls') {
+                    const toolCalls = msg.tool_calls || [];
+                    if (!toolCalls.length) break;
+
+                    const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls };
+                    const toolMsgs: any[] = [];
+                    for (const toolCall of toolCalls) {
+                        let parsedArgs: any = {};
+                        try {
+                            parsedArgs = typeof toolCall.function?.arguments === 'string'
+                                ? JSON.parse(toolCall.function.arguments)
+                                : toolCall.function?.arguments || {};
+                        } catch (e) {
+                            parsedArgs = {};
+                        }
+                        const toolResult = await mcpClient.callTool(toolCall.function?.name, parsedArgs);
+                        AgentLogger.info('Tool returned:', { toolResult });
+                        toolMsgs.push({ role: 'tool', content: JSON.stringify(toolResult), tool_call_id: toolCall.id });
+                    }
+
+                    messagesForTurn = [
+                        ...messagesForTurn,
+                        assistantForTools,
+                        ...toolMsgs,
                     ];
-                    
-                    const toolResponse = await request.post(apiUrl)
+
+                    iterations += 1;
+                    if (iterations >= maxIterations) break;
+
+                    currentResponse = await request.post(apiUrl)
                         .send({
                             model,
                             max_tokens: 1024,
-                            messages: messagesForTool,
+                            messages: messagesForTurn,
+                            tools: requestBody.tools,
                         })
                         .set('Authorization', `Bearer ${apiKey}`)
                         .set('content-type', 'application/json');
-
-                    let finalMessage = toolResponse.body.choices[0].message.content || '';
-                    
-                    if (typeof finalMessage !== 'string') {
-                        finalMessage = typeof finalMessage === 'object'
-                            ? JSON.stringify(finalMessage)
-                            : String(finalMessage);
-                    }
-
-                    this.response.body = {
-                        message: finalMessage,
-                        history: JSON.stringify([
-                            ...chatHistory,
-                            { role: 'user', content: message },
-                            { role: 'assistant', content: finalMessage },
-                        ]),
-                    };
-                    return;
+                    continue;
                 }
+
+                let finalContent = msg.content || '';
+                if (typeof finalContent !== 'string') {
+                    finalContent = typeof finalContent === 'object' ? JSON.stringify(finalContent) : String(finalContent);
+                }
+
+                this.response.body = {
+                    message: finalContent,
+                    history: JSON.stringify([
+                        ...chatHistory,
+                        { role: 'user', content: message },
+                        { role: 'assistant', content: finalContent },
+                    ]),
+                };
+                return;
             }
 
+            const fallbackMsg = currentResponse.body?.choices?.[0]?.message?.content || '';
+            const msgStr = typeof fallbackMsg === 'string' ? fallbackMsg : JSON.stringify(fallbackMsg || '');
             this.response.body = {
-                message: assistantMessage,
+                message: msgStr,
                 history: JSON.stringify([
                     ...chatHistory,
                     { role: 'user', content: message },
-                    { role: 'assistant', content: assistantMessage },
+                    { role: 'assistant', content: msgStr },
                 ]),
             };
         } catch (error: any) {
@@ -599,85 +604,90 @@ export class AgentApiHandler extends Handler {
                 }));
             }
 
-            const response = await request.post(apiUrl)
+            let messagesForTurn: any[] = [
+                { role: 'system', content: systemMessage },
+                ...chatHistory,
+                { role: 'user', content: message },
+            ];
+
+            let currentResponse = await request.post(apiUrl)
                 .send(requestBody)
                 .set('Authorization', `Bearer ${aiApiKey}`)
                 .set('content-type', 'application/json');
 
-            let assistantMessage = response.body.choices[0].message.content || '';
-            
-            if (typeof assistantMessage !== 'string') {
-                assistantMessage = typeof assistantMessage === 'object' 
-                    ? JSON.stringify(assistantMessage)
-                    : String(assistantMessage);
-            }
-            
-            const finishReason = response.body.choices[0].finish_reason;
-            
-            if (finishReason === 'tool_calls') {
-                const toolCalls = response.body.choices[0].message.tool_calls;
-                if (toolCalls && toolCalls.length > 0) {
-                    const toolCall = toolCalls[0];
-                    const toolResult = await mcpClient.callTool(toolCall.function.name, JSON.parse(toolCall.function.arguments));
-                    
-                    AgentLogger.info('Tool returned:', { toolResult });
-                    
-                    const toolContent = JSON.stringify(toolResult);
-                    
-                    const assistantMessageObj: any = {
-                        role: 'assistant',
-                        tool_calls: toolCalls
-                    };
-                    
-                    const toolMessage: any = {
-                        role: 'tool',
-                        content: toolContent,
-                        tool_call_id: toolCall.id
-                    };
-                    
-                    const messagesForTool = [
-                        { role: 'system', content: systemMessage },
-                        ...chatHistory,
-                        { role: 'user', content: message },
-                        assistantMessageObj,
-                        toolMessage
+            let iterations = 0;
+            const maxIterations = 5;
+
+            while (true) {
+                const choice = currentResponse.body.choices?.[0] || {};
+                const finishReason = choice.finish_reason;
+                const msg = choice.message || {};
+
+                if (finishReason === 'tool_calls') {
+                    const toolCalls = msg.tool_calls || [];
+                    if (!toolCalls.length) break;
+
+                    const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls };
+                    const toolMsgs: any[] = [];
+                    for (const toolCall of toolCalls) {
+                        let parsedArgs: any = {};
+                        try {
+                            parsedArgs = typeof toolCall.function?.arguments === 'string'
+                                ? JSON.parse(toolCall.function.arguments)
+                                : toolCall.function?.arguments || {};
+                        } catch (e) {
+                            parsedArgs = {};
+                        }
+                        const toolResult = await mcpClient.callTool(toolCall.function?.name, parsedArgs);
+                        AgentLogger.info('Tool returned:', { toolResult });
+                        toolMsgs.push({ role: 'tool', content: JSON.stringify(toolResult), tool_call_id: toolCall.id });
+                    }
+
+                    messagesForTurn = [
+                        ...messagesForTurn,
+                        assistantForTools,
+                        ...toolMsgs,
                     ];
-                    
-                    const toolResponse = await request.post(apiUrl)
+
+                    iterations += 1;
+                    if (iterations >= maxIterations) break;
+
+                    currentResponse = await request.post(apiUrl)
                         .send({
                             model,
                             max_tokens: 1024,
-                            messages: messagesForTool,
+                            messages: messagesForTurn,
+                            tools: requestBody.tools,
                         })
                         .set('Authorization', `Bearer ${aiApiKey}`)
                         .set('content-type', 'application/json');
-
-                    let finalMessage = toolResponse.body.choices[0].message.content || '';
-                    
-                    if (typeof finalMessage !== 'string') {
-                        finalMessage = typeof finalMessage === 'object'
-                            ? JSON.stringify(finalMessage)
-                            : String(finalMessage);
-                    }
-
-                    this.response.body = {
-                        message: finalMessage,
-                        history: JSON.stringify([
-                            ...chatHistory,
-                            { role: 'user', content: message },
-                            { role: 'assistant', content: finalMessage },
-                        ]),
-                    };
-                    return;
+                    continue;
                 }
+
+                let finalContent = msg.content || '';
+                if (typeof finalContent !== 'string') {
+                    finalContent = typeof finalContent === 'object' ? JSON.stringify(finalContent) : String(finalContent);
+                }
+
+                this.response.body = {
+                    message: finalContent,
+                    history: JSON.stringify([
+                        ...chatHistory,
+                        { role: 'user', content: message },
+                        { role: 'assistant', content: finalContent },
+                    ]),
+                };
+                return;
             }
 
+            const fallbackMsg = currentResponse.body?.choices?.[0]?.message?.content || '';
+            const msgStr = typeof fallbackMsg === 'string' ? fallbackMsg : JSON.stringify(fallbackMsg || '');
             this.response.body = {
-                message: assistantMessage,
+                message: msgStr,
                 history: JSON.stringify([
                     ...chatHistory,
                     { role: 'user', content: message },
-                    { role: 'assistant', content: assistantMessage },
+                    { role: 'assistant', content: msgStr },
                 ]),
             };
         } catch (error: any) {
