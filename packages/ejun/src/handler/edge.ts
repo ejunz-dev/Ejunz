@@ -152,11 +152,28 @@ export async function apply(ctx: Context) {
             return [];
         }
     });
+    (ctx as any).on('mcp/tools/list/edge', async () => {
+        try {
+            const res = await edgeCallAny('tools/list', undefined, 2000);
+            return res?.tools || res || [];
+        } catch (e) {
+            logger.warn('mcp/tools/list/edge failed: %s', (e as Error).message);
+            return [];
+        }
+    });
     (ctx as any).on('mcp/tool/call', async ({ name, args }) => {
         try {
             return await edgeCallAny('tools/call', { name, arguments: args }, 8000);
         } catch (e) {
             logger.warn('mcp/tool/call failed: %s', (e as Error).message);
+            throw e;
+        }
+    });
+    (ctx as any).on('mcp/tool/call/edge', async ({ name, args }) => {
+        try {
+            return await edgeCallAny('tools/call', { name, arguments: args }, 8000);
+        } catch (e) {
+            logger.warn('mcp/tool/call/edge failed: %s', (e as Error).message);
             throw e;
         }
     });
@@ -198,12 +215,14 @@ export function edgeCall(method: string, params?: any, timeoutMs = 20000) {
 export async function edgeCallAny(method: string, params?: any, timeoutMs = 2000) {
     const clients = Array.from(EdgeConnectionHandler.active.values());
     if (!clients.length) throw new Error('no edge client connected');
-    const tasks = clients.map((c) => c
+    logger.info('edgeCallAny invoke', { method, timeoutMs, clientCount: clients.length });
+    const tasks = clients.map((c, idx) => c
         .sendRpc(method, params, timeoutMs)
-        .then((res) => ({ ok: true, res }))
-        .catch((e) => ({ ok: false, err: e })));
+        .then((res) => ({ ok: true, res, idx }))
+        .catch((e) => ({ ok: false, err: e, idx })));
     const results = await Promise.all(tasks);
     for (const r of results) if ((r as any).ok) return (r as any).res;
+    logger.warn('edgeCallAny all failed', { method, errors: results.map(r => (r as any).err?.message || String((r as any).err)) });
     throw (results[0] as any).err || new Error('edge rpc failed');
 }
 
