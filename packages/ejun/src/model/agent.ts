@@ -395,12 +395,22 @@ export class McpClient {
     async getTools(): Promise<McpTool[]> {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
-            if (ctx) {
-                const tools = await ctx.serial('mcp/tools/list');
-                ClientLogger.info('Got tool list:', { toolCount: tools?.length || 0 });
-                return tools || [];
-            }
-            return [];
+            const edgeP = (async () => {
+                try {
+                    const { edgeCallAny } = await import('../handler/edge');
+                    const res = await edgeCallAny('tools/list', undefined, 1500);
+                    return (res as any)?.tools || res || [];
+                } catch { return []; }
+            })();
+            const localP = (async () => {
+                try { return ctx ? await ctx.serial('mcp/tools/list') : []; } catch { return []; }
+            })();
+            const [edgeTools, localTools] = await Promise.all([edgeP, localP]);
+            const merged: Record<string, McpTool> = Object.create(null);
+            for (const t of ([] as McpTool[]).concat(edgeTools || [], localTools || [])) merged[t.name] = t;
+            const list = Object.values(merged);
+            ClientLogger.info('Got tool list (merged):', { toolCount: list.length });
+            return list;
         } catch (e) {
             ClientLogger.error('Failed to get tool list', e);
             return [];
@@ -408,15 +418,27 @@ export class McpClient {
     }
 
     async callTool(name: string, args: any): Promise<any> {
-        ClientLogger.info(`Calling tool: ${name}`, args);
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
-            if (ctx) {
-                const result = await ctx.serial('mcp/tool/call', { name, args });
-                ClientLogger.info('Got result from event:', result);
-                return result;
+            // discover availability from both sides
+            const [edgeTools, localTools] = await Promise.all([
+                (async () => { try { const { edgeCallAny } = await import('../handler/edge'); const r = await edgeCallAny('tools/list', undefined, 1500); return (r as any)?.tools || r || []; } catch { return []; } })(),
+                (async () => { try { return ctx ? await ctx.serial('mcp/tools/list') : []; } catch { return []; } })(),
+            ]);
+            const inEdge = (edgeTools || []).some((t: McpTool) => t.name === name);
+            const inLocal = (localTools || []).some((t: McpTool) => t.name === name);
+            // call both equally: choose edge if available; else local; else error
+            if (inEdge) {
+                try {
+                    const { edgeCall } = await import('../handler/edge');
+                    return await edgeCall('tools/call', { name, arguments: args });
+                } catch (e) {
+                    if (inLocal && ctx) return await ctx.serial('mcp/tool/call', { name, args });
+                    throw e;
+                }
             }
-            throw new Error('Context not available');
+            if (inLocal && ctx) return await ctx.serial('mcp/tool/call', { name, args });
+            throw new Error(`Tool not found: ${name}`);
         } catch (e) {
             ClientLogger.error(`Failed to call tool: ${name}`, e);
             throw e;
