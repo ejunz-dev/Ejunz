@@ -26,128 +26,75 @@ export async function startMcpServer() {
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
         tools: [
             {
-                name: 'get_current_time',
-                description: '获取当前时间',
+                name: 'hltv_news',
+                description: '获取 HLTV 新闻列表（CS 资讯）',
                 inputSchema: {
                     type: 'object',
-                    properties: {
-                        timezone: {
-                            type: 'string',
-                            description: '时区，例如：Asia/Shanghai, America/New_York',
-                        },
-                        format: {
-                            type: 'string',
-                            description: '时间格式：ISO（默认）、locale 或 custom',
-                            enum: ['ISO', 'locale', 'custom'],
-                        },
-                    },
+                    properties: {},
                 },
             },
             {
-                name: 'get_time_info',
-                description: '获取详细的时间信息',
+                name: 'hltv_matches',
+                description: '获取 HLTV 比赛赛程列表',
                 inputSchema: {
                     type: 'object',
-                    properties: {
-                        timezone: {
-                            type: 'string',
-                            description: '时区，例如：Asia/Shanghai',
-                        },
-                    },
+                    properties: {},
+                },
+            },
+            {
+                name: 'hltv_results',
+                description: '获取 HLTV 比赛结果列表',
+                inputSchema: {
+                    type: 'object',
+                    properties: {},
                 },
             },
         ],
     }));
 
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
-        const { name, arguments: args } = request.params;
+        const { name } = request.params;
+
+        const fetchJson = async (url: string) => {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`请求失败: ${res.status}`);
+            return await res.json();
+        };
 
         switch (name) {
-            case 'get_current_time': {
-                const timezone = args?.timezone || 'Asia/Shanghai';
-                const format = args?.format || 'ISO';
-                const now = new Date();
-                let formattedTime: string;
-
-                switch (format) {
-                    case 'ISO':
-                        formattedTime = now.toISOString();
-                        break;
-                    case 'locale':
-                        formattedTime = now.toLocaleString('zh-CN', { timeZone: timezone } as Intl.DateTimeFormatOptions);
-                        break;
-                    case 'custom':
-                        formattedTime = now.toLocaleString('zh-CN', {
-                            timeZone: timezone,
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                        } as Intl.DateTimeFormatOptions);
-                        break;
-                    default:
-                        formattedTime = now.toISOString();
-                }
-
+            case 'hltv_news': {
+                const data = await fetchJson('https://hltv-api.vercel.app/api/news.json');
                 return {
                     content: [
                         {
                             type: 'text',
-                            text: JSON.stringify({
-                                timestamp: now.getTime(),
-                                iso: now.toISOString(),
-                                formatted: formattedTime,
-                                timezone,
-                            }, null, 2),
+                            text: JSON.stringify(data, null, 2),
                         },
                     ],
                 };
             }
-
-            case 'get_time_info': {
-                const timezone = args?.timezone || 'Asia/Shanghai';
-                const now = new Date();
-                
-                const formatter = new Intl.DateTimeFormat('zh-CN', {
-                    timeZone: timezone,
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    weekday: 'long',
-                } as any);
-
-                const parts: Record<string, string> = {};
-                formatter.formatToParts(now).forEach(part => {
-                    parts[part.type] = part.value;
-                });
-
+            case 'hltv_matches': {
+                const data = await fetchJson('https://hltv-api.vercel.app/api/matches.json');
                 return {
                     content: [
                         {
                             type: 'text',
-                            text: JSON.stringify({
-                                year: parts.year,
-                                month: parts.month,
-                                day: parts.day,
-                                hour: parts.hour,
-                                minute: parts.minute,
-                                second: parts.second,
-                                weekday: parts.weekday,
-                                timestamp: now.getTime(),
-                                iso: now.toISOString(),
-                                utc: now.toUTCString(),
-                                timezone,
-                            }, null, 2),
+                            text: JSON.stringify(data, null, 2),
                         },
                     ],
                 };
             }
-
+            case 'hltv_results': {
+                const data = await fetchJson('https://hltv-api.vercel.app/api/results.json');
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: JSON.stringify(data, null, 2),
+                        },
+                    ],
+                };
+            }
             default:
                 throw new Error(`Unknown tool: ${name}`);
         }

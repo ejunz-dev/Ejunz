@@ -14,117 +14,95 @@ interface McpTool {
 }
 
 function getAvailableTools(): McpTool[] {
-    return [
-        {
-            name: 'get_current_time',
-            description: 'Get current time',
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    timezone: {
-                        type: 'string',
-                        description: 'Timezone, e.g., Asia/Shanghai, America/New_York',
-                    },
-                    format: {
-                        type: 'string',
-                        description: 'Time format: ISO (default), locale, or custom',
-                        enum: ['ISO', 'locale', 'custom'],
-                    },
-                },
-            },
-        },
-        {
-            name: 'get_time_info',
-            description: 'Get detailed time information',
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    timezone: {
-                        type: 'string',
-                        description: 'Timezone, e.g., Asia/Shanghai',
-                    },
-                },
-            },
-        },
-    ];
+	return [
+		{
+			name: 'hltv_news',
+			description: '获取 HLTV 新闻列表（CS 资讯）',
+			inputSchema: {
+				type: 'object',
+				properties: {
+					timeoutMs: { type: 'number', description: '请求超时毫秒数，默认 8000' },
+					retries: { type: 'number', description: '失败重试次数，默认 1' },
+				},
+			},
+		},
+		{
+			name: 'hltv_matches',
+			description: '获取 HLTV 比赛赛程列表',
+			inputSchema: {
+				type: 'object',
+				properties: {
+					timeoutMs: { type: 'number', description: '请求超时毫秒数，默认 8000' },
+					retries: { type: 'number', description: '失败重试次数，默认 1' },
+				},
+			},
+		},
+		{
+			name: 'hltv_results',
+			description: '获取 HLTV 比赛结果列表',
+			inputSchema: {
+				type: 'object',
+				properties: {
+					timeoutMs: { type: 'number', description: '请求超时毫秒数，默认 8000' },
+					retries: { type: 'number', description: '失败重试次数，默认 1' },
+				},
+			},
+		},
+	];
 }
 
-function callTool(name: string, args: any): any {
-    const now = new Date();
+async function callTool(name: string, args: any): Promise<any> {
+    const fetchJson = async (url: string, opts?: { timeoutMs?: number, retries?: number }) => {
+		const timeoutMs = Math.max(1, Number(opts?.timeoutMs) || 8000);
+		const retries = Math.max(0, Number(opts?.retries) || 1);
+		const controller = new AbortController();
+		const attempt = async (n: number): Promise<any> => {
+			const timer = setTimeout(() => controller.abort(), timeoutMs);
+			try {
+				let init: any = { signal: controller.signal, headers: { 'accept': 'application/json' } };
+				const proxyEnv = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.ALL_PROXY
+					|| process.env.https_proxy || process.env.http_proxy || process.env.all_proxy;
+				if (proxyEnv) {
+					try {
+						const undici = await import('undici');
+						const proxy = proxyEnv;
+						// @ts-ignore
+						const agent = new (undici as any).ProxyAgent(proxy);
+						init.dispatcher = agent;
+					} catch { /* ignore proxy agent errors */ }
+				}
+				const res = await fetch(url, init as any);
+				if (!res.ok) throw new Error(`请求失败: ${res.status}`);
+				return await res.json();
+			} catch (e) {
+				if (n < retries) return attempt(n + 1);
+				throw e;
+			} finally {
+				clearTimeout(timer);
+			}
+		};
+		return attempt(0);
+	};
 
-    switch (name) {
-        case 'get_current_time': {
-            const timezone = args?.timezone || 'Asia/Shanghai';
-            const format = args?.format || 'ISO';
-            let formattedTime: string;
+	switch (name) {
+		case 'hltv_news': {
+			const url = 'https://hltv-api.vercel.app/api/news.json';
+			return await fetchJson(url, { timeoutMs: args?.timeoutMs, retries: args?.retries });
+		}
 
-            switch (format) {
-                case 'ISO':
-                    formattedTime = now.toISOString();
-                    break;
-                case 'locale':
-                    formattedTime = now.toLocaleString('zh-CN', { timeZone: timezone } as Intl.DateTimeFormatOptions);
-                    break;
-                case 'custom':
-                    formattedTime = now.toLocaleString('zh-CN', {
-                        timeZone: timezone,
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                    } as Intl.DateTimeFormatOptions);
-                    break;
-                default:
-                    formattedTime = now.toISOString();
-            }
+		case 'hltv_matches': {
+			const url = 'https://hltv-api.vercel.app/api/matches.json';
+			return await fetchJson(url, { timeoutMs: args?.timeoutMs, retries: args?.retries });
+		}
 
-            return {
-                timestamp: now.getTime(),
-                iso: now.toISOString(),
-                formatted: formattedTime,
-                timezone,
-            };
-        }
+		case 'hltv_results': {
+			const url = 'https://hltv-api.vercel.app/api/results.json';
+			return await fetchJson(url, { timeoutMs: args?.timeoutMs, retries: args?.retries });
+		}
 
-        case 'get_time_info': {
-            const timezone = args?.timezone || 'Asia/Shanghai';
-            
-            const formatter = new Intl.DateTimeFormat('zh-CN', {
-                timeZone: timezone,
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                weekday: 'long',
-            } as any);
-
-            const parts: Record<string, string> = {};
-            formatter.formatToParts(now).forEach(part => {
-                parts[part.type] = part.value;
-            });
-
-            return {
-                year: parts.year,
-                month: parts.month,
-                day: parts.day,
-                hour: parts.hour,
-                minute: parts.minute,
-                second: parts.second,
-                weekday: parts.weekday,
-                timestamp: now.getTime(),
-                iso: now.toISOString(),
-                utc: now.toUTCString(),
-                timezone,
-            };
-        }
-
-        default:
-            throw new Error(`Unknown tool: ${name}`);
-    }
+		default:
+			throw new Error(`Unknown tool: ${name}`);
+	}
 }
 
 export async function apply(ctx: Context) {
@@ -141,24 +119,42 @@ export async function apply(ctx: Context) {
         logger.info('Requesting tool list', { toolCount: tools.length });
         return tools;
     });
+    ctx.on('mcp/tools/list/local' as any, () => {
+		logger.info('Requesting local tool list', { toolCount: tools.length });
+		return tools;
+	});
     
-    ctx.on('mcp/tool/call' as any, (data: any) => {
-        logger.info(`Tool call: ${data.name}`, data.args);
-        addLog('info', `Tool call: ${data.name}, args: ${JSON.stringify(data.args)}`);
-        
-        try {
-            const result = callTool(data.name, data.args);
-            
-            logger.info(`Tool ${data.name} returned:`, result);
-            addLog('info', `Tool ${data.name} returned: ${JSON.stringify(result)}`);
-            
-            return result;
-        } catch (error: any) {
-            logger.error(`Tool call failed: ${data.name}`, error.message);
-            addLog('error', `Tool call failed: ${data.name}, error: ${error.message}`);
-            throw error;
-        }
-    });
+    ctx.on('mcp/tool/call' as any, async (data: any) => {
+		logger.info(`Tool call: ${data.name}`, data.args);
+		addLog('info', `Tool call: ${data.name}, args: ${JSON.stringify(data.args)}`);
+		
+		try {
+			const result = await callTool(data.name, data.args);
+			
+			logger.info(`Tool ${data.name} returned:`, result);
+			addLog('info', `Tool ${data.name} returned: ${JSON.stringify(result)}`);
+			
+			return result;
+		} catch (error: any) {
+			logger.error(`Tool call failed: ${data.name}`, error.message);
+			addLog('error', `Tool call failed: ${data.name}, error: ${error.message}`);
+			throw error;
+		}
+	});
+    ctx.on('mcp/tool/call/local' as any, async (data: any) => {
+		logger.info(`Local tool call: ${data.name}`, data.args);
+		addLog('info', `Local tool call: ${data.name}, args: ${JSON.stringify(data.args)}`);
+		try {
+			const result = await callTool(data.name, data.args);
+			logger.info(`Local tool ${data.name} returned:`, result);
+			addLog('info', `Local tool ${data.name} returned: ${JSON.stringify(result)}`);
+			return result;
+		} catch (error: any) {
+			logger.error(`Local tool call failed: ${data.name}`, error.message);
+			addLog('error', `Local tool call failed: ${data.name}, error: ${error.message}`);
+			throw error;
+		}
+	});
     
     addLog('info', 'MCP Provider initialized');
     logger.info('MCP Provider initialized');
