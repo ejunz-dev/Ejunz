@@ -1115,8 +1115,14 @@ export class AgentApiHandler extends Handler {
                 stack: error.stack,
             });
             if (stream) {
-                const streamResponse = this.response.body as PassThrough;
-                if (streamResponse && !streamResponse.destroyed) {
+                // 确保流响应已初始化，如果未初始化则创建一个新的
+                let streamResponse = this.response.body as PassThrough;
+                if (!streamResponse || !(streamResponse instanceof PassThrough)) {
+                    streamResponse = new PassThrough();
+                    this.response.body = streamResponse;
+                    this.context.body = streamResponse;
+                }
+                if (!streamResponse.destroyed && !streamResponse.writableEnded) {
                     streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: JSON.stringify(error.response?.body || error.message) })}\n\n`);
                     streamResponse.end();
                 }
