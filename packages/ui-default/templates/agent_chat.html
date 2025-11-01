@@ -103,7 +103,6 @@
 
   let history = [];
 
-  // 检查 MCP 服务状态
   async function checkMcpStatus() {
     try {
       const response = await fetch('{{ url("agent_mcp_status", domainId=domainId, aid=adoc.aid) }}', { 
@@ -123,7 +122,6 @@
     }
   }
 
-  // 页面加载时检查 MCP 状态
   checkMcpStatus();
 
   function addMessage(role, content) {
@@ -158,26 +156,186 @@
       const formData = new FormData();
       formData.append('message', message);
       formData.append('history', JSON.stringify(history));
+      formData.append('stream', 'true');
 
-      const response = await fetch('{{ url("agent_chat", domainId=domainId, aid=adoc.aid) }}', {
+      const response = await fetch('{{ url("agent_chat", domainId=domainId, aid=adoc.aid) }}?stream=true', {
         method: 'POST',
         body: formData
       });
 
-      const responseText = await response.text();
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (e) {
-        console.error('Response is not JSON:', responseText);
-        throw new Error('Server returned non-JSON response');
-      }
+      const contentType = response.headers.get('content-type') || '';
+      const isStream = contentType.includes('text/event-stream');
       
-      if (data.error) {
-        addMessage('error', data.error);
+      if (isStream && response.body) {
+        console.log('开始处理流式响应，Content-Type:', contentType);
+        try {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let assistantMessageDiv = null;
+          let accumulatedContent = '';
+          let hasReceivedData = false;
+          let chunkCount = 0;
+          let contentUpdateCount = 0;
+
+          assistantMessageDiv = document.createElement('div');
+          assistantMessageDiv.className = 'chat-message assistant';
+          assistantMessageDiv.textContent = '';
+          chatMessages.appendChild(assistantMessageDiv);
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              console.log('流读取完成，共收到', chunkCount, '个数据块，', contentUpdateCount, '次内容更新');
+              if (!hasReceivedData) {
+                if (assistantMessageDiv) {
+                  assistantMessageDiv.remove();
+                }
+                addMessage('error', '连接已关闭，未收到任何数据');
+              }
+              break;
+            }
+
+            chunkCount++;
+            hasReceivedData = true;
+            
+            const chunk = decoder.decode(value, { stream: true });
+            buffer += chunk;
+            
+            let processedAny = false;
+            let lastUpdateTime = Date.now();
+            
+            while (buffer.includes('\n')) {
+              const newlineIndex = buffer.indexOf('\n');
+              const line = buffer.substring(0, newlineIndex);
+              buffer = buffer.substring(newlineIndex + 1);
+              
+              if (!line.trim()) continue;
+              
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6).trim();
+                if (data === '[DONE]') {
+                  console.log('收到 [DONE] 信号');
+                  continue;
+                }
+                if (!data) continue;
+                
+                try {
+                  const parsed = JSON.parse(data);
+                  if (parsed.type === 'content' && parsed.content) {
+                    contentUpdateCount++;
+                    accumulatedContent += parsed.content;
+                    
+                    assistantMessageDiv.innerText = accumulatedContent;
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                    
+                    processedAny = true;
+                    
+                    if (contentUpdateCount <= 10 || contentUpdateCount % 10 === 0) {
+                      console.log('[流式] 更新 #' + contentUpdateCount, '新增内容:', parsed.content, '总长度:', accumulatedContent.length);
+                    }
+                    
+                    const now = Date.now();
+                    const timeSinceLastUpdate = now - lastUpdateTime;
+                    const minInterval = 30;
+                    if (timeSinceLastUpdate < minInterval) {
+                      await new Promise(resolve => setTimeout(resolve, minInterval - timeSinceLastUpdate));
+                    }
+                    lastUpdateTime = Date.now();
+                    
+                    requestAnimationFrame(() => {
+                      if (assistantMessageDiv) {
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                      }
+                    });
+                  } else if (parsed.type === 'done') {
+                    console.log('收到 done 信号，完整消息长度:', parsed.message?.length || 0);
+                    history = JSON.parse(parsed.history);
+                    if (assistantMessageDiv) {
+                      assistantMessageDiv.textContent = parsed.message || accumulatedContent;
+                    }
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                    break;
+                  } else if (parsed.type === 'error') {
+                    console.error('收到错误:', parsed.error);
+                    addMessage('error', parsed.error);
+                    break;
+                  }
+                } catch (e) {
+                  console.error('Parse error:', e, 'Line:', line.substring(0, 100));
+                }
+              } else {
+                console.log('Skip line:', line.substring(0, 50));
+              }
+            }
+          }
+        } catch (streamError) {
+          console.error('Stream read error:', streamError);
+          addMessage('error', '读取流式响应时出错: ' + streamError.message);
+        }
       } else {
-        addMessage('assistant', data.message);
-        history = JSON.parse(data.history);
+        const responseText = await response.text();
+        
+        if (responseText.includes('data: ') && !isStream) {
+          const lines = responseText.split('\n');
+          let assistantMessageDiv = null;
+          let accumulatedContent = '';
+          
+          for (const line of lines) {
+            if (!line.trim() || !line.startsWith('data: ')) continue;
+            const data = line.slice(6);
+            if (data === '[DONE]') break;
+            
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.type === 'content') {
+                if (!assistantMessageDiv) {
+                  assistantMessageDiv = document.createElement('div');
+                  assistantMessageDiv.className = 'chat-message assistant';
+                  chatMessages.appendChild(assistantMessageDiv);
+                }
+                accumulatedContent += parsed.content;
+                assistantMessageDiv.textContent = accumulatedContent;
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+              } else if (parsed.type === 'done') {
+                history = JSON.parse(parsed.history);
+                if (assistantMessageDiv) {
+                  assistantMessageDiv.textContent = parsed.message;
+                }
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+              } else if (parsed.type === 'error') {
+                addMessage('error', parsed.error);
+                return;
+              }
+            } catch (e) {
+            }
+          }
+          
+          if (assistantMessageDiv) {
+            return;
+          }
+        }
+        
+        let data;
+        try {
+          data = JSON.parse(responseText);
+        } catch (e) {
+          console.error('Response is not JSON:', responseText.substring(0, 200));
+          if (responseText.trim()) {
+            addMessage('error', '服务器返回了意外的响应格式: ' + responseText.substring(0, 100));
+          } else {
+            addMessage('error', '服务器返回了空响应');
+          }
+          return;
+        }
+        
+        if (data.error) {
+          addMessage('error', data.error);
+        } else {
+          addMessage('assistant', data.message);
+          history = JSON.parse(data.history);
+        }
       }
     } catch (error) {
       addMessage('error', '{{ _("Send failed") }}: ' + error.message);
