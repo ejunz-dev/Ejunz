@@ -26,6 +26,7 @@ import request from 'superagent';
 import { randomstring } from '@ejunz/utils';
 import { McpClient, ChatMessage } from '../model/agent';
 import { Logger } from '../logger';
+import { PassThrough } from 'stream';
 
 const AgentLogger = new Logger('agent');
 export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
@@ -355,6 +356,7 @@ export class AgentChatHandler extends Handler {
 
         const message = this.request.body?.message;
         const history = this.request.body?.history || '[]';
+        const stream = this.request.query?.stream === 'true' || this.request.body?.stream === true;
         
         if (!message) {
             this.response.body = { error: 'Message cannot be empty' };
@@ -391,6 +393,17 @@ export class AgentChatHandler extends Handler {
             systemMessage = agentPrompt + toolsInfo;
         }
 
+        // 如果启用流式传输，设置 SSE 响应头
+        if (stream) {
+            this.response.type = 'text/event-stream';
+            this.response.addHeader('Cache-Control', 'no-cache');
+            this.response.addHeader('Connection', 'keep-alive');
+            this.response.addHeader('X-Accel-Buffering', 'no');
+            // 直接设置 Koa context 的 type 和禁用压缩
+            this.context.response.type = 'text/event-stream';
+            this.context.compress = false;
+        }
+
         try {
             const requestBody: any = {
                 model,
@@ -400,6 +413,7 @@ export class AgentChatHandler extends Handler {
                     ...chatHistory,
                     { role: 'user', content: message },
                 ],
+                stream: stream,
             };
 
             if (tools.length > 0) {
@@ -419,6 +433,199 @@ export class AgentChatHandler extends Handler {
                 { role: 'user', content: message },
             ];
 
+            // 流式传输处理
+            if (stream) {
+                const streamResponse = new PassThrough();
+                this.response.body = streamResponse;
+                // 直接设置到 Koa context，确保流式响应正确传递
+                this.context.body = streamResponse;
+                
+                let accumulatedContent = '';
+                let finishReason = '';
+                let toolCalls: any[] = [];
+                let iterations = 0;
+                const maxIterations = 5;
+                let streamFinished = false; // 标记流是否已完成
+
+                const processStream = async () => {
+                    try {
+                        AgentLogger.info('Starting stream request', { apiUrl, model });
+                        streamFinished = false;
+                        
+                        await new Promise<void>((resolve, reject) => {
+                            const req = request.post(apiUrl)
+                                .send(requestBody)
+                                .set('Authorization', `Bearer ${apiKey}`)
+                                .set('content-type', 'application/json')
+                                .buffer(false)
+                                .timeout(60000)
+                                .parse((res, callback) => {
+                                    // 设置编码
+                                    res.setEncoding('utf8');
+                                    let buffer = '';
+                                    
+                                    res.on('data', (chunk: string) => {
+                                        if (streamResponse.destroyed || streamResponse.writableEnded || streamFinished) return;
+                                        
+                                        buffer += chunk;
+                                        const lines = buffer.split('\n');
+                                        buffer = lines.pop() || '';
+                                        
+                                        for (const line of lines) {
+                                            if (!line.trim() || !line.startsWith('data: ')) continue;
+                                            const data = line.slice(6).trim();
+                                            if (data === '[DONE]') {
+                                                if (!streamResponse.destroyed && !streamResponse.writableEnded && !streamFinished) {
+                                                    streamFinished = true;
+                                                    streamResponse.write(`data: ${JSON.stringify({ type: 'done', message: accumulatedContent, history: JSON.stringify([
+                                                        ...chatHistory,
+                                                        { role: 'user', content: message },
+                                                        { role: 'assistant', content: accumulatedContent },
+                                                    ]) })}\n\n`);
+                                                    streamResponse.end();
+                                                }
+                                                callback(null, undefined);
+                                                return;
+                                            }
+                                            if (!data) continue;
+                                            
+                                            try {
+                                                const parsed = JSON.parse(data);
+                                                const choice = parsed.choices?.[0];
+                                                const delta = choice?.delta;
+                                                
+                                                if (delta?.content) {
+                                                    accumulatedContent += delta.content;
+                                                    if (!streamResponse.destroyed && !streamResponse.writableEnded && !streamFinished) {
+                                                        // 立即发送每个 content 块，确保流式传输
+                                                        const contentData = `data: ${JSON.stringify({ type: 'content', content: delta.content })}\n\n`;
+                                                        streamResponse.write(contentData);
+                                                        AgentLogger.debug('Sent content chunk:', delta.content.length, 'bytes');
+                                                    }
+                                                }
+                                                
+                                                if (choice?.finish_reason) {
+                                                    finishReason = choice.finish_reason;
+                                                    // finish_reason 表示流即将结束，但不立即关闭
+                                                    // 等待 end 事件再处理完成消息
+                                                    AgentLogger.info('Received finish_reason:', finishReason);
+                                                }
+                                                
+                                                if (delta?.tool_calls) {
+                                                    for (const toolCall of delta.tool_calls || []) {
+                                                        const idx = toolCall.index || 0;
+                                                        if (!toolCalls[idx]) toolCalls[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+                                                        if (toolCall.id) toolCalls[idx].id = toolCall.id;
+                                                        if (toolCall.function?.name) toolCalls[idx].function.name = toolCall.function.name;
+                                                        if (toolCall.function?.arguments) toolCalls[idx].function.arguments += toolCall.function.arguments;
+                                                    }
+                                                }
+                                            } catch (e) {
+                                                AgentLogger.warn('Parse error in stream:', e, data.substring(0, 100));
+                                            }
+                                        }
+                                    });
+                                    
+                                    res.on('end', async () => {
+                                        AgentLogger.info('Stream ended', { finishReason, iterations, accumulatedLength: accumulatedContent.length, streamFinished });
+                                        callback(null, undefined);
+                                        
+                                        // 只有在流未完成且需要工具调用时才处理
+                                        if (!streamFinished) {
+                                            // 处理工具调用或完成（异步处理，不阻塞 callback）
+                                            (async () => {
+                                                try {
+                                                    if (finishReason === 'tool_calls' && toolCalls.length > 0 && iterations < maxIterations) {
+                                                        iterations++;
+                                                        const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
+                                                            id: tc.id || `call_${idx}`,
+                                                            type: tc.type || 'function',
+                                                            function: {
+                                                                name: tc.function.name,
+                                                                arguments: tc.function.arguments,
+                                                            },
+                                                        })) };
+                                                        const toolMsgs: any[] = [];
+                                                        for (const toolCall of assistantForTools.tool_calls) {
+                                                            let parsedArgs: any = {};
+                                                            try {
+                                                                parsedArgs = JSON.parse(toolCall.function.arguments);
+                                                            } catch (e) {
+                                                                parsedArgs = {};
+                                                            }
+                                                            const toolResult = await mcpClient.callTool(toolCall.function.name, parsedArgs);
+                                                            toolMsgs.push({ role: 'tool', content: JSON.stringify(toolResult), tool_call_id: toolCall.id });
+                                                        }
+                                                        messagesForTurn = [
+                                                            ...messagesForTurn,
+                                                            assistantForTools,
+                                                            ...toolMsgs,
+                                                        ];
+                                                        accumulatedContent = '';
+                                                        finishReason = '';
+                                                        toolCalls = [];
+                                                        requestBody.messages = messagesForTurn;
+                                                        await processStream();
+                                                    } else if (!streamFinished) {
+                                                        // 只有在流未关闭时才写入
+                                                        streamFinished = true;
+                                                        if (!streamResponse.destroyed && !streamResponse.writableEnded) {
+                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'done', message: accumulatedContent, history: JSON.stringify([
+                                                                ...chatHistory,
+                                                                { role: 'user', content: message },
+                                                                { role: 'assistant', content: accumulatedContent },
+                                                            ]) })}\n\n`);
+                                                            streamResponse.end();
+                                                        }
+                                                    }
+                                                    resolve();
+                                                } catch (err: any) {
+                                                    AgentLogger.error('Error in stream end handler:', err);
+                                                    streamFinished = true;
+                                                    if (!streamResponse.destroyed && !streamResponse.writableEnded) {
+                                                        streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: err.message || String(err) })}\n\n`);
+                                                        streamResponse.end();
+                                                    }
+                                                    resolve();
+                                                }
+                                            })();
+                                        } else {
+                                            resolve();
+                                        }
+                                    });
+                                    
+                                    res.on('error', (err: any) => {
+                                        AgentLogger.error('Stream response error:', err);
+                                        callback(err, undefined);
+                                        reject(err);
+                                    });
+                                });
+                            
+                            req.on('error', (err: any) => {
+                                AgentLogger.error('Stream request error:', err);
+                                if (!streamResponse.destroyed) {
+                                    streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: err.message || String(err) })}\n\n`);
+                                    streamResponse.end();
+                                }
+                                reject(err);
+                            });
+                            
+                            req.end();
+                        });
+                    } catch (error: any) {
+                        AgentLogger.error('Stream setup error:', error);
+                        if (!streamResponse.destroyed) {
+                            streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: error.message || String(error) })}\n\n`);
+                            streamResponse.end();
+                        }
+                    }
+                };
+                
+                await processStream();
+                return;
+            }
+
+            // 非流式传输（原有逻辑）
             let currentResponse = await request.post(apiUrl)
                 .send(requestBody)
                 .set('Authorization', `Bearer ${apiKey}`)
@@ -505,7 +712,15 @@ export class AgentChatHandler extends Handler {
                 response: error.response?.body,
                 stack: error.stack,
             });
-            this.response.body = { error: JSON.stringify(error.response?.body || error.message) };
+            if (stream) {
+                const streamResponse = this.response.body as PassThrough;
+                if (streamResponse && !streamResponse.destroyed) {
+                    streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: JSON.stringify(error.response?.body || error.message) })}\n\n`);
+                    streamResponse.end();
+                }
+            } else {
+                this.response.body = { error: JSON.stringify(error.response?.body || error.message) };
+            }
         }
     }
 }
@@ -547,6 +762,7 @@ export class AgentApiHandler extends Handler {
 
         const message = this.request.body?.message;
         const history = this.request.body?.history || '[]';
+        const stream = this.request.query?.stream === 'true' || this.request.body?.stream === true;
         
         if (!message) {
             this.response.body = { error: 'Message cannot be empty' };
@@ -582,6 +798,17 @@ export class AgentApiHandler extends Handler {
             systemMessage = agentPrompt + toolsInfo;
         }
 
+        // 如果启用流式传输，设置 SSE 响应头
+        if (stream) {
+            this.response.type = 'text/event-stream';
+            this.response.addHeader('Cache-Control', 'no-cache');
+            this.response.addHeader('Connection', 'keep-alive');
+            this.response.addHeader('X-Accel-Buffering', 'no');
+            // 直接设置 Koa context 的 type 和禁用压缩
+            this.context.response.type = 'text/event-stream';
+            this.context.compress = false;
+        }
+
         try {
             const requestBody: any = {
                 model,
@@ -591,6 +818,7 @@ export class AgentApiHandler extends Handler {
                     ...chatHistory,
                     { role: 'user', content: message },
                 ],
+                stream: stream,
             };
 
             if (tools.length > 0) {
@@ -610,6 +838,196 @@ export class AgentApiHandler extends Handler {
                 { role: 'user', content: message },
             ];
 
+            // 流式传输处理
+            if (stream) {
+                const streamResponse = new PassThrough();
+                this.response.body = streamResponse;
+                // 直接设置到 Koa context，确保流式响应正确传递
+                this.context.body = streamResponse;
+                
+                let accumulatedContent = '';
+                let finishReason = '';
+                let toolCalls: any[] = [];
+                let iterations = 0;
+                const maxIterations = 5;
+                let streamFinished = false; // 标记流是否已完成
+
+                const processStream = async () => {
+                    try {
+                        AgentLogger.info('Starting stream request (API)', { apiUrl, model });
+                        streamFinished = false;
+                        
+                        await new Promise<void>((resolve, reject) => {
+                            const req = request.post(apiUrl)
+                                .send(requestBody)
+                                .set('Authorization', `Bearer ${aiApiKey}`)
+                                .set('content-type', 'application/json')
+                                .buffer(false)
+                                .timeout(60000)
+                                .parse((res, callback) => {
+                                    res.setEncoding('utf8');
+                                    let buffer = '';
+                                    
+                                    res.on('data', (chunk: string) => {
+                                        if (streamResponse.destroyed || streamResponse.writableEnded || streamFinished) return;
+                                        
+                                        buffer += chunk;
+                                        const lines = buffer.split('\n');
+                                        buffer = lines.pop() || '';
+                                        
+                                        for (const line of lines) {
+                                            if (!line.trim() || !line.startsWith('data: ')) continue;
+                                            const data = line.slice(6).trim();
+                                            if (data === '[DONE]') {
+                                                if (!streamResponse.destroyed && !streamResponse.writableEnded && !streamFinished) {
+                                                    streamFinished = true;
+                                                    streamResponse.write(`data: ${JSON.stringify({ type: 'done', message: accumulatedContent, history: JSON.stringify([
+                                                        ...chatHistory,
+                                                        { role: 'user', content: message },
+                                                        { role: 'assistant', content: accumulatedContent },
+                                                    ]) })}\n\n`);
+                                                    streamResponse.end();
+                                                }
+                                                callback(null, undefined);
+                                                return;
+                                            }
+                                            if (!data) continue;
+                                            
+                                            try {
+                                                const parsed = JSON.parse(data);
+                                                const choice = parsed.choices?.[0];
+                                                const delta = choice?.delta;
+                                                
+                                                if (delta?.content) {
+                                                    accumulatedContent += delta.content;
+                                                    if (!streamResponse.destroyed && !streamResponse.writableEnded && !streamFinished) {
+                                                        // 立即发送每个 content 块，确保流式传输
+                                                        const contentData = `data: ${JSON.stringify({ type: 'content', content: delta.content })}\n\n`;
+                                                        streamResponse.write(contentData);
+                                                        AgentLogger.debug('Sent content chunk:', delta.content.length, 'bytes');
+                                                    }
+                                                }
+                                                
+                                                if (choice?.finish_reason) {
+                                                    finishReason = choice.finish_reason;
+                                                    // finish_reason 表示流即将结束，但不立即关闭
+                                                    // 等待 end 事件再处理完成消息
+                                                    AgentLogger.info('Received finish_reason:', finishReason);
+                                                }
+                                                
+                                                if (delta?.tool_calls) {
+                                                    for (const toolCall of delta.tool_calls || []) {
+                                                        const idx = toolCall.index || 0;
+                                                        if (!toolCalls[idx]) toolCalls[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+                                                        if (toolCall.id) toolCalls[idx].id = toolCall.id;
+                                                        if (toolCall.function?.name) toolCalls[idx].function.name = toolCall.function.name;
+                                                        if (toolCall.function?.arguments) toolCalls[idx].function.arguments += toolCall.function.arguments;
+                                                    }
+                                                }
+                                            } catch (e) {
+                                                AgentLogger.warn('Parse error in stream (API):', e, data.substring(0, 100));
+                                            }
+                                        }
+                                    });
+                                    
+                                    res.on('end', async () => {
+                                        AgentLogger.info('Stream ended (API)', { finishReason, iterations, accumulatedLength: accumulatedContent.length, streamFinished });
+                                        callback(null, undefined);
+                                        
+                                        // 只有在流未完成且需要工具调用时才处理
+                                        if (!streamFinished) {
+                                            (async () => {
+                                                try {
+                                                    if (finishReason === 'tool_calls' && toolCalls.length > 0 && iterations < maxIterations) {
+                                                        iterations++;
+                                                        const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
+                                                            id: tc.id || `call_${idx}`,
+                                                            type: tc.type || 'function',
+                                                            function: {
+                                                                name: tc.function.name,
+                                                                arguments: tc.function.arguments,
+                                                            },
+                                                        })) };
+                                                        const toolMsgs: any[] = [];
+                                                        for (const toolCall of assistantForTools.tool_calls) {
+                                                            let parsedArgs: any = {};
+                                                            try {
+                                                                parsedArgs = JSON.parse(toolCall.function.arguments);
+                                                            } catch (e) {
+                                                                parsedArgs = {};
+                                                            }
+                                                            const toolResult = await mcpClient.callTool(toolCall.function.name, parsedArgs);
+                                                            toolMsgs.push({ role: 'tool', content: JSON.stringify(toolResult), tool_call_id: toolCall.id });
+                                                        }
+                                                        messagesForTurn = [
+                                                            ...messagesForTurn,
+                                                            assistantForTools,
+                                                            ...toolMsgs,
+                                                        ];
+                                                        accumulatedContent = '';
+                                                        finishReason = '';
+                                                        toolCalls = [];
+                                                        requestBody.messages = messagesForTurn;
+                                                        await processStream();
+                                                    } else if (!streamFinished) {
+                                                        streamFinished = true;
+                                                        if (!streamResponse.destroyed && !streamResponse.writableEnded) {
+                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'done', message: accumulatedContent, history: JSON.stringify([
+                                                                ...chatHistory,
+                                                                { role: 'user', content: message },
+                                                                { role: 'assistant', content: accumulatedContent },
+                                                            ]) })}\n\n`);
+                                                            streamResponse.end();
+                                                        }
+                                                    }
+                                                    resolve();
+                                                } catch (err: any) {
+                                                    AgentLogger.error('Error in stream end handler (API):', err);
+                                                    streamFinished = true;
+                                                    if (!streamResponse.destroyed && !streamResponse.writableEnded) {
+                                                        streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: err.message || String(err) })}\n\n`);
+                                                        streamResponse.end();
+                                                    }
+                                                    resolve();
+                                                }
+                                            })();
+                                        } else {
+                                            resolve();
+                                        }
+                                    });
+                                    
+                                    res.on('error', (err: any) => {
+                                        AgentLogger.error('Stream response error (API):', err);
+                                        callback(err, undefined);
+                                        reject(err);
+                                    });
+                                });
+                            
+                            req.on('error', (err: any) => {
+                                AgentLogger.error('Stream request error (API):', err);
+                                if (!streamResponse.destroyed && !streamResponse.writableEnded) {
+                                    streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: err.message || String(err) })}\n\n`);
+                                    streamResponse.end();
+                                }
+                                reject(err);
+                            });
+                            
+                            req.end();
+                        });
+                    } catch (error: any) {
+                        AgentLogger.error('Stream setup error (API):', error);
+                        if (!streamResponse.destroyed && !streamResponse.writableEnded) {
+                            streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: error.message || String(error) })}\n\n`);
+                            streamResponse.end();
+                        }
+                    }
+                };
+                
+                await processStream();
+                return;
+            }
+
+            // 非流式传输（原有逻辑）
             let currentResponse = await request.post(apiUrl)
                 .send(requestBody)
                 .set('Authorization', `Bearer ${aiApiKey}`)
@@ -696,8 +1114,16 @@ export class AgentApiHandler extends Handler {
                 response: error.response?.body,
                 stack: error.stack,
             });
-            this.response.body = { error: JSON.stringify(error.response?.body || error.message) };
-            this.response.status = 500;
+            if (stream) {
+                const streamResponse = this.response.body as PassThrough;
+                if (streamResponse && !streamResponse.destroyed) {
+                    streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: JSON.stringify(error.response?.body || error.message) })}\n\n`);
+                    streamResponse.end();
+                }
+            } else {
+                this.response.body = { error: JSON.stringify(error.response?.body || error.message) };
+                this.response.status = 500;
+            }
         }
     }
 }
