@@ -11,7 +11,7 @@ import {
     RecordNotFoundError, SolutionNotFoundError, ValidationError,DiscussionNotFoundError
 } from '../error';
 import {
-    Handler, param, post, query, route, Types,
+    Handler, ConnectionHandler, param, post, query, route, Types,
 } from '../service/server';
 import Agent from '../model/agent';
 import { PERM, PRIV, STATUS } from '../model/builtin';
@@ -327,8 +327,19 @@ export class AgentChatHandler extends Handler {
         const udoc = await user.getById(domainId, adoc.owner);
 
         const apiKey = (this.domain as any)['apiKey'] || '';
-        const model = (this.domain as any)['model'] || 'deepseek-chat';
+        const aiModel = (this.domain as any)['model'] || 'deepseek-chat';
         const apiUrl = (this.domain as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
+
+        let wsUrl = `/agent/${adoc.aid}/chat-ws`;
+        const host = this.domain?.host;
+        if (domainId !== 'system' && (
+            !this.request.host
+            || (host instanceof Array
+                ? (!host.includes(this.request.host))
+                : this.request.host !== host)
+        )) {
+            wsUrl = `/d/${domainId}${wsUrl}`;
+        }
 
         this.response.template = 'agent_chat.html';
         this.response.body = {
@@ -337,8 +348,9 @@ export class AgentChatHandler extends Handler {
             adoc,
             udoc,
             apiKey,
-            model,
+            aiModel,
             apiUrl,
+            wsUrl,
         };
     }
 
@@ -382,24 +394,19 @@ export class AgentChatHandler extends Handler {
         const mcpClient = new McpClient();
         const tools = await mcpClient.getTools();
         
-        // 使用agent的content作为system prompt
         const agentPrompt = adoc.content || '';
-        
-        // 构建system message：agent content + MCP tools信息
         let systemMessage = agentPrompt;
         if (tools.length > 0) {
-            const toolsInfo = '\n\n你可以使用以下工具。在适当时使用它们。\n\n' +
+            const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
               tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n');
             systemMessage = agentPrompt + toolsInfo;
         }
 
-        // 如果启用流式传输，设置 SSE 响应头
         if (stream) {
             this.response.type = 'text/event-stream';
             this.response.addHeader('Cache-Control', 'no-cache');
             this.response.addHeader('Connection', 'keep-alive');
             this.response.addHeader('X-Accel-Buffering', 'no');
-            // 直接设置 Koa context 的 type 和禁用压缩
             this.context.response.type = 'text/event-stream';
             this.context.compress = false;
         }
@@ -433,24 +440,44 @@ export class AgentChatHandler extends Handler {
                 { role: 'user', content: message },
             ];
 
-            // 流式传输处理
             if (stream) {
-                const streamResponse = new PassThrough();
-                this.response.body = streamResponse;
-                // 直接设置到 Koa context，确保流式响应正确传递
-                this.context.body = streamResponse;
+                const res = this.context.res;
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'text/event-stream');
+                res.setHeader('Cache-Control', 'no-cache');
+                res.setHeader('Connection', 'keep-alive');
+                res.setHeader('X-Accel-Buffering', 'no');
+                
+                if (this.context.req.socket) {
+                    this.context.req.socket.setNoDelay(true);
+                    this.context.req.socket.setKeepAlive(true);
+                }
+                
+                const streamResponse = new PassThrough({
+                    highWaterMark: 0,
+                    objectMode: false,
+                });
+                
+                streamResponse.pipe(res);
+                
+                this.context.compress = false;
+                (this.context.EjunzContext as any).request.websocket = true;
+                this.response.body = null;
+                this.context.body = null;
                 
                 let accumulatedContent = '';
                 let finishReason = '';
                 let toolCalls: any[] = [];
                 let iterations = 0;
                 const maxIterations = 5;
-                let streamFinished = false; // 标记流是否已完成
+                let streamFinished = false;
+                let waitingForToolCall = false;
 
                 const processStream = async () => {
                     try {
-                        AgentLogger.info('Starting stream request', { apiUrl, model });
+                        AgentLogger.info('Starting stream request', { apiUrl, model, streamEnabled: requestBody.stream });
                         streamFinished = false;
+                        waitingForToolCall = false;
                         
                         await new Promise<void>((resolve, reject) => {
                             const req = request.post(apiUrl)
@@ -460,7 +487,6 @@ export class AgentChatHandler extends Handler {
                                 .buffer(false)
                                 .timeout(60000)
                                 .parse((res, callback) => {
-                                    // 设置编码
                                     res.setEncoding('utf8');
                                     let buffer = '';
                                     
@@ -475,6 +501,11 @@ export class AgentChatHandler extends Handler {
                                             if (!line.trim() || !line.startsWith('data: ')) continue;
                                             const data = line.slice(6).trim();
                                             if (data === '[DONE]') {
+                                                if (waitingForToolCall) {
+                                                    AgentLogger.info('Received [DONE] but waiting for tool call, ignoring');
+                                                    callback(null, undefined);
+                                                    return;
+                                                }
                                                 if (!streamResponse.destroyed && !streamResponse.writableEnded && !streamFinished) {
                                                     streamFinished = true;
                                                     streamResponse.write(`data: ${JSON.stringify({ type: 'done', message: accumulatedContent, history: JSON.stringify([
@@ -497,17 +528,20 @@ export class AgentChatHandler extends Handler {
                                                 if (delta?.content) {
                                                     accumulatedContent += delta.content;
                                                     if (!streamResponse.destroyed && !streamResponse.writableEnded && !streamFinished) {
-                                                        // 立即发送每个 content 块，确保流式传输
                                                         const contentData = `data: ${JSON.stringify({ type: 'content', content: delta.content })}\n\n`;
-                                                        streamResponse.write(contentData);
+                                                        streamResponse.write(contentData, 'utf8', () => {
+                                                            AgentLogger.debug('Content chunk written:', delta.content.length, 'bytes');
+                                                        });
                                                         AgentLogger.debug('Sent content chunk:', delta.content.length, 'bytes');
                                                     }
                                                 }
                                                 
                                                 if (choice?.finish_reason) {
                                                     finishReason = choice.finish_reason;
-                                                    // finish_reason 表示流即将结束，但不立即关闭
-                                                    // 等待 end 事件再处理完成消息
+                                                    if (finishReason === 'tool_calls') {
+                                                        waitingForToolCall = true;
+                                                        AgentLogger.info('Tool call detected, will continue sending accumulated content');
+                                                    }
                                                     AgentLogger.info('Received finish_reason:', finishReason);
                                                 }
                                                 
@@ -527,16 +561,27 @@ export class AgentChatHandler extends Handler {
                                     });
                                     
                                     res.on('end', async () => {
-                                        AgentLogger.info('Stream ended', { finishReason, iterations, accumulatedLength: accumulatedContent.length, streamFinished });
+                                        AgentLogger.info('Stream ended', { finishReason, iterations, accumulatedLength: accumulatedContent.length, streamFinished, waitingForToolCall });
                                         callback(null, undefined);
                                         
-                                        // 只有在流未完成且需要工具调用时才处理
-                                        if (!streamFinished) {
-                                            // 处理工具调用或完成（异步处理，不阻塞 callback）
+                                        if (!streamFinished || waitingForToolCall) {
                                             (async () => {
                                                 try {
                                                     if (finishReason === 'tool_calls' && toolCalls.length > 0 && iterations < maxIterations) {
+                                                        if (streamFinished) {
+                                                            AgentLogger.info('Resetting streamFinished for tool call processing');
+                                                            streamFinished = false;
+                                                        }
+                                                        
                                                         iterations++;
+                                                        AgentLogger.info('Processing tool calls', { toolCallCount: toolCalls.length });
+                                                        
+                                                        if (!streamResponse.destroyed && !streamResponse.writableEnded) {
+                                                            const toolNames = toolCalls.map(tc => tc.function?.name || 'unknown').filter(Boolean);
+                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call_start', tools: toolNames })}\n\n`);
+                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call', tools: toolNames })}\n\n`);
+                                                        }
+                                                        
                                                         const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
                                                             id: tc.id || `call_${idx}`,
                                                             type: tc.type || 'function',
@@ -553,9 +598,20 @@ export class AgentChatHandler extends Handler {
                                                             } catch (e) {
                                                                 parsedArgs = {};
                                                             }
+                                                            AgentLogger.info(`Calling tool: ${toolCall.function.name}`, parsedArgs);
                                                             const toolResult = await mcpClient.callTool(toolCall.function.name, parsedArgs);
+                                                            AgentLogger.info(`Tool ${toolCall.function.name} returned`, { resultLength: JSON.stringify(toolResult).length });
                                                             toolMsgs.push({ role: 'tool', content: JSON.stringify(toolResult), tool_call_id: toolCall.id });
+                                                            
+                                                            if (!streamResponse.destroyed && !streamResponse.writableEnded) {
+                                                                streamResponse.write(`data: ${JSON.stringify({ type: 'tool_result', tool: toolCall.function.name, result: toolResult })}\n\n`);
+                                                            }
                                                         }
+                                                        
+                                                        if (!streamResponse.destroyed && !streamResponse.writableEnded) {
+                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call_complete' })}\n\n`);
+                                                        }
+                                                        
                                                         messagesForTurn = [
                                                             ...messagesForTurn,
                                                             assistantForTools,
@@ -564,10 +620,12 @@ export class AgentChatHandler extends Handler {
                                                         accumulatedContent = '';
                                                         finishReason = '';
                                                         toolCalls = [];
+                                                        waitingForToolCall = false;
                                                         requestBody.messages = messagesForTurn;
+                                                        requestBody.stream = true;
+                                                        AgentLogger.info('Continuing stream after tool call');
                                                         await processStream();
                                                     } else if (!streamFinished) {
-                                                        // 只有在流未关闭时才写入
                                                         streamFinished = true;
                                                         if (!streamResponse.destroyed && !streamResponse.writableEnded) {
                                                             streamResponse.write(`data: ${JSON.stringify({ type: 'done', message: accumulatedContent, history: JSON.stringify([
@@ -582,6 +640,7 @@ export class AgentChatHandler extends Handler {
                                                 } catch (err: any) {
                                                     AgentLogger.error('Error in stream end handler:', err);
                                                     streamFinished = true;
+                                                    waitingForToolCall = false;
                                                     if (!streamResponse.destroyed && !streamResponse.writableEnded) {
                                                         streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: err.message || String(err) })}\n\n`);
                                                         streamResponse.end();
@@ -625,7 +684,6 @@ export class AgentChatHandler extends Handler {
                 return;
             }
 
-            // 非流式传输（原有逻辑）
             let currentResponse = await request.post(apiUrl)
                 .send(requestBody)
                 .set('Authorization', `Bearer ${apiKey}`)
@@ -725,6 +783,332 @@ export class AgentChatHandler extends Handler {
     }
 }
 
+export class AgentChatConnectionHandler extends ConnectionHandler {
+    adoc?: AgentDoc;
+
+    @param('aid', Types.String)
+    async prepare(domainId: string, aid: string) {
+        try {
+            await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+            
+            if (!aid) {
+                AgentLogger.warn('WebSocket connection rejected: Agent ID is required');
+                this.close(4000, 'Agent ID is required');
+                return;
+            }
+
+            const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
+            this.adoc = await Agent.get(domainId, normalizedId);
+            if (!this.adoc) {
+                AgentLogger.warn('WebSocket connection rejected: Agent not found', { aid: normalizedId, domainId });
+                this.close(4000, `Agent not found: ${normalizedId}`);
+                return;
+            }
+
+            AgentLogger.info('WebSocket connection established for agent chat', { aid, domainId });
+            this.send({ type: 'connected', message: 'WebSocket connection established' });
+            AgentLogger.info('WebSocket prepare completed successfully', { aid, domainId });
+        } catch (error: any) {
+            AgentLogger.error('Error in WebSocket prepare:', error);
+            try {
+                this.send({ type: 'error', error: error.message || String(error) });
+            } catch (e) {
+                // ignore
+            }
+            try {
+                this.close(4000, error.message || String(error));
+            } catch (e) {
+                // ignore
+            }
+        }
+    }
+
+    async message(msg: any) {
+        AgentLogger.info('Received WebSocket message', { hasAdoc: !!this.adoc, msgType: typeof msg });
+        
+        if (!this.adoc) {
+            AgentLogger.warn('WebSocket message rejected: Agent not found');
+            this.send({ type: 'error', error: 'Agent not found' });
+            return;
+        }
+
+        let messageText: string;
+        let historyData: any;
+        
+        if (typeof msg === 'string') {
+            try {
+                const parsed = JSON.parse(msg);
+                messageText = parsed.message;
+                historyData = parsed.history;
+            } catch (e) {
+                AgentLogger.warn('Failed to parse message as JSON string', e);
+                this.send({ type: 'error', error: 'Invalid message format' });
+                return;
+            }
+        } else if (typeof msg === 'object' && msg !== null) {
+            messageText = msg.message;
+            historyData = msg.history;
+        } else {
+            AgentLogger.warn('Invalid message type', typeof msg);
+            this.send({ type: 'error', error: 'Invalid message format' });
+            return;
+        }
+        
+        const message = messageText;
+        const history = historyData;
+        if (!message) {
+            this.send({ type: 'error', error: 'Message cannot be empty' });
+            return;
+        }
+
+        const domainId = (this.domain as any)?.domainId || this.request.params?.domainId || '';
+        const apiKey = (this.domain as any)['apiKey'] || '';
+        const model = (this.domain as any)['model'] || 'deepseek-chat';
+        const apiUrl = (this.domain as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
+
+        if (!apiKey) {
+            this.send({ type: 'error', error: 'API Key not configured' });
+            return;
+        }
+
+        let chatHistory: ChatMessage[] = [];
+        try {
+            chatHistory = Array.isArray(history) ? history : JSON.parse(history || '[]');
+        } catch (e) {
+            // ignore parse error
+        }
+
+        const mcpClient = new McpClient();
+        const tools = await mcpClient.getTools();
+        
+        const agentPrompt = this.adoc.content || '';
+        let systemMessage = agentPrompt;
+        if (tools.length > 0) {
+            const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
+              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n');
+            systemMessage = agentPrompt + toolsInfo;
+        }
+
+        try {
+            const requestBody: any = {
+                model,
+                max_tokens: 1024,
+                messages: [
+                    { role: 'system', content: systemMessage },
+                    ...chatHistory,
+                    { role: 'user', content: message },
+                ],
+                stream: true,
+            };
+
+            if (tools.length > 0) {
+                requestBody.tools = tools.map(tool => ({
+                    type: 'function',
+                    function: {
+                        name: tool.name,
+                        description: tool.description,
+                        parameters: tool.inputSchema,
+                    },
+                }));
+            }
+
+            let messagesForTurn: any[] = [
+                { role: 'system', content: systemMessage },
+                ...chatHistory,
+                { role: 'user', content: message },
+            ];
+
+            let accumulatedContent = '';
+            let finishReason = '';
+            let toolCalls: any[] = [];
+            let iterations = 0;
+            const maxIterations = 5;
+            let streamFinished = false;
+            let waitingForToolCall = false;
+
+            const processStream = async () => {
+                try {
+                    AgentLogger.info('Starting WebSocket stream request', { apiUrl, model });
+                    streamFinished = false;
+                    waitingForToolCall = false;
+                    
+                    await new Promise<void>((resolve, reject) => {
+                        const req = request.post(apiUrl)
+                            .send(requestBody)
+                            .set('Authorization', `Bearer ${apiKey}`)
+                            .set('content-type', 'application/json')
+                            .buffer(false)
+                            .timeout(60000)
+                            .parse((res, callback) => {
+                                res.setEncoding('utf8');
+                                let buffer = '';
+                                
+                                res.on('data', (chunk: string) => {
+                                    if (streamFinished) return;
+                                    
+                                    buffer += chunk;
+                                    const lines = buffer.split('\n');
+                                    buffer = lines.pop() || '';
+                                    
+                                    for (const line of lines) {
+                                        if (!line.trim() || !line.startsWith('data: ')) continue;
+                                        const data = line.slice(6).trim();
+                                        if (data === '[DONE]') {
+                                            if (waitingForToolCall) {
+                                                AgentLogger.info('Received [DONE] but waiting for tool call, ignoring (WS)');
+                                                callback(null, undefined);
+                                                return;
+                                            }
+                                            streamFinished = true;
+                                            this.send({ type: 'done', message: accumulatedContent, history: JSON.stringify([
+                                                ...chatHistory,
+                                                { role: 'user', content: message },
+                                                { role: 'assistant', content: accumulatedContent },
+                                            ]) });
+                                            callback(null, undefined);
+                                            return;
+                                        }
+                                        if (!data) continue;
+                                        
+                                        try {
+                                            const parsed = JSON.parse(data);
+                                            const choice = parsed.choices?.[0];
+                                            const delta = choice?.delta;
+                                            
+                                            if (delta?.content) {
+                                                accumulatedContent += delta.content;
+                                                this.send({ type: 'content', content: delta.content });
+                                            }
+                                            
+                                            if (choice?.finish_reason) {
+                                                finishReason = choice.finish_reason;
+                                                if (finishReason === 'tool_calls') {
+                                                    waitingForToolCall = true;
+                                                    AgentLogger.info('Tool call detected (WS)');
+                                                }
+                                            }
+                                            
+                                            if (delta?.tool_calls) {
+                                                for (const toolCall of delta.tool_calls || []) {
+                                                    const idx = toolCall.index || 0;
+                                                    if (!toolCalls[idx]) toolCalls[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+                                                    if (toolCall.id) toolCalls[idx].id = toolCall.id;
+                                                    if (toolCall.function?.name) toolCalls[idx].function.name = toolCall.function.name;
+                                                    if (toolCall.function?.arguments) toolCalls[idx].function.arguments += toolCall.function.arguments;
+                                                }
+                                            }
+                                        } catch (e) {
+                                            AgentLogger.warn('Parse error in stream (WS):', e);
+                                        }
+                                    }
+                                });
+                                
+                                res.on('end', async () => {
+                                    AgentLogger.info('Stream ended (WS)', { finishReason, iterations, accumulatedLength: accumulatedContent.length, waitingForToolCall });
+                                    callback(null, undefined);
+                                    
+                                    if (!streamFinished || waitingForToolCall) {
+                                        (async () => {
+                                            try {
+                                                if (finishReason === 'tool_calls' && toolCalls.length > 0 && iterations < maxIterations) {
+                                                    if (streamFinished) {
+                                                        streamFinished = false;
+                                                    }
+                                                    
+                                                    iterations++;
+                                                    AgentLogger.info('Processing tool calls (WS)', { toolCallCount: toolCalls.length });
+                                                    
+                                                    const toolNames = toolCalls.map(tc => tc.function?.name || 'unknown').filter(Boolean);
+                                                    this.send({ type: 'tool_call_start', tools: toolNames });
+                                                    
+                                                    const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
+                                                        id: tc.id || `call_${idx}`,
+                                                        type: tc.type || 'function',
+                                                        function: {
+                                                            name: tc.function.name,
+                                                            arguments: tc.function.arguments,
+                                                        },
+                                                    })) };
+                                                    const toolMsgs: any[] = [];
+                                                    for (const toolCall of assistantForTools.tool_calls) {
+                                                        let parsedArgs: any = {};
+                                                        try {
+                                                            parsedArgs = JSON.parse(toolCall.function.arguments);
+                                                        } catch (e) {
+                                                            parsedArgs = {};
+                                                        }
+                                                        AgentLogger.info(`Calling tool: ${toolCall.function.name} (WS)`, parsedArgs);
+                                                        const toolResult = await mcpClient.callTool(toolCall.function.name, parsedArgs);
+                                                        AgentLogger.info(`Tool ${toolCall.function.name} returned (WS)`, { resultLength: JSON.stringify(toolResult).length });
+                                                        toolMsgs.push({ role: 'tool', content: JSON.stringify(toolResult), tool_call_id: toolCall.id });
+                                                        
+                                                        this.send({ type: 'tool_result', tool: toolCall.function.name, result: toolResult });
+                                                    }
+                                                    
+                                                    this.send({ type: 'tool_call_complete' });
+                                                    
+                                                    messagesForTurn = [
+                                                        ...messagesForTurn,
+                                                        assistantForTools,
+                                                        ...toolMsgs,
+                                                    ];
+                                                    accumulatedContent = '';
+                                                    finishReason = '';
+                                                    toolCalls = [];
+                                                    waitingForToolCall = false;
+                                                    requestBody.messages = messagesForTurn;
+                                                    requestBody.stream = true;
+                                                    AgentLogger.info('Continuing stream after tool call (WS)');
+                                                    await processStream();
+                                                } else if (!streamFinished) {
+                                                    streamFinished = true;
+                                                    this.send({ type: 'done', message: accumulatedContent, history: JSON.stringify([
+                                                        ...chatHistory,
+                                                        { role: 'user', content: message },
+                                                        { role: 'assistant', content: accumulatedContent },
+                                                    ]) });
+                                                }
+                                                resolve();
+                                            } catch (err: any) {
+                                                AgentLogger.error('Error in stream end handler (WS):', err);
+                                                this.send({ type: 'error', error: err.message || String(err) });
+                                                resolve();
+                                            }
+                                        })();
+                                    } else {
+                                        resolve();
+                                    }
+                                });
+                                
+                                res.on('error', (err: any) => {
+                                    AgentLogger.error('Stream response error (WS):', err);
+                                    callback(err, undefined);
+                                    reject(err);
+                                });
+                            });
+                        
+                        req.on('error', (err: any) => {
+                            AgentLogger.error('Stream request error (WS):', err);
+                            this.send({ type: 'error', error: err.message || String(err) });
+                            reject(err);
+                        });
+                        
+                        req.end();
+                    });
+                } catch (error: any) {
+                    AgentLogger.error('Stream setup error (WS):', error);
+                    this.send({ type: 'error', error: error.message || String(error) });
+                }
+            };
+            
+            await processStream();
+        } catch (error: any) {
+            AgentLogger.error('AI Chat Error (WS):', error);
+            this.send({ type: 'error', error: JSON.stringify(error.response?.body || error.message) });
+        }
+    }
+}
+
 export class AgentApiHandler extends Handler {
     noCheckPermView = true;
     allowCors = true;
@@ -732,7 +1116,6 @@ export class AgentApiHandler extends Handler {
     async all() {
         this.response.template = null;
         
-        // 从请求头或查询参数获取apiKey
         const apiKey = this.request.headers['x-api-key'] 
             || this.request.headers['authorization']?.replace(/^Bearer /i, '')
             || this.request.query?.apiKey as string
@@ -744,7 +1127,6 @@ export class AgentApiHandler extends Handler {
             return;
         }
 
-        // 根据apiKey查找agent
         const adoc = await Agent.getByApiKey(apiKey);
         if (!adoc) {
             this.response.body = { error: 'Invalid API Key' };
@@ -752,7 +1134,6 @@ export class AgentApiHandler extends Handler {
             return;
         }
 
-        // 获取domain配置
         const domainInfo = await domain.get(adoc.domainId);
         if (!domainInfo) {
             this.response.body = { error: 'Domain not found' };
@@ -793,18 +1174,16 @@ export class AgentApiHandler extends Handler {
         const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;
         if (tools.length > 0) {
-            const toolsInfo = '\n\n你可以使用以下工具。在适当时使用它们。\n\n' +
+            const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
               tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n');
             systemMessage = agentPrompt + toolsInfo;
         }
 
-        // 如果启用流式传输，设置 SSE 响应头
         if (stream) {
             this.response.type = 'text/event-stream';
             this.response.addHeader('Cache-Control', 'no-cache');
             this.response.addHeader('Connection', 'keep-alive');
             this.response.addHeader('X-Accel-Buffering', 'no');
-            // 直接设置 Koa context 的 type 和禁用压缩
             this.context.response.type = 'text/event-stream';
             this.context.compress = false;
         }
@@ -838,24 +1217,44 @@ export class AgentApiHandler extends Handler {
                 { role: 'user', content: message },
             ];
 
-            // 流式传输处理
             if (stream) {
-                const streamResponse = new PassThrough();
-                this.response.body = streamResponse;
-                // 直接设置到 Koa context，确保流式响应正确传递
-                this.context.body = streamResponse;
+                const res = this.context.res;
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'text/event-stream');
+                res.setHeader('Cache-Control', 'no-cache');
+                res.setHeader('Connection', 'keep-alive');
+                res.setHeader('X-Accel-Buffering', 'no');
+                
+                if (this.context.req.socket) {
+                    this.context.req.socket.setNoDelay(true);
+                    this.context.req.socket.setKeepAlive(true);
+                }
+                
+                const streamResponse = new PassThrough({
+                    highWaterMark: 0,
+                    objectMode: false,
+                });
+                
+                streamResponse.pipe(res);
+                
+                this.context.compress = false;
+                (this.context.EjunzContext as any).request.websocket = true;
+                this.response.body = null;
+                this.context.body = null;
                 
                 let accumulatedContent = '';
                 let finishReason = '';
                 let toolCalls: any[] = [];
                 let iterations = 0;
                 const maxIterations = 5;
-                let streamFinished = false; // 标记流是否已完成
+                let streamFinished = false;
+                let waitingForToolCall = false;
 
                 const processStream = async () => {
                     try {
-                        AgentLogger.info('Starting stream request (API)', { apiUrl, model });
+                        AgentLogger.info('Starting stream request (API)', { apiUrl, model, streamEnabled: requestBody.stream });
                         streamFinished = false;
+                        waitingForToolCall = false;
                         
                         await new Promise<void>((resolve, reject) => {
                             const req = request.post(apiUrl)
@@ -879,6 +1278,11 @@ export class AgentApiHandler extends Handler {
                                             if (!line.trim() || !line.startsWith('data: ')) continue;
                                             const data = line.slice(6).trim();
                                             if (data === '[DONE]') {
+                                                if (waitingForToolCall) {
+                                                    AgentLogger.info('Received [DONE] but waiting for tool call, ignoring (API)');
+                                                    callback(null, undefined);
+                                                    return;
+                                                }
                                                 if (!streamResponse.destroyed && !streamResponse.writableEnded && !streamFinished) {
                                                     streamFinished = true;
                                                     streamResponse.write(`data: ${JSON.stringify({ type: 'done', message: accumulatedContent, history: JSON.stringify([
@@ -901,17 +1305,20 @@ export class AgentApiHandler extends Handler {
                                                 if (delta?.content) {
                                                     accumulatedContent += delta.content;
                                                     if (!streamResponse.destroyed && !streamResponse.writableEnded && !streamFinished) {
-                                                        // 立即发送每个 content 块，确保流式传输
                                                         const contentData = `data: ${JSON.stringify({ type: 'content', content: delta.content })}\n\n`;
-                                                        streamResponse.write(contentData);
+                                                        streamResponse.write(contentData, 'utf8', () => {
+                                                            AgentLogger.debug('Content chunk written:', delta.content.length, 'bytes');
+                                                        });
                                                         AgentLogger.debug('Sent content chunk:', delta.content.length, 'bytes');
                                                     }
                                                 }
                                                 
                                                 if (choice?.finish_reason) {
                                                     finishReason = choice.finish_reason;
-                                                    // finish_reason 表示流即将结束，但不立即关闭
-                                                    // 等待 end 事件再处理完成消息
+                                                    if (finishReason === 'tool_calls') {
+                                                        waitingForToolCall = true;
+                                                        AgentLogger.info('Tool call detected, will continue sending accumulated content (API)');
+                                                    }
                                                     AgentLogger.info('Received finish_reason:', finishReason);
                                                 }
                                                 
@@ -931,15 +1338,27 @@ export class AgentApiHandler extends Handler {
                                     });
                                     
                                     res.on('end', async () => {
-                                        AgentLogger.info('Stream ended (API)', { finishReason, iterations, accumulatedLength: accumulatedContent.length, streamFinished });
+                                        AgentLogger.info('Stream ended (API)', { finishReason, iterations, accumulatedLength: accumulatedContent.length, streamFinished, waitingForToolCall });
                                         callback(null, undefined);
                                         
-                                        // 只有在流未完成且需要工具调用时才处理
-                                        if (!streamFinished) {
+                                        if (!streamFinished || waitingForToolCall) {
                                             (async () => {
                                                 try {
                                                     if (finishReason === 'tool_calls' && toolCalls.length > 0 && iterations < maxIterations) {
+                                                        if (streamFinished) {
+                                                            AgentLogger.info('Resetting streamFinished for tool call processing (API)');
+                                                            streamFinished = false;
+                                                        }
+                                                        
                                                         iterations++;
+                                                        AgentLogger.info('Processing tool calls (API)', { toolCallCount: toolCalls.length });
+                                                        
+                                                        if (!streamResponse.destroyed && !streamResponse.writableEnded) {
+                                                            const toolNames = toolCalls.map(tc => tc.function?.name || 'unknown').filter(Boolean);
+                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call_start', tools: toolNames })}\n\n`);
+                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call', tools: toolNames })}\n\n`);
+                                                        }
+                                                        
                                                         const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
                                                             id: tc.id || `call_${idx}`,
                                                             type: tc.type || 'function',
@@ -956,9 +1375,20 @@ export class AgentApiHandler extends Handler {
                                                             } catch (e) {
                                                                 parsedArgs = {};
                                                             }
+                                                            AgentLogger.info(`Calling tool: ${toolCall.function.name}`, parsedArgs);
                                                             const toolResult = await mcpClient.callTool(toolCall.function.name, parsedArgs);
+                                                            AgentLogger.info(`Tool ${toolCall.function.name} returned`, { resultLength: JSON.stringify(toolResult).length });
                                                             toolMsgs.push({ role: 'tool', content: JSON.stringify(toolResult), tool_call_id: toolCall.id });
+                                                            
+                                                            if (!streamResponse.destroyed && !streamResponse.writableEnded) {
+                                                                streamResponse.write(`data: ${JSON.stringify({ type: 'tool_result', tool: toolCall.function.name, result: toolResult })}\n\n`);
+                                                            }
                                                         }
+                                                        
+                                                        if (!streamResponse.destroyed && !streamResponse.writableEnded) {
+                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call_complete' })}\n\n`);
+                                                        }
+                                                        
                                                         messagesForTurn = [
                                                             ...messagesForTurn,
                                                             assistantForTools,
@@ -967,7 +1397,10 @@ export class AgentApiHandler extends Handler {
                                                         accumulatedContent = '';
                                                         finishReason = '';
                                                         toolCalls = [];
+                                                        waitingForToolCall = false;
                                                         requestBody.messages = messagesForTurn;
+                                                        requestBody.stream = true;
+                                                        AgentLogger.info('Continuing stream after tool call (API)');
                                                         await processStream();
                                                     } else if (!streamFinished) {
                                                         streamFinished = true;
@@ -984,6 +1417,7 @@ export class AgentApiHandler extends Handler {
                                                 } catch (err: any) {
                                                     AgentLogger.error('Error in stream end handler (API):', err);
                                                     streamFinished = true;
+                                                    waitingForToolCall = false;
                                                     if (!streamResponse.destroyed && !streamResponse.writableEnded) {
                                                         streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: err.message || String(err) })}\n\n`);
                                                         streamResponse.end();
@@ -1027,7 +1461,6 @@ export class AgentApiHandler extends Handler {
                 return;
             }
 
-            // 非流式传输（原有逻辑）
             let currentResponse = await request.post(apiUrl)
                 .send(requestBody)
                 .set('Authorization', `Bearer ${aiApiKey}`)
@@ -1115,7 +1548,6 @@ export class AgentApiHandler extends Handler {
                 stack: error.stack,
             });
             if (stream) {
-                // 确保流响应已初始化，如果未初始化则创建一个新的
                 let streamResponse = this.response.body as PassThrough;
                 if (!streamResponse || !(streamResponse instanceof PassThrough)) {
                     streamResponse = new PassThrough();
@@ -1224,9 +1656,8 @@ export async function apply(ctx: Context) {
     ctx.Route('agent_create', '/agent/create', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_detail', '/agent/:aid', AgentDetailHandler);
     ctx.Route('agent_chat', '/agent/:aid/chat', AgentChatHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Connection('agent_chat_ws', '/agent/:aid/chat-ws', AgentChatConnectionHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_edit', '/agent/:aid/edit', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_mcp_status', '/agent/:aid/mcp-tools/status', AgentMcpStatusHandler);
     ctx.Route('agent_api', '/api/agent', AgentApiHandler);
-
-    
 }

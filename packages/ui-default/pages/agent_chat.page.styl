@@ -1,0 +1,169 @@
+.chat-container
+  display: flex
+  flex-direction: column
+  height: 70vh
+  border: 1px solid #e0e0e0
+  border-radius: 8px
+  background: #f9f9f9
+
+  .chat-messages
+    flex: 1
+    overflow-y: auto
+    padding: 16px
+
+  .chat-input-container
+    display: flex
+    padding: 16px
+    border-top: 1px solid #e0e0e0
+    background: white
+
+    textarea
+      flex: 1
+      margin-right: 12px
+      padding: 12px
+      border: 1px solid #e0e0e0
+      border-radius: 4px
+      resize: none
+      font-family: inherit
+
+    .send-button
+      padding: 12px 24px
+      background: #007acc
+      color: white
+      border: none
+      border-radius: 4px
+      cursor: pointer
+      transition: background 0.2s
+
+.api-key-warning
+  padding: 12px
+  background: #f48771
+  color: white
+  border-radius: 4px
+  margin-bottom: 16px
+
+.mcp-status-container
+  margin-bottom: 12px
+
+.chat-message
+  margin-bottom: 16px
+  padding: 12px
+  border-radius: 8px
+  max-width: 80%
+  word-wrap: break-word
+
+  &.user
+    background: #007acc
+    color: white
+    margin-left: auto
+    text-align: right
+
+  &.assistant
+    background: #e0e0e0
+    color: #333
+    margin-right: auto
+    text-align: left
+
+    .message-text
+      text-align: left
+      width: 100%
+
+  &.error
+    background: #f48771
+    color: white
+    max-width: 100%
+
+.mcp-status
+  font-size: 12px
+  padding: 4px 12px
+  border-radius: 4px
+  background: #e0e0e0
+  display: inline-block
+
+  &.connected
+    background: #4caf50
+    color: white
+
+  &.disconnected
+    background: #f44336
+    color: white
+
+.button:hover
+  background: #005999
+
+.button:disabled
+  background: #ccc
+  cursor: not-allowed
+
+.loading
+  display: inline-block
+  width: 12px
+  height: 12px
+  border: 2px solid #ccc
+  border-top-color: #007acc
+  border-radius: 50%
+  animation: spin 0.6s linear infinite
+
+@keyframes spin
+  to
+    transform: rotate(360deg)
+
+.chat-message.assistant .tool-call-status
+  margin: 8px 0
+  padding: 8px 12px
+  background: #fff3cd
+  border-left: 3px solid #ffc107
+  border-radius: 4px
+  font-size: 13px
+  display: flex
+  align-items: center
+  gap: 8px
+  text-align: left
+  width: 100%
+  margin-left: 0
+
+  &.calling
+    background: #e3f2fd
+    border-left-color: #2196f3
+
+  &.completed
+    background: #e8f5e9
+    border-left-color: #4caf50
+
+  &.failed
+    background: #ffebee
+    border-left-color: #f44336
+
+  &.unknown
+    background: #f5f5f5
+    border-left-color: #9e9e9e
+
+.tool-call-icon
+  width: 16px
+  height: 16px
+
+.tool-call-result
+  margin-top: 8px
+  padding: 8px 12px
+  background: #f5f5f5
+  border-radius: 4px
+  font-size: 12px
+  max-height: 200px
+  overflow-y: auto
+  white-space: pre-wrap
+  word-wrap: break-word
+  display: none
+
+  &.expanded
+    display: block
+
+.tool-call-toggle
+  color: #007acc
+  cursor: pointer
+  text-decoration: underline
+  font-size: 12px
+  margin-left: 8px
+
+  &:hover
+    color: #005999
+
