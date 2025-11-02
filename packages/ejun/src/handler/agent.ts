@@ -396,15 +396,16 @@ export class AgentChatHandler extends Handler {
         
         const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;
-        // 禁止使用表情符号
-        if (systemMessage && !systemMessage.includes('不使用表情')) {
-            systemMessage += '\n\n注意：请勿在回复中使用任何表情符号（emoji）。';
+        // Prohibit using emojis
+        if (systemMessage && !systemMessage.includes('do not use emoji') && !systemMessage.includes('不使用表情')) {
+            systemMessage += '\n\nNote: Do not use any emoji in your responses.';
         } else if (!systemMessage) {
-            systemMessage = '注意：请勿在回复中使用任何表情符号（emoji）。';
+            systemMessage = 'Note: Do not use any emoji in your responses.';
         }
         if (tools.length > 0) {
             const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
-              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n');
+              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
+              '\n\n【IMPORTANT RULES】You must strictly adhere to the following rules for tool calls:\n1. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n2. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n3. Each tool call response should be independent and focused solely on the current tool\'s result.\n4. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n5. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n6. Tool calls proceed one by one sequentially: call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n7. If multiple tools are needed, proceed one by one: call the first tool → reply with the first tool\'s result → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
             systemMessage = systemMessage + toolsInfo;
         }
 
@@ -583,9 +584,10 @@ export class AgentChatHandler extends Handler {
                                                         AgentLogger.info('Processing tool calls', { toolCallCount: toolCalls.length });
                                                         
                                                         if (!streamResponse.destroyed && !streamResponse.writableEnded) {
-                                                            const toolNames = toolCalls.map(tc => tc.function?.name || 'unknown').filter(Boolean);
-                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call_start', tools: toolNames })}\n\n`);
-                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call', tools: toolNames })}\n\n`);
+                                                            // 只发送第一个工具的名称
+                                                            const firstToolName = toolCalls[0]?.function?.name || 'unknown';
+                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call_start', tools: [firstToolName] })}\n\n`);
+                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call', tools: [firstToolName] })}\n\n`);
                                                         }
                                                         
                                                         const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
@@ -596,32 +598,53 @@ export class AgentChatHandler extends Handler {
                                                                 arguments: tc.function.arguments,
                                                             },
                                                         })) };
-                                                        const toolMsgs: any[] = [];
-                                                        for (const toolCall of assistantForTools.tool_calls) {
-                                                            let parsedArgs: any = {};
-                                                            try {
-                                                                parsedArgs = JSON.parse(toolCall.function.arguments);
-                                                            } catch (e) {
-                                                                parsedArgs = {};
-                                                            }
-                                                            AgentLogger.info(`Calling tool: ${toolCall.function.name}`, parsedArgs);
-                                                            const toolResult = await mcpClient.callTool(toolCall.function.name, parsedArgs);
-                                                            AgentLogger.info(`Tool ${toolCall.function.name} returned`, { resultLength: JSON.stringify(toolResult).length });
-                                                            toolMsgs.push({ role: 'tool', content: JSON.stringify(toolResult), tool_call_id: toolCall.id });
-                                                            
-                                                            if (!streamResponse.destroyed && !streamResponse.writableEnded) {
-                                                                streamResponse.write(`data: ${JSON.stringify({ type: 'tool_result', tool: toolCall.function.name, result: toolResult })}\n\n`);
-                                                            }
+                                                        
+                                                        // 一个工具一个回复模式：每次只调用第一个工具，然后立即让AI回复
+                                                        const firstToolCall = assistantForTools.tool_calls[0];
+                                                        
+                                                        if (!firstToolCall) {
+                                                            AgentLogger.warn('No tool call found in assistant message');
+                                                            return;
                                                         }
                                                         
+                                                        let parsedArgs: any = {};
+                                                        try {
+                                                            parsedArgs = JSON.parse(firstToolCall.function.arguments);
+                                                        } catch (e) {
+                                                            parsedArgs = {};
+                                                        }
+                                                        
+                                                        AgentLogger.info(`Calling first tool: ${firstToolCall.function.name} (One-by-One Mode)`, parsedArgs);
+                                                        
+                                                        let toolResult: any;
+                                                        try {
+                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs);
+                                                            AgentLogger.info(`Tool ${firstToolCall.function.name} returned`, { resultLength: JSON.stringify(toolResult).length });
+                                                        } catch (toolError: any) {
+                                                            AgentLogger.error(`Tool ${firstToolCall.function.name} failed:`, toolError);
+                                                            toolResult = {
+                                                                error: true,
+                                                                message: toolError.message || String(toolError),
+                                                                code: toolError.code || 'UNKNOWN_ERROR',
+                                                            };
+                                                        }
+                                                        
+                                                        const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
+                                                        
                                                         if (!streamResponse.destroyed && !streamResponse.writableEnded) {
+                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_result', tool: firstToolCall.function.name, result: toolResult })}\n\n`);
                                                             streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call_complete' })}\n\n`);
                                                         }
                                                         
+                                                        // 构建消息历史（只包含第一个工具调用和结果）
                                                         messagesForTurn = [
                                                             ...messagesForTurn,
-                                                            assistantForTools,
-                                                            ...toolMsgs,
+                                                            { 
+                                                                role: 'assistant', 
+                                                                content: accumulatedContent, 
+                                                                tool_calls: [firstToolCall] // 只包含已调用的工具
+                                                            },
+                                                            toolMsg,
                                                         ];
                                                         accumulatedContent = '';
                                                         finishReason = '';
@@ -629,7 +652,10 @@ export class AgentChatHandler extends Handler {
                                                         waitingForToolCall = false;
                                                         requestBody.messages = messagesForTurn;
                                                         requestBody.stream = true;
-                                                        AgentLogger.info('Continuing stream after tool call');
+                                                        AgentLogger.info('Continuing stream after first tool call', { 
+                                                            toolName: firstToolCall.function.name,
+                                                            remainingTools: assistantForTools.tool_calls.length - 1
+                                                        });
                                                         await processStream();
                                                     } else if (!streamFinished) {
                                                         streamFinished = true;
@@ -707,26 +733,35 @@ export class AgentChatHandler extends Handler {
                     const toolCalls = msg.tool_calls || [];
                     if (!toolCalls.length) break;
 
-                    const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls };
-                    const toolMsgs: any[] = [];
-                    for (const toolCall of toolCalls) {
-                        let parsedArgs: any = {};
-                        try {
-                            parsedArgs = typeof toolCall.function?.arguments === 'string'
-                                ? JSON.parse(toolCall.function.arguments)
-                                : toolCall.function?.arguments || {};
-                        } catch (e) {
-                            parsedArgs = {};
-                        }
-                        const toolResult = await mcpClient.callTool(toolCall.function?.name, parsedArgs);
-                        AgentLogger.info('Tool returned:', { toolResult });
-                        toolMsgs.push({ role: 'tool', content: JSON.stringify(toolResult), tool_call_id: toolCall.id });
+                    // 一个工具一个回复模式：每次只调用第一个工具
+                    const firstToolCall = toolCalls[0];
+                    if (!firstToolCall) break;
+
+                    let parsedArgs: any = {};
+                    try {
+                        parsedArgs = typeof firstToolCall.function?.arguments === 'string'
+                            ? JSON.parse(firstToolCall.function.arguments)
+                            : firstToolCall.function?.arguments || {};
+                    } catch (e) {
+                        parsedArgs = {};
                     }
+                    
+                    AgentLogger.info(`Calling first tool: ${firstToolCall.function?.name} (One-by-One Mode)`);
+                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, parsedArgs);
+                    AgentLogger.info('Tool returned:', { toolResult });
+                    
+                    const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
+                    
+                    const assistantForTools: any = { 
+                        role: 'assistant', 
+                        content: msg.content || '',
+                        tool_calls: [firstToolCall] // 只包含已调用的工具
+                    };
 
                     messagesForTurn = [
                         ...messagesForTurn,
                         assistantForTools,
-                        ...toolMsgs,
+                        toolMsg,
                     ];
 
                     iterations += 1;
@@ -889,15 +924,16 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
         
         const agentPrompt = this.adoc.content || '';
         let systemMessage = agentPrompt;
-        // 禁止使用表情符号
-        if (systemMessage && !systemMessage.includes('不使用表情')) {
-            systemMessage += '\n\n注意：请勿在回复中使用任何表情符号（emoji）。';
+        // Prohibit using emojis
+        if (systemMessage && !systemMessage.includes('do not use emoji') && !systemMessage.includes('不使用表情')) {
+            systemMessage += '\n\nNote: Do not use any emoji in your responses.';
         } else if (!systemMessage) {
-            systemMessage = '注意：请勿在回复中使用任何表情符号（emoji）。';
+            systemMessage = 'Note: Do not use any emoji in your responses.';
         }
         if (tools.length > 0) {
             const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
-              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n');
+              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
+              '\n\n【IMPORTANT RULES】You must strictly adhere to the following rules for tool calls:\n1. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n2. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n3. Each tool call response should be independent and focused solely on the current tool\'s result.\n4. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n5. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n6. Tool calls proceed one by one sequentially: call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n7. If multiple tools are needed, proceed one by one: call the first tool → reply with the first tool\'s result → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
             systemMessage = systemMessage + toolsInfo;
         }
 
@@ -1002,11 +1038,20 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
                                             
                                             if (delta?.tool_calls) {
                                                 for (const toolCall of delta.tool_calls || []) {
-                                                    const idx = toolCall.index || 0;
-                                                    if (!toolCalls[idx]) toolCalls[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
-                                                    if (toolCall.id) toolCalls[idx].id = toolCall.id;
-                                                    if (toolCall.function?.name) toolCalls[idx].function.name = toolCall.function.name;
-                                                    if (toolCall.function?.arguments) toolCalls[idx].function.arguments += toolCall.function.arguments;
+                                                    // 强制只保留第一个工具调用（index=0），丢弃其他工具调用
+                                                    // 这是为了确保每次只执行一个工具
+                                                    if (toolCall.index === 0 || toolCalls.length === 0) {
+                                                        const idx = toolCall.index || 0;
+                                                        if (idx === 0) {
+                                                            if (!toolCalls[0]) toolCalls[0] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+                                                            if (toolCall.id) toolCalls[0].id = toolCall.id;
+                                                            if (toolCall.function?.name) toolCalls[0].function.name = toolCall.function.name;
+                                                            if (toolCall.function?.arguments) toolCalls[0].function.arguments += toolCall.function.arguments;
+                                                        }
+                                                    } else {
+                                                        // 忽略其他工具调用（index > 0）
+                                                        AgentLogger.info(`Ignoring additional tool call (index ${toolCall.index}), only processing first tool (Stream)`);
+                                                    }
                                                 }
                                             }
                                         } catch (e) {
@@ -1030,8 +1075,9 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
                                                     iterations++;
                                                     AgentLogger.info('Processing tool calls (WS)', { toolCallCount: toolCalls.length });
                                                     
-                                                    const toolNames = toolCalls.map(tc => tc.function?.name || 'unknown').filter(Boolean);
-                                                    this.send({ type: 'tool_call_start', tools: toolNames });
+                                                    // 只发送第一个工具的名称
+                                                    const firstToolName = toolCalls[0]?.function?.name || 'unknown';
+                                                    this.send({ type: 'tool_call_start', tools: [firstToolName] });
                                                     
                                                     const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
                                                         id: tc.id || `call_${idx}`,
@@ -1041,28 +1087,51 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
                                                             arguments: tc.function.arguments,
                                                         },
                                                     })) };
-                                                    const toolMsgs: any[] = [];
-                                                    for (const toolCall of assistantForTools.tool_calls) {
-                                                        let parsedArgs: any = {};
-                                                        try {
-                                                            parsedArgs = JSON.parse(toolCall.function.arguments);
-                                                        } catch (e) {
-                                                            parsedArgs = {};
-                                                        }
-                                                        AgentLogger.info(`Calling tool: ${toolCall.function.name} (WS)`, parsedArgs);
-                                                        const toolResult = await mcpClient.callTool(toolCall.function.name, parsedArgs);
-                                                        AgentLogger.info(`Tool ${toolCall.function.name} returned (WS)`, { resultLength: JSON.stringify(toolResult).length });
-                                                        toolMsgs.push({ role: 'tool', content: JSON.stringify(toolResult), tool_call_id: toolCall.id });
-                                                        
-                                                        this.send({ type: 'tool_result', tool: toolCall.function.name, result: toolResult });
+                                                    
+                                                    // 一个工具一个回复模式：每次只调用第一个工具，然后立即让AI回复
+                                                    const firstToolCall = assistantForTools.tool_calls[0];
+                                                    
+                                                    if (!firstToolCall) {
+                                                        AgentLogger.warn('No tool call found in assistant message (WS)');
+                                                        return;
                                                     }
                                                     
+                                                    let parsedArgs: any = {};
+                                                    try {
+                                                        parsedArgs = JSON.parse(firstToolCall.function.arguments);
+                                                    } catch (e) {
+                                                        parsedArgs = {};
+                                                    }
+                                                    
+                                                    AgentLogger.info(`Calling first tool: ${firstToolCall.function.name} (WS - One-by-One Mode)`, parsedArgs);
+                                                    
+                                                    let toolResult: any;
+                                                    try {
+                                                        toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs);
+                                                        AgentLogger.info(`Tool ${firstToolCall.function.name} returned (WS)`, { resultLength: JSON.stringify(toolResult).length });
+                                                    } catch (toolError: any) {
+                                                        AgentLogger.error(`Tool ${firstToolCall.function.name} failed (WS):`, toolError);
+                                                        toolResult = {
+                                                            error: true,
+                                                            message: toolError.message || String(toolError),
+                                                            code: toolError.code || 'UNKNOWN_ERROR',
+                                                        };
+                                                    }
+                                                    
+                                                    const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
+                                                    
+                                                    this.send({ type: 'tool_result', tool: firstToolCall.function.name, result: toolResult });
                                                     this.send({ type: 'tool_call_complete' });
                                                     
+                                                    // 构建消息历史（只包含第一个工具调用和结果）
                                                     messagesForTurn = [
                                                         ...messagesForTurn,
-                                                        assistantForTools,
-                                                        ...toolMsgs,
+                                                        { 
+                                                            role: 'assistant', 
+                                                            content: accumulatedContent, 
+                                                            tool_calls: [firstToolCall] // 只包含已调用的工具
+                                                        },
+                                                        toolMsg,
                                                     ];
                                                     accumulatedContent = '';
                                                     finishReason = '';
@@ -1070,7 +1139,10 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
                                                     waitingForToolCall = false;
                                                     requestBody.messages = messagesForTurn;
                                                     requestBody.stream = true;
-                                                    AgentLogger.info('Continuing stream after tool call (WS)');
+                                                    AgentLogger.info('Continuing stream after first tool call (WS)', { 
+                                                        toolName: firstToolCall.function.name,
+                                                        remainingTools: assistantForTools.tool_calls.length - 1
+                                                    });
                                                     await processStream();
                                                 } else if (!streamFinished) {
                                                     streamFinished = true;
@@ -1227,15 +1299,16 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
         
         const agentPrompt = this.adoc.content || '';
         let systemMessage = agentPrompt;
-        // 禁止使用表情符号
-        if (systemMessage && !systemMessage.includes('不使用表情')) {
-            systemMessage += '\n\n注意：请勿在回复中使用任何表情符号（emoji）。';
+        // Prohibit using emojis
+        if (systemMessage && !systemMessage.includes('do not use emoji') && !systemMessage.includes('不使用表情')) {
+            systemMessage += '\n\nNote: Do not use any emoji in your responses.';
         } else if (!systemMessage) {
-            systemMessage = '注意：请勿在回复中使用任何表情符号（emoji）。';
+            systemMessage = 'Note: Do not use any emoji in your responses.';
         }
         if (tools.length > 0) {
             const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
-              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n');
+              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
+              '\n\n【IMPORTANT RULES】You must strictly adhere to the following rules for tool calls:\n1. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n2. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n3. Each tool call response should be independent and focused solely on the current tool\'s result.\n4. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n5. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n6. Tool calls proceed one by one sequentially: call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n7. If multiple tools are needed, proceed one by one: call the first tool → reply with the first tool\'s result → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
             systemMessage = systemMessage + toolsInfo;
         }
 
@@ -1338,137 +1411,27 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                                     waitingForToolCall = true;
                                                     AgentLogger.info('Tool call detected (Stream), will process immediately');
                                                     
-                                                    // 立即开始并行处理工具调用，不阻塞流式输出
-                                                    if (toolCalls.length > 0 && iterations < maxIterations) {
-                                                        // 异步处理工具调用，与流式输出并行
-                                                        (async () => {
-                                                            try {
-                                                                iterations++;
-                                                                AgentLogger.info('Processing tool calls in parallel (Stream) - Real-time Mode', { toolCallCount: toolCalls.length, accumulatedContentLength: accumulatedContent.length });
-                                                                
-                                                                const toolNames = toolCalls.map(tc => tc.function?.name || 'unknown').filter(Boolean);
-                                                                this.logSend({ type: 'tool_call_start', tools: toolNames });
-                                                                
-                                                                const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
-                                                                    id: tc.id || `call_${idx}`,
-                                                                    type: tc.type || 'function',
-                                                                    function: {
-                                                                        name: tc.function.name,
-                                                                        arguments: tc.function.arguments,
-                                                                    },
-                                                                })) };
-                                                                
-                                                                const allToolCalls = [...assistantForTools.tool_calls];
-                                                                const toolMsgs: any[] = [];
-                                                                
-                                                                // 队列模式：按顺序执行工具，但每个工具完成后立即分流发送结果
-                                                                // 这样AI流式输出和工具调用并行进行，不卡顿
-                                                                for (let i = 0; i < allToolCalls.length; i++) {
-                                                                    const toolCall = allToolCalls[i];
-                                                                    let parsedArgs: any = {};
-                                                                    try {
-                                                                        parsedArgs = JSON.parse(toolCall.function.arguments);
-                                                                    } catch (e) {
-                                                                        parsedArgs = {};
-                                                                    }
-                                                                    
-                                                                    AgentLogger.info(`Calling tool [${i + 1}/${allToolCalls.length}]: ${toolCall.function.name} (Stream - Queue Mode)`);
-                                                                    
-                                                                    // 每个工具执行前，立即发送"正在调用xxx工具"
-                                                                    this.logSend({ type: 'content', content: `正在调用 ${toolCall.function.name} 工具...\n\n` });
-                                                                    
-                                                                    // 执行工具调用（按顺序，但完成后立即处理）
-                                                                    let toolResult: any;
-                                                                    try {
-                                                                        toolResult = await mcpClient.callTool(toolCall.function.name, parsedArgs);
-                                                                        AgentLogger.info(`Tool [${i + 1}/${allToolCalls.length}] ${toolCall.function.name} returned (Stream)`, { resultLength: JSON.stringify(toolResult).length });
-                                                                        
-                                                                        // 工具完成后立即分流发送结果（不等待其他工具）
-                                                                        this.logSend({ 
-                                                                            type: 'tool_result', 
-                                                                            tool: toolCall.function.name, 
-                                                                            result: toolResult,
-                                                                            index: i,
-                                                                            total: allToolCalls.length
-                                                                        });
-                                                                        
-                                                                        // 创建工具结果消息
-                                                                        const toolMsg = { 
-                                                                            role: 'tool', 
-                                                                            content: JSON.stringify(toolResult), 
-                                                                            tool_call_id: toolCall.id 
-                                                                        };
-                                                                        toolMsgs.push(toolMsg);
-                                                                        
-                                                                    } catch (toolError: any) {
-                                                                        // 工具调用失败
-                                                                        AgentLogger.error(`Tool [${i + 1}/${allToolCalls.length}] ${toolCall.function.name} failed (Stream):`, toolError);
-                                                                        toolResult = {
-                                                                            error: true,
-                                                                            message: toolError.message || String(toolError),
-                                                                            code: toolError.code || 'UNKNOWN_ERROR',
-                                                                        };
-                                                                        
-                                                                        // 立即分流发送错误结果
-                                                                        this.logSend({ 
-                                                                            type: 'tool_result', 
-                                                                            tool: toolCall.function.name, 
-                                                                            result: toolResult,
-                                                                            index: i,
-                                                                            total: allToolCalls.length,
-                                                                            error: true
-                                                                        });
-                                                                        
-                                                                        const toolMsg = { 
-                                                                            role: 'tool', 
-                                                                            content: JSON.stringify(toolResult), 
-                                                                            tool_call_id: toolCall.id 
-                                                                        };
-                                                                        toolMsgs.push(toolMsg);
-                                                                    }
-                                                                }
-                                                                
-                                                                // 所有工具调用完成后，发送完成信号
-                                                                this.logSend({ type: 'tool_call_complete' });
-                                                                
-                                                                // 构建完整消息历史并继续流式传输
-                                                                messagesForTurn = [
-                                                                    ...messagesForTurn,
-                                                                    { role: 'assistant', content: accumulatedContent, tool_calls: assistantForTools.tool_calls },
-                                                                    ...toolMsgs,
-                                                                ];
-                                                                
-                                                                const previousContent = accumulatedContent;
-                                                                accumulatedContent = '';
-                                                                finishReason = '';
-                                                                toolCalls = [];
-                                                                waitingForToolCall = false;
-                                                                requestBody.messages = messagesForTurn;
-                                                                requestBody.stream = true;
-                                                                
-                                                                AgentLogger.info('Continuing stream after all tool calls (Stream)', { 
-                                                                    previousContentLength: previousContent.length, 
-                                                                    toolCount: allToolCalls.length
-                                                                });
-                                                                
-                                                                // 继续流式传输，让 AI 基于所有工具结果继续输出
-                                                                await processStream();
-                                                            } catch (err: any) {
-                                                                AgentLogger.error('Error processing tool calls in parallel (Stream):', err);
-                                                                this.logSend({ type: 'error', error: err.message || String(err) });
-                                                            }
-                                                        })();
-                                                    }
+                                                    // 等待工具调用参数收集完成（tool_calls参数可能还在流式传输中）
+                                                    // 但我们不在这里处理，让res.on('end')处理，确保所有tool_calls都收集完毕
                                                 }
                                             }
                                             
                                             if (delta?.tool_calls) {
                                                 for (const toolCall of delta.tool_calls || []) {
-                                                    const idx = toolCall.index || 0;
-                                                    if (!toolCalls[idx]) toolCalls[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
-                                                    if (toolCall.id) toolCalls[idx].id = toolCall.id;
-                                                    if (toolCall.function?.name) toolCalls[idx].function.name = toolCall.function.name;
-                                                    if (toolCall.function?.arguments) toolCalls[idx].function.arguments += toolCall.function.arguments;
+                                                    // 强制只保留第一个工具调用（index=0），丢弃其他工具调用
+                                                    // 这是为了确保每次只执行一个工具
+                                                    if (toolCall.index === 0 || toolCalls.length === 0) {
+                                                        const idx = toolCall.index || 0;
+                                                        if (idx === 0) {
+                                                            if (!toolCalls[0]) toolCalls[0] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+                                                            if (toolCall.id) toolCalls[0].id = toolCall.id;
+                                                            if (toolCall.function?.name) toolCalls[0].function.name = toolCall.function.name;
+                                                            if (toolCall.function?.arguments) toolCalls[0].function.arguments += toolCall.function.arguments;
+                                                        }
+                                                    } else {
+                                                        // 忽略其他工具调用（index > 0）
+                                                        AgentLogger.info(`Ignoring additional tool call (index ${toolCall.index}), only processing first tool (Stream)`);
+                                                    }
                                                 }
                                             }
                                         } catch (e) {
@@ -1478,10 +1441,129 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                 });
                                 
                                 res.on('end', async () => {
-                                    AgentLogger.info('Stream ended (Stream)', { finishReason, iterations, accumulatedLength: accumulatedContent.length, waitingForToolCall });
+                                    AgentLogger.info('Stream ended (Stream)', { finishReason, iterations, accumulatedLength: accumulatedContent.length, waitingForToolCall, toolCallsCount: toolCalls.length });
                                     callback(null, undefined);
                                     
-                                    // 如果工具调用已经在检测时处理了，这里就不再处理
+                                    // 如果检测到工具调用，立即处理第一个工具
+                                    if (waitingForToolCall && toolCalls.length > 0 && iterations < maxIterations) {
+                                        (async () => {
+                                            try {
+                                                iterations++;
+                                                AgentLogger.info('Processing first tool call (Stream) - One-by-One Mode', { toolCallCount: toolCalls.length, accumulatedContentLength: accumulatedContent.length });
+                                                
+                                                // 只发送第一个工具的名称，而不是所有工具
+                                                const firstToolName = toolCalls[0]?.function?.name || 'unknown';
+                                                this.logSend({ type: 'tool_call_start', tools: [firstToolName] });
+                                                
+                                                const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
+                                                    id: tc.id || `call_${idx}`,
+                                                    type: tc.type || 'function',
+                                                    function: {
+                                                        name: tc.function.name,
+                                                        arguments: tc.function.arguments,
+                                                    },
+                                                })) };
+                                                
+                                                // 一个工具一个回复模式：每次只调用第一个工具，然后立即让AI回复
+                                                const firstToolCall = assistantForTools.tool_calls[0];
+                                                
+                                                if (!firstToolCall) {
+                                                    AgentLogger.warn('No tool call found in assistant message (Stream)');
+                                                    return;
+                                                }
+                                                
+                                                let parsedArgs: any = {};
+                                                try {
+                                                    parsedArgs = JSON.parse(firstToolCall.function.arguments);
+                                                } catch (e) {
+                                                    parsedArgs = {};
+                                                }
+                                                
+                                                AgentLogger.info(`Calling first tool: ${firstToolCall.function.name} (Stream - One-by-One Mode)`);
+                                                
+                                                // Send message before executing each tool
+                                                this.logSend({ type: 'content', content: `Calling ${firstToolCall.function.name} tool...\n\n` });
+                                                
+                                                // 执行工具调用
+                                                let toolResult: any;
+                                                try {
+                                                    toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs);
+                                                    AgentLogger.info(`Tool ${firstToolCall.function.name} returned (Stream)`, { resultLength: JSON.stringify(toolResult).length });
+                                                    
+                                                    // 工具完成后立即发送结果
+                                                    this.logSend({ 
+                                                        type: 'tool_result', 
+                                                        tool: firstToolCall.function.name, 
+                                                        result: toolResult
+                                                    });
+                                                    
+                                                } catch (toolError: any) {
+                                                    // 工具调用失败
+                                                    AgentLogger.error(`Tool ${firstToolCall.function.name} failed (Stream):`, toolError);
+                                                    toolResult = {
+                                                        error: true,
+                                                        message: toolError.message || String(toolError),
+                                                        code: toolError.code || 'UNKNOWN_ERROR',
+                                                    };
+                                                    
+                                                    // 立即发送错误结果
+                                                    this.logSend({ 
+                                                        type: 'tool_result', 
+                                                        tool: firstToolCall.function.name, 
+                                                        result: toolResult,
+                                                        error: true
+                                                    });
+                                                }
+                                                
+                                                // 创建工具结果消息（只包含第一个工具的结果）
+                                                const toolMsg = { 
+                                                    role: 'tool', 
+                                                    content: JSON.stringify(toolResult), 
+                                                    tool_call_id: firstToolCall.id 
+                                                };
+                                                
+                                                // 发送工具调用完成信号（单个工具）
+                                                this.logSend({ type: 'tool_call_complete' });
+                                                
+                                                // 构建消息历史（只包含第一个工具调用和结果）
+                                                // 这样AI可以根据第一个工具的结果决定是否需要继续调用其他工具
+                                                messagesForTurn = [
+                                                    ...messagesForTurn,
+                                                    { 
+                                                        role: 'assistant', 
+                                                        content: accumulatedContent, 
+                                                        tool_calls: [firstToolCall] // 只包含已调用的工具
+                                                    },
+                                                    toolMsg,
+                                                ];
+                                                
+                                                const previousContent = accumulatedContent;
+                                                accumulatedContent = '';
+                                                finishReason = '';
+                                                toolCalls = [];
+                                                waitingForToolCall = false;
+                                                requestBody.messages = messagesForTurn;
+                                                requestBody.stream = true;
+                                                
+                                                AgentLogger.info('Continuing stream after first tool call (Stream)', { 
+                                                    previousContentLength: previousContent.length, 
+                                                    toolName: firstToolCall.function.name,
+                                                    remainingTools: assistantForTools.tool_calls.length - 1
+                                                });
+                                                
+                                                // 立即继续流式传输，让 AI 基于第一个工具结果继续输出
+                                                // AI可以决定是否需要继续调用其他工具
+                                                await processStream();
+                                            } catch (err: any) {
+                                                AgentLogger.error('Error processing tool call (Stream):', err);
+                                                this.logSend({ type: 'error', error: err.message || String(err) });
+                                            }
+                                        })();
+                                        resolve();
+                                        return;
+                                    }
+                                    
+                                    // 如果没有工具调用，正常结束
                                     if (!waitingForToolCall && !streamFinished) {
                                         streamFinished = true;
                                         this.logSend({ type: 'done', message: accumulatedContent, history: JSON.stringify([
@@ -1636,15 +1718,16 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
         
         const agentPrompt = this.adoc.content || '';
         let systemMessage = agentPrompt;
-        // 禁止使用表情符号
-        if (systemMessage && !systemMessage.includes('不使用表情')) {
-            systemMessage += '\n\n注意：请勿在回复中使用任何表情符号（emoji）。';
+        // Prohibit using emojis
+        if (systemMessage && !systemMessage.includes('do not use emoji') && !systemMessage.includes('不使用表情')) {
+            systemMessage += '\n\nNote: Do not use any emoji in your responses.';
         } else if (!systemMessage) {
-            systemMessage = '注意：请勿在回复中使用任何表情符号（emoji）。';
+            systemMessage = 'Note: Do not use any emoji in your responses.';
         }
         if (tools.length > 0) {
             const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
-              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n');
+              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
+              '\n\n【IMPORTANT RULES】You must strictly adhere to the following rules for tool calls:\n1. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n2. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n3. Each tool call response should be independent and focused solely on the current tool\'s result.\n4. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n5. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n6. Tool calls proceed one by one sequentially: call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n7. If multiple tools are needed, proceed one by one: call the first tool → reply with the first tool\'s result → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
             systemMessage = systemMessage + toolsInfo;
         }
 
@@ -1749,11 +1832,20 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
                                             
                                             if (delta?.tool_calls) {
                                                 for (const toolCall of delta.tool_calls || []) {
-                                                    const idx = toolCall.index || 0;
-                                                    if (!toolCalls[idx]) toolCalls[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
-                                                    if (toolCall.id) toolCalls[idx].id = toolCall.id;
-                                                    if (toolCall.function?.name) toolCalls[idx].function.name = toolCall.function.name;
-                                                    if (toolCall.function?.arguments) toolCalls[idx].function.arguments += toolCall.function.arguments;
+                                                    // 强制只保留第一个工具调用（index=0），丢弃其他工具调用
+                                                    // 这是为了确保每次只执行一个工具
+                                                    if (toolCall.index === 0 || toolCalls.length === 0) {
+                                                        const idx = toolCall.index || 0;
+                                                        if (idx === 0) {
+                                                            if (!toolCalls[0]) toolCalls[0] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+                                                            if (toolCall.id) toolCalls[0].id = toolCall.id;
+                                                            if (toolCall.function?.name) toolCalls[0].function.name = toolCall.function.name;
+                                                            if (toolCall.function?.arguments) toolCalls[0].function.arguments += toolCall.function.arguments;
+                                                        }
+                                                    } else {
+                                                        // 忽略其他工具调用（index > 0）
+                                                        AgentLogger.info(`Ignoring additional tool call (index ${toolCall.index}), only processing first tool (Stream)`);
+                                                    }
                                                 }
                                             }
                                         } catch (e) {
@@ -1777,8 +1869,9 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
                                                     iterations++;
                                                     AgentLogger.info('Processing tool calls (API WS)', { toolCallCount: toolCalls.length });
                                                     
-                                                    const toolNames = toolCalls.map(tc => tc.function?.name || 'unknown').filter(Boolean);
-                                                    this.send({ type: 'tool_call_start', tools: toolNames });
+                                                    // 只发送第一个工具的名称
+                                                    const firstToolName = toolCalls[0]?.function?.name || 'unknown';
+                                                    this.send({ type: 'tool_call_start', tools: [firstToolName] });
                                                     
                                                     const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
                                                         id: tc.id || `call_${idx}`,
@@ -1788,28 +1881,51 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
                                                             arguments: tc.function.arguments,
                                                         },
                                                     })) };
-                                                    const toolMsgs: any[] = [];
-                                                    for (const toolCall of assistantForTools.tool_calls) {
-                                                        let parsedArgs: any = {};
-                                                        try {
-                                                            parsedArgs = JSON.parse(toolCall.function.arguments);
-                                                        } catch (e) {
-                                                            parsedArgs = {};
-                                                        }
-                                                        AgentLogger.info(`Calling tool: ${toolCall.function.name} (API WS)`, parsedArgs);
-                                                        const toolResult = await mcpClient.callTool(toolCall.function.name, parsedArgs);
-                                                        AgentLogger.info(`Tool ${toolCall.function.name} returned (API WS)`, { resultLength: JSON.stringify(toolResult).length });
-                                                        toolMsgs.push({ role: 'tool', content: JSON.stringify(toolResult), tool_call_id: toolCall.id });
-                                                        
-                                                        this.send({ type: 'tool_result', tool: toolCall.function.name, result: toolResult });
+                                                    
+                                                    // 一个工具一个回复模式：每次只调用第一个工具，然后立即让AI回复
+                                                    const firstToolCall = assistantForTools.tool_calls[0];
+                                                    
+                                                    if (!firstToolCall) {
+                                                        AgentLogger.warn('No tool call found in assistant message (API WS)');
+                                                        return;
                                                     }
                                                     
+                                                    let parsedArgs: any = {};
+                                                    try {
+                                                        parsedArgs = JSON.parse(firstToolCall.function.arguments);
+                                                    } catch (e) {
+                                                        parsedArgs = {};
+                                                    }
+                                                    
+                                                    AgentLogger.info(`Calling first tool: ${firstToolCall.function.name} (API WS - One-by-One Mode)`, parsedArgs);
+                                                    
+                                                    let toolResult: any;
+                                                    try {
+                                                        toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs);
+                                                        AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API WS)`, { resultLength: JSON.stringify(toolResult).length });
+                                                    } catch (toolError: any) {
+                                                        AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API WS):`, toolError);
+                                                        toolResult = {
+                                                            error: true,
+                                                            message: toolError.message || String(toolError),
+                                                            code: toolError.code || 'UNKNOWN_ERROR',
+                                                        };
+                                                    }
+                                                    
+                                                    const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
+                                                    
+                                                    this.send({ type: 'tool_result', tool: firstToolCall.function.name, result: toolResult });
                                                     this.send({ type: 'tool_call_complete' });
                                                     
+                                                    // 构建消息历史（只包含第一个工具调用和结果）
                                                     messagesForTurn = [
                                                         ...messagesForTurn,
-                                                        assistantForTools,
-                                                        ...toolMsgs,
+                                                        { 
+                                                            role: 'assistant', 
+                                                            content: accumulatedContent, 
+                                                            tool_calls: [firstToolCall] // 只包含已调用的工具
+                                                        },
+                                                        toolMsg,
                                                     ];
                                                     accumulatedContent = '';
                                                     finishReason = '';
@@ -1817,7 +1933,10 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
                                                     waitingForToolCall = false;
                                                     requestBody.messages = messagesForTurn;
                                                     requestBody.stream = true;
-                                                    AgentLogger.info('Continuing stream after tool call (API WS)');
+                                                    AgentLogger.info('Continuing stream after first tool call (API WS)', { 
+                                                        toolName: firstToolCall.function.name,
+                                                        remainingTools: assistantForTools.tool_calls.length - 1
+                                                    });
                                                     await processStream();
                                                 } else if (!streamFinished) {
                                                     streamFinished = true;
@@ -1932,15 +2051,16 @@ export class AgentApiHandler extends Handler {
         
         const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;
-        // 禁止使用表情符号
-        if (systemMessage && !systemMessage.includes('不使用表情')) {
-            systemMessage += '\n\n注意：请勿在回复中使用任何表情符号（emoji）。';
+        // Prohibit using emojis
+        if (systemMessage && !systemMessage.includes('do not use emoji') && !systemMessage.includes('不使用表情')) {
+            systemMessage += '\n\nNote: Do not use any emoji in your responses.';
         } else if (!systemMessage) {
-            systemMessage = '注意：请勿在回复中使用任何表情符号（emoji）。';
+            systemMessage = 'Note: Do not use any emoji in your responses.';
         }
         if (tools.length > 0) {
             const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
-              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n');
+              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
+              '\n\n【IMPORTANT RULES】You must strictly adhere to the following rules for tool calls:\n1. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n2. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n3. Each tool call response should be independent and focused solely on the current tool\'s result.\n4. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n5. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n6. Tool calls proceed one by one sequentially: call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n7. If multiple tools are needed, proceed one by one: call the first tool → reply with the first tool\'s result → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
             systemMessage = systemMessage + toolsInfo;
         }
 
@@ -2119,9 +2239,10 @@ export class AgentApiHandler extends Handler {
                                                         AgentLogger.info('Processing tool calls (API)', { toolCallCount: toolCalls.length });
                                                         
                                                         if (!streamResponse.destroyed && !streamResponse.writableEnded) {
-                                                            const toolNames = toolCalls.map(tc => tc.function?.name || 'unknown').filter(Boolean);
-                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call_start', tools: toolNames })}\n\n`);
-                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call', tools: toolNames })}\n\n`);
+                                                            // 只发送第一个工具的名称
+                                                            const firstToolName = toolCalls[0]?.function?.name || 'unknown';
+                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call_start', tools: [firstToolName] })}\n\n`);
+                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call', tools: [firstToolName] })}\n\n`);
                                                         }
                                                         
                                                         const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
@@ -2132,32 +2253,53 @@ export class AgentApiHandler extends Handler {
                                                                 arguments: tc.function.arguments,
                                                             },
                                                         })) };
-                                                        const toolMsgs: any[] = [];
-                                                        for (const toolCall of assistantForTools.tool_calls) {
-                                                            let parsedArgs: any = {};
-                                                            try {
-                                                                parsedArgs = JSON.parse(toolCall.function.arguments);
-                                                            } catch (e) {
-                                                                parsedArgs = {};
-                                                            }
-                                                            AgentLogger.info(`Calling tool: ${toolCall.function.name}`, parsedArgs);
-                                                            const toolResult = await mcpClient.callTool(toolCall.function.name, parsedArgs);
-                                                            AgentLogger.info(`Tool ${toolCall.function.name} returned`, { resultLength: JSON.stringify(toolResult).length });
-                                                            toolMsgs.push({ role: 'tool', content: JSON.stringify(toolResult), tool_call_id: toolCall.id });
-                                                            
-                                                            if (!streamResponse.destroyed && !streamResponse.writableEnded) {
-                                                                streamResponse.write(`data: ${JSON.stringify({ type: 'tool_result', tool: toolCall.function.name, result: toolResult })}\n\n`);
-                                                            }
+                                                        
+                                                        // 一个工具一个回复模式：每次只调用第一个工具，然后立即让AI回复
+                                                        const firstToolCall = assistantForTools.tool_calls[0];
+                                                        
+                                                        if (!firstToolCall) {
+                                                            AgentLogger.warn('No tool call found in assistant message (API)');
+                                                            return;
                                                         }
                                                         
+                                                        let parsedArgs: any = {};
+                                                        try {
+                                                            parsedArgs = JSON.parse(firstToolCall.function.arguments);
+                                                        } catch (e) {
+                                                            parsedArgs = {};
+                                                        }
+                                                        
+                                                        AgentLogger.info(`Calling first tool: ${firstToolCall.function.name} (API - One-by-One Mode)`, parsedArgs);
+                                                        
+                                                        let toolResult: any;
+                                                        try {
+                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs);
+                                                            AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API)`, { resultLength: JSON.stringify(toolResult).length });
+                                                        } catch (toolError: any) {
+                                                            AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API):`, toolError);
+                                                            toolResult = {
+                                                                error: true,
+                                                                message: toolError.message || String(toolError),
+                                                                code: toolError.code || 'UNKNOWN_ERROR',
+                                                            };
+                                                        }
+                                                        
+                                                        const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
+                                                        
                                                         if (!streamResponse.destroyed && !streamResponse.writableEnded) {
+                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_result', tool: firstToolCall.function.name, result: toolResult })}\n\n`);
                                                             streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call_complete' })}\n\n`);
                                                         }
                                                         
+                                                        // 构建消息历史（只包含第一个工具调用和结果）
                                                         messagesForTurn = [
                                                             ...messagesForTurn,
-                                                            assistantForTools,
-                                                            ...toolMsgs,
+                                                            { 
+                                                                role: 'assistant', 
+                                                                content: accumulatedContent, 
+                                                                tool_calls: [firstToolCall] // 只包含已调用的工具
+                                                            },
+                                                            toolMsg,
                                                         ];
                                                         accumulatedContent = '';
                                                         finishReason = '';
@@ -2165,7 +2307,10 @@ export class AgentApiHandler extends Handler {
                                                         waitingForToolCall = false;
                                                         requestBody.messages = messagesForTurn;
                                                         requestBody.stream = true;
-                                                        AgentLogger.info('Continuing stream after tool call (API)');
+                                                        AgentLogger.info('Continuing stream after first tool call (API)', { 
+                                                            toolName: firstToolCall.function.name,
+                                                            remainingTools: assistantForTools.tool_calls.length - 1
+                                                        });
                                                         await processStream();
                                                     } else if (!streamFinished) {
                                                         streamFinished = true;
@@ -2243,26 +2388,35 @@ export class AgentApiHandler extends Handler {
                     const toolCalls = msg.tool_calls || [];
                     if (!toolCalls.length) break;
 
-                    const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls };
-                    const toolMsgs: any[] = [];
-                    for (const toolCall of toolCalls) {
-                        let parsedArgs: any = {};
-                        try {
-                            parsedArgs = typeof toolCall.function?.arguments === 'string'
-                                ? JSON.parse(toolCall.function.arguments)
-                                : toolCall.function?.arguments || {};
-                        } catch (e) {
-                            parsedArgs = {};
-                        }
-                        const toolResult = await mcpClient.callTool(toolCall.function?.name, parsedArgs);
-                        AgentLogger.info('Tool returned:', { toolResult });
-                        toolMsgs.push({ role: 'tool', content: JSON.stringify(toolResult), tool_call_id: toolCall.id });
+                    // 一个工具一个回复模式：每次只调用第一个工具
+                    const firstToolCall = toolCalls[0];
+                    if (!firstToolCall) break;
+
+                    let parsedArgs: any = {};
+                    try {
+                        parsedArgs = typeof firstToolCall.function?.arguments === 'string'
+                            ? JSON.parse(firstToolCall.function.arguments)
+                            : firstToolCall.function?.arguments || {};
+                    } catch (e) {
+                        parsedArgs = {};
                     }
+                    
+                    AgentLogger.info(`Calling first tool: ${firstToolCall.function?.name} (One-by-One Mode)`);
+                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, parsedArgs);
+                    AgentLogger.info('Tool returned:', { toolResult });
+                    
+                    const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
+                    
+                    const assistantForTools: any = { 
+                        role: 'assistant', 
+                        content: msg.content || '',
+                        tool_calls: [firstToolCall] // 只包含已调用的工具
+                    };
 
                     messagesForTurn = [
                         ...messagesForTurn,
                         assistantForTools,
-                        ...toolMsgs,
+                        toolMsg,
                     ];
 
                     iterations += 1;
