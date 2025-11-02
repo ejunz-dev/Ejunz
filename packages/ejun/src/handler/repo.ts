@@ -266,27 +266,14 @@ export class RepoEditHandler extends Handler {
 
     @param('title', Types.Title)
     @param('content', Types.Content)
-    @param('filename', Types.String, true)
-    @param('version', Types.String, true)
     @post('tag', Types.Content, true, null, parseCategory)
-    @param('isIterative', Types.Boolean, true)
-    @param('isFileMode', Types.Boolean, true)
     async postCreate(
         domainId: string,
         title: string,
         content: string,
-        filename: string,
-        version: string,
-        tag: string[] = [],
-        isIterative: boolean = false,
-        isFileMode: boolean = false
+        tag: string[] = []
     ) {
         await this.limitRate('add_repo', 3600, 60);
-    
-        const file = this.request.files?.file;
-        if (!file) {
-            throw new ValidationError('A file must be uploaded to create a repo.');
-        }
     
         const domainInfo = await domain.get(domainId);
         if (!domainInfo) {
@@ -295,25 +282,6 @@ export class RepoEditHandler extends Handler {
     
         const docId = await Repo.generateNextDocId(domainId);
     
-        const providedFilename = filename || file.originalFilename;
-        const filePath = `repo/${domainId}/${docId}/${providedFilename}`;
-    
-        await storage.put(filePath, file.filepath, this.user._id);
-        const fileMeta = await storage.getMeta(filePath);
-        if (!fileMeta) {
-            throw new ValidationError(`Failed to retrieve metadata for the uploaded file: ${filename}`);
-        }
-    
-        const fileData = {
-            filename: providedFilename ?? 'unknown_file',
-            version: isIterative ? (version ?? '0.0.0') : undefined,
-            path: filePath,
-            size: fileMeta.size ?? 0,
-            lastModified: fileMeta.lastModified ?? new Date(),
-            etag: fileMeta.etag ?? '',
-            tag: tag ?? [],
-        };
-    
         const rid = await Repo.addWithId(
             domainId,
             docId,
@@ -321,7 +289,7 @@ export class RepoEditHandler extends Handler {
             title,
             content,
             this.request.ip,
-            { files: [fileData], isIterative, tag: tag ?? [] }
+            { tag: tag ?? [] }
         );
         
         this.response.body = { rid };
