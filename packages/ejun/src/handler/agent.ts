@@ -396,10 +396,16 @@ export class AgentChatHandler extends Handler {
         
         const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;
+        // 禁止使用表情符号
+        if (systemMessage && !systemMessage.includes('不使用表情')) {
+            systemMessage += '\n\n注意：请勿在回复中使用任何表情符号（emoji）。';
+        } else if (!systemMessage) {
+            systemMessage = '注意：请勿在回复中使用任何表情符号（emoji）。';
+        }
         if (tools.length > 0) {
             const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
               tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n');
-            systemMessage = agentPrompt + toolsInfo;
+            systemMessage = systemMessage + toolsInfo;
         }
 
         if (stream) {
@@ -883,10 +889,16 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
         
         const agentPrompt = this.adoc.content || '';
         let systemMessage = agentPrompt;
+        // 禁止使用表情符号
+        if (systemMessage && !systemMessage.includes('不使用表情')) {
+            systemMessage += '\n\n注意：请勿在回复中使用任何表情符号（emoji）。';
+        } else if (!systemMessage) {
+            systemMessage = '注意：请勿在回复中使用任何表情符号（emoji）。';
+        }
         if (tools.length > 0) {
             const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
               tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n');
-            systemMessage = agentPrompt + toolsInfo;
+            systemMessage = systemMessage + toolsInfo;
         }
 
         try {
@@ -1109,6 +1121,753 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
     }
 }
 
+export class AgentStreamConnectionHandler extends ConnectionHandler {
+    noCheckPermView = true;
+    adoc?: AgentDoc;
+
+    private logSend(data: any) {
+        AgentLogger.info('[Stream WS Response]', JSON.stringify(data, null, 2));
+        this.send(data);
+    }
+
+    @param('aid', Types.String)
+    async prepare(domainId: string, aid: string) {
+        try {
+            if (!aid) {
+                AgentLogger.warn('WebSocket stream connection rejected: Agent ID is required');
+                this.close(4000, 'Agent ID is required');
+                return;
+            }
+
+            const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
+            this.adoc = await Agent.get(domainId, normalizedId);
+            if (!this.adoc) {
+                AgentLogger.warn('WebSocket stream connection rejected: Agent not found', { aid: normalizedId, domainId });
+                this.close(4000, `Agent not found: ${normalizedId}`);
+                return;
+            }
+
+            AgentLogger.info('Public WebSocket stream connection established', { aid, domainId });
+            this.logSend({ type: 'connected', message: 'WebSocket stream connection established' });
+        } catch (error: any) {
+            AgentLogger.error('Error in WebSocket stream prepare:', error);
+            try {
+                this.logSend({ type: 'error', error: error.message || String(error) });
+            } catch (e) {
+            }
+            try {
+                this.close(4000, error.message || String(error));
+            } catch (e) {
+            }
+        }
+    }
+
+    async message(msg: any) {
+        AgentLogger.info('Received WebSocket stream message', { hasAdoc: !!this.adoc, msgType: typeof msg, msg: JSON.stringify(msg) });
+        
+        if (!this.adoc) {
+            AgentLogger.warn('WebSocket stream message rejected: Agent not found');
+            this.logSend({ type: 'error', error: 'Agent not found' });
+            return;
+        }
+
+        let messageText: string;
+        let historyData: any;
+        
+        if (typeof msg === 'string') {
+            try {
+                const parsed = JSON.parse(msg);
+                messageText = parsed.message;
+                historyData = parsed.history;
+            } catch (e) {
+                AgentLogger.warn('Failed to parse message as JSON string', e);
+                this.logSend({ type: 'error', error: 'Invalid message format' });
+                return;
+            }
+        } else if (typeof msg === 'object' && msg !== null) {
+            messageText = msg.message;
+            historyData = msg.history;
+        } else {
+            AgentLogger.warn('Invalid message type', typeof msg);
+            this.logSend({ type: 'error', error: 'Invalid message format' });
+            return;
+        }
+        
+        const message = messageText;
+        const history = historyData;
+        if (!message) {
+            this.logSend({ type: 'error', error: 'Message cannot be empty' });
+            return;
+        }
+
+        const domainId = this.adoc.domainId;
+        const domainInfo = await domain.get(domainId);
+        if (!domainInfo) {
+            this.logSend({ type: 'error', error: 'Domain not found' });
+            return;
+        }
+
+        const aiApiKey = (domainInfo as any)['apiKey'] || '';
+        const model = (domainInfo as any)['model'] || 'deepseek-chat';
+        const apiUrl = (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
+
+        if (!aiApiKey) {
+            this.logSend({ type: 'error', error: 'AI API Key not configured' });
+            return;
+        }
+
+        let chatHistory: ChatMessage[] = [];
+        try {
+            chatHistory = Array.isArray(history) ? history : JSON.parse(history || '[]');
+        } catch (e) {
+        }
+
+        const mcpClient = new McpClient();
+        const tools = await mcpClient.getTools();
+        
+        const agentPrompt = this.adoc.content || '';
+        let systemMessage = agentPrompt;
+        // 禁止使用表情符号
+        if (systemMessage && !systemMessage.includes('不使用表情')) {
+            systemMessage += '\n\n注意：请勿在回复中使用任何表情符号（emoji）。';
+        } else if (!systemMessage) {
+            systemMessage = '注意：请勿在回复中使用任何表情符号（emoji）。';
+        }
+        if (tools.length > 0) {
+            const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
+              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n');
+            systemMessage = systemMessage + toolsInfo;
+        }
+
+        try {
+            const requestBody: any = {
+                model,
+                max_tokens: 1024,
+                messages: [
+                    { role: 'system', content: systemMessage },
+                    ...chatHistory,
+                    { role: 'user', content: message },
+                ],
+                stream: true,
+            };
+
+            if (tools.length > 0) {
+                requestBody.tools = tools.map(tool => ({
+                    type: 'function',
+                    function: {
+                        name: tool.name,
+                        description: tool.description,
+                        parameters: tool.inputSchema,
+                    },
+                }));
+            }
+
+            let messagesForTurn: any[] = [
+                { role: 'system', content: systemMessage },
+                ...chatHistory,
+                { role: 'user', content: message },
+            ];
+
+            let accumulatedContent = '';
+            let finishReason = '';
+            let toolCalls: any[] = [];
+            let iterations = 0;
+            const maxIterations = 5;
+            let streamFinished = false;
+            let waitingForToolCall = false;
+
+            const processStream = async () => {
+                try {
+                    AgentLogger.info('Starting public stream request', { apiUrl, model });
+                    streamFinished = false;
+                    waitingForToolCall = false;
+                    
+                    await new Promise<void>((resolve, reject) => {
+                        const req = request.post(apiUrl)
+                            .send(requestBody)
+                            .set('Authorization', `Bearer ${aiApiKey}`)
+                            .set('content-type', 'application/json')
+                            .buffer(false)
+                            .timeout(60000)
+                            .parse((res, callback) => {
+                                res.setEncoding('utf8');
+                                let buffer = '';
+                                
+                                res.on('data', (chunk: string) => {
+                                    if (streamFinished) return;
+                                    
+                                    buffer += chunk;
+                                    const lines = buffer.split('\n');
+                                    buffer = lines.pop() || '';
+                                    
+                                    for (const line of lines) {
+                                        if (!line.trim() || !line.startsWith('data: ')) continue;
+                                        const data = line.slice(6).trim();
+                                        if (data === '[DONE]') {
+                                            if (waitingForToolCall) {
+                                                // 工具调用前，先发送已累积的初始内容（如果有的话）
+                                                // 内容已经在 delta.content 时实时发送了，这里只需要标记完成
+                                                AgentLogger.info('Received [DONE] while waiting for tool call, will process tool calls (Stream)');
+                                                callback(null, undefined);
+                                                return;
+                                            }
+                                            streamFinished = true;
+                                            this.logSend({ type: 'done', message: accumulatedContent, history: JSON.stringify([
+                                                ...chatHistory,
+                                                { role: 'user', content: message },
+                                                { role: 'assistant', content: accumulatedContent },
+                                            ]) });
+                                            callback(null, undefined);
+                                            return;
+                                        }
+                                        if (!data) continue;
+                                        
+                                        try {
+                                            const parsed = JSON.parse(data);
+                                            const choice = parsed.choices?.[0];
+                                            const delta = choice?.delta;
+                                            
+                                            if (delta?.content) {
+                                                accumulatedContent += delta.content;
+                                                this.logSend({ type: 'content', content: delta.content });
+                                            }
+                                            
+                                            if (choice?.finish_reason) {
+                                                finishReason = choice.finish_reason;
+                                                if (finishReason === 'tool_calls') {
+                                                    waitingForToolCall = true;
+                                                    AgentLogger.info('Tool call detected (Stream), will process immediately');
+                                                    
+                                                    // 立即开始并行处理工具调用，不阻塞流式输出
+                                                    if (toolCalls.length > 0 && iterations < maxIterations) {
+                                                        // 异步处理工具调用，与流式输出并行
+                                                        (async () => {
+                                                            try {
+                                                                iterations++;
+                                                                AgentLogger.info('Processing tool calls in parallel (Stream) - Real-time Mode', { toolCallCount: toolCalls.length, accumulatedContentLength: accumulatedContent.length });
+                                                                
+                                                                const toolNames = toolCalls.map(tc => tc.function?.name || 'unknown').filter(Boolean);
+                                                                this.logSend({ type: 'tool_call_start', tools: toolNames });
+                                                                
+                                                                const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
+                                                                    id: tc.id || `call_${idx}`,
+                                                                    type: tc.type || 'function',
+                                                                    function: {
+                                                                        name: tc.function.name,
+                                                                        arguments: tc.function.arguments,
+                                                                    },
+                                                                })) };
+                                                                
+                                                                const allToolCalls = [...assistantForTools.tool_calls];
+                                                                const toolMsgs: any[] = [];
+                                                                
+                                                                // 队列模式：按顺序执行工具，但每个工具完成后立即分流发送结果
+                                                                // 这样AI流式输出和工具调用并行进行，不卡顿
+                                                                for (let i = 0; i < allToolCalls.length; i++) {
+                                                                    const toolCall = allToolCalls[i];
+                                                                    let parsedArgs: any = {};
+                                                                    try {
+                                                                        parsedArgs = JSON.parse(toolCall.function.arguments);
+                                                                    } catch (e) {
+                                                                        parsedArgs = {};
+                                                                    }
+                                                                    
+                                                                    AgentLogger.info(`Calling tool [${i + 1}/${allToolCalls.length}]: ${toolCall.function.name} (Stream - Queue Mode)`);
+                                                                    
+                                                                    // 每个工具执行前，立即发送"正在调用xxx工具"
+                                                                    this.logSend({ type: 'content', content: `正在调用 ${toolCall.function.name} 工具...\n\n` });
+                                                                    
+                                                                    // 执行工具调用（按顺序，但完成后立即处理）
+                                                                    let toolResult: any;
+                                                                    try {
+                                                                        toolResult = await mcpClient.callTool(toolCall.function.name, parsedArgs);
+                                                                        AgentLogger.info(`Tool [${i + 1}/${allToolCalls.length}] ${toolCall.function.name} returned (Stream)`, { resultLength: JSON.stringify(toolResult).length });
+                                                                        
+                                                                        // 工具完成后立即分流发送结果（不等待其他工具）
+                                                                        this.logSend({ 
+                                                                            type: 'tool_result', 
+                                                                            tool: toolCall.function.name, 
+                                                                            result: toolResult,
+                                                                            index: i,
+                                                                            total: allToolCalls.length
+                                                                        });
+                                                                        
+                                                                        // 创建工具结果消息
+                                                                        const toolMsg = { 
+                                                                            role: 'tool', 
+                                                                            content: JSON.stringify(toolResult), 
+                                                                            tool_call_id: toolCall.id 
+                                                                        };
+                                                                        toolMsgs.push(toolMsg);
+                                                                        
+                                                                    } catch (toolError: any) {
+                                                                        // 工具调用失败
+                                                                        AgentLogger.error(`Tool [${i + 1}/${allToolCalls.length}] ${toolCall.function.name} failed (Stream):`, toolError);
+                                                                        toolResult = {
+                                                                            error: true,
+                                                                            message: toolError.message || String(toolError),
+                                                                            code: toolError.code || 'UNKNOWN_ERROR',
+                                                                        };
+                                                                        
+                                                                        // 立即分流发送错误结果
+                                                                        this.logSend({ 
+                                                                            type: 'tool_result', 
+                                                                            tool: toolCall.function.name, 
+                                                                            result: toolResult,
+                                                                            index: i,
+                                                                            total: allToolCalls.length,
+                                                                            error: true
+                                                                        });
+                                                                        
+                                                                        const toolMsg = { 
+                                                                            role: 'tool', 
+                                                                            content: JSON.stringify(toolResult), 
+                                                                            tool_call_id: toolCall.id 
+                                                                        };
+                                                                        toolMsgs.push(toolMsg);
+                                                                    }
+                                                                }
+                                                                
+                                                                // 所有工具调用完成后，发送完成信号
+                                                                this.logSend({ type: 'tool_call_complete' });
+                                                                
+                                                                // 构建完整消息历史并继续流式传输
+                                                                messagesForTurn = [
+                                                                    ...messagesForTurn,
+                                                                    { role: 'assistant', content: accumulatedContent, tool_calls: assistantForTools.tool_calls },
+                                                                    ...toolMsgs,
+                                                                ];
+                                                                
+                                                                const previousContent = accumulatedContent;
+                                                                accumulatedContent = '';
+                                                                finishReason = '';
+                                                                toolCalls = [];
+                                                                waitingForToolCall = false;
+                                                                requestBody.messages = messagesForTurn;
+                                                                requestBody.stream = true;
+                                                                
+                                                                AgentLogger.info('Continuing stream after all tool calls (Stream)', { 
+                                                                    previousContentLength: previousContent.length, 
+                                                                    toolCount: allToolCalls.length
+                                                                });
+                                                                
+                                                                // 继续流式传输，让 AI 基于所有工具结果继续输出
+                                                                await processStream();
+                                                            } catch (err: any) {
+                                                                AgentLogger.error('Error processing tool calls in parallel (Stream):', err);
+                                                                this.logSend({ type: 'error', error: err.message || String(err) });
+                                                            }
+                                                        })();
+                                                    }
+                                                }
+                                            }
+                                            
+                                            if (delta?.tool_calls) {
+                                                for (const toolCall of delta.tool_calls || []) {
+                                                    const idx = toolCall.index || 0;
+                                                    if (!toolCalls[idx]) toolCalls[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+                                                    if (toolCall.id) toolCalls[idx].id = toolCall.id;
+                                                    if (toolCall.function?.name) toolCalls[idx].function.name = toolCall.function.name;
+                                                    if (toolCall.function?.arguments) toolCalls[idx].function.arguments += toolCall.function.arguments;
+                                                }
+                                            }
+                                        } catch (e) {
+                                            AgentLogger.warn('Parse error in stream (Stream):', e);
+                                        }
+                                    }
+                                });
+                                
+                                res.on('end', async () => {
+                                    AgentLogger.info('Stream ended (Stream)', { finishReason, iterations, accumulatedLength: accumulatedContent.length, waitingForToolCall });
+                                    callback(null, undefined);
+                                    
+                                    // 如果工具调用已经在检测时处理了，这里就不再处理
+                                    if (!waitingForToolCall && !streamFinished) {
+                                        streamFinished = true;
+                                        this.logSend({ type: 'done', message: accumulatedContent, history: JSON.stringify([
+                                            ...chatHistory,
+                                            { role: 'user', content: message },
+                                            { role: 'assistant', content: accumulatedContent },
+                                        ]) });
+                                    }
+                                    resolve();
+                                });
+                                
+                                res.on('error', (err: any) => {
+                                    AgentLogger.error('Stream response error (Stream):', err);
+                                    callback(err, undefined);
+                                    reject(err);
+                                });
+                            });
+                        
+                        req.on('error', (err: any) => {
+                            AgentLogger.error('Stream request error (Stream):', err);
+                            this.logSend({ type: 'error', error: err.message || String(err) });
+                            reject(err);
+                        });
+                        
+                        req.end();
+                    });
+                } catch (error: any) {
+                    AgentLogger.error('Stream setup error (Stream):', error);
+                    this.logSend({ type: 'error', error: error.message || String(error) });
+                }
+            };
+            
+            await processStream();
+        } catch (error: any) {
+            AgentLogger.error('AI Stream Error:', error);
+            this.logSend({ type: 'error', error: JSON.stringify(error.response?.body || error.message) });
+        }
+    }
+}
+
+export class AgentApiConnectionHandler extends ConnectionHandler {
+    adoc?: AgentDoc;
+    apiKey?: string;
+
+    async prepare() {
+        try {
+            const apiKeyHeader = this.request.headers['x-api-key'];
+            const apiKeyAuth = this.request.headers['authorization'];
+            const apiKeyQuery = this.request.query?.apiKey as string;
+            
+            let apiKey: string | undefined;
+            if (apiKeyHeader) {
+                apiKey = Array.isArray(apiKeyHeader) ? apiKeyHeader[0] : apiKeyHeader;
+            } else if (apiKeyAuth) {
+                const authStr = Array.isArray(apiKeyAuth) ? apiKeyAuth[0] : apiKeyAuth;
+                apiKey = authStr.replace(/^Bearer /i, '');
+            } else if (apiKeyQuery) {
+                apiKey = apiKeyQuery;
+            }
+            
+            if (!apiKey) {
+                AgentLogger.warn('WebSocket API connection rejected: API Key is required');
+                this.close(4000, 'API Key is required');
+                return;
+            }
+
+            this.apiKey = apiKey;
+            this.adoc = await Agent.getByApiKey(apiKey);
+            if (!this.adoc) {
+                AgentLogger.warn('WebSocket API connection rejected: Invalid API Key');
+                this.close(4000, 'Invalid API Key');
+                return;
+            }
+
+            AgentLogger.info('WebSocket API connection established', { aid: this.adoc.aid, domainId: this.adoc.domainId });
+            this.send({ type: 'connected', message: 'WebSocket API connection established' });
+        } catch (error: any) {
+            AgentLogger.error('Error in WebSocket API prepare:', error);
+            try {
+                this.send({ type: 'error', error: error.message || String(error) });
+            } catch (e) {
+            }
+            try {
+                this.close(4000, error.message || String(error));
+            } catch (e) {
+            }
+        }
+    }
+
+    async message(msg: any) {
+        AgentLogger.info('Received WebSocket API message', { hasAdoc: !!this.adoc, msgType: typeof msg });
+        
+        if (!this.adoc) {
+            AgentLogger.warn('WebSocket API message rejected: Agent not found');
+            this.send({ type: 'error', error: 'Agent not found' });
+            return;
+        }
+
+        let messageText: string;
+        let historyData: any;
+        
+        if (typeof msg === 'string') {
+            try {
+                const parsed = JSON.parse(msg);
+                messageText = parsed.message;
+                historyData = parsed.history;
+            } catch (e) {
+                AgentLogger.warn('Failed to parse message as JSON string', e);
+                this.send({ type: 'error', error: 'Invalid message format' });
+                return;
+            }
+        } else if (typeof msg === 'object' && msg !== null) {
+            messageText = msg.message;
+            historyData = msg.history;
+        } else {
+            AgentLogger.warn('Invalid message type', typeof msg);
+            this.send({ type: 'error', error: 'Invalid message format' });
+            return;
+        }
+        
+        const message = messageText;
+        const history = historyData;
+        if (!message) {
+            this.send({ type: 'error', error: 'Message cannot be empty' });
+            return;
+        }
+
+        const domainId = this.adoc.domainId;
+        const domainInfo = await domain.get(domainId);
+        if (!domainInfo) {
+            this.send({ type: 'error', error: 'Domain not found' });
+            return;
+        }
+
+        const aiApiKey = (domainInfo as any)['apiKey'] || '';
+        const model = (domainInfo as any)['model'] || 'deepseek-chat';
+        const apiUrl = (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
+
+        if (!aiApiKey) {
+            this.send({ type: 'error', error: 'AI API Key not configured' });
+            return;
+        }
+
+        let chatHistory: ChatMessage[] = [];
+        try {
+            chatHistory = Array.isArray(history) ? history : JSON.parse(history || '[]');
+        } catch (e) {
+        }
+
+        const mcpClient = new McpClient();
+        const tools = await mcpClient.getTools();
+        
+        const agentPrompt = this.adoc.content || '';
+        let systemMessage = agentPrompt;
+        // 禁止使用表情符号
+        if (systemMessage && !systemMessage.includes('不使用表情')) {
+            systemMessage += '\n\n注意：请勿在回复中使用任何表情符号（emoji）。';
+        } else if (!systemMessage) {
+            systemMessage = '注意：请勿在回复中使用任何表情符号（emoji）。';
+        }
+        if (tools.length > 0) {
+            const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
+              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n');
+            systemMessage = systemMessage + toolsInfo;
+        }
+
+        try {
+            const requestBody: any = {
+                model,
+                max_tokens: 1024,
+                messages: [
+                    { role: 'system', content: systemMessage },
+                    ...chatHistory,
+                    { role: 'user', content: message },
+                ],
+                stream: true,
+            };
+
+            if (tools.length > 0) {
+                requestBody.tools = tools.map(tool => ({
+                    type: 'function',
+                    function: {
+                        name: tool.name,
+                        description: tool.description,
+                        parameters: tool.inputSchema,
+                    },
+                }));
+            }
+
+            let messagesForTurn: any[] = [
+                { role: 'system', content: systemMessage },
+                ...chatHistory,
+                { role: 'user', content: message },
+            ];
+
+            let accumulatedContent = '';
+            let finishReason = '';
+            let toolCalls: any[] = [];
+            let iterations = 0;
+            const maxIterations = 5;
+            let streamFinished = false;
+            let waitingForToolCall = false;
+
+            const processStream = async () => {
+                try {
+                    AgentLogger.info('Starting WebSocket API stream request', { apiUrl, model });
+                    streamFinished = false;
+                    waitingForToolCall = false;
+                    
+                    await new Promise<void>((resolve, reject) => {
+                        const req = request.post(apiUrl)
+                            .send(requestBody)
+                            .set('Authorization', `Bearer ${aiApiKey}`)
+                            .set('content-type', 'application/json')
+                            .buffer(false)
+                            .timeout(60000)
+                            .parse((res, callback) => {
+                                res.setEncoding('utf8');
+                                let buffer = '';
+                                
+                                res.on('data', (chunk: string) => {
+                                    if (streamFinished) return;
+                                    
+                                    buffer += chunk;
+                                    const lines = buffer.split('\n');
+                                    buffer = lines.pop() || '';
+                                    
+                                    for (const line of lines) {
+                                        if (!line.trim() || !line.startsWith('data: ')) continue;
+                                        const data = line.slice(6).trim();
+                                        if (data === '[DONE]') {
+                                            if (waitingForToolCall) {
+                                                AgentLogger.info('Received [DONE] but waiting for tool call, ignoring (API WS)');
+                                                callback(null, undefined);
+                                                return;
+                                            }
+                                            streamFinished = true;
+                                            this.send({ type: 'done', message: accumulatedContent, history: JSON.stringify([
+                                                ...chatHistory,
+                                                { role: 'user', content: message },
+                                                { role: 'assistant', content: accumulatedContent },
+                                            ]) });
+                                            callback(null, undefined);
+                                            return;
+                                        }
+                                        if (!data) continue;
+                                        
+                                        try {
+                                            const parsed = JSON.parse(data);
+                                            const choice = parsed.choices?.[0];
+                                            const delta = choice?.delta;
+                                            
+                                            if (delta?.content) {
+                                                accumulatedContent += delta.content;
+                                                this.send({ type: 'content', content: delta.content });
+                                            }
+                                            
+                                            if (choice?.finish_reason) {
+                                                finishReason = choice.finish_reason;
+                                                if (finishReason === 'tool_calls') {
+                                                    waitingForToolCall = true;
+                                                    AgentLogger.info('Tool call detected (API WS)');
+                                                }
+                                            }
+                                            
+                                            if (delta?.tool_calls) {
+                                                for (const toolCall of delta.tool_calls || []) {
+                                                    const idx = toolCall.index || 0;
+                                                    if (!toolCalls[idx]) toolCalls[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+                                                    if (toolCall.id) toolCalls[idx].id = toolCall.id;
+                                                    if (toolCall.function?.name) toolCalls[idx].function.name = toolCall.function.name;
+                                                    if (toolCall.function?.arguments) toolCalls[idx].function.arguments += toolCall.function.arguments;
+                                                }
+                                            }
+                                        } catch (e) {
+                                            AgentLogger.warn('Parse error in stream (API WS):', e);
+                                        }
+                                    }
+                                });
+                                
+                                res.on('end', async () => {
+                                    AgentLogger.info('Stream ended (API WS)', { finishReason, iterations, accumulatedLength: accumulatedContent.length, waitingForToolCall });
+                                    callback(null, undefined);
+                                    
+                                    if (!streamFinished || waitingForToolCall) {
+                                        (async () => {
+                                            try {
+                                                if (finishReason === 'tool_calls' && toolCalls.length > 0 && iterations < maxIterations) {
+                                                    if (streamFinished) {
+                                                        streamFinished = false;
+                                                    }
+                                                    
+                                                    iterations++;
+                                                    AgentLogger.info('Processing tool calls (API WS)', { toolCallCount: toolCalls.length });
+                                                    
+                                                    const toolNames = toolCalls.map(tc => tc.function?.name || 'unknown').filter(Boolean);
+                                                    this.send({ type: 'tool_call_start', tools: toolNames });
+                                                    
+                                                    const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
+                                                        id: tc.id || `call_${idx}`,
+                                                        type: tc.type || 'function',
+                                                        function: {
+                                                            name: tc.function.name,
+                                                            arguments: tc.function.arguments,
+                                                        },
+                                                    })) };
+                                                    const toolMsgs: any[] = [];
+                                                    for (const toolCall of assistantForTools.tool_calls) {
+                                                        let parsedArgs: any = {};
+                                                        try {
+                                                            parsedArgs = JSON.parse(toolCall.function.arguments);
+                                                        } catch (e) {
+                                                            parsedArgs = {};
+                                                        }
+                                                        AgentLogger.info(`Calling tool: ${toolCall.function.name} (API WS)`, parsedArgs);
+                                                        const toolResult = await mcpClient.callTool(toolCall.function.name, parsedArgs);
+                                                        AgentLogger.info(`Tool ${toolCall.function.name} returned (API WS)`, { resultLength: JSON.stringify(toolResult).length });
+                                                        toolMsgs.push({ role: 'tool', content: JSON.stringify(toolResult), tool_call_id: toolCall.id });
+                                                        
+                                                        this.send({ type: 'tool_result', tool: toolCall.function.name, result: toolResult });
+                                                    }
+                                                    
+                                                    this.send({ type: 'tool_call_complete' });
+                                                    
+                                                    messagesForTurn = [
+                                                        ...messagesForTurn,
+                                                        assistantForTools,
+                                                        ...toolMsgs,
+                                                    ];
+                                                    accumulatedContent = '';
+                                                    finishReason = '';
+                                                    toolCalls = [];
+                                                    waitingForToolCall = false;
+                                                    requestBody.messages = messagesForTurn;
+                                                    requestBody.stream = true;
+                                                    AgentLogger.info('Continuing stream after tool call (API WS)');
+                                                    await processStream();
+                                                } else if (!streamFinished) {
+                                                    streamFinished = true;
+                                                    this.send({ type: 'done', message: accumulatedContent, history: JSON.stringify([
+                                                        ...chatHistory,
+                                                        { role: 'user', content: message },
+                                                        { role: 'assistant', content: accumulatedContent },
+                                                    ]) });
+                                                }
+                                                resolve();
+                                            } catch (err: any) {
+                                                AgentLogger.error('Error in stream end handler (API WS):', err);
+                                                this.send({ type: 'error', error: err.message || String(err) });
+                                                resolve();
+                                            }
+                                        })();
+                                    } else {
+                                        resolve();
+                                    }
+                                });
+                                
+                                res.on('error', (err: any) => {
+                                    AgentLogger.error('Stream response error (API WS):', err);
+                                    callback(err, undefined);
+                                    reject(err);
+                                });
+                            });
+                        
+                        req.on('error', (err: any) => {
+                            AgentLogger.error('Stream request error (API WS):', err);
+                            this.send({ type: 'error', error: err.message || String(err) });
+                            reject(err);
+                        });
+                        
+                        req.end();
+                    });
+                } catch (error: any) {
+                    AgentLogger.error('Stream setup error (API WS):', error);
+                    this.send({ type: 'error', error: error.message || String(error) });
+                }
+            };
+            
+            await processStream();
+        } catch (error: any) {
+            AgentLogger.error('AI Chat Error (API WS):', error);
+            this.send({ type: 'error', error: JSON.stringify(error.response?.body || error.message) });
+        }
+    }
+}
+
 export class AgentApiHandler extends Handler {
     noCheckPermView = true;
     allowCors = true;
@@ -1173,10 +1932,16 @@ export class AgentApiHandler extends Handler {
         
         const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;
+        // 禁止使用表情符号
+        if (systemMessage && !systemMessage.includes('不使用表情')) {
+            systemMessage += '\n\n注意：请勿在回复中使用任何表情符号（emoji）。';
+        } else if (!systemMessage) {
+            systemMessage = '注意：请勿在回复中使用任何表情符号（emoji）。';
+        }
         if (tools.length > 0) {
             const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
               tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n');
-            systemMessage = agentPrompt + toolsInfo;
+            systemMessage = systemMessage + toolsInfo;
         }
 
         if (stream) {
@@ -1660,4 +2425,6 @@ export async function apply(ctx: Context) {
     ctx.Route('agent_edit', '/agent/:aid/edit', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_mcp_status', '/agent/:aid/mcp-tools/status', AgentMcpStatusHandler);
     ctx.Route('agent_api', '/api/agent', AgentApiHandler);
+    ctx.Connection('agent_api_ws', '/api/agent/chat-ws', AgentApiConnectionHandler);
+    ctx.Connection('agent_stream_ws', '/api/agent/:aid/stream', AgentStreamConnectionHandler);
 }
