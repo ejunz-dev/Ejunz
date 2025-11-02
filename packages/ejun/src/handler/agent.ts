@@ -1452,25 +1452,28 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                                 AgentLogger.info('Processing first tool call (Stream) - One-by-One Mode', { toolCallCount: toolCalls.length, accumulatedContentLength: accumulatedContent.length });
                                                 
                                                 // 只发送第一个工具的名称，而不是所有工具
-                                                const firstToolName = toolCalls[0]?.function?.name || 'unknown';
-                                                this.logSend({ type: 'tool_call_start', tools: [firstToolName] });
+                                                const firstToolCall = toolCalls[0];
                                                 
-                                                const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
-                                                    id: tc.id || `call_${idx}`,
-                                                    type: tc.type || 'function',
-                                                    function: {
-                                                        name: tc.function.name,
-                                                        arguments: tc.function.arguments,
-                                                    },
-                                                })) };
-                                                
-                                                // 一个工具一个回复模式：每次只调用第一个工具，然后立即让AI回复
-                                                const firstToolCall = assistantForTools.tool_calls[0];
-                                                
-                                                if (!firstToolCall) {
-                                                    AgentLogger.warn('No tool call found in assistant message (Stream)');
+                                                if (!firstToolCall || !firstToolCall.function?.name) {
+                                                    AgentLogger.warn('No valid tool call found in assistant message (Stream)');
                                                     return;
                                                 }
+                                                
+                                                const firstToolName = firstToolCall.function.name;
+                                                this.logSend({ type: 'tool_call_start', tools: [firstToolName] });
+                                                
+                                                // 构建 assistant 消息，只包含第一个工具调用
+                                                const assistantForTools: any = { 
+                                                    role: 'assistant', 
+                                                    tool_calls: [{
+                                                        id: firstToolCall.id || 'call_0',
+                                                        type: firstToolCall.type || 'function',
+                                                        function: {
+                                                            name: firstToolCall.function.name,
+                                                            arguments: firstToolCall.function.arguments,
+                                                        },
+                                                    }]
+                                                };
                                                 
                                                 let parsedArgs: any = {};
                                                 try {
@@ -1481,10 +1484,8 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                                 
                                                 AgentLogger.info(`Calling first tool: ${firstToolCall.function.name} (Stream - One-by-One Mode)`);
                                                 
-                                                // Send message before executing each tool
-                                                this.logSend({ type: 'content', content: `Calling ${firstToolCall.function.name} tool...\n\n` });
-                                                
-                                                // 执行工具调用
+                                                // Execute tool call (no content message sent to avoid TTS speaking it)
+                                                // Execute tool call
                                                 let toolResult: any;
                                                 try {
                                                     toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs);
@@ -1515,24 +1516,24 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                                     });
                                                 }
                                                 
-                                                // 创建工具结果消息（只包含第一个工具的结果）
+                                                // Create tool result message (only contains the first tool's result)
                                                 const toolMsg = { 
                                                     role: 'tool', 
                                                     content: JSON.stringify(toolResult), 
-                                                    tool_call_id: firstToolCall.id 
+                                                    tool_call_id: firstToolCall.id || assistantForTools.tool_calls[0].id
                                                 };
                                                 
-                                                // 发送工具调用完成信号（单个工具）
+                                                // Send tool call complete signal (single tool)
                                                 this.logSend({ type: 'tool_call_complete' });
                                                 
-                                                // 构建消息历史（只包含第一个工具调用和结果）
-                                                // 这样AI可以根据第一个工具的结果决定是否需要继续调用其他工具
+                                                // Build message history (only contains the first tool call and result)
+                                                // This allows AI to decide whether to continue calling other tools based on the first tool's result
                                                 messagesForTurn = [
                                                     ...messagesForTurn,
                                                     { 
                                                         role: 'assistant', 
                                                         content: accumulatedContent, 
-                                                        tool_calls: [firstToolCall] // 只包含已调用的工具
+                                                        tool_calls: assistantForTools.tool_calls // Only contains the executed tool
                                                     },
                                                     toolMsg,
                                                 ];
@@ -1547,12 +1548,11 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                                 
                                                 AgentLogger.info('Continuing stream after first tool call (Stream)', { 
                                                     previousContentLength: previousContent.length, 
-                                                    toolName: firstToolCall.function.name,
-                                                    remainingTools: assistantForTools.tool_calls.length - 1
+                                                    toolName: firstToolCall.function.name
                                                 });
                                                 
-                                                // 立即继续流式传输，让 AI 基于第一个工具结果继续输出
-                                                // AI可以决定是否需要继续调用其他工具
+                                                // Immediately continue streaming to let AI continue output based on first tool result
+                                                // AI can decide whether to continue calling other tools
                                                 await processStream();
                                             } catch (err: any) {
                                                 AgentLogger.error('Error processing tool call (Stream):', err);
