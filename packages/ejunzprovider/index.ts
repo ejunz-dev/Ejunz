@@ -1,8 +1,9 @@
-import { Context, Logger } from 'ejun';
+import { Context, Logger, RepoModel } from 'ejun';
 import { apply as applyTimeMcp } from './src/mcp/time';
 import { apply as applyLogsHandler } from './src/handler/logs';
 import { apply as applyWebSocketHandler } from './src/handler/websocket';
 import { addLog } from './src/handler/logs';
+import { escapeRegExp } from 'lodash';
 
 interface McpTool {
     name: string;
@@ -10,6 +11,7 @@ interface McpTool {
     inputSchema: {
         type: string;
         properties?: Record<string, any>;
+        required?: string[];
     };
 }
 
@@ -46,6 +48,28 @@ function getAvailableTools(): McpTool[] {
 					timeoutMs: { type: 'number', description: '请求超时毫秒数，默认 8000' },
 					retries: { type: 'number', description: '失败重试次数，默认 1' },
 				},
+			},
+		},
+		{
+			name: 'search_repo',
+			description: '搜索知识库（repo），根据关键词查找相关的知识库条目。可以搜索标题、内容、标签或ID。当用户询问知识库相关内容时使用此工具。',
+			inputSchema: {
+				type: 'object',
+				properties: {
+					query: { 
+						type: 'string', 
+						description: '搜索关键词，可以是标题、内容、标签或知识库ID（如R1、R2等）' 
+					},
+					domainId: { 
+						type: 'string', 
+						description: '域名ID，默认为"system"。如果用户没有指定，使用默认值' 
+					},
+					limit: { 
+						type: 'number', 
+						description: '返回结果数量限制，默认10，最大50' 
+					},
+				},
+				required: ['query'],
 			},
 		},
 	];
@@ -98,6 +122,50 @@ async function callTool(name: string, args: any): Promise<any> {
 		case 'hltv_results': {
 			const url = 'https://hltv-api.vercel.app/api/results.json';
 			return await fetchJson(url, { timeoutMs: args?.timeoutMs, retries: args?.retries });
+		}
+
+		case 'search_repo': {
+			const query = args?.query;
+			if (!query || typeof query !== 'string') {
+				throw new Error('搜索关键词不能为空');
+			}
+			const domainId = args?.domainId || 'system';
+			const limit = Math.max(1, Math.min(50, Number(args?.limit) || 10));
+			
+			// 执行搜索
+			const escaped = escapeRegExp(query.toLowerCase());
+			const $regex = new RegExp(query.length >= 2 ? escaped : `\\A${escaped}`, 'gmi');
+			const filter: any = { $or: [{ rid: { $regex } }, { title: { $regex } }, { tag: query }] };
+			
+			const rdocs = await RepoModel.getMulti(domainId, filter, ['domainId', 'docId', 'rid', 'title', 'content', 'tag', 'updateAt'])
+				.limit(limit)
+				.toArray();
+			
+			// 如果搜索不到，尝试精确匹配
+			if (rdocs.length === 0) {
+				let rdoc = await RepoModel.get(domainId, Number.isSafeInteger(+query) ? +query : query, ['domainId', 'docId', 'rid', 'title', 'content', 'tag', 'updateAt']);
+				if (rdoc) rdocs.push(rdoc);
+				else if (/^R\d+$/.test(query)) {
+					rdoc = await RepoModel.get(domainId, +query.substring(1), ['domainId', 'docId', 'rid', 'title', 'content', 'tag', 'updateAt']);
+					if (rdoc) rdocs.push(rdoc);
+				}
+			}
+			
+			// 格式化返回结果
+			return {
+				query,
+				domainId,
+				total: rdocs.length,
+				results: rdocs.map((rdoc: any) => ({
+					rid: rdoc.rid,
+					title: rdoc.title,
+					content: rdoc.content?.substring(0, 500) + (rdoc.content && rdoc.content.length > 500 ? '...' : ''), // 限制内容长度
+					tags: rdoc.tag || [],
+					updateAt: rdoc.updateAt,
+					docId: rdoc.docId,
+					url: `/d/${domainId}/repo/${rdoc.rid}`,
+				})),
+			};
 		}
 
 		default:
