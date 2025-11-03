@@ -31,6 +31,287 @@ import { PassThrough } from 'stream';
 const AgentLogger = new Logger('agent');
 export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
 
+/**
+ * 自动更新agent的记忆
+ * 专注于记录agent的工作规则、工具使用方式和用户指导
+ */
+async function updateAgentMemory(
+    domainId: string,
+    adoc: AgentDoc,
+    chatHistory: ChatMessage[],
+    lastUserMessage: string,
+    lastAssistantMessage: string,
+): Promise<void> {
+    try {
+        const domainInfo = await domain.get(domainId);
+        if (!domainInfo) {
+            AgentLogger.warn('Domain not found for memory update', { domainId });
+            return;
+        }
+
+        const aiApiKey = (domainInfo as any)['apiKey'] || '';
+        const model = (domainInfo as any)['model'] || 'deepseek-chat';
+        const apiUrl = (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
+
+        if (!aiApiKey) {
+            AgentLogger.warn('AI API Key not configured, skipping memory update');
+            return;
+        }
+
+        // 构建对话摘要，提取工具使用和用户指导信息
+        const currentMemory = adoc.memory || '';
+        const recentHistory = chatHistory.slice(-15); // 查看最近15条消息
+        
+        // 检测对话的主要语言（基于用户消息）
+        const detectLanguage = (text: string): 'zh' | 'en' | 'other' => {
+            // 简单的中文检测：如果包含中文字符，认为是中文
+            if (/[\u4e00-\u9fa5]/.test(text)) {
+                return 'zh';
+            }
+            // 默认英文
+            return 'en';
+        };
+        
+        // 从最近的用户消息中检测语言
+        let detectedLanguage: 'zh' | 'en' = 'en';
+        for (let i = recentHistory.length - 1; i >= 0; i--) {
+            if (recentHistory[i].role === 'user') {
+                const lang = detectLanguage(recentHistory[i].content);
+                if (lang === 'zh' || lang === 'en') {
+                    detectedLanguage = lang;
+                    break;
+                }
+            }
+        }
+        // 也检查最新的用户消息
+        if (lastUserMessage) {
+            const lang = detectLanguage(lastUserMessage);
+            if (lang === 'zh' || lang === 'en') {
+                detectedLanguage = lang;
+            }
+        }
+        
+        // 提取工具调用信息
+        const toolUsageInfo: string[] = [];
+        const userGuidance: Array<{ question?: string; guidance: string }> = [];
+        
+        // 根据语言选择指导性关键词
+        const guidanceKeywords = detectedLanguage === 'zh' 
+            ? /(需要|应该|必须|记得|下次|不要|避免|规则|方法|方式|要|不要|禁止|应该要|需要要)/
+            : /(need|should|must|remember|next time|don't|avoid|rule|method|way|prefer|preference|require|when|if.*then)/i;
+        
+        // 提取用户指导和对应的问题上下文
+        for (let i = 0; i < recentHistory.length; i++) {
+            const msg = recentHistory[i];
+            
+            // 检测用户指导和纠正
+            if (msg.role === 'user') {
+                const content = msg.content.toLowerCase();
+                // 检测包含指导性词汇
+                if (content.match(guidanceKeywords)) {
+                    // 尝试找到对应的问题（之前的对话）
+                    let relatedQuestion: string | undefined;
+                    if (i > 0) {
+                        // 查看前一条消息，如果是助手回复，则上一条可能是用户问题
+                        if (recentHistory[i - 1].role === 'assistant') {
+                            // 继续往前找用户的问题
+                            for (let j = i - 2; j >= 0 && j >= i - 5; j--) {
+                                if (recentHistory[j].role === 'user') {
+                                    relatedQuestion = recentHistory[j].content;
+                                    break;
+                                }
+                            }
+                        } else if (recentHistory[i - 1].role === 'user') {
+                            // 如果前一条也是用户消息，可能是在补充说明
+                            relatedQuestion = recentHistory[i - 1].content;
+                        }
+                    }
+                    
+                    userGuidance.push({
+                        question: relatedQuestion,
+                        guidance: msg.content
+                    });
+                }
+            }
+            
+            // 检测工具调用
+            if (msg.role === 'assistant' && (msg as any).tool_calls) {
+                const toolCalls = (msg as any).tool_calls;
+                for (const tc of toolCalls) {
+                    if (detectedLanguage === 'zh') {
+                        toolUsageInfo.push(`使用了工具: ${tc.function?.name}，参数: ${JSON.stringify(tc.function?.arguments || {})}`);
+                    } else {
+                        toolUsageInfo.push(`Used tool: ${tc.function?.name}, args: ${JSON.stringify(tc.function?.arguments || {})}`);
+                    }
+                }
+            }
+            
+            // 检测工具返回结果
+            if (msg.role === 'tool') {
+                try {
+                    const result = JSON.parse(msg.content);
+                    if (result.error) {
+                        if (detectedLanguage === 'zh') {
+                            toolUsageInfo.push(`工具调用出错: ${msg.content}`);
+                        } else {
+                            toolUsageInfo.push(`Tool call error: ${msg.content}`);
+                        }
+                    }
+                } catch (e) {
+                    // 忽略解析错误
+                }
+            }
+        }
+
+        // 构建完整的对话摘要（用于上下文）
+        const userLabel = detectedLanguage === 'zh' ? '用户' : 'User';
+        const assistantLabel = detectedLanguage === 'zh' ? '助手' : 'Assistant';
+        const toolLabel = detectedLanguage === 'zh' ? '工具返回' : 'Tool result';
+        const toolCallLabel = detectedLanguage === 'zh' ? '调用了工具' : 'called tools';
+        
+        const conversationSummary = recentHistory.map(msg => {
+            if (msg.role === 'user') return `${userLabel}: ${msg.content}`;
+            if (msg.role === 'assistant') {
+                let content = `${assistantLabel}: ${msg.content}`;
+                if ((msg as any).tool_calls) {
+                    const toolNames = (msg as any).tool_calls.map((tc: any) => tc.function?.name).filter(Boolean);
+                    if (toolNames.length > 0) {
+                        content += ` [${toolCallLabel}: ${toolNames.join(', ')}]`;
+                    }
+                }
+                return content;
+            }
+            if (msg.role === 'tool') return `${toolLabel}: ${msg.content.substring(0, 200)}...`;
+            return '';
+        }).filter(Boolean).join('\n');
+
+        // 获取agent的角色定义，确保记忆不会与之冲突
+        const agentContent = adoc.content || '';
+        
+        // 根据检测到的语言生成对应语言的提示词
+        const languageInstruction = detectedLanguage === 'zh' 
+            ? '请用中文生成工作规则记忆。如果现有记忆是其他语言，请转换为中文并保持一致性。'
+            : 'Please generate the work rules memory in English. If the existing memory is in another language, convert it to English and maintain consistency.';
+        
+        const memoryPrompt = detectedLanguage === 'zh'
+            ? `你是一个agent工作规则管理助手。你的任务是根据对话历史提取和更新agent的工作规则记忆。
+
+Agent的角色定义（content）：
+${agentContent || '（暂无角色定义）'}
+
+当前工作规则记忆：
+${currentMemory || '（暂无规则记忆）'}
+
+最近的对话历史（最后15条）：
+${conversationSummary}
+
+检测到的工具使用情况：
+${toolUsageInfo.length > 0 ? toolUsageInfo.join('\n') : '本次对话未使用工具'}
+
+检测到的用户指导：
+${userGuidance.length > 0 ? userGuidance.map(g => {
+    if (g.question) {
+        return detectedLanguage === 'zh' 
+            ? `问题: ${g.question}\n指导: ${g.guidance}`
+            : `Question: ${g.question}\nGuidance: ${g.guidance}`;
+    }
+    return detectedLanguage === 'zh' ? `指导: ${g.guidance}` : `Guidance: ${g.guidance}`;
+}).join('\n\n') : detectedLanguage === 'zh' ? '本次对话无明显指导' : 'No obvious guidance in this conversation'}
+
+最新对话：
+用户: ${lastUserMessage}
+助手: ${lastAssistantMessage}
+
+请根据以上信息，更新agent的工作规则记忆。记忆应该专注于：
+1. **问题-指导对应关系**：当用户对特定问题给出了明确指导时，必须记录"当用户问xxx时，应该xxx"。这是最重要的记录项，确保下次用户问同样问题时，严格按照用户指导执行。
+2. **工具使用规则**：什么情况下应该调用哪个工具，如何调用（例如："当用户询问xxx时，需要调用xxx工具的xxx方法"）
+3. **工作方式指导**：用户明确提到的工作流程、方法和规则
+4. **错误避免**：用户纠正的错误，确保下次不会重复（例如："不要xxx，应该xxx"）
+5. **用户偏好**：用户明确表达的工作偏好和要求
+
+重要原则：
+- **问题-指导映射优先**：如果用户针对某个问题给出了指导（如"当用户问xxx时，你应该xxx"），必须清晰记录这种对应关系，格式如："当用户问[问题关键词]时：[用户的指导]"。
+- **严格执行用户指导**：一旦记录了用户对特定问题的指导，下次遇到相同或相似问题时，必须严格按照指导执行，不要偏离。
+- **不与角色定义冲突**：工作规则记忆是对角色定义（content）的补充和细化，不应与之冲突。不要改变agent的基本角色定位。
+- **只记录明确的规则和指导**：不要记录一般对话内容
+- **如果用户明确指导或纠正了agent的行为，必须记录**
+- **如果对话中没有新的工作规则或指导，保持现有记忆不变或只做细微优化**
+- **记忆应该是结构化的规则列表**，方便agent在后续对话中参考
+- **如果用户指导与角色定义有明显冲突**，优先遵循角色定义，但可以在记忆中标注用户偏好（例如："用户偏好xxx，但在不影响角色定位的前提下"）
+- **语言一致性**：${languageInstruction}
+
+直接输出更新后的工作规则记忆，使用简洁清晰的格式（可以用列表或要点），使用中文，不要添加任何解释或前缀。`
+            : `You are an agent work rules management assistant. Your task is to extract and update the agent's work rules memory based on conversation history.
+
+Agent's Role Definition (content):
+${agentContent || '(No role definition)'}
+
+Current Work Rules Memory:
+${currentMemory || '(No rules memory yet)'}
+
+Recent Conversation History (last 15 messages):
+${conversationSummary}
+
+Detected Tool Usage:
+${toolUsageInfo.length > 0 ? toolUsageInfo.join('\n') : 'No tools used in this conversation'}
+
+Detected User Guidance:
+${userGuidance.length > 0 ? userGuidance.join('\n') : 'No obvious guidance in this conversation'}
+
+Latest Conversation:
+User: ${lastUserMessage}
+Assistant: ${lastAssistantMessage}
+
+Based on the above information, update the agent's work rules memory. The memory should focus on:
+1. **Question-Guidance Mapping**: When the user provides specific guidance for a particular question, you MUST record "When user asks xxx, should xxx". This is the most important record item to ensure that when the user asks the same question next time, follow the user's guidance strictly.
+2. **Tool Usage Rules**: When to call which tool and how to call it (e.g., "When user asks about xxx, call xxx tool's xxx method")
+3. **Workflow Guidance**: Work processes, methods, and rules explicitly mentioned by the user
+4. **Error Avoidance**: Errors corrected by the user to ensure they are not repeated (e.g., "Don't do xxx, should do xxx instead")
+5. **User Preferences**: Work preferences and requirements explicitly expressed by the user
+
+Important Principles:
+- **Question-Guidance Mapping Priority**: If the user provides guidance for a specific question (e.g., "When user asks xxx, you should xxx"), you MUST clearly record this correspondence in the format: "When user asks [question keywords]: [user's guidance]".
+- **Strictly Follow User Guidance**: Once a user's guidance for a specific question is recorded, when encountering the same or similar question next time, you MUST strictly follow the guidance without deviation.
+- **No Conflict with Role Definition**: Work rules memory is a supplement and refinement to the role definition (content), and should not conflict with it. Do not change the agent's basic role positioning.
+- **Only Record Explicit Rules and Guidance**: Do not record general conversation content
+- **Must Record**: If the user explicitly guides or corrects the agent's behavior, it must be recorded
+- **Maintain Existing Memory**: If there are no new work rules or guidance in the conversation, keep the existing memory unchanged or make only minor optimizations
+- **Structured Format**: Memory should be a structured list of rules for easy reference in subsequent conversations
+- **Conflict Resolution**: If user guidance clearly conflicts with role definition, prioritize the role definition, but can annotate user preferences in memory (e.g., "User prefers xxx, but only if it doesn't affect role positioning")
+- **Language Consistency**: ${languageInstruction}
+
+Directly output the updated work rules memory using a clear and concise format (can use lists or bullet points), in English, without adding any explanations or prefixes.`;
+
+        // 调用AI生成记忆
+        const systemMessage = detectedLanguage === 'zh'
+            ? '你是一个专业的agent工作规则管理助手，专门负责从对话中提取和整理agent的工作规则、工具使用方式和用户指导，生成简洁清晰的工作规则记忆。'
+            : 'You are a professional agent work rules management assistant, specializing in extracting and organizing agent work rules, tool usage patterns, and user guidance from conversations to generate clear and concise work rules memory.';
+        
+        const response = await request.post(apiUrl)
+            .send({
+                model,
+                messages: [
+                    { role: 'system', content: systemMessage },
+                    { role: 'user', content: memoryPrompt },
+                ],
+                max_tokens: 800,
+                temperature: 0.5, // 降低温度以获得更稳定的规则提取
+            })
+            .set('Authorization', `Bearer ${aiApiKey}`)
+            .set('content-type', 'application/json');
+
+        const newMemory = response.body?.choices?.[0]?.message?.content?.trim() || '';
+        
+        if (newMemory && newMemory !== currentMemory) {
+            await Agent.edit(domainId, adoc.aid, { memory: newMemory });
+            AgentLogger.info('Agent memory updated', { aid: adoc.aid, memoryLength: newMemory.length });
+        }
+    } catch (error: any) {
+        // 记忆更新失败不应该影响主流程，只记录日志
+        AgentLogger.error('Failed to update agent memory', error);
+    }
+}
+
 function buildQuery(udoc: User) {
     const q: Filter<AgentDoc> = {};
     if (!udoc.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN)) {
@@ -396,6 +677,12 @@ export class AgentChatHandler extends Handler {
         
         const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;
+        
+        // 添加工作规则记忆（作为补充，不覆盖角色提示词）
+        if (adoc.memory) {
+            systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${adoc.memory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
+        }
+        
         // Prohibit using emojis
         if (systemMessage && !systemMessage.includes('do not use emoji') && !systemMessage.includes('不使用表情')) {
             systemMessage += '\n\nNote: Do not use any emoji in your responses.';
@@ -405,7 +692,7 @@ export class AgentChatHandler extends Handler {
         if (tools.length > 0) {
             const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
               tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
-              '\n\n【IMPORTANT RULES】You must strictly adhere to the following rules for tool calls:\n1. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n2. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n3. Each tool call response should be independent and focused solely on the current tool\'s result.\n4. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n5. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n6. Tool calls proceed one by one sequentially: call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n7. If multiple tools are needed, proceed one by one: call the first tool → reply with the first tool\'s result → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
+              '\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n2. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n3. Each tool call response should be independent and focused solely on the current tool\'s result.\n4. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n5. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n6. Tool calls proceed one by one sequentially: call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n7. If multiple tools are needed, proceed one by one: call the first tool → reply with the first tool\'s result → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
             systemMessage = systemMessage + toolsInfo;
         }
 
@@ -521,6 +808,16 @@ export class AgentChatHandler extends Handler {
                                                         { role: 'assistant', content: accumulatedContent },
                                                     ]) })}\n\n`);
                                                     streamResponse.end();
+                                                }
+                                                // 异步更新记忆，不阻塞响应
+                                                if (adoc && accumulatedContent) {
+                                                    updateAgentMemory(
+                                                        domainId,
+                                                        adoc,
+                                                        chatHistory,
+                                                        message,
+                                                        accumulatedContent,
+                                                    ).catch(err => AgentLogger.error('Failed to update memory in background', err));
                                                 }
                                                 callback(null, undefined);
                                                 return;
@@ -792,6 +1089,16 @@ export class AgentChatHandler extends Handler {
                         { role: 'assistant', content: finalContent },
                     ]),
                 };
+                // 异步更新记忆，不阻塞响应
+                if (adoc && finalContent) {
+                    updateAgentMemory(
+                        domainId,
+                        adoc,
+                        chatHistory,
+                        message,
+                        finalContent,
+                    ).catch(err => AgentLogger.error('Failed to update memory in background', err));
+                }
                 return;
             }
 
@@ -805,6 +1112,16 @@ export class AgentChatHandler extends Handler {
                     { role: 'assistant', content: msgStr },
                 ]),
             };
+            // 异步更新记忆，不阻塞响应
+            if (adoc && msgStr) {
+                updateAgentMemory(
+                    domainId,
+                    adoc,
+                    chatHistory,
+                    message,
+                    msgStr,
+                ).catch(err => AgentLogger.error('Failed to update memory in background', err));
+            }
         } catch (error: any) {
             AgentLogger.error('AI Chat Error:', {
                 message: error.message,
@@ -924,6 +1241,12 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
         
         const agentPrompt = this.adoc.content || '';
         let systemMessage = agentPrompt;
+        
+        // 添加工作规则记忆
+        if (this.adoc.memory) {
+            systemMessage += `\n\n【工作规则记忆】\n${this.adoc.memory}\n\n请遵循以上工作规则和用户指导。`;
+        }
+        
         // Prohibit using emojis
         if (systemMessage && !systemMessage.includes('do not use emoji') && !systemMessage.includes('不使用表情')) {
             systemMessage += '\n\nNote: Do not use any emoji in your responses.';
@@ -933,7 +1256,7 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
         if (tools.length > 0) {
             const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
               tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
-              '\n\n【IMPORTANT RULES】You must strictly adhere to the following rules for tool calls:\n1. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n2. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n3. Each tool call response should be independent and focused solely on the current tool\'s result.\n4. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n5. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n6. Tool calls proceed one by one sequentially: call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n7. If multiple tools are needed, proceed one by one: call the first tool → reply with the first tool\'s result → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
+              '\n\n【TOOL USAGE STRATEGY - CRITICAL】\n1. **Proactive Multi-Tool Problem Solving**: When a user\'s question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "明天有课吗?" → You should: (1) call get_current_time to know what day tomorrow is, (2) call search_repo to check if there\'s schedule/calendar info in knowledge base, (3) then provide complete answer\n   - User: "查看repo里的文件" → You should: (1) call search_repo to find relevant repo entries, (2) if found, analyze content, (3) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST search knowledge base using search_repo, (2) analyze results, (3) if needed, call other tools, (4) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n2. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n3. Each tool call response should be independent and focused solely on the current tool\'s result.\n4. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n5. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n6. Tool calls proceed one by one sequentially: call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n7. If multiple tools are needed, proceed one by one: call the first tool → reply with the first tool\'s result → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
             systemMessage = systemMessage + toolsInfo;
         }
 
@@ -1013,6 +1336,16 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
                                                 { role: 'user', content: message },
                                                 { role: 'assistant', content: accumulatedContent },
                                             ]) });
+                                            // 异步更新记忆，不阻塞响应
+                                            if (this.adoc && accumulatedContent) {
+                                                updateAgentMemory(
+                                                    this.adoc.domainId,
+                                                    this.adoc,
+                                                    chatHistory,
+                                                    message,
+                                                    accumulatedContent,
+                                                ).catch(err => AgentLogger.error('Failed to update memory in background', err));
+                                            }
                                             callback(null, undefined);
                                             return;
                                         }
@@ -1299,6 +1632,12 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
         
         const agentPrompt = this.adoc.content || '';
         let systemMessage = agentPrompt;
+        
+        // 添加工作规则记忆
+        if (this.adoc.memory) {
+            systemMessage += `\n\n【工作规则记忆】\n${this.adoc.memory}\n\n请遵循以上工作规则和用户指导。`;
+        }
+        
         // Prohibit using emojis
         if (systemMessage && !systemMessage.includes('do not use emoji') && !systemMessage.includes('不使用表情')) {
             systemMessage += '\n\nNote: Do not use any emoji in your responses.';
@@ -1308,7 +1647,7 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
         if (tools.length > 0) {
             const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
               tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
-              '\n\n【IMPORTANT RULES】You must strictly adhere to the following rules for tool calls:\n1. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n2. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n3. Each tool call response should be independent and focused solely on the current tool\'s result.\n4. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n5. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n6. Tool calls proceed one by one sequentially: call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n7. If multiple tools are needed, proceed one by one: call the first tool → reply with the first tool\'s result → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
+              '\n\n【TOOL USAGE STRATEGY - CRITICAL】\n1. **Proactive Multi-Tool Problem Solving**: When a user\'s question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "明天有课吗?" → You should: (1) call get_current_time to know what day tomorrow is, (2) call search_repo to check if there\'s schedule/calendar info in knowledge base, (3) then provide complete answer\n   - User: "查看repo里的文件" → You should: (1) call search_repo to find relevant repo entries, (2) if found, analyze content, (3) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST search knowledge base using search_repo, (2) analyze results, (3) if needed, call other tools, (4) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n2. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n3. Each tool call response should be independent and focused solely on the current tool\'s result.\n4. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n5. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n6. Tool calls proceed one by one sequentially: call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n7. If multiple tools are needed, proceed one by one: call the first tool → reply with the first tool\'s result → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
             systemMessage = systemMessage + toolsInfo;
         }
 
@@ -1718,6 +2057,12 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
         
         const agentPrompt = this.adoc.content || '';
         let systemMessage = agentPrompt;
+        
+        // 添加工作规则记忆
+        if (this.adoc.memory) {
+            systemMessage += `\n\n【工作规则记忆】\n${this.adoc.memory}\n\n请遵循以上工作规则和用户指导。`;
+        }
+        
         // Prohibit using emojis
         if (systemMessage && !systemMessage.includes('do not use emoji') && !systemMessage.includes('不使用表情')) {
             systemMessage += '\n\nNote: Do not use any emoji in your responses.';
@@ -1727,7 +2072,7 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
         if (tools.length > 0) {
             const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
               tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
-              '\n\n【IMPORTANT RULES】You must strictly adhere to the following rules for tool calls:\n1. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n2. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n3. Each tool call response should be independent and focused solely on the current tool\'s result.\n4. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n5. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n6. Tool calls proceed one by one sequentially: call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n7. If multiple tools are needed, proceed one by one: call the first tool → reply with the first tool\'s result → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
+              '\n\n【TOOL USAGE STRATEGY - CRITICAL】\n1. **Proactive Multi-Tool Problem Solving**: When a user\'s question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "明天有课吗?" → You should: (1) call get_current_time to know what day tomorrow is, (2) call search_repo to check if there\'s schedule/calendar info in knowledge base, (3) then provide complete answer\n   - User: "查看repo里的文件" → You should: (1) call search_repo to find relevant repo entries, (2) if found, analyze content, (3) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST search knowledge base using search_repo, (2) analyze results, (3) if needed, call other tools, (4) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n2. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n3. Each tool call response should be independent and focused solely on the current tool\'s result.\n4. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n5. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n6. Tool calls proceed one by one sequentially: call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n7. If multiple tools are needed, proceed one by one: call the first tool → reply with the first tool\'s result → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
             systemMessage = systemMessage + toolsInfo;
         }
 
@@ -1807,6 +2152,16 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
                                                 { role: 'user', content: message },
                                                 { role: 'assistant', content: accumulatedContent },
                                             ]) });
+                                            // 异步更新记忆，不阻塞响应
+                                            if (this.adoc && accumulatedContent) {
+                                                updateAgentMemory(
+                                                    this.adoc.domainId,
+                                                    this.adoc,
+                                                    chatHistory,
+                                                    message,
+                                                    accumulatedContent,
+                                                ).catch(err => AgentLogger.error('Failed to update memory in background', err));
+                                            }
                                             callback(null, undefined);
                                             return;
                                         }
@@ -2051,6 +2406,12 @@ export class AgentApiHandler extends Handler {
         
         const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;
+        
+        // 添加工作规则记忆（作为补充，不覆盖角色提示词）
+        if (adoc.memory) {
+            systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${adoc.memory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
+        }
+        
         // Prohibit using emojis
         if (systemMessage && !systemMessage.includes('do not use emoji') && !systemMessage.includes('不使用表情')) {
             systemMessage += '\n\nNote: Do not use any emoji in your responses.';
@@ -2060,7 +2421,7 @@ export class AgentApiHandler extends Handler {
         if (tools.length > 0) {
             const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
               tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
-              '\n\n【IMPORTANT RULES】You must strictly adhere to the following rules for tool calls:\n1. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n2. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n3. Each tool call response should be independent and focused solely on the current tool\'s result.\n4. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n5. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n6. Tool calls proceed one by one sequentially: call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n7. If multiple tools are needed, proceed one by one: call the first tool → reply with the first tool\'s result → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
+              '\n\n【TOOL USAGE STRATEGY - CRITICAL】\n1. **Proactive Multi-Tool Problem Solving**: When a user\'s question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "明天有课吗?" → You should: (1) call get_current_time to know what day tomorrow is, (2) call search_repo to check if there\'s schedule/calendar info in knowledge base, (3) then provide complete answer\n   - User: "查看repo里的文件" → You should: (1) call search_repo to find relevant repo entries, (2) if found, analyze content, (3) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST search knowledge base using search_repo, (2) analyze results, (3) if needed, call other tools, (4) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n2. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n3. Each tool call response should be independent and focused solely on the current tool\'s result.\n4. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n5. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n6. Tool calls proceed one by one sequentially: call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n7. If multiple tools are needed, proceed one by one: call the first tool → reply with the first tool\'s result → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
             systemMessage = systemMessage + toolsInfo;
         }
 
@@ -2176,6 +2537,16 @@ export class AgentApiHandler extends Handler {
                                                         { role: 'assistant', content: accumulatedContent },
                                                     ]) })}\n\n`);
                                                     streamResponse.end();
+                                                }
+                                                // 异步更新记忆，不阻塞响应
+                                                if (adoc && accumulatedContent) {
+                                                    updateAgentMemory(
+                                                        adoc.domainId,
+                                                        adoc,
+                                                        chatHistory,
+                                                        message,
+                                                        accumulatedContent,
+                                                    ).catch(err => AgentLogger.error('Failed to update memory in background', err));
                                                 }
                                                 callback(null, undefined);
                                                 return;
@@ -2322,6 +2693,16 @@ export class AgentApiHandler extends Handler {
                                                             ]) })}\n\n`);
                                                             streamResponse.end();
                                                         }
+                                                        // 异步更新记忆，不阻塞响应
+                                                        if (adoc && accumulatedContent) {
+                                                            updateAgentMemory(
+                                                                adoc.domainId,
+                                                                adoc,
+                                                                chatHistory,
+                                                                message,
+                                                                accumulatedContent,
+                                                            ).catch(err => AgentLogger.error('Failed to update memory in background', err));
+                                                        }
                                                     }
                                                     resolve();
                                                 } catch (err: any) {
@@ -2447,6 +2828,16 @@ export class AgentApiHandler extends Handler {
                         { role: 'assistant', content: finalContent },
                     ]),
                 };
+                // 异步更新记忆，不阻塞响应
+                if (adoc && finalContent) {
+                    updateAgentMemory(
+                        adoc.domainId,
+                        adoc,
+                        chatHistory,
+                        message,
+                        finalContent,
+                    ).catch(err => AgentLogger.error('Failed to update memory in background', err));
+                }
                 return;
             }
 
@@ -2460,6 +2851,16 @@ export class AgentApiHandler extends Handler {
                     { role: 'assistant', content: msgStr },
                 ]),
             };
+            // 异步更新记忆，不阻塞响应
+            if (adoc && msgStr) {
+                updateAgentMemory(
+                    adoc.domainId,
+                    adoc,
+                    chatHistory,
+                    message,
+                    msgStr,
+                ).catch(err => AgentLogger.error('Failed to update memory in background', err));
+            }
         } catch (error: any) {
             AgentLogger.error('AI Chat Error:', {
                 message: error.message,
@@ -2548,7 +2949,8 @@ export class AgentEditHandler extends Handler {
     @param('title', Types.Title)
     @param('content', Types.Content)
     @post('tag', Types.Content, true, null, parseCategory)
-    async postUpdate(domainId: string, aid: string, title: string, content: string, tag: string[] = []) {
+    @post('memory', Types.Content, true)
+    async postUpdate(domainId: string, aid: string, title: string, content: string, tag: string[] = [], memory?: string) {
         const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
     
     
@@ -2558,7 +2960,7 @@ export class AgentEditHandler extends Handler {
         }
     
         const agentAid = agent.aid;
-        const updatedAgent = await Agent.edit(domainId, agentAid, { title, content, tag: tag ?? [] });
+        const updatedAgent = await Agent.edit(domainId, agentAid, { title, content, tag: tag ?? [], memory: memory || null });
     
     
         this.response.body = { aid: agentAid };
