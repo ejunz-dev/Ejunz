@@ -41,7 +41,7 @@ function buildQuery(udoc: User) {
     return q;
 }
 
-const defaultSearch = async (domainId: string, q: string, options?: RepoSearchOptions) => {
+export const defaultSearch = async (domainId: string, q: string, options?: RepoSearchOptions) => {
     const escaped = escapeRegExp(q.toLowerCase());
     const projection: (keyof RepoDoc)[] = ['domainId', 'docId', 'rid'];
     const $regex = new RegExp(q.length >= 2 ? escaped : `\\A${escaped}`, 'gmi');
@@ -62,6 +62,52 @@ const defaultSearch = async (domainId: string, q: string, options?: RepoSearchOp
         countRelation: 'eq',
     };
 };
+
+/**
+ * MCP工具使用的repo搜索函数
+ * 返回包含完整内容的搜索结果
+ */
+export async function searchRepoForMcp(domainId: string, query: string, limit: number = 10): Promise<any> {
+    // 使用defaultSearch获取匹配的repo
+    const searchResult = await defaultSearch(domainId, query, { limit, skip: 0 });
+    
+    if (searchResult.hits.length === 0) {
+        return {
+            query,
+            domainId,
+            total: 0,
+            message: `No results found for "${query}" in knowledge base`,
+            results: [],
+        };
+    }
+    
+    // 获取完整的repo文档内容
+    const rdocs: any[] = [];
+    for (const hit of searchResult.hits.slice(0, limit)) {
+        const [did, docId] = hit.split('/');
+        const rdoc = await Repo.get(did, Number(docId), Repo.PROJECTION_DETAIL);
+        if (rdoc) {
+            rdocs.push({
+                rid: rdoc.rid,
+                title: rdoc.title,
+                content: rdoc.content?.substring(0, 1000) + (rdoc.content && rdoc.content.length > 1000 ? '...' : ''),
+                tags: rdoc.tag || [],
+                updateAt: rdoc.updateAt ? new Date(rdoc.updateAt).toISOString() : null,
+                docId: rdoc.docId,
+                domainId: rdoc.domainId,
+                url: `/d/${rdoc.domainId}/repo/${rdoc.rid}`,
+            });
+        }
+    }
+    
+    return {
+        query,
+        domainId,
+        total: searchResult.total,
+        message: `Found ${rdocs.length} result(s) for "${query}"`,
+        results: rdocs,
+    };
+}
 
 export interface QueryContext {
     query: Filter<RepoDoc>;

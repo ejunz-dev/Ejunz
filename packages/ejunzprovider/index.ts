@@ -52,24 +52,104 @@ function getAvailableTools(): McpTool[] {
 		},
 		{
 			name: 'search_repo',
-			description: '搜索知识库（repo），根据关键词查找相关的知识库条目。可以搜索标题、内容、标签或ID。当用户询问知识库相关内容时使用此工具。',
+			description: 'Search the knowledge base (repo) to find relevant entries by keyword. Use this tool when the user asks about knowledge base content, documentation, stored information, or wants to look up specific topics. The tool searches through titles, content, tags, and IDs. Always use this tool proactively when the user\'s question might be answered by information in the knowledge base.',
 			inputSchema: {
 				type: 'object',
 				properties: {
 					query: { 
 						type: 'string', 
-						description: '搜索关键词，可以是标题、内容、标签或知识库ID（如R1、R2等）' 
+						description: 'Search keywords. Can be a title, content keyword, tag, or repo ID (e.g., R1, R2). Extract the most relevant search terms from the user\'s question.' 
 					},
 					domainId: { 
 						type: 'string', 
-						description: '域名ID，默认为"system"。如果用户没有指定，使用默认值' 
+						description: 'Domain ID, defaults to "system". Use default if user doesn\'t specify.' 
 					},
 					limit: { 
 						type: 'number', 
-						description: '返回结果数量限制，默认10，最大50' 
+						description: 'Maximum number of results to return, default 10, maximum 50' 
 					},
 				},
 				required: ['query'],
+			},
+		},
+		{
+			name: 'create_repo',
+			description: 'Create a new knowledge base entry (repo). Use this when the user wants to create or add new information to the knowledge base. Always returns the repo link after creation.',
+			inputSchema: {
+				type: 'object',
+				properties: {
+					title: {
+						type: 'string',
+						description: 'Title of the knowledge base entry'
+					},
+					content: {
+						type: 'string',
+						description: 'Content of the knowledge base entry (supports markdown)'
+					},
+					tags: {
+						type: 'array',
+						items: { type: 'string' },
+						description: 'Tags for categorizing the entry'
+					},
+					domainId: {
+						type: 'string',
+						description: 'Domain ID, defaults to "system"'
+					},
+					ownerId: {
+						type: 'number',
+						description: 'Owner user ID. If not provided, will use a default system user ID (1)'
+					},
+				},
+				required: ['title', 'content'],
+			},
+		},
+		{
+			name: 'update_repo',
+			description: 'Update an existing knowledge base entry (repo). Use this when the user wants to modify, edit, or update existing knowledge base content. Always returns the repo link after update.',
+			inputSchema: {
+				type: 'object',
+				properties: {
+					rid: {
+						type: 'string',
+						description: 'Repo ID (e.g., R1, R2) or docId to identify the repo to update'
+					},
+					title: {
+						type: 'string',
+						description: 'New title (optional, only if updating title)'
+					},
+					content: {
+						type: 'string',
+						description: 'New content (optional, only if updating content)'
+					},
+					tags: {
+						type: 'array',
+						items: { type: 'string' },
+						description: 'New tags (optional, only if updating tags)'
+					},
+					domainId: {
+						type: 'string',
+						description: 'Domain ID, defaults to "system"'
+					},
+				},
+				required: ['rid'],
+			},
+		},
+		{
+			name: 'get_repo',
+			description: 'Get detailed information about a specific knowledge base entry (repo) by its ID. Always returns the repo link.',
+			inputSchema: {
+				type: 'object',
+				properties: {
+					rid: {
+						type: 'string',
+						description: 'Repo ID (e.g., R1, R2) or docId to identify the repo'
+					},
+					domainId: {
+						type: 'string',
+						description: 'Domain ID, defaults to "system"'
+					},
+				},
+				required: ['rid'],
 			},
 		},
 	];
@@ -127,44 +207,175 @@ async function callTool(name: string, args: any): Promise<any> {
 		case 'search_repo': {
 			const query = args?.query;
 			if (!query || typeof query !== 'string') {
-				throw new Error('搜索关键词不能为空');
+				throw new Error('Search query cannot be empty');
 			}
 			const domainId = args?.domainId || 'system';
 			const limit = Math.max(1, Math.min(50, Number(args?.limit) || 10));
 			
-			// 执行搜索
+			// 使用与repo handler相同的搜索逻辑
 			const escaped = escapeRegExp(query.toLowerCase());
 			const $regex = new RegExp(query.length >= 2 ? escaped : `\\A${escaped}`, 'gmi');
 			const filter: any = { $or: [{ rid: { $regex } }, { title: { $regex } }, { tag: query }] };
 			
-			const rdocs = await RepoModel.getMulti(domainId, filter, ['domainId', 'docId', 'rid', 'title', 'content', 'tag', 'updateAt'])
+			let rdocs = await RepoModel.getMulti(domainId, filter, RepoModel.PROJECTION_DETAIL)
 				.limit(limit)
 				.toArray();
 			
-			// 如果搜索不到，尝试精确匹配
+			// 如果搜索不到，尝试精确匹配（与repo handler逻辑一致）
 			if (rdocs.length === 0) {
-				let rdoc = await RepoModel.get(domainId, Number.isSafeInteger(+query) ? +query : query, ['domainId', 'docId', 'rid', 'title', 'content', 'tag', 'updateAt']);
+				let rdoc = await RepoModel.get(domainId, Number.isSafeInteger(+query) ? +query : query, RepoModel.PROJECTION_DETAIL);
 				if (rdoc) rdocs.push(rdoc);
 				else if (/^R\d+$/.test(query)) {
-					rdoc = await RepoModel.get(domainId, +query.substring(1), ['domainId', 'docId', 'rid', 'title', 'content', 'tag', 'updateAt']);
+					rdoc = await RepoModel.get(domainId, +query.substring(1), RepoModel.PROJECTION_DETAIL);
 					if (rdoc) rdocs.push(rdoc);
 				}
 			}
 			
-			// 格式化返回结果
+			// 格式化返回结果，确保包含链接
 			return {
 				query,
 				domainId,
 				total: rdocs.length,
+				message: rdocs.length === 0 
+					? `No results found for "${query}" in knowledge base` 
+					: `Found ${rdocs.length} result(s) for "${query}"`,
 				results: rdocs.map((rdoc: any) => ({
 					rid: rdoc.rid,
 					title: rdoc.title,
-					content: rdoc.content?.substring(0, 500) + (rdoc.content && rdoc.content.length > 500 ? '...' : ''), // 限制内容长度
+					content: rdoc.content?.substring(0, 1000) + (rdoc.content && rdoc.content.length > 1000 ? '...' : ''),
 					tags: rdoc.tag || [],
-					updateAt: rdoc.updateAt,
+					updateAt: rdoc.updateAt ? new Date(rdoc.updateAt).toISOString() : null,
 					docId: rdoc.docId,
-					url: `/d/${domainId}/repo/${rdoc.rid}`,
+					domainId: rdoc.domainId,
+					url: `/d/${rdoc.domainId}/repo/${rdoc.rid}`,
+					link: `/d/${rdoc.domainId}/repo/${rdoc.rid}`,
 				})),
+			};
+		}
+
+		case 'create_repo': {
+			const title = args?.title;
+			const content = args?.content;
+			if (!title || typeof title !== 'string') {
+				throw new Error('Title is required');
+			}
+			if (!content || typeof content !== 'string') {
+				throw new Error('Content is required');
+			}
+			const domainId = args?.domainId || 'system';
+			const tags = Array.isArray(args?.tags) ? args.tags : [];
+			const ownerId = args?.ownerId || 1; // 默认使用系统用户ID 1
+
+			// 创建repo
+			const rid = await RepoModel.add(domainId, ownerId, title, content, undefined, false, false, tags);
+			
+			// 获取创建的repo信息
+			const rdoc = await RepoModel.get(domainId, rid, RepoModel.PROJECTION_DETAIL);
+			if (!rdoc) {
+				throw new Error('Failed to retrieve created repo');
+			}
+
+			return {
+				success: true,
+				message: `Successfully created knowledge base entry "${title}"`,
+				repo: {
+					rid: rdoc.rid,
+					docId: rdoc.docId,
+					title: rdoc.title,
+					content: rdoc.content?.substring(0, 500) + (rdoc.content && rdoc.content.length > 500 ? '...' : ''),
+					tags: rdoc.tag || [],
+					domainId: rdoc.domainId,
+					url: `/d/${rdoc.domainId}/repo/${rdoc.rid}`,
+					link: `/d/${rdoc.domainId}/repo/${rdoc.rid}`,
+				},
+			};
+		}
+
+		case 'update_repo': {
+			const rid = args?.rid;
+			if (!rid || typeof rid !== 'string') {
+				throw new Error('Repo ID (rid) is required');
+			}
+			const domainId = args?.domainId || 'system';
+
+			// 获取现有repo
+			const existingRepo = await RepoModel.get(domainId, rid, RepoModel.PROJECTION_DETAIL);
+			if (!existingRepo) {
+				throw new Error(`Repo with ID "${rid}" not found`);
+			}
+
+			// 构建更新内容
+			const updates: any = {};
+			if (args?.title && typeof args.title === 'string') {
+				updates.title = args.title;
+			}
+			if (args?.content && typeof args.content === 'string') {
+				updates.content = args.content;
+			}
+			if (args?.tags && Array.isArray(args.tags)) {
+				updates.tag = args.tags;
+			}
+			
+			// 添加更新时间
+			updates.updateAt = new Date();
+
+			if (Object.keys(updates).length === 0) {
+				throw new Error('No updates provided. Please provide title, content, or tags to update.');
+			}
+
+			// 更新repo
+			await RepoModel.edit(domainId, rid, updates);
+
+			// 重新获取更新后的repo以确保获取完整信息
+			const updatedRepo = await RepoModel.get(domainId, rid, RepoModel.PROJECTION_DETAIL);
+			if (!updatedRepo) {
+				throw new Error('Failed to retrieve updated repo');
+			}
+
+			return {
+				success: true,
+				message: `Successfully updated knowledge base entry "${updatedRepo.title || rid}"`,
+				repo: {
+					rid: updatedRepo.rid,
+					docId: updatedRepo.docId,
+					title: updatedRepo.title,
+					content: updatedRepo.content?.substring(0, 500) + (updatedRepo.content && updatedRepo.content.length > 500 ? '...' : ''),
+					tags: updatedRepo.tag || [],
+					domainId: updatedRepo.domainId,
+					updateAt: updatedRepo.updateAt ? new Date(updatedRepo.updateAt).toISOString() : null,
+					url: `/d/${updatedRepo.domainId}/repo/${updatedRepo.rid}`,
+					link: `/d/${updatedRepo.domainId}/repo/${updatedRepo.rid}`,
+				},
+			};
+		}
+
+		case 'get_repo': {
+			const rid = args?.rid;
+			if (!rid || typeof rid !== 'string') {
+				throw new Error('Repo ID (rid) is required');
+			}
+			const domainId = args?.domainId || 'system';
+
+			// 获取repo
+			const rdoc = await RepoModel.get(domainId, rid, RepoModel.PROJECTION_DETAIL);
+			if (!rdoc) {
+				throw new Error(`Repo with ID "${rid}" not found`);
+			}
+
+			return {
+				success: true,
+				repo: {
+					rid: rdoc.rid,
+					docId: rdoc.docId,
+					title: rdoc.title,
+					content: rdoc.content,
+					tags: rdoc.tag || [],
+					domainId: rdoc.domainId,
+					updateAt: rdoc.updateAt ? new Date(rdoc.updateAt).toISOString() : null,
+					views: rdoc.views || 0,
+					url: `/d/${rdoc.domainId}/repo/${rdoc.rid}`,
+					link: `/d/${rdoc.domainId}/repo/${rdoc.rid}`,
+				},
 			};
 		}
 

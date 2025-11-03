@@ -266,6 +266,7 @@ declare module './model/agent'{
         domainId: string;
         owner: number;
         apiKey?: string;
+        memory?: string;
     }
 }
 export type { AgentDoc } from './model/agent';

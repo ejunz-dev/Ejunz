@@ -43,6 +43,17 @@
                value: adoc['tag']|default([])|join(', ')
              }) }}
 
+          {{ form.form_textarea({
+                columns: 12,
+                label: _('Memory'),
+                name: 'memory',
+                value: adoc.memory|default(''),
+                help_text: _('Agent工作规则记忆：记录工具使用规则、用户指导和工作方式。系统会在每次对话后自动更新。'),
+                markdown: false,
+                required: false,
+                extra_style: 'height: 200px'
+              }) }}
+
           
 
           <div class="row">

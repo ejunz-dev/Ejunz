@@ -22,6 +22,20 @@
           {{ adoc['content']|markdown|safe }}
         </div>
 
+        {% if adoc.memory %}
+        <div class="section" style="margin-top: 20px;">
+          <div class="section__header">
+            <h2 class="section__title">{{ _('Work Rules Memory') }}</h2>
+          </div>
+          <div class="section__body">
+            <div class="typo">
+              <pre style="white-space: pre-wrap; word-wrap: break-word; background: #f5f5f5; padding: 10px; border-radius: 4px;">{{ adoc.memory }}</pre>
+            </div>
+            <p class="help-text">{{ _('These rules are automatically updated after each conversation based on your guidance and tool usage patterns.') }}</p>
+          </div>
+        </div>
+        {% endif %}
+
         {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
         <!-- Chat Link Section -->
         <div class="section" style="margin-top: 20px;">
