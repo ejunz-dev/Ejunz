@@ -22,7 +22,7 @@ import domain from '../model/domain';
 import message from '../model/message';
 import * as setting from '../model/setting';
 import storage from '../model/storage';
-import * as system from '../model/system';
+import system from '../model/system';
 import token from '../model/token';
 import user from '../model/user';
 import {

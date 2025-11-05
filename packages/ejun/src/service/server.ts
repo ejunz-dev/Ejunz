@@ -16,7 +16,7 @@ import { Logger } from '../logger';
 import { PERM, PRIV } from '../model/builtin';
 import * as opcount from '../model/opcount';
 import * as OplogModel from '../model/oplog';
-import * as system from '../model/system';
+import system from '../model/system';
 import db from './db';
 import baseLayer from './layers/base';
 import domainLayer from './layers/domain';
@@ -90,7 +90,7 @@ export async function apply(ctx: Context) {
         xff: system.get('server.xff'),
         xhost: system.get('server.xhost'),
     });
-    if (process.env.Ejunz_CLI) return;
+    if (process.env.EJUNZ_CLI) return;
     await ctx.inject(['server', 'oauth', 'setting'], (childContext) => {
         const { server, on, oauth } = childContext;
         server.addHandlerLayer('init', async (c, next) => {

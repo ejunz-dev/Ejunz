@@ -3,7 +3,7 @@ import { cloneDeep, omit } from 'lodash';
 import type { KoaContext } from '@ejunz/framework';
 import { randomPick, Time } from '@ejunz/utils';
 import { PERM } from '../../model/builtin';
-import * as system from '../../model/system';
+import system from '../../model/system';
 import token from '../../model/token';
 
 export interface UiContextBase {

@@ -25,7 +25,7 @@ import domain from '../model/domain';
 import * as oplog from '../model/oplog';
 import * as setting from '../model/setting';
 import storage from '../model/storage';
-import * as system from '../model/system';
+import system from '../model/system';
 import user from '../model/user';
 import {
     Handler, param, post, query, route, Types,
