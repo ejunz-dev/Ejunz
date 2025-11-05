@@ -64,18 +64,7 @@ export const AgentAdd = (name, args, icon = 'add', text = 'Create Agent') => {
 // inject('NavMainDropdown', 'talkspace_main');
 
 
-// inject('Nav', 'homepage', { prefix: 'homepage' });
-// inject('Nav', 'problem_main', { prefix: 'problem' }, PERM.PERM_VIEW_PROBLEM);
-// inject('Nav', 'training_main', { prefix: 'training' }, PERM.PERM_VIEW_TRAINING);
-// inject('Nav', 'contest_main', { prefix: 'contest' }, PERM.PERM_VIEW_CONTEST);
-// inject('Nav', 'homework_main', { prefix: 'homework' }, PERM.PERM_VIEW_HOMEWORK);
-// inject('Nav', 'record_main', {
-//     prefix: 'record',
-//     query: (handler) => (handler.user.hasPriv(PRIV.PRIV_USER_PROFILE)
-//         ? ({ uidOrName: handler.user._id })
-//         : ({})),
-// });
-// inject('Nav', 'ranking', { prefix: 'ranking' }, PERM.PERM_VIEW_RANKING);
+inject('Nav', 'homepage', { prefix: 'homepage' });
 
 
 inject('NavDropdown', 'domain_dashboard', { prefix: 'domain' }, PERM.PERM_EDIT_DOMAIN);
