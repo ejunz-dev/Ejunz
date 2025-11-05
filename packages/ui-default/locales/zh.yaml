@@ -1,5 +1,14 @@
 __id: zh
 __langname: 简体中文
+agent_domain: 智能体
+agent_main: 智能体
+agent_create: 创建智能体
+agent_edit: 编辑智能体
+agent_detail: 智能体详情
+agent_list: 智能体列表
+agent_manage: 智能体管理
+agent_user: 智能体用户
+agent_role: 智能体角色
 '"{data}" copied to clipboard!': “{data}”已复制到剪贴板！
 '{0} {1} delete your discussion reply {2} in "{3}"({4}).' : '{0} {1} 从讨论 {3}({4}) 删除了你的回复 {2}。'
 '{0} comments': '{0} 条评论'
@@ -193,7 +202,7 @@ CPU Info: CPU信息
 Create a contest: 创建一个比赛
 Create a Discussion: 创建一个讨论
 Create a New Document: 创建一个新源库
-Create a New Repository: 创建一个新知库
+Create a New Repository: 创建一个新知识库
 Create a problem: 创建一个题枝
 Create Branch: 创建树枝
 Create Contest: 创建比赛
@@ -206,11 +215,11 @@ Create Forest: 创建森林
 Create homework: 创建作业
 Create Homework: 创建作业
 Create Link: 创建链接
-Create New Repository: 创建一个新知库
+Create New Repository: 创建一个新知识库
 Create problem solutions: 创建题解
 Create Problem: 创建题枝
 Create problems: 创建题枝
-Create Repository: 创建知库
+Create Repository: 创建知识库
 Create Role: 创建角色
 Create Sub-Branch: 创建子分支
 Create Training Plan: 创建训练计划
@@ -710,7 +719,7 @@ Rejudge records: 重测记录
 Rejudge: 重测
 Related Discussions: 相关讨论
 Related Docs: 关联文档
-Related Repositories: 关联知库
+Related Repositories: 关联知识库
 Related: 相关
 Relax and try to remember your password.: 放松，尝试回忆您设置的密码。
 Remember me: 记住我
@@ -723,14 +732,14 @@ Reply discussions: 回复讨论
 Reply problem solutions: 回复题解
 reply: 回复
 Reply: 回复
-repo_detail: 知库详情
-repo_domain: 知库
-repo_edit: 编辑知库
-repo: 知库
+repo_detail: 知识库详情
+repo_domain: 知识库
+repo_edit: 编辑知识库
+repo: 知识库
 Reponame: 库名
 Report: 举报
-Repos: 知库
-Repository: 知库
+Repos: 知识库
+Repository: 知识库
 required: 必填
 Reset Password or Find Username: 重置密码或找回用户名
 Reset Password: 重置密码
@@ -758,7 +767,7 @@ Score: 分数
 Scoreboard (Hidden): 成绩表 (隐藏)
 Scoreboard: 成绩表
 Scripts: 脚本
-Search repositories: 搜索知库
+Search repositories: 搜索知识库
 Search: 搜索
 Secret (visible to admins): 保密（对管理员可见）
 Secret: 保密
@@ -1022,7 +1031,7 @@ You don't have the required privilege.: 您没有相应的特权。
 You don't own any domain and don't have privilege to create domain.: 您不拥有任何域也没有创建域的特权。
 You have not submitted any solutions for this problem: 您在该题下没有递交过任何解答
 You have permission to create problems for this domain.: 您有权限为此域创建题枝。
-You have permission to create repositories for this domain.: 您有权限为此域创建知库
+You have permission to create repositories for this domain.: 您有权限为此域创建知识库
 You have uncompleted domain creation operation. You can click "Continue" to finish the creation.: 您有未完成的创建域操作。您可以点击“继续”来完成创建。
 You haven't attended this contest yet.: 您还没有参加本次比赛。
 You haven't claimed this homework yet.: 您还未认领过该作业。
