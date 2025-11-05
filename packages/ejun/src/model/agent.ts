@@ -24,7 +24,7 @@ import { buildProjection } from '../utils';
 import { PERM, STATUS } from './builtin';
 import DomainModel from './domain';
 import storage from './storage';
-import * as SystemModel from './system';
+import SystemModel from './system';
 import user from './user';
 import * as document from './document';
 import db from '../service/db';

@@ -11,7 +11,7 @@ import { Logger, size, streamToBuffer } from '@ejunz/utils/lib/utils';
 import { Context } from '../context';
 import { FileUploadError, ProblemNotFoundError } from '../error';
 import type {
-    Document, ProblemDict, ProblemStatusDoc, User, DocsDict
+    Document, User, DocsDict
 } from '../interface';
 import { parseConfig } from '../lib/testdataConfig';
 import * as bus from '../service/bus';
@@ -21,9 +21,8 @@ import {
 import { buildProjection } from '../utils';
 import { PERM, STATUS } from './builtin';
 import DomainModel from './domain';
-import RecordModel from './record';
 import storage from './storage';
-import * as SystemModel from './system';
+import SystemModel from './system';
 import user from './user';
 import * as document from './document';
 import _ from 'lodash';

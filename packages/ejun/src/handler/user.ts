@@ -20,7 +20,7 @@ import { PERM, PRIV, STATUS } from '../model/builtin';
 import domain from '../model/domain';
 import * as oplog from '../model/oplog';
 import ScheduleModel from '../model/schedule';
-import * as system from '../model/system';
+import system from '../model/system';
 import token from '../model/token';
 import user, { deleteUserCache } from '../model/user';
 import {

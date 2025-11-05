@@ -24,7 +24,7 @@ import { PERM, STATUS } from './builtin';
 import DomainModel from './domain';
 import RecordModel from './record';
 import storage from './storage';
-import * as SystemModel from './system';
+import SystemModel from './system';
 import user from './user';
 import * as document from './document';
 import _ from 'lodash';

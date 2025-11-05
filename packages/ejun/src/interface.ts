@@ -10,6 +10,8 @@ import type { RepoDoc } from './model/repo';
 import type { AgentDoc } from './model/agent';
 import type { Handler } from './service/server';
 
+export * from '@ejunz/common/types';
+
 type document = typeof import('./model/document');
 
 export interface System {
@@ -18,44 +20,39 @@ export interface System {
 }
 
 export interface SystemKeys {
-    'smtp.user': string,
-    'smtp.from': string,
-    'smtp.pass': string,
-    'smtp.host': string,
-    'smtp.port': number,
-    'smtp.secure': boolean,
-    'installid': string,
-    'server.name': string,
-    'server.url': string,
-    'server.xff': string,
-    'server.xhost': string,
-    'server.port': number,
-    'server.language': string,
-    'session.keys': string[],
-    'session.saved_expire_seconds': number,
-    'session.unsaved_expire_seconds': number,
-    'user.quota': number,
+    'smtp.user': string;
+    'smtp.from': string;
+    'smtp.pass': string;
+    'smtp.host': string;
+    'smtp.port': number;
+    'smtp.secure': boolean;
+    installid: string;
+    'server.name': string;
+    'server.url': string;
+    'server.xff': string;
+    'server.xhost': string;
+    'server.host': string;
+    'server.port': number;
+    'server.language': string;
+    'limit.problem_files_max': number;
+    'problem.categories': string;
+    'session.keys': string[];
+    'session.saved_expire_seconds': number;
+    'session.unsaved_expire_seconds': number;
+    'user.quota': number;
 }
 
 export interface Setting {
-    family: string,
-    key: string,
-    range: [string, string][] | Record<string, string>,
-    value: any,
-    type: string,
-    subType?: string,
-    name: string,
-    desc: string,
-    flag: number,
-}
-
-export interface OAuthUserResponse {
-    _id: string;
-    email: string;
-    avatar?: string;
-    bio?: string;
-    uname?: string[];
-    viewLang?: string;
+    family: string;
+    key: string;
+    range: [string, string][] | Record<string, string>;
+    value: any;
+    type: string;
+    subType?: string;
+    name: string;
+    desc: string;
+    flag: number;
+    validation?: (val: any) => boolean;
 }
 
 export interface Authenticator {
@@ -72,7 +69,7 @@ export interface Authenticator {
     userVerified: boolean;
     credentialDeviceType: CredentialDeviceType;
     credentialBackedUp: boolean;
-    authenticatorExtensionResults?: AuthenticationExtensionsAuthenticatorOutputs;
+    authenticatorExtensionResults?: ParsedAuthenticatorData['extensionsData'];
     authenticatorAttachment: 'platform' | 'cross-platform';
 }
 
@@ -432,12 +429,7 @@ export interface OpCountDoc {
     opcount: number;
 }
 
-export interface OauthMap {
-    /** source openId */
-    _id: string;
-    /** target uid */
-    uid: number;
-}
+export type { OauthMap, OAuthProvider, OAuthUserResponse } from './model/oauth';
 
 export interface DiscussionHistoryDoc {
     title?: string;
@@ -448,6 +440,13 @@ export interface DiscussionHistoryDoc {
     time: Date;
     uid: number;
     ip: string;
+}
+
+export interface LockDoc {
+    _id: ObjectId;
+    key: string;
+    lockAt: Date;
+    daemonId: string;
 }
 
 
@@ -492,7 +491,7 @@ export interface Model {
     message: typeof import('./model/message').default,
     opcount: typeof import('./model/opcount'),
     setting: typeof import('./model/setting'),
-    system: typeof import('./model/system'),
+    system: typeof import('./model/system').default,
     task: typeof import('./model/task').default,
     schedule: typeof import('./model/schedule').default;
     oplog: typeof import('./model/oplog'),
@@ -500,14 +499,6 @@ export interface Model {
     user: typeof import('./model/user').default,
     oauth: typeof import('./model/oauth').default,
     storage: typeof import('./model/storage').default,
-}
-
-export interface EjunzService {
-    /** @deprecated */
-    bus: Context,
-    db: typeof import('./service/db').default,
-    server: typeof import('./service/server'),
-    storage: typeof import('./service/storage').default,
 }
 
 export interface GeoIP {

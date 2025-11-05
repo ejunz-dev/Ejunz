@@ -13,7 +13,7 @@ export {
 export * from './error';
 export * from './libs';
 export * from './settings';
-export * as SystemModel from './model/system';
+export { default as SystemModel } from './model/system';
 export * as OpcountModel from './model/opcount';
 export * as OplogModel from './model/oplog';
 export * as SettingModel from './model/setting';
