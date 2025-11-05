@@ -74,11 +74,11 @@ export function apply(ctx: Context) {
         if (!process.send || !pm2 || process.env.exec_mode !== 'cluster_mode') throw new Error('not in cluster mode');
         pm2.launchBus((err, bus) => {
             if (err) throw new Error('cannot launch pm2 bus');
-            bus.on('hydro:broadcast', (packet) => {
+            bus.on('ejunz:broadcast', (packet) => {
                 (app.parallel as any)(packet.data.event, ...BSON.EJSON.parse(packet.data.payload));
             });
             ctx.on('bus/broadcast', (event, payload) => {
-                process.send({ type: 'hydro:broadcast', data: { event, payload: BSON.EJSON.stringify(payload) } });
+                process.send({ type: 'ejunz:broadcast', data: { event, payload: BSON.EJSON.stringify(payload) } });
             });
             console.debug('Using pm2 event bus');
         });

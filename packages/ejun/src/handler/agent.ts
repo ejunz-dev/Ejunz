@@ -18,7 +18,7 @@ import { PERM, PRIV, STATUS } from '../model/builtin';
 import { AgentDoc } from '../interface';
 import domain from '../model/domain';
 import { User } from '../model/user';
-import * as system from '../model/system';
+import system from '../model/system';
 import parser from '@ejunz/utils/lib/search';
 import { RepoSearchOptions } from '../interface';
 import user from '../model/user';

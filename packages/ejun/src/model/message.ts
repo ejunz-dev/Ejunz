@@ -4,7 +4,7 @@ import * as bus from '../service/bus';
 import db from '../service/db';
 import { ArgMethod } from '../utils';
 import { PRIV } from './builtin';
-import * as system from './system';
+import SystemModel from './system';
 import user from './user';
 
 class MessageModel {
