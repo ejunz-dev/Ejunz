@@ -7,6 +7,11 @@ homepage:
     - width: 3
       discussion_nodes: true
 
+ejunztree_allowed_domains:
+  type: yaml
+  desc: Ejunztree Allowed Domains
+  default: [system]
+
 langs:
   type: yaml
   desc: Code language settings
