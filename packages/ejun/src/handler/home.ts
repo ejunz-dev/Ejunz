@@ -50,7 +50,7 @@ export class HomeHandler extends Handler {
     }
 
     async get({ domainId }) {
-        const homepageConfig = this.ctx.setting.get('ejunz.homepage');
+        const homepageConfig = this.ctx.setting.get('ejun.homepage');
         const info = yaml.load(homepageConfig) as any;
         const contents = [];
         for (const column of info) {
