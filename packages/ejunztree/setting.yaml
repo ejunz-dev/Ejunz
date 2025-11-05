@@ -1,6 +1,0 @@
-plugins_allowed_domains:
-  family: system_plugins
-  type: yaml
-  name: ejunztree
-  desc: Allowed domains
-  default: [system]
