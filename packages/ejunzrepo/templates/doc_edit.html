@@ -238,7 +238,7 @@ function copyResourceUrl(el) {
 
           <div class="row">
             <div class="columns">
-              <button name="operation" value="{% if ddoc %}update{% elif parentId %}create_subbranch{% else %}create{% endif %}" type="submit" class="rounded primary button">
+              <button name="operation" value="{% if ddoc %}update{% elif parentId %}create_subdoc{% else %}create{% endif %}" type="submit" class="rounded primary button">
                 {% if ddoc %}
                   {{ _('Update') }}
                 {% elif parentId %}
