@@ -1088,7 +1088,7 @@ export class RepoStructureUpdateHandler extends Handler {
     @param('rpid', Types.Int)
     @param('branch', Types.String, true)
     async post(domainId: string, rpid: number) {
-        const { structure, creates, branch } = this.request.body;
+        const { structure, creates, deletes, branch } = this.request.body;
         const effectiveBranch = (branch || this.args?.branch || 'main');
         
         if (!structure || !structure.docs) {
@@ -1098,14 +1098,41 @@ export class RepoStructureUpdateHandler extends Handler {
         
 
         try {
+            // 先处理删除
+            if (deletes && Array.isArray(deletes) && deletes.length > 0) {
+                await this.deleteItems(domainId, rpid, deletes, effectiveBranch);
+            }
+            // 然后处理创建
             if (creates && creates.length > 0) {
                 await this.createItems(domainId, rpid, creates, effectiveBranch);
             }
+            // 最后更新结构
             await this.updateDocStructure(domainId, rpid, structure.docs);
             this.response.body = { success: true, branch: effectiveBranch };
         } catch (error: any) {
             console.error(`Failed to update structure: ${error.message}`);
             throw error;
+        }
+    }
+
+    async deleteItems(domainId: string, rpid: number, deletes: any[], branch: string) {
+        for (const deleteItem of deletes) {
+            const { type, did, bid } = deleteItem;
+            
+            if (type === 'doc' && did) {
+                // 删除文档及其所有子文档和 blocks
+                const doc = await DocModel.get(domainId, { rpid, did });
+                if (doc && (doc.branch || 'main') === branch) {
+                    // 使用 deleteNode 会递归删除所有子节点
+                    await DocModel.deleteNode(domainId, doc.docId);
+                }
+            } else if (type === 'block' && bid) {
+                // 删除 block
+                const block = await BlockModel.get(domainId, { rpid, bid });
+                if (block && (block.branch || 'main') === branch) {
+                    await BlockModel.delete(domainId, block.docId);
+                }
+            }
         }
     }
 
@@ -1519,23 +1546,125 @@ async function buildLocalRepoFromEjunz(domainId: string, rpid: number, targetDir
     );
 }
 
-async function gitInitAndPush(targetDir: string, remoteUrlWithAuth: string, branch: string = 'main', commitMessage: string = 'chore: sync from ejunzrepo') {
-    await exec('git init', { cwd: targetDir });
-    await exec('git config user.name "ejunz-bot"', { cwd: targetDir });
-    await exec('git config user.email "bot@ejunz.local"', { cwd: targetDir });
-    await exec('git add .', { cwd: targetDir });
-    // 若无变更，commit 可能失败，允许通过
+/**
+ * 将源目录的内容复制到目标目录（覆盖），排除 .git 目录
+ */
+async function copyDir(src: string, dest: string) {
+    const entries = await fs.promises.readdir(src, { withFileTypes: true });
+    for (const entry of entries) {
+        // 排除 .git 目录，避免覆盖 Git 历史
+        if (entry.name === '.git') continue;
+        
+        const srcPath = path.join(src, entry.name);
+        const destPath = path.join(dest, entry.name);
+        if (entry.isDirectory()) {
+            await fs.promises.mkdir(destPath, { recursive: true });
+            await copyDir(srcPath, destPath);
+        } else {
+            await fs.promises.copyFile(srcPath, destPath);
+        }
+    }
+}
+
+/**
+ * Git 版本控制推送：先尝试克隆远程仓库，保留历史记录
+ */
+async function gitInitAndPush(
+    sourceDir: string, 
+    remoteUrlWithAuth: string, 
+    branch: string = 'main', 
+    commitMessage: string = 'chore: sync from ejunzrepo'
+) {
+    const tmpRepoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-git-repo-'));
+    let isNewRepo = false;
+    
     try {
-        // 转义 commit message 中的特殊字符，使用单引号包裹
-        const escapedMessage = commitMessage.replace(/'/g, "'\\''");
-        await exec(`git commit -m '${escapedMessage}'`, { cwd: targetDir });
-    } catch (_) {}
-    // 设置主分支并强推
-    await exec(`git branch -M ${branch}`, { cwd: targetDir });
-    // 如果已存在 origin，先移除再添加，避免重复
-    try { await exec('git remote remove origin', { cwd: targetDir }); } catch {}
-    await exec(`git remote add origin ${remoteUrlWithAuth}`, { cwd: targetDir });
-    await exec(`git push -u origin ${branch} --force`, { cwd: targetDir });
+        // 尝试克隆远程仓库
+        try {
+            await exec(`git clone ${remoteUrlWithAuth} .`, { cwd: tmpRepoDir });
+            // 获取所有远程分支
+            try {
+                await exec('git fetch origin', { cwd: tmpRepoDir });
+            } catch {}
+            
+            // 检查目标分支是否存在（本地或远程）
+            try {
+                await exec(`git checkout ${branch}`, { cwd: tmpRepoDir });
+            } catch {
+                // 本地分支不存在，尝试从远程创建
+                try {
+                    await exec(`git checkout -b ${branch} origin/${branch}`, { cwd: tmpRepoDir });
+                } catch {
+                    // 远程分支也不存在，从当前分支（通常是 main 或 master）创建新分支
+                    const { stdout: currentBranch } = await exec('git rev-parse --abbrev-ref HEAD', { cwd: tmpRepoDir });
+                    const baseBranch = currentBranch.trim() || 'main';
+                    await exec(`git checkout -b ${branch} ${baseBranch}`, { cwd: tmpRepoDir });
+                }
+            }
+            // 拉取最新内容（如果分支已存在）
+            try {
+                await exec(`git pull origin ${branch}`, { cwd: tmpRepoDir });
+            } catch {
+                // 如果 pull 失败（可能是新分支），忽略
+            }
+        } catch {
+            // 克隆失败，说明仓库不存在，初始化新仓库
+            isNewRepo = true;
+            await exec('git init', { cwd: tmpRepoDir });
+            await exec(`git checkout -b ${branch}`, { cwd: tmpRepoDir });
+        }
+        
+        // 配置 Git 用户信息
+        await exec('git config user.name "ejunz-bot"', { cwd: tmpRepoDir });
+        await exec('git config user.email "bot@ejunz.local"', { cwd: tmpRepoDir });
+        
+        // 将源目录的内容复制到仓库目录（覆盖）
+        await copyDir(sourceDir, tmpRepoDir);
+        
+        // 添加所有变更
+        await exec('git add .', { cwd: tmpRepoDir });
+        
+        // 检查是否有变更需要提交
+        try {
+            const { stdout } = await exec('git status --porcelain', { cwd: tmpRepoDir });
+            if (stdout.trim()) {
+                // 有变更，提交
+                const escapedMessage = commitMessage.replace(/'/g, "'\\''");
+                await exec(`git commit -m '${escapedMessage}'`, { cwd: tmpRepoDir });
+            }
+        } catch (err) {
+            // 如果 status 失败，尝试直接提交
+            const escapedMessage = commitMessage.replace(/'/g, "'\\''");
+            try {
+                await exec(`git commit -m '${escapedMessage}'`, { cwd: tmpRepoDir });
+            } catch {
+                // 没有变更，忽略
+            }
+        }
+        
+        // 设置远程仓库
+        try { 
+            await exec('git remote remove origin', { cwd: tmpRepoDir }); 
+        } catch {}
+        await exec(`git remote add origin ${remoteUrlWithAuth}`, { cwd: tmpRepoDir });
+        
+        // 推送：如果是新仓库或新分支，使用 -u；否则正常推送
+        if (isNewRepo) {
+            await exec(`git push -u origin ${branch}`, { cwd: tmpRepoDir });
+        } else {
+            try {
+                await exec(`git push origin ${branch}`, { cwd: tmpRepoDir });
+            } catch {
+                // 如果推送失败（可能是分支不存在），使用 -u
+                await exec(`git push -u origin ${branch}`, { cwd: tmpRepoDir });
+            }
+        }
+    } finally {
+        // 清理临时目录
+        try { 
+            await fs.promises.rm(tmpRepoDir, { recursive: true, force: true }); 
+        } catch {}
+    }
 }
 
 async function cloneRepoToTemp(remoteUrlWithAuth: string): Promise<string> {
