@@ -4,45 +4,39 @@
   <div class="medium-9 columns">
     <div class="section">
       <div class="section__header">
-        <h2 class="section__title">{{ _("Repo Details") }}</h2>
+        <h1 class="section__title">{{ repo.title }}</h1>
       </div>
       <div class="section__body">
         {% if repo %}
+          {% if repo.content %}
+            <div class="typo richmedia topic__content" data-emoji-enabled>
+              {{ repo.content|markdown|safe }}
+            </div>
+          {% else %}
+            <p style="color: #888;">{{ _("No description available.") }}</p>
+          {% endif %}
 
-
-          <div class="section">
+          <div class="section" style="margin-top: 30px;">
             <div class="section__header">
-              <h3>{{ _("Repo Map") }}</h3>
+              <h2>{{ _("Document Structure") }}</h2>
             </div>
             <div class="section__body">
-              <div style="overflow-x: auto;">
-                <svg id="d3-repo"></svg>
+              <div id="doc-tree-container">
+                {% if rootDocs|length == 0 %}
+                  <p style="color: #888; padding: 20px;">{{ _("No documents yet. Create a document to get started.") }}</p>
+                {% else %}
+                  <div id="doc-tree"></div>
+                {% endif %}
               </div>
             </div>
           </div>
-
         {% else %}
           <p>{{ _("Repo not found.") }}</p>
         {% endif %}
       </div>
     </div>
   </div>
-  <div class="medium-3 columns">
-          <div class="section">
-            <div class="section__header">
-              <h3>{{ _(repo.title) }}</h3>
-            </div>
-            <div class="section__body">
-              {% if repo.content %}
-                <div class="typo richmedia topic__content" data-emoji-enabled>
-                  {{ repo.content|markdown|safe }}
-                </div>
-              {% else %}
-                <p>{{ _("No content available.") }}</p>
-              {% endif %}
-            </div>
-          </div>
-  </div>
+
   <div class="medium-3 columns">
     <div class="section">
       <div class="section__header">
@@ -50,14 +44,12 @@
       </div>
       <div class="section__body">
         {% if repo %}
+          <a href="{{ url('doc_create', domainId=repo.domainId, rpid=repo.rpid) }}" class="button success expanded" style="margin-bottom: 8px;">
+            {{ _('Create Doc') }}
+          </a>
           <a href="{{ url('repo_edit', domainId=repo.domainId, rpid=repo.rpid) }}" class="button primary expanded">
             {{ _('Edit Repo') }}
           </a>
-          {% if not branchHierarchy.trunk %}
-            <a href="{{ url('repo_create_root', domainId=repo.domainId, rpid=repo.rpid) }}" class="button success expanded">
-              {{ _('Create Root') }}
-            </a>
-          {% endif %}
         {% endif %}
       </div>
     </div>
