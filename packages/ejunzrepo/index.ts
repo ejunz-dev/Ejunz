@@ -419,9 +419,9 @@ export class DocModel {
 }
 
 export class BlockModel {
-    static async generateNextBid(domainId: string, did: number): Promise<number> {
-        // 在每个 doc 内独立计数，从 1 开始
-        const lastBlock = await DocumentModel.getMulti(domainId, TYPE_BK, { did })
+    static async generateNextBid(domainId: string, rpid: number): Promise<number> {
+        // 在整个 repo 范围内独立计数，从 1 开始
+        const lastBlock = await DocumentModel.getMulti(domainId, TYPE_BK, { rpid })
             .sort({ bid: -1 })
             .limit(1)
             .project({ bid: 1 })
@@ -438,7 +438,7 @@ export class BlockModel {
         content: string,
         ip?: string
     ): Promise<ObjectId> {
-        const bid = await this.generateNextBid(domainId, did);
+        const bid = await this.generateNextBid(domainId, rpid);
         
         const payload: Partial<BKDoc> = {
             domainId,
@@ -467,8 +467,8 @@ export class BlockModel {
         return docId;
     }
 
-    static async get(domainId: string, query: ObjectId | { bid: number } | { rpid: number, did: number, bid: number }): Promise<BKDoc | null> {
-        // 支持通过 ObjectId 或 bid 查询
+    static async get(domainId: string, query: ObjectId | { rpid: number, bid: number }): Promise<BKDoc | null> {
+        // 支持通过 ObjectId 或 { rpid, bid } 查询
         if (typeof query === 'object' && 'bid' in query) {
             const blocks = await DocumentModel.getMulti(domainId, TYPE_BK, query).limit(1).toArray();
             return blocks[0] || null;
@@ -476,8 +476,12 @@ export class BlockModel {
         return await DocumentModel.get(domainId, TYPE_BK, query as ObjectId);
     }
 
-    static async getByDid(domainId: string, did: number): Promise<BKDoc[]> {
-        return await DocumentModel.getMulti(domainId, TYPE_BK, { did }).toArray();
+    static async getByDid(domainId: string, did: number, rpid?: number): Promise<BKDoc[]> {
+        const query: any = { did };
+        if (rpid !== undefined) {
+            query.rpid = rpid;  // 确保只查询当前 repo 的 blocks
+        }
+        return await DocumentModel.getMulti(domainId, TYPE_BK, query).toArray();
     }
 
     static async edit(domainId: string, docId: ObjectId, title: string, content: string): Promise<void> {
@@ -885,10 +889,10 @@ export class DocDetailHandler extends DocHandler {
 
         const repoDocs = await EjunRepoModel.getDocsByRepo(domainId, ddoc.rpid);
 
-        // 获取所有 docs 的 blocks
+        // 获取所有 docs 的 blocks（确保只查询当前 repo 的 blocks）
         const allDocsWithBlocks = {};
         for (const doc of repoDocs) {
-          const docBlocks = await BlockModel.getByDid(domainId, doc.did);
+          const docBlocks = await BlockModel.getByDid(domainId, doc.did, ddoc.rpid);
           if (docBlocks && docBlocks.length > 0) {
             allDocsWithBlocks[doc.did] = docBlocks.map(block => ({
               ...block,
@@ -921,8 +925,8 @@ export class DocDetailHandler extends DocHandler {
         const docHierarchy = {};
         docHierarchy[ddoc.rpid] = buildHierarchy(null, repoDocs);
 
-        // Get blocks for this doc
-        const blocks = await BlockModel.getByDid(domainId, ddoc.did);
+        // Get blocks for this doc（确保只查询当前 repo 的 blocks）
+        const blocks = await BlockModel.getByDid(domainId, ddoc.did, ddoc.rpid);
 
         this.UiContext.docHierarchy = docHierarchy;
         this.UiContext.allDocsWithBlocks = allDocsWithBlocks;
@@ -1035,6 +1039,221 @@ export class DocCreateHandler extends DocHandler {
 
 
 
+// Structure Update Handler
+export class RepoStructureUpdateHandler extends Handler {
+    @param('rpid', Types.Int)
+    async post(domainId: string, rpid: number) {
+        const { structure, creates } = this.request.body;
+        
+        if (!structure || !structure.docs) {
+            throw new Error('Invalid structure');
+        }
+
+        console.log('Received structure:', JSON.stringify(structure, null, 2));
+        console.log('Received creates:', JSON.stringify(creates || [], null, 2));
+
+        try {
+            // 先创建新项目
+            if (creates && creates.length > 0) {
+                await this.createItems(domainId, rpid, creates);
+            }
+
+            // 然后更新文档结构
+            await this.updateDocStructure(domainId, rpid, structure.docs);
+            
+            this.response.body = { success: true };
+        } catch (error: any) {
+            console.error(`Failed to update structure: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async createItems(domainId: string, rpid: number, creates: any[]) {
+        // 首先创建一个映射：placeholderId -> did
+        const placeholderMap: { [key: string]: number } = {};
+        
+        // 第一遍：只创建文档（按层级顺序）
+        // 需要多轮创建：先创建没有父节点的，再创建有父节点的
+        const docCreates = creates.filter(c => c.type === 'doc');
+        
+        // 多轮创建，确保父子关系正确
+        let createdDocs = new Set<string>();
+        let hasNewDocs = true;
+        let round = 0;
+        
+        while (hasNewDocs && round < 10) { // 最多 10 轮，防止无限循环
+            round++;
+            hasNewDocs = false;
+            
+            for (const create of docCreates) {
+                // 如果已经创建过，跳过
+                const placeholderId = (create as any).placeholderId;
+                if (placeholderId && placeholderMap[placeholderId]) {
+                    continue;
+                }
+                
+                const { type, title, parentDid, parentPlaceholderId } = create;
+                
+                if (!title || !title.trim()) {
+                    continue;
+                }
+
+                // 确定实际的父节点 did
+                let actualParentDid: number | null = null;
+                let canCreate = false;
+                
+                if (parentPlaceholderId) {
+                    // 父节点是占位符 doc，从映射中获取
+                    actualParentDid = placeholderMap[parentPlaceholderId];
+                    canCreate = actualParentDid !== undefined;
+                } else if (parentDid !== null && parentDid !== undefined) {
+                    // 父节点是已存在的 doc
+                    if (typeof parentDid === 'string') {
+                        // 如果 parentDid 是字符串，说明也是占位符 ID
+                        actualParentDid = placeholderMap[parentDid];
+                        canCreate = actualParentDid !== undefined;
+                    } else {
+                        actualParentDid = parentDid;
+                        canCreate = true; // 已存在的 doc，可以直接创建
+                    }
+                } else {
+                    // 没有父节点，根层级
+                    canCreate = true;
+                }
+                
+                if (!canCreate) {
+                    continue; // 父节点还没创建，跳过这一轮
+                }
+                
+                // 创建文档
+                const did = await DocModel.generateNextDid(domainId, rpid);
+                const docId = actualParentDid 
+                    ? await DocModel.addSubdocNode(
+                        domainId,
+                        [rpid],
+                        did,
+                        actualParentDid,
+                        this.user._id,
+                        title.trim(),
+                        '',
+                        this.request.ip
+                    )
+                    : await DocModel.addRootNode(
+                        domainId,
+                        rpid,
+                        did,
+                        this.user._id,
+                        title.trim(),
+                        '',
+                        this.request.ip
+                    );
+                
+                // 记录 placeholderId 到 did 的映射
+                if (placeholderId) {
+                    placeholderMap[placeholderId] = did;
+                    console.log(`Mapped placeholder ${placeholderId} -> did ${did}`);
+                }
+                
+                console.log(`Created doc: ${title}, did=${did}, docId=${docId}`);
+                hasNewDocs = true;
+            }
+        }
+        
+        // 第二遍：创建 blocks
+        const blockCreates = creates.filter(c => c.type === 'block');
+        console.log(`Creating ${blockCreates.length} blocks...`);
+        for (const create of blockCreates) {
+            const { type, title, parentDid, parentPlaceholderId } = create;
+            
+            if (!title || !title.trim()) {
+                console.warn(`Block without title, skipping`);
+                continue;
+            }
+
+            // 确定实际的父节点 did
+            let actualParentDid: number | null = null;
+            if (parentPlaceholderId) {
+                actualParentDid = placeholderMap[parentPlaceholderId];
+                console.log(`Block ${title}: parentPlaceholderId=${parentPlaceholderId}, mapped to did=${actualParentDid}`);
+            } else if (parentDid !== null && parentDid !== undefined) {
+                if (typeof parentDid === 'string') {
+                    actualParentDid = placeholderMap[parentDid];
+                    console.log(`Block ${title}: parentDid (string)=${parentDid}, mapped to did=${actualParentDid}`);
+                } else {
+                    actualParentDid = parentDid;
+                    console.log(`Block ${title}: parentDid (number)=${actualParentDid}`);
+                }
+            }
+            
+            if (!actualParentDid) {
+                console.warn(`Cannot create block without parentDid: ${title}, parentDid=${parentDid}, parentPlaceholderId=${parentPlaceholderId}`);
+                continue;
+            }
+            
+            const bid = await BlockModel.generateNextBid(domainId, rpid);
+            const blockId = await BlockModel.create(
+                domainId,
+                rpid,
+                actualParentDid,
+                this.user._id,
+                title.trim(),
+                '',
+                this.request.ip
+            );
+            console.log(`Created block: ${title}, bid=${bid}, blockId=${blockId}, parentDid=${actualParentDid}`);
+        }
+    }
+
+    async updateDocStructure(domainId: string, rpid: number, docs: any[], parentDid: number | null = null) {
+        for (const docData of docs) {
+            const { did, order, subDocs, blocks } = docData;
+
+            // 更新文档的父节点和顺序
+            const doc = await DocModel.get(domainId, { rpid, did });
+            if (!doc) {
+                console.log(`Doc not found: rpid=${rpid}, did=${did}`);
+                continue;
+            }
+
+            console.log(`Updating doc ${did}: parentId=${parentDid}, order=${order}`);
+
+            // 使用 DocumentModel.set 更新文档
+            await DocumentModel.set(domainId, TYPE_DC, doc._id, {
+                parentId: parentDid,
+                order: order || 0,
+                updateAt: new Date()
+            });
+
+            // 更新 blocks 的顺序和父文档
+            if (blocks && blocks.length > 0) {
+                for (const blockData of blocks) {
+                    const bid = blockData.bid;
+                    const blockOrder = blockData.order;
+                    
+                    // 使用 rpid + bid 来唯一标识 block（bid 在整个 repo 内唯一）
+                    const block = await BlockModel.get(domainId, { rpid, bid });
+                    
+                    if (block) {
+                        console.log(`Updating block ${bid}: did=${did}, order=${blockOrder}`);
+                        await DocumentModel.set(domainId, TYPE_BK, block._id, {
+                            did: did,  // 更新 block 的父文档 ID
+                            order: blockOrder || 0,
+                            updateAt: new Date()
+                        });
+                    } else {
+                        console.log(`Block not found: rpid=${rpid}, bid=${bid}`);
+                    }
+                }
+            }
+
+            // 递归处理子文档
+            if (subDocs && subDocs.length > 0) {
+                await this.updateDocStructure(domainId, rpid, subDocs, did);
+            }
+        }
+    }
+}
+
 // Removed: DocCreateSubdocHandler - unified with DocCreateHandler
 
 
@@ -1128,7 +1347,8 @@ export class BlockDetailHandler extends Handler {
     @param('did', Types.Int)
     @param('bid', Types.Int)
     async get(domainId: string, rpid: number, did: number, bid: number) {
-        const block = await BlockModel.get(domainId, { rpid, did, bid } as any);
+        // bid 在整个 repo 内唯一，只需要 rpid + bid
+        const block = await BlockModel.get(domainId, { rpid, bid });
         if (!block) {
             throw new NotFoundError(`Block not found`);
         }
@@ -1141,10 +1361,10 @@ export class BlockDetailHandler extends Handler {
         // 获取所有文档和树形结构（用于侧边栏）
         const repoDocs = await EjunRepoModel.getDocsByRepo(domainId, rpid);
 
-        // 获取所有 docs 的 blocks
+        // 获取所有 docs 的 blocks（确保只查询当前 repo 的 blocks）
         const allDocsWithBlocks = {};
         for (const doc of repoDocs) {
-          const docBlocks = await BlockModel.getByDid(domainId, doc.did);
+          const docBlocks = await BlockModel.getByDid(domainId, doc.did, rpid);
           if (docBlocks && docBlocks.length > 0) {
             allDocsWithBlocks[doc.did] = docBlocks.map(b => ({
               ...b,
@@ -1201,7 +1421,8 @@ export class BlockEditHandler extends Handler {
     @param('did', Types.Int)
     @param('bid', Types.Int)
     async get(domainId: string, rpid: number, did: number, bid: number) {
-        const block = await BlockModel.get(domainId, { rpid, did, bid } as any);
+        // bid 在整个 repo 内唯一，只需要 rpid + bid
+        const block = await BlockModel.get(domainId, { rpid, bid });
         if (!block) {
             throw new NotFoundError(`Block not found`);
         }
@@ -1220,7 +1441,8 @@ export class BlockEditHandler extends Handler {
     @param('title', Types.Title)
     @param('content', Types.Content)
     async postUpdate(domainId: string, rpid: number, did: number, bid: number, title: string, content: string) {
-        const block = await BlockModel.get(domainId, { rpid, did, bid } as any);
+        // bid 在整个 repo 内唯一，只需要 rpid + bid
+        const block = await BlockModel.get(domainId, { rpid, bid });
         if (!block) {
             throw new NotFoundError(`Block not found`);
         }
@@ -1235,7 +1457,8 @@ export class BlockEditHandler extends Handler {
     @param('did', Types.Int)
     @param('bid', Types.Int)
     async postDelete(domainId: string, rpid: number, did: number, bid: number) {
-        const block = await BlockModel.get(domainId, { rpid, did, bid } as any);
+        // bid 在整个 repo 内唯一，只需要 rpid + bid
+        const block = await BlockModel.get(domainId, { rpid, bid });
         if (!block) {
             throw new NotFoundError(`Block not found`);
         }
@@ -1353,6 +1576,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_create', '/base/create', BaseEditHandler, PERM.PERM_VIEW_BASE);
     ctx.Route('repo_create', '/base/repo/create', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_detail', '/base/repo/:rpid', RepoDetailHandler);
+    ctx.Route('repo_structure_update', '/base/repo/:rpid/update_structure', RepoStructureUpdateHandler, PERM.PERM_VIEW_BASE);
     ctx.Route('doc_create', '/base/repo/:rpid/doc/create', DocCreateHandler, PERM.PERM_VIEW_BASE);
     ctx.Route('repo_edit', '/base/repo/:rpid/edit', RepoEditHandler, PERM.PERM_VIEW_BASE);
     ctx.Route('repo_doc', '/base/repo/:rpid/doc', RepoDocHandler);
