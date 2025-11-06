@@ -27,12 +27,12 @@
       <div class="section__body">
         <ul class="menu">
           <li class="menu__item">
-            <a class="menu__link highlight" href="{{ url('doc_create_subdoc', domainId=ddoc.domainId, rpid=ddoc.rpid, parentId=ddoc.did) }}">
+            <a class="menu__link highlight" href="{{ url('doc_create_subdoc_branch', domainId=ddoc.domainId, rpid=ddoc.rpid, branch=currentBranch, parentId=ddoc.did) }}">
               <span class="icon icon-add"></span> {{ _('Create Sub-Doc') }}
             </a>
           </li>
           <li class="menu__item">
-            <a class="menu__link highlight" href="{{ url('block_create', domainId=ddoc.domainId, rpid=ddoc.rpid, did=ddoc.did) }}">
+            <a class="menu__link highlight" href="{{ url('block_create_branch', domainId=ddoc.domainId, rpid=ddoc.rpid, branch=currentBranch, did=ddoc.did) }}">
               <span class="icon icon-add"></span> {{ _('Create Block') }}
             </a>
           </li>
@@ -76,7 +76,7 @@
         <ul class="menu">
           {% for block in blocks %}
             <li class="menu__item">
-              <a class="menu__link" href="{{ url('block_detail', domainId=ddoc.domainId, rpid=ddoc.rpid, did=ddoc.did, bid=block.bid) }}">
+              <a class="menu__link" href="{{ url('block_detail_branch', domainId=ddoc.domainId, rpid=ddoc.rpid, branch=currentBranch, did=ddoc.did, bid=block.bid) }}">
                 <span class="icon icon-file"></span> {{ block.title }}
                 <span style="font-size: 12px; color: #888; margin-left: 12px;">
                   {{ _('{0} views').format(block.views) }}

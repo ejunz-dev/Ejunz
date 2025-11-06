@@ -1,0 +1,56 @@
+{% import "components/form.html" as form with context %}
+{% extends "layout/basic.html" %}
+
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__header">
+        <h2 class="section__title">{{ _("Repo Config") }}</h2>
+      </div>
+      <div class="section__body">
+        <form method="post">
+          {{ form.form_text({
+              columns: 12,
+              label: _('GitHub Repository'),
+              name: 'githubRepo',
+              placeholder: _('e.g., git@github.com:user/repo.git or user/repo'),
+              value: repo.githubRepo|default(''),
+              autofocus: true
+          }) }}
+
+          <div class="row">
+            <div class="columns">
+              <button type="submit" class="rounded primary button">
+                {{ _('Save Config') }}
+              </button>
+              <button type="button" class="rounded button" onclick="window.history.go(-1)">
+                {{ _('Cancel') }}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  
+  <div class="medium-3 columns">
+    <div class="section">
+      <div class="section__header">
+        <h3 class="section__title">{{ _("Help") }}</h3>
+      </div>
+      <div class="section__body">
+        <p>{{ _("Configure the GitHub repository URL for this repo.") }}</p>
+        <p>{{ _("Supported formats:") }}</p>
+        <ul>
+          <li><code>git@github.com:user/repo.git</code></li>
+          <li><code>user/repo</code></li>
+          <li><code>https://github.com/user/repo.git</code></li>
+        </ul>
+        <p>{{ _("Note: GitHub token should be configured in system settings.") }}</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
