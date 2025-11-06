@@ -36,6 +36,11 @@
               <span class="icon icon-add"></span> {{ _('Create Block') }}
             </a>
           </li>
+          <li class="menu__item">
+            <a class="menu__link" href="{{ url('repo_detail_branch', domainId=ddoc.domainId, rpid=ddoc.rpid, branch=currentBranch) }}">
+              <span class="icon icon-chevron-left"></span> {{ _('Back to Repo') }}
+            </a>
+          </li>
         </ul>
       </div>
     </div>
@@ -63,6 +68,9 @@
         </a></li>
       {% endif %}
         <li>{{ _('{0} views').format(ddoc.views) }}</li>
+        <li><a href="{{ url('repo_detail_branch', domainId=ddoc.domainId, rpid=ddoc.rpid, branch=currentBranch) }}">
+          <span class="icon icon-chevron-left"></span> {{ _('Back to Repo') }}
+        </a></li>
       </ul>
     </div>
 

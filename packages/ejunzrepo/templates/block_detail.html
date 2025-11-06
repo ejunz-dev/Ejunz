@@ -32,6 +32,27 @@
         <p><strong>{{ _("Updated") }}:</strong> {{ datetimeSpan(block.updateAt)|safe if block.updateAt else 'N/A' }}</p>
       </div>
     </div>
+
+    <!-- 操作按钮 -->
+    <div class="section">
+      <div class="section__header">
+        <h2 class="section__title">{{ _("Actions") }}</h2>
+      </div>
+      <div class="section__body">
+        <ul class="menu">
+          <li class="menu__item">
+            <a class="menu__link" href="{{ url('doc_detail_branch', domainId=ddoc.domainId, rpid=ddoc.rpid, branch=currentBranch, did=ddoc.did) }}">
+              <span class="icon icon-chevron-left"></span> {{ _('Back to Doc') }}
+            </a>
+          </li>
+          <li class="menu__item">
+            <a class="menu__link" href="{{ url('repo_detail_branch', domainId=block.domainId, rpid=block.rpid, branch=currentBranch) }}">
+              <span class="icon icon-chevron-left"></span> {{ _('Back to Repo') }}
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
   </div>
 
   <div class="medium-9 columns">
@@ -56,8 +77,11 @@
         </a></li>
       {% endif %}
         <li>{{ _('{0} views').format(block.views) }}</li>
-        <li><a href="{{ url('doc_detail', domainId=ddoc.domainId, rpid=ddoc.rpid, did=ddoc.did) }}">
+        <li><a href="{{ url('doc_detail_branch', domainId=ddoc.domainId, rpid=ddoc.rpid, branch=currentBranch, did=ddoc.did) }}">
           <span class="icon icon-chevron-left"></span> {{ _('Back to Doc') }}
+        </a></li>
+        <li><a href="{{ url('repo_detail_branch', domainId=block.domainId, rpid=block.rpid, branch=currentBranch) }}">
+          <span class="icon icon-chevron-left"></span> {{ _('Back to Repo') }}
         </a></li>
       </ul>
     </div>

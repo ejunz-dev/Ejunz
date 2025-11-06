@@ -1088,7 +1088,7 @@ export class RepoStructureUpdateHandler extends Handler {
     @param('rpid', Types.Int)
     @param('branch', Types.String, true)
     async post(domainId: string, rpid: number) {
-        const { structure, creates, deletes, branch } = this.request.body;
+        const { structure, creates, deletes, updates, branch } = this.request.body;
         const effectiveBranch = (branch || this.args?.branch || 'main');
         
         if (!structure || !structure.docs) {
@@ -1106,12 +1106,34 @@ export class RepoStructureUpdateHandler extends Handler {
             if (creates && creates.length > 0) {
                 await this.createItems(domainId, rpid, creates, effectiveBranch);
             }
+            // 处理标题更新
+            if (updates && Array.isArray(updates) && updates.length > 0) {
+                await this.updateItems(domainId, rpid, updates, effectiveBranch);
+            }
             // 最后更新结构
             await this.updateDocStructure(domainId, rpid, structure.docs);
             this.response.body = { success: true, branch: effectiveBranch };
         } catch (error: any) {
             console.error(`Failed to update structure: ${error.message}`);
             throw error;
+        }
+    }
+
+    async updateItems(domainId: string, rpid: number, updates: any[], branch: string) {
+        for (const updateItem of updates) {
+            const { type, did, bid, title } = updateItem;
+            
+            if (type === 'doc' && did && title) {
+                const doc = await DocModel.get(domainId, { rpid, did });
+                if (doc && (doc.branch || 'main') === branch) {
+                    await DocModel.edit(domainId, doc.docId, title, doc.content);
+                }
+            } else if (type === 'block' && bid && title) {
+                const block = await BlockModel.get(domainId, { rpid, bid });
+                if (block && (block.branch || 'main') === branch) {
+                    await BlockModel.edit(domainId, block.docId, title, block.content);
+                }
+            }
         }
     }
 
