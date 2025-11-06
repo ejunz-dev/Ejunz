@@ -3,7 +3,7 @@
   {{ set(UiContext, {
     ddoc: ddoc,
     docs: docs,
-    repos: repos,
+    // repos: repos,  // Removed: repo functionality moved to ejunzrepo plugin
     resources: resources
   }) }}
 </script>
@@ -78,7 +78,7 @@
           <div class="section__header">
             <h3>{{ _("Hooked Resources") }}</h3>
             <div class="section__body">
-              {% if docs|length > 0 or problems|length > 0 or htdocs|length > 0 or tdocs|length > 0 or ctdocs|length > 0 or repos|length > 0 %}
+              {% if docs|length > 0 or problems|length > 0 or htdocs|length > 0 or tdocs|length > 0 or ctdocs|length > 0 %}
                 <ul>
                   {% for doc in docs %}
                   <li>
@@ -137,6 +137,7 @@
                   {% endfor %}
                 </ul>
                 {% endif %}
+                {# Removed: repo functionality moved to ejunzrepo plugin
                 {% for repo in repos %}
                 <div class="repo-section">
                     <h4>{{ _("Repository") }}:
@@ -165,6 +166,7 @@
                     </table>
                 </div>
                 {% endfor %}
+                #}
               {% else %}
                 <p>{{ _("No hooked resources available.") }}</p>
               {% endif %}

@@ -1,0 +1,9 @@
+<div class="section__body">
+  {% if docHierarchy and docHierarchy[ddoc.rpid] %}
+    <div style="overflow-x: auto; width: 100%; max-width: 1200px; height: 600px;">
+      <svg id="d3-repo"></svg>
+    </div>
+  {% else %}
+    <p>{{ _("No docs available.") }}</p>
+  {% endif %}
+</div>

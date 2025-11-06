@@ -5,7 +5,7 @@
   {{ set(UiContext, {
     ddoc: ddoc,
     docs: docs,
-    // repos: repos,  // Removed: repo functionality moved to ejunzrepo plugin
+    repos: repos,
     resources: resources
   }) }}
 
@@ -68,7 +68,7 @@ function copyResourceUrl(el) {
 
 
 <div class="row" style="display: flex; flex-wrap: nowrap; align-items: flex-start;">
-  {% if docs or problems or htdocs or tdocs or ctdocs %}
+  {% if docs or problems or htdocs or tdocs or ctdocs or repos %}
   <div class="medium-3 columns">
     {% if docs %}
     <div class="section">
@@ -174,7 +174,6 @@ function copyResourceUrl(el) {
     </div>
     {% endif %}
 
-    {# Removed: repo functionality moved to ejunzrepo plugin
     {% if repos %}
     <div class="section">
       <div class="section__header">
@@ -196,20 +195,19 @@ function copyResourceUrl(el) {
       </div>
     </div>
     {% endif %}
-    #}
   </div>
   {% endif %}
 
-  <div class="medium-{% if docs or problems or htdocs or tdocs or ctdocs %}8{% else %}12{% endif %} columns">
+  <div class="medium-{% if docs or problems or htdocs or tdocs or ctdocs or repos %}8{% else %}12{% endif %} columns">
     <div class="section">
       <div class="section__header">
         <h2 class="section__title">
           {% if ddoc %}
-            {{ _("Edit Branch") }}
+            {{ _("Edit Doc") }}
           {% elif parentId %}
-            {{ _("Create Sub-Branch") }}
+            {{ _("Create Sub-Doc") }}
           {% else %}
-            {{ _("Create Branch") }}
+            {{ _("Create Doc") }}
           {% endif %}
         </h2>
       </div>
@@ -221,9 +219,9 @@ function copyResourceUrl(el) {
 
           {{ form.form_text({
               columns:12,
-              label:_('Branch Title'),
+              label:_('Doc Title'),
               name:'title',
-              placeholder:_('Enter branch title'),
+              placeholder:_('Enter doc title'),
               value:ddoc.title|default(''),
               autofocus:true
           }) }}
@@ -231,7 +229,7 @@ function copyResourceUrl(el) {
           {% if ddoc %}
             {{ form.form_textarea({
                 columns:12,
-                label:_('Branch Content'),
+                label:_('Doc Content'),
                 name:'content',
                 value:ddoc.content|default(''),
                 markdown:true
@@ -244,7 +242,7 @@ function copyResourceUrl(el) {
                 {% if ddoc %}
                   {{ _('Update') }}
                 {% elif parentId %}
-                  {{ _('Create Sub-Branch') }}
+                  {{ _('Create Sub-Doc') }}
                 {% else %}
                   {{ _('Create') }}
                 {% endif %}
@@ -263,7 +261,7 @@ function copyResourceUrl(el) {
 
         {% if not ddoc %}
         <div class="section">
-          <p>{{ _('Content will be added after creating the branch.') }}</p>
+          <p>{{ _('Content will be added after creating the doc.') }}</p>
         </div>
         {% endif %}
       </div>
