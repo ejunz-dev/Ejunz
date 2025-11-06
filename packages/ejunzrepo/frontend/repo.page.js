@@ -134,6 +134,45 @@ const treeStyles = `
 .tree-edit-controls button.success:hover {
   background: #45a049;
 }
+.delete-zone {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  min-height: 60px;
+  background-color: #ffebee;
+  border: 3px dashed #f44336;
+  border-radius: 8px;
+  padding: 15px;
+  text-align: center;
+  color: #c62828;
+  font-weight: 500;
+  z-index: 1000;
+  display: none;
+  transition: all 0.3s;
+}
+.delete-zone.visible {
+  display: block;
+}
+.delete-zone.drag-over {
+  background-color: #ffcdd2;
+  border-color: #d32f2f;
+  transform: translateX(-50%) scale(1.05);
+}
+.delete-zone .delete-items {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #c62828;
+}
+.delete-zone .delete-item {
+  display: inline-block;
+  background: white;
+  padding: 4px 8px;
+  margin: 2px;
+  border-radius: 3px;
+  border: 1px solid #f44336;
+}
 .doc-tree-item.new-item {
   border: 2px dashed #999;
   opacity: 0.9;
@@ -236,6 +275,7 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
     let draggedElement = null;
     let draggedData = null;
     let pendingCreates = []; // 待创建的项目列表
+    let pendingDeletes = []; // 待删除的项目列表 { type: 'doc'|'block', did?: number, bid?: number }
 
     // 添加编辑控制按钮
     function renderEditControls() {
@@ -252,6 +292,10 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
         editBtn.style.display = 'none';
         saveBtn.style.display = 'inline-block';
         cancelBtn.style.display = 'inline-block';
+        const deleteZone = createDeleteZone();
+        if (deleteZone) {
+          deleteZone.classList.add('visible');
+        }
         renderTree();
       };
 
@@ -273,6 +317,18 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
         saveBtn.style.display = 'none';
         cancelBtn.style.display = 'none';
         pendingCreates = [];
+        pendingDeletes = [];
+        updateDeleteZone();
+        // 隐藏删除区域
+        const deleteZone = document.getElementById('delete-zone');
+        if (deleteZone) {
+          deleteZone.classList.remove('visible');
+        }
+        // 恢复所有被标记为删除的元素的显示
+        document.querySelectorAll('.doc-tree-item').forEach(el => {
+          el.style.opacity = '';
+          el.style.textDecoration = '';
+        });
         renderTree();
       };
 
@@ -303,6 +359,8 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
         originalCancelOnClick();
         newDocBtn.style.display = 'none';
         newBlockBtn.style.display = 'none';
+        pendingDeletes = [];
+        updateDeleteZone();
       };
 
       controlsDiv.appendChild(editBtn);
@@ -312,6 +370,96 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
       controlsDiv.appendChild(newBlockBtn);
 
       return controlsDiv;
+    }
+
+    // 创建删除区域
+    function createDeleteZone() {
+      let deleteZone = document.getElementById('delete-zone');
+      if (!deleteZone) {
+        deleteZone = document.createElement('div');
+        deleteZone.id = 'delete-zone';
+        deleteZone.className = 'delete-zone';
+        deleteZone.innerHTML = `
+          <div style="font-weight: 600; margin-bottom: 5px;">🗑️ 拖拽到此处删除</div>
+          <div class="delete-items"></div>
+        `;
+        document.body.appendChild(deleteZone);
+        
+        // 删除区域的拖拽事件
+        deleteZone.ondragover = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          deleteZone.classList.add('drag-over');
+          return false;
+        };
+        
+        deleteZone.ondragleave = (e) => {
+          e.preventDefault();
+          deleteZone.classList.remove('drag-over');
+        };
+        
+        deleteZone.ondrop = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          deleteZone.classList.remove('drag-over');
+          
+          if (draggedData && draggedElement) {
+            // 不能删除待创建的项目（占位符）
+            if (draggedData.placeholderId) {
+              alert('不能删除未保存的项目');
+              return false;
+            }
+            
+            // 添加到删除列表
+            const deleteItem = {
+              type: draggedData.type,
+              did: draggedData.did ? parseInt(draggedData.did) : undefined,
+              bid: draggedData.bid ? parseInt(draggedData.bid) : undefined
+            };
+            
+            // 检查是否已存在
+            const exists = pendingDeletes.some(d => 
+              d.type === deleteItem.type && 
+              d.did === deleteItem.did && 
+              d.bid === deleteItem.bid
+            );
+            
+            if (!exists) {
+              pendingDeletes.push(deleteItem);
+              updateDeleteZone();
+              
+              // 从树中移除（但不删除 DOM，因为可能取消）
+              draggedElement.style.opacity = '0.3';
+              draggedElement.style.textDecoration = 'line-through';
+            }
+          }
+          
+          draggedElement = null;
+          draggedData = null;
+          return false;
+        };
+      }
+      return deleteZone;
+    }
+
+    // 更新删除区域显示
+    function updateDeleteZone() {
+      const deleteZone = document.getElementById('delete-zone');
+      if (!deleteZone) return;
+      
+      const deleteItemsDiv = deleteZone.querySelector('.delete-items');
+      if (!deleteItemsDiv) return;
+      
+      if (pendingDeletes.length === 0) {
+        deleteItemsDiv.innerHTML = '';
+      } else {
+        deleteItemsDiv.innerHTML = pendingDeletes.map(item => {
+          const label = item.type === 'doc' 
+            ? `📁 Doc (did: ${item.did})`
+            : `📝 Block (bid: ${item.bid})`;
+          return `<span class="delete-item">${label}</span>`;
+        }).join('');
+      }
     }
 
     // 创建新项占位符
@@ -385,7 +533,7 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
       const structure = collectStructure();
       const creates = collectPendingCreates(structure);
       
-      console.log('Sending structure to server:', JSON.stringify({ structure, creates }, null, 2));
+      console.log('Sending structure to server:', JSON.stringify({ structure, creates, deletes: pendingDeletes }, null, 2));
       
       try {
         const response = await fetch(`/d/${repo.domainId}/base/repo/${repo.rpid}/update_structure`, {
@@ -393,7 +541,7 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ structure, creates, branch: currentBranch }),
+          body: JSON.stringify({ structure, creates, deletes: pendingDeletes, branch: currentBranch }),
         });
 
         if (response.ok) {
@@ -447,6 +595,11 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
 
       const docItems = Array.from(rootUl.children).filter(li => {
         const item = li.querySelector('.doc-tree-item');
+        if (!item) return false;
+        // 排除已标记为删除的项目
+        if (item.style.opacity === '0.3' || item.style.textDecoration === 'line-through') {
+          return false;
+        }
         return item && item.dataset.type === 'doc';
       });
 
@@ -584,6 +737,13 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
       
       children.forEach((childLi, index) => {
         const itemDiv = childLi.querySelector('.doc-tree-item');
+        if (!itemDiv) return;
+        
+        // 排除已标记为删除的项目
+        if (itemDiv.style.opacity === '0.3' || itemDiv.style.textDecoration === 'line-through') {
+          return;
+        }
+        
         const type = itemDiv.dataset.type;
 
         if (type === 'doc') {
@@ -767,6 +927,13 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
       itemDiv.dataset.type = 'doc';
       itemDiv.dataset.did = doc.did;
       itemDiv.dataset.rpid = repo.rpid;
+      
+      // 检查是否在删除列表中
+      const isDeleted = pendingDeletes.some(d => d.type === 'doc' && d.did === doc.did);
+      if (isDeleted) {
+        itemDiv.style.opacity = '0.3';
+        itemDiv.style.textDecoration = 'line-through';
+      }
 
       // 在编辑模式下启用拖拽
       if (isEditMode) {
@@ -824,7 +991,11 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
         
         // 渲染子文档
         if (hasChildren) {
-          doc.subDocs.forEach(subDoc => {
+          // 过滤掉已删除的子文档
+          const visibleSubDocs = doc.subDocs.filter(subDoc => 
+            !pendingDeletes.some(d => d.type === 'doc' && d.did === subDoc.did)
+          );
+          visibleSubDocs.forEach(subDoc => {
             childrenUl.appendChild(renderTreeNode(subDoc));
           });
         }
@@ -832,7 +1003,11 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
         // 渲染 blocks
         if (hasBlocks) {
           const blocks = allDocsWithBlocks[doc.did];
-          blocks.forEach(block => {
+          // 过滤掉已删除的 blocks
+          const visibleBlocks = blocks.filter(block => 
+            !pendingDeletes.some(d => d.type === 'block' && d.bid === block.bid)
+          );
+          visibleBlocks.forEach(block => {
             childrenUl.appendChild(renderBlockNode(block, doc.did));
           });
         }
@@ -859,6 +1034,13 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
       blockDiv.dataset.bid = block.bid;
       blockDiv.dataset.did = parentDid;
       blockDiv.dataset.rpid = repo.rpid;
+      
+      // 检查是否在删除列表中
+      const isDeleted = pendingDeletes.some(d => d.type === 'block' && d.bid === block.bid);
+      if (isDeleted) {
+        blockDiv.style.opacity = '0.3';
+        blockDiv.style.textDecoration = 'line-through';
+      }
 
       // 在编辑模式下启用拖拽
       if (isEditMode) {
@@ -1264,9 +1446,12 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
       const rpid = repo.rpid;
       const docs = treeData[rpid] || [];
       
-      // 渲染已存在的 docs
+      // 渲染已存在的 docs（过滤掉已删除的）
       docs.forEach(doc => {
-        rootUl.appendChild(renderTreeNode(doc, true));
+        const isDeleted = pendingDeletes.some(d => d.type === 'doc' && d.did === doc.did);
+        if (!isDeleted) {
+          rootUl.appendChild(renderTreeNode(doc, true));
+        }
       });
       
       // 渲染根层级的占位符
