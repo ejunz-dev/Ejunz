@@ -1,4 +1,4 @@
-import { Context, Logger, RepoModel } from 'ejun';
+import { Context, Logger /*, RepoModel */ } from 'ejun'; // Removed: RepoModel moved to ejunzrepo plugin
 import { apply as applyTimeMcp } from './src/mcp/time';
 import { apply as applyLogsHandler } from './src/handler/logs';
 import { apply as applyWebSocketHandler } from './src/handler/websocket';
@@ -50,108 +50,27 @@ function getAvailableTools(): McpTool[] {
 				},
 			},
 		},
-		{
-			name: 'search_repo',
-			description: 'Search the knowledge base (repo) to find relevant entries by keyword. Use this tool when the user asks about knowledge base content, documentation, stored information, or wants to look up specific topics. The tool searches through titles, content, tags, and IDs. Always use this tool proactively when the user\'s question might be answered by information in the knowledge base.',
-			inputSchema: {
-				type: 'object',
-				properties: {
-					query: { 
-						type: 'string', 
-						description: 'Search keywords. Can be a title, content keyword, tag, or repo ID (e.g., R1, R2). Extract the most relevant search terms from the user\'s question.' 
-					},
-					domainId: { 
-						type: 'string', 
-						description: 'Domain ID, defaults to "system". Use default if user doesn\'t specify.' 
-					},
-					limit: { 
-						type: 'number', 
-						description: 'Maximum number of results to return, default 10, maximum 50' 
-					},
-				},
-				required: ['query'],
-			},
-		},
-		{
-			name: 'create_repo',
-			description: 'Create a new knowledge base entry (repo). Use this when the user wants to create or add new information to the knowledge base. Always returns the repo link after creation.',
-			inputSchema: {
-				type: 'object',
-				properties: {
-					title: {
-						type: 'string',
-						description: 'Title of the knowledge base entry'
-					},
-					content: {
-						type: 'string',
-						description: 'Content of the knowledge base entry (supports markdown)'
-					},
-					tags: {
-						type: 'array',
-						items: { type: 'string' },
-						description: 'Tags for categorizing the entry'
-					},
-					domainId: {
-						type: 'string',
-						description: 'Domain ID, defaults to "system"'
-					},
-					ownerId: {
-						type: 'number',
-						description: 'Owner user ID. If not provided, will use a default system user ID (1)'
-					},
-				},
-				required: ['title', 'content'],
-			},
-		},
-		{
-			name: 'update_repo',
-			description: 'Update an existing knowledge base entry (repo). Use this when the user wants to modify, edit, or update existing knowledge base content. Always returns the repo link after update.',
-			inputSchema: {
-				type: 'object',
-				properties: {
-					rid: {
-						type: 'string',
-						description: 'Repo ID (e.g., R1, R2) or docId to identify the repo to update'
-					},
-					title: {
-						type: 'string',
-						description: 'New title (optional, only if updating title)'
-					},
-					content: {
-						type: 'string',
-						description: 'New content (optional, only if updating content)'
-					},
-					tags: {
-						type: 'array',
-						items: { type: 'string' },
-						description: 'New tags (optional, only if updating tags)'
-					},
-					domainId: {
-						type: 'string',
-						description: 'Domain ID, defaults to "system"'
-					},
-				},
-				required: ['rid'],
-			},
-		},
-		{
-			name: 'get_repo',
-			description: 'Get detailed information about a specific knowledge base entry (repo) by its ID. Always returns the repo link.',
-			inputSchema: {
-				type: 'object',
-				properties: {
-					rid: {
-						type: 'string',
-						description: 'Repo ID (e.g., R1, R2) or docId to identify the repo'
-					},
-					domainId: {
-						type: 'string',
-						description: 'Domain ID, defaults to "system"'
-					},
-				},
-				required: ['rid'],
-			},
-		},
+		// Removed: repo tools - functionality moved to ejunzrepo plugin
+		// {
+		// 	name: 'search_repo',
+		// 	description: 'Search the knowledge base (repo) to find relevant entries by keyword.',
+		// 	inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+		// },
+		// {
+		// 	name: 'create_repo',
+		// 	description: 'Create a new knowledge base entry (repo).',
+		// 	inputSchema: { type: 'object', properties: { title: { type: 'string' }, content: { type: 'string' } }, required: ['title', 'content'] },
+		// },
+		// {
+		// 	name: 'update_repo',
+		// 	description: 'Update an existing knowledge base entry (repo).',
+		// 	inputSchema: { type: 'object', properties: { rid: { type: 'string' } }, required: ['rid'] },
+		// },
+		// {
+		// 	name: 'get_repo',
+		// 	description: 'Get detailed information about a specific knowledge base entry (repo) by its ID.',
+		// 	inputSchema: { type: 'object', properties: { rid: { type: 'string' } }, required: ['rid'] },
+		// },
 	];
 }
 
@@ -204,7 +123,8 @@ async function callTool(name: string, args: any): Promise<any> {
 			return await fetchJson(url, { timeoutMs: args?.timeoutMs, retries: args?.retries });
 		}
 
-		case 'search_repo': {
+		// Removed: repo case handlers - functionality moved to ejunzrepo plugin
+		/* case 'search_repo': {
 			const query = args?.query;
 			if (!query || typeof query !== 'string') {
 				throw new Error('Search query cannot be empty');
@@ -377,7 +297,7 @@ async function callTool(name: string, args: any): Promise<any> {
 					link: `/d/${rdoc.domainId}/repo/${rdoc.rid}`,
 				},
 			};
-		}
+		} */
 
 		default:
 			throw new Error(`Unknown tool: ${name}`);

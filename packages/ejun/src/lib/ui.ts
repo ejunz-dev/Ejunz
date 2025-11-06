@@ -66,8 +66,9 @@ export const AgentAdd = (name, args, icon = 'add', text = 'Create Agent') => {
 
 inject('Nav', 'homepage', { prefix: 'homepage' });
 inject('Nav', 'forest_domain', { prefix: 'forest' });
-inject('Nav', 'repo_domain', { prefix: 'repo' });
+// inject('Nav', 'repo_domain', { prefix: 'repo' });
 inject('Nav', 'agent_domain', { prefix: 'agent' });
+inject('Nav', 'base_domain', { prefix: 'base' });
 inject('Nav', 'discussion_main', { prefix: 'discussion' });
 
 

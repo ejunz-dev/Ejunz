@@ -1,0 +1,1401 @@
+import {
+    _, Context, DiscussionNotFoundError, DocumentModel, Filter,
+    Handler, NumberKeys, ObjectId, OplogModel,
+    param, PRIV,PERM, Types, UserModel, DomainModel, StorageModel, NotFoundError,
+    parseMemoryMB, DiscussionModel,
+    SystemModel
+} from 'ejun';
+import yaml from 'js-yaml';
+import { SettingModel, Setting } from 'ejun';
+import { lookup } from 'mime-types';
+export const TYPE_DC: 32 = 32;
+export const TYPE_RP: 31 = 31;
+export const TYPE_BS: 30 = 30;
+export const TYPE_BK: 33 = 33;
+
+export interface BSDoc {
+    docType: 30; // Base 
+    docId: ObjectId;
+    domainId: string;
+    rpids: number[]; // 存储所有 Repo ID
+    title: string;
+    content: string;
+    owner: number;
+    createdAt: Date;
+    updateAt: Date;
+}
+
+
+export interface RPDoc {
+    docType: 31;  // 标识它是一个 Repo
+    docId: ObjectId;
+    domainId: string;
+    rpid: number;
+    title: string;
+    content: string;
+    owner: number;
+    createdAt: Date;
+    updateAt: Date;
+}
+
+
+export interface DCDoc {
+    docType: 32;
+    docId: ObjectId;
+    domainId: string;
+    rpid: number;
+    did: number;  // Doc ID，从1开始
+    owner: number;
+    title: string;
+    content: string;
+    ip: string;
+    updateAt: Date;
+    views: number;
+    parentId?: number|null;
+    path: string;
+    doc: boolean;
+    childrenCount?: number;
+    createdAt?: Date;
+}
+
+export interface BKDoc {
+    docType: 33;
+    docId: ObjectId;
+    domainId: string;
+    rpid: number;
+    did: number;  // 关联的 doc ID
+    bid: number;  // Block ID，从1开始
+    owner: number;
+    title: string;
+    content: string;
+    ip: string;
+    updateAt: Date;
+    views: number;
+    createdAt?: Date;
+}
+
+declare module 'ejun' {
+    interface Model {
+        bs: typeof BaseModel;
+        rp: typeof EjunRepoModel;
+        dc: typeof DocModel;
+        bk: typeof BlockModel;
+    }
+    interface DocType {
+        [TYPE_BS]: BSDoc;
+        [TYPE_RP]: RPDoc;
+        [TYPE_DC]: DCDoc;
+        [TYPE_BK]: BKDoc;
+    }
+}
+export class BaseModel {
+    /**
+     * 获取指定 domainId 的森林
+     */
+    static async getBase(domainId: string): Promise<BSDoc | null> {
+        const results = await DocumentModel.getMulti(domainId, TYPE_BS, { domainId }).limit(1).toArray();
+        return results.length ? results[0] : null;
+    }
+    
+
+    /**
+     * 创建森林（每个 domain 只能有一个森林）
+     */
+    static async createBase(domainId: string, owner: number, title: string, content: string): Promise<ObjectId> {
+        const repos = await EjunRepoModel.getAllRepos(domainId);
+        const repoIds = repos.map(repo => repo.rpid); // 获取所有 Repo 的 ID
+
+        const payload: Partial<BSDoc> = {
+            docType: TYPE_BS,
+            domainId,
+            rpids: repoIds, 
+            title: title || 'Unnamed Base',
+            content: content || '',
+            owner,
+            createdAt: new Date(),
+            updateAt: new Date(),
+        };
+
+        return await DocumentModel.add(
+            domainId,
+            payload.content!,
+            payload.owner!,
+            TYPE_BS,
+            null,
+            null,
+            null,
+            _.omit(payload, ['content', 'owner'])
+        );
+    }
+
+    /**
+     * 更新森林的 title 和 content
+     */
+    static async updateBase(domainId: string, docId: ObjectId, title: string, content: string): Promise<void> {
+        const base = await this.getBase(domainId);
+    
+        if (!base) {
+            throw new Error(`Base not found for domain: ${domainId}`);
+        }
+    
+        await DocumentModel.set(domainId, TYPE_BS, docId, {
+            title,
+            content
+        });
+    }
+    
+    
+    static async addRepoToBase(domainId: string, rpid: number): Promise<void> {
+        const base = await this.getBase(domainId);
+    
+        if (!base) {
+            throw new Error(`Base not found for domain: ${domainId}`);
+        }
+    
+        
+        if (base.rpids.includes(rpid)) {
+            console.warn(`Repo ${rpid} already exists in the base.`);
+            return;
+        }
+    
+        base.rpids.push(rpid);
+    
+        await DocumentModel.set(domainId, TYPE_BS, base.docId, {
+            rpids: base.rpids
+        });
+    }
+    
+    
+   
+}
+
+export class EjunRepoModel {
+    static async generateNextRpid(domainId: string): Promise<number> {
+        const lastRepo = await DocumentModel.getMulti(domainId, TYPE_RP, {}) 
+            .sort({ rpid: -1 })
+            .limit(1)
+            .project({ rpid: 1 })
+            .toArray();
+        return (lastRepo[0]?.rpid || 0) + 1;
+    }
+
+    static async createRepo(domainId: string, owner: number, title: string, content: string): Promise<{ docId: ObjectId, rpid: number }> {
+        const newRpid = await this.generateNextRpid(domainId);
+    
+        const payload: Partial<RPDoc> = {
+            docType: TYPE_RP,
+            domainId,
+            rpid: newRpid,
+            title,
+            content: content || '',  // 避免 null
+            owner,
+            createdAt: new Date(),
+        };
+    
+        const docId = await DocumentModel.add(
+            domainId,
+            payload.content!, 
+            payload.owner!, 
+            TYPE_RP,
+            null,
+            null,
+            null,
+            _.omit(payload, ['domainId', 'content', 'owner'])  
+        );
+    
+        return { docId, rpid: newRpid };  
+    }
+    
+    
+
+    static async edit(domainId: string, rpid: number, title: string, content: string): Promise<void> {
+        // 🔍 先获取 `docId`，确保正确更新
+        const repoDoc = await this.getRepoByRpid(domainId, rpid);
+        if (!repoDoc) {
+            throw new Error(`Repo with rpid ${rpid} not found in domain ${domainId}`);
+        }
+    
+        await DocumentModel.set(domainId, TYPE_RP, repoDoc.docId, {
+            title,
+            content: content || '',   
+        });
+    }
+
+    static async deleteRepo(domainId: string, rpid: number): Promise<void> {
+        const repoDoc = await this.getRepoByRpid(domainId, rpid);
+        if (!repoDoc) {
+            throw new Error(`Repo with rpid ${rpid} not found in domain ${domainId}`);
+        }
+        await DocumentModel.deleteOne(domainId, TYPE_RP, repoDoc.docId);
+    }
+    
+
+
+    static async getRepo(domainId: string, docId: ObjectId): Promise<RPDoc | null> {
+        return await DocumentModel.get(domainId, TYPE_RP, docId);
+    }
+    static async getRepoByRpid(domainId: string, rpid: number): Promise<RPDoc | null> {
+        const result = await DocumentModel.getMulti(domainId, TYPE_RP, { rpid }).limit(1).toArray();
+        return result.length > 0 ? result[0] : null;  
+    }
+    
+
+
+    static async getAllRepos(domainId: string): Promise<RPDoc[]> {
+        return await DocumentModel.getMulti(domainId, TYPE_RP, {}).toArray();
+    }
+    static async getDocsByRepo(domainId: string, rpid: number): Promise<DCDoc[]> {
+        return await DocumentModel.getMulti(domainId, TYPE_DC, { rpid }).toArray();
+    }
+    
+}
+
+export class DocModel {
+    static async generateNextDid(domainId: string, rpid: number): Promise<number> {
+        // 在每个 repo 内独立计数，从 1 开始
+        const lastDoc = await DocumentModel.getMulti(domainId, TYPE_DC, { rpid })
+            .sort({ did: -1 })
+            .limit(1)
+            .project({ did: 1 })
+            .toArray();
+        return (lastDoc[0]?.did || 0) + 1;
+    }
+    static async generateNextRpid(domainId: string): Promise<number> {
+        const lastDoc = await DocumentModel.getMulti(domainId, TYPE_DC, {})
+            .sort({ rpid: -1 })
+            .limit(1)
+            .project({ rpid: 1 })
+            .toArray();
+        return (lastDoc[0]?.rpid || 0) + 1;
+    }
+    // Removed: updateResources method - resource management removed from doc
+    
+
+
+
+    static async addRootNode(
+        domainId: string,
+        rpid: number | string,
+        did: number,
+        owner: number,
+        title: string,
+        content: string,
+        ip?: string
+    ): Promise<ObjectId> {
+        const parsedRpid = typeof rpid === 'string' ? parseInt(rpid, 10) : rpid;
+    if (isNaN(parsedRpid)) {
+        throw new Error(`Invalid rpid: ${rpid}`);
+    }
+        const newDid = did || await this.generateNextDid(domainId, parsedRpid);
+
+        const payload: Partial<DCDoc> = {
+            domainId,
+            rpid: parsedRpid,
+            did: newDid,
+            title,
+            content,
+            owner,
+            ip,
+            updateAt: new Date(),
+            views: 0,
+            path: `/${newDid}`,
+            doc: false,
+            parentId: null, // 顶层节点 parentId 为 null
+        };
+
+        const docId = await DocumentModel.add(
+            domainId,
+            payload.content!,
+            payload.owner!,
+            TYPE_DC,
+            null,
+            null,
+            null,
+            _.omit(payload, ['domainId', 'content', 'owner'])
+        );
+
+        return docId;
+    }
+
+    static async addSubdocNode(
+        domainId: string,
+        rpid: number[],
+        did: number | null,
+        parentDcid: number,
+        owner: number,
+        title: string,
+        content: string,
+        ip?: string
+    ): Promise<ObjectId> {
+        const parentNode = await DocumentModel.getMulti(domainId, TYPE_DC, { did: parentDcid })
+            .limit(1)
+            .toArray();
+
+        if (!parentNode.length) {
+            throw new Error('Parent node does not exist.');
+        }
+
+        const firstRpid = Array.isArray(rpid) ? rpid[0] : rpid;
+        const newDid = did ?? await this.generateNextDid(domainId, firstRpid);
+        const path = `${parentNode[0].path}/${newDid}`;
+
+        const payload: Partial<DCDoc> = {
+            domainId,
+            rpid,
+            did: newDid,
+            parentId: parentDcid, // 使用父节点的 did
+            title,
+            content,
+            owner,
+            ip,
+            updateAt: new Date(),
+            views: 0,
+            path,
+            doc: true,
+        };
+
+        const docId = await DocumentModel.add(
+            domainId,
+            payload.content!,
+            payload.owner!,
+            TYPE_DC,
+            null,
+            null,
+            null,
+            _.omit(payload, ['domainId', 'content', 'owner'])
+        );
+
+        return docId;
+    }
+
+
+    static async get(domainId: string, query: ObjectId | { did: number } | { rpid: number, did: number }): Promise<DCDoc | null> {
+        // 支持通过 ObjectId 或 did 查询
+        if (typeof query === 'object' && 'did' in query) {
+            const docs = await DocumentModel.getMulti(domainId, TYPE_DC, query).limit(1).toArray();
+            return docs[0] || null;
+        }
+        return await DocumentModel.get(domainId, TYPE_DC, query as ObjectId);
+    }
+
+    static async getChildren(domainId: string, parentId: number): Promise<DCDoc[]> {
+        return await DocumentModel.getMulti(domainId, TYPE_DC, { parentId }).toArray();
+    }
+
+    static async getDoc(domainId: string, query: Partial<DCDoc>) {
+        return DocumentModel.getMulti(domainId, TYPE_DC, query);
+    }
+
+    static async deleteNode(domainId: string, docId: ObjectId): Promise<void> {
+        const node = await this.get(domainId, docId);
+        if (!node) throw new Error('Node not found.');
+
+        const descendants = await DocumentModel.getMulti(domainId, TYPE_DC, {
+            path: { $regex: `^${node.path}` },
+        }).toArray();
+
+        const docIds = descendants.map((n) => n.docId);
+        await Promise.all(docIds.map((id) => DocumentModel.deleteOne(domainId, TYPE_DC, id)));
+    }
+
+    static async incrementViews(domainId: string, docId: ObjectId): Promise<void> {
+        await DocumentModel.inc(domainId, TYPE_DC, docId, 'views', 1);
+    }
+
+    static async edit(domainId: string, docId: ObjectId, title: string, content: string): Promise<void> {
+        await DocumentModel.set(domainId, TYPE_DC, docId, { 
+            title, 
+            content,
+            updateAt: new Date()
+        });
+    }
+
+    static async getDocsByIds(domainId: string, dids: number[]) {
+        return await DocumentModel.getMulti(domainId, TYPE_DC, { did: { $in: dids } }).toArray();
+    }
+    static async getDocs(domainId: string, query: Filter<DCDoc>) {
+        return DocumentModel.getMulti(domainId, TYPE_DC, query);
+    }
+}
+
+export class BlockModel {
+    static async generateNextBid(domainId: string, did: number): Promise<number> {
+        // 在每个 doc 内独立计数，从 1 开始
+        const lastBlock = await DocumentModel.getMulti(domainId, TYPE_BK, { did })
+            .sort({ bid: -1 })
+            .limit(1)
+            .project({ bid: 1 })
+            .toArray();
+        return (lastBlock[0]?.bid || 0) + 1;
+    }
+
+    static async create(
+        domainId: string,
+        rpid: number,
+        did: number,
+        owner: number,
+        title: string,
+        content: string,
+        ip?: string
+    ): Promise<ObjectId> {
+        const bid = await this.generateNextBid(domainId, did);
+        
+        const payload: Partial<BKDoc> = {
+            domainId,
+            rpid,
+            did,
+            bid,
+            title,
+            content,
+            owner,
+            ip,
+            updateAt: new Date(),
+            views: 0,
+        };
+
+        const docId = await DocumentModel.add(
+            domainId,
+            payload.content!,
+            payload.owner!,
+            TYPE_BK,
+            null,
+            null,
+            null,
+            _.omit(payload, ['domainId', 'content', 'owner'])
+        );
+
+        return docId;
+    }
+
+    static async get(domainId: string, query: ObjectId | { bid: number } | { rpid: number, did: number, bid: number }): Promise<BKDoc | null> {
+        // 支持通过 ObjectId 或 bid 查询
+        if (typeof query === 'object' && 'bid' in query) {
+            const blocks = await DocumentModel.getMulti(domainId, TYPE_BK, query).limit(1).toArray();
+            return blocks[0] || null;
+        }
+        return await DocumentModel.get(domainId, TYPE_BK, query as ObjectId);
+    }
+
+    static async getByDid(domainId: string, did: number): Promise<BKDoc[]> {
+        return await DocumentModel.getMulti(domainId, TYPE_BK, { did }).toArray();
+    }
+
+    static async edit(domainId: string, docId: ObjectId, title: string, content: string): Promise<void> {
+        await DocumentModel.set(domainId, TYPE_BK, docId, { 
+            title, 
+            content,
+            updateAt: new Date()
+        });
+    }
+
+    static async delete(domainId: string, docId: ObjectId): Promise<void> {
+        await DocumentModel.deleteOne(domainId, TYPE_BK, docId);
+    }
+
+    static async incrementViews(domainId: string, docId: ObjectId): Promise<void> {
+        await DocumentModel.inc(domainId, TYPE_BK, docId, 'views', 1);
+    }
+}
+
+// Removed: DocsModel not exported from ejun
+export async function getDocsByDomain (domainId: string) {
+    // return await DocsModel.getMulti(domainId, {}).toArray();
+    return []; // Temporarily return empty array
+}
+
+// Removed: DocsModel and buildProjection not exported from ejun
+export async function getDocsByIds (domainId: string, ids: ObjectId[]) {
+    // return await DocsModel.getMulti(domainId, { _id: { $in: ids } }).toArray();
+    return []; // Temporarily return empty array
+}
+
+export async function getDocsByDocId(domainId: string, docIds: number | number[]) {
+    // DocsModel functionality removed - return empty array
+    return [];
+    
+    /* Original implementation (commented out):
+    const query = {
+        domainId,
+        docId: Array.isArray(docIds) ? { $in: docIds } : docIds,
+    };
+
+    const results = await DocsModel.getMulti(domainId, query)
+        .project(buildProjection(DocsModel.PROJECTION_PUBLIC))
+        .toArray();
+
+    return results;
+    */
+}
+
+// Removed: RepoModel has been deleted from ejun core
+// This function now returns empty array as repo functionality is moved to ejunzrepo plugin
+export async function getReposByDocId(domainId: string, docId: number | number[]) {
+    // RepoModel functionality removed - return empty array
+    return [];
+    
+    /* Original implementation (commented out):
+    const query = {
+        domainId,
+        docId: Array.isArray(docId) ? { $in: docId } : docId,
+    };
+
+    const results = await RepoModel.getMulti(domainId, query)
+        .project(buildProjection(RepoModel.PROJECTION_PUBLIC))
+        .toArray();
+
+    return results;
+    */
+}
+
+
+
+
+// Removed: ProblemModel, ContestModel, TrainingModel not exported from ejun
+/* 
+export async function getProblemsByDocsId(domainId: string, lid: number) {
+    const query = {
+        domainId,
+        associatedDocumentId: lid 
+    };
+    return await ProblemModel.getMulti(domainId, query).toArray();
+}
+
+export async function getRelated(domainId: string, pid: number, rule?: string) {
+    const rules = Object.keys(ContestModel.RULES).filter((i) => !ContestModel.RULES[i].hidden);
+    return await DocumentModel.getMulti(domainId, DocumentModel.TYPE_CONTEST, { pids: pid, rule: rule || { $in: rules } }).toArray();
+}
+*/
+
+
+class DocHandler extends Handler {
+    ddoc?: DCDoc;
+
+    @param('docId', Types.ObjectId, true)
+    async _prepare(domainId: string, docId: ObjectId) {
+        if (docId) {
+            const docDoc = await DocModel.get(domainId, docId);
+            if (!docDoc) {
+                throw new NotFoundError(domainId, docId);
+            }
+            this.ddoc = docDoc;
+        }
+    }
+}
+export class BaseDomainHandler extends Handler {
+    async get({ domainId }) {
+      domainId = this.args?.domainId || this.context?.domainId || 'system';
+  
+      try {
+        const base = await BaseModel.getBase(domainId);
+        const repos = await EjunRepoModel.getAllRepos(domainId);
+  
+        const nodes = [
+          {
+            id: "base-root",
+            name: "Base",
+            type: "base",
+            url: this.url("base_domain", { domainId })
+          },
+          ...repos.map(repo => ({
+            id: `repo-${repo.rpid}`,
+            name: repo.title,
+            type: 'repo',
+            url: this.url('repo_detail', { domainId, rpid: repo.rpid }),
+          }))
+        ];
+  
+        const links = repos.map(repo => ({
+          source: "base-root",
+          target: `repo-${repo.rpid}`
+        }));
+  
+        this.UiContext.forceGraphData = { nodes, links };
+  
+        this.response.template = 'base_domain.html';
+        this.response.body = {
+          domainId,
+          base: base || null,
+          repos: repos || []
+        };
+  
+      } catch (error) {
+        console.error("Error fetching base:", error);
+        this.response.template = 'error.html';
+        this.response.body = { error: "Failed to fetch base" };
+      }
+    }
+  }
+  
+
+
+export class BaseEditHandler extends Handler {
+    @param('docId', Types.ObjectId, true) 
+    async get(domainId: string, docId?: ObjectId) {
+        let base = (await BaseModel.getBase(domainId)) as BSDoc | null; 
+        if (!base) {
+            console.warn(`No base found for domain: ${domainId}`);
+            base = {
+                docType: 30,
+                domainId: domainId,
+                rpids: [],
+                title: '',
+                content: '',
+                owner: this.user._id,
+                createdAt: new Date(),
+                updateAt: new Date(),
+            } as Partial<BSDoc>; 
+        }
+
+        this.response.template = 'base_edit.html';
+        this.response.body = { base };
+    }
+
+    @param('title', Types.Title)
+    @param('content', Types.Content, true)
+    async postCreate(domainId: string, title: string, content: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+
+        
+        const docId = await BaseModel.createBase(domainId, this.user._id, title, content || '');
+
+        this.response.body = { docId };
+        this.response.redirect = this.url('base_domain', { domainId });
+    }
+
+    @param('docId', Types.ObjectId)
+    @param('title', Types.Title)
+    @param('content', Types.Content, true)
+    async postUpdate(domainId: string, docId: ObjectId, title: string, content: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+
+        
+        await BaseModel.updateBase(domainId, docId, title, content || '');
+
+        this.response.body = { docId };
+        this.response.redirect = this.url('base_domain', { domainId });
+    }
+}
+
+
+
+
+export class RepoEditHandler extends Handler {
+    @param('rpid', Types.Int, true)
+    async get(domainId: string, rpid: number) {
+
+        
+            const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
+
+        this.response.template = 'repo_edit.html';
+        this.response.body = { repo };
+    }
+
+    @param('title', Types.Title)
+    @param('content', Types.Content, true)
+    async postCreate(domainId: string, title: string, content: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+    
+        if (!title.trim()) {
+            throw new Error("Title cannot be empty.");
+        }
+    
+        if (!content || typeof content !== 'string') {
+            content = '';
+        }
+    
+        
+        const { docId, rpid } = await EjunRepoModel.createRepo(domainId, this.user._id, title, content);
+    
+        this.response.body = { docId, rpid };
+        this.response.redirect = this.url('repo_detail', { domainId, rpid }); 
+    }
+    
+    
+    
+
+    @param('rpid', Types.Int)
+    @param('title', Types.Title)
+    @param('content', Types.Content)
+    async postUpdate(domainId: string, rpid: number, title: string, content: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+    
+        if (!title.trim()) {
+            throw new Error("Title cannot be empty.");
+        }
+    
+        
+        if (!content || typeof content !== 'string') {
+            content = '';
+        }
+    
+       await EjunRepoModel.edit(domainId, rpid, title, content);
+        this.response.body = { rpid };
+        this.response.redirect = this.url('repo_detail', { domainId, rpid });
+
+    }
+
+    @param('rpid', Types.Int)
+    async postDelete(domainId: string, rpid: number) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        await EjunRepoModel.deleteRepo(domainId, rpid);
+        this.response.body = { rpid };
+        this.response.redirect = this.url('base_domain', { domainId });
+    }
+    
+}
+
+export class RepoDetailHandler extends Handler {
+    @param('rpid', Types.Int)
+    async get(domainId: string, rpid: number) {
+      if (!rpid) {
+        throw new NotFoundError(`Invalid request: rpid is missing`);
+      }
+  
+      // 获取仓库信息
+      const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
+      if (!repo) {
+        throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
+      }
+  
+      // 获取所有文档
+      const repoDocs = await EjunRepoModel.getDocsByRepo(domainId, repo.rpid);
+      const root = repoDocs.find(doc => doc.parentId === null || doc.path.split('/').length === 1);
+  
+      // 构造递归层级结构
+      const buildHierarchy = (parentId: number | null, docs: any[]) => {
+        return docs
+          .filter(doc => doc.parentId === parentId)
+          .map(doc => ({
+            ...doc,
+            subDocs: buildHierarchy(doc.did, docs)
+          }));
+      };
+  
+      const docHierarchy = {
+        root: root || null,
+        docs: root ? buildHierarchy(root.did, repoDocs) : [],
+      };
+
+
+      // 转为 D3.js 树图结构
+      const toD3TreeNode = (doc: any): any => ({
+        name: doc.title,
+        docId: doc.docId,
+        url: this.url('doc_detail', {
+          domainId: domainId,
+          rpid: repo.rpid,
+          docId: doc.docId
+        }),
+        children: (doc.subDocs || []).map(toD3TreeNode)
+      });
+      
+  
+      const d3TreeData = root
+  ? {
+      name: root.title,
+      docId: root.docId,
+      url: this.url('doc_detail', {
+        domainId: domainId,
+        rpid: repo.rpid,
+        did: root.did
+      }),
+      children: docHierarchy.docs.map(toD3TreeNode)
+    }
+  : null;
+  
+      // 其他必要数据
+      const childrenDocsCursor = await DocModel.getDoc(domainId, { parentId: root?.did });
+      const childrenDocs = await childrenDocsCursor.toArray();
+  
+      const pathLevels = root?.path?.split('/').filter(Boolean) || [];
+      const pathDocs = await DocModel.getDocsByIds(domainId, pathLevels.map(Number));
+  
+      // 设置响应数据
+        this.response.template = 'repo_detail.html';
+        this.response.pjax = 'repo_detail.html';
+      this.response.body = {
+        repo,
+        root,
+        childrenDocs,
+        pathDocs,
+        repoDocs,
+        docHierarchy,
+      };
+  
+      // 注入给前端用的 D3 结构
+      this.UiContext.d3TreeData = d3TreeData;
+      this.UiContext.repo = {
+        domainId: repo.domainId,
+        rpid: repo.rpid
+      };
+      
+    }
+  
+    async post() {
+      this.checkPriv(PRIV.PRIV_USER_PROFILE);
+    }
+  }
+  
+
+
+export class RepoDocHandler extends Handler {
+    async get({ domainId, page = 1, pageSize = 10 }) {
+        domainId = this.args?.domainId || this.context?.domainId || 'system';
+
+        try {
+            const domainInfo = await DomainModel.get(domainId);
+            if (!domainInfo) throw new NotFoundError(`Domain "${domainId}" not found.`);
+
+            const branches = await DocModel.getDoc(domainId, { parentId: null });
+            if (!branches) throw new Error('No branches found.');
+
+            const [ddocs, totalPages, totalCount] = await paginate(branches, page, pageSize);
+
+            this.response.template = 'repo_doc.html';
+            this.response.body = {
+                ddocs,
+                domainId,
+                domainName: domainInfo.name,
+                page,
+                pageSize,
+                totalPages,
+                totalCount,
+            };
+        } catch (error) {
+            console.error('Error in TreeDomainHandler.get:', error);
+            this.response.template = 'error.html';
+            this.response.body = { error: error.message || 'An unexpected error occurred.' };
+        }
+        
+    }
+}
+
+
+export class DocDetailHandler extends DocHandler {
+    @param('rpid', Types.Int)
+    @param('did', Types.Int)
+    async get(domainId: string, rpid: number, did: number) {
+        if (!rpid || !did) {
+            throw new NotFoundError(`Invalid request: rpid or did is missing`);
+        }
+
+        
+
+        const ddoc = await DocModel.get(domainId, { rpid, did } as any);
+        if (!ddoc) {
+            throw new NotFoundError(`Doc with rpid ${rpid} and did ${did} not found.`);
+        }
+
+        if (Array.isArray(ddoc.rpid)) {
+            ddoc.rpid = ddoc.rpid[0]; 
+        }
+        
+        
+
+        const dsdoc = this.user.hasPriv(PRIV.PRIV_USER_PROFILE) ? ddoc : null;
+        const udoc = await UserModel.getById(domainId, ddoc.owner);
+
+        const pathLevels = ddoc.path?.split('/').filter(Boolean) || [];
+        const pathDocs = await DocModel.getDocsByIds(domainId, pathLevels.map(Number));
+
+        const repoDocs = await EjunRepoModel.getDocsByRepo(domainId, ddoc.rpid);
+
+
+        const docHierarchy = {};
+
+        const rootDcid = pathDocs.length ? pathDocs[0].did : ddoc.did;
+
+        const buildHierarchy = (parentId: number, docList: any[]) => {
+
+            const docs = docList.filter(doc => doc.parentId === parentId);
+
+            if (docs.length === 0) {
+                console.warn(`⚠️ Warning: No docs found for parentId = ${parentId}`);
+            } else {
+                console.log(`✅ Found docs:`, docs.map(d => ({ did: d.did, title: d.title })));
+            }
+
+            return docs.map(doc => ({
+                ...doc,
+                url: this.url('doc_detail', {
+                  domainId: domainId,
+                  rpid: ddoc.rpid,
+                  did: doc.did
+                }),
+                subDocs: buildHierarchy(doc.did, docList)
+              }));
+              
+        };
+
+        docHierarchy[ddoc.rpid] = buildHierarchy(rootDcid, repoDocs);
+
+        // Get blocks for this doc
+        const blocks = await BlockModel.getByDid(domainId, ddoc.did);
+        
+        const root = repoDocs.find(
+            doc => doc.parentId === null || doc.path.split('/').length === 1
+          );
+          
+          const toD3TreeNode = (doc: any): any => ({
+            name: doc.title,
+            docId: doc.docId,
+            url: this.url('doc_detail', {
+              domainId: domainId,
+              rpid: ddoc.rpid,
+              did: doc.did
+            }),
+            children: (doc.subDocs || []).map(toD3TreeNode)
+          });
+          
+          const d3TreeData = root
+        ? {
+            name: root.title,
+            docId: root.docId,
+            url: this.url('doc_detail', {
+                domainId: domainId,
+                rpid: ddoc.rpid,
+                did: root.did
+            }),
+            children: buildHierarchy(root.did, repoDocs).map(toD3TreeNode)
+            }
+        : null;
+
+        this.UiContext.d3TreeData = d3TreeData;
+        this.UiContext.repo = {
+          domainId,
+          rpid: ddoc.rpid
+        };
+        this.UiContext.ddoc = ddoc;
+        
+          
+        this.response.template = 'doc_detail.html';
+        this.response.pjax = 'doc_detail.html';
+        this.response.body = {
+            ddoc,
+            dsdoc,
+            udoc,
+            blocks,
+            pathDoc: pathDocs,
+            repoDocs,
+            docHierarchy,
+        };
+    }
+
+    async post() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+    }
+}
+
+
+
+
+
+
+
+export class RepoCreateRootHandler extends DocHandler {
+    async get() {
+        const domainId = this.context.domainId || 'system';
+        const parentId = Number(this.args?.parentId);
+        const rpid = Number(this.args?.rpid);
+
+
+        this.response.template = 'doc_edit.html';
+        this.response.body = {
+            ddoc: this.ddoc,
+            parentId,
+            rpid
+        };
+    }
+
+    @param('title', Types.Title)
+    @param('rpid', Types.String)
+    async postCreate(
+        domainId: string,
+        title: string,
+        rpid: string
+    ) {
+        await this.limitRate('add_root', 3600, 60);
+
+        // 解析 rpid，并确保传入的是单个 `number`
+        const rpidArray = rpid.split(',').map(Number).filter(n => !isNaN(n));
+        if (rpidArray.length === 0) {
+            throw new Error(`Invalid rpid: ${rpid}`);
+        }
+        const parsedRpid = rpidArray[0]; // 取数组的第一个值
+
+
+        const did = await DocModel.generateNextDid(domainId, parsedRpid);
+
+        // 创建根文档节点，确保 `rpid` 是 `number`
+        const docId = await DocModel.addRootNode(
+            domainId,
+            parsedRpid, // 传递 `number` 类型的 `rpid`
+            did,
+            this.user._id,
+            title,
+            '',
+            this.request.ip
+        );
+
+
+        this.response.body = { docId, did };
+        this.response.redirect = this.url('doc_detail', { uid: this.user._id, rpid: parsedRpid, did });
+    }
+
+}
+
+
+
+
+export class DocCreateSubdocHandler extends DocHandler {
+    async get() {
+        const domainId = this.context.domainId || 'system';
+        const parentId = Number(this.args?.parentId);
+        const rpid = Number(this.args?.rpid);
+
+
+        this.response.template = 'doc_edit.html';
+        this.response.body = {
+            ddoc: this.ddoc,
+            parentId,
+            rpid
+        };
+    }
+
+    @param('title', Types.Title)
+    @param('parentId', Types.Int)
+    @param('rpid', Types.String)
+    async postCreateSubbranch(
+        domainId: string,
+        title: string,
+        parentId: number,
+        rpid: string
+    ) {
+        await this.limitRate('add_subdoc', 3600, 60);
+        const rpidArray = rpid.split(',').map(Number).filter(n => !isNaN(n));
+
+
+        const did = await DocModel.generateNextDid(domainId, rpidArray[0]);
+        const docId = await DocModel.addSubdocNode(
+            domainId,
+            rpidArray,
+            did,
+            parentId,
+            this.user._id,
+            title,
+            '', 
+            this.request.ip
+        );
+
+        this.response.body = { docId, did };
+        this.response.redirect = this.url('doc_detail', { uid: this.user._id, rpid, did });
+    }
+}
+
+
+
+// Removed: DocEditHandler and DocResourceEditHandler - resource management removed from doc
+
+export class DocEditHandler extends DocHandler {
+    @param('docId', Types.ObjectId)
+    async get(domainId: string, docId: ObjectId) {
+        if (!docId) {
+            throw new NotFoundError(`Invalid request: docId is missing`);
+        }
+
+        const ddoc = await DocModel.get(domainId, docId);
+        if (!ddoc) {
+            throw new NotFoundError(`Doc with docId ${docId} not found.`);
+        }
+
+        this.response.template = 'doc_edit.html';
+        this.response.body = {
+            ddoc,
+            rpid: this.args.rpid,
+        };
+    }
+
+    @param('docId', Types.ObjectId)
+    @param('title', Types.Title)
+    @param('content', Types.Content)
+    async postUpdate(domainId: string, docId: ObjectId, title: string, content: string) {
+        const doc = await DocModel.get(domainId, docId);
+        if (!doc || !doc.rpid) {
+            throw new NotFoundError(`Doc with docId ${docId} not found or has no rpid.`);
+        }
+
+        await DocModel.edit(domainId, docId, title, content);
+ 
+        this.response.body = { docId, did: doc.did };
+        this.response.redirect = this.url('doc_detail', { rpid: doc.rpid, did: doc.did });
+    }
+
+    @param('docId', Types.ObjectId)
+    async postDelete(domainId: string, docId: ObjectId) {
+        await DocModel.deleteNode(domainId, docId);
+        this.response.redirect = this.url('repo_detail', { rpid: this.ddoc?.rpid });
+    }
+}
+
+// Block Handlers
+export class BlockCreateHandler extends Handler {
+    @param('rpid', Types.Int)
+    @param('did', Types.Int)
+    async get(domainId: string, rpid: number, did: number) {
+        const ddoc = await DocModel.get(domainId, { rpid, did } as any);
+        if (!ddoc) {
+            throw new NotFoundError(`Doc not found`);
+        }
+
+        this.response.template = 'block_edit.html';
+        this.response.body = {
+            ddoc,
+            rpid: ddoc.rpid,
+            did: ddoc.did
+        };
+    }
+
+    @param('rpid', Types.Int)
+    @param('did', Types.Int)
+    @param('title', Types.Title)
+    @param('content', Types.Content)
+    async postCreate(domainId: string, rpid: number, did: number, title: string, content: string) {
+        await this.limitRate('create_block', 3600, 100);
+
+        const docId = await BlockModel.create(
+            domainId,
+            rpid,
+            did,
+            this.user._id,
+            title,
+            content,
+            this.request.ip
+        );
+
+        const block = await BlockModel.get(domainId, docId);
+        this.response.body = { docId, bid: block?.bid };
+        this.response.redirect = this.url('block_detail', { rpid, did, bid: block?.bid });
+    }
+}
+
+export class BlockDetailHandler extends Handler {
+    @param('rpid', Types.Int)
+    @param('did', Types.Int)
+    @param('bid', Types.Int)
+    async get(domainId: string, rpid: number, did: number, bid: number) {
+        const block = await BlockModel.get(domainId, { rpid, did, bid } as any);
+        if (!block) {
+            throw new NotFoundError(`Block not found`);
+        }
+
+        await BlockModel.incrementViews(domainId, block.docId);
+
+        const ddoc = await DocModel.get(domainId, { rpid, did } as any);
+        const udoc = await UserModel.getById(domainId, block.owner);
+
+        this.response.template = 'block_detail.html';
+        this.response.pjax = 'block_detail.html';
+        this.response.body = {
+            block,
+            ddoc,
+            udoc
+        };
+    }
+}
+
+export class BlockEditHandler extends Handler {
+    @param('rpid', Types.Int)
+    @param('did', Types.Int)
+    @param('bid', Types.Int)
+    async get(domainId: string, rpid: number, did: number, bid: number) {
+        const block = await BlockModel.get(domainId, { rpid, did, bid } as any);
+        if (!block) {
+            throw new NotFoundError(`Block not found`);
+        }
+
+        this.response.template = 'block_edit.html';
+        this.response.body = {
+            block,
+            rpid: block.rpid,
+            did: block.did
+        };
+    }
+
+    @param('rpid', Types.Int)
+    @param('did', Types.Int)
+    @param('bid', Types.Int)
+    @param('title', Types.Title)
+    @param('content', Types.Content)
+    async postUpdate(domainId: string, rpid: number, did: number, bid: number, title: string, content: string) {
+        const block = await BlockModel.get(domainId, { rpid, did, bid } as any);
+        if (!block) {
+            throw new NotFoundError(`Block not found`);
+        }
+
+        await BlockModel.edit(domainId, block.docId, title, content);
+
+        this.response.body = { bid };
+        this.response.redirect = this.url('block_detail', { rpid, did, bid });
+    }
+
+    @param('rpid', Types.Int)
+    @param('did', Types.Int)
+    @param('bid', Types.Int)
+    async postDelete(domainId: string, rpid: number, did: number, bid: number) {
+        const block = await BlockModel.get(domainId, { rpid, did, bid } as any);
+        if (!block) {
+            throw new NotFoundError(`Block not found`);
+        }
+
+        await BlockModel.delete(domainId, block.docId);
+        
+        this.response.redirect = this.url('doc_detail', { rpid, did });
+    }
+}
+
+
+
+
+// Removed: RepoModel has been deleted from ejun core
+// This handler is commented out as it depends on the removed RepoModel
+/* 
+export class DocfileDownloadHandler extends Handler {
+    async get({ docId, rid, filename }: { docId: string; rid: string|number; filename: string }) {
+        const domainId = this.context.domainId || 'default_domain';
+
+        const repo = await RepoModel.get(domainId, rid);
+        if (!repo) throw new NotFoundError(`Repository not found for RID: ${rid}`);
+
+        const actualDocId = repo.docId ?? docId;  
+        const filePath = `repo/${domainId}/${actualDocId}/${filename}`;
+
+        const fileMeta = await StorageModel.getMeta(filePath);
+        if (!fileMeta) throw new NotFoundError(`File "${filename}" does not exist in repository "${rid}".`);
+
+        this.response.body = await StorageModel.get(filePath);
+        this.response.type = lookup(filename) || 'application/octet-stream';
+
+        if (!['application/pdf', 'image/jpeg', 'image/png'].includes(this.response.type)) {
+            this.response.disposition = `attachment; filename="${encodeRFC5987ValueChars(filename)}"`;
+        }
+    }
+}
+*/
+export async function apply(ctx: Context) {
+    const customChecker = (handler) => {
+        // 获取允许的域列表
+        const allowedDomains = SystemModel.get('ejunzrepo.allowed_domains');
+        const allowedDomainsArray = yaml.load(allowedDomains) as string[];
+
+        // 检查当前域是否在允许的域列表中
+        if (!allowedDomainsArray.includes(handler.domain._id)) {
+            return false; // 如果不在允许的域中，返回 false
+        }
+        if (handler.user._id === 2) {
+            return true;
+        } else {
+            const hasPermission = handler.user.hasPerm(PERM.PERM_VIEW_BASE);
+            return hasPermission;
+        }
+        
+    };
+    
+    // function ToOverrideNav(h) {
+    //     if (!h.response.body.overrideNav) {
+    //         h.response.body.overrideNav = [];
+    //     }
+
+    //     h.response.body.overrideNav.push(
+    //         {
+    //             name: 'base_domain',
+    //             args: {},
+    //             displayName: 'base_domain',
+    //             checker: customChecker,
+    //         },
+
+    //     );
+        
+    // }
+
+    // ctx.on('handler/after/Processing#get', async (h) => {
+    //     ToOverrideNav(h);
+    // });
+
+    // ctx.on('handler/after', async (h) => {
+    //     if (h.request.path.includes('/tree')||h.request.path.includes('/forest')) {
+    //         if (!h.response.body.overrideNav) {
+    //             h.response.body.overrideNav = [];
+    //         }
+    //         h.response.body.overrideNav.push(
+    //             {
+    //                 name: 'processing_main',
+    //                 args: {},
+    //                 displayName: 'processing_main',
+    //                 checker: () => true, 
+    //             }
+    //         );
+    //     ToOverrideNav(h);
+    //     }
+    // });
+
+    const PERM = {
+        PERM_VIEW_BASE: 1n << 80n,
+    };
+
+    global.Ejunz.model.builtin.registerPluginPermission(
+        'plugins',
+        PERM.PERM_VIEW_BASE, 
+        'Base View',
+        true,
+        false,
+        'ejunzrepo'
+    );
+    
+    SettingModel.DomainPluginSetting(
+        SettingModel.Setting('plugins', 'ejunzrepo', [''], 'yaml', 'repo_map'),
+    );
+
+    ctx.Route('base_domain', '/base', BaseDomainHandler);
+    ctx.Route('base_edit', '/base/:docId/edit', BaseEditHandler, PERM.PERM_VIEW_BASE);
+    ctx.Route('base_create', '/base/create', BaseEditHandler, PERM.PERM_VIEW_BASE);
+    ctx.Route('repo_create', '/base/repo/create', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('repo_detail', '/base/repo/:rpid', RepoDetailHandler);
+    ctx.Route('repo_create_root', '/base/repo/:rpid/createroot', RepoCreateRootHandler);
+    ctx.Route('repo_edit', '/base/repo/:rpid/edit', RepoEditHandler, PERM.PERM_VIEW_BASE);
+    ctx.Route('repo_doc', '/base/repo/:rpid/doc', RepoDocHandler);
+    ctx.Route('doc_create_subdoc', '/base/repo/:rpid/doc/:parentId/createsubdoc', DocCreateSubdocHandler, PERM.PERM_VIEW_BASE);
+    ctx.Route('doc_detail', '/base/repo/:rpid/doc/:did', DocDetailHandler);
+    ctx.Route('doc_edit', '/base/repo/:rpid/doc/:docId/editdoc', DocEditHandler, PERM.PERM_VIEW_BASE);
+    // Removed: doc_resource_edit - resource management removed from doc
+    // Block routes
+    ctx.Route('block_create', '/base/repo/:rpid/doc/:did/block/create', BlockCreateHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('block_detail', '/base/repo/:rpid/doc/:did/block/:bid', BlockDetailHandler);
+    ctx.Route('block_edit', '/base/repo/:rpid/doc/:did/block/:bid/edit', BlockEditHandler, PRIV.PRIV_USER_PROFILE);
+
+    ctx.i18n.load('zh', {
+        base_domain: '基础',
+        repo_create: '创建仓库',
+        repo_detail: '仓库详情',
+        repo_edit: '编辑仓库',
+        repo_doc: '仓库文档',
+        doc_create_subdoc: '创建子文档',
+        doc_detail: '文档详情',  
+        doc_edit: '编辑文档',
+        block_create: '创建块',
+        block_detail: '块详情',
+        block_edit: '编辑块',
+    });
+    ctx.i18n.load('en', {
+        base_domain: 'Base',
+        repo_create: 'Create Repo',
+        repo_detail: 'Repo Detail',
+        repo_edit: 'Edit Repo',
+        repo_doc: 'Repo Doc',
+        doc_create_subdoc: 'Create Subdoc',
+        doc_detail: 'Doc Detail',
+        doc_edit: 'Edit Doc',
+        block_create: 'Create Block',
+        block_detail: 'Block Detail',
+        block_edit: 'Edit Block',
+    });
+}

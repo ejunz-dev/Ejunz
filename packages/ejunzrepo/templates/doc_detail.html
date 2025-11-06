@@ -1,0 +1,119 @@
+{% extends "layout/basic.html" %}
+<script>
+  {{ set(UiContext, {
+    ddoc: ddoc
+  }) }}
+</script>
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+        <div class="section">
+          <div class="section__header">
+            <h3>{{ _("Repo Map") }}</h3>
+          </div>
+          <div class="section__body">
+            {% include "repo_map.html" %}
+          </div>
+        </div>
+  </div>
+
+  <div class="medium-3 columns">
+    <div class="section side">
+      <div class="section__header">
+        <h2 class="section__title">{{ _("Doc Info") }}</h2>
+      </div>
+      <div class="section__body">
+        <p><strong>{{ _("Title") }}:</strong> {{ ddoc.title }}</p>
+        <p><strong>{{ _("Type") }}:</strong> 
+          {% if ddoc.parentId %}
+            <span class="badge secondary">{{ _("Sub-Doc") }}</span>
+          {% else %}
+            <span class="badge primary">{{ _("Trunk") }}</span>
+          {% endif %}
+        </p>
+
+        <div class="section__header">
+          <h3>{{ _("Doc Path") }}</h3>
+        </div>
+        <div class="section__body path-container">
+          <nav class="breadcrumb">
+            {% for pathDoc in pathDoc %}
+              {% if pathDoc.did == ddoc.did %}
+                <strong>{{ pathDoc.title }}</strong>
+              {% else %}
+                <a href="{{ url('doc_detail', domainId=ddoc.domainId,rpid=ddoc.rpid, did=pathDoc.did) }}">
+                  {{ pathDoc.title }}
+                </a>
+              {% endif %}
+              {% if not loop.last %} - {% endif %}
+            {% endfor %}
+          </nav>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="medium-3 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ ddoc.title }}</h1>
+      </div>
+      <div class="section__body">
+            <div class="section">
+        <div class="section__header">
+        </div>
+        <div class="section__body current-doc">
+          <div class="typo richmedia topic__content" data-emoji-enabled>
+            {{ ddoc.content|markdown|safe }}
+          </div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </div>
+  <div class="medium-3 columns">
+        <div class="section">
+          <div class="section__header">
+            <h3>{{ _("Blocks") }}</h3>
+          </div>
+          <div class="section__body">
+            {% if blocks and blocks|length > 0 %}
+              <ul>
+                {% for block in blocks %}
+                <li>
+                  <a class="discussion-node-tag media-link" 
+                     href="{{ url('block_detail', domainId=ddoc.domainId, rpid=block.rpid, did=block.did, bid=block.bid) }}">
+                    <span class="v-center icon icon-file"></span> {{ block.title }}
+                  </a>
+                </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p>{{ _("No blocks yet.") }}</p>
+            {% endif %}
+          </div>
+        </div>
+    </div>
+
+  <div class="medium-3 columns">
+    <div class="section side">
+      <div class="section__header">
+        <h2 class="section__title">{{ _("Actions") }}</h2>
+      </div>
+      <div class="section__body">
+        <a href="{{ url('doc_edit', domainId=ddoc.domainId,rpid=ddoc.rpid, docId=ddoc.docId) }}" class="button primary expanded">
+          {{ _('Edit Content') }}
+        </a>
+        <a href="{{ url('block_create', domainId=ddoc.domainId,rpid=ddoc.rpid, did=ddoc.did) }}" class="button primary expanded">
+          {{ _('Create Block') }}
+        </a>
+        <a href="{{ url('base_domain', domainId=ddoc.domainId,rpid=ddoc.rpid) }}" class="button expanded">
+          {{ _('Back to Repo') }}
+        </a>
+        <a href="{{ url('doc_create_subdoc', domainId=ddoc.domainId,rpid=ddoc.rpid, parentId=ddoc.did) }}" class="button success expanded">
+          {{ _('Create Sub-Doc') }}
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
