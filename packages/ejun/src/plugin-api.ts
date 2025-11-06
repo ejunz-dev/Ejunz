@@ -30,7 +30,6 @@ export { default as BlackListModel } from './model/blacklist';
 export { default as DomainModel } from './model/domain';
 export { default as StorageModel } from './model/storage';
 export { default as TaskModel } from './model/task';
-export { default as RepoModel } from './model/repo';
 export { default as AgentModel } from './model/agent';
 export * from './model/builtin';
 export { Collections } from './service/db';
