@@ -8,6 +8,14 @@ import {
 import yaml from 'js-yaml';
 import { SettingModel, Setting } from 'ejun';
 import { lookup } from 'mime-types';
+import { exec as execCb } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { promisify } from 'util';
+const exec = promisify(execCb);
+// 防止重复注册系统设置导致系统设置页面出现多个相同输入项
+let EJUNZREPO_SETTINGS_REGISTERED = false;
 export const TYPE_DC: 32 = 32;
 export const TYPE_RP: 31 = 31;
 export const TYPE_BS: 30 = 30;
@@ -36,6 +44,9 @@ export interface RPDoc {
     owner: number;
     createdAt: Date;
     updateAt: Date;
+    currentBranch?: string; // 当前编辑分支
+    branches?: string[];    // 已存在的本地分支列表
+    githubRepo?: string;    // GitHub 仓库地址，如 git@github.com:user/repo.git
 }
 
 
@@ -56,6 +67,7 @@ export interface DCDoc {
     doc: boolean;
     childrenCount?: number;
     createdAt?: Date;
+    branch?: string; // 所属分支，默认为 main
 }
 
 export interface BKDoc {
@@ -72,6 +84,7 @@ export interface BKDoc {
     updateAt: Date;
     views: number;
     createdAt?: Date;
+    branch?: string; // 所属分支，默认为 main
 }
 
 declare module 'ejun' {
@@ -251,9 +264,9 @@ export class EjunRepoModel {
 }
 
 export class DocModel {
-    static async generateNextDid(domainId: string, rpid: number): Promise<number> {
-        // 在每个 repo 内独立计数，从 1 开始
-        const lastDoc = await DocumentModel.getMulti(domainId, TYPE_DC, { rpid })
+    static async generateNextDid(domainId: string, rpid: number, branch: string = 'main'): Promise<number> {
+        // 在每个 repo+branch 内独立计数，从 1 开始
+        const lastDoc = await DocumentModel.getMulti(domainId, TYPE_DC, { rpid, branch })
             .sort({ did: -1 })
             .limit(1)
             .project({ did: 1 })
@@ -280,13 +293,14 @@ export class DocModel {
         owner: number,
         title: string,
         content: string,
-        ip?: string
+        ip?: string,
+        branch: string = 'main'
     ): Promise<ObjectId> {
         const parsedRpid = typeof rpid === 'string' ? parseInt(rpid, 10) : rpid;
     if (isNaN(parsedRpid)) {
         throw new Error(`Invalid rpid: ${rpid}`);
     }
-        const newDid = did || await this.generateNextDid(domainId, parsedRpid);
+        const newDid = did || await this.generateNextDid(domainId, parsedRpid, branch);
 
         const payload: Partial<DCDoc> = {
             domainId,
@@ -301,6 +315,7 @@ export class DocModel {
             path: `/${newDid}`,
             doc: false,
             parentId: null, // 顶层节点 parentId 为 null
+            branch,
         };
 
         const docId = await DocumentModel.add(
@@ -325,7 +340,8 @@ export class DocModel {
         owner: number,
         title: string,
         content: string,
-        ip?: string
+        ip?: string,
+        branch: string = 'main'
     ): Promise<ObjectId> {
         const parentNode = await DocumentModel.getMulti(domainId, TYPE_DC, { did: parentDcid })
             .limit(1)
@@ -336,7 +352,7 @@ export class DocModel {
         }
 
         const firstRpid = Array.isArray(rpid) ? rpid[0] : rpid;
-        const newDid = did ?? await this.generateNextDid(domainId, firstRpid);
+        const newDid = did ?? await this.generateNextDid(domainId, firstRpid, branch);
         const path = `${parentNode[0].path}/${newDid}`;
 
         const payload: Partial<DCDoc> = {
@@ -352,6 +368,7 @@ export class DocModel {
             views: 0,
             path,
             doc: true,
+            branch,
         };
 
         const docId = await DocumentModel.add(
@@ -378,8 +395,10 @@ export class DocModel {
         return await DocumentModel.get(domainId, TYPE_DC, query as ObjectId);
     }
 
-    static async getChildren(domainId: string, parentId: number): Promise<DCDoc[]> {
-        return await DocumentModel.getMulti(domainId, TYPE_DC, { parentId }).toArray();
+    static async getChildren(domainId: string, parentId: number, branch?: string): Promise<DCDoc[]> {
+        const query: any = { parentId };
+        if (branch) query.branch = branch;
+        return await DocumentModel.getMulti(domainId, TYPE_DC, query).toArray();
     }
 
     static async getDoc(domainId: string, query: Partial<DCDoc>) {
@@ -419,9 +438,9 @@ export class DocModel {
 }
 
 export class BlockModel {
-    static async generateNextBid(domainId: string, rpid: number): Promise<number> {
-        // 在整个 repo 范围内独立计数，从 1 开始
-        const lastBlock = await DocumentModel.getMulti(domainId, TYPE_BK, { rpid })
+    static async generateNextBid(domainId: string, rpid: number, branch: string = 'main'): Promise<number> {
+        // 在 repo+branch 范围内独立计数，从 1 开始
+        const lastBlock = await DocumentModel.getMulti(domainId, TYPE_BK, { rpid, branch })
             .sort({ bid: -1 })
             .limit(1)
             .project({ bid: 1 })
@@ -436,9 +455,10 @@ export class BlockModel {
         owner: number,
         title: string,
         content: string,
-        ip?: string
+        ip?: string,
+        branch: string = 'main'
     ): Promise<ObjectId> {
-        const bid = await this.generateNextBid(domainId, rpid);
+        const bid = await this.generateNextBid(domainId, rpid, branch);
         
         const payload: Partial<BKDoc> = {
             domainId,
@@ -451,6 +471,7 @@ export class BlockModel {
             ip,
             updateAt: new Date(),
             views: 0,
+            branch,
         };
 
         const docId = await DocumentModel.add(
@@ -476,11 +497,10 @@ export class BlockModel {
         return await DocumentModel.get(domainId, TYPE_BK, query as ObjectId);
     }
 
-    static async getByDid(domainId: string, did: number, rpid?: number): Promise<BKDoc[]> {
+    static async getByDid(domainId: string, did: number, rpid?: number, branch?: string): Promise<BKDoc[]> {
         const query: any = { did };
-        if (rpid !== undefined) {
-            query.rpid = rpid;  // 确保只查询当前 repo 的 blocks
-        }
+        if (rpid !== undefined) query.rpid = rpid;
+        if (branch !== undefined) query.branch = branch;
         return await DocumentModel.getMulti(domainId, TYPE_BK, query).toArray();
     }
 
@@ -750,33 +770,40 @@ export class RepoEditHandler extends Handler {
 
 export class RepoDetailHandler extends Handler {
     @param('rpid', Types.Int)
-    async get(domainId: string, rpid: number) {
+    @param('branch', Types.String, true)
+    async get(domainId: string, rpid: number, branch?: string) {
       if (!rpid) {
         throw new NotFoundError(`Invalid request: rpid is missing`);
       }
   
-      // 获取仓库信息
       const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
       if (!repo) {
         throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
       }
   
-      // 获取所有文档
-      const repoDocs = await EjunRepoModel.getDocsByRepo(domainId, repo.rpid);
+      // 若未显式传入分支，重定向到带分支的URL，默认使用 main
+      if (!branch || !String(branch).trim()) {
+        const target = this.url('repo_detail_branch', { domainId, rpid, branch: 'main' });
+        this.response.redirect = target;
+        return;
+      }
+  
+      const requestedBranch = branch;
       
-      // 获取所有顶层文档（没有 parent 的文档）
+      const repoDocsAll = await EjunRepoModel.getDocsByRepo(domainId, repo.rpid);
+      const repoDocs = repoDocsAll.filter(d => (d.branch || 'main') === requestedBranch);
       const rootDocs = repoDocs.filter(doc => doc.parentId === null);
   
-      // 获取所有 docs 的 blocks
       const allDocsWithBlocks = {};
       for (const doc of repoDocs) {
-        const blocks = await BlockModel.getByDid(domainId, doc.did);
+        const blocks = await BlockModel.getByDid(domainId, doc.did, undefined, requestedBranch);
         if (blocks && blocks.length > 0) {
           allDocsWithBlocks[doc.did] = blocks.map(block => ({
             ...block,
-            url: this.url('block_detail', {
+            url: this.url('block_detail_branch', {
               domainId,
               rpid: repo.rpid,
+              branch: requestedBranch,
               did: doc.did,
               bid: block.bid
             })
@@ -784,26 +811,33 @@ export class RepoDetailHandler extends Handler {
         }
       }
 
-      // 构造递归层级结构（从顶层文档开始）
       const buildHierarchy = (parentId: number | null, docs: any[]) => {
         return docs
           .filter(doc => doc.parentId === parentId)
           .map(doc => ({
             ...doc,
-            url: this.url('doc_detail', {
+            url: this.url('doc_detail_branch', {
               domainId,
               rpid: repo.rpid,
+              branch: requestedBranch,
               did: doc.did
             }),
             subDocs: buildHierarchy(doc.did, docs)
           }));
       };
   
-      // 构建所有顶层文档的层级结构
       const docHierarchy = {};
       docHierarchy[rpid] = buildHierarchy(null, repoDocs);
   
-      // 设置响应数据
+      let branches: string[] = Array.isArray((repo as any).branches)
+        ? ((repo as any).branches as string[])
+        : ((typeof (repo as any).branches === 'string' && (repo as any).branches)
+            ? [String((repo as any).branches)]
+            : []);
+      if (!branches.includes('main')) branches.push('main');
+      if (!branches.includes(requestedBranch)) branches.push(requestedBranch);
+      branches = Array.from(new Set(branches));
+  
         this.response.template = 'repo_detail.html';
         this.response.pjax = 'repo_detail.html';
       this.response.body = {
@@ -811,24 +845,23 @@ export class RepoDetailHandler extends Handler {
         rootDocs,
         repoDocs,
         docHierarchy,
+        currentBranch: requestedBranch,
+        branches,
       };
   
-      // 注入给前端用的数据
       this.UiContext.docHierarchy = docHierarchy;
       this.UiContext.allDocsWithBlocks = allDocsWithBlocks;
       this.UiContext.repo = {
         domainId: repo.domainId,
-        rpid: repo.rpid
+        rpid: repo.rpid,
+        currentBranch: requestedBranch,
       };
-      
     }
   
     async post() {
       this.checkPriv(PRIV.PRIV_USER_PROFILE);
     }
   }
-  
-
 
 export class RepoDocHandler extends Handler {
     async get({ domainId, page = 1, pageSize = 10 }) {
@@ -865,40 +898,44 @@ export class RepoDocHandler extends Handler {
 
 export class DocDetailHandler extends DocHandler {
     @param('rpid', Types.Int)
+    @param('branch', Types.String, true)
     @param('did', Types.Int)
-    async get(domainId: string, rpid: number, did: number) {
+    async get(domainId: string, rpid: number, branch: string | undefined, did: number) {
         if (!rpid || !did) {
             throw new NotFoundError(`Invalid request: rpid or did is missing`);
         }
 
-        
+        const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) throw new NotFoundError(`Repo not found`);
+        if (!branch || !String(branch).trim()) {
+            this.response.redirect = this.url('doc_detail_branch', { domainId, rpid, branch: repo.currentBranch || 'main', did });
+            return;
+        }
 
         const ddoc = await DocModel.get(domainId, { rpid, did } as any);
         if (!ddoc) {
             throw new NotFoundError(`Doc with rpid ${rpid} and did ${did} not found.`);
         }
-
         if (Array.isArray(ddoc.rpid)) {
             ddoc.rpid = ddoc.rpid[0]; 
         }
-        
-        
-
+        const currentBranch = branch || (ddoc as any).branch || 'main';
         const dsdoc = this.user.hasPriv(PRIV.PRIV_USER_PROFILE) ? ddoc : null;
         const udoc = await UserModel.getById(domainId, ddoc.owner);
 
-        const repoDocs = await EjunRepoModel.getDocsByRepo(domainId, ddoc.rpid);
+        const repoDocsAll = await EjunRepoModel.getDocsByRepo(domainId, ddoc.rpid);
+        const repoDocs = repoDocsAll.filter(doc => (doc.branch || 'main') === currentBranch);
 
-        // 获取所有 docs 的 blocks（确保只查询当前 repo 的 blocks）
         const allDocsWithBlocks = {};
         for (const doc of repoDocs) {
-          const docBlocks = await BlockModel.getByDid(domainId, doc.did, ddoc.rpid);
+          const docBlocks = await BlockModel.getByDid(domainId, doc.did, ddoc.rpid, currentBranch);
           if (docBlocks && docBlocks.length > 0) {
             allDocsWithBlocks[doc.did] = docBlocks.map(block => ({
               ...block,
-              url: this.url('block_detail', {
+              url: this.url('block_detail_branch', {
                 domainId,
                 rpid: ddoc.rpid,
+                branch: currentBranch,
                 did: doc.did,
                 bid: block.bid
               })
@@ -906,36 +943,34 @@ export class DocDetailHandler extends DocHandler {
           }
         }
 
-        // 构造递归层级结构（从顶层文档开始）
         const buildHierarchy = (parentId: number | null, docs: any[]) => {
           return docs
             .filter(doc => doc.parentId === parentId)
             .map(doc => ({
               ...doc,
-              url: this.url('doc_detail', {
+              url: this.url('doc_detail_branch', {
                 domainId,
                 rpid: ddoc.rpid,
+                branch: currentBranch,
                 did: doc.did
               }),
               subDocs: buildHierarchy(doc.did, docs)
             }));
         };
     
-        // 构建所有顶层文档的层级结构
         const docHierarchy = {};
         docHierarchy[ddoc.rpid] = buildHierarchy(null, repoDocs);
 
-        // Get blocks for this doc（确保只查询当前 repo 的 blocks）
-        const blocks = await BlockModel.getByDid(domainId, ddoc.did, ddoc.rpid);
+        const blocks = await BlockModel.getByDid(domainId, ddoc.did, ddoc.rpid, currentBranch);
 
         this.UiContext.docHierarchy = docHierarchy;
         this.UiContext.allDocsWithBlocks = allDocsWithBlocks;
         this.UiContext.repo = {
           domainId,
-          rpid: ddoc.rpid
+          rpid: ddoc.rpid,
+          currentBranch,
         };
         this.UiContext.ddoc = ddoc;
-        
           
         this.response.template = 'doc_detail.html';
         this.response.pjax = 'doc_detail.html';
@@ -946,6 +981,7 @@ export class DocDetailHandler extends DocHandler {
             blocks,
             repoDocs,
             docHierarchy,
+            currentBranch,
         };
     }
 
@@ -965,60 +1001,68 @@ export class DocCreateHandler extends DocHandler {
         const domainId = this.context.domainId || 'system';
         const parentId = Number(this.args?.parentId) || null;
         const rpid = Number(this.args?.rpid);
-
+        const branch = (this.args?.branch) || '';
+        if (!branch) {
+            const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
+            const b = repo?.currentBranch || 'main';
+            this.response.redirect = this.url('doc_create_branch', { domainId, rpid, branch: b });
+            return;
+        }
         this.response.template = 'doc_edit.html';
         this.response.body = {
             ddoc: this.ddoc,
             parentId,
-            rpid
+            rpid,
+            branch,
         };
     }
 
     @param('title', Types.Title)
     @param('rpid', Types.String)
+    @param('branch', Types.String, true)
     async postCreate(
         domainId: string,
         title: string,
-        rpid: string
+        rpid: string,
+        branch?: string,
     ) {
-        return this.postCreateSubdoc(domainId, title, rpid, undefined);
+        return this.postCreateSubdoc(domainId, title, rpid, undefined, branch);
     }
 
     @param('title', Types.Title)
     @param('rpid', Types.String)
-    @param('parentId', Types.Int, true) // 可选参数
+    @param('parentId', Types.Int, true)
+    @param('branch', Types.String, true)
     async postCreateSubdoc(
         domainId: string,
         title: string,
         rpid: string,
-        parentId?: number
+        parentId?: number,
+        branch?: string,
     ) {
         await this.limitRate('add_doc', 3600, 60);
-
-        // 解析 rpid，并确保传入的是单个 `number`
         const rpidArray = rpid.split(',').map(Number).filter(n => !isNaN(n));
         if (rpidArray.length === 0) {
             throw new Error(`Invalid rpid: ${rpid}`);
         }
-        const parsedRpid = rpidArray[0]; // 取数组的第一个值
-
-        const did = await DocModel.generateNextDid(domainId, parsedRpid);
-
+        const parsedRpid = rpidArray[0];
+        const repo = await EjunRepoModel.getRepoByRpid(domainId, parsedRpid);
+        const effectiveBranch = (branch || repo?.currentBranch || 'main');
+        const did = await DocModel.generateNextDid(domainId, parsedRpid, effectiveBranch);
         let docId;
         if (parentId) {
-            // 创建子文档
             docId = await DocModel.addSubdocNode(
                 domainId,
-                [parsedRpid],  // 需要传递数组
+                [parsedRpid],
                 did,
-                parentId,      // parentDcid
-                this.user._id, // owner
+                parentId,
+                this.user._id,
                 title,
                 '',
-                this.request.ip
+                this.request.ip,
+                effectiveBranch
             );
         } else {
-            // 创建顶层文档（没有 parent）
             docId = await DocModel.addRootNode(
                 domainId,
                 parsedRpid,
@@ -1026,12 +1070,12 @@ export class DocCreateHandler extends DocHandler {
                 this.user._id,
                 title,
                 '',
-                this.request.ip
+                this.request.ip,
+                effectiveBranch
             );
         }
-
         this.response.body = { docId, did };
-        this.response.redirect = this.url('doc_detail', { uid: this.user._id, rpid: parsedRpid, did });
+        this.response.redirect = this.url('doc_detail_branch', { uid: this.user._id, rpid: parsedRpid, branch: effectiveBranch, did });
     }
 
 }
@@ -1042,91 +1086,60 @@ export class DocCreateHandler extends DocHandler {
 // Structure Update Handler
 export class RepoStructureUpdateHandler extends Handler {
     @param('rpid', Types.Int)
+    @param('branch', Types.String, true)
     async post(domainId: string, rpid: number) {
-        const { structure, creates } = this.request.body;
+        const { structure, creates, branch } = this.request.body;
+        const effectiveBranch = (branch || this.args?.branch || 'main');
         
         if (!structure || !structure.docs) {
             throw new Error('Invalid structure');
         }
 
-        console.log('Received structure:', JSON.stringify(structure, null, 2));
-        console.log('Received creates:', JSON.stringify(creates || [], null, 2));
+        
 
         try {
-            // 先创建新项目
             if (creates && creates.length > 0) {
-                await this.createItems(domainId, rpid, creates);
+                await this.createItems(domainId, rpid, creates, effectiveBranch);
             }
-
-            // 然后更新文档结构
             await this.updateDocStructure(domainId, rpid, structure.docs);
-            
-            this.response.body = { success: true };
+            this.response.body = { success: true, branch: effectiveBranch };
         } catch (error: any) {
             console.error(`Failed to update structure: ${error.message}`);
             throw error;
         }
     }
 
-    async createItems(domainId: string, rpid: number, creates: any[]) {
-        // 首先创建一个映射：placeholderId -> did
+    async createItems(domainId: string, rpid: number, creates: any[], branch: string) {
         const placeholderMap: { [key: string]: number } = {};
-        
-        // 第一遍：只创建文档（按层级顺序）
-        // 需要多轮创建：先创建没有父节点的，再创建有父节点的
         const docCreates = creates.filter(c => c.type === 'doc');
-        
-        // 多轮创建，确保父子关系正确
-        let createdDocs = new Set<string>();
         let hasNewDocs = true;
         let round = 0;
-        
-        while (hasNewDocs && round < 10) { // 最多 10 轮，防止无限循环
+        while (hasNewDocs && round < 10) {
             round++;
             hasNewDocs = false;
-            
             for (const create of docCreates) {
-                // 如果已经创建过，跳过
                 const placeholderId = (create as any).placeholderId;
-                if (placeholderId && placeholderMap[placeholderId]) {
-                    continue;
-                }
-                
-                const { type, title, parentDid, parentPlaceholderId } = create;
-                
-                if (!title || !title.trim()) {
-                    continue;
-                }
-
-                // 确定实际的父节点 did
+                if (placeholderId && placeholderMap[placeholderId]) continue;
+                const { title, parentDid, parentPlaceholderId } = create;
+                if (!title || !title.trim()) continue;
                 let actualParentDid: number | null = null;
                 let canCreate = false;
-                
                 if (parentPlaceholderId) {
-                    // 父节点是占位符 doc，从映射中获取
                     actualParentDid = placeholderMap[parentPlaceholderId];
                     canCreate = actualParentDid !== undefined;
                 } else if (parentDid !== null && parentDid !== undefined) {
-                    // 父节点是已存在的 doc
                     if (typeof parentDid === 'string') {
-                        // 如果 parentDid 是字符串，说明也是占位符 ID
                         actualParentDid = placeholderMap[parentDid];
                         canCreate = actualParentDid !== undefined;
                     } else {
                         actualParentDid = parentDid;
-                        canCreate = true; // 已存在的 doc，可以直接创建
+                        canCreate = true;
                     }
                 } else {
-                    // 没有父节点，根层级
                     canCreate = true;
                 }
-                
-                if (!canCreate) {
-                    continue; // 父节点还没创建，跳过这一轮
-                }
-                
-                // 创建文档
-                const did = await DocModel.generateNextDid(domainId, rpid);
+                if (!canCreate) continue;
+                const did = await DocModel.generateNextDid(domainId, rpid, branch);
                 const docId = actualParentDid 
                     ? await DocModel.addSubdocNode(
                         domainId,
@@ -1136,7 +1149,8 @@ export class RepoStructureUpdateHandler extends Handler {
                         this.user._id,
                         title.trim(),
                         '',
-                        this.request.ip
+                        this.request.ip,
+                        branch
                     )
                     : await DocModel.addRootNode(
                         domainId,
@@ -1145,62 +1159,36 @@ export class RepoStructureUpdateHandler extends Handler {
                         this.user._id,
                         title.trim(),
                         '',
-                        this.request.ip
+                        this.request.ip,
+                        branch
                     );
-                
-                // 记录 placeholderId 到 did 的映射
                 if (placeholderId) {
                     placeholderMap[placeholderId] = did;
-                    console.log(`Mapped placeholder ${placeholderId} -> did ${did}`);
                 }
-                
-                console.log(`Created doc: ${title}, did=${did}, docId=${docId}`);
                 hasNewDocs = true;
             }
         }
-        
-        // 第二遍：创建 blocks
         const blockCreates = creates.filter(c => c.type === 'block');
-        console.log(`Creating ${blockCreates.length} blocks...`);
         for (const create of blockCreates) {
-            const { type, title, parentDid, parentPlaceholderId } = create;
-            
-            if (!title || !title.trim()) {
-                console.warn(`Block without title, skipping`);
-                continue;
-            }
-
-            // 确定实际的父节点 did
+            const { title, parentDid, parentPlaceholderId } = create;
+            if (!title || !title.trim()) continue;
             let actualParentDid: number | null = null;
             if (parentPlaceholderId) {
                 actualParentDid = placeholderMap[parentPlaceholderId];
-                console.log(`Block ${title}: parentPlaceholderId=${parentPlaceholderId}, mapped to did=${actualParentDid}`);
             } else if (parentDid !== null && parentDid !== undefined) {
-                if (typeof parentDid === 'string') {
-                    actualParentDid = placeholderMap[parentDid];
-                    console.log(`Block ${title}: parentDid (string)=${parentDid}, mapped to did=${actualParentDid}`);
-                } else {
-                    actualParentDid = parentDid;
-                    console.log(`Block ${title}: parentDid (number)=${actualParentDid}`);
-                }
+                actualParentDid = typeof parentDid === 'string' ? placeholderMap[parentDid] : parentDid;
             }
-            
-            if (!actualParentDid) {
-                console.warn(`Cannot create block without parentDid: ${title}, parentDid=${parentDid}, parentPlaceholderId=${parentPlaceholderId}`);
-                continue;
-            }
-            
-            const bid = await BlockModel.generateNextBid(domainId, rpid);
-            const blockId = await BlockModel.create(
+            if (!actualParentDid) continue;
+            await BlockModel.create(
                 domainId,
                 rpid,
                 actualParentDid,
                 this.user._id,
                 title.trim(),
                 '',
-                this.request.ip
+                this.request.ip,
+                branch
             );
-            console.log(`Created block: ${title}, bid=${bid}, blockId=${blockId}, parentDid=${actualParentDid}`);
         }
     }
 
@@ -1211,11 +1199,11 @@ export class RepoStructureUpdateHandler extends Handler {
             // 更新文档的父节点和顺序
             const doc = await DocModel.get(domainId, { rpid, did });
             if (!doc) {
-                console.log(`Doc not found: rpid=${rpid}, did=${did}`);
+                
                 continue;
             }
 
-            console.log(`Updating doc ${did}: parentId=${parentDid}, order=${order}`);
+            
 
             // 使用 DocumentModel.set 更新文档
             await DocumentModel.set(domainId, TYPE_DC, doc._id, {
@@ -1234,14 +1222,14 @@ export class RepoStructureUpdateHandler extends Handler {
                     const block = await BlockModel.get(domainId, { rpid, bid });
                     
                     if (block) {
-                        console.log(`Updating block ${bid}: did=${did}, order=${blockOrder}`);
+                        
                         await DocumentModel.set(domainId, TYPE_BK, block._id, {
                             did: did,  // 更新 block 的父文档 ID
                             order: blockOrder || 0,
                             updateAt: new Date()
                         });
                     } else {
-                        console.log(`Block not found: rpid=${rpid}, bid=${bid}`);
+                        
                     }
                 }
             }
@@ -1304,8 +1292,15 @@ export class DocEditHandler extends DocHandler {
 // Block Handlers
 export class BlockCreateHandler extends Handler {
     @param('rpid', Types.Int)
+    @param('branch', Types.String, true)
     @param('did', Types.Int)
-    async get(domainId: string, rpid: number, did: number) {
+    async get(domainId: string, rpid: number, branch: string | undefined, did: number) {
+        if (!branch) {
+            const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
+            const b = repo?.currentBranch || 'main';
+            this.response.redirect = this.url('block_create_branch', { domainId, rpid, branch: b, did });
+            return;
+        }
         const ddoc = await DocModel.get(domainId, { rpid, did } as any);
         if (!ddoc) {
             throw new NotFoundError(`Doc not found`);
@@ -1315,17 +1310,20 @@ export class BlockCreateHandler extends Handler {
         this.response.body = {
             ddoc,
             rpid: ddoc.rpid,
-            did: ddoc.did
+            did: ddoc.did,
+            branch: branch || (ddoc as any).branch || 'main',
         };
     }
 
     @param('rpid', Types.Int)
+    @param('branch', Types.String, true)
     @param('did', Types.Int)
     @param('title', Types.Title)
     @param('content', Types.Content)
-    async postCreate(domainId: string, rpid: number, did: number, title: string, content: string) {
+    async postCreate(domainId: string, rpid: number, did: number, title: string, content: string, branch?: string) {
         await this.limitRate('create_block', 3600, 100);
-
+        const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
+        const effectiveBranch = branch || repo?.currentBranch || 'main';
         const docId = await BlockModel.create(
             domainId,
             rpid,
@@ -1333,86 +1331,77 @@ export class BlockCreateHandler extends Handler {
             this.user._id,
             title,
             content,
-            this.request.ip
+            this.request.ip,
+            effectiveBranch
         );
 
         const block = await BlockModel.get(domainId, docId);
         this.response.body = { docId, bid: block?.bid };
-        this.response.redirect = this.url('block_detail', { rpid, did, bid: block?.bid });
+        this.response.redirect = this.url('block_detail_branch', { rpid, branch: effectiveBranch, did, bid: block?.bid });
     }
 }
 
 export class BlockDetailHandler extends Handler {
     @param('rpid', Types.Int)
+    @param('branch', Types.String, true)
     @param('did', Types.Int)
     @param('bid', Types.Int)
-    async get(domainId: string, rpid: number, did: number, bid: number) {
-        // bid 在整个 repo 内唯一，只需要 rpid + bid
+    async get(domainId: string, rpid: number, branch: string | undefined, did: number, bid: number) {
+        const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) throw new NotFoundError('Repo not found');
+        if (!branch || !String(branch).trim()) {
+            this.response.redirect = this.url('block_detail_branch', { domainId, rpid, branch: repo.currentBranch || 'main', did, bid });
+            return;
+        }
+        const currentBranch = branch || 'main';
         const block = await BlockModel.get(domainId, { rpid, bid });
         if (!block) {
             throw new NotFoundError(`Block not found`);
         }
-
         await BlockModel.incrementViews(domainId, block.docId);
-
         const ddoc = await DocModel.get(domainId, { rpid, did } as any);
         const udoc = await UserModel.getById(domainId, block.owner);
-
-        // 获取所有文档和树形结构（用于侧边栏）
-        const repoDocs = await EjunRepoModel.getDocsByRepo(domainId, rpid);
-
-        // 获取所有 docs 的 blocks（确保只查询当前 repo 的 blocks）
+        const repoDocs = (await EjunRepoModel.getDocsByRepo(domainId, rpid)).filter(d => (d.branch || 'main') === currentBranch);
         const allDocsWithBlocks = {};
         for (const doc of repoDocs) {
-          const docBlocks = await BlockModel.getByDid(domainId, doc.did, rpid);
+          const docBlocks = await BlockModel.getByDid(domainId, doc.did, rpid, currentBranch);
           if (docBlocks && docBlocks.length > 0) {
             allDocsWithBlocks[doc.did] = docBlocks.map(b => ({
               ...b,
-              url: this.url('block_detail', {
+              url: this.url('block_detail_branch', {
                 domainId,
                 rpid: rpid,
+                branch: currentBranch,
                 did: doc.did,
                 bid: b.bid
               })
             }));
           }
         }
-
-        // 构造递归层级结构（从顶层文档开始）
         const buildHierarchy = (parentId: number | null, docs: any[]) => {
           return docs
             .filter(doc => doc.parentId === parentId)
             .map(doc => ({
               ...doc,
-              url: this.url('doc_detail', {
+              url: this.url('doc_detail_branch', {
                 domainId,
                 rpid: rpid,
+                branch: currentBranch,
                 did: doc.did
               }),
               subDocs: buildHierarchy(doc.did, docs)
             }));
         };
-    
-        // 构建所有顶层文档的层级结构
         const docHierarchy = {};
         docHierarchy[rpid] = buildHierarchy(null, repoDocs);
-
         this.UiContext.docHierarchy = docHierarchy;
         this.UiContext.allDocsWithBlocks = allDocsWithBlocks;
-        this.UiContext.repo = {
-          domainId,
-          rpid: rpid
-        };
+        this.UiContext.repo = { domainId, rpid, currentBranch };
         this.UiContext.ddoc = ddoc;
         this.UiContext.block = block;
-
         this.response.template = 'block_detail.html';
         this.response.pjax = 'block_detail.html';
-        this.response.body = {
-            block,
-            ddoc,
-            udoc
-        };
+        this.response.body = { block, ddoc, udoc, currentBranch };
     }
 }
 
@@ -1469,38 +1458,415 @@ export class BlockEditHandler extends Handler {
     }
 }
 
+// GitHub 同步工具
+async function buildLocalRepoFromEjunz(domainId: string, rpid: number, targetDir: string, branch: string = 'main') {
+    const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
+    if (!repo) throw new Error(`Repo not found: rpid=${rpid}`);
+    const docsAll = await EjunRepoModel.getDocsByRepo(domainId, rpid);
+    const docs = docsAll.filter(d => (d.branch || 'main') === branch);
 
+    // 为了安全与跨平台，文件名做基本清洗
+    const sanitize = (name: string) => (name || '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'untitled';
 
+    // 建立 did -> children 的映射
+    const childrenMap = new Map<number|null, DCDoc[]>();
+    for (const d of docs) {
+        const key = (d.parentId ?? null) as number|null;
+        if (!childrenMap.has(key)) childrenMap.set(key, []);
+        childrenMap.get(key)!.push(d);
+    }
 
-// Removed: RepoModel has been deleted from ejun core
-// This handler is commented out as it depends on the removed RepoModel
-/* 
-export class DocfileDownloadHandler extends Handler {
-    async get({ docId, rid, filename }: { docId: string; rid: string|number; filename: string }) {
-        const domainId = this.context.domainId || 'default_domain';
+    // 递归创建目录与 block 文件（以标题为目录名）
+    async function writeDocTree(parentId: number|null, parentPath: string) {
+        const list = childrenMap.get(parentId) || [];
+        for (const d of list) {
+            const dirName = `${sanitize(d.title)}`;
+            const curDir = path.join(parentPath, dirName);
+            await fs.promises.mkdir(curDir, { recursive: true });
 
-        const repo = await RepoModel.get(domainId, rid);
-        if (!repo) throw new NotFoundError(`Repository not found for RID: ${rid}`);
+            // 写入 doc 的 content 到该目录的 README.md
+            if (d.content && d.content.trim()) {
+                const readmePath = path.join(curDir, 'README.md');
+                await fs.promises.writeFile(readmePath, d.content, 'utf8');
+            }
 
-        const actualDocId = repo.docId ?? docId;  
-        const filePath = `repo/${domainId}/${actualDocId}/${filename}`;
+            const blocks = await BlockModel.getByDid(domainId, d.did, rpid, branch);
+            for (const b of blocks) {
+                const fileName = `${sanitize(b.title)}.md`;
+                const filePath = path.join(curDir, fileName);
+                await fs.promises.writeFile(filePath, b.content ?? '', 'utf8');
+            }
 
-        const fileMeta = await StorageModel.getMeta(filePath);
-        if (!fileMeta) throw new NotFoundError(`File "${filename}" does not exist in repository "${rid}".`);
+            // 若没有 blocks 且没有子文档，创建占位文件，避免空目录不被 git 跟踪
+            const children = childrenMap.get(d.did) || [];
+            if ((!blocks || blocks.length === 0) && children.length === 0) {
+                const keepPath = path.join(curDir, '.keep');
+                await fs.promises.writeFile(keepPath, '', 'utf8');
+            }
 
-        this.response.body = await StorageModel.get(filePath);
-        this.response.type = lookup(filename) || 'application/octet-stream';
+            await writeDocTree(d.did, curDir);
+        }
+    }
 
-        if (!['application/pdf', 'image/jpeg', 'image/png'].includes(this.response.type)) {
-            this.response.disposition = `attachment; filename="${encodeRFC5987ValueChars(filename)}"`;
+    // 直接从仓库根开始写，不再建立 doc 根目录
+    await writeDocTree(null, targetDir);
+
+    // 写入 repo 的 content 到仓库根目录的 README.md
+    await fs.promises.writeFile(
+        path.join(targetDir, 'README.md'),
+        repo.content || `# ${repo.title}\n\nThis repo is generated by ejunzrepo.`,
+        'utf8'
+    );
+}
+
+async function gitInitAndPush(targetDir: string, remoteUrlWithAuth: string, branch: string = 'main', commitMessage: string = 'chore: sync from ejunzrepo') {
+    await exec('git init', { cwd: targetDir });
+    await exec('git config user.name "ejunz-bot"', { cwd: targetDir });
+    await exec('git config user.email "bot@ejunz.local"', { cwd: targetDir });
+    await exec('git add .', { cwd: targetDir });
+    // 若无变更，commit 可能失败，允许通过
+    try {
+        // 转义 commit message 中的特殊字符，使用单引号包裹
+        const escapedMessage = commitMessage.replace(/'/g, "'\\''");
+        await exec(`git commit -m '${escapedMessage}'`, { cwd: targetDir });
+    } catch (_) {}
+    // 设置主分支并强推
+    await exec(`git branch -M ${branch}`, { cwd: targetDir });
+    // 如果已存在 origin，先移除再添加，避免重复
+    try { await exec('git remote remove origin', { cwd: targetDir }); } catch {}
+    await exec(`git remote add origin ${remoteUrlWithAuth}`, { cwd: targetDir });
+    await exec(`git push -u origin ${branch} --force`, { cwd: targetDir });
+}
+
+async function cloneRepoToTemp(remoteUrlWithAuth: string): Promise<string> {
+    const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-gh-'));
+    await exec(`git clone ${remoteUrlWithAuth} .`, { cwd: tmp });
+    return tmp;
+}
+
+async function importGitStructureToEjunz(domainId: string, rpid: number, localDir: string, userId: number, ip: string, branch: string = 'main') {
+    // 直接从仓库根读取；没有专门的 doc 目录
+    const exists = await fs.promises
+        .stat(localDir)
+        .then((s) => s.isDirectory())
+        .catch(() => false);
+    if (!exists) return;
+
+    const sanitize = (name: string) => (name || '').replace(/[\\/:*?"<>|]/g, '_').trim();
+
+    // 读取仓库根目录的 README.md 更新 repo.content
+    const repoReadmePath = path.join(localDir, 'README.md');
+    try {
+        const repoContent = await fs.promises.readFile(repoReadmePath, 'utf8');
+        const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
+        if (repo) {
+            await EjunRepoModel.edit(domainId, rpid, repo.title, repoContent);
+        }
+    } catch (err) {
+        // README.md 不存在或读取失败，忽略
+    }
+
+    async function ensureDoc(parentDid: number|null, dirPath: string, dirName: string): Promise<number> {
+        const title = sanitize(dirName) || 'untitled';
+        let did: number;
+        
+        // 读取该目录下的 README.md 作为 doc.content
+        const docReadmePath = path.join(dirPath, 'README.md');
+        let docContent = '';
+        try {
+            docContent = await fs.promises.readFile(docReadmePath, 'utf8');
+        } catch (err) {
+            // README.md 不存在，使用空字符串
+        }
+        
+        if (parentDid == null) {
+            const newDid = await DocModel.generateNextDid(domainId, rpid, branch);
+            const docId = await DocModel.addRootNode(domainId, rpid, newDid, userId, title, docContent, ip, branch);
+            did = newDid;
+        } else {
+            const newDid = await DocModel.generateNextDid(domainId, rpid, branch);
+            const docId = await DocModel.addSubdocNode(domainId, [rpid], newDid, parentDid, userId, title, docContent, ip, branch);
+            did = newDid;
+        }
+        return did;
+    }
+
+    async function walk(parentDid: number|null, currentDir: string) {
+        const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
+        // 先处理 md 文件为 block（排除 README.md，因为它已经作为 doc.content）
+        for (const e of entries) {
+            if (e.isFile() && e.name.toLowerCase().endsWith('.md') && e.name.toLowerCase() !== 'readme.md') {
+                if (parentDid == null) continue;
+                const content = await fs.promises.readFile(path.join(currentDir, e.name), 'utf8');
+                const nameWithout = e.name.replace(/\.md$/i, '');
+                const title = sanitize(nameWithout) || 'untitled';
+                await BlockModel.create(domainId, rpid, parentDid, userId, title, content, ip, branch);
+            }
+        }
+        // 再处理子目录为子 doc
+        for (const e of entries) {
+            if (e.isDirectory()) {
+                const childDirPath = path.join(currentDir, e.name);
+                const childDid = await ensureDoc(parentDid, childDirPath, e.name);
+                await walk(childDid, childDirPath);
+            }
+        }
+    }
+
+    // 仓库根下的每个目录（排除 .git 等）作为一个 root doc
+    const top = await fs.promises.readdir(localDir, { withFileTypes: true });
+    for (const d of top) {
+        if (d.isDirectory() && d.name !== '.git') {
+            const did = await ensureDoc(null, path.join(localDir, d.name), d.name);
+            await walk(did, path.join(localDir, d.name));
         }
     }
 }
-*/
+
+async function cloneBranchData(domainId: string, rpid: number, sourceBranch: string, targetBranch: string, userId: number, ip: string) {
+    if (sourceBranch === targetBranch) return;
+    // 读取源分支的所有文档
+    const allDocs = await EjunRepoModel.getDocsByRepo(domainId, rpid);
+    const sourceDocs = allDocs.filter(d => (d.branch || 'main') === sourceBranch);
+    if (sourceDocs.length === 0) return;
+
+    // 旧 did -> 新 did
+    const didMap = new Map<number, number>();
+
+    // 按路径深度从浅到深，确保父先于子
+    const sortedDocs = sourceDocs.slice().sort((a, b) => (a.path?.split('/').length || 1) - (b.path?.split('/').length || 1));
+
+    for (const d of sortedDocs) {
+        const isRoot = d.parentId == null;
+        if (isRoot) {
+            const newDid = await DocModel.generateNextDid(domainId, rpid, targetBranch);
+            await DocModel.addRootNode(domainId, rpid, newDid, d.owner || userId, d.title, d.content || '', ip, targetBranch);
+            didMap.set(d.did, newDid);
+        } else {
+            const parentNewDid = didMap.get(d.parentId!);
+            if (parentNewDid == null) continue; // 父节点缺失，跳过
+            const newDid = await DocModel.generateNextDid(domainId, rpid, targetBranch);
+            await DocModel.addSubdocNode(domainId, [rpid], newDid, parentNewDid, d.owner || userId, d.title, d.content || '', ip, targetBranch);
+            didMap.set(d.did, newDid);
+        }
+
+        // 复制该文档下的 blocks
+        const blocks = await BlockModel.getByDid(domainId, d.did, rpid, sourceBranch);
+        const newDid = didMap.get(d.did)!;
+        for (const b of blocks) {
+            await BlockModel.create(domainId, rpid, newDid, b.owner || userId, b.title, b.content || '', ip, targetBranch);
+        }
+    }
+}
+/**
+ * 清空指定 repo+branch 的本地数据（docs 与 blocks）。
+ */
+async function clearRepoBranchData(domainId: string, rpid: number, branch: string) {
+    // 删除 blocks
+    const blocks = await DocumentModel.getMulti(domainId, TYPE_BK, { rpid, branch }).toArray();
+    for (const b of blocks) {
+        await DocumentModel.deleteOne(domainId, TYPE_BK, b.docId);
+    }
+    // 删除 docs
+    const docs = await DocumentModel.getMulti(domainId, TYPE_DC, { rpid, branch }).toArray();
+    for (const d of docs) {
+        await DocumentModel.deleteOne(domainId, TYPE_DC, d.docId);
+    }
+}
+// (deprecated old RepoGithubPushHandler removed)
+
+// Repo 配置 Handler
+export class RepoConfigHandler extends Handler {
+    @param('rpid', Types.Int)
+    async get(domainId: string, rpid: number) {
+        const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) {
+            throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
+        }
+        this.response.template = 'repo_config.html';
+        this.response.body = { repo };
+    }
+
+    @param('rpid', Types.Int)
+    @param('githubRepo', Types.String, true)
+    async post(domainId: string, rpid: number, githubRepo?: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) {
+            throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
+        }
+        await DocumentModel.set(domainId, TYPE_RP, repo.docId, {
+            githubRepo: githubRepo || ''
+        });
+        this.response.redirect = this.url('repo_detail_branch', { domainId, rpid, branch: repo.currentBranch || 'main' });
+    }
+}
+
+// PR/Push：将 ejunzrepo 结构推送到指定 GitHub 仓库
+export class RepoGithubPushHandler extends Handler {
+    @param('rpid', Types.Int)
+    @param('branch', Types.String, true)
+    async post(domainId: string, rpid: number, branch?: string) {
+        const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) {
+            throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
+        }
+        
+        // 从 system 配置读取 GitHub token（优先域配置，再回落系统配置）
+        const settingValue = this.ctx.setting.get('ejunzrepo.github_token');
+        const systemValue = SystemModel.get('ejunzrepo.github_token');
+        const GH_TOKEN = settingValue || systemValue || '';
+        if (!GH_TOKEN) {
+            throw new Error('GitHub token not configured. Please configure it in system settings.');
+        }
+        
+        // 从 repo 配置读取仓库地址
+        const githubRepo = repo.githubRepo || '';
+        if (!githubRepo) {
+            throw new Error('GitHub repository not configured. Please configure it in repo settings.');
+        }
+        
+        // 将 SSH 格式转换为 HTTPS 格式（如果提供的是 SSH 格式）
+        let REPO_HTTPS = githubRepo;
+        if (githubRepo.startsWith('git@github.com:')) {
+            const repoPath = githubRepo.replace('git@github.com:', '').replace('.git', '');
+            REPO_HTTPS = `https://${GH_TOKEN}@github.com/${repoPath}.git`;
+        } else if (!githubRepo.includes('@')) {
+            // 如果没有协议，假设是 user/repo 格式
+            const repoPath = githubRepo.replace('.git', '');
+            REPO_HTTPS = `https://${GH_TOKEN}@github.com/${repoPath}.git`;
+        }
+        
+        const effectiveBranch = (branch || this.args?.branch || this.request.body?.branch || 'main').toString();
+        
+        // 构建 commit message：默认包含 domainId + userId + username，用户可添加备注
+        const userNote = (this.request.body?.note || '').toString().trim();
+        const defaultMessage = `${domainId}/${this.user._id}/${this.user.uname || 'unknown'}`;
+        const commitMessage = userNote ? `${defaultMessage}: ${userNote}` : defaultMessage;
+
+        const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-push-'));
+        try {
+            await buildLocalRepoFromEjunz(domainId, rpid, tmpDir, effectiveBranch);
+            await gitInitAndPush(tmpDir, REPO_HTTPS, effectiveBranch, commitMessage);
+            this.response.body = { ok: true, branch: effectiveBranch };
+        } catch (err: any) {
+            console.error('Push failed:', err?.message || err);
+            this.response.status = 500;
+            this.response.body = { ok: false, branch: effectiveBranch, error: err?.message || String(err) };
+        } finally {
+            try { await fs.promises.rm(tmpDir, { recursive: true, force: true }); } catch {}
+        }
+        this.response.redirect = this.url('repo_detail_branch', { domainId, rpid, branch: effectiveBranch });
+    }
+
+    @param('rpid', Types.Int)
+    @param('branch', Types.String, true)
+    async get(domainId: string, rpid: number, branch?: string) {
+        return this.post(domainId, rpid, branch);
+    }
+}
+
+// Pull：从 GitHub 仓库拉取并在 ejunz 中创建结构
+export class RepoGithubPullHandler extends Handler {
+    @param('rpid', Types.Int)
+    @param('branch', Types.String, true)
+    async post(domainId: string, rpid: number, branch?: string) {
+        const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) {
+            throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
+        }
+        const GH_TOKEN = this.ctx.setting.get('ejunzrepo.github_token') || '';
+        if (!GH_TOKEN) {
+            throw new Error('GitHub token not configured. Please configure it in system settings.');
+        }
+        const githubRepo = repo.githubRepo || '';
+        if (!githubRepo) {
+            throw new Error('GitHub repository not configured. Please configure it in repo settings.');
+        }
+        let REPO_HTTPS = githubRepo;
+        if (githubRepo.startsWith('git@github.com:')) {
+            const repoPath = githubRepo.replace('git@github.com:', '').replace('.git', '');
+            REPO_HTTPS = `https://${GH_TOKEN}@github.com/${repoPath}.git`;
+        } else if (!githubRepo.includes('@')) {
+            const repoPath = githubRepo.replace('.git', '');
+            REPO_HTTPS = `https://${GH_TOKEN}@github.com/${repoPath}.git`;
+        }
+        const effectiveBranch = (branch || this.args?.branch || this.request.body?.branch || 'main').toString();
+        const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-pull-'));
+        try {
+            await exec('git init', { cwd: tmpDir });
+            try { await exec('git remote remove origin', { cwd: tmpDir }); } catch {}
+            await exec(`git remote add origin ${REPO_HTTPS}`, { cwd: tmpDir });
+            await exec(`git fetch --depth=1 origin ${effectiveBranch}`, { cwd: tmpDir });
+            await exec(`git checkout -B ${effectiveBranch} origin/${effectiveBranch}`, { cwd: tmpDir });
+
+            // 先清空本地该分支的数据，以正确反映远端的删除
+            await clearRepoBranchData(domainId, rpid, effectiveBranch);
+            await importGitStructureToEjunz(domainId, rpid, tmpDir, this.user._id, this.request.ip, effectiveBranch);
+            this.response.body = { ok: true, branch: effectiveBranch };
+        } catch (err: any) {
+            console.error('Pull failed:', err?.message || err);
+            this.response.status = 500;
+            this.response.body = { ok: false, branch: effectiveBranch, error: err?.message || String(err) };
+        } finally {
+            try { await fs.promises.rm(tmpDir, { recursive: true, force: true }); } catch {}
+        }
+        this.response.redirect = this.url('repo_detail_branch', { domainId, rpid, branch: effectiveBranch });
+    }
+
+    @param('rpid', Types.Int)
+    @param('branch', Types.String, true)
+    async get(domainId: string, rpid: number, branch?: string) {
+        return this.post(domainId, rpid, branch);
+    }
+}
+
+// 分支管理：创建与切换
+export class RepoBranchCreateHandler extends Handler {
+    @param('rpid', Types.Int)
+    @param('branch', Types.String)
+    async post(domainId: string, rpid: number, branch: string) {
+        const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
+        const branches = Array.isArray(repo.branches) ? repo.branches.slice() : [];
+        const newBranch = (branch || '').trim() || 'main';
+        if (!branches.includes(newBranch)) branches.push(newBranch);
+        await DocumentModel.set(domainId, TYPE_RP, repo.docId, { branches, currentBranch: newBranch });
+
+        const sourceBranch = repo.currentBranch || 'main';
+        try {
+            await cloneBranchData(domainId, rpid, sourceBranch, newBranch, this.user._id, this.request.ip);
+        } catch (e) {
+            console.error('cloneBranchData failed:', e);
+        }
+
+        this.response.redirect = this.url('repo_detail_branch', { domainId, rpid, branch: newBranch });
+    }
+
+    @param('rpid', Types.Int)
+    @param('branch', Types.String)
+    async get(domainId: string, rpid: number, branch: string) { return this.post(domainId, rpid, branch); }
+}
+
+export class RepoBranchSwitchHandler extends Handler {
+    @param('rpid', Types.Int)
+    @param('branch', Types.String)
+    async post(domainId: string, rpid: number, branch: string) {
+        const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
+        await DocumentModel.set(domainId, TYPE_RP, repo.docId, { currentBranch: branch });
+        this.response.redirect = this.url('repo_detail_branch', { domainId, rpid, branch });
+    }
+
+    @param('rpid', Types.Int)
+    @param('branch', Types.String)
+    async get(domainId: string, rpid: number, branch: string) { return this.post(domainId, rpid, branch); }
+}
+
 export async function apply(ctx: Context) {
     const customChecker = (handler) => {
         // 获取允许的域列表
-        const allowedDomains = SystemModel.get('ejunzrepo.allowed_domains');
+        const allowedDomains = handler.ctx.setting.get('ejunzrepo.allowed_domains');
         const allowedDomainsArray = yaml.load(allowedDomains) as string[];
 
         // 检查当前域是否在允许的域列表中
@@ -1571,22 +1937,44 @@ export async function apply(ctx: Context) {
         SettingModel.Setting('plugins', 'ejunzrepo', [''], 'yaml', 'repo_map'),
     );
 
+    // 注册 GitHub token 系统配置（通过 ctx.setting，避免重复，写入系统 config）
+    if (!EJUNZREPO_SETTINGS_REGISTERED) {
+        ctx.setting.SystemSetting(
+            SettingModel.Setting('ejunzrepo', 'ejunzrepo.github_token', '', 'password', 'GitHub Token', 'GitHub Personal Access Token for repository sync'),
+        );
+        EJUNZREPO_SETTINGS_REGISTERED = true;
+    }
+
     ctx.Route('base_domain', '/base', BaseDomainHandler);
     ctx.Route('base_edit', '/base/:docId/edit', BaseEditHandler, PERM.PERM_VIEW_BASE);
     ctx.Route('base_create', '/base/create', BaseEditHandler, PERM.PERM_VIEW_BASE);
     ctx.Route('repo_create', '/base/repo/create', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_detail', '/base/repo/:rpid', RepoDetailHandler);
+    ctx.Route('repo_detail_branch', '/base/repo/:rpid/branch/:branch', RepoDetailHandler);
     ctx.Route('repo_structure_update', '/base/repo/:rpid/update_structure', RepoStructureUpdateHandler, PERM.PERM_VIEW_BASE);
-    ctx.Route('doc_create', '/base/repo/:rpid/doc/create', DocCreateHandler, PERM.PERM_VIEW_BASE);
     ctx.Route('repo_edit', '/base/repo/:rpid/edit', RepoEditHandler, PERM.PERM_VIEW_BASE);
-    ctx.Route('repo_doc', '/base/repo/:rpid/doc', RepoDocHandler);
+    ctx.Route('repo_config', '/base/repo/:rpid/config', RepoConfigHandler, PERM.PERM_VIEW_BASE);
+    ctx.Route('doc_create', '/base/repo/:rpid/doc/create', DocCreateHandler, PERM.PERM_VIEW_BASE);
+    ctx.Route('doc_create_branch', '/base/repo/:rpid/branch/:branch/doc/create', DocCreateHandler, PERM.PERM_VIEW_BASE);
     ctx.Route('doc_create_subdoc', '/base/repo/:rpid/doc/:parentId/createsubdoc', DocCreateHandler, PERM.PERM_VIEW_BASE);
+    ctx.Route('doc_create_subdoc_branch', '/base/repo/:rpid/branch/:branch/doc/:parentId/createsubdoc', DocCreateHandler, PERM.PERM_VIEW_BASE);
     ctx.Route('doc_detail', '/base/repo/:rpid/doc/:did', DocDetailHandler);
+    ctx.Route('doc_detail_branch', '/base/repo/:rpid/branch/:branch/doc/:did', DocDetailHandler);
     ctx.Route('doc_edit', '/base/repo/:rpid/doc/:docId/editdoc', DocEditHandler, PERM.PERM_VIEW_BASE);
+    // Added: GitHub同步
+    ctx.Route('repo_github_push', '/base/repo/:rpid/github/push', RepoGithubPushHandler, PERM.PERM_VIEW_BASE);
+    ctx.Route('repo_github_push_branch', '/base/repo/:rpid/branch/:branch/github/push', RepoGithubPushHandler, PERM.PERM_VIEW_BASE);
+    ctx.Route('repo_github_pull', '/base/repo/:rpid/github/pull', RepoGithubPullHandler, PERM.PERM_VIEW_BASE);
+    ctx.Route('repo_github_pull_branch', '/base/repo/:rpid/branch/:branch/github/pull', RepoGithubPullHandler, PERM.PERM_VIEW_BASE);
+    ctx.Route('repo_branch_create', '/base/repo/:rpid/branch/create', RepoBranchCreateHandler, PERM.PERM_VIEW_BASE);
+    ctx.Route('repo_branch_create_with_param', '/base/repo/:rpid/branch/:branch/create', RepoBranchCreateHandler, PERM.PERM_VIEW_BASE);
+    ctx.Route('repo_branch_switch', '/base/repo/:rpid/branch/switch', RepoBranchSwitchHandler, PERM.PERM_VIEW_BASE);
     // Removed: doc_resource_edit - resource management removed from doc
     // Block routes
     ctx.Route('block_create', '/base/repo/:rpid/doc/:did/block/create', BlockCreateHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('block_create_branch', '/base/repo/:rpid/branch/:branch/doc/:did/block/create', BlockCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('block_detail', '/base/repo/:rpid/doc/:did/block/:bid', BlockDetailHandler);
+    ctx.Route('block_detail_branch', '/base/repo/:rpid/branch/:branch/doc/:did/block/:bid', BlockDetailHandler);
     ctx.Route('block_edit', '/base/repo/:rpid/doc/:did/block/:bid/edit', BlockEditHandler, PRIV.PRIV_USER_PROFILE);
 
     ctx.i18n.load('zh', {
@@ -1594,6 +1982,7 @@ export async function apply(ctx: Context) {
         repo_create: '创建仓库',
         repo_detail: '仓库详情',
         repo_edit: '编辑仓库',
+        repo_config: '仓库配置',
         repo_doc: '仓库文档',
         doc_create: '创建文档',
         doc_create_subdoc: '创建子文档',
@@ -1608,6 +1997,7 @@ export async function apply(ctx: Context) {
         repo_create: 'Create Repo',
         repo_detail: 'Repo Detail',
         repo_edit: 'Edit Repo',
+        repo_config: 'Repo Config',
         repo_doc: 'Repo Doc',
         doc_create: 'Create Doc',
         doc_create_subdoc: 'Create Subdoc',

@@ -220,6 +220,7 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
     const repo = UiContext.repo;
     const currentDid = UiContext.ddoc?.did;
     const currentBid = UiContext.block?.bid;
+    const currentBranch = (repo && (repo.currentBranch || 'main')) || 'main';
     
     if (!treeData || !repo) {
       return;
@@ -392,7 +393,7 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ structure, creates }),
+          body: JSON.stringify({ structure, creates, branch: currentBranch }),
         });
 
         if (response.ok) {
