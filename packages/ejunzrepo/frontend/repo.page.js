@@ -276,6 +276,7 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
     let draggedData = null;
     let pendingCreates = []; // 待创建的项目列表
     let pendingDeletes = []; // 待删除的项目列表 { type: 'doc'|'block', did?: number, bid?: number }
+    let pendingUpdates = []; // 待更新的标题列表 { type: 'doc'|'block', did?: number, bid?: number, title: string }
 
     // 添加编辑控制按钮
     function renderEditControls() {
@@ -318,6 +319,7 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
         cancelBtn.style.display = 'none';
         pendingCreates = [];
         pendingDeletes = [];
+        pendingUpdates = [];
         updateDeleteZone();
         // 隐藏删除区域
         const deleteZone = document.getElementById('delete-zone');
@@ -533,7 +535,7 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
       const structure = collectStructure();
       const creates = collectPendingCreates(structure);
       
-      console.log('Sending structure to server:', JSON.stringify({ structure, creates, deletes: pendingDeletes }, null, 2));
+      console.log('Sending structure to server:', JSON.stringify({ structure, creates, deletes: pendingDeletes, updates: pendingUpdates }, null, 2));
       
       try {
         const response = await fetch(`/d/${repo.domainId}/base/repo/${repo.rpid}/update_structure`, {
@@ -541,7 +543,7 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ structure, creates, deletes: pendingDeletes, branch: currentBranch }),
+          body: JSON.stringify({ structure, creates, deletes: pendingDeletes, updates: pendingUpdates, branch: currentBranch }),
         });
 
         if (response.ok) {
@@ -944,6 +946,12 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
         itemDiv.ondragleave = handleDragLeave;
         itemDiv.ondrop = handleDrop;
         itemDiv.ondragend = handleDragEnd;
+        // 双击重命名
+        itemDiv.ondblclick = (e) => {
+          e.stopPropagation();
+          const currentTitle = doc.title;
+          showRenameDialog('doc', doc.did, undefined, currentTitle);
+        };
       }
       
       // 折叠/展开按钮
@@ -970,7 +978,9 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
       label.className = 'doc-tree-label';
       const link = document.createElement('a');
       link.href = doc.url;
-      link.textContent = doc.title;
+      // 检查是否有待更新的标题
+      const pendingUpdate = pendingUpdates.find(u => u.type === 'doc' && u.did === doc.did);
+      link.textContent = pendingUpdate ? pendingUpdate.title : doc.title;
       if (!isEditMode) {
         link.onclick = (e) => {
           if (e.ctrlKey || e.metaKey) {
@@ -1051,6 +1061,12 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
         blockDiv.ondragleave = handleDragLeave;
         blockDiv.ondrop = handleDrop;
         blockDiv.ondragend = handleDragEnd;
+        // 双击重命名
+        blockDiv.ondblclick = (e) => {
+          e.stopPropagation();
+          const currentTitle = block.title;
+          showRenameDialog('block', undefined, block.bid, currentTitle);
+        };
       }
       
       // 空白占位
@@ -1069,7 +1085,9 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
       blockLabel.className = 'doc-tree-label';
       const blockLink = document.createElement('a');
       blockLink.href = block.url;
-      blockLink.textContent = block.title;
+      // 检查是否有待更新的标题
+      const pendingUpdate = pendingUpdates.find(u => u.type === 'block' && u.bid === block.bid);
+      blockLink.textContent = pendingUpdate ? pendingUpdate.title : block.title;
       blockLabel.appendChild(blockLink);
       blockDiv.appendChild(blockLabel);
       
@@ -1293,6 +1311,96 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
           e.preventDefault();
           dialog.remove();
           delete window.__confirmParentTitleInput;
+        }
+      };
+    }
+
+    // 显示重命名对话框（用于现有文档和块）
+    function showRenameDialog(type, did, bid, currentTitle) {
+      const dialog = document.createElement('div');
+      dialog.className = 'title-input-dialog';
+      dialog.innerHTML = `
+        <h3>重命名 ${type === 'doc' ? 'Doc' : 'Block'}</h3>
+        <input type="text" id="rename-input" value="${currentTitle || ''}" placeholder="请输入新标题..." autofocus>
+        <div class="title-input-dialog-buttons">
+          <button onclick="this.closest('.title-input-dialog').remove()">取消</button>
+          <button class="primary" onclick="window.__confirmRename && window.__confirmRename()">确定</button>
+        </div>
+      `;
+      document.body.appendChild(dialog);
+
+      const input = dialog.querySelector('#rename-input');
+      input.select(); // 选中现有文本
+      
+      // 确定按钮处理
+      window.__confirmRename = () => {
+        const newTitle = input.value.trim();
+        if (!newTitle) {
+          alert('请输入标题');
+          return;
+        }
+
+        if (newTitle === currentTitle) {
+          // 标题没有变化，直接关闭
+          dialog.remove();
+          delete window.__confirmRename;
+          return;
+        }
+
+        // 添加到待更新列表
+        const updateItem = {
+          type: type,
+          title: newTitle
+        };
+        if (type === 'doc' && did) {
+          updateItem.did = did;
+        } else if (type === 'block' && bid) {
+          updateItem.bid = bid;
+        }
+
+        // 检查是否已存在，如果存在则更新，否则添加
+        const existingIndex = pendingUpdates.findIndex(u => 
+          u.type === type && 
+          ((type === 'doc' && u.did === did) || (type === 'block' && u.bid === bid))
+        );
+        
+        if (existingIndex >= 0) {
+          pendingUpdates[existingIndex] = updateItem;
+        } else {
+          pendingUpdates.push(updateItem);
+        }
+
+        // 立即更新显示
+        const itemDiv = document.querySelector(
+          type === 'doc' 
+            ? `.doc-tree-item[data-type="doc"][data-did="${did}"]`
+            : `.doc-tree-item[data-type="block"][data-bid="${bid}"]`
+        );
+        if (itemDiv) {
+          const label = itemDiv.querySelector('.doc-tree-label');
+          if (label) {
+            const link = label.querySelector('a');
+            if (link) {
+              link.textContent = newTitle;
+            } else {
+              label.textContent = newTitle;
+            }
+          }
+        }
+
+        dialog.remove();
+        delete window.__confirmRename;
+      };
+
+      input.focus();
+      input.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          window.__confirmRename();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          dialog.remove();
+          delete window.__confirmRename;
         }
       };
     }
