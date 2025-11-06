@@ -759,71 +759,59 @@ export class RepoDetailHandler extends Handler {
   
       // 获取所有文档
       const repoDocs = await EjunRepoModel.getDocsByRepo(domainId, repo.rpid);
-      const root = repoDocs.find(doc => doc.parentId === null || doc.path.split('/').length === 1);
+      
+      // 获取所有顶层文档（没有 parent 的文档）
+      const rootDocs = repoDocs.filter(doc => doc.parentId === null);
   
-      // 构造递归层级结构
+      // 获取所有 docs 的 blocks
+      const allDocsWithBlocks = {};
+      for (const doc of repoDocs) {
+        const blocks = await BlockModel.getByDid(domainId, doc.did);
+        if (blocks && blocks.length > 0) {
+          allDocsWithBlocks[doc.did] = blocks.map(block => ({
+            ...block,
+            url: this.url('block_detail', {
+              domainId,
+              rpid: repo.rpid,
+              did: doc.did,
+              bid: block.bid
+            })
+          }));
+        }
+      }
+
+      // 构造递归层级结构（从顶层文档开始）
       const buildHierarchy = (parentId: number | null, docs: any[]) => {
         return docs
           .filter(doc => doc.parentId === parentId)
           .map(doc => ({
             ...doc,
+            url: this.url('doc_detail', {
+              domainId,
+              rpid: repo.rpid,
+              did: doc.did
+            }),
             subDocs: buildHierarchy(doc.did, docs)
           }));
       };
   
-      const docHierarchy = {
-        root: root || null,
-        docs: root ? buildHierarchy(root.did, repoDocs) : [],
-      };
-
-
-      // 转为 D3.js 树图结构
-      const toD3TreeNode = (doc: any): any => ({
-        name: doc.title,
-        docId: doc.docId,
-        url: this.url('doc_detail', {
-          domainId: domainId,
-          rpid: repo.rpid,
-          docId: doc.docId
-        }),
-        children: (doc.subDocs || []).map(toD3TreeNode)
-      });
-      
-  
-      const d3TreeData = root
-  ? {
-      name: root.title,
-      docId: root.docId,
-      url: this.url('doc_detail', {
-        domainId: domainId,
-        rpid: repo.rpid,
-        did: root.did
-      }),
-      children: docHierarchy.docs.map(toD3TreeNode)
-    }
-  : null;
-  
-      // 其他必要数据
-      const childrenDocsCursor = await DocModel.getDoc(domainId, { parentId: root?.did });
-      const childrenDocs = await childrenDocsCursor.toArray();
-  
-      const pathLevels = root?.path?.split('/').filter(Boolean) || [];
-      const pathDocs = await DocModel.getDocsByIds(domainId, pathLevels.map(Number));
+      // 构建所有顶层文档的层级结构
+      const docHierarchy = {};
+      docHierarchy[rpid] = buildHierarchy(null, repoDocs);
   
       // 设置响应数据
         this.response.template = 'repo_detail.html';
         this.response.pjax = 'repo_detail.html';
       this.response.body = {
         repo,
-        root,
-        childrenDocs,
-        pathDocs,
+        rootDocs,
         repoDocs,
         docHierarchy,
       };
   
-      // 注入给前端用的 D3 结构
-      this.UiContext.d3TreeData = d3TreeData;
+      // 注入给前端用的数据
+      this.UiContext.docHierarchy = docHierarchy;
+      this.UiContext.allDocsWithBlocks = allDocsWithBlocks;
       this.UiContext.repo = {
         domainId: repo.domainId,
         rpid: repo.rpid
@@ -895,72 +883,49 @@ export class DocDetailHandler extends DocHandler {
         const dsdoc = this.user.hasPriv(PRIV.PRIV_USER_PROFILE) ? ddoc : null;
         const udoc = await UserModel.getById(domainId, ddoc.owner);
 
-        const pathLevels = ddoc.path?.split('/').filter(Boolean) || [];
-        const pathDocs = await DocModel.getDocsByIds(domainId, pathLevels.map(Number));
-
         const repoDocs = await EjunRepoModel.getDocsByRepo(domainId, ddoc.rpid);
 
+        // 获取所有 docs 的 blocks
+        const allDocsWithBlocks = {};
+        for (const doc of repoDocs) {
+          const docBlocks = await BlockModel.getByDid(domainId, doc.did);
+          if (docBlocks && docBlocks.length > 0) {
+            allDocsWithBlocks[doc.did] = docBlocks.map(block => ({
+              ...block,
+              url: this.url('block_detail', {
+                domainId,
+                rpid: ddoc.rpid,
+                did: doc.did,
+                bid: block.bid
+              })
+            }));
+          }
+        }
 
-        const docHierarchy = {};
-
-        const rootDcid = pathDocs.length ? pathDocs[0].did : ddoc.did;
-
-        const buildHierarchy = (parentId: number, docList: any[]) => {
-
-            const docs = docList.filter(doc => doc.parentId === parentId);
-
-            if (docs.length === 0) {
-                console.warn(`⚠️ Warning: No docs found for parentId = ${parentId}`);
-            } else {
-                console.log(`✅ Found docs:`, docs.map(d => ({ did: d.did, title: d.title })));
-            }
-
-            return docs.map(doc => ({
-                ...doc,
-                url: this.url('doc_detail', {
-                  domainId: domainId,
-                  rpid: ddoc.rpid,
-                  did: doc.did
-                }),
-                subDocs: buildHierarchy(doc.did, docList)
-              }));
-              
+        // 构造递归层级结构（从顶层文档开始）
+        const buildHierarchy = (parentId: number | null, docs: any[]) => {
+          return docs
+            .filter(doc => doc.parentId === parentId)
+            .map(doc => ({
+              ...doc,
+              url: this.url('doc_detail', {
+                domainId,
+                rpid: ddoc.rpid,
+                did: doc.did
+              }),
+              subDocs: buildHierarchy(doc.did, docs)
+            }));
         };
-
-        docHierarchy[ddoc.rpid] = buildHierarchy(rootDcid, repoDocs);
+    
+        // 构建所有顶层文档的层级结构
+        const docHierarchy = {};
+        docHierarchy[ddoc.rpid] = buildHierarchy(null, repoDocs);
 
         // Get blocks for this doc
         const blocks = await BlockModel.getByDid(domainId, ddoc.did);
-        
-        const root = repoDocs.find(
-            doc => doc.parentId === null || doc.path.split('/').length === 1
-          );
-          
-          const toD3TreeNode = (doc: any): any => ({
-            name: doc.title,
-            docId: doc.docId,
-            url: this.url('doc_detail', {
-              domainId: domainId,
-              rpid: ddoc.rpid,
-              did: doc.did
-            }),
-            children: (doc.subDocs || []).map(toD3TreeNode)
-          });
-          
-          const d3TreeData = root
-        ? {
-            name: root.title,
-            docId: root.docId,
-            url: this.url('doc_detail', {
-                domainId: domainId,
-                rpid: ddoc.rpid,
-                did: root.did
-            }),
-            children: buildHierarchy(root.did, repoDocs).map(toD3TreeNode)
-            }
-        : null;
 
-        this.UiContext.d3TreeData = d3TreeData;
+        this.UiContext.docHierarchy = docHierarchy;
+        this.UiContext.allDocsWithBlocks = allDocsWithBlocks;
         this.UiContext.repo = {
           domainId,
           rpid: ddoc.rpid
@@ -975,7 +940,6 @@ export class DocDetailHandler extends DocHandler {
             dsdoc,
             udoc,
             blocks,
-            pathDoc: pathDocs,
             repoDocs,
             docHierarchy,
         };
@@ -992,12 +956,11 @@ export class DocDetailHandler extends DocHandler {
 
 
 
-export class RepoCreateRootHandler extends DocHandler {
+export class DocCreateHandler extends DocHandler {
     async get() {
         const domainId = this.context.domainId || 'system';
-        const parentId = Number(this.args?.parentId);
+        const parentId = Number(this.args?.parentId) || null;
         const rpid = Number(this.args?.rpid);
-
 
         this.response.template = 'doc_edit.html';
         this.response.body = {
@@ -1014,7 +977,19 @@ export class RepoCreateRootHandler extends DocHandler {
         title: string,
         rpid: string
     ) {
-        await this.limitRate('add_root', 3600, 60);
+        return this.postCreateSubdoc(domainId, title, rpid, undefined);
+    }
+
+    @param('title', Types.Title)
+    @param('rpid', Types.String)
+    @param('parentId', Types.Int, true) // 可选参数
+    async postCreateSubdoc(
+        domainId: string,
+        title: string,
+        rpid: string,
+        parentId?: number
+    ) {
+        await this.limitRate('add_doc', 3600, 60);
 
         // 解析 rpid，并确保传入的是单个 `number`
         const rpidArray = rpid.split(',').map(Number).filter(n => !isNaN(n));
@@ -1023,20 +998,33 @@ export class RepoCreateRootHandler extends DocHandler {
         }
         const parsedRpid = rpidArray[0]; // 取数组的第一个值
 
-
         const did = await DocModel.generateNextDid(domainId, parsedRpid);
 
-        // 创建根文档节点，确保 `rpid` 是 `number`
-        const docId = await DocModel.addRootNode(
-            domainId,
-            parsedRpid, // 传递 `number` 类型的 `rpid`
-            did,
-            this.user._id,
-            title,
-            '',
-            this.request.ip
-        );
-
+        let docId;
+        if (parentId) {
+            // 创建子文档
+            docId = await DocModel.addSubdocNode(
+                domainId,
+                [parsedRpid],  // 需要传递数组
+                did,
+                parentId,      // parentDcid
+                this.user._id, // owner
+                title,
+                '',
+                this.request.ip
+            );
+        } else {
+            // 创建顶层文档（没有 parent）
+            docId = await DocModel.addRootNode(
+                domainId,
+                parsedRpid,
+                did,
+                this.user._id,
+                title,
+                '',
+                this.request.ip
+            );
+        }
 
         this.response.body = { docId, did };
         this.response.redirect = this.url('doc_detail', { uid: this.user._id, rpid: parsedRpid, did });
@@ -1047,50 +1035,7 @@ export class RepoCreateRootHandler extends DocHandler {
 
 
 
-export class DocCreateSubdocHandler extends DocHandler {
-    async get() {
-        const domainId = this.context.domainId || 'system';
-        const parentId = Number(this.args?.parentId);
-        const rpid = Number(this.args?.rpid);
-
-
-        this.response.template = 'doc_edit.html';
-        this.response.body = {
-            ddoc: this.ddoc,
-            parentId,
-            rpid
-        };
-    }
-
-    @param('title', Types.Title)
-    @param('parentId', Types.Int)
-    @param('rpid', Types.String)
-    async postCreateSubbranch(
-        domainId: string,
-        title: string,
-        parentId: number,
-        rpid: string
-    ) {
-        await this.limitRate('add_subdoc', 3600, 60);
-        const rpidArray = rpid.split(',').map(Number).filter(n => !isNaN(n));
-
-
-        const did = await DocModel.generateNextDid(domainId, rpidArray[0]);
-        const docId = await DocModel.addSubdocNode(
-            domainId,
-            rpidArray,
-            did,
-            parentId,
-            this.user._id,
-            title,
-            '', 
-            this.request.ip
-        );
-
-        this.response.body = { docId, did };
-        this.response.redirect = this.url('doc_detail', { uid: this.user._id, rpid, did });
-    }
-}
+// Removed: DocCreateSubdocHandler - unified with DocCreateHandler
 
 
 
@@ -1192,6 +1137,54 @@ export class BlockDetailHandler extends Handler {
 
         const ddoc = await DocModel.get(domainId, { rpid, did } as any);
         const udoc = await UserModel.getById(domainId, block.owner);
+
+        // 获取所有文档和树形结构（用于侧边栏）
+        const repoDocs = await EjunRepoModel.getDocsByRepo(domainId, rpid);
+
+        // 获取所有 docs 的 blocks
+        const allDocsWithBlocks = {};
+        for (const doc of repoDocs) {
+          const docBlocks = await BlockModel.getByDid(domainId, doc.did);
+          if (docBlocks && docBlocks.length > 0) {
+            allDocsWithBlocks[doc.did] = docBlocks.map(b => ({
+              ...b,
+              url: this.url('block_detail', {
+                domainId,
+                rpid: rpid,
+                did: doc.did,
+                bid: b.bid
+              })
+            }));
+          }
+        }
+
+        // 构造递归层级结构（从顶层文档开始）
+        const buildHierarchy = (parentId: number | null, docs: any[]) => {
+          return docs
+            .filter(doc => doc.parentId === parentId)
+            .map(doc => ({
+              ...doc,
+              url: this.url('doc_detail', {
+                domainId,
+                rpid: rpid,
+                did: doc.did
+              }),
+              subDocs: buildHierarchy(doc.did, docs)
+            }));
+        };
+    
+        // 构建所有顶层文档的层级结构
+        const docHierarchy = {};
+        docHierarchy[rpid] = buildHierarchy(null, repoDocs);
+
+        this.UiContext.docHierarchy = docHierarchy;
+        this.UiContext.allDocsWithBlocks = allDocsWithBlocks;
+        this.UiContext.repo = {
+          domainId,
+          rpid: rpid
+        };
+        this.UiContext.ddoc = ddoc;
+        this.UiContext.block = block;
 
         this.response.template = 'block_detail.html';
         this.response.pjax = 'block_detail.html';
@@ -1360,10 +1353,10 @@ export async function apply(ctx: Context) {
     ctx.Route('base_create', '/base/create', BaseEditHandler, PERM.PERM_VIEW_BASE);
     ctx.Route('repo_create', '/base/repo/create', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_detail', '/base/repo/:rpid', RepoDetailHandler);
-    ctx.Route('repo_create_root', '/base/repo/:rpid/createroot', RepoCreateRootHandler);
+    ctx.Route('doc_create', '/base/repo/:rpid/doc/create', DocCreateHandler, PERM.PERM_VIEW_BASE);
     ctx.Route('repo_edit', '/base/repo/:rpid/edit', RepoEditHandler, PERM.PERM_VIEW_BASE);
     ctx.Route('repo_doc', '/base/repo/:rpid/doc', RepoDocHandler);
-    ctx.Route('doc_create_subdoc', '/base/repo/:rpid/doc/:parentId/createsubdoc', DocCreateSubdocHandler, PERM.PERM_VIEW_BASE);
+    ctx.Route('doc_create_subdoc', '/base/repo/:rpid/doc/:parentId/createsubdoc', DocCreateHandler, PERM.PERM_VIEW_BASE);
     ctx.Route('doc_detail', '/base/repo/:rpid/doc/:did', DocDetailHandler);
     ctx.Route('doc_edit', '/base/repo/:rpid/doc/:docId/editdoc', DocEditHandler, PERM.PERM_VIEW_BASE);
     // Removed: doc_resource_edit - resource management removed from doc
@@ -1378,6 +1371,7 @@ export async function apply(ctx: Context) {
         repo_detail: '仓库详情',
         repo_edit: '编辑仓库',
         repo_doc: '仓库文档',
+        doc_create: '创建文档',
         doc_create_subdoc: '创建子文档',
         doc_detail: '文档详情',  
         doc_edit: '编辑文档',
@@ -1391,6 +1385,7 @@ export async function apply(ctx: Context) {
         repo_detail: 'Repo Detail',
         repo_edit: 'Edit Repo',
         repo_doc: 'Repo Doc',
+        doc_create: 'Create Doc',
         doc_create_subdoc: 'Create Subdoc',
         doc_detail: 'Doc Detail',
         doc_edit: 'Edit Doc',

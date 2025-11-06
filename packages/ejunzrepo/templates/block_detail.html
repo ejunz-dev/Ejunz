@@ -1,20 +1,26 @@
 {% extends "layout/basic.html" %}
+<script>
+  {{ set(UiContext, {
+    block: block,
+    ddoc: ddoc
+  }) }}
+</script>
 {% block content %}
 <div class="row">
-  <div class="medium-9 columns">
-    <div class="section">
+  <div class="medium-3 columns">
+    <!-- 文档树侧边栏 -->
+    <div class="section side">
       <div class="section__header">
-        <h1 class="section__title">{{ block.title }}</h1>
+        <h2 class="section__title">{{ _("Document Structure") }}</h2>
       </div>
       <div class="section__body">
-        <div class="typo richmedia topic__content" data-emoji-enabled>
-          {{ block.content|markdown|safe }}
+        <div id="doc-tree-container">
+          <div id="doc-tree"></div>
         </div>
       </div>
     </div>
-  </div>
 
-  <div class="medium-3 columns">
+    <!-- Block 信息 -->
     <div class="section side">
       <div class="section__header">
         <h2 class="section__title">{{ _("Block Info") }}</h2>
@@ -26,23 +32,35 @@
         <p><strong>{{ _("Updated") }}:</strong> {{ datetimeSpan(block.updateAt)|safe if block.updateAt else 'N/A' }}</p>
       </div>
     </div>
+  </div>
 
-    <div class="section side">
-      <div class="section__header">
-        <h2 class="section__title">{{ _("Actions") }}</h2>
-      </div>
+  <div class="medium-9 columns">
+    <div class="section">
       <div class="section__body">
-        {% if handler.user.own(block) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
-        <a href="{{ url('block_edit', domainId=block.domainId, rpid=block.rpid, did=block.did, bid=block.bid) }}" class="button primary expanded">
-          {{ _('Edit Block') }}
-        </a>
-        {% endif %}
-        <a href="{{ url('doc_detail', domainId=ddoc.domainId, rpid=ddoc.rpid, did=ddoc.did) }}" class="button expanded">
-          {{ _('Back to Doc') }}
-        </a>
+        <ul class="supplementary list">
+          <li><h2>{{ block.title }}</h2></li>
+          <li>
+            {{ user.render_inline(udoc) }}
+            @
+            {{ datetimeSpan(block._id)|safe }}
+          </li>
+        </ul>
+        <div class="typo richmedia topic__content" data-emoji-enabled>
+          {{ block.content|markdown|safe }}
+        </div>
       </div>
+      <ul class="section__footer supplementary dot list">
+      {% if handler.user.own(block) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
+        <li><a href="{{ url('block_edit', domainId=block.domainId, rpid=block.rpid, did=block.did, bid=block.bid) }}">
+          <span class="icon icon-edit"></span> {{ _('Edit') }}
+        </a></li>
+      {% endif %}
+        <li>{{ _('{0} views').format(block.views) }}</li>
+        <li><a href="{{ url('doc_detail', domainId=ddoc.domainId, rpid=ddoc.rpid, did=ddoc.did) }}">
+          <span class="icon icon-chevron-left"></span> {{ _('Back to Doc') }}
+        </a></li>
+      </ul>
     </div>
   </div>
 </div>
 {% endblock %}
-
