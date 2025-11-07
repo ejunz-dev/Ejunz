@@ -104,7 +104,6 @@ Auto format code: 自动格式化代码
 Auto organize input: 自动整理输入
 Avatar: 头像
 Back to contest list: 返回比赛列表
-Back to Tree: 返回树
 Be Copied: 被复制
 Begin at: 开始于
 Begin Date: 开始日期
@@ -114,11 +113,6 @@ Bio Visibility: 个人简介可见性
 Bio: 个人简介
 Bold: 加粗
 Boom!: 炸了！
-Branch Content: 树枝内容
-Branch Info: 分支信息
-Branch Path: 分支路径
-Branch Title: 树枝标题
-Branch: 树枝
 Browser: 浏览器
 Built-in: 内置
 Bulletin: 公告
@@ -166,7 +160,6 @@ Confirmation mail has been sent to your new email.: 确认邮件已经发送到�
 Congratulations! Your submission is accepted.: 恭喜！您的递交已评测通过。
 Contact Us: 联系我们
 Contact: 联系
-Content will be added after creating the branch.: 内容将在创建分支后被允许添加。
 content: 内容
 Content: 内容
 Contest {0} has a new clarification about {1}, please go to contest management to reply.: 比赛 {0} 有一条关于 {1} 的新问答，请前往比赛管理页面回复。
@@ -203,14 +196,12 @@ Create a contest: 创建一个比赛
 Create a Discussion: 创建一个讨论
 Create a New Document: 创建一个新源库
 Create a problem: 创建一个题枝
-Create Branch: 创建树枝
 Create Contest: 创建比赛
 Create contests: 创建比赛
 Create Discussion in {0}: 在 {0} 下创建讨论
 Create Discussion: 创建讨论
 Create discussions: 创建讨论
 Create Domain: 创建域
-Create Forest: 创建森林
 Create homework: 创建作业
 Create Homework: 创建作业
 Create Link: 创建链接
@@ -218,11 +209,8 @@ Create problem solutions: 创建题解
 Create Problem: 创建题枝
 Create problems: 创建题枝
 Create Role: 创建角色
-Create Sub-Branch: 创建子分支
 Create Training Plan: 创建训练计划
 Create training plans: 创建训练计划
-Create Tree: 创建树
-Create Trunk: 创建树干
 Create: 创建
 Created By: 创建人
 Current dataset comes from: 当前数据集来自
@@ -257,7 +245,6 @@ Delete own problem solutions: 删除自己的题解
 Delete problem solution replies: 删除题解的回复
 Delete problem solutions: 删除题解
 Delete Selected Roles: 删除所选角色
-Delete Tree: 删除树
 delete: 删除
 Delete: 删除
 Description: 说明
@@ -322,7 +309,6 @@ Duration (hours): 持续时间 (小时)
 Duration: 持续时间
 Edit any contests: 修改任意的比赛
 Edit any homework: 修改任意的作业
-Edit Branch: 编辑树枝
 Edit Content: 编辑内容
 Edit Contest: 编辑比赛
 Edit description of this domain: 修改此域描述
@@ -331,7 +317,6 @@ Edit discussion replies: 修改讨论的回复
 Edit discussions: 修改讨论
 Edit domain settings: 编辑域设置
 Edit Domain: 编辑域
-Edit Forest: 编辑森林
 Edit Homework: 编辑作业
 Edit own contests: 修改自己的比赛
 Edit own discussion replies: 修改讨论中自己的回复
@@ -347,10 +332,8 @@ Edit problem solutions: 修改题解
 Edit Problem: 编辑题枝
 Edit problems: 修改题枝
 Edit Profile: 编辑个人信息
-Edit Resources for Branch: 编辑树枝的关联资源
 Edit Resources: 编辑资源
 Edit training plans: 修改训练计划
-Edit Tree: 编辑树
 Edit: 编辑
 Email Visibility: Email 可见性
 Email: 电子邮件
@@ -365,7 +348,6 @@ EndPoint for user: 提供给用户的 EndPoint
 Enroll Training: 参加训练
 Enrolled: 已参加
 Enrollees: 参加人数
-Enter branch title: 输入分支标题
 Enter custom file name: 输入自定义文件名
 Enter Edit Mode: 进入编辑模式
 error: 错误
@@ -387,8 +369,6 @@ filespace_main: 文件中心
 filespace: 文件中心
 Filter: 过滤
 Footer: 页脚
-Forest Overview: 森林概览
-Forest: 森林
 Forgot Password and/or Username: 忘记密码和/或用户名
 Forgot password or username?: 忘记密码或者用户名？
 Formula blocks: 公式区块
@@ -567,7 +547,6 @@ No Permission to Create a Discussion: 您没有权限创建讨论
 No Permission to Submit: 您没有权限递交
 No problem.: 没有题枝。
 No solutions so far...: 目前还没有题解...
-No sub-branches available: 没有子分支
 No Submissions: 没有递交
 No testdata at current.: 暂无测试数据。
 No user is allowed to join this domain: 没有用户可以自助加入此域
@@ -827,8 +806,6 @@ Storage engine endPoint: 存储桶 endPoint
 Storage engine region: 存储桶地域
 Storage engine secret: 存储桶 secretKey
 Student ID: 学号
-Sub-Branch: 子分支
-Sub-Branches: 子分支
 Subject: 主题
 Submission Statistics: 递交统计
 Submission: 递交
@@ -897,13 +874,6 @@ training_files: 训练文件
 training_main: 训练
 Training: 训练
 Trainings per page: 每页展示的训练数量
-Tree Content: 树内容
-Tree Details: 树详情
-Tree List: 树列表
-Tree Map: 地图
-Tree Title: 树标题
-Tree: 树
-Trunk: 树干
 Type: 类型
 UI Language: 用户界面语言
 Uncompleted: 未完成
@@ -919,7 +889,6 @@ Unstar: 取消收藏
 Update Permission: 更新权限
 Update Resources: 更新关联资源
 Update Settings: 更新设置
-Update Tree: 更新树
 Update: 更新
 Upload File: 上传文件
 Upload Problem: 上传题枝

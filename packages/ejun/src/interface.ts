@@ -214,51 +214,6 @@ declare module './model/agent'{
 }
 export type { AgentDoc } from './model/agent';
 
-// Tree/Forest/Branch documents
-export interface FRDoc {
-    docType: 7; // Forest 
-    docId: ObjectId;
-    domainId: string;
-    trids: number[]; // 存储所有 Tree ID
-    title: string;
-    content: string;
-    owner: number;
-    createdAt: Date;
-    updateAt: Date;
-}
-
-export interface TRDoc {
-    docType: 6;  // 标识它是一个 Tree
-    docId: ObjectId;
-    domainId: string;
-    trid: number;
-    title: string;
-    content: string;
-    owner: number;
-    createdAt: Date;
-    updateAt: Date;
-}
-
-export interface BRDoc {
-    docType: 1;
-    docId: ObjectId;
-    domainId: string;
-    trid: number;
-    bid: number;
-    owner: number;
-    title: string;
-    content: string;
-    ip: string;
-    updateAt: Date;
-    views: number;
-    lids: Array<number>;
-    rids: Array<number>;
-    parentId?: number|null;
-    path: string;
-    branch: boolean;
-    childrenCount?: number;
-    createdAt?: Date;
-}
 
 export interface DomainDoc extends Record<string, any> {
     _id: string,
@@ -489,16 +444,6 @@ export interface Model {
     user: typeof import('./model/user').default,
     oauth: typeof import('./model/oauth').default,
     storage: typeof import('./model/storage').default,
-    tree: {
-        ForestModel: typeof import('./model/tree').ForestModel,
-        TreeModel: typeof import('./model/tree').TreeModel,
-        BranchModel: typeof import('./model/tree').BranchModel,
-        TYPE_FR: typeof import('./model/tree').TYPE_FR,
-        TYPE_TR: typeof import('./model/tree').TYPE_TR,
-        TYPE_BR: typeof import('./model/tree').TYPE_BR,
-        getProblemsByDocsId: typeof import('./model/tree').getProblemsByDocsId,
-        getRelated: typeof import('./model/tree').getRelated,
-    },
 }
 
 export interface GeoIP {
