@@ -1,5 +1,6 @@
 import $ from 'jquery';
 import { AutoloadPage } from 'vj/misc/Page';
+import Notification from 'vj/components/notification';
 
 // 树形结构样式
 const treeStyles = `
@@ -254,6 +255,7 @@ const treeStyles = `
 </style>
 `;
 
+// 文档树和拖拽编辑功能
 export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async () => {
     // 注入样式
     if (!document.getElementById('doc-tree-styles')) {
@@ -540,6 +542,19 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
 
     // 保存新结构
     async function saveStructure() {
+      // 生成默认 commit message: domainId/userId/username（不可修改）
+      const userInfo = UiContext.userInfo || {};
+      const defaultPrefix = `${userInfo.domainId || repo.domainId || 'system'}/${userInfo.userId || 0}/${userInfo.userName || 'unknown'}`;
+      
+      // 提示用户输入自定义消息（默认部分不可修改）
+      const customMessage = window.prompt(`请输入自定义提交消息（可选）：\n默认消息：${defaultPrefix}`, '');
+      if (customMessage === null) {
+        // 用户取消了
+        return;
+      }
+      // 只发送自定义部分，后端会组合默认前缀
+      const customPart = customMessage.trim() || '';
+
       const structure = collectStructure();
       const creates = collectPendingCreates(structure);
       
@@ -549,7 +564,7 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ structure, creates, deletes: pendingDeletes, updates: pendingUpdates, branch: currentBranch }),
+          body: JSON.stringify({ structure, creates, deletes: pendingDeletes, updates: pendingUpdates, branch: currentBranch, commitMessage: customPart }),
         });
 
         if (response.ok) {
@@ -1749,4 +1764,87 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
     }
 
     renderTree();
+    
+    // Push 和 Pull 操作处理（仅在 repo_detail 页面）
+    if (window.location.pathname.includes('/base/repo/')) {
+      // Push 表单处理
+      const pushForm = document.getElementById('push-form');
+      if (pushForm) {
+        pushForm.addEventListener('submit', async function(e) {
+          e.preventDefault();
+          const button = pushForm.querySelector('button[type="submit"]');
+          const originalText = button.textContent;
+          
+          // 禁用按钮并显示加载状态
+          button.disabled = true;
+          button.textContent = '推送中...';
+          await Notification.info('正在推送到 GitHub...');
+          
+          try {
+            const formData = new FormData(pushForm);
+            const response = await fetch(pushForm.action, {
+              method: 'POST',
+              body: formData,
+            });
+            
+            if (response.ok) {
+              await Notification.success('成功推送到 GitHub');
+              // 延迟刷新页面，让用户看到成功消息
+              setTimeout(() => {
+                window.location.reload();
+              }, 1000);
+            } else {
+              const data = await response.json().catch(() => ({}));
+              await Notification.error(data.error || '推送到 GitHub 失败');
+              button.disabled = false;
+              button.textContent = originalText;
+            }
+          } catch (error) {
+            await Notification.error('推送到 GitHub 失败: ' + error.message);
+            button.disabled = false;
+            button.textContent = originalText;
+          }
+        });
+      }
+      
+      // Pull 表单处理
+      const pullForm = document.getElementById('pull-form');
+      if (pullForm) {
+        pullForm.addEventListener('submit', async function(e) {
+          e.preventDefault();
+          const button = pullForm.querySelector('button[type="submit"]');
+          const originalText = button.textContent;
+          
+          // 禁用按钮并显示加载状态
+          button.disabled = true;
+          button.textContent = '拉取中...';
+          await Notification.info('正在从 GitHub 拉取...');
+          
+          try {
+            const formData = new FormData(pullForm);
+            const response = await fetch(pullForm.action, {
+              method: 'POST',
+              body: formData,
+            });
+            
+            if (response.ok) {
+              await Notification.success('成功从 GitHub 拉取');
+              // 延迟刷新页面，让用户看到成功消息
+              setTimeout(() => {
+                window.location.reload();
+              }, 1000);
+            } else {
+              const data = await response.json().catch(() => ({}));
+              await Notification.error(data.error || '从 GitHub 拉取失败');
+              button.disabled = false;
+              button.textContent = originalText;
+            }
+          } catch (error) {
+            await Notification.error('从 GitHub 拉取失败: ' + error.message);
+            button.disabled = false;
+            button.textContent = originalText;
+          }
+        });
+      }
+    }
 });

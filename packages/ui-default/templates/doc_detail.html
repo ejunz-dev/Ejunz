@@ -1,0 +1,107 @@
+{% extends "layout/basic.html" %}
+<script>
+  {{ set(UiContext, {
+    ddoc: ddoc
+  }) }}
+</script>
+{% block content %}
+<div class="row">
+  <div class="medium-3 columns">
+    <!-- 文档树侧边栏 -->
+    <div class="section side">
+      <div class="section__header">
+        <h2 class="section__title">{{ _("Document Structure") }}</h2>
+      </div>
+      <div class="section__body">
+        <div id="doc-tree-container">
+          <div id="doc-tree"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 操作按钮 -->
+    <div class="section">
+      <div class="section__header">
+        <h2 class="section__title">{{ _("Actions") }}</h2>
+      </div>
+      <div class="section__body">
+        <ul class="menu">
+          <li class="menu__item">
+            <a class="menu__link highlight" href="{{ url('doc_create_subdoc_branch', domainId=ddoc.domainId, rpid=ddoc.rpid, branch=currentBranch, parentId=ddoc.did) }}">
+              <span class="icon icon-add"></span> {{ _('Create Sub-Doc') }}
+            </a>
+          </li>
+          <li class="menu__item">
+            <a class="menu__link highlight" href="{{ url('block_create_branch', domainId=ddoc.domainId, rpid=ddoc.rpid, branch=currentBranch, did=ddoc.did) }}">
+              <span class="icon icon-add"></span> {{ _('Create Block') }}
+            </a>
+          </li>
+          <li class="menu__item">
+            <a class="menu__link" href="{{ url('repo_detail_branch', domainId=ddoc.domainId, rpid=ddoc.rpid, branch=currentBranch) }}">
+              <span class="icon icon-chevron-left"></span> {{ _('Back to Repo') }}
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__body">
+        <ul class="supplementary list">
+          <li><h2>{{ ddoc.title }}</h2></li>
+          <li>
+            {{ user.render_inline(udoc) }}
+            @
+            {{ datetimeSpan(ddoc._id)|safe }}
+          </li>
+        </ul>
+        <div class="typo richmedia topic__content" data-emoji-enabled>
+          {{ ddoc.content|markdown|safe }}
+        </div>
+      </div>
+      <ul class="section__footer supplementary dot list">
+      {% if handler.user.own(ddoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
+        <li><a href="{{ url('doc_edit', domainId=ddoc.domainId, rpid=ddoc.rpid, docId=ddoc._id) }}">
+          <span class="icon icon-edit"></span> {{ _('Edit') }}
+        </a></li>
+      {% endif %}
+        <li>{{ _('{0} views').format(ddoc.views) }}</li>
+        <li><a href="{{ url('repo_detail_branch', domainId=ddoc.domainId, rpid=ddoc.rpid, branch=currentBranch) }}">
+          <span class="icon icon-chevron-left"></span> {{ _('Back to Repo') }}
+        </a></li>
+      </ul>
+    </div>
+
+    <!-- Blocks 目录 -->
+    {% if blocks and blocks|length > 0 %}
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Blocks in this Document') }}</h1>
+      </div>
+      <div class="section__body">
+        <ul class="menu">
+          {% for block in blocks %}
+            <li class="menu__item">
+              <a class="menu__link" href="{{ url('block_detail_branch', domainId=ddoc.domainId, rpid=ddoc.rpid, branch=currentBranch, did=ddoc.did, bid=block.bid) }}">
+                <span class="icon icon-file"></span> {{ block.title }}
+                <span style="font-size: 12px; color: #888; margin-left: 12px;">
+                  {{ _('{0} views').format(block.views) }}
+                </span>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% else %}
+    <div class="section">
+      <div class="section__body" style="text-align: center; padding: 40px; color: #888;">
+        <p>{{ _("No blocks yet.") }}</p>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
