@@ -1,9 +1,0 @@
-<div class="section__body">
-  {% if branchHierarchy and branchHierarchy[ddoc.trid] %}
-    <div style="overflow-x: auto; width: 100%; max-width: 1200px; height: 600px;">
-      <svg id="d3-tree"></svg>
-    </div>
-  {% else %}
-    <p>{{ _("No branches available.") }}</p>
-  {% endif %}
-</div>
