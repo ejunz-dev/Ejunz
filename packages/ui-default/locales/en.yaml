@@ -90,9 +90,6 @@ problem.import.problem_description: '## Description'
 ranking: Ranking
 record_detail: Record Detail
 record_main: Record
-repo_detail: Repository Detail
-repo_domain: Repository
-repo_edit: Edit Repository
 setting_customize: Customize
 setting_display: Display Preference
 setting_function: Function

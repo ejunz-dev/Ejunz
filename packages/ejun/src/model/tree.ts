@@ -1,6 +1,5 @@
 import { _, ObjectId, Filter } from '../libs';
 import * as document from './document';
-// import RepoModel, { RepoDoc } from './repo'; // Removed: repo functionality moved to ejunzrepo plugin
 import { buildProjection } from '../utils';
 import { encodeRFC5987ValueChars } from '../service/storage';
 import type { Context } from '../context';
@@ -179,7 +178,7 @@ export class BranchModel {
         return (lastDoc[0]?.trid || 0) + 1;
     }
 
-    static async updateResources(domainId: string, docId: ObjectId, lids?: number[], rids?: number[]): Promise<void> {
+    static async updateResources(domainId: string, docId: ObjectId, lids?: number[]): Promise<void> {
         if (!docId) {
             throw new Error(`updateResources: docId is required`);
         }
@@ -187,7 +186,6 @@ export class BranchModel {
         const updateFields: any = {};
     
         if (lids !== undefined) updateFields.lids = lids;
-        if (rids !== undefined) updateFields.rids = rids;
     
         await document.set(domainId, TYPE_BR, docId, updateFields);
     }
@@ -322,11 +320,10 @@ export class BranchModel {
         await document.inc(domainId, TYPE_BR, docId, 'views', 1);
     }
 
-    static async edit(domainId: string, docId: ObjectId, title: string, content: string, lids?: number[], rids?: number[]): Promise<void> {
+    static async edit(domainId: string, docId: ObjectId, title: string, content: string, lids?: number[]): Promise<void> {
         const updateFields: any = { title, content };
         
         if (lids !== undefined) updateFields.lids = lids;
-        if (rids !== undefined) updateFields.rids = rids;
     
         await document.set(domainId, TYPE_BR, docId, updateFields);
     }
@@ -339,18 +336,6 @@ export class BranchModel {
         return document.getMulti(domainId, TYPE_BR, query);
     }
 }
-
-// Removed: getReposByDocId - repo functionality moved to ejunzrepo plugin
-// export async function getReposByDocId(domainId: string, docId: number | number[]) {
-//     const query = {
-//         domainId,
-//         docId: Array.isArray(docId) ? { $in: docId } : docId,
-//     };
-//     const results = await RepoModel.getMulti(domainId, query)
-//         .project(buildProjection(RepoModel.PROJECTION_PUBLIC))
-//         .toArray();
-//     return results;
-// }
 
 export async function getProblemsByDocsId(domainId: string, lid: number) {
     // TODO: Implement when ProblemModel is available

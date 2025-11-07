@@ -127,36 +127,6 @@
                   {% endfor %}
                 </ul>
                 {% endif %}
-                {# Removed: repo functionality moved to ejunzrepo plugin
-                {% for repo in repos %}
-                <div class="repo-section">
-                    <h4>{{ _("Repository") }}:
-                      <a class="discussion-node-tag media-link" href="{{ url('repo_detail', domainId=ddoc.domainId, rid=repo.rid) }}">
-                            <span class="v-center icon icon-repo"></span> {{ repo.title }}
-                        </a>
-                    </h4>
-                    <table class="table">
-                        <tbody>
-                          {% if repo.Filemode == true %}
-                            {% for file in repo.files %}
-                            <tr data-filename="{{ file.filename }}" data-size="{{ file.size }}">
-                              
-                                <td class="col--name" data-preview>
-                                    <a class="discussion-node-tag media-link"
-                                      href="{{ url('branch_file_download', { docId: ddoc.docId,trid: ddoc.trid, rid: repo.rid, filename: file.filename }) }}"
-                                      data-preview="{{ url('branch_file_download', { docId: ddoc.docId,trid: ddoc.trid, rid: repo.rid, filename: file.filename }) }}">
-                                        <span class="v-center icon icon-file"></span> {{ file.filename }} (v{{ file.version }})
-                                    </a>
-                                </td>
-                            
-                            </tr>
-                            {% endfor %}
-                          {% endif %}
-                        </tbody>
-                    </table>
-                </div>
-                {% endfor %}
-                #}
               {% else %}
                 <p>{{ _("No hooked resources available.") }}</p>
               {% endif %}

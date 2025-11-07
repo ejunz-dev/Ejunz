@@ -5,7 +5,6 @@ import type { Dictionary, NumericDictionary } from 'lodash';
 import type { Binary, FindCursor, ObjectId } from 'mongodb';
 import type { Context } from './context';
 import type { DocStatusType } from './model/document';
-import type { RepoDoc } from './model/repo'; 
 import type { AgentDoc } from './model/agent';
 import type { Handler } from './service/server';
 
@@ -193,37 +192,6 @@ export interface Document {
 }
 
 
-declare module './model/repo'{
-    interface RepoDoc {
-        docType: document['TYPE_REPO'];
-        docId: number;
-        domainId: string,
-        rid: string;
-        owner: number;
-        content: string;
-        title: string;
-        ip: string;
-        updateAt: Date;
-        nReply: number;
-        views: number;
-        reply: any[];
-        react: Record<string, number>;
-        isIterative?: boolean;
-        isFileMode?: boolean;
-        tag: string[];    
-        files: {
-            filename: string;           
-            version: string;
-            path: string;            
-            size: number;           
-            lastModified: Date;      
-            etag?: string;     
-            tag: string[];   
-        }[];
-    }                
-    }         
-    export type { RepoDoc } from './model/repo';
-    export type RepoDict = NumericDictionary<RepoDoc>;
 
 declare module './model/agent'{
     interface AgentDoc {
@@ -509,7 +477,6 @@ export interface Model {
     discussion: typeof import('./model/discussion'),
     document: Omit<typeof import('./model/document'), 'apply'>,
     domain: typeof import('./model/domain').default,
-    repo: typeof import('./model/repo').default,
     agent: typeof import('./model/agent').default,
     message: typeof import('./model/message').default,
     opcount: typeof import('./model/opcount'),
