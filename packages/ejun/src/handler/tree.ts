@@ -7,9 +7,9 @@ import user from '../model/user';
 import domain from '../model/domain';
 import { 
     ForestModel, TreeModel, BranchModel, 
-    FRDoc, TRDoc, BRDoc,
-    getDocsByDocId, /* getReposByDocId, */ getProblemsByDocsId, getRelated 
+    /* getReposByDocId, */ getProblemsByDocsId, getRelated 
 } from '../model/tree';
+import type { FRDoc, TRDoc, BRDoc } from '../interface';
 import { encodeRFC5987ValueChars } from '../service/storage';
 import storage from '../model/storage';
 import { lookup } from 'mime-types';
@@ -351,13 +351,7 @@ export class BranchDetailHandler extends BranchHandler {
 
         branchHierarchy[ddoc.trid] = buildHierarchy(trunkBid, treeBranches);
 
-        const docs = ddoc.lids?.length
-            ? await getDocsByDocId(domainId, ddoc.lids.filter(lid => lid != null).map(Number))
-            : [];
-
-        docs.forEach(doc => {
-            doc.lid = doc.lid ? String(doc.lid) : String(doc.docId);
-        });
+        const docs: any[] = [];
 
         // Removed: repo functionality moved to ejunzrepo plugin
         // const repos: any[] = ddoc.rids ? await getReposByDocId(domainId, ddoc.rids) : [];
@@ -376,9 +370,6 @@ export class BranchDetailHandler extends BranchHandler {
         ]);
        
         const resources = {};
-        docs.forEach(doc => {
-            resources[doc.title] = `/d/system/docs/${doc.docId}`;
-        });
         reposWithFiles.forEach(repo => {
             resources[repo.title] = `/d/system/repo/${repo.docId}`;
             (repo.files || []).forEach((file: any) => {
@@ -554,13 +545,7 @@ export class BranchEditHandler extends BranchHandler {
         if (!ddoc) {
             throw new NotFoundError(`Branch with docId ${docId} not found.`);
         }
-        const docs = ddoc.lids?.length
-            ? await getDocsByDocId(domainId, ddoc.lids.filter(lid => lid != null).map(Number))
-            : [];
-
-        docs.forEach(doc => {
-            doc.lid = String(doc.lid || doc.docId);
-        });
+        const docs: any[] = [];
 
         // Removed: repo functionality moved to ejunzrepo plugin
         // const repos = ddoc.rids ? await getReposByDocId(domainId, ddoc.rids) : [];
@@ -577,10 +562,6 @@ export class BranchEditHandler extends BranchHandler {
 
         repos.forEach((repo: any) => {
             resources[repo.title] = `/d/${domainId}/repo/${repo.docId}`;
-        });
-
-        docs.forEach(doc => {
-            resources[doc.title] = `/d/${domainId}/docs/${doc.docId}`;
         });
 
         problems.forEach(problem => {

@@ -1,6 +1,5 @@
 import { _, ObjectId, Filter } from '../libs';
 import * as document from './document';
-import DocsModel from './doc';
 // import RepoModel, { RepoDoc } from './repo'; // Removed: repo functionality moved to ejunzrepo plugin
 import { buildProjection } from '../utils';
 import { encodeRFC5987ValueChars } from '../service/storage';
@@ -341,27 +340,6 @@ export class BranchModel {
     }
 }
 
-export async function getDocsByDomain(domainId: string) {
-    return await DocsModel.getMulti(domainId, {}).toArray();
-}
-
-export async function getDocsByIds(domainId: string, ids: ObjectId[]) {
-    return await DocsModel.getMulti(domainId, { _id: { $in: ids } }).toArray();
-}
-
-export async function getDocsByDocId(domainId: string, docIds: number | number[]) {
-    const query = {
-        domainId,
-        docId: Array.isArray(docIds) ? { $in: docIds } : docIds,
-    };
-
-    const results = await DocsModel.getMulti(domainId, query)
-        .project(buildProjection(DocsModel.PROJECTION_PUBLIC))
-        .toArray();
-
-    return results;
-}
-
 // Removed: getReposByDocId - repo functionality moved to ejunzrepo plugin
 // export async function getReposByDocId(domainId: string, docId: number | number[]) {
 //     const query = {
@@ -393,9 +371,6 @@ global.Ejunz.model.tree = {
     TYPE_FR,
     TYPE_TR,
     TYPE_BR,
-    getDocsByDomain,
-    getDocsByIds,
-    getDocsByDocId,
     // Removed: getReposByDocId - repo functionality moved to ejunzrepo plugin
     // getReposByDocId,
     getProblemsByDocsId,

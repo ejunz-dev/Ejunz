@@ -5,7 +5,6 @@ import type { Dictionary, NumericDictionary } from 'lodash';
 import type { Binary, FindCursor, ObjectId } from 'mongodb';
 import type { Context } from './context';
 import type { DocStatusType } from './model/document';
-import type { DocsDoc } from './model/doc';
 import type { RepoDoc } from './model/repo'; 
 import type { AgentDoc } from './model/agent';
 import type { Handler } from './service/server';
@@ -192,27 +191,6 @@ export interface Document {
     owner: number;
     maintainer?: number[];
 }
-
-
-declare module './model/doc'{
-    interface DocsDoc {
-        docType: document['TYPE_DOCS'];
-        docId: number;
-        domainId: string,
-        lid: string;
-        owner: number;
-        title: string;
-        content: string;
-        ip: string;
-        updateAt: Date;
-        nReply: number;
-        views: number;
-        reply: any[];
-        react: Record<string, number>;
-    }
-}
-export type { DocsDoc } from './model/doc';
-export type DocsDict = NumericDictionary<DocsDoc>;
 
 
 declare module './model/repo'{
@@ -531,7 +509,6 @@ export interface Model {
     discussion: typeof import('./model/discussion'),
     document: Omit<typeof import('./model/document'), 'apply'>,
     domain: typeof import('./model/domain').default,
-    doc: typeof import('./model/doc').default,
     repo: typeof import('./model/repo').default,
     agent: typeof import('./model/agent').default,
     message: typeof import('./model/message').default,
@@ -552,10 +529,6 @@ export interface Model {
         TYPE_FR: typeof import('./model/tree').TYPE_FR,
         TYPE_TR: typeof import('./model/tree').TYPE_TR,
         TYPE_BR: typeof import('./model/tree').TYPE_BR,
-        getDocsByDomain: typeof import('./model/tree').getDocsByDomain,
-        getDocsByIds: typeof import('./model/tree').getDocsByIds,
-        getDocsByDocId: typeof import('./model/tree').getDocsByDocId,
-        getReposByDocId: typeof import('./model/tree').getReposByDocId,
         getProblemsByDocsId: typeof import('./model/tree').getProblemsByDocsId,
         getRelated: typeof import('./model/tree').getRelated,
     },
