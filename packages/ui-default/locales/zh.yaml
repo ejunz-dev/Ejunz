@@ -291,9 +291,6 @@ Display name {1} you want to set is used by others.: 您想要设置的显示名
 Display Name: 显示名
 display_name: 显示名
 Do not discuss solutions otherwise you will be regarded as cheating and then lose qualifications.: 请勿讨论解法，否则以作弊论处并且将失去参赛资格。
-docs_detail: 源详情
-docs_domain: 源
-docs_edit: 编辑源
 docs: 源
 Docs: 源
 Document {2} not found.: 文档 {2} 不存在。

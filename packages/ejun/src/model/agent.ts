@@ -13,7 +13,7 @@ import { randomstring } from '@ejunz/utils';
 import { Context } from '../context';
 import { FileUploadError, ProblemNotFoundError } from '../error';
 import type {
-    Document, User, DocsDict, AgentDoc
+    Document, User, AgentDoc
 } from '../interface';
 import { parseConfig } from '../lib/testdataConfig';
 import * as bus from '../service/bus';
