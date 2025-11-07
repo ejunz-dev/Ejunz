@@ -340,7 +340,8 @@ export class DocModel {
 
 export class BlockModel {
     static async generateNextBid(domainId: string, rpid: number, branch: string = 'main'): Promise<number> {
-        const lastBlock = await document.getMulti(domainId, TYPE_BK, { rpid, branch })
+        // bid 在整个 repo 内唯一，不按分支区分
+        const lastBlock = await document.getMulti(domainId, TYPE_BK, { rpid })
             .sort({ bid: -1 })
             .limit(1)
             .project({ bid: 1 })
@@ -388,9 +389,14 @@ export class BlockModel {
         return docId;
     }
 
-    static async get(domainId: string, query: ObjectId | { rpid: number, bid: number }): Promise<BKDoc | null> {
+    static async get(domainId: string, query: ObjectId | { rpid: number, bid: number, branch?: string }): Promise<BKDoc | null> {
         if (typeof query === 'object' && 'bid' in query) {
-            const blocks = await document.getMulti(domainId, TYPE_BK, query).limit(1).toArray();
+            const queryObj: any = { rpid: query.rpid, bid: query.bid };
+            // 如果指定了 branch，也过滤分支
+            if (query.branch !== undefined) {
+                queryObj.branch = query.branch;
+            }
+            const blocks = await document.getMulti(domainId, TYPE_BK, queryObj).limit(1).toArray();
             const block = blocks[0] || null;
             // 标准化 rpid 为数字（如果是数组，取第一个）
             if (block && Array.isArray(block.rpid)) {
