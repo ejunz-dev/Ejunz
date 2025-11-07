@@ -40,6 +40,17 @@ const treeStyles = `
   background-color: #bbdefb;
   border: 2px dashed #2196F3;
 }
+.doc-tree-item.drop-before {
+  border-top: 3px solid #1976D2;
+  border-bottom: 2px dashed transparent;
+}
+.doc-tree-item.drop-after {
+  border-bottom: 3px solid #1976D2;
+  border-top: 2px dashed transparent;
+}
+.doc-tree-item.drop-inside {
+  box-shadow: inset 0 0 0 2px #64b5f6;
+}
 .doc-tree-toggle {
   width: 16px;
   height: 16px;
@@ -1095,6 +1106,65 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
       return blockLi;
     }
 
+    // 拖拽辅助函数
+    function clearDropIndicators(el) {
+      if (!el) return;
+      el.classList.remove('drop-before', 'drop-after', 'drop-inside', 'drag-over');
+      delete el.dataset.dropPosition;
+    }
+
+    function determineDropPosition(e, target) {
+      if (!target) return null;
+      const rect = target.getBoundingClientRect();
+      const offsetY = e.clientY - rect.top;
+      const threshold = rect.height * 0.3;
+      const type = target.dataset.type;
+
+      if (offsetY < threshold) return 'before';
+      if (offsetY > rect.height - threshold) return 'after';
+
+      // 只有 doc/new-doc 支持放入其下
+      if (type === 'doc' || type === 'new-doc') {
+        return 'inside';
+      }
+
+      // block 或其他类型默认当作 after
+      return 'after';
+    }
+
+    function applyDropIndicator(target, position) {
+      if (!target) return;
+      clearDropIndicators(target);
+      if (!position) return;
+      if (position === 'before') {
+        target.classList.add('drop-before');
+      } else if (position === 'after') {
+        target.classList.add('drop-after');
+      } else if (position === 'inside') {
+        target.classList.add('drop-inside');
+      }
+      target.dataset.dropPosition = position;
+    }
+
+    function cleanupEmptyContainer(listElement) {
+      if (!listElement) return;
+      const isUlEmpty = listElement.children.length === 0;
+      if (isUlEmpty) {
+        const wrapper = listElement.parentElement;
+        if (wrapper && wrapper.classList.contains('doc-tree-children')) {
+          const parentLi = wrapper.parentElement;
+          wrapper.remove();
+          if (parentLi) {
+            const toggle = parentLi.querySelector('.doc-tree-item .doc-tree-toggle');
+            if (toggle) {
+              toggle.classList.add('leaf');
+              toggle.classList.remove('expanded');
+            }
+          }
+        }
+      }
+    }
+
     // 拖拽事件处理
     function handleDragStart(e) {
       draggedElement = e.currentTarget;
@@ -1116,18 +1186,28 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
         e.preventDefault();
       }
       e.dataTransfer.dropEffect = 'move';
+      const target = e.currentTarget;
+      if (target !== draggedElement) {
+        const allowed = ['doc', 'new-doc', 'block', 'new-block'];
+        if (allowed.includes(target.dataset.type)) {
+          const position = determineDropPosition(e, target);
+          applyDropIndicator(target, position);
+        }
+      }
       return false;
     }
 
     function handleDragEnter(e) {
       const target = e.currentTarget;
-      if (target !== draggedElement && (target.dataset.type === 'doc' || target.dataset.type === 'new-doc')) {
-        target.classList.add('drag-over');
-      }
+      if (target === draggedElement) return;
+      const allowed = ['doc', 'new-doc', 'block', 'new-block'];
+      if (!allowed.includes(target.dataset.type)) return;
+      const position = determineDropPosition(e, target);
+      applyDropIndicator(target, position);
     }
 
     function handleDragLeave(e) {
-      e.currentTarget.classList.remove('drag-over');
+      clearDropIndicators(e.currentTarget);
     }
 
     function handleDrop(e) {
@@ -1137,21 +1217,18 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
       e.preventDefault();
 
       const target = e.currentTarget;
-      target.classList.remove('drag-over');
+      const targetType = target.dataset.type;
+      const dropPosition = target.dataset.dropPosition || determineDropPosition(e, target) || 'after';
+      clearDropIndicators(target);
 
       if (draggedElement === target) {
-        return false;
-      }
-
-      // 只允许拖到 doc 下面（包括占位符 doc）
-      const isDoc = target.dataset.type === 'doc' || target.dataset.type === 'new-doc';
-      if (!isDoc) {
         return false;
       }
 
       // 获取父 li 元素
       const draggedLi = draggedElement.closest('li');
       const targetLi = target.closest('li');
+      const previousList = draggedLi?.parentElement;
 
       if (!draggedLi || !targetLi) {
         return false;
@@ -1163,40 +1240,78 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
         return false;
       }
 
+      const isTargetDocLike = targetType === 'doc' || targetType === 'new-doc';
+      const isTargetBlockLike = targetType === 'block' || targetType === 'new-block';
+
       // 如果是新项占位符，移动到目标位置（不立即输入标题）
       if (draggedData && draggedData.placeholderId) {
-        // 如果目标是占位符 doc，需要先获取它的 placeholderId
-        const targetPlaceholderId = target.dataset.placeholderId;
-        let parentDid = null;
-        
-        if (target.dataset.type === 'new-doc' && targetPlaceholderId) {
-          // 目标是占位符 doc，使用 placeholderId 作为临时标识
-          parentDid = targetPlaceholderId; // 字符串，会被识别为 parentPlaceholderId
-        } else {
-          const targetDid = target.dataset.did;
-          if (targetDid) {
-            parentDid = parseInt(targetDid);
-          } else {
-            // 如果 did 不存在，可能是占位符 doc 但没有 placeholderId
-            console.warn('Target doc has no did or placeholderId');
-            return false;
-          }
-        }
-        
-        // 更新占位符的父节点信息
         const placeholder = pendingCreates.find(p => p.id === draggedData.placeholderId);
-        if (placeholder) {
-          if (typeof parentDid === 'string') {
-            placeholder.parentPlaceholderId = parentDid;
-            placeholder.parentDid = null;
-          } else {
-            placeholder.parentDid = parentDid;
-            placeholder.parentPlaceholderId = null;
-          }
-          console.log(`Updated placeholder ${placeholder.id} parent: parentDid=${placeholder.parentDid}, parentPlaceholderId=${placeholder.parentPlaceholderId}`);
+        if (!placeholder) {
+          return false;
         }
 
-        // 移动节点到目标位置
+        const resolveParentFromLi = (li) => {
+          const parentLi = li.parentElement?.closest('li');
+          if (!parentLi) return { parentDid: null, parentPlaceholderId: null };
+          const info = parentLi.querySelector(':scope > .doc-tree-item');
+          if (info?.dataset?.did) {
+            return { parentDid: parseInt(info.dataset.did, 10), parentPlaceholderId: null };
+          }
+          if (info?.dataset?.placeholderId) {
+            return { parentDid: null, parentPlaceholderId: info.dataset.placeholderId };
+          }
+          return { parentDid: null, parentPlaceholderId: null };
+        };
+
+        if (dropPosition === 'inside' && isTargetDocLike) {
+          const targetPlaceholderId = target.dataset.placeholderId;
+          const targetDid = target.dataset.did;
+
+          if (targetPlaceholderId) {
+            placeholder.parentPlaceholderId = targetPlaceholderId;
+            placeholder.parentDid = null;
+          } else if (targetDid) {
+            placeholder.parentDid = parseInt(targetDid, 10);
+            placeholder.parentPlaceholderId = null;
+          } else {
+            placeholder.parentDid = null;
+            placeholder.parentPlaceholderId = null;
+          }
+
+          let targetChildrenDiv = targetLi.querySelector(':scope > .doc-tree-children');
+          if (!targetChildrenDiv) {
+            targetChildrenDiv = document.createElement('div');
+            targetChildrenDiv.className = 'doc-tree-children expanded';
+            const ul = document.createElement('ul');
+            targetChildrenDiv.appendChild(ul);
+            targetLi.appendChild(targetChildrenDiv);
+
+            const toggle = targetLi.querySelector('.doc-tree-item .doc-tree-toggle');
+            if (toggle) {
+              toggle.classList.remove('leaf');
+              toggle.classList.add('expanded');
+            }
+          }
+          targetChildrenDiv.querySelector('ul')?.appendChild(draggedLi);
+        } else {
+          const { parentDid, parentPlaceholderId } = resolveParentFromLi(targetLi);
+          placeholder.parentDid = parentDid;
+          placeholder.parentPlaceholderId = parentPlaceholderId;
+
+          if (dropPosition === 'before') {
+            targetLi.parentElement?.insertBefore(draggedLi, targetLi);
+          } else {
+            targetLi.parentElement?.insertBefore(draggedLi, targetLi.nextSibling);
+          }
+        }
+
+        cleanupEmptyContainer(previousList);
+        renderTree();
+        return false;
+      }
+
+      // 处理已存在的节点
+      if (dropPosition === 'inside' && isTargetDocLike) {
         let targetChildrenDiv = targetLi.querySelector(':scope > .doc-tree-children');
         if (!targetChildrenDiv) {
           targetChildrenDiv = document.createElement('div');
@@ -1216,35 +1331,28 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
         if (targetUl) {
           targetUl.appendChild(draggedLi);
         }
+      } else {
+        const list = targetLi.parentElement;
+        if (!list) return false;
+        if (dropPosition === 'before') {
+          list.insertBefore(draggedLi, targetLi);
+        } else {
+          list.insertBefore(draggedLi, targetLi.nextSibling);
+        }
 
-        // 重新渲染树，确保占位符显示在正确位置
-        renderTree();
-        return false;
-      }
-
-      // 移动节点
-      let targetChildrenDiv = targetLi.querySelector(':scope > .doc-tree-children');
-      if (!targetChildrenDiv) {
-        // 创建 children 容器
-        targetChildrenDiv = document.createElement('div');
-        targetChildrenDiv.className = 'doc-tree-children expanded';
-        const ul = document.createElement('ul');
-        targetChildrenDiv.appendChild(ul);
-        targetLi.appendChild(targetChildrenDiv);
-
-        // 更新 toggle 按钮
-        const toggle = target.querySelector('.doc-tree-toggle');
-        if (toggle) {
-          toggle.classList.remove('leaf');
-          toggle.classList.add('expanded');
+        // 如果目标是 block/new-block，确保仍位于父 doc 的 children 容器内
+        if (isTargetBlockLike) {
+          const parentLi = list.closest('li');
+          if (parentLi) {
+            const parentToggle = parentLi.querySelector('.doc-tree-item .doc-tree-toggle');
+            if (parentToggle) {
+              parentToggle.classList.remove('leaf');
+            }
+          }
         }
       }
 
-      const targetUl = targetChildrenDiv.querySelector('ul');
-      if (targetUl) {
-        targetUl.appendChild(draggedLi);
-      }
-
+      cleanupEmptyContainer(previousList);
       return false;
     }
 
@@ -1254,6 +1362,9 @@ addPage(new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async (
       // 清除所有 drag-over 样式
       document.querySelectorAll('.drag-over').forEach(el => {
         el.classList.remove('drag-over');
+      });
+      document.querySelectorAll('.drop-before, .drop-after, .drop-inside').forEach(el => {
+        clearDropIndicators(el);
       });
 
       draggedElement = null;
