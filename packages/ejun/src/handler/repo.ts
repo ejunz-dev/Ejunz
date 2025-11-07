@@ -2521,6 +2521,63 @@ export class RepoBranchCreateHandler extends Handler {
             console.error('cloneBranchData failed:', e);
         }
 
+        // 在 git 仓库中创建对应的分支
+        try {
+            const repoGitPath = await ensureRepoGitRepo(domainId, rpid);
+            
+            // 检查新分支是否已存在
+            let branchExists = false;
+            try {
+                await exec(`git rev-parse --verify ${newBranch}`, { cwd: repoGitPath });
+                branchExists = true;
+            } catch {
+                branchExists = false;
+            }
+            
+            if (branchExists) {
+                // 分支已存在，切换到该分支
+                await exec(`git checkout ${newBranch}`, { cwd: repoGitPath });
+            } else {
+                // 分支不存在，需要创建
+                // 首先确定源分支（用于创建新分支）
+                let actualSourceBranch = sourceBranch;
+                
+                // 检查源分支是否存在
+                try {
+                    await exec(`git rev-parse --verify ${sourceBranch}`, { cwd: repoGitPath });
+                } catch {
+                    // 源分支不存在，尝试使用 main
+                    try {
+                        await exec(`git rev-parse --verify main`, { cwd: repoGitPath });
+                        actualSourceBranch = 'main';
+                    } catch {
+                        // main 也不存在，检查是否有任何 commit
+                        try {
+                            await exec('git rev-parse HEAD', { cwd: repoGitPath });
+                            // 有 commit，获取当前分支名
+                            const { stdout: currentBranch } = await exec('git rev-parse --abbrev-ref HEAD', { cwd: repoGitPath });
+                            actualSourceBranch = currentBranch.trim() || 'main';
+                        } catch {
+                            // 没有 commit，无法创建分支，跳过
+                            throw new Error('No commits found, cannot create branch');
+                        }
+                    }
+                }
+                
+                // 从源分支创建新分支
+                try {
+                    await exec(`git checkout ${actualSourceBranch}`, { cwd: repoGitPath });
+                    await exec(`git checkout -b ${newBranch}`, { cwd: repoGitPath });
+                } catch (err) {
+                    // 如果创建失败，可能是分支名无效或其他原因
+                    throw err;
+                }
+            }
+        } catch (err) {
+            // git 分支创建失败不影响数据库操作，只记录错误
+            console.error('Failed to create git branch:', err);
+        }
+
         this.response.redirect = this.url('repo_detail_branch', { domainId, rpid, branch: newBranch });
     }
 
@@ -2856,6 +2913,8 @@ export async function apply(ctx: Context) {
         'Last Commit': '最后提交',
         'Local branch not found': '本地分支未找到',
         'Remote branch not found': '远程分支未找到',
+        'Push will create a new remote branch': '推送将创建新的远程分支',
+        'Create remote branch': '创建远程分支',
         'No remote repository configured': '未配置远程仓库',
         'No local git repository': '无本地 git 仓库',
         'Behind remote by {0} commit(s)': '落后远程 {0} 个提交',
@@ -2935,6 +2994,8 @@ export async function apply(ctx: Context) {
         'Last Commit': 'Last Commit',
         'Local branch not found': 'Local branch not found',
         'Remote branch not found': 'Remote branch not found',
+        'Push will create a new remote branch': 'Push will create a new remote branch',
+        'Create remote branch': 'Create remote branch',
         'No remote repository configured': 'No remote repository configured',
         'No local git repository': 'No local git repository',
         'Behind remote by {0} commit(s)': 'Behind remote by {0} commit(s)',

@@ -157,6 +157,11 @@
                         <div style="margin-bottom: 6px; color: #ffc107;">
                           <span>⚠</span> {{ _('Remote branch not found') }}: {{ currentBranch }}
                         </div>
+                        {% if gitStatus.hasLocalBranch and gitStatus.localCommits > 0 %}
+                          <div style="margin-bottom: 6px; color: #17a2b8; font-size: 12px;">
+                            <span>ℹ</span> {{ _('Push will create a new remote branch') }}
+                          </div>
+                        {% endif %}
                       {% endif %}
                     </div>
                   {% else %}
@@ -197,6 +202,13 @@
               <form id="pull-form" method="post" action="{{ url('repo_github_pull_branch', domainId=repo.domainId, rpid=repo.rpid, branch=currentBranch) }}">
                 <button type="submit" class="button alert expanded">{{ _('Pull from GitHub') }}</button>
               </form>
+            {% elif not gitStatus.hasRemoteBranch and gitStatus.hasLocalBranch and gitStatus.hasRemote and gitStatus.localCommits > 0 %}
+              {# 远程分支不存在，但本地有提交，显示推送按钮（会创建新分支） #}
+              <form id="push-form" method="post" action="{{ url('repo_github_push_branch', domainId=repo.domainId, rpid=repo.rpid, branch=currentBranch) }}">
+                <button type="submit" class="button warning expanded" style="margin-bottom: 8px;">{{ _('Push to GitHub') }} ({{ _('Create remote branch') }})</button>
+              </form>
+            {% elif gitStatus.behind == 0 and gitStatus.ahead == 0 and gitStatus.hasRemoteBranch %}
+              {# 已同步，不显示按钮 #}
             {% endif %}
           {% else %}
             {# 如果没有 gitStatus，显示两个按钮作为后备 #}
