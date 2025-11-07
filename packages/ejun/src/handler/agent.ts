@@ -443,13 +443,11 @@ export class AgentMainHandler extends Handler {
 
         if (pjax) {
             this.response.body = {
-                title: this.renderTitle(this.translate('repo_domain')),
+                title: this.renderTitle(this.translate('agent_domain')),
                 fragments: (await Promise.all([
-                    this.renderHTML('partials/repo_list.html', {
+                    this.renderHTML('partials/agent_list.html', {
                         page, ppcount, pcount, adocs, psdict, qs: q,
                     }),
-                    this.renderHTML('partials/repo_stat.html', { pcount, pcountRelation: this.queryContext.pcountRelation }),
-                    this.renderHTML('partials/repo_lucky.html', { qs: q }),
                 ])).map((i) => ({ html: i })),
             };
         } else {
