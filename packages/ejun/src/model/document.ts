@@ -6,7 +6,7 @@ import {
 import { Context } from '../context';
 import {
     Content, ContestClarificationDoc, DiscussionDoc,
-    DiscussionReplyDoc, RepoDoc, AgentDoc,
+    DiscussionReplyDoc, AgentDoc,
     BRDoc, TRDoc, FRDoc
 } from '../interface';
 import bus from '../service/bus';
@@ -19,7 +19,6 @@ type NormalArrayKeys<O, P = any> = Exclude<ArrayKeys<O, P>, Symbol>;
 
 export const coll = db.collection('document');
 export const collStatus = db.collection('document.status');
-export const TYPE_REPO: 110 = 110;
 export const TYPE_DISCUSSION_NODE: 20 = 20;
 export const TYPE_DISCUSSION: 21 = 21;
 export const TYPE_DISCUSSION_REPLY: 22 = 22;
@@ -30,7 +29,6 @@ export const TYPE_FR: 7 = 7;
 
 export interface DocType {
     [TYPE_AGENT]: AgentDoc;
-    [TYPE_REPO]: RepoDoc;
     [TYPE_DISCUSSION]: DiscussionDoc;
     [TYPE_DISCUSSION_REPLY]: DiscussionReplyDoc;
     1: BRDoc;
@@ -522,7 +520,6 @@ global.Ejunz.model.document = {
     TYPE_DISCUSSION,
     TYPE_DISCUSSION_NODE,
     TYPE_DISCUSSION_REPLY,
-    TYPE_REPO,
     TYPE_BR,
     TYPE_TR,
     TYPE_FR,

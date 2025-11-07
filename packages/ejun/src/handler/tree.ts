@@ -7,13 +7,12 @@ import user from '../model/user';
 import domain from '../model/domain';
 import { 
     ForestModel, TreeModel, BranchModel, 
-    /* getReposByDocId, */ getProblemsByDocsId, getRelated 
+    getProblemsByDocsId, getRelated 
 } from '../model/tree';
 import type { FRDoc, TRDoc, BRDoc } from '../interface';
 import { encodeRFC5987ValueChars } from '../service/storage';
 import storage from '../model/storage';
 import { lookup } from 'mime-types';
-// import RepoModel from '../model/repo'; // Removed: repo functionality moved to ejunzrepo plugin
 
 class BranchHandler extends Handler {
     ddoc?: BRDoc;
@@ -353,14 +352,6 @@ export class BranchDetailHandler extends BranchHandler {
 
         const docs: any[] = [];
 
-        // Removed: repo functionality moved to ejunzrepo plugin
-        // const repos: any[] = ddoc.rids ? await getReposByDocId(domainId, ddoc.rids) : [];
-        const repos: any[] = [];
-        const reposWithFiles = repos.map(repo => ({
-            ...repo,
-            files: repo.files || [] 
-        }));
-
         const problems = ddoc.lids?.length ? await getProblemsByDocsId(domainId, ddoc.lids[0]) : [];
         const pids = problems.map(p => Number(p.docId));
         const [ctdocs, htdocs, tdocs] = await Promise.all([
@@ -370,12 +361,6 @@ export class BranchDetailHandler extends BranchHandler {
         ]);
        
         const resources = {};
-        reposWithFiles.forEach(repo => {
-            resources[repo.title] = `/d/system/repo/${repo.docId}`;
-            (repo.files || []).forEach((file: any) => {
-                resources[file.filename] = `/tree/branch/${ddoc.docId}/repo/${repo.rid}/${encodeURIComponent(file.filename)}`;
-            });
-        });
 
         const trunk = treeBranches.find(
             branch => branch.parentId === null || branch.path.split('/').length === 1
@@ -419,7 +404,6 @@ export class BranchDetailHandler extends BranchHandler {
             dsdoc,
             udoc,
             docs,
-            repos: reposWithFiles, 
             problems,
             pids,
             ctdocs: ctdocs.flat(),
@@ -547,9 +531,6 @@ export class BranchEditHandler extends BranchHandler {
         }
         const docs: any[] = [];
 
-        // Removed: repo functionality moved to ejunzrepo plugin
-        // const repos = ddoc.rids ? await getReposByDocId(domainId, ddoc.rids) : [];
-        const repos: any[] = [];
         const problems = ddoc.lids?.length ? await getProblemsByDocsId(domainId, ddoc.lids[0]) : [];
         const pids = problems.map(p => Number(p.docId));
         const [ctdocs, htdocs, tdocs] = await Promise.all([
@@ -559,10 +540,6 @@ export class BranchEditHandler extends BranchHandler {
         ]);
 
         const resources = {};
-
-        repos.forEach((repo: any) => {
-            resources[repo.title] = `/d/${domainId}/repo/${repo.docId}`;
-        });
 
         problems.forEach(problem => {
             resources[problem.title] = `/p/${domainId}/${problem.docId}`;
@@ -595,7 +572,6 @@ export class BranchEditHandler extends BranchHandler {
             ctdocs: ctdocs.flat(),
             htdocs: htdocs.flat(),
             tdocs: tdocs.flat(),
-            repos,
             problems,
             trid: this.args.trid,
             resources,
@@ -641,46 +617,25 @@ export class BranchResourceEditHandler extends BranchHandler {
             ddoc,
             trid: this.args.trid,
             lids: ddoc.lids?.join(',') || '',
-            rids: ddoc.rids?.join(',') || '',
         };
     }
 
     @param('docId', Types.ObjectId)
     @param('lids', Types.String, true)
-    @param('rids', Types.String, true)
-    async postUpdateResources(domainId: string, docId: ObjectId, lids: string, rids: string) {
+    async postUpdateResources(domainId: string, docId: ObjectId, lids: string) {
         const parsedLids = lids ? lids.split(',').map(Number).filter(n => !isNaN(n)) : [];
-        const parsedRids = rids ? rids.split(',').map(Number).filter(n => !isNaN(n)) : [];
 
         const branch = await BranchModel.get(domainId, docId);
         if (!branch || !branch.trid) {
             throw new NotFoundError(`Branch with docId ${docId} not found or has no trid.`);
         }
 
-        await BranchModel.updateResources(domainId, docId, parsedLids, parsedRids);
+        await BranchModel.updateResources(domainId, docId, parsedLids);
 
         this.response.body = { docId };
         this.response.redirect = this.url('branch_detail', { trid: branch.trid, docId });
     }
 }
-
-// Removed: BranchfileDownloadHandler - repo functionality moved to ejunzrepo plugin
-// export class BranchfileDownloadHandler extends Handler {
-//     async get({ docId, rid, filename }: { docId: string; rid: string|number; filename: string }) {
-//         const domainId = this.context.domainId || 'default_domain';
-//         const repo = await RepoModel.get(domainId, rid);
-//         if (!repo) throw new NotFoundError(`Repository not found for RID: ${rid}`);
-//         const actualDocId = repo.docId ?? docId;  
-//         const filePath = `repo/${domainId}/${actualDocId}/${filename}`;
-//         const fileMeta = await storage.getMeta(filePath);
-//         if (!fileMeta) throw new NotFoundError(`File "${filename}" does not exist in repository "${rid}".`);
-//         this.response.body = await storage.get(filePath);
-//         this.response.type = lookup(filename) || 'application/octet-stream';
-//         if (!['application/pdf', 'image/jpeg', 'image/png'].includes(this.response.type)) {
-//             this.response.disposition = `attachment; filename="${encodeRFC5987ValueChars(filename)}"`;
-//         }
-//     }
-// }
 
 export async function apply(ctx: Context) {
     ctx.Route('forest_domain', '/forest', ForestDomainHandler);
@@ -695,8 +650,6 @@ export async function apply(ctx: Context) {
     ctx.Route('branch_detail', '/forest/tree/:trid/branch/:docId', BranchDetailHandler);
     ctx.Route('branch_edit', '/forest/tree/:trid/branch/:docId/editbranch', BranchEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('branch_resource_edit', '/forest/tree/:trid/branch/:docId/edit/resources', BranchResourceEditHandler, PRIV.PRIV_USER_PROFILE);
-    // Removed: branch_file_download route - repo functionality moved to ejunzrepo plugin
-    // ctx.Route('branch_file_download', '/forest/tree/:trid/branch/:docId/repo/:rid/:filename', BranchfileDownloadHandler);
 
     ctx.i18n.load('zh', {
         forest_domain: '森林',
@@ -708,7 +661,6 @@ export async function apply(ctx: Context) {
         branch_detail: '分支详情',  
         branch_edit: '编辑分支',
         branch_resource_edit: '编辑分支资源',
-        branch_file_download: '下载分支文件',
     });
     ctx.i18n.load('en', {
         forest_domain: 'Forest',

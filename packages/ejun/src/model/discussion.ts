@@ -30,7 +30,6 @@ export const HISTORY_PROJECTION_PUBLIC: (keyof DiscussionHistoryDoc)[] = [
 
 export const typeDisplay = {
     [document.TYPE_DISCUSSION_NODE]: 'node',
-    [document.TYPE_REPO]: 'repo',
 };
 
 export const coll = db.collection('discussion.history');
