@@ -216,6 +216,9 @@ function copyResourceUrl(el) {
           {% if parentId %}
             <input type="hidden" name="parentId" value="{{ parentId }}">
           {% endif %}
+          {% if ddoc %}
+            <input type="hidden" name="branch" value="{{ currentBranch or (ddoc.branch or 'main') }}">
+          {% endif %}
 
           {{ form.form_text({
               columns:12,
