@@ -44,6 +44,22 @@
       <div class="section__body">
         {% if repo %}
           <div style="margin-bottom:10px;">
+            <div style="font-size:12px;color:#888;margin-bottom:4px;">{{ _('Mode') }}</div>
+            <div style="display:flex;gap:4px;">
+              <a href="{{ url('repo_mode_switch_branch', domainId=repo.domainId, rpid=repo.rpid, mode='file', branch=currentBranch) }}" 
+                 class="button {% if (repo.mode or 'file') == 'file' %}primary{% else %}secondary{% endif %}" 
+                 style="flex:1; padding: 6px;">
+                {{ _('File') }}
+              </a>
+              <a href="{{ url('repo_mode_switch_branch', domainId=repo.domainId, rpid=repo.rpid, mode='manuscript', branch=currentBranch) }}" 
+                 class="button {% if (repo.mode or 'file') == 'manuscript' %}primary{% else %}secondary{% endif %}" 
+                 style="flex:1; padding: 6px;">
+                {{ _('Manuscript') }}
+              </a>
+            </div>
+          </div>
+
+          <div style="margin-bottom:10px;">
             <div style="font-size:12px;color:#888;margin-bottom:4px;">{{ _('Branch') }}</div>
             <select id="branch-select" style="width:100%;margin-bottom:6px;" onchange="(function(){
               var sel=document.getElementById('branch-select');

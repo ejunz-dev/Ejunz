@@ -47,6 +47,7 @@ export interface RPDoc {
     currentBranch?: string; // 当前编辑分支
     branches?: string[];    // 已存在的本地分支列表
     githubRepo?: string;    // GitHub 仓库地址，如 git@github.com:user/repo.git
+    mode?: 'file' | 'manuscript'; // 显示模式：文件模式或文稿模式
 }
 
 
@@ -68,6 +69,7 @@ export interface DCDoc {
     childrenCount?: number;
     createdAt?: Date;
     branch?: string; // 所属分支，默认为 main
+    order?: number;
 }
 
 export interface BKDoc {
@@ -85,6 +87,7 @@ export interface BKDoc {
     views: number;
     createdAt?: Date;
     branch?: string; // 所属分支，默认为 main
+    order?: number;
 }
 
 declare module 'ejun' {
@@ -838,6 +841,21 @@ export class RepoDetailHandler extends Handler {
       if (!branches.includes(requestedBranch)) branches.push(requestedBranch);
       branches = Array.from(new Set(branches));
   
+      // 根据模式选择模板
+      const mode = (repo as any).mode || 'file';
+      if (mode === 'manuscript') {
+        // 文稿模式：构建完整的文档树和内容
+        const manuscriptData = await this.buildManuscriptData(domainId, repo.rpid, requestedBranch, repoDocs);
+        this.response.template = 'repo_manuscript.html';
+        this.response.pjax = 'repo_manuscript.html';
+        this.response.body = {
+          repo,
+          currentBranch: requestedBranch,
+          branches,
+          ...manuscriptData,
+        };
+      } else {
+        // 文件模式：使用原有模板
         this.response.template = 'repo_detail.html';
         this.response.pjax = 'repo_detail.html';
       this.response.body = {
@@ -845,9 +863,10 @@ export class RepoDetailHandler extends Handler {
         rootDocs,
         repoDocs,
         docHierarchy,
-        currentBranch: requestedBranch,
-        branches,
+          currentBranch: requestedBranch,
+          branches,
       };
+      }
   
       this.UiContext.docHierarchy = docHierarchy;
       this.UiContext.allDocsWithBlocks = allDocsWithBlocks;
@@ -860,6 +879,174 @@ export class RepoDetailHandler extends Handler {
   
     async post() {
       this.checkPriv(PRIV.PRIV_USER_PROFILE);
+    }
+
+    /**
+     * 构建文稿模式的数据结构
+     */
+    private async buildManuscriptData(domainId: string, rpid: number, branch: string, repoDocs: DCDoc[]) {
+      // 构建带编号的目录树
+      let docCounter = 0;
+      let blockCounter = 0;
+      
+      const buildTOC = (parentId: number | null, level: number = 0, parentNumber: string = ''): any[] => {
+        const children = repoDocs.filter(doc => doc.parentId === parentId);
+        return children.map((doc, index) => {
+          docCounter++;
+          const number = parentNumber ? `${parentNumber}.${index + 1}` : `${index + 1}`;
+          const docBlocks = repoDocs.filter(d => false); // 这里需要获取blocks，稍后处理
+          
+          return {
+            type: 'doc',
+            did: doc.did,
+            number,
+            level,
+            title: doc.title,
+            content: doc.content || '',
+            children: buildTOC(doc.did, level + 1, number),
+          };
+        });
+      };
+
+      // 构建完整内容（按顺序）
+      const buildContent = (parentId: number | null): any[] => {
+        const children = repoDocs
+          .filter(doc => doc.parentId === parentId)
+          .sort((a, b) => {
+            // 简单的排序，可以根据需要改进
+            return (a.did || 0) - (b.did || 0);
+          });
+        
+        const result: any[] = [];
+        for (const doc of children) {
+          result.push({
+            type: 'doc',
+            did: doc.did,
+            title: doc.title,
+            content: doc.content || '',
+          });
+          
+          // 添加该doc下的blocks
+          // 这里需要异步获取blocks，稍后处理
+          
+          // 递归添加子文档
+          result.push(...buildContent(doc.did));
+        }
+        return result;
+      };
+
+      // 获取所有blocks
+      const allBlocksMap: { [did: number]: BKDoc[] } = {};
+      for (const doc of repoDocs) {
+        const blocks = await BlockModel.getByDid(domainId, doc.did, rpid, branch);
+        if (blocks && blocks.length > 0) {
+          // 按bid排序
+          allBlocksMap[doc.did] = blocks.sort((a, b) => (a.bid || 0) - (b.bid || 0));
+        }
+      }
+
+      // 重新构建TOC，包含blocks
+      // 编号规则：doc用数字，block用字母（如 1, 1.1, 1.1.a, 1.1.b, 1.2）
+      const buildTOCWithBlocks = (parentId: number | null, level: number = 0, parentNumber: string = ''): any[] => {
+        const children = repoDocs
+          .filter(doc => doc.parentId === parentId)
+          .sort((a, b) => (a.did || 0) - (b.did || 0));
+        
+        const tocItems: any[] = [];
+        children.forEach((doc, index) => {
+          const number = parentNumber ? `${parentNumber}.${index + 1}` : `${index + 1}`;
+          const blocks = allBlocksMap[doc.did] || [];
+          
+          // 构建blocks项（作为doc的子项，使用字母编号）
+          const blockItems = blocks.map((block, blockIndex) => ({
+            type: 'block',
+            did: doc.did,
+            bid: block.bid,
+            number: `${number}.${String.fromCharCode(97 + blockIndex)}`, // a, b, c...
+            level: level + 1,
+            title: block.title,
+            content: block.content || '',
+            preview: (block.content || '').substring(0, 100),
+          }));
+          
+          // 递归添加子文档（子文档继续使用数字编号）
+          const subDocs = buildTOCWithBlocks(doc.did, level + 1, number);
+          
+          // 添加doc项，包含blocks和子文档
+          tocItems.push({
+            type: 'doc',
+            did: doc.did,
+            number,
+            level,
+            title: doc.title,
+            content: doc.content || '',
+            preview: (doc.content || '').substring(0, 100),
+            children: [...blockItems, ...subDocs],
+          });
+        });
+        
+        return tocItems;
+      };
+
+      // 构建完整内容（带编号）
+      const buildContentWithBlocks = (parentId: number | null, parentNumber: string = ''): any[] => {
+        const children = repoDocs
+          .filter(doc => doc.parentId === parentId)
+          .sort((a, b) => (a.did || 0) - (b.did || 0));
+        
+        const result: any[] = [];
+        children.forEach((doc, index) => {
+          const number = parentNumber ? `${parentNumber}.${index + 1}` : `${index + 1}`;
+          
+          result.push({
+            type: 'doc',
+            did: doc.did,
+            number,
+            title: doc.title,
+            content: doc.content || '',
+          });
+          
+          // 添加该doc下的blocks（使用字母编号）
+          const blocks = allBlocksMap[doc.did] || [];
+          blocks.forEach((block, blockIndex) => {
+            result.push({
+              type: 'block',
+              did: doc.did,
+              bid: block.bid,
+              number: `${number}.${String.fromCharCode(97 + blockIndex)}`,
+              title: block.title,
+              content: block.content || '',
+            });
+          });
+          
+          // 递归添加子文档
+          result.push(...buildContentWithBlocks(doc.did, number));
+        });
+        return result;
+      };
+
+      const toc = buildTOCWithBlocks(null);
+      const content = buildContentWithBlocks(null, '');
+
+      return {
+        toc,
+        content,
+        // 传递原始数据用于编辑
+        rawData: {
+          docs: repoDocs.map(doc => ({
+            did: doc.did,
+            title: doc.title,
+            content: doc.content || '',
+            parentId: doc.parentId,
+          })),
+          blocks: Object.values(allBlocksMap).flat().map(block => ({
+            bid: block.bid,
+            did: block.did,
+            title: block.title,
+            content: block.content || '',
+          })),
+        },
+      };
     }
   }
 
@@ -1254,8 +1441,13 @@ export class RepoStructureUpdateHandler extends Handler {
 
             
 
+            const docIdentifier = (doc as any).docId ?? (doc as any)._id;
+            if (!docIdentifier) {
+                continue;
+            }
+
             // 使用 DocumentModel.set 更新文档
-            await DocumentModel.set(domainId, TYPE_DC, doc._id, {
+            await DocumentModel.set(domainId, TYPE_DC, docIdentifier, {
                 parentId: parentDid,
                 order: order || 0,
                 updateAt: new Date()
@@ -1272,7 +1464,12 @@ export class RepoStructureUpdateHandler extends Handler {
                     
                     if (block) {
                         
-                        await DocumentModel.set(domainId, TYPE_BK, block._id, {
+                        const blockIdentifier = (block as any).docId ?? (block as any)._id;
+                        if (!blockIdentifier) {
+                            continue;
+                        }
+
+                        await DocumentModel.set(domainId, TYPE_BK, blockIdentifier, {
                             did: did,  // 更新 block 的父文档 ID
                             order: blockOrder || 0,
                             updateAt: new Date()
@@ -1525,11 +1722,34 @@ async function buildLocalRepoFromEjunz(domainId: string, rpid: number, targetDir
         childrenMap.get(key)!.push(d);
     }
 
-    // 递归创建目录与 block 文件（以标题为目录名）
+    const docOrderValue = (doc: DCDoc) => doc.order ?? doc.did ?? 0;
+    const blockOrderValue = (block: BKDoc) => block.order ?? block.bid ?? 0;
+
+    const sortDocs = (list: DCDoc[]) =>
+        list
+            .slice()
+            .sort((a, b) => {
+                const orderA = docOrderValue(a);
+                const orderB = docOrderValue(b);
+                if (orderA !== orderB) return orderA - orderB;
+                return (a.did || 0) - (b.did || 0);
+            });
+
+    const sortBlocks = (list: BKDoc[]) =>
+        list
+            .slice()
+            .sort((a, b) => {
+                const orderA = blockOrderValue(a);
+                const orderB = blockOrderValue(b);
+                if (orderA !== orderB) return orderA - orderB;
+                return (a.bid || 0) - (b.bid || 0);
+            });
+
+    // 递归创建目录与 block 文件（名称包含编号）
     async function writeDocTree(parentId: number|null, parentPath: string) {
-        const list = childrenMap.get(parentId) || [];
+        const list = sortDocs(childrenMap.get(parentId) || []);
         for (const d of list) {
-            const dirName = `${sanitize(d.title)}`;
+            const dirName = sanitize(d.title);
             const curDir = path.join(parentPath, dirName);
             await fs.promises.mkdir(curDir, { recursive: true });
 
@@ -1539,7 +1759,8 @@ async function buildLocalRepoFromEjunz(domainId: string, rpid: number, targetDir
                 await fs.promises.writeFile(readmePath, d.content, 'utf8');
             }
 
-            const blocks = await BlockModel.getByDid(domainId, d.did, rpid, branch);
+            const blocksRaw = await BlockModel.getByDid(domainId, d.did, rpid, branch);
+            const blocks = sortBlocks(blocksRaw || []);
             for (const b of blocks) {
                 const fileName = `${sanitize(b.title)}.md`;
                 const filePath = path.join(curDir, fileName);
@@ -1548,7 +1769,7 @@ async function buildLocalRepoFromEjunz(domainId: string, rpid: number, targetDir
 
             // 若没有 blocks 且没有子文档，创建占位文件，避免空目录不被 git 跟踪
             const children = childrenMap.get(d.did) || [];
-            if ((!blocks || blocks.length === 0) && children.length === 0) {
+            if (blocks.length === 0 && children.length === 0) {
                 const keepPath = path.join(curDir, '.keep');
                 await fs.promises.writeFile(keepPath, '', 'utf8');
             }
@@ -2014,6 +2235,210 @@ export class RepoBranchSwitchHandler extends Handler {
     async get(domainId: string, rpid: number, branch: string) { return this.post(domainId, rpid, branch); }
 }
 
+// 模式切换 Handler
+export class RepoModeSwitchHandler extends Handler {
+    @param('rpid', Types.Int)
+    @param('mode', Types.String)
+    @param('branch', Types.String, true)
+    async post(domainId: string, rpid: number, mode: string, branch?: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
+        
+        const validMode = (mode === 'file' || mode === 'manuscript') ? mode : 'file';
+        await DocumentModel.set(domainId, TYPE_RP, repo.docId, { mode: validMode });
+        
+        const targetBranch = branch || repo.currentBranch || 'main';
+        this.response.redirect = this.url('repo_detail_branch', { domainId, rpid, branch: targetBranch });
+    }
+
+    @param('rpid', Types.Int)
+    @param('mode', Types.String)
+    @param('branch', Types.String, true)
+    async get(domainId: string, rpid: number, mode: string, branch?: string) {
+        return this.post(domainId, rpid, mode, branch);
+    }
+}
+
+// 文稿模式批量更新 Handler
+export class RepoManuscriptBatchUpdateHandler extends Handler {
+    @param('rpid', Types.Int)
+    @param('branch', Types.String, true)
+    async post(domainId: string, rpid: number, branch?: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const repo = await EjunRepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
+        
+        const effectiveBranch = branch || repo.currentBranch || 'main';
+        const { updates, creates, deletes } = this.request.body;
+        
+        try {
+            // 处理删除
+            if (deletes && Array.isArray(deletes) && deletes.length > 0) {
+                for (const deleteItem of deletes) {
+                    const { type, did, bid } = deleteItem;
+                    
+                    if (type === 'doc' && did) {
+                        const doc = await DocModel.get(domainId, { rpid, did });
+                        if (doc && (doc.branch || 'main') === effectiveBranch) {
+                            await DocModel.deleteNode(domainId, doc.docId);
+                        }
+                    } else if (type === 'block' && bid) {
+                        const block = await BlockModel.get(domainId, { rpid, bid });
+                        if (block && (block.branch || 'main') === effectiveBranch) {
+                            await BlockModel.delete(domainId, block.docId);
+                        }
+                    }
+                }
+            }
+            
+            // 处理更新
+            if (updates && Array.isArray(updates)) {
+                for (const update of updates) {
+                    const { type, did, bid, title, content } = update;
+                    
+                    if (type === 'doc' && did) {
+                        const doc = await DocModel.get(domainId, { rpid, did });
+                        if (doc && (doc.branch || 'main') === effectiveBranch) {
+                            await DocModel.edit(domainId, doc.docId, title || doc.title, content !== undefined ? content : doc.content);
+                        }
+                    } else if (type === 'block' && bid) {
+                        const block = await BlockModel.get(domainId, { rpid, bid });
+                        if (block && (block.branch || 'main') === effectiveBranch) {
+                            await BlockModel.edit(domainId, block.docId, title || block.title, content !== undefined ? content : block.content);
+                        }
+                    }
+                }
+            }
+            
+            // 处理创建
+            if (creates && Array.isArray(creates)) {
+                for (const create of creates) {
+                    const { type, parentDid, title, content, position } = create;
+                    
+                    if (type === 'doc') {
+                        const did = await DocModel.generateNextDid(domainId, rpid, effectiveBranch);
+                        if (parentDid) {
+                            await DocModel.addSubdocNode(
+                                domainId,
+                                [rpid],
+                                did,
+                                parentDid,
+                                this.user._id,
+                                title || 'Untitled',
+                                content || '',
+                                this.request.ip,
+                                effectiveBranch
+                            );
+                        } else {
+                            await DocModel.addRootNode(
+                                domainId,
+                                rpid,
+                                did,
+                                this.user._id,
+                                title || 'Untitled',
+                                content || '',
+                                this.request.ip,
+                                effectiveBranch
+                            );
+                        }
+                    } else if (type === 'block' && parentDid) {
+                        await BlockModel.create(
+                            domainId,
+                            rpid,
+                            parentDid,
+                            this.user._id,
+                            title || 'Untitled',
+                            content || '',
+                            this.request.ip,
+                            effectiveBranch
+                        );
+                    }
+                }
+            }
+            
+            const structure = this.request.body?.structure;
+            if (structure) {
+                await this.applyStructureUpdates(domainId, rpid, effectiveBranch, structure);
+            }
+            
+            this.response.body = { success: true, branch: effectiveBranch };
+        } catch (error: any) {
+            console.error(`Failed to batch update manuscript: ${error.message}`);
+            this.response.status = 500;
+            this.response.body = { success: false, error: error.message };
+        }
+    }
+
+    private async applyStructureUpdates(domainId: string, rpid: number, branch: string, structure: any) {
+        const docEntries = Array.isArray(structure?.docs) ? structure.docs : [];
+        const blockEntries = Array.isArray(structure?.blocks) ? structure.blocks : [];
+
+        const docCache = new Map<number, string>();
+
+        const sortedDocs = docEntries
+            .filter((entry: any) => entry && typeof entry.did === 'number')
+            .sort((a: any, b: any) => {
+                const levelA = typeof a.level === 'number' ? a.level : Number(a.level) || 0;
+                const levelB = typeof b.level === 'number' ? b.level : Number(b.level) || 0;
+                if (levelA !== levelB) return levelA - levelB;
+                const orderA = typeof a.order === 'number' ? a.order : Number(a.order) || 0;
+                const orderB = typeof b.order === 'number' ? b.order : Number(b.order) || 0;
+                if (orderA !== orderB) return orderA - orderB;
+                return a.did - b.did;
+            });
+
+        for (const entry of sortedDocs) {
+            const did = entry.did as number;
+            const doc = await DocModel.get(domainId, { rpid, did } as any);
+            if (!doc || (doc.branch || 'main') !== branch) continue;
+
+            const parentDidValue = typeof entry.parentDid === 'number'
+                ? entry.parentDid
+                : (entry.parentDid === null ? null : undefined);
+
+            let parentPath = '';
+            if (typeof parentDidValue === 'number') {
+                if (docCache.has(parentDidValue)) {
+                    parentPath = docCache.get(parentDidValue)!;
+                } else {
+                    const parentDoc = await DocModel.get(domainId, { rpid, did: parentDidValue } as any);
+                    if (parentDoc && (parentDoc.branch || 'main') === branch) {
+                        parentPath = parentDoc.path || '';
+                        docCache.set(parentDidValue, parentPath);
+                    } else {
+                        parentPath = '';
+                    }
+                }
+            }
+
+            const newPath = parentPath ? `${parentPath}/${did}` : `/${did}`;
+            const updatePayload: any = {
+                parentId: typeof parentDidValue === 'number' ? parentDidValue : null,
+                order: typeof entry.order === 'number' ? entry.order : Number(entry.order) || 0,
+                path: newPath,
+            };
+
+            await DocumentModel.set(domainId, TYPE_DC, doc.docId, updatePayload);
+            docCache.set(did, newPath);
+        }
+
+        for (const entry of blockEntries) {
+            if (!entry || typeof entry.bid !== 'number') continue;
+            const block = await BlockModel.get(domainId, { rpid, bid: entry.bid });
+            if (!block || (block.branch || 'main') !== branch) continue;
+
+            const parentDid = typeof entry.parentDid === 'number' ? entry.parentDid : null;
+            if (parentDid === null) continue;
+
+            await DocumentModel.set(domainId, TYPE_BK, block.docId, {
+                did: parentDid,
+                order: typeof entry.order === 'number' ? entry.order : Number(entry.order) || 0,
+            });
+        }
+    }
+}
+
 export async function apply(ctx: Context) {
     const customChecker = (handler) => {
         // 获取允许的域列表
@@ -2120,6 +2545,9 @@ export async function apply(ctx: Context) {
     ctx.Route('repo_branch_create', '/base/repo/:rpid/branch/create', RepoBranchCreateHandler, PERM.PERM_VIEW_BASE);
     ctx.Route('repo_branch_create_with_param', '/base/repo/:rpid/branch/:branch/create', RepoBranchCreateHandler, PERM.PERM_VIEW_BASE);
     ctx.Route('repo_branch_switch', '/base/repo/:rpid/branch/switch', RepoBranchSwitchHandler, PERM.PERM_VIEW_BASE);
+    ctx.Route('repo_mode_switch', '/base/repo/:rpid/mode/:mode', RepoModeSwitchHandler, PERM.PERM_VIEW_BASE);
+    ctx.Route('repo_mode_switch_branch', '/base/repo/:rpid/branch/:branch/mode/:mode', RepoModeSwitchHandler, PERM.PERM_VIEW_BASE);
+    ctx.Route('repo_manuscript_batch_update', '/base/repo/:rpid/branch/:branch/manuscript/batch-update', RepoManuscriptBatchUpdateHandler, PERM.PERM_VIEW_BASE);
     // Removed: doc_resource_edit - resource management removed from doc
     // Block routes
     ctx.Route('block_create', '/base/repo/:rpid/doc/:did/block/create', BlockCreateHandler, PRIV.PRIV_USER_PROFILE);
@@ -2142,6 +2570,39 @@ export async function apply(ctx: Context) {
         block_create: '创建块',
         block_detail: '块详情',
         block_edit: '编辑块',
+        'File Mode': '文件模式',
+        'Manuscript Mode': '文稿模式',
+        'Table of Contents': '目录',
+        'Edit': '编辑',
+        'View': '查看',
+        'Save': '保存',
+        'Cancel': '取消',
+        'Doc': '文档',
+        'Block': '块',
+        'Add Root Doc': '添加根文档',
+        'Remove': '删除',
+        'No content': '无内容',
+        'No changes to save': '没有更改需要保存',
+        'Saved successfully': '保存成功',
+        'Save failed': '保存失败',
+        'Saving': '保存中',
+        'Title': '标题',
+        'Content': '内容',
+        'Number': '编号',
+        'New': '新建',
+        'Folder/Directory': '文件夹/目录',
+        'Content Block': '内容块',
+        'Description': '描述',
+        'Optional': '可选',
+        'Folder description': '文件夹描述',
+        'New Folder': '新建文件夹',
+        'New Content Block': '新建内容块',
+        'Drop here to delete': '拖到这里删除',
+        'Enter new title': '输入新标题',
+        'Enter title for new': '输入新',
+        'Add New': '添加新项',
+        'File': '文件',
+        'Manuscript': '文稿',
     });
     ctx.i18n.load('en', {
         base_domain: 'Base',
@@ -2157,5 +2618,38 @@ export async function apply(ctx: Context) {
         block_create: 'Create Block',
         block_detail: 'Block Detail',
         block_edit: 'Edit Block',
+        'File Mode': 'File Mode',
+        'Manuscript Mode': 'Manuscript Mode',
+        'Table of Contents': 'Table of Contents',
+        'Edit': 'Edit',
+        'View': 'View',
+        'Save': 'Save',
+        'Cancel': 'Cancel',
+        'Doc': 'Doc',
+        'Block': 'Block',
+        'Add Root Doc': 'Add Root Doc',
+        'Remove': 'Remove',
+        'No content': 'No content',
+        'No changes to save': 'No changes to save',
+        'Saved successfully': 'Saved successfully',
+        'Save failed': 'Save failed',
+        'Saving': 'Saving',
+        'Title': 'Title',
+        'Content': 'Content',
+        'Number': 'Number',
+        'New': 'New',
+        'Folder/Directory': 'Folder/Directory',
+        'Content Block': 'Content Block',
+        'Description': 'Description',
+        'Optional': 'Optional',
+        'Folder description': 'Folder description',
+        'New Folder': 'New Folder',
+        'New Content Block': 'New Content Block',
+        'Drop here to delete': 'Drop here to delete',
+        'Enter new title': 'Enter new title',
+        'Enter title for new': 'Enter title for new',
+        'Add New': 'Add New',
+        'File': 'File',
+        'Manuscript': 'Manuscript',
     });
 }
