@@ -72,12 +72,14 @@
               {% endfor %}
             </select>
 
+            {% if currentBranch == 'main' %}
             <button type="button" class="button success expanded" style="margin-bottom:8px;" onclick="(function(){
               var name = window.prompt('{{ _('Enter new branch name') }}');
               if (!name) return;
               var url='{{ url('repo_branch_create_with_param', domainId=repo.domainId, rpid=repo.rpid, branch='__BR__') }}'.replace('__BR__', encodeURIComponent(name));
               window.location.href = url;
             })()">{{ _('Create Branch') }}</button>
+            {% endif %}
 
             {% if gitStatus %}
               <div class="typo" style="margin-top: 10px; padding: 12px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; font-size: 12px;">

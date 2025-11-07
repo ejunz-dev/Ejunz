@@ -19,6 +19,7 @@
           <input type="hidden" name="rpid" value="{{ rpid if rpid else block.rpid }}">
           {% if block %}
           <input type="hidden" name="bid" value="{{ block.bid }}">
+          <input type="hidden" name="branch" value="{{ currentBranch or (block.branch or 'main') }}">
           {% endif %}
 
           {{ form.form_text({

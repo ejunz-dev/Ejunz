@@ -72,7 +72,7 @@
       </div>
       <ul class="section__footer supplementary dot list">
       {% if handler.user.own(block) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
-        <li><a href="{{ url('block_edit', domainId=block.domainId, rpid=block.rpid, did=block.did, bid=block.bid) }}">
+        <li><a href="{{ url('block_edit_branch', domainId=block.domainId, rpid=block.rpid, branch=currentBranch, did=block.did, bid=block.bid) }}">
           <span class="icon icon-edit"></span> {{ _('Edit') }}
         </a></li>
       {% endif %}
