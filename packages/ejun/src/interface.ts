@@ -214,6 +214,74 @@ declare module './model/agent'{
 }
 export type { AgentDoc } from './model/agent';
 
+// Repo/Base/Doc/Block documents
+export interface BSDoc {
+    docType: document['TYPE_BS']; // Base 
+    docId: ObjectId;
+    domainId: string;
+    rpids: number[]; // 存储所有 Repo ID
+    title: string;
+    content: string;
+    owner: number;
+    createdAt: Date;
+    updateAt: Date;
+}
+
+export interface RPDoc {
+    docType: document['TYPE_RP'];  // 标识它是一个 Repo
+    docId: ObjectId;
+    domainId: string;
+    rpid: number;
+    title: string;
+    content: string;
+    owner: number;
+    createdAt: Date;
+    updateAt: Date;
+    currentBranch?: string; // 当前编辑分支
+    branches?: string[];    // 已存在的本地分支列表
+    githubRepo?: string;    // GitHub 仓库地址，如 git@github.com:user/repo.git
+    mode?: 'file' | 'manuscript'; // 显示模式：文件模式或文稿模式
+    config?: Record<string, any>; // Repo 配置
+}
+
+export interface DCDoc {
+    docType: document['TYPE_DC'];
+    docId: ObjectId;
+    domainId: string;
+    rpid: number;
+    did: number;  // Doc ID，从1开始
+    owner: number;
+    title: string;
+    content: string;
+    ip: string;
+    updateAt: Date;
+    views: number;
+    parentId?: number|null;
+    path: string;
+    doc: boolean;
+    childrenCount?: number;
+    createdAt?: Date;
+    branch?: string; // 所属分支，默认为 main
+    order?: number;
+}
+
+export interface BKDoc {
+    docType: document['TYPE_BK'];
+    docId: ObjectId;
+    domainId: string;
+    rpid: number;
+    did: number;  // 关联的 doc ID
+    bid: number;  // Block ID，从1开始
+    owner: number;
+    title: string;
+    content: string;
+    ip: string;
+    updateAt: Date;
+    views: number;
+    createdAt?: Date;
+    branch?: string; // 所属分支，默认为 main
+    order?: number;
+}
 
 export interface DomainDoc extends Record<string, any> {
     _id: string,
@@ -444,6 +512,10 @@ export interface Model {
     user: typeof import('./model/user').default,
     oauth: typeof import('./model/oauth').default,
     storage: typeof import('./model/storage').default,
+    bs: typeof import('./model/repo').BaseModel,
+    rp: typeof import('./model/repo').RepoModel,
+    dc: typeof import('./model/repo').DocModel,
+    bk: typeof import('./model/repo').BlockModel,
 }
 
 export interface GeoIP {
