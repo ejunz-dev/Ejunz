@@ -238,6 +238,7 @@ export const DomainSpacePluginSetting = (...settings: _Setting[]) => {
     }
 };
 
+
 export const SystemSetting = (...settings: _Setting[] | Schema<any>[]) => {
     settings = settings.flatMap((s) => (s instanceof Schema ? schemaToSettings(s) : s) as _Setting[]);
     for (const setting of settings) {
@@ -414,7 +415,10 @@ SystemSetting(
         'number', 'session.unsaved_expire_seconds', 'Unsaved session expire seconds'),
     Setting('setting_storage', 'db.ver', 0, 'number', 'db.ver', 'Database version', FLAG_DISABLED | FLAG_HIDDEN),
     Setting('setting_storage', 'installid', randomstring(64), 'text', 'installid', 'Installation ID', FLAG_HIDDEN | FLAG_DISABLED),
+    Setting('ejunzrepo', 'ejunzrepo.github_token', '', 'password', 'GitHub Token', 'GitHub Personal Access Token for repository sync'),
+    Setting('ejunzrepo', 'ejunzrepo.github_org', '', 'text', 'GitHub Organization', 'GitHub组织或用户名，例如：Tomori-docs 或 https://github.com/Tomori-docs'),
 );
+
 
 export const langs: Record<string, LangConfig> = {};
 
