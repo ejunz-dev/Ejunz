@@ -6,8 +6,7 @@ import {
 import { Context } from '../context';
 import {
     Content, ContestClarificationDoc, DiscussionDoc,
-    DiscussionReplyDoc, AgentDoc,
-    BRDoc, TRDoc, FRDoc
+    DiscussionReplyDoc, AgentDoc
 } from '../interface';
 import bus from '../service/bus';
 import db from '../service/db';
@@ -23,17 +22,11 @@ export const TYPE_DISCUSSION_NODE: 20 = 20;
 export const TYPE_DISCUSSION: 21 = 21;
 export const TYPE_DISCUSSION_REPLY: 22 = 22;
 export const TYPE_AGENT: 10 = 10;
-export const TYPE_BR: 1 = 1;
-export const TYPE_TR: 6 = 6;
-export const TYPE_FR: 7 = 7;
 
 export interface DocType {
     [TYPE_AGENT]: AgentDoc;
     [TYPE_DISCUSSION]: DiscussionDoc;
     [TYPE_DISCUSSION_REPLY]: DiscussionReplyDoc;
-    1: BRDoc;
-    6: TRDoc;
-    7: FRDoc;
 }
 
 export interface DocStatusType {
@@ -520,7 +513,4 @@ global.Ejunz.model.document = {
     TYPE_DISCUSSION,
     TYPE_DISCUSSION_NODE,
     TYPE_DISCUSSION_REPLY,
-    TYPE_BR,
-    TYPE_TR,
-    TYPE_FR,
 };
