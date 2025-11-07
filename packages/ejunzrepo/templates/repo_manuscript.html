@@ -1,0 +1,1720 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row" data-sticky-parent>
+  <!-- 左侧目录 -->
+  <div class="medium-3 columns">
+    <div class="section" data-sticky="large">
+      <div class="section__header">
+        <h2 class="section__title">{{ repo.title }}</h2>
+        
+        <!-- 分支信息 -->
+        <div style="margin-top: 8px; margin-bottom: 8px;">
+          <div style="font-size: 11px; color: #888; margin-bottom: 4px;">{{ _('Branch') }}</div>
+          <div style="font-size: 13px; font-weight: 600; color: #2c3e50;">{{ currentBranch }}</div>
+        </div>
+        
+        <!-- 模式切换 -->
+        <div style="margin-top: 12px; margin-bottom: 8px;">
+          <div style="font-size: 11px; color: #888; margin-bottom: 4px;">{{ _('Mode') }}</div>
+          <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+            <a href="{{ url('repo_mode_switch_branch', domainId=repo.domainId, rpid=repo.rpid, mode='file', branch=currentBranch) }}" 
+               class="button secondary" style="padding: 4px 8px; font-size: 11px; flex: 1; text-align: center;">
+              {{ _('File') }}
+            </a>
+            <a href="{{ url('repo_mode_switch_branch', domainId=repo.domainId, rpid=repo.rpid, mode='manuscript', branch=currentBranch) }}" 
+               class="button primary" style="padding: 4px 8px; font-size: 11px; flex: 1; text-align: center;">
+              {{ _('Manuscript') }}
+            </a>
+          </div>
+        </div>
+        
+        <!-- 编辑模式控制 -->
+        {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+        <div style="margin-top: 12px; margin-bottom: 8px;">
+          <button id="edit-mode-toggle" class="button success" style="width: 100%; padding: 6px 8px; font-size: 12px; margin-bottom: 4px;" onclick="toggleEditMode()">
+            {{ _('Edit') }}
+          </button>
+          <button id="save-button" class="button primary" style="width: 100%; padding: 6px 8px; font-size: 12px; display: none; margin-bottom: 4px;" onclick="saveManuscript()">
+            {{ _('Save') }}
+          </button>
+          <button id="cancel-button" class="button secondary" style="width: 100%; padding: 6px 8px; font-size: 12px; display: none;" onclick="cancelEdit()">
+            {{ _('Cancel') }}
+          </button>
+        </div>
+        
+        <!-- 编辑模式下的添加按钮 -->
+        <div id="toc-edit-controls" style="display: none; margin-top: 8px; margin-bottom: 8px; padding-top: 8px; border-top: 1px solid #eee;">
+          <div style="font-size: 11px; color: #888; margin-bottom: 4px;">{{ _('Add New') }}</div>
+          <div style="display: flex; gap: 4px;">
+            <button class="button success" style="padding: 4px 8px; font-size: 11px; flex: 1;" onclick="addTocItem('doc', null)">
+              + {{ _("Doc") }}
+            </button>
+            <button class="button success" style="padding: 4px 8px; font-size: 11px; flex: 1;" onclick="addTocItem('block', null)">
+              + {{ _("Block") }}
+            </button>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+      <div class="section__body">
+        <div style="font-size: 11px; color: #dcdedd; margin-bottom: 12px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">{{ _("Table of Contents") }}</div>
+        <div id="manuscript-toc" style="max-height: calc(100vh - 350px); overflow-y: auto; padding: 8px 8px 8px 0; background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%); border-radius: 10px; border: 1px solid rgba(255,255,255,0.08);">
+          {% macro render_toc_item(item, parent) %}
+            {% set raw_title = (item.title or '')|trim %}
+            <div class="toc-item toc-level-{{ item.level }} toc-{{ item.type }}" 
+                 data-type="{{ item.type }}" 
+                 data-did="{{ item.did }}" 
+                 {% if item.bid %}data-bid="{{ item.bid }}"{% endif %}
+                 data-number="{{ item.number }}"
+                 data-level="{{ item.level }}"
+                 {% if parent and parent.type in ['doc', 'new-doc'] and parent.did %}data-parent-did="{{ parent.did }}"{% endif %}
+                 style="padding: 6px 0; padding-left: {{ item.level * 18 }}px; cursor: {% if window.manuscriptEditMode %}grab{% else %}pointer{% endif %}; position: relative;"
+                 onmouseover="if (!window.manuscriptEditMode) { this.style.backgroundColor='rgba(255,255,255,0.08)'; this.style.borderRadius='6px'; }"
+                 onmouseout="if (!window.manuscriptEditMode) { this.style.backgroundColor='transparent'; this.style.borderRadius='0'; }"
+                 onclick="if (!window.manuscriptEditMode) scrollToItem('{{ item.type }}-{{ item.did }}{% if item.bid %}-{{ item.bid }}{% endif %}')">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; background-color: rgba(111,159,255,0.35); border-radius: 6px; padding: 3px 8px; min-width: 38px; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);">{{ item.number }}</span>
+                <span class="toc-title" style="color: #f6f6f7; font-size: 13px; font-weight: {% if item.type == 'doc' %}650{% else %}520{% endif %}; letter-spacing: 0.15px;">{{ raw_title or _('Untitled') }}</span>
+                {% if raw_title %}
+                  <span class="toc-title-text" style="color: #f6f6f7; font-size: 13px; font-weight: {% if item.type == 'doc' %}650{% else %}520{% endif %}; letter-spacing: 0.15px;">{{ raw_title }}</span>
+                {% endif %}
+              </div>
+            </div>
+            {% if item.children %}
+              {% for child in item.children %}
+                {{ render_toc_item(child, item) }}
+              {% endfor %}
+            {% endif %}
+          {% endmacro %}
+          {% for item in toc %}
+            {{ render_toc_item(item, null) }}
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右侧内容 -->
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__body">
+        <div id="manuscript-content">
+          {% for item in content %}
+            <div id="{{ item.type }}-{{ item.did }}{% if item.bid %}-{{ item.bid }}{% endif %}" 
+                 class="manuscript-item manuscript-{{ item.type }}"
+                 data-type="{{ item.type }}"
+                 data-did="{{ item.did }}"
+                 {% if item.bid %}data-bid="{{ item.bid }}"{% endif %}
+                 {% if item.number %}data-number="{{ item.number }}"{% endif %}
+                 data-original-title="{{ item.title|e }}"
+                 data-original-content="{{ (item.content or '')|e }}"
+                 style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee; position: relative;">
+              {% if item.type == 'doc' %}
+                <!-- Doc 显示为文件夹/目录样式 -->
+                <div class="manuscript-view-mode">
+                  <div style="background-color: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 16px 18px; margin-bottom: 10px; border-radius: 10px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                      <span style="display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: #fff; background-color: rgba(255,255,255,0.16); border-radius: 999px; padding: 4px 12px; min-width: 44px;">{{ item.number }}</span>
+                      <h2 style="margin: 0; color: #f4f5f7; font-size: 18px; font-weight: 600;">
+                        <span class="item-title">{{ item.title }}</span>
+                      </h2>
+                    </div>
+                    {% if item.content %}
+                      {% set contentLen = item.content|length %}
+                      <div style="margin-top: 10px; padding-left: 6px; color: #b5b7ba; font-size: 13px; font-style: italic;">
+                        {% if contentLen > 100 %}
+                          {{ String(item.content).substring(0, 100) }}...
+                        {% else %}
+                          {{ item.content }}
+                        {% endif %}
+                      </div>
+                    {% endif %}
+                  </div>
+                  <!-- Doc 的内容（如果有）显示在折叠区域 -->
+                  {% if item.content %}
+                    <div class="doc-content-collapsed" style="display: none; padding-left: 20px; margin-bottom: 12px;">
+                      <div class="typo richmedia topic__content item-content" data-emoji-enabled data-original-content="{{ item.content|e }}">
+                        {{ item.content|markdown|safe }}
+                      </div>
+                    </div>
+                  {% else %}
+                    <div class="item-content doc-content-collapsed" style="display: none; padding-left: 20px; margin-bottom: 12px; color: #999; font-style: italic;" data-original-content="">{{ _('No content') }}</div>
+                  {% endif %}
+                </div>
+                <div class="manuscript-edit-mode" style="display: none;">
+                  <div style="background-color: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); padding: 16px 18px; margin-bottom: 14px; border-radius: 10px;">
+                    <div style="margin-bottom: 10px;">
+                      <label style="display: block; font-size: 12px; color: #c9cbcf; margin-bottom: 6px; font-weight: 600;">
+                        <span style="display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; background-color: rgba(255,255,255,0.16); border-radius: 999px; padding: 3px 10px; margin-right: 8px;">{{ item.number }}</span>
+                        {{ _('Folder/Directory') }}
+                      </label>
+                      <input type="text" class="edit-title" value="{{ item.title }}" placeholder="{{ _('Title') }}" 
+                             style="width: 100%; padding: 10px 12px; font-size: 16px; border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; background-color: rgba(255,255,255,0.05); color: #f4f5f7;" />
+                    </div>
+                    <div>
+                      <label style="display: block; font-size: 12px; color: #c9cbcf; margin-bottom: 4px;">{{ _('Description') }} ({{ _('Optional') }})</label>
+                      <textarea class="edit-content" placeholder="{{ _('Folder description') }}" 
+                                style="width: 100%; min-height: 110px; padding: 10px 12px; font-size: 14px; border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; font-family: monospace; background-color: rgba(255,255,255,0.05); color: #f4f5f7;">{{ item.content }}</textarea>
+                    </div>
+                  </div>
+                </div>
+              {% elif item.type == 'block' %}
+                <!-- Block 显示为主内容块样式 -->
+                <div class="manuscript-view-mode">
+                  <div style="background-color: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px 22px; margin-bottom: 18px;">
+                    <div style="display: flex; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06); gap: 12px;">
+                      <span style="display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #fff; background-color: rgba(255,255,255,0.16); border-radius: 999px; padding: 4px 12px; min-width: 44px;">{{ item.number }}</span>
+                      <h3 style="margin: 0; color: #f4f5f7; font-size: 20px; font-weight: 600;">
+                        <span class="item-title">{{ item.title }}</span>
+                      </h3>
+                    </div>
+                    {% if item.content %}
+                      <div class="typo richmedia topic__content item-content" data-emoji-enabled style="margin-top: 12px; line-height: 1.8; color: #d9dbde;" data-original-content="{{ item.content|e }}">
+                        {{ item.content|markdown|safe }}
+                      </div>
+                    {% else %}
+                      <div class="item-content" style="margin-top: 12px; color: #a3a6aa; font-style: italic;" data-original-content="">{{ _('No content') }}</div>
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="manuscript-edit-mode" style="display: none;">
+                  <div style="background-color: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 18px 22px; margin-bottom: 18px;">
+                    <div style="margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                      <label style="display: block; font-size: 12px; color: #c9cbcf; margin-bottom: 6px; font-weight: 600;">
+                        <span style="display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; background-color: rgba(255,255,255,0.16); border-radius: 999px; padding: 3px 10px; margin-right: 8px;">{{ item.number }}</span>
+                        {{ _('Content Block') }}
+                      </label>
+                      <input type="text" class="edit-title" value="{{ item.title }}" placeholder="{{ _('Title') }}" 
+                             style="width: 100%; padding: 10px 12px; font-size: 18px; border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; font-weight: 600; background-color: rgba(255,255,255,0.05); color: #f4f5f7;" />
+                    </div>
+                    <div>
+                      <label style="display: block; font-size: 12px; color: #c9cbcf; margin-bottom: 4px; font-weight: 600;">{{ _('Content') }}</label>
+                      <textarea class="edit-content" placeholder="{{ _('Content') }}" 
+                                style="width: 100%; min-height: 300px; padding: 12px; font-size: 15px; border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; font-family: 'Courier New', monospace; line-height: 1.6; background-color: rgba(255,255,255,0.05); color: #f4f5f7;">{{ item.content }}</textarea>
+                    </div>
+                  </div>
+                </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 删除区域 -->
+<div id="delete-zone" class="delete-zone" style="display: none;">
+  <div style="font-weight: 600; margin-bottom: 8px;">{{ _("Drop here to delete") }}</div>
+  <div class="delete-items"></div>
+</div>
+
+<script>
+let manuscriptEditMode = false;
+let pendingUpdates = [];
+let pendingCreates = [];
+let pendingDeletes = [];
+let pendingTocCreates = [];
+let placeholderCounter = 0;
+let draggedTocElement = null;
+let draggedTocData = null;
+let structureDirty = false;
+
+const TOC_LEVEL_CLASSES = Array.from({ length: 12 }, (_, idx) => `toc-level-${idx}`);
+
+function collectSubtreeItems(element) {
+  const items = [element];
+  const rootLevel = parseInt(element.getAttribute('data-level')) || 0;
+  let next = element.nextElementSibling;
+  while (next) {
+    const nextLevel = parseInt(next.getAttribute('data-level')) || 0;
+    if (nextLevel <= rootLevel) break;
+    items.push(next);
+    next = next.nextElementSibling;
+  }
+  return items;
+}
+
+function setElementLevel(element, newLevel) {
+  element.setAttribute('data-level', newLevel.toString());
+  element.style.paddingLeft = `${newLevel * 12}px`;
+  TOC_LEVEL_CLASSES.forEach(cls => element.classList.remove(cls));
+  element.classList.add(`toc-level-${newLevel}`);
+}
+
+function adjustSubtreeLevels(items, levelDiff) {
+  if (!levelDiff) return;
+  items.forEach(item => {
+    const currentLevel = parseInt(item.getAttribute('data-level')) || 0;
+    const adjustedLevel = Math.max(0, currentLevel + levelDiff);
+    setElementLevel(item, adjustedLevel);
+  });
+}
+
+function findParentInfo(item) {
+  const level = parseInt(item.getAttribute('data-level')) || 0;
+  if (level <= 0) {
+    return { parentDid: null, parentPlaceholderId: null, level };
+  }
+  let prev = item.previousElementSibling;
+  while (prev) {
+    const prevLevel = parseInt(prev.getAttribute('data-level')) || 0;
+    if (prevLevel === level - 1) {
+      return {
+        parentDid: prev.dataset.did ? parseInt(prev.dataset.did) : null,
+        parentPlaceholderId: prev.dataset.placeholderId || null,
+        level
+      };
+    }
+    prev = prev.previousElementSibling;
+  }
+  return { parentDid: null, parentPlaceholderId: null, level };
+}
+
+function findParentDocElement(item) {
+  const level = parseInt(item.getAttribute('data-level')) || 0;
+  if (level <= 0) return null;
+  let prev = item.previousElementSibling;
+  while (prev) {
+    const prevLevel = parseInt(prev.getAttribute('data-level')) || 0;
+    if (prevLevel === level - 1 && (prev.dataset.type === 'doc' || prev.dataset.type === 'new-doc')) {
+      return prev;
+    }
+    prev = prev.previousElementSibling;
+  }
+  return null;
+}
+
+function setParentAttributes(element, parentDid, parentPlaceholderId) {
+  if (parentDid !== undefined) {
+    if (parentDid !== null && parentDid !== undefined) {
+      element.setAttribute('data-parent-did', parentDid);
+    } else {
+      element.removeAttribute('data-parent-did');
+    }
+  }
+  if (parentPlaceholderId) {
+    element.setAttribute('data-parent-placeholder-id', parentPlaceholderId);
+  } else {
+    element.removeAttribute('data-parent-placeholder-id');
+  }
+}
+
+function updatePlaceholderMapping(placeholderId, parentDid, parentPlaceholderId) {
+  if (!placeholderId) return;
+  const entry = pendingTocCreates.find(p => p.id === placeholderId);
+  if (entry) {
+    entry.parentDid = parentDid ?? null;
+    entry.parentPlaceholderId = parentPlaceholderId ?? null;
+  }
+}
+
+function updateContentParent(draggedData, parentDid) {
+  if (!draggedData) return;
+  let selector = '';
+  if (draggedData.bid) {
+    selector = `.manuscript-item[data-type="block"][data-bid="${draggedData.bid}"]`;
+  } else if (draggedData.did) {
+    selector = `.manuscript-item[data-type="doc"][data-did="${draggedData.did}"]`;
+  }
+  if (!selector) return;
+  const contentItem = document.querySelector(selector);
+  if (contentItem) {
+    if (parentDid !== null && parentDid !== undefined) {
+      contentItem.setAttribute('data-parent-did', parentDid);
+    } else {
+      contentItem.removeAttribute('data-parent-did');
+    }
+  }
+}
+
+function buildStructurePayload() {
+  const tocContainer = document.getElementById('manuscript-toc');
+  if (!tocContainer) return { docs: [], blocks: [] };
+
+  const items = Array.from(tocContainer.querySelectorAll('.toc-item:not(.toc-placeholder)'));
+  const stack = [];
+  const siblingCounters = new Map();
+  const docStructure = [];
+  const blockStructure = [];
+
+  items.forEach(item => {
+    const rawType = item.dataset.type;
+    const type = rawType === 'new-doc' ? 'doc' : rawType;
+    const level = parseInt(item.getAttribute('data-level')) || 0;
+    const did = item.dataset.did ? parseInt(item.dataset.did) : null;
+    const bid = item.dataset.bid ? parseInt(item.dataset.bid) : null;
+    const placeholderId = item.dataset.placeholderId || null;
+
+    // 跳过已标记删除的节点
+    if (item.dataset.deleted === 'true') {
+      stack[level] = null;
+      stack.length = level + 1;
+      return;
+    }
+
+    stack.length = level;
+    const parentNode = stack[level - 1] || null;
+    const parentDid = parentNode && parentNode.did ? parentNode.did : null;
+
+    if (type === 'doc') {
+      if (did) {
+        const key = `doc-${parentDid ?? 'root'}`;
+        const nextOrder = siblingCounters.get(key) || 0;
+        siblingCounters.set(key, nextOrder + 1);
+
+        docStructure.push({
+          did,
+          parentDid,
+          order: nextOrder,
+          level
+        });
+      }
+      stack[level] = { type: 'doc', did, placeholderId };
+    } else if (type === 'block') {
+      if (bid && parentNode && parentNode.did) {
+        const parentKey = `block-${parentNode.did}`;
+        const nextOrder = siblingCounters.get(parentKey) || 0;
+        siblingCounters.set(parentKey, nextOrder + 1);
+
+        blockStructure.push({
+          bid,
+          parentDid: parentNode.did,
+          order: nextOrder,
+          level
+        });
+      }
+      stack[level] = { type: 'block', bid, parentDid: parentNode ? parentNode.did : null };
+    }
+  });
+
+  return { docs: docStructure, blocks: blockStructure };
+}
+
+window.manuscriptEditMode = false;
+
+function scrollToItem(id) {
+  const element = document.getElementById(id);
+  if (element) {
+    const offset = 80;
+    const elementPosition = element.getBoundingClientRect().top;
+    const offsetPosition = elementPosition + window.pageYOffset - offset;
+    
+    window.scrollTo({
+      top: offsetPosition,
+      behavior: 'smooth'
+    });
+    
+    element.style.backgroundColor = '#fff9c4';
+    setTimeout(() => {
+      element.style.backgroundColor = '';
+    }, 2000);
+  }
+}
+
+function toggleEditMode() {
+  manuscriptEditMode = !manuscriptEditMode;
+  window.manuscriptEditMode = manuscriptEditMode;
+  
+  const editModeElements = document.querySelectorAll('.manuscript-edit-mode');
+  const viewModeElements = document.querySelectorAll('.manuscript-view-mode');
+  const editToggle = document.getElementById('edit-mode-toggle');
+  const saveButton = document.getElementById('save-button');
+  const cancelButton = document.getElementById('cancel-button');
+  const tocEditControls = document.getElementById('toc-edit-controls');
+  const deleteZone = document.getElementById('delete-zone');
+  
+  if (manuscriptEditMode) {
+    // 从data属性获取原始值并填充到编辑框
+    document.querySelectorAll('.manuscript-item:not(.manuscript-placeholder)').forEach(item => {
+      const originalTitle = item.getAttribute('data-original-title') || '';
+      const originalContent = item.getAttribute('data-original-content') || '';
+      const editTitle = item.querySelector('.edit-title');
+      const editContent = item.querySelector('.edit-content');
+      
+      if (editTitle) editTitle.value = originalTitle;
+      if (editContent) editContent.value = originalContent;
+    });
+    
+    editModeElements.forEach(el => el.style.display = 'block');
+    viewModeElements.forEach(el => el.style.display = 'none');
+    editToggle.textContent = '{{ _("View") }}';
+    saveButton.style.display = 'block';
+    cancelButton.style.display = 'block';
+    if (tocEditControls) tocEditControls.style.display = 'block';
+    if (deleteZone) {
+      deleteZone.style.display = 'block';
+      deleteZone.classList.add('visible');
+    }
+    
+    // 启用目录拖拽
+    enableTocDragDrop();
+
+    // 确保编号最新
+    recalculateTocNumbers();
+
+    // 添加"添加新项"按钮到每个doc项
+    addInsertButtons();
+  } else {
+    editModeElements.forEach(el => el.style.display = 'none');
+    viewModeElements.forEach(el => el.style.display = 'block');
+    editToggle.textContent = '{{ _("Edit") }}';
+    saveButton.style.display = 'none';
+    cancelButton.style.display = 'none';
+    if (tocEditControls) tocEditControls.style.display = 'none';
+    if (deleteZone) {
+      deleteZone.style.display = 'none';
+      deleteZone.classList.remove('visible');
+    }
+    
+    // 禁用目录拖拽
+    disableTocDragDrop();
+    
+    // 移除所有插入按钮和占位项
+    removeInsertButtons();
+    removePlaceholders();
+  }
+}
+
+function addInsertButtons() {
+  const docItems = document.querySelectorAll('.manuscript-item.manuscript-doc');
+  docItems.forEach(item => {
+    if (item.querySelector('.insert-buttons')) return; // 已存在
+    
+    const buttonsDiv = document.createElement('div');
+    buttonsDiv.className = 'insert-buttons';
+    buttonsDiv.style.cssText = 'margin-top: 8px; padding-top: 8px; border-top: 1px dashed #ddd;';
+    
+    const addDocBtn = document.createElement('button');
+    addDocBtn.className = 'button success';
+    addDocBtn.style.cssText = 'padding: 4px 8px; font-size: 12px; margin-right: 8px;';
+    addDocBtn.textContent = '+ {{ _("Doc") }}';
+    addDocBtn.onclick = () => {
+      const parentDid = item.getAttribute('data-did');
+      addTocItem('doc', parentDid ? parseInt(parentDid) : null);
+    };
+    
+    const addBlockBtn = document.createElement('button');
+    addBlockBtn.className = 'button success';
+    addBlockBtn.style.cssText = 'padding: 4px 8px; font-size: 12px;';
+    addBlockBtn.textContent = '+ {{ _("Block") }}';
+    addBlockBtn.onclick = () => {
+      const parentDid = item.getAttribute('data-did');
+      addTocItem('block', parentDid ? parseInt(parentDid) : null);
+    };
+    
+    buttonsDiv.appendChild(addDocBtn);
+    buttonsDiv.appendChild(addBlockBtn);
+    
+    const editMode = item.querySelector('.manuscript-edit-mode');
+    if (editMode) {
+      editMode.appendChild(buttonsDiv);
+    }
+  });
+  
+  // 在内容区域末尾也添加一个添加根doc的按钮
+  const contentDiv = document.getElementById('manuscript-content');
+  if (contentDiv && !contentDiv.querySelector('.add-root-doc-btn')) {
+    const addRootBtn = document.createElement('button');
+    addRootBtn.className = 'button success add-root-doc-btn';
+    addRootBtn.style.cssText = 'margin-top: 20px; padding: 8px 16px;';
+    addRootBtn.textContent = '+ {{ _("Add Root Doc") }}';
+    addRootBtn.onclick = () => addTocItem('doc', null);
+    contentDiv.appendChild(addRootBtn);
+  }
+}
+
+function removeInsertButtons() {
+  document.querySelectorAll('.insert-buttons').forEach(el => el.remove());
+  document.querySelectorAll('.add-root-doc-btn').forEach(el => el.remove());
+}
+
+function insertPlaceholder(type, parentItem, initialTitle, tocPlaceholderId) {
+  placeholderCounter++;
+  const placeholderId = `placeholder-${placeholderCounter}`;
+  
+  const placeholder = document.createElement('div');
+  placeholder.id = placeholderId;
+  placeholder.className = `manuscript-item manuscript-${type} manuscript-placeholder`;
+  placeholder.setAttribute('data-type', type);
+  placeholder.setAttribute('data-placeholder-id', placeholderId);
+  if (tocPlaceholderId) {
+    placeholder.setAttribute('data-toc-placeholder-id', tocPlaceholderId);
+  }
+  if (parentItem) {
+    const parentDid = parentItem.getAttribute('data-did');
+    placeholder.setAttribute('data-parent-did', parentDid);
+  }
+  
+  const number = parentItem ? (parentItem.getAttribute('data-number') || '1') + '.new' : 'new';
+  const displayTitle = initialTitle || `[新建 ${type === 'doc' ? 'Doc' : 'Block'}]`;
+  
+  if (type === 'doc') {
+    // Doc 占位符 - 文件夹样式
+    placeholder.style.cssText = 'margin-bottom: 20px; padding: 12px 16px; border: 2px dashed #3498db; border-radius: 4px; background-color: #f0f8ff;';
+    placeholder.innerHTML = `
+      <div style="background-color: #f8f9fa; border-left: 4px solid #3498db; padding: 12px 16px; border-radius: 4px;">
+        <div style="margin-bottom: 8px;">
+          <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">
+            <span style="font-size: 16px; margin-right: 4px;">📁</span>
+            {{ _('Number') }}: ${number} ({{ _('New Folder') }})
+          </label>
+          <input type="text" class="edit-title" placeholder="{{ _('Title') }}" value="${displayTitle}"
+                 style="width: 100%; padding: 8px; font-size: 16px; border: 1px solid #3498db; border-radius: 4px; background-color: white;" />
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">{{ _('Description') }} ({{ _('Optional') }})</label>
+          <textarea class="edit-content" placeholder="{{ _('Folder description') }}" 
+                    style="width: 100%; min-height: 100px; padding: 8px; font-size: 14px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; background-color: white;"></textarea>
+        </div>
+        <button class="button alert" style="margin-top: 8px; padding: 4px 8px; font-size: 12px;" onclick="removePlaceholder('${placeholderId}')">
+          {{ _('Remove') }}
+        </button>
+      </div>
+    `;
+  } else {
+    // Block 占位符 - 内容块样式
+    placeholder.style.cssText = 'margin-bottom: 20px; padding: 16px 20px; border: 2px dashed #e74c3c; border-radius: 6px; background-color: #fff5f5;';
+    placeholder.innerHTML = `
+      <div style="background-color: #ffffff; border: 2px solid #e74c3c; border-radius: 6px; padding: 16px 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <div style="margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #ecf0f1;">
+          <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">
+            <span style="font-size: 18px; margin-right: 4px;">📄</span>
+            {{ _('Number') }}: ${number} ({{ _('New Content Block') }})
+          </label>
+          <input type="text" class="edit-title" placeholder="{{ _('Title') }}" value="${displayTitle}"
+                 style="width: 100%; padding: 10px; font-size: 18px; border: 2px solid #e74c3c; border-radius: 4px; font-weight: 600;" />
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px; font-weight: 600;">{{ _('Content') }}</label>
+          <textarea class="edit-content" placeholder="{{ _('Content') }}" 
+                    style="width: 100%; min-height: 300px; padding: 12px; font-size: 15px; border: 2px solid #e74c3c; border-radius: 4px; font-family: 'Courier New', monospace; line-height: 1.6;"></textarea>
+        </div>
+        <button class="button alert" style="margin-top: 8px; padding: 4px 8px; font-size: 12px;" onclick="removePlaceholder('${placeholderId}')">
+          {{ _('Remove') }}
+        </button>
+      </div>
+    `;
+  }
+  
+  // 监听标题输入框的变化，同步更新目录显示
+  const titleInput = placeholder.querySelector('.edit-title');
+  if (titleInput && tocPlaceholderId) {
+    // 实时同步标题到目录
+    titleInput.addEventListener('input', (e) => {
+      const newTitle = e.target.value.trim();
+      const tocPlaceholder = document.querySelector(`[data-placeholder-id="${tocPlaceholderId}"]`);
+      if (tocPlaceholder) {
+        const titleSpan = tocPlaceholder.querySelector('.toc-title');
+        if (titleSpan) {
+          if (newTitle) {
+            titleSpan.textContent = newTitle;
+            titleSpan.style.color = type === 'doc' ? '#2c3e50' : '#e74c3c';
+          } else {
+            titleSpan.textContent = `[新建 ${type === 'doc' ? 'Doc' : 'Block'}]`;
+            titleSpan.style.color = '#2196F3';
+          }
+        }
+        // 同时更新pendingTocCreates中的title
+        const placeholder = pendingTocCreates.find(p => p.id === tocPlaceholderId);
+        if (placeholder) {
+          placeholder.title = newTitle;
+        }
+      }
+    });
+    
+    // 双击标题输入框时也弹出对话框
+    titleInput.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      showTocTitleInputDialog(tocPlaceholderId, type, parentItem ? parentItem.getAttribute('data-did') : null);
+    });
+  }
+  
+  if (parentItem) {
+    // 插入到父项之后
+    parentItem.parentNode.insertBefore(placeholder, parentItem.nextSibling);
+  } else {
+    // 插入到内容区域末尾
+    const contentDiv = document.getElementById('manuscript-content');
+    const addRootBtn = contentDiv.querySelector('.add-root-doc-btn');
+    if (addRootBtn) {
+      contentDiv.insertBefore(placeholder, addRootBtn);
+    } else {
+      contentDiv.appendChild(placeholder);
+    }
+  }
+}
+
+function removePlaceholder(placeholderId) {
+  const placeholder = document.getElementById(placeholderId);
+  if (placeholder) {
+    // 同时移除目录中的占位符
+    const tocPlaceholderId = placeholder.getAttribute('data-toc-placeholder-id');
+    if (tocPlaceholderId) {
+      const tocPlaceholder = document.querySelector(`[data-placeholder-id="${tocPlaceholderId}"]`);
+      if (tocPlaceholder) {
+        tocPlaceholder.remove();
+      }
+      // 从待创建列表中移除
+      const index = pendingTocCreates.findIndex(p => p.id === tocPlaceholderId);
+      if (index !== -1) {
+        pendingTocCreates.splice(index, 1);
+      }
+    }
+    placeholder.remove();
+  }
+}
+
+function removePlaceholders() {
+  document.querySelectorAll('.manuscript-placeholder').forEach(el => el.remove());
+}
+
+function enableTocDragDrop() {
+  const tocItems = document.querySelectorAll('.toc-item');
+  tocItems.forEach(item => {
+    item.draggable = true;
+    item.style.cursor = 'grab';
+    
+    item.addEventListener('dragstart', handleTocDragStart);
+    item.addEventListener('dragover', handleTocDragOver);
+    item.addEventListener('dragenter', handleTocDragEnter);
+    item.addEventListener('dragleave', handleTocDragLeave);
+    item.addEventListener('drop', handleTocDrop);
+    item.addEventListener('dragend', handleTocDragEnd);
+    
+    // 双击重命名
+    item.addEventListener('dblclick', handleTocDoubleClick);
+  });
+  
+  // 设置删除区域事件
+  const deleteZone = document.getElementById('delete-zone');
+  if (deleteZone) {
+    deleteZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      deleteZone.classList.add('drag-over');
+    });
+    deleteZone.addEventListener('dragleave', () => {
+      deleteZone.classList.remove('drag-over');
+    });
+    deleteZone.addEventListener('drop', handleTocDeleteDrop);
+  }
+}
+
+function disableTocDragDrop() {
+  const tocItems = document.querySelectorAll('.toc-item');
+  tocItems.forEach(item => {
+    item.draggable = false;
+    item.style.cursor = 'pointer';
+    
+    item.removeEventListener('dragstart', handleTocDragStart);
+    item.removeEventListener('dragover', handleTocDragOver);
+    item.removeEventListener('dragenter', handleTocDragEnter);
+    item.removeEventListener('dragleave', handleTocDragLeave);
+    item.removeEventListener('drop', handleTocDrop);
+    item.removeEventListener('dragend', handleTocDragEnd);
+    item.removeEventListener('dblclick', handleTocDoubleClick);
+  });
+}
+
+function handleTocDragStart(e) {
+  // 使用currentTarget或closest确保获取到正确的toc-item元素
+  const item = e.currentTarget || e.target.closest('.toc-item');
+  if (!item) return;
+  
+  draggedTocElement = item;
+  draggedTocData = {
+    type: item.dataset.type,
+    did: item.dataset.did ? parseInt(item.dataset.did) : null,
+    bid: item.dataset.bid ? parseInt(item.dataset.bid) : null,
+    placeholderId: item.dataset.placeholderId || null,
+    number: item.dataset.number
+  };
+  item.style.opacity = '0.5';
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function handleTocDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+}
+
+function handleTocDragEnter(e) {
+  e.preventDefault();
+  const target = e.currentTarget || e.target.closest('.toc-item');
+  if (target && target !== draggedTocElement) {
+    // 只允许拖到doc下
+    const targetType = target.dataset.type;
+    if (targetType === 'doc' || targetType === 'new-doc') {
+      target.style.backgroundColor = '#e3f2fd';
+      target.style.borderLeftColor = '#2196f3';
+    }
+  }
+}
+
+function handleTocDragLeave(e) {
+  const target = e.currentTarget || e.target.closest('.toc-item');
+  if (target) {
+    target.style.backgroundColor = '';
+    target.style.borderLeftColor = 'transparent';
+  }
+}
+
+function handleTocDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  
+  let target = e.currentTarget || e.target.closest('.toc-item');
+  if (!target || !draggedTocElement || target === draggedTocElement) {
+    draggedTocElement = null;
+    draggedTocData = null;
+    return false;
+  }
+  
+  const draggedSubtree = collectSubtreeItems(draggedTocElement);
+  if (draggedSubtree.includes(target)) {
+    draggedTocElement = null;
+    draggedTocData = null;
+    return false;
+  }
+  
+  let targetType = target.dataset.type;
+  const draggedTypeRaw = draggedTocData ? draggedTocData.type : null;
+  const draggedType = draggedTypeRaw === 'new-doc' ? 'doc' : draggedTypeRaw;
+  
+  if (targetType === 'block' && draggedType === 'doc') {
+    const parentDoc = findParentDocElement(target);
+    if (parentDoc) {
+      target = parentDoc;
+      targetType = parentDoc.dataset.type;
+    }
+  }
+  
+  const bounding = target.getBoundingClientRect();
+  const offsetY = e.clientY - bounding.top;
+  const offsetX = e.clientX - bounding.left;
+  const intoThresholdX = Math.max(36, bounding.width * 0.35);
+  
+  let dropPosition = 'after';
+  if (offsetY < bounding.height * 0.3) {
+    dropPosition = 'before';
+  } else if ((targetType === 'doc' || targetType === 'new-doc') && offsetX > intoThresholdX) {
+    dropPosition = 'into';
+  } else {
+    dropPosition = 'after';
+  }
+  
+  if (draggedType === 'block' && dropPosition !== 'into') {
+    if (targetType === 'block') {
+      dropPosition = offsetY < bounding.height / 2 ? 'before' : 'after';
+    } else if (targetType === 'doc' || targetType === 'new-doc') {
+      dropPosition = 'into';
+    } else {
+      draggedTocElement = null;
+      draggedTocData = null;
+      return false;
+    }
+  }
+  
+  target.style.backgroundColor = '';
+  target.style.borderLeftColor = 'transparent';
+  
+  const tocContainer = document.getElementById('manuscript-toc');
+  if (!tocContainer) {
+    draggedTocElement = null;
+    draggedTocData = null;
+    return false;
+  }
+  
+  const originalLevel = parseInt(draggedTocElement.getAttribute('data-level')) || 0;
+  const targetLevel = parseInt(target.getAttribute('data-level')) || 0;
+  
+  let parentInfo;
+  if (dropPosition === 'into') {
+    parentInfo = {
+      parentDid: target.dataset.did ? parseInt(target.dataset.did) : null,
+      parentPlaceholderId: target.dataset.placeholderId || null
+    };
+  } else {
+    parentInfo = findParentInfo(target);
+  }
+  
+  const newLevel = dropPosition === 'into' ? targetLevel + 1 : targetLevel;
+  const levelDiff = newLevel - originalLevel;
+  
+  let referenceNode = null;
+  if (dropPosition === 'before') {
+    referenceNode = target;
+  } else {
+    let cursor = target.nextElementSibling;
+    while (cursor) {
+      const cursorLevel = parseInt(cursor.getAttribute('data-level')) || 0;
+      if (cursorLevel <= targetLevel) break;
+      cursor = cursor.nextElementSibling;
+    }
+    referenceNode = cursor;
+  }
+
+  if (referenceNode && draggedSubtree.includes(referenceNode)) {
+    referenceNode = referenceNode.nextElementSibling;
+  }
+
+  draggedSubtree.forEach(item => item.remove());
+  adjustSubtreeLevels(draggedSubtree, levelDiff);
+
+  const rootParentDid = parentInfo ? parentInfo.parentDid : null;
+  const rootParentPlaceholderId = parentInfo ? parentInfo.parentPlaceholderId : null;
+  setParentAttributes(draggedTocElement, rootParentDid, rootParentPlaceholderId);
+
+  const insertParentFallback = referenceNode?.parentNode || tocContainer;
+  draggedSubtree.forEach(item => {
+    const currentReference = referenceNode && referenceNode.parentNode ? referenceNode : null;
+    const container = currentReference ? currentReference.parentNode : insertParentFallback;
+    if (currentReference && container) {
+      container.insertBefore(item, currentReference);
+    } else if (container) {
+      container.appendChild(item);
+    }
+  });
+
+  updatePlaceholderMapping(draggedTocData ? draggedTocData.placeholderId : null, rootParentDid, rootParentPlaceholderId);
+  updateContentParent(draggedTocData, rootParentDid);
+  
+  recalculateTocNumbers();
+  syncContentOrder();
+  structureDirty = true;
+ 
+  draggedTocElement = null;
+  draggedTocData = null;
+  return false;
+}
+
+// 重新计算目录项的编号（基于层级结构）
+function recalculateTocNumbers() {
+  const tocContainer = document.getElementById('manuscript-toc');
+  if (!tocContainer) return;
+  
+  const allItems = Array.from(tocContainer.querySelectorAll('.toc-item'));
+  
+  // 构建层级结构
+  function buildHierarchy(items) {
+    const root = [];
+    const stack = []; // 用于跟踪父节点
+    
+    items.forEach(item => {
+      const level = parseInt(item.getAttribute('data-level')) || 0;
+      
+      // 清理stack，只保留level小于当前item的父节点
+      while (stack.length > 0 && stack[stack.length - 1].level >= level) {
+        stack.pop();
+      }
+      
+      const node = {
+        element: item,
+        level: level,
+        children: []
+      };
+      
+      if (stack.length === 0) {
+        root.push(node);
+      } else {
+        stack[stack.length - 1].children.push(node);
+      }
+      
+      stack.push(node);
+    });
+    
+    return root;
+  }
+  
+  // 递归计算编号
+  function assignNumbers(nodes, parentNumber = '') {
+    let docIndex = 0;
+    let blockIndex = 0;
+    
+    nodes.forEach(node => {
+      const item = node.element;
+      const type = item.dataset.type;
+      const isDoc = type === 'doc' || type === 'new-doc';
+      
+      let number;
+      if (isDoc) {
+        docIndex++;
+        number = parentNumber ? `${parentNumber}.${docIndex}` : `${docIndex}`;
+      } else {
+        // block使用字母编号
+        blockIndex++;
+        const letter = String.fromCharCode(97 + blockIndex - 1); // a, b, c...
+        number = parentNumber ? `${parentNumber}.${letter}` : `${letter}`;
+      }
+      
+      // 更新编号显示
+      // 编号span是第二个span（第一个是图标，第二个是编号）
+      const div = item.querySelector('div[style*="display: flex"]');
+      let numberSpan = null;
+      if (div) {
+        const spans = div.querySelectorAll('span');
+        if (spans.length >= 2) {
+          // 第二个span是编号
+          numberSpan = spans[1];
+        }
+      }
+      if (numberSpan) {
+        numberSpan.textContent = number;
+      }
+      item.dataset.number = number;
+      
+      // 如果有子节点，递归处理
+      if (node.children.length > 0) {
+        assignNumbers(node.children, number);
+      }
+      
+      // 重置block计数器（每个doc下的blocks重新计数）
+      if (isDoc) {
+        blockIndex = 0;
+      }
+    });
+  }
+  
+  const hierarchy = buildHierarchy(allItems);
+  assignNumbers(hierarchy);
+}
+
+function syncContentOrder() {
+  // 根据目录顺序同步内容区域的顺序
+  const tocContainer = document.getElementById('manuscript-toc');
+  const contentContainer = document.getElementById('manuscript-content');
+  if (!tocContainer || !contentContainer) return;
+  
+  const tocItems = Array.from(tocContainer.querySelectorAll('.toc-item:not(.toc-placeholder)'));
+  const contentItems = Array.from(contentContainer.querySelectorAll('.manuscript-item:not(.manuscript-placeholder)'));
+  
+  // 创建映射：did/bid -> content item
+  const contentMap = new Map();
+  contentItems.forEach(item => {
+    const type = item.dataset.type;
+    const did = item.dataset.did;
+    const bid = item.dataset.bid;
+    const key = `${type}-${did}${bid ? '-' + bid : ''}`;
+    contentMap.set(key, item);
+  });
+  
+  // 按照目录顺序重新排列内容项
+  tocItems.forEach(tocItem => {
+    const type = tocItem.dataset.type;
+    const did = tocItem.dataset.did;
+    const bid = tocItem.dataset.bid;
+    const key = `${type}-${did}${bid ? '-' + bid : ''}`;
+    const contentItem = contentMap.get(key);
+    if (contentItem) {
+      contentContainer.appendChild(contentItem);
+    }
+  });
+}
+
+function handleTocDragEnd(e) {
+  const item = e.currentTarget || e.target.closest('.toc-item');
+  if (item) {
+    item.style.opacity = '';
+  }
+  const tocItems = document.querySelectorAll('.toc-item');
+  tocItems.forEach(item => {
+    item.style.backgroundColor = '';
+    item.style.borderLeftColor = 'transparent';
+  });
+  draggedTocElement = null;
+  draggedTocData = null;
+}
+
+function handleTocDeleteDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const deleteZone = document.getElementById('delete-zone');
+  deleteZone.classList.remove('drag-over');
+  
+  if (draggedTocData && draggedTocElement) {
+    // 检查是否已存在
+    const exists = pendingDeletes.some(d => 
+      d.type === draggedTocData.type && 
+      d.did === draggedTocData.did && 
+      d.bid === draggedTocData.bid
+    );
+    
+    if (!exists) {
+      pendingDeletes.push({
+        type: draggedTocData.type,
+        did: draggedTocData.did,
+        bid: draggedTocData.bid
+      });
+      updateDeleteZone();
+
+      // 标记整棵子树为删除状态
+      const subtree = collectSubtreeItems(draggedTocElement);
+      subtree.forEach(node => {
+        node.style.opacity = '0.3';
+        node.style.textDecoration = 'line-through';
+        node.dataset.deleted = 'true';
+
+        const nodeType = node.dataset.type;
+        const nodeDid = node.dataset.did;
+        const nodeBid = node.dataset.bid;
+        if (nodeType && nodeDid) {
+          const contentId = `${nodeType}-${nodeDid}${nodeBid ? '-' + nodeBid : ''}`;
+          const contentEl = document.getElementById(contentId);
+          if (contentEl) {
+            contentEl.style.opacity = '0.3';
+            contentEl.style.textDecoration = 'line-through';
+            contentEl.dataset.deleted = 'true';
+          }
+        }
+      });
+    }
+  }
+  
+  draggedTocElement = null;
+  draggedTocData = null;
+}
+
+function handleTocDoubleClick(e) {
+  e.stopPropagation();
+  const item = e.target.closest('.toc-item');
+  if (!item) return;
+  
+  const type = item.dataset.type;
+  const did = item.dataset.did ? parseInt(item.dataset.did) : null;
+  const bid = item.dataset.bid ? parseInt(item.dataset.bid) : null;
+  const currentTitle = item.querySelector('.toc-title').textContent.trim();
+  
+  const newTitle = prompt('{{ _("Enter new title") }}:', currentTitle);
+  if (newTitle !== null && newTitle.trim() !== '' && newTitle !== currentTitle) {
+    // 更新显示
+    item.querySelector('.toc-title').textContent = newTitle.trim();
+    
+    // 添加到待更新列表
+    const exists = pendingUpdates.find(u => 
+      u.type === type && 
+      u.did === did && 
+      u.bid === bid
+    );
+    
+    if (exists) {
+      exists.title = newTitle.trim();
+    } else {
+      pendingUpdates.push({
+        type: type,
+        did: did,
+        bid: bid,
+        title: newTitle.trim()
+      });
+    }
+    
+    // 同时更新内容区域的标题（如果存在）
+    const contentItem = document.getElementById(`${type}-${did}${bid ? '-' + bid : ''}`);
+    if (contentItem) {
+      const contentTitle = contentItem.querySelector('.item-title');
+      if (contentTitle) contentTitle.textContent = newTitle.trim();
+      const editTitle = contentItem.querySelector('.edit-title');
+      if (editTitle) editTitle.value = newTitle.trim();
+    }
+  }
+}
+
+function addTocItem(type, parentDid) {
+  // 创建占位符（不立即要求输入标题）
+  const placeholderId = `toc-placeholder-${Date.now()}`;
+  const placeholder = {
+    id: placeholderId,
+    type: type,
+    title: '',
+    parentDid: parentDid,
+    placeholderId: placeholderId
+  };
+  
+  // 添加到待创建列表
+  pendingTocCreates.push(placeholder);
+  
+  // 在目录中添加占位符显示
+  const tocContainer = document.getElementById('manuscript-toc');
+  const placeholderDiv = createTocPlaceholderElement(type, placeholderId, parentDid);
+  tocContainer.appendChild(placeholderDiv);
+  
+  // 重新计算编号（包括新创建的占位符）
+  recalculateTocNumbers();
+  structureDirty = true;
+  
+  // 同时在内容区域添加占位符
+  const parentItem = parentDid ? document.querySelector(`.manuscript-item[data-did="${parentDid}"]`) : null;
+  insertPlaceholder(type, parentItem, '', placeholderId);
+}
+
+function createTocPlaceholderElement(type, placeholderId, parentDid) {
+  const placeholderDiv = document.createElement('div');
+  // 计算level：如果有parentDid，找到父项的level并+1
+  let level = 0;
+  if (parentDid) {
+    const parentItem = document.querySelector(`.toc-item[data-did="${parentDid}"]`);
+    if (parentItem) {
+      const parentLevelAttr = parentItem.getAttribute('data-level');
+      if (parentLevelAttr !== null) {
+        level = parseInt(parentLevelAttr) + 1;
+      } else {
+        const paddingLeft = parentItem.style.paddingLeft || window.getComputedStyle(parentItem).paddingLeft;
+        level = Math.floor(parseInt(paddingLeft) / 12) + 1 || 1;
+      }
+    }
+  }
+  
+  placeholderDiv.className = `toc-item toc-level-${level} toc-${type} toc-placeholder`;
+  placeholderDiv.dataset.type = type === 'doc' ? 'new-doc' : type; // 占位符doc标记为new-doc
+  placeholderDiv.dataset.placeholderId = placeholderId;
+  placeholderDiv.dataset.level = level.toString();
+  if (parentDid) placeholderDiv.dataset.parentDid = parentDid;
+  placeholderDiv.style.cssText = `padding: 6px 0; padding-left: ${level * 12}px; border: 2px dashed #2196F3; border-radius: 4px; margin: 4px 0; background-color: #e3f2fd; cursor: grab;`;
+  placeholderDiv.draggable = true;
+  
+  const placeholder = pendingTocCreates.find(p => p.id === placeholderId);
+  const displayTitle = placeholder && placeholder.title ? placeholder.title : `[新建 ${type === 'doc' ? 'Doc' : 'Block'}]`;
+  
+  placeholderDiv.innerHTML = `
+    <div style="display: flex; align-items: center;">
+      <span style="font-size: 14px; margin-right: 6px;">${type === 'doc' ? '📁' : '📄'}</span>
+      <span style="color: #666; margin-right: 6px; font-size: 12px;">-</span>
+      <span class="toc-title" style="color: ${placeholder && placeholder.title ? (type === 'doc' ? '#2c3e50' : '#e74c3c') : '#2196F3'}; font-weight: ${type === 'block' ? '600' : 'normal'};">${displayTitle}</span>
+    </div>
+  `;
+  
+  // 双击事件：输入标题
+  placeholderDiv.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    showTocTitleInputDialog(placeholderId, type, parentDid);
+  });
+  
+  // 拖拽事件
+  placeholderDiv.addEventListener('dragstart', handleTocDragStart);
+  placeholderDiv.addEventListener('dragover', handleTocDragOver);
+  placeholderDiv.addEventListener('dragenter', handleTocDragEnter);
+  placeholderDiv.addEventListener('dragleave', handleTocDragLeave);
+  placeholderDiv.addEventListener('drop', handleTocDrop);
+  placeholderDiv.addEventListener('dragend', handleTocDragEnd);
+  
+  return placeholderDiv;
+}
+
+function showTocTitleInputDialog(placeholderId, type, parentDid) {
+  const dialog = document.createElement('div');
+  dialog.className = 'title-input-dialog';
+  dialog.innerHTML = `
+    <h3>输入 ${type === 'doc' ? 'Doc' : 'Block'} 标题</h3>
+    <input type="text" id="toc-title-input" placeholder="请输入标题..." autofocus>
+    <div class="title-input-dialog-buttons">
+      <button onclick="this.closest('.title-input-dialog').remove()">取消</button>
+      <button class="primary" onclick="window.__confirmTocTitleInput && window.__confirmTocTitleInput()">确定</button>
+    </div>
+  `;
+  document.body.appendChild(dialog);
+  
+  const input = dialog.querySelector('#toc-title-input');
+  
+  // 确定按钮处理
+  window.__confirmTocTitleInput = () => {
+    const title = input.value.trim();
+    if (!title) {
+      alert('请输入标题');
+      return;
+    }
+    
+    // 更新占位符
+    const placeholder = pendingTocCreates.find(p => p.id === placeholderId);
+    if (placeholder) {
+      placeholder.title = title;
+    }
+    
+    // 更新目录显示
+    const placeholderDiv = document.querySelector(`[data-placeholder-id="${placeholderId}"]`);
+    if (placeholderDiv) {
+      const titleSpan = placeholderDiv.querySelector('.toc-title');
+      if (titleSpan) {
+        titleSpan.textContent = title;
+        titleSpan.style.color = type === 'doc' ? '#2c3e50' : '#e74c3c';
+      }
+    }
+    
+    // 更新内容区域的占位符标题
+    const contentPlaceholder = document.querySelector(`.manuscript-placeholder[data-toc-placeholder-id="${placeholderId}"]`);
+    if (contentPlaceholder) {
+      const contentTitleInput = contentPlaceholder.querySelector('.edit-title');
+      if (contentTitleInput) {
+        contentTitleInput.value = title;
+      }
+    }
+    
+    dialog.remove();
+    delete window.__confirmTocTitleInput;
+  };
+  
+  input.focus();
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      window.__confirmTocTitleInput();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      dialog.remove();
+      delete window.__confirmTocTitleInput;
+    }
+  };
+}
+
+function updateDeleteZone() {
+  const deleteZone = document.getElementById('delete-zone');
+  if (!deleteZone) return;
+  
+  const deleteItemsDiv = deleteZone.querySelector('.delete-items');
+  if (!deleteItemsDiv) return;
+  
+  if (pendingDeletes.length === 0) {
+    deleteItemsDiv.innerHTML = '';
+  } else {
+    deleteItemsDiv.innerHTML = pendingDeletes.map(item => {
+      const label = item.type === 'doc' 
+        ? `📁 Doc (did: ${item.did})`
+        : `📄 Block (bid: ${item.bid})`;
+      return `<span class="delete-item">${label}</span>`;
+    }).join('');
+  }
+}
+
+function cancelEdit() {
+  // 恢复原始值 - 从data属性恢复
+  document.querySelectorAll('.manuscript-item:not(.manuscript-placeholder)').forEach(item => {
+    const editTitle = item.querySelector('.edit-title');
+    const editContent = item.querySelector('.edit-content');
+    const originalTitle = item.getAttribute('data-original-title');
+    const originalContent = item.getAttribute('data-original-content');
+    
+    if (editTitle && originalTitle !== null) {
+      editTitle.value = originalTitle;
+    }
+    if (editContent && originalContent !== null) {
+      editContent.value = originalContent;
+    }
+  });
+  
+  // 恢复目录项
+  document.querySelectorAll('.toc-item').forEach(item => {
+    item.style.opacity = '';
+    item.style.textDecoration = '';
+    delete item.dataset.deleted;
+  });
+
+  document.querySelectorAll('.manuscript-item:not(.manuscript-placeholder)').forEach(item => {
+    item.style.opacity = '';
+    item.style.textDecoration = '';
+    delete item.dataset.deleted;
+  });
+  
+  // 移除目录占位符
+  document.querySelectorAll('.toc-placeholder').forEach(el => el.remove());
+  
+  toggleEditMode();
+  pendingUpdates = [];
+  pendingCreates = [];
+  pendingDeletes = [];
+  pendingTocCreates = [];
+  structureDirty = false;
+}
+
+async function saveManuscript() {
+  const updates = [];
+  const creates = [];
+  
+  // 收集更新（合并目录和内容区域的更新）
+  const allUpdates = [...pendingUpdates];
+  
+  document.querySelectorAll('.manuscript-item:not(.manuscript-placeholder)').forEach(item => {
+    const type = item.getAttribute('data-type');
+    const did = item.getAttribute('data-did');
+    const bid = item.getAttribute('data-bid');
+    const editTitle = item.querySelector('.edit-title');
+    const editContent = item.querySelector('.edit-content');
+    const originalTitle = item.getAttribute('data-original-title') || '';
+    const originalContent = item.getAttribute('data-original-content') || '';
+    
+    if (editTitle && editContent) {
+      const newTitle = editTitle.value.trim();
+      const newContent = editContent.value.trim();
+      
+      // 检查是否有更改
+      if (newTitle !== originalTitle || newContent !== originalContent) {
+        // 检查是否已在pendingUpdates中（可能通过目录重命名）
+        const exists = allUpdates.find(u => 
+          u.type === type && 
+          u.did === (did ? parseInt(did) : null) && 
+          u.bid === (bid ? parseInt(bid) : null)
+        );
+        
+        if (exists) {
+          // 更新现有项
+          exists.content = newContent;
+        } else {
+          // 添加新更新项
+          if (type === 'doc' && did) {
+            allUpdates.push({
+              type: 'doc',
+              did: parseInt(did),
+              title: newTitle,
+              content: newContent
+            });
+          } else if (type === 'block' && bid) {
+            allUpdates.push({
+              type: 'block',
+              bid: parseInt(bid),
+              title: newTitle,
+              content: newContent
+            });
+          }
+        }
+      }
+    }
+  });
+  
+  // 去重更新
+  const uniqueUpdates = [];
+  allUpdates.forEach(update => {
+    const key = `${update.type}-${update.did || ''}-${update.bid || ''}`;
+    const exists = uniqueUpdates.find(u => 
+      u.type === update.type && 
+      u.did === update.did && 
+      u.bid === update.bid
+    );
+    if (exists) {
+      exists.title = update.title;
+      exists.content = update.content;
+    } else {
+      uniqueUpdates.push(update);
+    }
+  });
+  
+  // 收集新建项（合并目录和内容区域的创建）
+  const allCreates = [];
+  
+  // 从目录占位符收集
+  pendingTocCreates.forEach(tocCreate => {
+    // 查找对应的内容区域占位符以获取标题和内容
+    const contentPlaceholder = document.querySelector(`.manuscript-placeholder[data-toc-placeholder-id="${tocCreate.id}"]`);
+    let title = tocCreate.title || '';
+    let content = '';
+    
+    if (contentPlaceholder) {
+      const titleInput = contentPlaceholder.querySelector('.edit-title');
+      const contentInput = contentPlaceholder.querySelector('.edit-content');
+      
+      // 优先使用内容区域的标题（用户可能在内容区域直接输入了标题）
+      if (titleInput && titleInput.value.trim()) {
+        title = titleInput.value.trim();
+      } else if (title && title.trim()) {
+        title = title.trim();
+      }
+      
+      if (contentInput) {
+        content = contentInput.value.trim();
+      }
+    } else if (title && title.trim()) {
+      title = title.trim();
+    }
+    
+    // 如果有标题（无论是从目录还是内容区域获取的），就创建
+    if (title && title.trim() && !title.startsWith('[新建')) {
+      allCreates.push({
+        type: tocCreate.type,
+        parentDid: tocCreate.parentDid,
+        title: title.trim(),
+        content: content
+      });
+    }
+  });
+  
+  // 从内容区域占位符收集（如果没有对应的目录占位符）
+  document.querySelectorAll('.manuscript-placeholder').forEach(placeholder => {
+    const tocPlaceholderId = placeholder.getAttribute('data-toc-placeholder-id');
+    // 如果已经有对应的目录占位符，跳过（已在上面的循环中处理）
+    if (tocPlaceholderId && pendingTocCreates.find(p => p.id === tocPlaceholderId)) {
+      return;
+    }
+    
+    const type = placeholder.getAttribute('data-type');
+    const parentDid = placeholder.getAttribute('data-parent-did');
+    const editTitle = placeholder.querySelector('.edit-title');
+    const editContent = placeholder.querySelector('.edit-content');
+    
+    const title = editTitle ? editTitle.value.trim() : '';
+    const content = editContent ? editContent.value.trim() : '';
+    
+    // 只要有标题就创建
+    if (title) {
+      allCreates.push({
+        type: type,
+        parentDid: parentDid ? parseInt(parentDid) : null,
+        title: title,
+        content: content
+      });
+    }
+  });
+  
+  // 去重创建
+  const uniqueCreates = [];
+  allCreates.forEach(create => {
+    const exists = uniqueCreates.find(c => 
+      c.type === create.type && 
+      c.title === create.title && 
+      c.parentDid === create.parentDid
+    );
+    if (!exists) {
+      uniqueCreates.push({
+        type: create.type,
+        parentDid: create.parentDid,
+        title: create.title,
+        content: create.content || ''
+      });
+    }
+  });
+
+  const structurePayload = buildStructurePayload();
+  
+  // 检查是否有未命名的占位符
+  const unnamedPlaceholders = [];
+  pendingTocCreates.forEach(tocCreate => {
+    const contentPlaceholder = document.querySelector(`.manuscript-placeholder[data-toc-placeholder-id="${tocCreate.id}"]`);
+    let hasTitle = false;
+    
+    if (contentPlaceholder) {
+      const titleInput = contentPlaceholder.querySelector('.edit-title');
+      if (titleInput && titleInput.value.trim() && !titleInput.value.trim().startsWith('[新建')) {
+        hasTitle = true;
+      }
+    }
+    
+    if (!hasTitle && (!tocCreate.title || tocCreate.title.startsWith('[新建'))) {
+      unnamedPlaceholders.push(tocCreate.type === 'doc' ? 'Doc' : 'Block');
+    }
+  });
+  
+  // 检查内容区域的占位符（没有对应目录占位符的）
+  document.querySelectorAll('.manuscript-placeholder').forEach(placeholder => {
+    const tocPlaceholderId = placeholder.getAttribute('data-toc-placeholder-id');
+    if (!tocPlaceholderId || !pendingTocCreates.find(p => p.id === tocPlaceholderId)) {
+      const titleInput = placeholder.querySelector('.edit-title');
+      const title = titleInput ? titleInput.value.trim() : '';
+      if (!title || title.startsWith('[新建')) {
+        const type = placeholder.getAttribute('data-type');
+        unnamedPlaceholders.push(type === 'doc' ? 'Doc' : 'Block');
+      }
+    }
+  });
+  
+  if (unnamedPlaceholders.length > 0) {
+    alert(`请为以下新建项输入标题：${unnamedPlaceholders.join(', ')}`);
+    return;
+  }
+  
+  const hasContentChanges = uniqueUpdates.length > 0 || uniqueCreates.length > 0 || pendingDeletes.length > 0;
+  if (!hasContentChanges && !structureDirty) {
+    alert('{{ _("No changes to save") }}');
+    return;
+  }
+  
+  // 显示保存中状态
+  const saveButton = document.getElementById('save-button');
+  const originalText = saveButton.textContent;
+  saveButton.disabled = true;
+  saveButton.textContent = '{{ _("Saving") }}...';
+  
+  try {
+    const response = await fetch('{{ url("repo_manuscript_batch_update", domainId=repo.domainId, rpid=repo.rpid, branch=currentBranch) }}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        updates: uniqueUpdates,
+        creates: uniqueCreates,
+        deletes: pendingDeletes,
+        structure: structurePayload
+      })
+    });
+    
+    const result = await response.json();
+    if (result.success) {
+      alert('{{ _("Saved successfully") }}');
+      structureDirty = false;
+      window.location.reload();
+    } else {
+      alert('{{ _("Save failed") }}: ' + (result.error || 'Unknown error'));
+      saveButton.disabled = false;
+      saveButton.textContent = originalText;
+    }
+  } catch (error) {
+    console.error('Save error:', error);
+    alert('{{ _("Save failed") }}: ' + error.message);
+    saveButton.disabled = false;
+    saveButton.textContent = originalText;
+  }
+}
+
+// 监听滚动，高亮当前可见的目录项
+let ticking = false;
+window.addEventListener('scroll', function() {
+  if (!ticking && !manuscriptEditMode) {
+    window.requestAnimationFrame(function() {
+      const items = document.querySelectorAll('.manuscript-item:not(.manuscript-placeholder)');
+      const tocItems = document.querySelectorAll('.toc-item');
+      
+      let currentId = '';
+      for (const item of items) {
+        const rect = item.getBoundingClientRect();
+        if (rect.top <= 100 && rect.bottom >= 100) {
+          currentId = item.id;
+          break;
+        }
+      }
+      
+      tocItems.forEach(item => {
+        item.style.backgroundColor = '';
+        item.style.borderLeftColor = 'transparent';
+      });
+      
+      if (currentId) {
+        const tocItem = document.querySelector(`[onclick*="${currentId}"]`);
+        if (tocItem) {
+          tocItem.style.backgroundColor = '#e3f2fd';
+          tocItem.style.borderLeftColor = '#2196f3';
+        }
+      }
+      
+      ticking = false;
+    });
+    ticking = true;
+  }
+});
+
+// 初始编号和内容排序
+recalculateTocNumbers();
+syncContentOrder();
+</script>
+
+<style>
+.toc-item:hover {
+  transition: all 0.2s;
+}
+.toc-doc {
+  border-left-color: #3498db !important;
+}
+.toc-block {
+  border-left-color: #e74c3c !important;
+}
+.toc-item.dragging {
+  opacity: 0.5;
+  background-color: #e0e0e0;
+}
+.toc-item.drag-over {
+  background-color: #bbdefb;
+  border-left: 2px solid #2196F3 !important;
+}
+.toc-placeholder {
+  cursor: grab;
+}
+.toc-placeholder:active {
+  cursor: grabbing;
+}
+.title-input-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  z-index: 10000;
+  min-width: 300px;
+}
+.title-input-dialog input {
+  width: 100%;
+  padding: 8px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+.title-input-dialog-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.title-input-dialog button {
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  cursor: pointer;
+}
+.title-input-dialog button.primary {
+  background: #2196F3;
+  color: white;
+  border-color: #2196F3;
+}
+.manuscript-item {
+  transition: background-color 0.3s;
+}
+.manuscript-doc {
+  /* Doc 作为文件夹，样式更轻 */
+}
+.manuscript-block {
+  /* Block 作为主内容，样式更突出 */
+}
+.manuscript-placeholder {
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+.delete-zone {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  min-height: 60px;
+  background-color: #ffebee;
+  border: 3px dashed #f44336;
+  border-radius: 8px;
+  padding: 15px;
+  text-align: center;
+  color: #c62828;
+  font-weight: 500;
+  z-index: 1000;
+  display: none;
+  transition: all 0.3s;
+}
+.delete-zone.visible {
+  display: block;
+}
+.delete-zone.drag-over {
+  background-color: #ffcdd2;
+  border-color: #d32f2f;
+  transform: translateX(-50%) scale(1.05);
+}
+.delete-zone .delete-items {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #c62828;
+}
+.delete-zone .delete-item {
+  display: inline-block;
+  background: white;
+  padding: 4px 8px;
+  margin: 2px;
+  border-radius: 3px;
+  border: 1px solid #f44336;
+}
+</style>
+{% endblock %}
