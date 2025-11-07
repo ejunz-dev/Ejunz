@@ -417,6 +417,8 @@ SystemSetting(
     Setting('setting_storage', 'installid', randomstring(64), 'text', 'installid', 'Installation ID', FLAG_HIDDEN | FLAG_DISABLED),
     Setting('ejunzrepo', 'ejunzrepo.github_token', '', 'password', 'GitHub Token', 'GitHub Personal Access Token for repository sync'),
     Setting('ejunzrepo', 'ejunzrepo.github_org', '', 'text', 'GitHub Organization', 'GitHub组织或用户名，例如：Tomori-docs 或 https://github.com/Tomori-docs'),
+    Setting('ejunzrepo', 'ejunzrepo.github_bot_name', '', 'text', 'GitHub Bot Name', 'GitHub Bot 用户名（用于 git commit 显示，默认：ejunz-bot）'),
+    Setting('ejunzrepo', 'ejunzrepo.github_bot_email', '', 'text', 'GitHub Bot Email', 'GitHub Bot 邮箱（用于 git commit 显示，默认：bot@ejunz.local）'),
 );
 
 
@@ -438,7 +440,7 @@ export async function apply(ctx: Context) {
         if (!setting.value) continue;
         const current = await ctx.db.collection('system').findOne({ _id: setting.key });
         if (!current || current.value == null || current.value === '') {
-            await retry(system.set, setting.key, setting.value);
+            await retry(system.set, setting.key, setting.value, false);
         }
     }
     try {

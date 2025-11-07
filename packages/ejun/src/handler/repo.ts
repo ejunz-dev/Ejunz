@@ -1324,30 +1324,38 @@ export async function ensureRepoGitRepo(domainId: string, rpid: number, remoteUr
     await fs.promises.mkdir(repoPath, { recursive: true });
     
     // 检查是否已经是 git 仓库
+    let isNewRepo = false;
     try {
         await exec('git rev-parse --git-dir', { cwd: repoPath });
         // 已经是 git 仓库
-        if (remoteUrl) {
-            // 更新远程仓库 URL
-            try {
-                await exec(`git remote set-url origin ${remoteUrl}`, { cwd: repoPath });
-            } catch {
-                // 如果远程不存在，添加它
-                try {
-                    await exec(`git remote add origin ${remoteUrl}`, { cwd: repoPath });
-                } catch {
-                    // 忽略错误
-                }
-            }
-        }
     } catch {
         // 不是 git 仓库，初始化
+        isNewRepo = true;
         await exec('git init', { cwd: repoPath });
-        await exec('git config user.name "ejunz-bot"', { cwd: repoPath });
-        await exec('git config user.email "bot@ejunz.local"', { cwd: repoPath });
         
         if (remoteUrl) {
             await exec(`git remote add origin ${remoteUrl}`, { cwd: repoPath });
+        }
+    }
+    
+    // 无论是否是新仓库，都确保 git config 设置正确（使用 bot 账号）
+    // 优先从系统设置读取 bot 信息，如果没有则使用默认值
+    const botName = system.get('ejunzrepo.github_bot_name') || 'ejunz-bot';
+    const botEmail = system.get('ejunzrepo.github_bot_email') || 'bot@ejunz.local';
+    await exec(`git config user.name "${botName}"`, { cwd: repoPath });
+    await exec(`git config user.email "${botEmail}"`, { cwd: repoPath });
+    
+    // 如果是已存在的仓库，更新远程 URL（如果需要）
+    if (!isNewRepo && remoteUrl) {
+        try {
+            await exec(`git remote set-url origin ${remoteUrl}`, { cwd: repoPath });
+        } catch {
+            // 如果远程不存在，添加它
+            try {
+                await exec(`git remote add origin ${remoteUrl}`, { cwd: repoPath });
+            } catch {
+                // 忽略错误
+            }
         }
     }
     
@@ -1554,6 +1562,12 @@ async function commitRepoChanges(
         // 不是 git 仓库，初始化
         await ensureRepoGitRepo(domainId, rpid);
     }
+    
+    // 确保 git config 使用 bot 账号（每次提交前都检查，防止被覆盖）
+    const botName = system.get('ejunzrepo.github_bot_name') || 'ejunz-bot';
+    const botEmail = system.get('ejunzrepo.github_bot_email') || 'bot@ejunz.local';
+    await exec(`git config user.name "${botName}"`, { cwd: repoGitPath });
+    await exec(`git config user.email "${botEmail}"`, { cwd: repoGitPath });
     
     // 确保在正确的分支上
     try {
@@ -1991,6 +2005,13 @@ async function gitInitAndPush(
 ) {
     // 使用实际的 git 仓库路径
     const repoGitPath = await ensureRepoGitRepo(domainId, rpid, remoteUrlWithAuth);
+    
+    // 确保 git config 使用 bot 账号
+    const botName = system.get('ejunzrepo.github_bot_name') || 'ejunz-bot';
+    const botEmail = system.get('ejunzrepo.github_bot_email') || 'bot@ejunz.local';
+    await exec(`git config user.name "${botName}"`, { cwd: repoGitPath });
+    await exec(`git config user.email "${botEmail}"`, { cwd: repoGitPath });
+    
     let isNewRepo = false;
     
     try {
@@ -2330,6 +2351,12 @@ export class RepoGithubPushHandler extends Handler {
         
         // 直接推送已有的 commit，不需要重新构建或提交
         const repoGitPath = await ensureRepoGitRepo(domainId, rpid, REPO_URL);
+        
+        // 确保 git config 使用 bot 账号
+        const botName = system.get('ejunzrepo.github_bot_name') || 'ejunz-bot';
+        const botEmail = system.get('ejunzrepo.github_bot_email') || 'bot@ejunz.local';
+        await exec(`git config user.name "${botName}"`, { cwd: repoGitPath });
+        await exec(`git config user.email "${botEmail}"`, { cwd: repoGitPath });
         
         try {
             // 确保在正确的分支上
