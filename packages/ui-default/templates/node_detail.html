@@ -1,0 +1,211 @@
+{% set page_name = "node_detail" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+    <div class="medium-9 columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">{{ node.name }}</h1>
+                <div class="section__action">
+                    <span class="node-status {{ node.status }}">{{ node.status }}</span>
+                </div>
+            </div>
+            <div class="section__body">
+                {% if node.description %}
+                    <p>{{ node.description }}</p>
+                {% endif %}
+                
+                <div class="node-container" 
+                    data-node-id="{{ node.nodeId }}" 
+                    data-node-status="{{ node.status }}"
+                    data-node-data="{{ nodeDataJson }}">
+                    <div class="device-list">
+                        {% if devices and devices.length > 0 %}
+                            {% for device in devices %}
+                                <div class="device-card" data-device-id="{{ device.deviceId }}">
+                                    <div class="device-header">
+                                        <h3 class="device-name">{{ device.name }}</h3>
+                                        <span class="device-type">{{ device.type }}</span>
+                                    </div>
+                                    <div class="device-info">
+                                        {% if device.manufacturer %}
+                                            <div>制造商: {{ device.manufacturer }}</div>
+                                        {% endif %}
+                                        {% if device.model %}
+                                            <div>型号: {{ device.model }}</div>
+                                        {% endif %}
+                                        <div>最后更新: {{ datetimeSpan(device.lastSeen)|safe if device.lastSeen else 'N/A' }}</div>
+                                    </div>
+                                    <div class="device-state">
+                                        <div class="state-items">
+                                            {% if device.state %}
+                                                {% for key, value in device.state %}
+                                                    <div class="state-item">
+                                                        <span class="state-key">{{ key }}:</span>
+                                                        <span class="state-value">{{ value }}</span>
+                                                    </div>
+                                                {% endfor %}
+                                            {% else %}
+                                                <div class="state-item">暂无状态信息</div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="device-controls">
+                                        <div class="control-buttons">
+                                            {% if 'on' in device.capabilities or 'off' in device.capabilities %}
+                                                {# 检查多种状态格式 #}
+                                                {% set state = device.state or {} %}
+                                                {% set isOn = false %}
+                                                {% if state.on === true or state.on == 1 %}
+                                                    {% set isOn = true %}
+                                                {% elif state.state %}
+                                                    {% if state.state == 'ON' or state.state == 'on' or state.state == 'ONLINE' or state.state == 'online' or state.state == true or state.state == 1 %}
+                                                        {% set isOn = true %}
+                                                    {% endif %}
+                                                {% elif state.power %}
+                                                    {% if state.power == 'ON' or state.power == 'on' or state.power == 'ONLINE' or state.power == 'online' or state.power == true or state.power == 1 %}
+                                                        {% set isOn = true %}
+                                                    {% endif %}
+                                                {% endif %}
+                                                <div class="switch-control">
+                                                    <span class="switch-text">{% if isOn %}开启{% else %}关闭{% endif %}</span>
+                                                    <label class="switch-label">
+                                                        <input type="checkbox" class="switch-toggle" 
+                                                            data-device-id="{{ device.deviceId }}"
+                                                            data-action="on"
+                                                            {% if isOn %}checked{% endif %}>
+                                                        <span class="switch-slider"></span>
+                                                    </label>
+                                                </div>
+                                            {% endif %}
+                                            {% if 'brightness' in device.capabilities %}
+                                                <div class="brightness-control">
+                                                    <label>亮度: <span class="brightness-value">{{ (device.state and device.state.brightness) or 0 }}</span>%</label>
+                                                    <input type="range" class="brightness-slider" min="0" max="100" 
+                                                        value="{{ (device.state and device.state.brightness) or 0 }}" 
+                                                        data-device-id="{{ device.deviceId }}">
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="no-devices">暂无设备</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="medium-3 columns">
+        {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+        <div class="section">
+            <div class="section__header">
+                <h2>{{ _('Actions') }}</h2>
+            </div>
+            <div class="section__body">
+                {% if handler.user.own(node) or handler.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN) %}
+                <a href="{{ url('node_edit', domainId=domainId, nodeId=node.nodeId) }}" class="button primary expanded">
+                    {{ _('Edit') }}
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="section">
+            <div class="section__header">
+                <h2 class="section__title">连接信息</h2>
+            </div>
+            <div class="section__body">
+                {% if node.wsEndpoint and connectionInfo %}
+                <div class="typo">
+                    <p><strong>连接方式 1: 标准 MQTT TCP（推荐用于 MQTTX）</strong></p>
+                    <p class="text-gray">用于标准 MQTT 客户端（如 MQTTX）连接</p>
+                    
+                    <p><strong>连接配置:</strong></p>
+                    <pre class="code"><code>协议: mqtt://
+主机: {{ connectionInfo.mqtt.tcpHost }}
+端口: {{ connectionInfo.mqtt.tcpPort }}
+完整地址: {{ connectionInfo.mqtt.tcpUrl }}
+
+用户名: {{ connectionInfo.mqtt.username }}
+密码: {{ connectionInfo.mqtt.password }}</code></pre>
+                    
+                    <hr style="margin: 1em 0;">
+                    
+                    <p><strong>连接方式 2: MQTT over WebSocket（用于 MQTTX 或浏览器）</strong></p>
+                    <p class="text-gray">用于 MQTTX WebSocket 连接或浏览器 Web 应用连接</p>
+                    
+                    <p><strong>MQTTX WebSocket 配置:</strong></p>
+                    {% set wsProtocol = 'wss://' if connectionInfo.mqtt.wsUrl|string|slice(0, 5) == 'wss:/' else 'ws://' %}
+                    <pre class="code"><code>协议: {{ wsProtocol }}
+主机: {{ connectionInfo.mqtt.wsHost }}
+端口: {{ connectionInfo.mqtt.wsPort }}
+路径: /mqtt/ws
+完整地址: {{ connectionInfo.mqtt.wsUrl }}
+
+用户名: {{ connectionInfo.mqtt.username }}
+密码: {{ connectionInfo.mqtt.password }}
+协议版本: MQTT 3.1.1（重要！）</code></pre>
+                    
+                    <p class="text-gray"><small><strong>MQTTX 配置步骤：</strong></small></p>
+                    <ol class="text-gray" style="font-size: 0.9em; margin-left: 1.5em;">
+                        <li>在 MQTTX 中选择 <code>{{ wsProtocol }}</code> 协议</li>
+                        <li>Host 填写：<code>{{ connectionInfo.mqtt.wsHost }}</code>（只填域名，不包含协议和路径）</li>
+                        <li>Port 填写：<code>{{ connectionInfo.mqtt.wsPort }}</code></li>
+                        <li>Path 填写：<code>/mqtt/ws</code></li>
+                        <li>Username 和 Password 都填写：<code>{{ connectionInfo.mqtt.username }}</code></li>
+                        <li>在高级设置中，确保 Protocol Version 选择 <strong>MQTT 3.1.1</strong>（不是 5.0）</li>
+                    </ol>
+                    
+                    <p class="text-gray"><small>MQTT Topic 说明：</small></p>
+                    <ul class="text-gray" style="font-size: 0.9em; margin-left: 1.5em;">
+                        <li>设备发现：发布到 <code>node/{{ node.nodeId }}/devices/discover</code>，消息格式：<code>{"devices": [{"id": "device1", "name": "设备名称", ...}]}</code></li>
+                        <li>状态更新：发布到 <code>node/{{ node.nodeId }}/devices/{deviceId}/state</code>，消息格式：<code>{"state": {...}}</code></li>
+                        <li>接收控制：订阅 <code>node/{{ node.nodeId }}/devices/{deviceId}/set</code> 或 <code>node/{{ node.nodeId }}/devices/+/set</code></li>
+                    </ul>
+                    
+                    <hr style="margin: 1em 0;">
+                    
+                    <p><strong>连接方式 2: Node 客户端 WebSocket</strong></p>
+                    <p class="text-gray">用于控制指令和实时通信</p>
+                    
+                    <p><strong>连接地址:</strong></p>
+                    <pre class="code"><code>{{ connectionInfo.clientWsUrl }}</code></pre>
+                    
+                    <p class="text-gray"><small>WebSocket 消息格式：</small></p>
+                    <ul class="text-gray" style="font-size: 0.9em; margin-left: 1.5em;">
+                        <li>设备发现：<code>{"type": "devices/discover", "devices": [...]}</code></li>
+                        <li>状态更新：<code>{"type": "device/state", "deviceId": "...", "state": {...}}</code></li>
+                        <li>接收控制：<code>{"type": "device-control", "deviceId": "...", "payload": {...}}</code></li>
+                    </ul>
+                    
+                    <div class="endpoint-actions">
+                        <form method="post" class="form--inline endpoint-form" data-operation="deleteEndpoint" data-domain-id="{{ domainId }}" data-node-id="{{ node.nodeId }}">
+                            <input type="hidden" name="operation" value="deleteEndpoint">
+                            <button type="submit" class="button danger">{{ _('Delete Connection URL') }}</button>
+                        </form>
+                    </div>
+                </div>
+                {% else %}
+                <p>{{ _('No connection URL generated yet. Click the button below to generate one.') }}</p>
+                <div class="endpoint-actions">
+                    <form method="post" class="form--inline endpoint-form" data-operation="generateEndpoint" data-domain-id="{{ domainId }}" data-node-id="{{ node.nodeId }}">
+                        <input type="hidden" name="operation" value="generateEndpoint">
+                        <button type="submit" class="button primary">{{ _('Generate Connection URL') }}</button>
+                    </form>
+                </div>
+                <div id="endpoint-result" class="endpoint-result"></div>
+                {% endif %}
+                
+                <button class="button danger delete-node-btn" data-node-id="{{ node.nodeId }}">
+                    删除节点
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

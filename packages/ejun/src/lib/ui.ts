@@ -68,6 +68,7 @@ inject('Nav', 'homepage', { prefix: 'homepage' });
 inject('Nav', 'agent_domain', { prefix: 'agent' });
 inject('Nav', 'base_domain', { prefix: 'base' });
 inject('Nav', 'discussion_main', { prefix: 'discussion' });
+inject('Nav', 'node_domain', { prefix: 'node' });
 
 
 
