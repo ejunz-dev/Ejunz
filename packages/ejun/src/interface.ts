@@ -283,6 +283,29 @@ export interface BKDoc {
     order?: number;
 }
 
+// Node document
+declare module './model/node' {
+    interface NodeDoc {
+        _id: ObjectId; // document 系统自动添加
+        docType: document['TYPE_NODE'];
+        docId: ObjectId; // 由 mongo 自动生成
+        domainId: string;
+        nodeId: number; // 节点 ID，从 1 开始（业务 ID）
+        name: string;
+        description?: string;
+        wsEndpoint?: string; // WebSocket 接入点路径（可选，生成接入点时设置）
+        mqttClientId?: string; // MQTT 客户端 ID
+        status: 'active' | 'inactive' | 'disconnected';
+        host?: string; // Node 主机地址
+        port?: number; // Node 端口
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number; // 用户 ID
+        content?: string; // document 系统要求
+    }
+}
+export type { NodeDoc } from './model/node';
+
 export interface DomainDoc extends Record<string, any> {
     _id: string,
     owner: number,
@@ -491,6 +514,8 @@ declare module './service/db' {
         'event': EventDoc;
         'opcount': OpCountDoc;
         'schedule': Schedule;
+        'node': import('./model/node').NodeDoc;
+        'node.device': import('./model/node').NodeDeviceDoc;
     }
 }
 
@@ -516,6 +541,8 @@ export interface Model {
     rp: typeof import('./model/repo').RepoModel,
     dc: typeof import('./model/repo').DocModel,
     bk: typeof import('./model/repo').BlockModel,
+    node: typeof import('./model/node').default,
+    nodeDevice: typeof import('./model/node').NodeDeviceModel,
 }
 
 export interface GeoIP {

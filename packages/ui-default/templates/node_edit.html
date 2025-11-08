@@ -1,0 +1,60 @@
+{% import "components/form.html" as form with context %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Edit Node') if node else _('Create Node') }}</h1>
+      </div>
+      <div class="section__body">
+        <form method="post">
+          <div class="row">
+            <div class="medium-12 columns">
+              <label>
+                {{ _('Node Name') }}
+                <input 
+                  name="name" 
+                  placeholder="{{ _('Enter node name') }}"
+                  value="{{ node.name|default('') if node else '' }}" 
+                  class="textbox" 
+                  required 
+                  autofocus>
+              </label>
+            </div>
+          </div>
+
+          {{ form.form_textarea({
+                columns: 12,
+                label: _('Description'),
+                name: 'description',
+                value: node.description|default('') if node else '',
+                hotkeys: 'ctrl+enter:submit',
+                markdown: false,
+                required: false,
+                extra_style: 'height: 200px',
+                id: 'description-textarea'
+              }) }}
+
+          <div class="row">
+            <div class="columns">
+              <button 
+                name="operation" 
+                value="{{ 'update' if node else 'create' }}" 
+                data-default-submit 
+                type="submit" 
+                class="rounded primary button">
+                {{ _('Update') if node else _('Create') }} (Ctrl+Enter)
+              </button>
+              <button type="button" class="rounded button" onclick="window.history.go(-1)">
+                {{ _('Cancel') }}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

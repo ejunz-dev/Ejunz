@@ -1,0 +1,48 @@
+{% set page_name = "node_domain" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+    <div class="columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">节点管理</h1>
+                <div class="section__action">
+                    <a href="{{ url('node_create', domainId=domainId) }}" class="button primary">{{ _('Create Node') }}</a>
+                </div>
+            </div>
+            <div class="section__body">
+                {% if nodes and nodes.length > 0 %}
+                    <div class="node-list">
+                        {% for node in nodes %}
+                            <div class="node-item">
+                                <div class="node-header">
+                                    <h3><a href="/node/{{ node.nodeId }}">{{ node.name }}</a></h3>
+                                    <span class="node-status {{ node.status }}">{{ node.status }}</span>
+                                </div>
+                                {% if node.description %}
+                                    <p class="node-description">{{ node.description }}</p>
+                                {% endif %}
+                                <div class="node-info">
+                                    <div>节点 ID: <code>{{ node.nodeId }}</code></div>
+                                    {% if node.wsEndpoint %}
+                                        <div>接入点: <code>{{ node.wsEndpoint }}</code></div>
+                                    {% else %}
+                                        <div class="node-no-endpoint">未生成接入点</div>
+                                    {% endif %}
+                                    <div>创建时间: {{ datetimeSpan(node.createdAt)|safe if node.createdAt else 'N/A' }}</div>
+                                </div>
+                                <div class="node-actions">
+                                    <a href="/node/{{ node.nodeId }}" class="button">查看详情</a>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="node-empty-message">暂无节点，<a href="{{ url('node_create', domainId=domainId) }}">{{ _('Create Node') }}</a></p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
