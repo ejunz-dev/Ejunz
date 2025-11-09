@@ -210,6 +210,7 @@ declare module './model/agent'{
         owner: number;
         apiKey?: string;
         memory?: string;
+        mcpToolIds?: ObjectId[]; // 分配的MCP工具ID列表
     }
 }
 export type { AgentDoc } from './model/agent';
@@ -305,6 +306,51 @@ declare module './model/node' {
     }
 }
 export type { NodeDoc } from './model/node';
+
+// MCP Server document
+declare module './model/mcp' {
+    interface McpServerDoc {
+        _id: ObjectId; // document 系统自动添加
+        docType: document['TYPE_MCP_SERVER'];
+        docId: ObjectId; // 由 mongo 自动生成
+        domainId: string;
+        serverId: number; // MCP 服务器 ID，从 1 开始（业务 ID）
+        name: string;
+        description?: string;
+        wsEndpoint: string; // WebSocket 接入点路径
+        wsToken?: string; // WebSocket 连接令牌（用于验证）
+        status: 'connected' | 'disconnected' | 'error'; // 服务器连接状态
+        lastConnectedAt?: Date; // 最后连接时间
+        lastDisconnectedAt?: Date; // 最后断开时间
+        errorMessage?: string; // 错误信息
+        toolsCount?: number; // 工具数量
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number; // 用户 ID
+        content?: string; // document 系统要求
+    }
+
+    interface McpToolDoc {
+        _id: ObjectId; // document 系统自动添加
+        docType: document['TYPE_MCP_TOOL'];
+        docId: ObjectId; // 由 mongo 自动生成
+        domainId: string;
+        serverId: number; // 所属 MCP 服务器 ID
+        serverDocId: ObjectId; // 所属 MCP 服务器的 docId
+        toolId: number; // 工具 ID，从 1 开始（业务 ID）
+        name: string; // 工具名称
+        description: string; // 工具描述
+        inputSchema: {
+            type: string;
+            properties?: Record<string, any>;
+        }; // 工具输入模式
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number; // 用户 ID
+        content?: string; // document 系统要求
+    }
+}
+export type { McpServerDoc, McpToolDoc } from './model/mcp';
 
 export interface DomainDoc extends Record<string, any> {
     _id: string,
@@ -543,6 +589,8 @@ export interface Model {
     bk: typeof import('./model/repo').BlockModel,
     node: typeof import('./model/node').default,
     nodeDevice: typeof import('./model/node').NodeDeviceModel,
+    mcpServer: typeof import('./model/mcp').default,
+    mcpTool: typeof import('./model/mcp').McpToolModel,
 }
 
 export interface GeoIP {

@@ -27,6 +27,8 @@ import { randomstring } from '@ejunz/utils';
 import { McpClient, ChatMessage } from '../model/agent';
 import { Logger } from '../logger';
 import { PassThrough } from 'stream';
+import McpServerModel, { McpToolModel } from '../model/mcp';
+import * as document from '../model/document';
 
 const AgentLogger = new Logger('agent');
 export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
@@ -466,11 +468,41 @@ export class AgentMainHandler extends Handler {
 
 
 
+// 辅助函数：根据 mcpToolIds 获取已分配的工具
+async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[]): Promise<any[]> {
+    if (!mcpToolIds || mcpToolIds.length === 0) {
+        return [];
+    }
+    
+    const assignedTools: any[] = [];
+    for (const toolId of mcpToolIds) {
+        try {
+            const tool = await document.get(domainId, document.TYPE_MCP_TOOL, toolId);
+            if (tool) {
+                assignedTools.push({
+                    name: tool.name,
+                    description: tool.description,
+                    inputSchema: tool.inputSchema,
+                });
+            }
+        } catch (error) {
+            AgentLogger.warn('Invalid tool ID: %s', toolId.toString());
+        }
+    }
+    return assignedTools;
+}
+
 class AgentMcpStatusHandler extends Handler {
     @param('aid', Types.String)
     async get(domainId: string, aid: string) {
-        const mcpClient = new McpClient();
-        const tools = await mcpClient.getTools();
+        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
+        const adoc = await Agent.get(domainId, normalizedId);
+        if (!adoc) {
+            this.response.body = { connected: false, toolCount: 0 };
+            return;
+        }
+        
+        const tools = await getAssignedTools(domainId, adoc.mcpToolIds);
         this.response.body = { 
             connected: true, 
             toolCount: tools.length 
@@ -520,6 +552,31 @@ export class AgentDetailHandler extends Handler {
             apiUrl = `${protocol}://${host}/api/agent`;
         }
 
+        // 获取所有可用的MCP工具（从所有MCP服务器）
+        const allMcpTools: any[] = [];
+        try {
+            const servers = await McpServerModel.getByDomain(domainId);
+            for (const server of servers) {
+                const tools = await McpToolModel.getByServer(domainId, server.serverId);
+                for (const tool of tools) {
+                    allMcpTools.push({
+                        _id: tool._id,
+                        toolId: tool.toolId,
+                        name: tool.name,
+                        description: tool.description,
+                        inputSchema: tool.inputSchema,
+                        serverId: tool.serverId,
+                        serverName: server.name,
+                    });
+                }
+            }
+        } catch (error: any) {
+            AgentLogger.error('Failed to load MCP tools: %s', error.message);
+        }
+
+        // 获取已分配的工具ID列表（转换为字符串数组以便模板比较）
+        const assignedToolIds = (adoc.mcpToolIds || []).map(id => id.toString());
+
         this.response.template = 'agent_detail.html';
         this.response.body = {
             domainId,
@@ -527,6 +584,8 @@ export class AgentDetailHandler extends Handler {
             adoc,
             udoc,
             apiUrl,
+            allMcpTools,
+            assignedToolIds,
         };
 
     }
@@ -575,6 +634,51 @@ export class AgentDetailHandler extends Handler {
         this.response.body = { success: true };
     }
 
+    @param('aid', Types.String)
+    @post('toolIds', Types.ArrayOf(Types.String), true)
+    async postAssignTools(domainId: string, aid: string, toolIds?: string[]) {
+        this.response.template = null;
+        
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
+        const adoc = await Agent.get(domainId, normalizedId);
+        
+        if (!adoc) {
+            throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
+        }
+
+        if (!this.user.own(adoc) && !this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
+            throw new PermissionError('Only owner or system administrator can assign tools');
+        }
+
+        // 验证工具ID是否有效
+        const validToolIds: ObjectId[] = [];
+        if (toolIds && Array.isArray(toolIds)) {
+            for (const toolIdStr of toolIds) {
+                try {
+                    const toolId = new ObjectId(toolIdStr);
+                    // 验证工具是否存在（通过 _id 查找）
+                    const tool = await document.get(domainId, document.TYPE_MCP_TOOL, toolId);
+                    if (tool) {
+                        validToolIds.push(toolId);
+                    }
+                } catch (error) {
+                    AgentLogger.warn('Invalid tool ID: %s', toolIdStr);
+                }
+            }
+        }
+
+        // 更新agent的工具分配
+        await Agent.edit(domainId, adoc.aid, { mcpToolIds: validToolIds });
+
+        this.response.body = { 
+            success: true, 
+            message: `已分配 ${validToolIds.length} 个工具`,
+            toolCount: validToolIds.length
+        };
+    }
+
 }
 
 export class AgentChatHandler extends Handler {
@@ -620,6 +724,50 @@ export class AgentChatHandler extends Handler {
             wsUrl = `/d/${domainId}${wsUrl}`;
         }
 
+        // 获取已分配的工具ID列表
+        const assignedToolIds = new Set((adoc.mcpToolIds || []).map(id => id.toString()));
+
+        // 获取已分配的 MCP 工具，按服务器分组
+        const serversWithTools: any[] = [];
+        try {
+            const servers = await McpServerModel.getByDomain(domainId);
+            for (const server of servers) {
+                const allTools = await McpToolModel.getByServer(domainId, server.serverId);
+                // 只保留已分配的工具
+                const assignedTools = allTools.filter(tool => assignedToolIds.has(tool._id.toString()));
+                
+                if (assignedTools.length > 0) {
+                    serversWithTools.push({
+                        serverId: server.serverId,
+                        name: server.name,
+                        description: server.description,
+                        status: server.status || 'disconnected',
+                        toolsCount: assignedTools.length,
+                        tools: assignedTools.map(tool => ({
+                            _id: tool._id,
+                            toolId: tool.toolId,
+                            name: tool.name,
+                            description: tool.description,
+                            inputSchema: tool.inputSchema,
+                        })),
+                    });
+                }
+            }
+        } catch (error: any) {
+            AgentLogger.error('Failed to load MCP servers and tools: %s', error.message);
+        }
+
+        // WebSocket URL for MCP status updates
+        let mcpStatusWsUrl = `/mcp/status/ws/all`;
+        if (domainId !== 'system' && (
+            !this.request.host
+            || (host instanceof Array
+                ? (!host.includes(this.request.host))
+                : this.request.host !== host)
+        )) {
+            mcpStatusWsUrl = `/d/${domainId}${mcpStatusWsUrl}`;
+        }
+
         this.response.template = 'agent_chat.html';
         this.response.body = {
             domainId,
@@ -630,6 +778,8 @@ export class AgentChatHandler extends Handler {
             aiModel,
             apiUrl,
             wsUrl,
+            serversWithTools,
+            mcpStatusWsUrl,
         };
     }
 
@@ -670,8 +820,9 @@ export class AgentChatHandler extends Handler {
             
         }
 
+        // 获取已分配的工具（根据 mcpToolIds 过滤）
+        const tools = await getAssignedTools(domainId, adoc.mcpToolIds);
         const mcpClient = new McpClient();
-        const tools = await mcpClient.getTools();
         
         const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;
@@ -913,7 +1064,7 @@ export class AgentChatHandler extends Handler {
                                                         
                                                         let toolResult: any;
                                                         try {
-                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs);
+                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, domainId);
                                                             AgentLogger.info(`Tool ${firstToolCall.function.name} returned`, { resultLength: JSON.stringify(toolResult).length });
                                                         } catch (toolError: any) {
                                                             AgentLogger.error(`Tool ${firstToolCall.function.name} failed:`, toolError);
@@ -1042,7 +1193,7 @@ export class AgentChatHandler extends Handler {
                     }
                     
                     AgentLogger.info(`Calling first tool: ${firstToolCall.function?.name} (One-by-One Mode)`);
-                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, parsedArgs);
+                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, parsedArgs, domainId);
                     AgentLogger.info('Tool returned:', { toolResult });
                     
                     const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
@@ -1217,10 +1368,16 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
             return;
         }
 
-        const domainId = (this.domain as any)?.domainId || this.request.params?.domainId || '';
-        const apiKey = (this.domain as any)['apiKey'] || '';
-        const model = (this.domain as any)['model'] || 'deepseek-chat';
-        const apiUrl = (this.domain as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
+        const domainId = this.adoc.domainId;
+        const domainInfo = await domain.get(domainId);
+        if (!domainInfo) {
+            this.send({ type: 'error', error: 'Domain not found' });
+            return;
+        }
+
+        const apiKey = (domainInfo as any)['apiKey'] || '';
+        const model = (domainInfo as any)['model'] || 'deepseek-chat';
+        const apiUrl = (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
 
         if (!apiKey) {
             this.send({ type: 'error', error: 'API Key not configured' });
@@ -1234,8 +1391,9 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
             // ignore parse error
         }
 
+        // 获取已分配的工具（根据 mcpToolIds 过滤）
+        const tools = await getAssignedTools(this.domain._id, this.adoc.mcpToolIds);
         const mcpClient = new McpClient();
-        const tools = await mcpClient.getTools();
         
         const agentPrompt = this.adoc.content || '';
         let systemMessage = agentPrompt;
@@ -1441,11 +1599,11 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
                                                         parsedArgs = {};
                                                     }
                                                     
-                                                    AgentLogger.info(`Calling first tool: ${firstToolCall.function.name} (WS - One-by-One Mode)`, parsedArgs);
+                                                    AgentLogger.info(`Calling first tool: ${firstToolCall.function.name} (WS - One-by-One Mode)`, { parsedArgs, domainId });
                                                     
                                                     let toolResult: any;
                                                     try {
-                                                        toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs);
+                                                        toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, domainId);
                                                         AgentLogger.info(`Tool ${firstToolCall.function.name} returned (WS)`, { resultLength: JSON.stringify(toolResult).length });
                                                     } catch (toolError: any) {
                                                         AgentLogger.error(`Tool ${firstToolCall.function.name} failed (WS):`, toolError);
@@ -1632,8 +1790,9 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
         } catch (e) {
         }
 
+        // 获取已分配的工具（根据 mcpToolIds 过滤）
+        const tools = await getAssignedTools(domainId, this.adoc.mcpToolIds);
         const mcpClient = new McpClient();
-        const tools = await mcpClient.getTools();
         
         const agentPrompt = this.adoc.content || '';
         let systemMessage = agentPrompt;
@@ -1839,7 +1998,7 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
                                                 // Execute tool call
                                                 let toolResult: any;
                                                 try {
-                                                    toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs);
+                                                    toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, domainId);
                                                     AgentLogger.info(`Tool ${firstToolCall.function.name} returned (Stream)`, { resultLength: JSON.stringify(toolResult).length });
                                                     
                                                     // 工具完成后立即发送结果
@@ -2064,8 +2223,9 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
         } catch (e) {
         }
 
+        // 获取已分配的工具（根据 mcpToolIds 过滤）
+        const tools = await getAssignedTools(domainId, this.adoc.mcpToolIds);
         const mcpClient = new McpClient();
-        const tools = await mcpClient.getTools();
         
         const agentPrompt = this.adoc.content || '';
         let systemMessage = agentPrompt;
@@ -2275,7 +2435,7 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
                                                     
                                                     let toolResult: any;
                                                     try {
-                                                        toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs);
+                                                        toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, domainId);
                                                         AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API WS)`, { resultLength: JSON.stringify(toolResult).length });
                                                     } catch (toolError: any) {
                                                         AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API WS):`, toolError);
@@ -2420,8 +2580,9 @@ export class AgentApiHandler extends Handler {
             // ignore parse error
         }
 
+        // 获取已分配的工具（根据 mcpToolIds 过滤）
+        const tools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds);
         const mcpClient = new McpClient();
-        const tools = await mcpClient.getTools();
         
         const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;
@@ -2663,7 +2824,7 @@ export class AgentApiHandler extends Handler {
                                                         
                                                         let toolResult: any;
                                                         try {
-                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs);
+                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, adoc.domainId);
                                                             AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API)`, { resultLength: JSON.stringify(toolResult).length });
                                                         } catch (toolError: any) {
                                                             AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API):`, toolError);
@@ -2802,7 +2963,7 @@ export class AgentApiHandler extends Handler {
                     }
                     
                     AgentLogger.info(`Calling first tool: ${firstToolCall.function?.name} (One-by-One Mode)`);
-                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, parsedArgs);
+                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, parsedArgs, adoc.domainId);
                     AgentLogger.info('Tool returned:', { toolResult });
                     
                     const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
@@ -2917,16 +3078,43 @@ export class AgentEditHandler extends Handler {
         if (!agent) {
             console.warn(`[AgentEditHandler.get] No adoc found, skipping agent_edit.`);
             this.response.template = 'agent_edit.html';
-            this.response.body = { adoc: null };
+            this.response.body = { adoc: null, allMcpTools: [], assignedToolIds: [] };
             return;
         }
         const udoc = await user.getById(domainId, agent.owner);
+
+        // 获取所有可用的MCP工具（从所有MCP服务器）
+        const allMcpTools: any[] = [];
+        try {
+            const servers = await McpServerModel.getByDomain(domainId);
+            for (const server of servers) {
+                const tools = await McpToolModel.getByServer(domainId, server.serverId);
+                for (const tool of tools) {
+                    allMcpTools.push({
+                        _id: tool._id,
+                        toolId: tool.toolId,
+                        name: tool.name,
+                        description: tool.description,
+                        inputSchema: tool.inputSchema,
+                        serverId: tool.serverId,
+                        serverName: server.name,
+                    });
+                }
+            }
+        } catch (error: any) {
+            AgentLogger.error('Failed to load MCP tools: %s', error.message);
+        }
+
+        // 获取已分配的工具ID列表（转换为字符串数组以便模板比较）
+        const assignedToolIds = (agent.mcpToolIds || []).map(id => id.toString());
 
         this.response.template = 'agent_edit.html';
         this.response.body = {
             adoc: agent,
             tag: agent.tag,
             udoc,
+            allMcpTools,
+            assignedToolIds,
         };
         this.UiContext.extraTitleContent = agent.title;
     }
@@ -2969,7 +3157,8 @@ export class AgentEditHandler extends Handler {
     @param('content', Types.Content)
     @post('tag', Types.Content, true, null, parseCategory)
     @post('memory', Types.Content, true)
-    async postUpdate(domainId: string, aid: string, title: string, content: string, tag: string[] = [], memory?: string) {
+    @post('toolIds', Types.ArrayOf(Types.String), true)
+    async postUpdate(domainId: string, aid: string, title: string, content: string, tag: string[] = [], memory?: string, toolIds?: string[]) {
         const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
     
     
@@ -2978,8 +3167,41 @@ export class AgentEditHandler extends Handler {
             throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}=${normalizedId}`);
         }
     
+        // 验证工具ID是否有效
+        const validToolIds: ObjectId[] = [];
+        if (toolIds && Array.isArray(toolIds)) {
+            for (const toolIdStr of toolIds) {
+                try {
+                    const toolId = new ObjectId(toolIdStr);
+                    // 验证工具是否存在（通过 _id 查找）
+                    const tool = await document.get(domainId, document.TYPE_MCP_TOOL, toolId);
+                    if (tool) {
+                        validToolIds.push(toolId);
+                    } else {
+                        AgentLogger.warn('Tool not found: %s', toolIdStr);
+                    }
+                } catch (error) {
+                    AgentLogger.warn('Invalid tool ID: %s', toolIdStr);
+                }
+            }
+        }
+        
+        AgentLogger.info('Updating agent tools: aid=%s, toolIds=%o, validToolIds=%o', agent.aid, toolIds, validToolIds.map(id => id.toString()));
+    
         const agentAid = agent.aid;
-        const updatedAgent = await Agent.edit(domainId, agentAid, { title, content, tag: tag ?? [], memory: memory || null });
+        const updatedAgent = await Agent.edit(domainId, agentAid, { 
+            title, 
+            content, 
+            tag: tag ?? [], 
+            memory: memory || null,
+            mcpToolIds: validToolIds
+        });
+        
+        if (updatedAgent) {
+            AgentLogger.info('Agent updated: aid=%s, mcpToolIds=%o', agentAid, updatedAgent.mcpToolIds?.map(id => id.toString()));
+        } else {
+            AgentLogger.warn('Agent.edit returned null/undefined for aid=%s', agentAid);
+        }
     
     
         this.response.body = { aid: agentAid };

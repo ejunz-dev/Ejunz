@@ -28,6 +28,8 @@ import SystemModel from './system';
 import user from './user';
 import * as document from './document';
 import db from '../service/db';
+import McpServerModel, { McpToolModel } from './mcp';
+import { McpServerConnectionHandler } from '../handler/mcp';
 import _ from 'lodash';
 
 export type Field = keyof AgentDoc;
@@ -39,7 +41,7 @@ export class AgentModel {
 
     static PROJECTION_DETAIL: Field[] = [
         ...AgentModel.PROJECTION_LIST,
-       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory'
+       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory', 'mcpToolIds'
     ];
 
     static PROJECTION_PUBLIC: Field[] = [
@@ -414,23 +416,111 @@ export class McpClient {
         }
     }
 
-    async callTool(name: string, args: any): Promise<any> {
+    async callTool(name: string, args: any, domainId?: string): Promise<any> {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
-            // discover availability from both sides
-            const [edgeTools, localTools] = await Promise.all([
-                (async () => { try { return ctx ? await ctx.serial('mcp/tools/list/edge') : []; } catch (e) { ClientLogger.warn?.('edge tools discovery failed', e); return []; } })(),
-                (async () => { try { return ctx ? await ctx.serial('mcp/tools/list/local') : []; } catch (e) { ClientLogger.warn?.('local tools discovery failed', e); return []; } })(),
-            ]);
-            ClientLogger.info('Tool sources (callTool):', { edgeCount: (edgeTools || []).length, localCount: (localTools || []).length });
-            const inEdge = (edgeTools || []).some((t: McpTool) => t.name === name);
-            const inLocal = (localTools || []).some((t: McpTool) => t.name === name);
-            // call both equally: choose edge if available; else local; else error
-            if (inEdge && ctx) {
-                try { return await ctx.serial('mcp/tool/call/edge', { name, args }); }
-                catch (e) { if (inLocal && ctx) return await ctx.serial('mcp/tool/call/local', { name, args }); throw e; }
+            if (!ctx) {
+                throw new Error('Context not available');
             }
-            if (inLocal && ctx) return await ctx.serial('mcp/tool/call/local', { name, args });
+
+            // 首先尝试通过 edge 调用（如果可用）
+            try {
+                const edgeTools = await ctx.serial('mcp/tools/list/edge').catch(() => []);
+                const inEdge = (edgeTools || []).some((t: McpTool) => t.name === name);
+                if (inEdge) {
+                    try {
+                        return await ctx.serial('mcp/tool/call/edge', { name, args });
+                    } catch (e) {
+                        ClientLogger.warn('Edge tool call failed, trying local: %s', (e as Error).message);
+                    }
+                }
+            } catch (e) {
+                ClientLogger.debug('Edge tools not available: %s', (e as Error).message);
+            }
+
+            // 如果 edge 不可用，尝试通过本地 MCP 服务器调用
+            if (domainId) {
+                try {
+                    ClientLogger.info('Looking for tool in local MCP servers: tool=%s, domainId=%s', name, domainId);
+                    
+                    // 查找包含此工具的服务器
+                    const servers = await McpServerModel.getByDomain(domainId);
+                    ClientLogger.info('Found %d MCP servers in domain', servers.length);
+                    
+                    for (const server of servers) {
+                        ClientLogger.debug('Checking server: serverId=%d, status=%s, name=%s', server.serverId, server.status, server.name);
+                        
+                        if (server.status !== 'connected') {
+                            ClientLogger.debug('Server %d is not connected, skipping', server.serverId);
+                            continue;
+                        }
+                        
+                        // 检查此服务器是否有此工具
+                        const tools = await McpToolModel.getByServer(domainId, server.serverId);
+                        ClientLogger.debug('Server %d has %d tools', server.serverId, tools.length);
+                        
+                        const hasTool = tools.some(t => t.name === name);
+                        if (hasTool) {
+                            ClientLogger.info('Found tool %s in server %d', name, server.serverId);
+                            
+                            // 尝试使用静态方法获取连接（参考 edge.ts 的单例模式）
+                            const connection = McpServerConnectionHandler.getConnection(server.serverId);
+                            
+                            // 调试信息
+                            ClientLogger.debug('Server %d connection lookup: found=%s, totalActiveServers=%d', 
+                                server.serverId, connection ? 'yes' : 'no', McpServerConnectionHandler.active.size);
+                            
+                            if (connection) {
+                                ClientLogger.info('Calling tool %s via server %d connection', name, server.serverId);
+                                
+                                // 调用工具
+                                const result = await connection.callTool(name, args);
+                                
+                                ClientLogger.info('Tool %s returned result', name);
+                                
+                                // MCP 协议返回格式：{ content: [{ type: 'text', text: ... }] }
+                                if (result?.content && Array.isArray(result.content)) {
+                                    const textContent = result.content.find((c: any) => c.type === 'text');
+                                    if (textContent?.text) {
+                                        try {
+                                            return JSON.parse(textContent.text);
+                                        } catch {
+                                            return textContent.text;
+                                        }
+                                    } else {
+                                        return result;
+                                    }
+                                } else {
+                                    return result;
+                                }
+                            } else {
+                                ClientLogger.warn('Server %d has tool %s but no active connections', server.serverId, name);
+                            }
+                        } else {
+                            ClientLogger.debug('Server %d does not have tool %s', server.serverId, name);
+                        }
+                    }
+                    
+                    ClientLogger.warn('Tool %s not found in any connected MCP server', name);
+                } catch (e) {
+                    ClientLogger.error('Local MCP tool call failed: %s', (e as Error).message);
+                    ClientLogger.error('Stack: %s', (e as Error).stack);
+                }
+            } else {
+                ClientLogger.warn('No domainId provided for tool call: %s', name);
+            }
+
+            // 最后尝试通过 local 事件调用
+            try {
+                const localTools = await ctx.serial('mcp/tools/list/local').catch(() => []);
+                const inLocal = (localTools || []).some((t: McpTool) => t.name === name);
+                if (inLocal) {
+                    return await ctx.serial('mcp/tool/call/local', { name, args });
+                }
+            } catch (e) {
+                ClientLogger.debug('Local tools not available: %s', (e as Error).message);
+            }
+
             throw new Error(`Tool not found: ${name}`);
         } catch (e) {
             ClientLogger.error(`Failed to call tool: ${name}`, e);

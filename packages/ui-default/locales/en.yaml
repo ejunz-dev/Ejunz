@@ -1,5 +1,8 @@
 __id: en
 __langname: English
+'MCP Tools': MCP Tools
+'No tools available': No tools available
+'View Parameters': View Parameters
 Can be Extended For: Extension
 contest_create: Contest Create
 contest_detail_problem_submit: Submit Contest Problem
@@ -53,6 +56,8 @@ manage_user_import: Import Users
 manage_user_priv: User Privilege
 manage: System Manage
 no_translation_warn: <blockquote class="warn">This part of content is under translation.</blockquote>
+Offline: Offline
+Online: Online
 page.problem_detail.sidebar.show_category: Click to Show
 page.training_detail.invalid_when_not_enrolled: You cannot view problem details unless enrolled.
 page.training_detail.see_other_user_detail: You are viewing user {0} training details.
