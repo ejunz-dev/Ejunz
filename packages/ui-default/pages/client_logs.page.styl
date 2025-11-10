@@ -1,0 +1,74 @@
+.page--client_logs
+    .log-container
+        background: #1e1e1e
+        color: #d4d4d4
+        padding: 16px
+        border-radius: 8px
+        font-family: 'Courier New', monospace
+        font-size: 14px
+        line-height: 1.6
+        max-height: 70vh
+        overflow-y: auto
+        overflow-x: auto
+
+    .log-entry
+        display: flex
+        padding: 4px 0
+        border-bottom: 1px solid #2d2d2d
+
+        &:hover
+            background: rgba(255, 255, 255, 0.05)
+
+    .log-time
+        color: #858585
+        margin-right: 12px
+        min-width: 200px
+
+    .log-level
+        margin-right: 12px
+        min-width: 80px
+        font-weight: bold
+        text-transform: uppercase
+
+    .log-info
+        color: #4ec9b0
+
+    .log-error
+        color: #f48771
+
+    .log-warn
+        color: #dcdcaa
+
+    .log-debug
+        color: #9cdcfe
+
+    .log-message
+        flex: 1
+        word-break: break-word
+
+    .section__header
+        display: flex
+        align-items: center
+        justify-content: space-between
+
+    .section__action
+        display: flex
+        gap: 8px
+
+    .button
+        padding: 8px 16px
+        background: #007acc
+        color: white
+        border: none
+        border-radius: 4px
+        cursor: pointer
+        transition: background 0.2s
+        text-decoration: none
+        display: inline-block
+
+        &:hover
+            background: #005999
+
+        &.active
+            background: #00a5d5
+
