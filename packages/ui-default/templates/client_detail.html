@@ -210,6 +210,7 @@
                 {% if handler.user.hasPriv(model.builtin.PRIV.PRIV_USER_PROFILE) %}
                     <a href="{{ url('client_edit', { domainId: domainId, clientId: client.clientId }) }}" class="button block">{{ _('Edit Client') }}</a>
                     <a href="{{ url('client_logs', { domainId: domainId, clientId: client.clientId }) }}" class="button block">{{ _('View Connection Logs') }}</a>
+                    <a href="{{ url('client_chat_list', { domainId: domainId, clientId: client.clientId }) }}" class="button block">{{ _('View Chat History') }}</a>
                     <div class="client-token-section">
                         <h4>{{ _('WebSocket Token Management') }}</h4>
                         {% if client.wsToken %}
