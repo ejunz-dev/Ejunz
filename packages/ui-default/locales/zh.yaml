@@ -14,10 +14,12 @@ __langname: 简体中文
 '↓ Create Time': '↓ 创建时间'
 '↓ Update Time': '↓ 更新时间'
 'A domain ID cannot be changed after creation. It is supposed to be:': '创建后将无法更改 ID。ID 必须满足以下条件：'
+'Add Root Doc': 添加根文档
 'After successful connection, configure ASR, TTS and Agent services': 连接成功后，可以配置 ASR、TTS 和 Agent 服务
 'Agent configuration cleared successfully': Agent 配置已清除
 'Agent configuration saved successfully': Agent 配置已保存
 'Agent Configuration': Agent 配置
+'Ahead of remote by {0} commit(s)': 领先远程 {0} 个提交
 'Are you sure you want to clear the Agent configuration?': 确定要清除 Agent 配置吗？
 'Are you sure you want to delete the Token? Connections using this Token will be disconnected.': 确定要删除 Token 吗？使用此 Token 的连接将断开。
 'Are you sure you want to delete this client?': 确定要删除此客户端吗？
@@ -28,6 +30,8 @@ __langname: 简体中文
 'Back to Details': 返回详情
 'Back to List': 返回列表
 'Base URL': Base URL
+'Behind remote by {0} commit(s)': 落后远程 {0} 个提交
+'Block': 块
 'Clear Agent': 清除 Agent
 'Clear Logs': 清空日志
 'Click the "Create Client" button above to create a new client': 点击上方"创建客户端"按钮来创建新的客户端
@@ -37,59 +41,105 @@ __langname: 简体中文
 'Client Management': 客户端管理
 'Client Name': 客户端名称
 'Clients can connect via the following WebSocket URL (Token must be generated first)': 客户端可以通过以下 WebSocket URL 连接（需要先为客户端生成 Token）
+'Commit Message': 提交消息
+'commits': 提交
 'Configuration': 配置
 'Connect to the WebSocket URL above using the generated Token': 使用生成的 Token 连接到上述 WebSocket URL
 'Connected': 已连接
 'Connection URL': 连接 URL
+'Content Block': 内容块
 'Copied to clipboard': 已复制到剪贴板
 'Copy "{data}" failed :(': '复制“{data}”失败 :('
 'Copy failed :(': '复制失败 :('
 'Create Client': 创建客户端
+'Create remote branch': 创建远程分支
 'Created Clients': 已创建的客户端
 'Created Time': 创建时间
 'Current dataset: {0}': '当前测试数据: {0}'
 'Currently Selected Agent': 当前选择的 Agent
+'Default message': 默认消息
 'Delete Client': 删除客户端
 'Delete Token': 删除 Token
 'Description (Optional)': 描述（可选）
 'Disconnected': 已断开
 'Discussion: Terms Of Service': 讨论区服务条款
+'Doc': 文档
+'Drop here to delete': 拖到这里删除
 'Edit Client': 编辑客户端
 'Enable Server VAD': 启用服务器 VAD
 'Endpoint': Endpoint
+'Enter custom commit message (optional)': 请输入自定义提交消息（可选）
+'Enter new title': 输入新标题
+'Enter title for new': 输入新
 'Error Message': 错误信息
 'Error': 错误
 'Failed to clear Agent configuration: {0}': '清除 Agent 配置失败: {0}'
 'Failed to delete Token: {0}': '删除 Token 失败: {0}'
 'Failed to generate Token: {0}': '生成 Token 失败: {0}'
+'Failed to pull from GitHub': 从 GitHub 拉取失败
+'Failed to push to GitHub': 推送到 GitHub 失败
 'Failed to save Agent configuration: {0}': '保存 Agent 配置失败: {0}'
 'Failed to save ASR configuration: {0}': '保存 ASR 配置失败: {0}'
 'Failed to save TTS configuration: {0}': '保存 TTS 配置失败: {0}'
+'File Mode': 文件模式
+'Final message will be': 最终消息将是
+'Folder description': 文件夹描述
+'Folder/Directory': 文件夹/目录
 'Format: category 1, sub category 1.1, sub category 1.2, ..., sub category 1.x, ..., category n, sub category n.1, sub category n.2, ..., sub category n.m, ...': 格式：分类1, 子分类1.1, 子分类1.2, ..., 子分类1.x, ..., 分类n, 子分类n.1, 子分类n.2, ..., 子分类n.m, ...
 'Free Scroll': 自由滚动
 'Generate Token on client detail page': 在客户端详情页面生成 Token
 'Generate Token': 生成 Token
+'Git Status': Git 状态
 'Join {0}': '加入 {0}'
 'Language Type': 语言类型
+'Last Commit': 最后提交
 'Last Connected Time': 最后连接时间
 'Last Connected': 最后连接
 'Last Disconnected Time': 最后断开时间
+'Local branch not found': 本地分支未找到
+'Local Branch': 本地分支
+'Local Repository': 本地仓库
 'Lock Scroll': 锁定滚动
+'Manuscript Mode': 文稿模式
 'MCP Tools': MCP 工具
 'Model': 模型
+'New Content Block': 新建内容块
+'New Folder': 新建文件夹
+'No changes to save': 没有更改需要保存
 'No clients created yet': 暂无已创建的客户端
+'No commit message': 无提交消息
+'No content': 无内容
+'No local git repository': 无本地 git 仓库
+'No remote repository configured': 未配置远程仓库
 'No tools available': 暂无工具
 'No': 否
 'Operations': 操作
 'Original score: {0}': '原得分: {0}'
 'Provider': 提供商
+'Pulling from GitHub...': 正在从 GitHub 拉取...
+'Pulling...': 拉取中...
+'Push will create a new remote branch': 推送将创建新的远程分支
+'Pushing to GitHub...': 正在推送到 GitHub...
+'Pushing...': 推送中...
+'Remote branch exists. Use Pull to sync with remote changes.': 远程分支存在。使用 Pull 同步远程更改。
+'Remote branch not found': 远程分支未找到
+'Remote Branch Status': 远程分支状态
+'Remote Branch': 远程分支
+'Remote Repository': 远程仓库
 'Role {1} already exists in domain {0}.': '域 {0} 中已存在角色 {1}。'
 'Save Agent Configuration': 保存 Agent 配置
 'Save ASR Configuration': 保存 ASR 配置
+'Save failed': 保存失败
 'Save TTS Configuration': 保存 TTS 配置
 'Save': 保存
+'Saved successfully': 保存成功
+'Saving': 保存中
 'Select Agent': 选择 Agent
+'Successfully pulled from GitHub': 成功从 GitHub 拉取
+'Successfully pushed to GitHub': 成功推送到 GitHub
+'Table of Contents': 目录
 'The value `{1}` of {0} already exists.': '{0} 的值 `{1}` 已经存在。'
+'This branch is behind remote by {0} commit(s). Please use Pull to sync.': 此分支落后远程 {0} 个提交。请使用 Pull 同步。
 'Token deleted successfully': Token 已删除
 'Token generated successfully': Token 已生成
 'Token not generated yet': 尚未生成 Token
@@ -97,7 +147,9 @@ __langname: 简体中文
 'TTS (Text-to-Speech) Configuration': TTS (文本转语音) 配置
 'TTS configuration saved successfully': TTS 配置已保存
 'TTS Configuration': TTS 配置
+'Uncommitted changes': 未提交的更改
 'Unknown error': 未知错误
+'Up to date with remote': 与远程同步
 'Usage Steps': 使用步骤
 'View Connection Logs': 查看连接日志
 'View Parameters': 查看参数
@@ -105,6 +157,7 @@ __langname: 简体中文
 'WebSocket Endpoint': WebSocket 接入点
 'WebSocket Token Management': WebSocket Token 管理
 'Yes': 是
+'your custom message': 您的自定义消息
 (None): (无)
 (Not changed): 未更改
 # Client management translations
@@ -150,6 +203,7 @@ Argument {0} is invalid.: 非法的参数 {0} 。
 Arguments: 参数
 author: 作者
 Avatar: 头像
+base_domain: 知识库
 Be Copied: 被复制
 Begin at: 开始于
 Begin Date: 开始日期
@@ -157,6 +211,9 @@ Begin Time: 开始时间
 Belongs to: 属于
 Bio Visibility: 个人简介可见性
 Bio: 个人简介
+block_create: 创建块
+block_detail: 块详情
+block_edit: 编辑块
 Bold: 加粗
 Boom!: 炸了！
 Browser: 浏览器
@@ -255,6 +312,10 @@ Display name {1} you want to set is used by others.: 您想要设置的显示名
 Display Name: 显示名
 display_name: 显示名
 Do not discuss solutions otherwise you will be regarded as cheating and then lose qualifications.: 请勿讨论解法，否则以作弊论处并且将失去参赛资格。
+doc_create_subdoc: 创建子文档
+doc_create: 创建文档
+doc_detail: 文档详情
+doc_edit: 编辑文档
 docs: 源
 Docs: 源
 Document {2} not found.: 文档 {2} 不存在。
@@ -509,6 +570,11 @@ Replies per page: 每页展示的回复数量
 Reply discussions: 回复讨论
 reply: 回复
 Reply: 回复
+repo_config: 仓库配置
+repo_create: 创建仓库
+repo_detail: 仓库详情
+repo_doc: 仓库文档
+repo_edit: 编辑仓库
 Report: 举报
 required: 必填
 Reset Password or Find Username: 重置密码或找回用户名
