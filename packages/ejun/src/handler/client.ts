@@ -5,7 +5,9 @@ import { Context } from '../context';
 import { ValidationError, PermissionError, NotFoundError } from '../error';
 import { Logger } from '../logger';
 import ClientModel from '../model/client';
+import ClientChatModel, { apply as applyClientChat } from '../model/client_chat';
 import AgentModel, { McpClient } from '../model/agent';
+import { processAgentChatInternal } from './agent';
 import domain from '../model/domain';
 import * as document from '../model/document';
 import { PRIV } from '../model/builtin';
@@ -16,27 +18,143 @@ import Agent from '../model/agent';
 const logger = new Logger('handler/client');
 
 // Get assigned tools (consistent with getAssignedTools in agent.ts)
+// Enhanced to also fetch from real-time MCP connections to ensure all tools are available
+// If mcpToolIds is empty, returns all available tools from database (since tools are synced from MCP servers to DB)
 async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[]): Promise<any[]> {
+    // If no mcpToolIds specified, get all available tools from database
+    // Tools are synced from MCP servers to database, so we can get them from DB
     if (!mcpToolIds || mcpToolIds.length === 0) {
+        logger.info('getAssignedTools: No mcpToolIds specified, fetching all available tools from database');
+        try {
+            // First try to get from database (tools are synced from MCP servers)
+            const { default: McpServerModel, McpToolModel } = await import('../model/mcp');
+            const servers = await McpServerModel.getByDomain(domainId);
+            const allTools: any[] = [];
+            for (const server of servers) {
+                const tools = await McpToolModel.getByServer(domainId, server.serverId);
+                for (const tool of tools) {
+                    allTools.push({
+                        name: tool.name,
+                        description: tool.description,
+                        inputSchema: tool.inputSchema,
+                    });
+                }
+            }
+            logger.info('getAssignedTools: Got all tools from database', { 
+                toolCount: allTools.length, 
+                toolNames: allTools.map(t => t.name),
+                serverCount: servers.length
+            });
+            
+            // Also try to get from real-time connections to merge any new tools
+            try {
+                const mcpClient = new McpClient();
+                const realtimeTools = await mcpClient.getTools();
+                if (realtimeTools.length > 0) {
+                    logger.info('getAssignedTools: Also found realtime tools', { 
+                        realtimeCount: realtimeTools.length 
+                    });
+                    // Merge realtime tools with database tools (realtime takes priority)
+                    const toolMap = new Map<string, any>();
+                    // First add database tools
+                    for (const tool of allTools) {
+                        toolMap.set(tool.name, tool);
+                    }
+                    // Then add/override with realtime tools
+                    for (const tool of realtimeTools) {
+                        toolMap.set(tool.name, {
+                            name: tool.name,
+                            description: tool.description || '',
+                            inputSchema: tool.inputSchema || null,
+                        });
+                    }
+                    return Array.from(toolMap.values());
+                }
+            } catch (realtimeError: any) {
+                logger.debug('Failed to fetch realtime tools (non-critical): %s', realtimeError.message);
+            }
+            
+            return allTools;
+        } catch (dbError: any) {
+            logger.warn('Failed to fetch all tools from database: %s', dbError.message);
+            // Last resort: try realtime connections
+            try {
+                const mcpClient = new McpClient();
+                const realtimeTools = await mcpClient.getTools();
+                logger.info('getAssignedTools: Got tools from realtime (fallback)', { 
+                    toolCount: realtimeTools.length 
+                });
+                return realtimeTools.map(tool => ({
+                    name: tool.name,
+                    description: tool.description || '',
+                    inputSchema: tool.inputSchema || null,
+                }));
+            } catch (realtimeError: any) {
+                logger.warn('Failed to fetch tools from realtime (fallback): %s', realtimeError.message);
         return [];
+            }
+        }
     }
     
-    const assignedTools: any[] = [];
+    // First, get tools from database and build a map by tool name
+    const dbToolsMap = new Map<string, any>();
+    const assignedToolNames = new Set<string>();
+    
     for (const toolId of mcpToolIds) {
         try {
             const tool = await document.get(domainId, document.TYPE_MCP_TOOL, toolId);
             if (tool) {
-                assignedTools.push({
+                dbToolsMap.set(tool.name, {
                     name: tool.name,
                     description: tool.description,
                     inputSchema: tool.inputSchema,
                 });
+                assignedToolNames.add(tool.name);
             }
         } catch (error) {
             logger.warn('Invalid tool ID: %s', toolId.toString());
         }
     }
-    return assignedTools;
+    
+    // Also fetch from real-time MCP connections to get tools that might not be in DB yet
+    // or to get more up-to-date tool definitions
+    try {
+        const mcpClient = new McpClient();
+        const realtimeTools = await mcpClient.getTools();
+        
+        // Merge realtime tools with database tools
+        // Priority: realtime tools (more up-to-date) > database tools
+        const finalTools: any[] = [];
+        const processedNames = new Set<string>();
+        
+        // First, add realtime tools that match assigned tool names
+        for (const realtimeTool of realtimeTools) {
+            if (assignedToolNames.has(realtimeTool.name)) {
+                finalTools.push({
+                    name: realtimeTool.name,
+                    description: realtimeTool.description || '',
+                    inputSchema: realtimeTool.inputSchema || null,
+                });
+                processedNames.add(realtimeTool.name);
+            }
+        }
+        
+        // Then, add database tools that weren't found in realtime (fallback)
+        for (const [toolName, dbTool] of dbToolsMap) {
+            if (!processedNames.has(toolName)) {
+                finalTools.push(dbTool);
+            }
+        }
+        
+        logger.info('getAssignedTools: dbTools=%d, realtimeTools=%d, matchedTools=%d, finalTools=%d', 
+            dbToolsMap.size, realtimeTools.length, processedNames.size, finalTools.length);
+        
+        return finalTools;
+    } catch (error: any) {
+        logger.warn('Failed to fetch realtime tools, using DB tools only: %s', error.message);
+        // Fallback to database tools only
+        return Array.from(dbToolsMap.values());
+    }
 }
 
 const logBuffer: Map<number, Array<{ time: string; level: string; message: string; clientId: number }>> = new Map();
@@ -303,6 +421,208 @@ export class ClientDeleteHandler extends Handler<Context> {
     }
 }
 
+export class ClientChatListHandler extends Handler<Context> {
+    async get() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const { clientId } = this.request.params;
+        const clientIdNum = parseInt(clientId, 10);
+        
+        if (isNaN(clientIdNum) || clientIdNum < 1) {
+            throw new ValidationError('clientId');
+        }
+
+        const client = await ClientModel.getByClientId(this.domain._id, clientIdNum);
+        if (!client) {
+            throw new NotFoundError('Client');
+        }
+
+        if (client.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        }
+
+        const chats = await ClientChatModel.getByClientId(this.domain._id, clientIdNum);
+        
+        this.response.template = 'client_chat_list.html';
+        this.response.body = {
+            client,
+            chats: chats.map(chat => ({
+                conversationId: chat.conversationId,
+                messageCount: chat.messageCount,
+                createdAt: chat.createdAt,
+                updatedAt: chat.updatedAt,
+            })),
+            domainId: this.domain._id,
+            all_chats: chats.map(chat => ({
+                conversationId: chat.conversationId,
+                messageCount: chat.messageCount,
+                createdAt: chat.createdAt,
+                updatedAt: chat.updatedAt,
+            })),
+        };
+    }
+}
+
+export class ClientChatDetailHandler extends Handler<Context> {
+    async get() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const { clientId, conversationId } = this.request.params;
+        const clientIdNum = parseInt(clientId, 10);
+        const conversationIdNum = parseInt(conversationId, 10);
+        
+        if (isNaN(clientIdNum) || clientIdNum < 1) {
+            throw new ValidationError('clientId');
+        }
+        if (isNaN(conversationIdNum) || conversationIdNum < 1) {
+            throw new ValidationError('conversationId');
+        }
+
+        const client = await ClientModel.getByClientId(this.domain._id, clientIdNum);
+        if (!client) {
+            throw new NotFoundError('Client');
+        }
+
+        if (client.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        }
+
+        const chat = await ClientChatModel.getByConversationId(this.domain._id, clientIdNum, conversationIdNum);
+        if (!chat) {
+            throw new NotFoundError('Chat');
+        }
+
+        // Get all chats for sidebar
+        const allChats = await ClientChatModel.getByClientId(this.domain._id, clientIdNum);
+
+        this.response.template = 'client_chat_detail.html';
+        this.response.body = {
+            client,
+            chat,
+            domainId: this.domain._id,
+            all_chats: allChats.map(c => ({
+                conversationId: c.conversationId,
+                messageCount: c.messageCount,
+                createdAt: c.createdAt,
+                updatedAt: c.updatedAt,
+            })),
+        };
+    }
+}
+
+export class ClientChatDeleteHandler extends Handler<Context> {
+    async post() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const { clientId, conversationId } = this.request.body;
+        const clientIdNum = parseInt(clientId, 10);
+        const conversationIdNum = parseInt(conversationId, 10);
+        
+        if (isNaN(clientIdNum) || clientIdNum < 1) {
+            throw new ValidationError('clientId');
+        }
+        if (isNaN(conversationIdNum) || conversationIdNum < 1) {
+            throw new ValidationError('conversationId');
+        }
+
+        const client = await ClientModel.getByClientId(this.domain._id, clientIdNum);
+        if (!client) {
+            throw new NotFoundError('Client');
+        }
+
+        if (client.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        }
+
+        // Get chat to delete audio files
+        const chat = await ClientChatModel.getByConversationId(this.domain._id, clientIdNum, conversationIdNum);
+        if (chat) {
+            // Delete audio files
+            for (const msg of chat.messages) {
+                if (msg.asrAudioPath) {
+                    try {
+                        await this.ctx.storage.del(msg.asrAudioPath);
+                    } catch (error: any) {
+                        logger.warn('Failed to delete ASR audio: %s', error.message);
+                    }
+                }
+                if (msg.ttsAudioPath) {
+                    try {
+                        await this.ctx.storage.del(msg.ttsAudioPath);
+                    } catch (error: any) {
+                        logger.warn('Failed to delete TTS audio: %s', error.message);
+                    }
+                }
+            }
+        }
+
+        await ClientChatModel.delete(this.domain._id, clientIdNum, conversationIdNum);
+        this.response.body = { success: true };
+    }
+}
+
+export class ClientChatAudioDownloadHandler extends Handler<Context> {
+    async get() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const { clientId, conversationId, messageIndex, audioType } = this.request.params;
+        const clientIdNum = parseInt(clientId, 10);
+        const conversationIdNum = parseInt(conversationId, 10);
+        const msgIndex = parseInt(messageIndex, 10);
+        
+        if (isNaN(clientIdNum) || clientIdNum < 1) {
+            throw new ValidationError('clientId');
+        }
+        if (isNaN(conversationIdNum) || conversationIdNum < 1) {
+            throw new ValidationError('conversationId');
+        }
+        if (isNaN(msgIndex) || msgIndex < 0) {
+            throw new ValidationError('messageIndex');
+        }
+        if (audioType !== 'asr' && audioType !== 'tts') {
+            throw new ValidationError('audioType');
+        }
+
+        const client = await ClientModel.getByClientId(this.domain._id, clientIdNum);
+        if (!client) {
+            throw new NotFoundError('Client');
+        }
+
+        if (client.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        }
+
+        const chat = await ClientChatModel.getByConversationId(this.domain._id, clientIdNum, conversationIdNum);
+        if (!chat) {
+            throw new NotFoundError('Chat');
+        }
+
+        if (msgIndex >= chat.messages.length) {
+            throw new NotFoundError('Message');
+        }
+
+        const message = chat.messages[msgIndex];
+        const audioPath = audioType === 'asr' ? message.asrAudioPath : message.ttsAudioPath;
+        
+        if (!audioPath) {
+            throw new NotFoundError('Audio file not found');
+        }
+
+        try {
+            const audioStream = await this.ctx.storage.get(audioPath);
+            if (!audioStream) {
+                throw new NotFoundError('Audio file');
+            }
+
+            // Set response headers
+            this.response.type = 'audio/pcm'; // PCM16 format
+            this.response.disposition = `attachment; filename="${audioType}_${conversationIdNum}_${msgIndex}.pcm"`;
+            
+            // Pipe audio stream to response
+            this.response.body = audioStream;
+        } catch (error: any) {
+            logger.error('Failed to download audio: %s', error.message);
+            throw new NotFoundError('Audio file');
+        }
+    }
+}
+
 export class ClientUpdateSettingsHandler extends Handler<Context> {
     async post() {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
@@ -379,6 +699,11 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
     private ttsPendingText: string = '';
     private pendingCommits: number = 0;
     private client: any = null;
+    private currentAsrAudioBuffers: Buffer[] = [];
+    private currentTtsAudioBuffers: Buffer[] = [];
+    private currentConversationId: number | null = null;
+    // Promise resolver for waiting TTS playback completion before tool calls
+    private ttsPlaybackWaitPromise: { resolve: () => void; reject: (error: Error) => void } | null = null;
     
     static getConnection(clientId: number): ClientConnectionHandler | null {
         return ClientConnectionHandler.active.get(clientId) || null;
@@ -473,6 +798,16 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             if (typeof event === 'string') {
                 try {
                     const payloadArray = Array.isArray(payload) ? payload : (payload !== undefined ? [payload] : []);
+                    
+                    // Handle TTS playback completion event from client
+                    if (event === 'tts/playback_completed') {
+                        logger.info('TTS playback completed: clientId=%d', this.clientId);
+                        if (this.ttsPlaybackWaitPromise) {
+                            this.ttsPlaybackWaitPromise.resolve();
+                            this.ttsPlaybackWaitPromise = null;
+                        }
+                        return;
+                    }
                     
                     if (event === 'client/asr/audio') {
                         logger.debug('Received ASR audio event: clientId=%d, payload length=%d', this.clientId, payloadArray.length);
@@ -913,6 +1248,9 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
 
                 const audioData = Buffer.from(audioBase64, 'base64');
                 
+                // Collect ASR audio for saving to chat history
+                this.currentAsrAudioBuffers.push(audioData);
+                
                 logger.debug('Processing ASR audio: clientId=%d, audioData length=%d bytes', this.clientId, audioData.length);
                 addClientLog(this.clientId, 'debug', `Processing ASR audio data: ${audioData.length} bytes`);
 
@@ -1161,6 +1499,15 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                         
                         if (message.type === 'response.audio.delta') {
                             if (message.delta) {
+                                // Collect TTS audio for saving to chat history
+                                // TTS audio is base64 encoded PCM16 data
+                                try {
+                                    const audioBuffer = Buffer.from(message.delta, 'base64');
+                                    this.currentTtsAudioBuffers.push(audioBuffer);
+                                } catch (e) {
+                                    logger.warn('Failed to decode TTS audio delta: %s', (e as Error).message);
+                                }
+                                
                                 addClientLog(this.clientId, 'debug', `Received TTS audio chunk: ${message.delta.length} chars`);
                                 this.sendEvent('tts/audio', [{ audio: message.delta }]);
                             }
@@ -1309,6 +1656,45 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             return;
         }
 
+        this.currentTtsAudioBuffers = [];
+        const chatMessages: Array<{
+            role: 'user' | 'assistant' | 'tool';
+            content: string;
+            timestamp: Date;
+            toolName?: string;
+            toolCallId?: string;
+            responseTime?: number;
+            asrAudioPath?: string;
+            ttsAudioPath?: string;
+        }> = [];
+
+        // Save ASR audio (user recording) collected before this message
+        let userAsrAudioPath: string | undefined;
+        if (this.currentAsrAudioBuffers.length > 0) {
+            try {
+                const audioBuffer = Buffer.concat(this.currentAsrAudioBuffers);
+                const audioPath = `client/${this.domain._id}/${this.clientId}/asr/${Date.now()}.pcm`;
+                await this.ctx.storage.put(audioPath, audioBuffer, {});
+                userAsrAudioPath = audioPath;
+                logger.info('ASR audio saved: clientId=%d, path=%s, size=%d bytes', this.clientId, audioPath, audioBuffer.length);
+                // Clear ASR buffer after saving
+                this.currentAsrAudioBuffers = [];
+            } catch (error: any) {
+                logger.error('Failed to save ASR audio: %s', error.message);
+            }
+        }
+
+        // Add user message
+        chatMessages.push({
+            role: 'user',
+            content: message,
+            timestamp: new Date(),
+            asrAudioPath: userAsrAudioPath,
+        });
+
+        let assistantContent = '';
+        let currentToolCall: { toolName: string; toolCallId?: string; startTime: number } | null = null;
+
         try {
             logger.info('handleAgentChat: Fetching agent: clientId=%d, agentId=%s', this.clientId, agentConfig.agentId);
             addClientLog(this.clientId, 'info', `Fetching Agent info: agentId=${agentConfig.agentId}`);
@@ -1326,152 +1712,145 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 this.clientId, agentConfig.agentId, agent.docId);
             addClientLog(this.clientId, 'info', `Agent info retrieved: agentId=${agentConfig.agentId}, docId=${agent.docId}`);
             
-            logger.info('handleAgentChat: Fetching domain config: clientId=%d, domainId=%s', this.clientId, this.domain._id);
-            const domainInfo = await domain.get(this.domain._id);
-            if (!domainInfo) {
-                logger.error('handleAgentChat: Domain not found: clientId=%d, domainId=%s', this.clientId, this.domain._id);
-                this.sendEvent('agent/error', [{ message: 'Domain not found' }]);
-                addClientLog(this.clientId, 'error', 'Domain not found');
-                return;
-            }
-
-            const apiKey = (domainInfo as any)['apiKey'] || '';
-            const model = (domainInfo as any)['model'] || 'deepseek-chat';
-            const apiUrl = (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
-
-            logger.info('handleAgentChat: Domain config loaded: clientId=%d, model=%s, apiUrl=%s, apiKey length=%d', 
-                this.clientId, model, apiUrl, apiKey?.length || 0);
-            addClientLog(this.clientId, 'info', `Domain config loaded: model=${model}, apiUrl=${apiUrl}`);
-
-            if (!apiKey) {
-                logger.error('handleAgentChat: API Key not configured: clientId=%d', this.clientId);
-                this.sendEvent('agent/error', [{ message: 'API Key not configured' }]);
-                addClientLog(this.clientId, 'error', 'API Key not configured');
-                return;
-            }
-
-            // Get assigned tools (filtered by mcpToolIds) - consistent with Agent API
-            const tools = await getAssignedTools(this.domain._id, agent.mcpToolIds);
-
-            const agentPrompt = agent.content || '';
-            let systemMessage = agentPrompt;
+            // Use internal Agent API function to process chat
+            logger.info('handleAgentChat: Calling internal Agent API: clientId=%d', this.clientId);
+            addClientLog(this.clientId, 'info', 'Calling internal Agent API');
             
-            // Add work rules memory (as supplement, not overriding role prompt) - consistent with Agent API
-            if (agent.memory) {
-                systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${agent.memory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
-            }
-            
-            // Prohibit using emojis - consistent with Agent API
-            if (systemMessage && !systemMessage.includes('do not use emoji') && !systemMessage.includes('不使用表情')) {
-                systemMessage += '\n\nNote: Do not use any emoji in your responses.';
-            } else if (!systemMessage) {
-                systemMessage = 'Note: Do not use any emoji in your responses.';
-            }
-            
-            // Tool usage rules - consistent with Agent API
-            if (tools.length > 0) {
-                const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
-                  tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
-                  '\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools**: When you need to call a tool, you MUST first stream a message to the user explaining what you are about to do (e.g., "我来搜索一下知识库" / "Let me search the knowledge base", "让我查看一下相关信息" / "Let me check the relevant information"). This gives the user immediate feedback and makes the conversation feel natural and responsive. Only after you have explained what you are doing should you call the tool.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool\'s result.\n5. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool\'s result → explain what you will do next → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
-                systemMessage = systemMessage + toolsInfo;
-            }
+            await processAgentChatInternal(agent, message, history, {
+                onContent: (content: string) => {
+                    assistantContent += content;
+                    this.sendEvent('agent/content', [content]);
+                    this.addTtsText(content).catch((error: any) => {
+                        logger.warn('addTtsText failed: %s', error.message);
+                    });
+                },
+                onToolCall: async (tools: any[]) => {
+                    if (assistantContent.trim()) {
+                        chatMessages.push({
+                            role: 'assistant',
+                            content: assistantContent,
+                            timestamp: new Date(),
+                        });
+                        assistantContent = '';
+                    }
 
-            const requestBody: any = {
-                model,
-                max_tokens: 1024,
-                messages: [
-                    { role: 'system', content: systemMessage },
-                    ...(Array.isArray(history) ? history : []),
-                    { role: 'user', content: message },
-                ],
-                stream: true,
-            };
-
-            if (tools.length > 0) {
-                requestBody.tools = tools.map((tool: any) => ({
-                    type: 'function',
-                    function: {
-                        name: tool.name,
-                        description: tool.description,
-                        parameters: tool.inputSchema,
-                    },
-                }));
-            }
-
-            let accumulatedContent = '';
-            let finishReason = '';
-            let toolCalls: any[] = [];
-            let iterations = 0;
-            const maxIterations = 5;
-            let streamFinished = false;
-            let waitingForToolCall = false;
-
-            logger.info('handleAgentChat: Starting stream processing: clientId=%d, message length=%d', 
-                this.clientId, message.length);
-            addClientLog(this.clientId, 'info', `Starting stream processing for Agent chat: message=${message.substring(0, 50)}...`);
-
-            const processStream = async () => {
-                try {
-                    streamFinished = false;
-                    waitingForToolCall = false;
-                    
-                    logger.info('handleAgentChat: Creating MCP client: clientId=%d', this.clientId);
-                    const mcpClient = new McpClient();
-                    
-                    logger.info('handleAgentChat: Sending request to AI API: clientId=%d, apiUrl=%s', this.clientId, apiUrl);
-                    addClientLog(this.clientId, 'info', `Sending request to AI API: ${apiUrl}`);
-                    
-                    await new Promise<void>((resolve, reject) => {
-                        logger.info('handleAgentChat: Creating request: clientId=%d', this.clientId);
-                        addClientLog(this.clientId, 'info', `Creating AI API request: ${apiUrl}`);
+                    // Wait for TTS playback to complete before tool call to create natural pause
+                    if (this.client?.settings?.tts && this.pendingCommits > 0) {
+                        logger.info('Waiting for TTS playback before tool call: clientId=%d, pendingCommits=%d', this.clientId, this.pendingCommits);
                         
-                        const req = request.post(apiUrl)
-                            .send(requestBody)
-                            .set('Authorization', `Bearer ${apiKey}`)
-                            .set('content-type', 'application/json')
-                            .buffer(false)
-                            .timeout(60000)
-                            .parse((res, callback) => {
-                                logger.info('handleAgentChat: Response received: clientId=%d, status=%d', this.clientId, res.statusCode);
-                                addClientLog(this.clientId, 'info', `Received AI API response: status=${res.statusCode}`);
-                                
-                                if (res.statusCode !== 200) {
-                                    logger.error('handleAgentChat: API error: clientId=%d, status=%d', this.clientId, res.statusCode);
-                                    addClientLog(this.clientId, 'error', `AI API error: status=${res.statusCode}`);
-                                    reject(new Error(`API error: ${res.statusCode}`));
-                                    return;
+                        // Step 1: Wait for TTS audio generation to complete
+                        await new Promise<void>((resolve) => {
+                            const checkInterval = setInterval(() => {
+                                if (this.pendingCommits === 0) {
+                                    clearInterval(checkInterval);
+                                    resolve();
                                 }
-                                
-                                res.setEncoding('utf8');
-                                let buffer = '';
-                                
-                                res.on('data', (chunk: string) => {
-                                    logger.debug('handleAgentChat: Received data chunk: clientId=%d, length=%d', this.clientId, chunk.length);
-                                    if (streamFinished) return;
-                                    
-                                    buffer += chunk;
-                                    const lines = buffer.split('\n');
-                                    buffer = lines.pop() || '';
-                                    
-                                    for (const line of lines) {
-                                        if (!line.trim() || !line.startsWith('data: ')) continue;
-                                        const data = line.slice(6).trim();
-                                        if (data === '[DONE]') {
-                                            if (waitingForToolCall) {
-                                                callback(null, undefined);
-                                                return;
-                                            }
-                                            streamFinished = true;
+                            }, 100);
+                            
+                            setTimeout(() => {
+                                clearInterval(checkInterval);
+                                logger.warn('TTS generation timeout, continuing: clientId=%d', this.clientId);
+                                resolve();
+                            }, 10000);
+                        });
+                        
+                        // Step 2: Wait for client-side audio playback to complete
+                        logger.info('Waiting for client-side TTS playback: clientId=%d', this.clientId);
+                        this.sendEvent('agent/wait_tts_playback', []);
+                        
+                        await new Promise<void>((resolve) => {
+                            this.ttsPlaybackWaitPromise = { resolve, reject: () => {} };
+                            
+                            setTimeout(() => {
+                                if (this.ttsPlaybackWaitPromise) {
+                                    logger.warn('TTS playback wait timeout, continuing: clientId=%d', this.clientId);
+                                    this.ttsPlaybackWaitPromise = null;
+                                    resolve();
+                                }
+                            }, 30000);
+                        });
+                        
+                        logger.info('TTS playback completed, proceeding with tool call: clientId=%d', this.clientId);
+                    }
+
+                    const toolName = tools[0] || 'unknown';
+                    currentToolCall = {
+                        toolName,
+                        toolCallId: `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                        startTime: Date.now(),
+                    };
+                    this.sendEvent('agent/tool_call', [{ tools }]);
+                },
+                onToolResult: (tool: string, result: any) => {
+                    const responseTime = currentToolCall ? Date.now() - currentToolCall.startTime : undefined;
+                    const toolCallId = currentToolCall?.toolCallId;
+
+                    chatMessages.push({
+                        role: 'tool',
+                        content: JSON.stringify(result),
+                        timestamp: new Date(),
+                        toolName: tool,
+                        toolCallId,
+                        responseTime,
+                    });
+
+                    currentToolCall = null;
+                    this.sendEvent('agent/tool_result', [{ tool, result }]);
+                },
+                onDone: async (finalMessage: string, finalHistory: string) => {
+                    // Save TTS audio (AI response audio) to storage
+                    let assistantTtsAudioPath: string | undefined;
+                    if (this.currentTtsAudioBuffers.length > 0) {
+                        try {
+                            const audioBuffer = Buffer.concat(this.currentTtsAudioBuffers);
+                            const audioPath = `client/${this.domain._id}/${this.clientId}/tts/${Date.now()}.pcm`;
+                            await this.ctx.storage.put(audioPath, audioBuffer, {});
+                            assistantTtsAudioPath = audioPath;
+                            logger.info('TTS audio saved: clientId=%d, path=%s, size=%d bytes', this.clientId, audioPath, audioBuffer.length);
+                        } catch (error: any) {
+                            logger.error('Failed to save TTS audio: %s', error.message);
+                        }
+                    }
+
+                    if (assistantContent.trim()) {
+                        chatMessages.push({
+                            role: 'assistant',
+                            content: assistantContent,
+                            timestamp: new Date(),
+                            ttsAudioPath: assistantTtsAudioPath,
+                        });
+                    } else if (assistantTtsAudioPath) {
+                        chatMessages.push({
+                            role: 'assistant',
+                            content: '',
+                            timestamp: new Date(),
+                            ttsAudioPath: assistantTtsAudioPath,
+                        });
+                    }
+
                                             this.sendEvent('agent/done', [{
-                                                message: accumulatedContent,
-                                                history: JSON.stringify([
-                                                    ...history,
-                                                    { role: 'user', content: message },
-                                                    { role: 'assistant', content: accumulatedContent },
-                                                ])
-                                            }]);
-                                            addClientLog(this.clientId, 'info', `Agent chat completed: ${accumulatedContent.substring(0, 50)}...`);
-                                            
+                        message: finalMessage,
+                        history: finalHistory,
+                    }]);
+                    addClientLog(this.clientId, 'info', `Agent chat completed: ${finalMessage.substring(0, 50)}...`);
+                    
+                    try {
+                        if (chatMessages.length > 0) {
+                            await ClientChatModel.add(
+                                this.domain._id,
+                                this.clientId!,
+                                this.client!.owner,
+                                chatMessages,
+                            );
+                            logger.info('Chat history saved: clientId=%d, messageCount=%d', this.clientId, chatMessages.length);
+                            this.currentAsrAudioBuffers = [];
+                            this.currentTtsAudioBuffers = [];
+                        }
+                    } catch (error: any) {
+                        logger.error('Failed to save chat history: %s', error.message);
+                    }
+                    
+                    // Handle TTS
                                             (async () => {
                                                 try {
                                                     const latestClient = await ClientModel.getByClientId(this.domain._id, this.clientId!);
@@ -1483,193 +1862,25 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                                                 }
                                                 
                                                 const ttsConfig = this.client?.settings?.tts;
-                                                addClientLog(this.clientId, 'debug', `Checking TTS config: ttsConfig=${ttsConfig ? 'configured' : 'not configured'}, content=${accumulatedContent ? 'has content' : 'no content'}`);
-                                                
                                                 if (this.ttsTextBuffer && this.ttsTextBuffer.trim()) {
                                                     addClientLog(this.clientId, 'info', `Agent reply completed, processing remaining TTS text: ${this.ttsTextBuffer.substring(0, 50)}...`);
                                                     await this.flushTtsSentence(this.ttsTextBuffer);
                                                     this.ttsTextBuffer = '';
                                                 }
                                                 
-                                                if (accumulatedContent && ttsConfig) {
+                        if (finalMessage && ttsConfig) {
                                                     addClientLog(this.clientId, 'info', 'Agent reply completed, TTS processing completed');
-                                                } else {
-                                                    if (!accumulatedContent) {
-                                                        addClientLog(this.clientId, 'warn', 'Agent reply completed but content is empty, skipping TTS trigger');
-                                                    } else if (!ttsConfig) {
-                                                        addClientLog(this.clientId, 'warn', 'Agent reply completed but TTS not configured, skipping TTS trigger');
-                                                    }
                                                 }
                                             })().catch((error: any) => {
                                                 logger.error('Failed to process Agent completion for TTS: %s', error.message);
-                                                addClientLog(this.clientId, 'error', `Failed to process Agent completion: ${error.message}`);
-                                            });
-                                            
-                                            resolve();
-                                            return;
-                                        }
-                                        
-                                        try {
-                                            const parsed = JSON.parse(data);
-                                            logger.debug('handleAgentChat: Parsed message: clientId=%d, parsed=%o', 
-                                                this.clientId, parsed);
-                                            const delta = parsed.choices?.[0]?.delta;
-                                            
-                                            if (delta?.content) {
-                                                accumulatedContent += delta.content;
-                                                logger.info('handleAgentChat: Sending content chunk: clientId=%d, length=%d, content=%s', 
-                                                    this.clientId, delta.content.length, delta.content.substring(0, 50));
-                                                addClientLog(this.clientId, 'info', `Sending Agent content chunk: ${delta.content.substring(0, 30)}...`);
-                                                this.sendEvent('agent/content', [delta.content]);
-                                                
-                                                this.addTtsText(delta.content).catch((error: any) => {
-                                                    logger.warn('addTtsText failed: %s', error.message);
-                                                    addClientLog(this.clientId, 'warn', `TTS text processing failed: ${error.message}`);
-                                                });
-                                            } else {
-                                                logger.debug('handleAgentChat: No content in delta: clientId=%d, delta=%o', 
-                                                    this.clientId, delta);
-                                            }
-                                            
-                                            if (delta?.tool_calls) {
-                                                waitingForToolCall = true;
-                                                for (const toolCall of delta.tool_calls) {
-                                                    const index = toolCall.index || 0;
-                                                    if (!toolCalls[index]) {
-                                                        toolCalls[index] = {
-                                                            id: toolCall.id,
-                                                            type: 'function',
-                                                            function: { name: '', arguments: '' },
-                                                        };
-                                                    }
-                                                    if (toolCall.function?.name) {
-                                                        toolCalls[index].function.name += toolCall.function.name;
-                                                    }
-                                                    if (toolCall.function?.arguments) {
-                                                        toolCalls[index].function.arguments += toolCall.function.arguments;
-                                                    }
-                                                }
-                                            }
-                                            
-                                            if (parsed.choices?.[0]?.finish_reason) {
-                                                finishReason = parsed.choices[0].finish_reason;
-                                                
-                                                if (finishReason === 'tool_calls' && toolCalls.length > 0) {
-                                                    this.sendEvent('agent/tool_call', [{ tools: toolCalls }]);
-                                                    
-                                                    // Execute tool calls
-                                                    const executeToolCalls = async () => {
-                                                        for (const toolCall of toolCalls) {
-                                                            try {
-                                                                const toolName = toolCall.function.name;
-                                                                const toolArgs = JSON.parse(toolCall.function.arguments || '{}');
-                                                                
-                                                                const tool = tools.find((t: any) => t.name === toolName);
-                                                                if (!tool) {
-                                                                    this.sendEvent('agent/tool_result', [{
-                                                                        tool: toolName,
-                                                                        result: { error: `Tool ${toolName} not found` }
-                                                                    }]);
-                                                                    continue;
-                                                                }
-                                                                
-                                                                addClientLog(this.clientId, 'info', `Calling tool: ${toolName}`);
-                                                                const result = await mcpClient.callTool(toolName, toolArgs, this.domain._id);
-                                                                this.sendEvent('agent/tool_result', [{
-                                                                    tool: toolName,
-                                                                    result 
-                                                                }]);
-                                                                
-                                                                // Continue streaming
-                                                                iterations++;
-                                                                if (iterations < maxIterations) {
-                                                                    // Add tool call result to message history
-                                                                    const toolMessages = [
-                                                                        ...history,
-                                                                        { role: 'user', content: message },
-                                                                        { role: 'assistant', content: accumulatedContent, tool_calls: toolCalls },
-                                                                        { role: 'tool', content: JSON.stringify(result), tool_call_id: toolCall.id },
-                                                                    ];
-                                                                    
-                                                                    requestBody.messages = [
-                                                                        { role: 'system', content: systemMessage },
-                                                                        ...toolMessages,
-                                                                    ];
-                                                                    
-                                                                    accumulatedContent = '';
-                                                                    toolCalls = [];
-                                                                    waitingForToolCall = false;
-                                                                    
-                                                                    await processStream();
-                                                                    return;
-                                                                }
-                                                            } catch (error: any) {
-                                                                addClientLog(this.clientId, 'error', `Tool call error: ${error.message}`);
-                                                                this.sendEvent('agent/tool_result', [{
-                                                                    tool: toolCall.function.name,
-                                                                    result: { error: error.message }
-                                                                }]);
-                                                            }
-                                                        }
-                                                    };
-                                                    
-                                                    executeToolCalls().catch((err: any) => {
-                                                        logger.error('Tool execution error: %s', err.message);
-                                                        addClientLog(this.clientId, 'error', `Tool execution error: ${err.message}`);
-                                                    });
-                                                } else {
-                                                    resolve();
-                                                }
-                                            }
-                                        } catch (e) {
-                                            // ignore parse errors
-                                        }
-                                    }
-                                });
-                                
-                                res.on('end', async () => {
-                                    logger.info('handleAgentChat: Response ended: clientId=%d, streamFinished=%s', this.clientId, streamFinished);
-                                    if (!streamFinished) {
-                                        if (waitingForToolCall && finishReason === 'tool_calls' && toolCalls.length > 0) {
-                                            logger.info('handleAgentChat: Waiting for tool call: clientId=%d', this.clientId);
-                                            return;
-                                        }
-                                        logger.info('handleAgentChat: Resolving (end): clientId=%d', this.clientId);
-                                        resolve();
-                                    }
-                                });
-                                
-                                res.on('error', (err: Error) => {
-                                    logger.error('handleAgentChat: Response error: clientId=%d, error=%s', this.clientId, err.message);
-                                    addClientLog(this.clientId, 'error', `AI API response error: ${err.message}`);
-                                    reject(err);
-                                });
-                            });
-                            
-                            req.on('error', (error: Error) => {
-                                logger.error('handleAgentChat: Request error: clientId=%d, error=%s', this.clientId, error.message);
-                                addClientLog(this.clientId, 'error', `AI API request error: ${error.message}`);
-                                reject(error);
-                            });
-                            
-                            req.end((err: any, res: any) => {
-                                if (err) {
-                                    logger.error('handleAgentChat: Request end error: clientId=%d, error=%s', this.clientId, err.message);
-                                    addClientLog(this.clientId, 'error', `AI API request end error: ${err.message}`);
-                                    reject(err);
-                                } else {
-                                    logger.info('handleAgentChat: Request end callback: clientId=%d, status=%d', this.clientId, res?.statusCode);
-                                }
-                            });
-                        });
-                } catch (error: any) {
-                    logger.error('Agent stream error: %s', error.message);
-                    addClientLog(this.clientId, 'error', `Agent stream processing error: ${error.message}`);
-                    this.sendEvent('agent/error', [{ message: error.message }]);
-                }
-            };
-
-            await processStream();
+                    });
+                },
+                onError: (error: string) => {
+                    logger.error('handleAgentChat: Internal API error: clientId=%d, error=%s', this.clientId, error);
+                    addClientLog(this.clientId, 'error', `Agent chat error: ${error}`);
+                    this.sendEvent('agent/error', [{ message: error }]);
+                },
+            });
         } catch (error: any) {
             logger.error('Failed to process agent chat: %s', error.message);
             addClientLog(this.clientId, 'error', `Agent chat error: ${error.message}`);
@@ -1951,12 +2162,19 @@ export class ClientLogsConnectionHandler extends ConnectionHandler<Context> {
 }
 
 export async function apply(ctx: Context) {
+    // Apply client_chat model
+    await applyClientChat(ctx);
+
     ctx.Route('client_domain', '/client', ClientDomainHandler);
     ctx.Route('client_create', '/client/create', ClientEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_edit', '/client/:clientId/edit', ClientEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_delete', '/client/delete', ClientDeleteHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_detail', '/client/:clientId', ClientDetailHandler);
     ctx.Route('client_generate_token', '/client/:clientId/generate-token', ClientGenerateTokenHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('client_chat_list', '/client/:clientId/chats', ClientChatListHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('client_chat_detail', '/client/:clientId/chat/:conversationId', ClientChatDetailHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('client_chat_delete', '/client/chat/delete', ClientChatDeleteHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('client_chat_audio_download', '/client/:clientId/chat/:conversationId/audio/:messageIndex/:audioType', ClientChatAudioDownloadHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_delete_token', '/client/:clientId/delete-token', ClientDeleteTokenHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_update_settings', '/client/:clientId/update-settings', ClientUpdateSettingsHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_logs', '/client/:clientId/logs', ClientLogsHandler);

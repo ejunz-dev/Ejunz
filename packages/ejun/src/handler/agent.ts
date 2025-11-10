@@ -468,28 +468,527 @@ export class AgentMainHandler extends Handler {
 
 
 
+// Internal interface: Core logic for Agent Chat processing
+// Used by Agent API and client connections
+export interface AgentChatEventCallbacks {
+    onContent?: (content: string) => void;
+    onToolCall?: (tools: any[]) => void | Promise<void>;
+    onToolResult?: (tool: string, result: any) => void;
+    onDone?: (message: string, history: string) => void;
+    onError?: (error: string) => void;
+}
+
+export async function processAgentChatInternal(
+    adoc: AgentDoc,
+    message: string,
+    history: ChatMessage[] | string,
+    callbacks: AgentChatEventCallbacks,
+): Promise<void> {
+    try {
+        const domainInfo = await domain.get(adoc.domainId);
+        if (!domainInfo) {
+            callbacks.onError?.('Domain not found');
+            return;
+        }
+
+        const aiApiKey = (domainInfo as any)['apiKey'] || '';
+        const model = (domainInfo as any)['model'] || 'deepseek-chat';
+        const apiUrl = (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
+
+        if (!aiApiKey) {
+            callbacks.onError?.('AI API Key not configured');
+            return;
+        }
+
+        let chatHistory: ChatMessage[] = [];
+        if (typeof history === 'string') {
+            try {
+                chatHistory = JSON.parse(history);
+            } catch (e) {
+                // ignore parse error
+            }
+        } else {
+            chatHistory = history;
+        }
+
+        // 获取已分配的工具（根据 mcpToolIds 过滤）
+        AgentLogger.info('processAgentChatInternal: Getting assigned tools', { 
+            domainId: adoc.domainId, 
+            mcpToolIds: adoc.mcpToolIds?.length || 0,
+            mcpToolIdsArray: adoc.mcpToolIds?.map(id => id.toString()) || []
+        });
+        const tools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds);
+        AgentLogger.info('processAgentChatInternal: Got tools', { 
+            toolCount: tools.length, 
+            toolNames: tools.map(t => t.name),
+            tools: tools.map(t => ({ name: t.name, hasSchema: !!t.inputSchema }))
+        });
+        
+        if (tools.length === 0) {
+            AgentLogger.warn('processAgentChatInternal: No tools found!', {
+                domainId: adoc.domainId,
+                mcpToolIds: adoc.mcpToolIds?.length || 0,
+                agentId: adoc.aid
+            });
+        }
+        
+        const mcpClient = new McpClient();
+
+        const agentPrompt = adoc.content || '';
+        let systemMessage = agentPrompt;
+
+        // 添加工作规则记忆（作为补充，不覆盖角色提示词）
+        if (adoc.memory) {
+            systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${adoc.memory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
+        }
+
+        // Prohibit using emojis
+        if (systemMessage && !systemMessage.includes('do not use emoji') && !systemMessage.includes('不使用表情')) {
+            systemMessage += '\n\nNote: Do not use any emoji in your responses.';
+        } else if (!systemMessage) {
+            systemMessage = 'Note: Do not use any emoji in your responses.';
+        }
+
+        if (tools.length > 0) {
+            const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
+              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
+              '\n\n【CRITICAL - YOU MUST READ THIS FIRST】\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "查找一下开关"\n2. You MUST first output: "我来帮你查找一下开关设备..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n【TOOL USAGE STRATEGY - CRITICAL】\n1. **Proactive Multi-Tool Problem Solving**: When a user\'s question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "明天有课吗?" → You should: (1) FIRST say "我来查看一下明天的课程安排..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there\'s schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "查看repo里的文件" → You should: (1) FIRST say "我来搜索一下知识库中的文件..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   - Chinese: "我来搜索一下知识库..." / "让我查找一下开关设备..." / "我来查看一下相关信息..."\n   - English: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool\'s result.\n5. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool\'s result → explain what you will do next → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
+            systemMessage = systemMessage + toolsInfo;
+        }
+
+        const requestBody: any = {
+            model,
+            max_tokens: 1024,
+            messages: [
+                { role: 'system', content: systemMessage },
+                ...chatHistory,
+                { role: 'user', content: message },
+            ],
+            stream: true,
+        };
+
+        if (tools.length > 0) {
+            requestBody.tools = tools.map(tool => ({
+                type: 'function',
+                function: {
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: tool.inputSchema,
+                },
+            }));
+            AgentLogger.info('processAgentChatInternal: Added tools to request', { toolCount: requestBody.tools.length });
+        } else {
+            AgentLogger.warn('processAgentChatInternal: No tools available', { domainId: adoc.domainId, mcpToolIds: adoc.mcpToolIds?.length || 0 });
+        }
+
+        let messagesForTurn: any[] = [
+            { role: 'system', content: systemMessage },
+            ...chatHistory,
+            { role: 'user', content: message },
+        ];
+
+        let accumulatedContent = '';
+        let finishReason = '';
+        let toolCalls: any[] = [];
+        let iterations = 0;
+        const maxIterations = 5;
+        let streamFinished = false;
+        let waitingForToolCall = false;
+
+        const processStream = async () => {
+            try {
+                AgentLogger.info('Starting stream request (internal)', { 
+                    apiUrl, 
+                    model, 
+                    toolCount: tools.length,
+                    hasTools: tools.length > 0,
+                    requestBodyHasTools: !!requestBody.tools
+                });
+                streamFinished = false;
+                waitingForToolCall = false;
+
+                await new Promise<void>((resolve, reject) => {
+                    const req = request.post(apiUrl)
+                        .send(requestBody)
+                        .set('Authorization', `Bearer ${aiApiKey}`)
+                        .set('content-type', 'application/json')
+                        .buffer(false)
+                        .timeout(60000)
+                        .parse((res, callback) => {
+                            res.setEncoding('utf8');
+                            let buffer = '';
+
+                            res.on('data', (chunk: string) => {
+                                if (streamFinished) return;
+
+                                buffer += chunk;
+                                const lines = buffer.split('\n');
+                                buffer = lines.pop() || '';
+
+                                for (const line of lines) {
+                                    if (!line.trim() || !line.startsWith('data: ')) continue;
+                                    const data = line.slice(6).trim();
+                                    if (data === '[DONE]') {
+                                        if (waitingForToolCall) {
+                                            callback(null, undefined);
+                                            return;
+                                        }
+                                        streamFinished = true;
+                                        const finalHistory = JSON.stringify([
+                                            ...chatHistory,
+                                            { role: 'user', content: message },
+                                            { role: 'assistant', content: accumulatedContent },
+                                        ]);
+                                        callbacks.onDone?.(accumulatedContent, finalHistory);
+                                        
+                                        // 异步更新记忆，不阻塞响应
+                                        if (adoc && accumulatedContent) {
+                                            updateAgentMemory(
+                                                adoc.domainId,
+                                                adoc,
+                                                chatHistory,
+                                                message,
+                                                accumulatedContent,
+                                            ).catch(err => AgentLogger.error('Failed to update memory in background', err));
+                                        }
+                                        resolve();
+                                        return;
+                                    }
+                                    if (!data) continue;
+
+                                    try {
+                                        const parsed = JSON.parse(data);
+                                        const choice = parsed.choices?.[0];
+                                        const delta = choice?.delta;
+
+                                        if (delta?.content) {
+                                            accumulatedContent += delta.content;
+                                            callbacks.onContent?.(delta.content);
+                                        }
+
+                                        if (choice?.finish_reason) {
+                                            finishReason = choice.finish_reason;
+                                            AgentLogger.info('processAgentChatInternal: finish_reason detected', { finishReason });
+                                            if (finishReason === 'tool_calls') {
+                                                waitingForToolCall = true;
+                                                AgentLogger.info('processAgentChatInternal: Waiting for tool call');
+                                            }
+                                        }
+
+                                        if (delta?.tool_calls) {
+                                            AgentLogger.info('processAgentChatInternal: tool_calls delta detected', { toolCallsCount: delta.tool_calls?.length || 0 });
+                                            for (const toolCall of delta.tool_calls || []) {
+                                                const idx = toolCall.index || 0;
+                                                if (!toolCalls[idx]) toolCalls[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+                                                if (toolCall.id) toolCalls[idx].id = toolCall.id;
+                                                if (toolCall.function?.name) toolCalls[idx].function.name = toolCall.function.name;
+                                                if (toolCall.function?.arguments) toolCalls[idx].function.arguments += toolCall.function.arguments;
+                                                AgentLogger.debug('processAgentChatInternal: Processing tool call', { index: idx, name: toolCall.function?.name });
+                                            }
+                                        }
+                                    } catch (e) {
+                                        AgentLogger.warn('Parse error in stream (internal):', e);
+                                    }
+                                }
+                            });
+
+                            res.on('end', async () => {
+                                AgentLogger.info('Stream ended (internal)', { finishReason, iterations, accumulatedLength: accumulatedContent.length, streamFinished, waitingForToolCall });
+                                callback(null, undefined);
+
+                                AgentLogger.info('processAgentChatInternal: Stream end handler', { streamFinished, waitingForToolCall, finishReason, toolCallsLength: toolCalls.length, iterations });
+                                if (!streamFinished || waitingForToolCall) {
+                                    (async () => {
+                                        try {
+                                            AgentLogger.info('processAgentChatInternal: Checking tool calls', { finishReason, toolCallsLength: toolCalls.length, iterations, maxIterations });
+                                            if (finishReason === 'tool_calls' && toolCalls.length > 0 && iterations < maxIterations) {
+                                                if (streamFinished) {
+                                                    streamFinished = false;
+                                                }
+
+                                                iterations++;
+                                                AgentLogger.info('Processing tool calls (internal)', { toolCallCount: toolCalls.length });
+
+                                                const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
+                                                    id: tc.id || `call_${idx}`,
+                                                    type: tc.type || 'function',
+                                                    function: {
+                                                        name: tc.function.name,
+                                                        arguments: tc.function.arguments,
+                                                    },
+                                                })) };
+
+                                                // 一个工具一个回复模式：每次只调用第一个工具，然后立即让AI回复
+                                                const firstToolCall = assistantForTools.tool_calls[0];
+
+                                                if (!firstToolCall) {
+                                                    AgentLogger.warn('No tool call found in assistant message (internal)');
+                                                    return;
+                                                }
+
+                                                const firstToolName = firstToolCall.function.name;
+                                                const toolCallResult = callbacks.onToolCall?.([firstToolName]);
+                                                // Support async onToolCall (e.g., waiting for TTS playback)
+                                                if (toolCallResult instanceof Promise) {
+                                                    await toolCallResult;
+                                                }
+
+                                                let parsedArgs: any = {};
+                                                try {
+                                                    parsedArgs = JSON.parse(firstToolCall.function.arguments);
+                                                } catch (e) {
+                                                    parsedArgs = {};
+                                                }
+
+                                                AgentLogger.info(`Calling first tool: ${firstToolName} (internal - One-by-One Mode)`, parsedArgs);
+
+                                                let toolResult: any;
+                                                try {
+                                                    toolResult = await mcpClient.callTool(firstToolName, parsedArgs, adoc.domainId);
+                                                    AgentLogger.info(`Tool ${firstToolName} returned (internal)`, { resultLength: JSON.stringify(toolResult).length });
+                                                } catch (toolError: any) {
+                                                    AgentLogger.error(`Tool ${firstToolName} failed (internal):`, toolError);
+                                                    toolResult = {
+                                                        error: true,
+                                                        message: toolError.message || String(toolError),
+                                                        code: toolError.code || 'UNKNOWN_ERROR',
+                                                    };
+                                                }
+
+                                                callbacks.onToolResult?.(firstToolName, toolResult);
+
+                                                const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
+
+                                                // 构建消息历史（只包含第一个工具调用和结果）
+                                                messagesForTurn = [
+                                                    ...messagesForTurn,
+                                                    {
+                                                        role: 'assistant',
+                                                        content: accumulatedContent,
+                                                        tool_calls: [firstToolCall] // 只包含已调用的工具
+                                                    },
+                                                    toolMsg,
+                                                ];
+                                                accumulatedContent = '';
+                                                finishReason = '';
+                                                toolCalls = [];
+                                                waitingForToolCall = false;
+                                                requestBody.messages = messagesForTurn;
+                                                requestBody.stream = true;
+                                                AgentLogger.info('Continuing stream after first tool call (internal)', {
+                                                    toolName: firstToolName,
+                                                    remainingTools: assistantForTools.tool_calls.length - 1
+                                                });
+                                                await processStream();
+                                            } else if (!streamFinished) {
+                                                streamFinished = true;
+                                                const finalHistory = JSON.stringify([
+                                                    ...chatHistory,
+                                                    { role: 'user', content: message },
+                                                    { role: 'assistant', content: accumulatedContent },
+                                                ]);
+                                                callbacks.onDone?.(accumulatedContent, finalHistory);
+                                                
+                                                // 异步更新记忆，不阻塞响应
+                                                if (adoc && accumulatedContent) {
+                                                    updateAgentMemory(
+                                                        adoc.domainId,
+                                                        adoc,
+                                                        chatHistory,
+                                                        message,
+                                                        accumulatedContent,
+                                                    ).catch(err => AgentLogger.error('Failed to update memory in background', err));
+                                                }
+                                            }
+                                            resolve();
+                                        } catch (err: any) {
+                                            AgentLogger.error('Error in stream end handler (internal):', err);
+                                            streamFinished = true;
+                                            waitingForToolCall = false;
+                                            callbacks.onError?.(err.message || String(err));
+                                            resolve();
+                                        }
+                                    })();
+                                } else {
+                                    resolve();
+                                }
+                            });
+
+                            res.on('error', (err: any) => {
+                                AgentLogger.error('Stream response error (internal):', err);
+                                callback(err, undefined);
+                                reject(err);
+                            });
+                        });
+
+                    req.on('error', (err: any) => {
+                        AgentLogger.error('Stream request error (internal):', err);
+                        callbacks.onError?.(err.message || String(err));
+                        reject(err);
+                    });
+
+                    req.end();
+                });
+            } catch (error: any) {
+                AgentLogger.error('Stream setup error (internal):', error);
+                callbacks.onError?.(error.message || String(error));
+            }
+        };
+
+        await processStream();
+    } catch (error: any) {
+        AgentLogger.error('AI Chat Error (internal):', {
+            message: error.message,
+            response: error.response?.body,
+            stack: error.stack,
+        });
+        callbacks.onError?.(error.message || String(error));
+    }
+}
+
 // 辅助函数：根据 mcpToolIds 获取已分配的工具
+// Enhanced to also fetch from real-time MCP connections to ensure all tools are available
+// If mcpToolIds is empty, returns all available tools from database (since tools are synced from MCP servers to DB)
 async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[]): Promise<any[]> {
+    // If no mcpToolIds specified, get all available tools from database
+    // Tools are synced from MCP servers to database, so we can get them from DB
     if (!mcpToolIds || mcpToolIds.length === 0) {
-        return [];
+        AgentLogger.info('getAssignedTools: No mcpToolIds specified, fetching all available tools from database');
+        try {
+            // First try to get from database (tools are synced from MCP servers)
+            const servers = await McpServerModel.getByDomain(domainId);
+            const allTools: any[] = [];
+            for (const server of servers) {
+                const tools = await McpToolModel.getByServer(domainId, server.serverId);
+                for (const tool of tools) {
+                    allTools.push({
+                        name: tool.name,
+                        description: tool.description,
+                        inputSchema: tool.inputSchema,
+                    });
+                }
+            }
+            AgentLogger.info('getAssignedTools: Got all tools from database', { 
+                toolCount: allTools.length, 
+                toolNames: allTools.map(t => t.name),
+                serverCount: servers.length
+            });
+            
+            // Also try to get from real-time connections to merge any new tools
+            try {
+                const mcpClient = new McpClient();
+                const realtimeTools = await mcpClient.getTools();
+                if (realtimeTools.length > 0) {
+                    AgentLogger.info('getAssignedTools: Also found realtime tools', { 
+                        realtimeCount: realtimeTools.length 
+                    });
+                    // Merge realtime tools with database tools (realtime takes priority)
+                    const toolMap = new Map<string, any>();
+                    // First add database tools
+                    for (const tool of allTools) {
+                        toolMap.set(tool.name, tool);
+                    }
+                    // Then add/override with realtime tools
+                    for (const tool of realtimeTools) {
+                        toolMap.set(tool.name, {
+                            name: tool.name,
+                            description: tool.description || '',
+                            inputSchema: tool.inputSchema || null,
+                        });
+                    }
+                    return Array.from(toolMap.values());
+                }
+            } catch (realtimeError: any) {
+                AgentLogger.debug('Failed to fetch realtime tools (non-critical): %s', realtimeError.message);
+            }
+            
+            return allTools;
+        } catch (dbError: any) {
+            AgentLogger.warn('Failed to fetch all tools from database: %s', dbError.message);
+            // Last resort: try realtime connections
+            try {
+                const mcpClient = new McpClient();
+                const realtimeTools = await mcpClient.getTools();
+                AgentLogger.info('getAssignedTools: Got tools from realtime (fallback)', { 
+                    toolCount: realtimeTools.length 
+                });
+                return realtimeTools.map(tool => ({
+                    name: tool.name,
+                    description: tool.description || '',
+                    inputSchema: tool.inputSchema || null,
+                }));
+            } catch (realtimeError: any) {
+                AgentLogger.warn('Failed to fetch tools from realtime (fallback): %s', realtimeError.message);
+                return [];
+            }
+        }
     }
     
-    const assignedTools: any[] = [];
+    // First, get tools from database and build a map by tool name
+    const dbToolsMap = new Map<string, any>();
+    const assignedToolNames = new Set<string>();
+    
     for (const toolId of mcpToolIds) {
         try {
             const tool = await document.get(domainId, document.TYPE_MCP_TOOL, toolId);
             if (tool) {
-                assignedTools.push({
+                dbToolsMap.set(tool.name, {
                     name: tool.name,
                     description: tool.description,
                     inputSchema: tool.inputSchema,
                 });
+                assignedToolNames.add(tool.name);
             }
         } catch (error) {
             AgentLogger.warn('Invalid tool ID: %s', toolId.toString());
         }
     }
-    return assignedTools;
+    
+    // Also fetch from real-time MCP connections to get tools that might not be in DB yet
+    // or to get more up-to-date tool definitions
+    try {
+        const mcpClient = new McpClient();
+        const realtimeTools = await mcpClient.getTools();
+        
+        // Merge realtime tools with database tools
+        // Priority: realtime tools (more up-to-date) > database tools
+        const finalTools: any[] = [];
+        const processedNames = new Set<string>();
+        
+        // First, add realtime tools that match assigned tool names
+        for (const realtimeTool of realtimeTools) {
+            if (assignedToolNames.has(realtimeTool.name)) {
+                finalTools.push({
+                    name: realtimeTool.name,
+                    description: realtimeTool.description || '',
+                    inputSchema: realtimeTool.inputSchema || null,
+                });
+                processedNames.add(realtimeTool.name);
+            }
+        }
+        
+        // Then, add database tools that weren't found in realtime (fallback)
+        for (const [toolName, dbTool] of dbToolsMap) {
+            if (!processedNames.has(toolName)) {
+                finalTools.push(dbTool);
+            }
+        }
+        
+        AgentLogger.info('getAssignedTools: dbTools=%d, realtimeTools=%d, matchedTools=%d, finalTools=%d', 
+            dbToolsMap.size, realtimeTools.length, processedNames.size, finalTools.length);
+        AgentLogger.info('getAssignedTools: details', {
+            dbToolNames: Array.from(dbToolsMap.keys()),
+            realtimeToolNames: realtimeTools.map(t => t.name),
+            assignedToolNames: Array.from(assignedToolNames),
+            finalToolNames: finalTools.map(t => t.name)
+        });
+        
+        return finalTools;
+    } catch (error: any) {
+        AgentLogger.warn('Failed to fetch realtime tools, using DB tools only: %s', error.message);
+        // Fallback to database tools only
+        return Array.from(dbToolsMap.values());
+    }
 }
 
 class AgentMcpStatusHandler extends Handler {
