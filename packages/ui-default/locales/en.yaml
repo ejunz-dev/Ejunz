@@ -3,10 +3,12 @@ __id: en
 __langname: English
 '-- Please Select Agent --': -- Please Select Agent --
 'Actions': Actions
+'Add Root Doc': Add Root Doc
 'After successful connection, configure ASR, TTS and Agent services': After successful connection, configure ASR, TTS and Agent services
 'Agent configuration cleared successfully': Agent configuration cleared successfully
 'Agent configuration saved successfully': Agent configuration saved successfully
 'Agent Configuration': Agent Configuration
+'Ahead of remote by {0} commit(s)': Ahead of remote by {0} commit(s)
 'Are you sure you want to clear the Agent configuration?': Are you sure you want to clear the Agent configuration?
 'Are you sure you want to delete the Token? Connections using this Token will be disconnected.': Are you sure you want to delete the Token? Connections using this Token will be disconnected.
 'Are you sure you want to delete this client?': Are you sure you want to delete this client?
@@ -17,6 +19,8 @@ __langname: English
 'Back to Details': Back to Details
 'Back to List': Back to List
 'Base URL': Base URL
+'Behind remote by {0} commit(s)': Behind remote by {0} commit(s)
+'Block': Block
 'Cancel': Cancel
 'Clear Agent': Clear Agent
 'Clear Logs': Clear Logs
@@ -27,54 +31,100 @@ __langname: English
 'Client Management': Client Management
 'Client Name': Client Name
 'Clients can connect via the following WebSocket URL (Token must be generated first)': Clients can connect via the following WebSocket URL (Token must be generated first)
+'Commit Message': Commit Message
+'commits': commits
 'Configuration': Configuration
 'Connect to the WebSocket URL above using the generated Token': Connect to the WebSocket URL above using the generated Token
 'Connected': Connected
 'Connection URL': Connection URL
+'Content Block': Content Block
 'Copied to clipboard': Copied to clipboard
 'Copy failed': Copy failed
 'Copy': Copy
 'Create Client': Create Client
+'Create remote branch': Create remote branch
 'Create': Create
 'Created Clients': Created Clients
 'Created Time': Created Time
 'Currently Selected Agent': Currently Selected Agent
+'Default message': Default message
 'Delete Client': Delete Client
 'Delete Token': Delete Token
 'Description (Optional)': Description (Optional)
 'Disconnected': Disconnected
+'Doc': Doc
+'Drop here to delete': Drop here to delete
 'Edit Client': Edit Client
 'Enable Server VAD': Enable Server VAD
 'Endpoint': Endpoint
+'Enter custom commit message (optional)': Enter custom commit message (optional)
+'Enter new title': Enter new title
+'Enter title for new': Enter title for new
 'Error Message': Error Message
 'Error': Error
 'Failed to clear Agent configuration: {0}': 'Failed to clear Agent configuration: {0}'
 'Failed to delete Token: {0}': 'Failed to delete Token: {0}'
 'Failed to generate Token: {0}': 'Failed to generate Token: {0}'
+'Failed to pull from GitHub': Failed to pull from GitHub
+'Failed to push to GitHub': Failed to push to GitHub
 'Failed to save Agent configuration: {0}': 'Failed to save Agent configuration: {0}'
 'Failed to save ASR configuration: {0}': 'Failed to save ASR configuration: {0}'
 'Failed to save TTS configuration: {0}': 'Failed to save TTS configuration: {0}'
+'File Mode': File Mode
+'Final message will be': Final message will be
+'Folder description': Folder description
+'Folder/Directory': Folder/Directory
 'Free Scroll': Free Scroll
 'Generate Token on client detail page': Generate Token on client detail page
 'Generate Token': Generate Token
+'Git Status': Git Status
 'Language Type': Language Type
 'Language': Language
+'Last Commit': Last Commit
 'Last Connected Time': Last Connected Time
 'Last Connected': Last Connected
 'Last Disconnected Time': Last Disconnected Time
+'Local branch not found': Local branch not found
+'Local Branch': Local Branch
+'Local Repository': Local Repository
 'Lock Scroll': Lock Scroll
+'Manuscript Mode': Manuscript Mode
 'MCP Tools': MCP Tools
 'Model': Model
+'New Content Block': New Content Block
+'New Folder': New Folder
+'No changes to save': No changes to save
 'No clients created yet': No clients created yet
+'No commit message': No commit message
+'No content': No content
+'No local git repository': No local git repository
+'No remote repository configured': No remote repository configured
 'No tools available': No tools available
 'Operations': Operations
 'Provider': Provider
+'Pulling from GitHub...': Pulling from GitHub...
+'Pulling...': Pulling...
+'Push will create a new remote branch': Push will create a new remote branch
+'Pushing to GitHub...': Pushing to GitHub...
+'Pushing...': Pushing...
+'Remote branch exists. Use Pull to sync with remote changes.': Remote branch exists. Use Pull to sync with remote changes.
+'Remote branch not found': Remote branch not found
+'Remote Branch Status': Remote Branch Status
+'Remote Branch': Remote Branch
+'Remote Repository': Remote Repository
 'Save Agent Configuration': Save Agent Configuration
 'Save ASR Configuration': Save ASR Configuration
+'Save failed': Save failed
 'Save TTS Configuration': Save TTS Configuration
 'Save': Save
+'Saved successfully': Saved successfully
+'Saving': Saving
 'Select Agent': Select Agent
 'Status': Status
+'Successfully pulled from GitHub': Successfully pulled from GitHub
+'Successfully pushed to GitHub': Successfully pushed to GitHub
+'Table of Contents': Table of Contents
+'This branch is behind remote by {0} commit(s). Please use Pull to sync.': This branch is behind remote by {0} commit(s). Please use Pull to sync.
 'Token deleted successfully': Token deleted successfully
 'Token generated successfully': Token generated successfully
 'Token not generated yet': Token not generated yet
@@ -82,7 +132,9 @@ __langname: English
 'TTS (Text-to-Speech) Configuration': TTS (Text-to-Speech) Configuration
 'TTS configuration saved successfully': TTS configuration saved successfully
 'TTS Configuration': TTS Configuration
+'Uncommitted changes': Uncommitted changes
 'Unknown error': Unknown error
+'Up to date with remote': Up to date with remote
 'Usage Steps': Usage Steps
 'View Connection Logs': View Connection Logs
 'View Details': View Details
@@ -90,10 +142,15 @@ __langname: English
 'Voice': Voice
 'WebSocket Endpoint': WebSocket Endpoint
 'WebSocket Token Management': WebSocket Token Management
+'your custom message': your custom message
 # Client management translations
 agent_detail: Agent Detail
 agent_domain: Agent
 agent_edit: Edit Agent
+base_domain: Knowledge Base
+block_create: Create Block
+block_detail: Block Detail
+block_edit: Edit Block
 Can be Extended For: Extension
 client_create: Create Client
 client_detail: Client Detail
@@ -106,6 +163,10 @@ discussion_edit: Discussion Edit
 discussion_main: Discussion
 discussion_node: Discussion
 display_name: Display Name
+doc_create_subdoc: Create Subdoc
+doc_create: Create Doc
+doc_detail: Doc Detail
+doc_edit: Edit Doc
 docs: Docs
 domain_create: Create Domain
 domain_dashboard: Domain Dashboard
@@ -170,6 +231,11 @@ perm_problem: Problems
 perm_ranking: Ranking
 perm_record: Records
 perm_training: Trainings
+repo_config: Repo Config
+repo_create: Create Repo
+repo_detail: Repo Detail
+repo_doc: Repo Doc
+repo_edit: Edit Repo
 setting_customize: Customize
 setting_display: Display Preference
 setting_function: Function
