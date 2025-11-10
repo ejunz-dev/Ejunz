@@ -350,7 +350,53 @@ declare module './model/mcp' {
         content?: string; // document 系统要求
     }
 }
+
+// Client document
+declare module './model/client' {
+    interface ClientDoc {
+        _id: ObjectId;
+        docType: document['TYPE_CLIENT'];
+        docId: ObjectId;
+        domainId: string;
+        clientId: number;
+        name: string;
+        description?: string;
+        wsEndpoint: string;
+        wsToken?: string;
+        status: 'connected' | 'disconnected' | 'error';
+        lastConnectedAt?: Date;
+        lastDisconnectedAt?: Date;
+        errorMessage?: string;
+        settings: {
+            asr?: {
+                provider: string;
+                apiKey: string;
+                model: string;
+                enableServerVad?: boolean;
+                baseUrl?: string;
+                language?: string;
+            };
+            tts?: {
+                provider: string;
+                apiKey: string;
+                endpoint?: string;
+                model: string;
+                voice?: string;
+                languageType?: string;
+            };
+            agent?: {
+                agentId?: string;
+                agentDocId?: ObjectId;
+            };
+        };
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number;
+        content?: string;
+    }
+}
 export type { McpServerDoc, McpToolDoc } from './model/mcp';
+export type { ClientDoc } from './model/client';
 
 export interface DomainDoc extends Record<string, any> {
     _id: string,
