@@ -1,0 +1,41 @@
+{% set page_name = "client_edit" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+    <div class="medium-8 columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">
+                    {% if client %}
+                        {{ _('Edit Client') }}
+                    {% else %}
+                        {{ _('Create Client') }}
+                    {% endif %}
+                </h1>
+            </div>
+            <div class="section__body">
+                <form method="post" class="form--horizontal">
+                    <div class="form__group">
+                        <label class="form__label">{{ _('Client Name') }}</label>
+                        <input type="text" name="name" class="textbox" value="{{ client.name|default('') }}" required>
+                    </div>
+                    <div class="form__group">
+                        <label class="form__label">{{ _('Description (Optional)') }}</label>
+                        <textarea name="description" class="textbox" rows="3">{{ client.description|default('') }}</textarea>
+                    </div>
+                    <div class="form__group">
+                        {% if client %}
+                            <button type="submit" name="operation" value="update" class="button primary">{{ _('Save') }}</button>
+                            <a href="{{ url('client_detail', { domainId: domainId, clientId: client.clientId }) }}" class="button">{{ _('Cancel') }}</a>
+                        {% else %}
+                            <button type="submit" name="operation" value="create" class="button primary">{{ _('Create') }}</button>
+                            <a href="{{ url('client_domain', { domainId: domainId }) }}" class="button">{{ _('Cancel') }}</a>
+                        {% endif %}
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

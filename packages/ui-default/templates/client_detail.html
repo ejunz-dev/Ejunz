@@ -1,0 +1,248 @@
+{% set page_name = "client_detail" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+    <div class="medium-9 columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">{{ client.name }}</h1>
+                <div class="section__action">
+                    <span class="client-status client-status-{{ client.status }}">
+                        {% if client.status == 'connected' %}
+                            {{ _('Connected') }}
+                        {% elif client.status == 'disconnected' %}
+                            {{ _('Disconnected') }}
+                        {% elif client.status == 'error' %}
+                            {{ _('Error') }}
+                        {% else %}
+                            {{ client.status }}
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+            <div class="section__body">
+                {% if client.description %}
+                    <p>{{ client.description }}</p>
+                {% endif %}
+                
+                <div class="client-info">
+                    <h3>{{ _('Client Information') }}</h3>
+                    <table class="data-table">
+                        <tr>
+                            <th>{{ _('Client ID') }}</th>
+                            <td>{{ client.clientId }}</td>
+                        </tr>
+                        <tr>
+                            <th>{{ _('Status') }}</th>
+                            <td>
+                                <span class="client-status client-status-{{ client.status }}" id="client-status-indicator">
+                                    {% if client.status == 'connected' %}
+                                        {{ _('Connected') }}
+                                    {% elif client.status == 'disconnected' %}
+                                        {{ _('Disconnected') }}
+                                    {% elif client.status == 'error' %}
+                                        {{ _('Error') }}
+                                    {% else %}
+                                        {{ client.status }}
+                                    {% endif %}
+                                </span>
+                                <span id="client-status-badge" class="client-status-badge client-status-badge-{{ client.status }}"></span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>{{ _('Last Connected Time') }}</th>
+                            <td>
+                                {% if client.lastConnectedAt %}
+                                    {{ datetimeSpan(client.lastConnectedAt)|safe }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>{{ _('Last Disconnected Time') }}</th>
+                            <td>
+                                {% if client.lastDisconnectedAt %}
+                                    {{ datetimeSpan(client.lastDisconnectedAt)|safe }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% if client.errorMessage %}
+                            <tr>
+                                <th>{{ _('Error Message') }}</th>
+                                <td class="text-danger">{{ client.errorMessage }}</td>
+                            </tr>
+                        {% endif %}
+                        <tr>
+                            <th>{{ _('Created Time') }}</th>
+                            <td>
+                                {% if client.createdAt %}
+                                    {{ datetimeSpan(client.createdAt)|safe }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div class="client-settings-section">
+                    <h3>{{ _('Configuration') }}</h3>
+                    <div class="settings-tabs">
+                        <button class="settings-tab active" data-tab="asr">{{ _('ASR Configuration') }}</button>
+                        <button class="settings-tab" data-tab="tts">{{ _('TTS Configuration') }}</button>
+                        <button class="settings-tab" data-tab="agent">{{ _('Agent Configuration') }}</button>
+                    </div>
+
+                    <div class="settings-content">
+                        <!-- ASR 配置 -->
+                        <div class="settings-panel active" id="settings-asr">
+                            <h4>{{ _('ASR (Speech Recognition) Configuration') }}</h4>
+                            <form id="asr-settings-form" class="settings-form">
+                                <div class="form__group">
+                                    <label class="form__label">{{ _('Provider') }}</label>
+                                    <input type="text" name="provider" class="textbox" value="{{ client.settings.asr.provider|default('qwen-realtime') }}" placeholder="qwen-realtime">
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">API Key</label>
+                                    <input type="text" name="apiKey" class="textbox" value="{{ client.settings.asr.apiKey|default('') }}" placeholder="sk-...">
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">{{ _('Model') }}</label>
+                                    <input type="text" name="model" class="textbox" value="{{ client.settings.asr.model|default('qwen3-asr-flash-realtime') }}" placeholder="qwen3-asr-flash-realtime">
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">{{ _('Base URL') }}</label>
+                                    <input type="text" name="baseUrl" class="textbox" value="{{ client.settings.asr.baseUrl|default('wss://dashscope.aliyuncs.com/api-ws/v1/realtime') }}" placeholder="wss://dashscope.aliyuncs.com/api-ws/v1/realtime">
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">{{ _('Language') }}</label>
+                                    <input type="text" name="language" class="textbox" value="{{ client.settings.asr.language|default('zh') }}" placeholder="zh">
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">
+                                        <input type="checkbox" name="enableServerVad" {% if client.settings.asr.enableServerVad %}checked{% endif %}>
+                                        {{ _('Enable Server VAD') }}
+                                    </label>
+                                </div>
+                                <div class="form__group">
+                                    <button type="submit" class="button primary">{{ _('Save ASR Configuration') }}</button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- TTS 配置 -->
+                        <div class="settings-panel" id="settings-tts">
+                            <h4>{{ _('TTS (Text-to-Speech) Configuration') }}</h4>
+                            <form id="tts-settings-form" class="settings-form">
+                                <div class="form__group">
+                                    <label class="form__label">{{ _('Provider') }}</label>
+                                    <input type="text" name="provider" class="textbox" value="{{ client.settings.tts.provider|default('qwen') }}" placeholder="qwen">
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">API Key</label>
+                                    <input type="text" name="apiKey" class="textbox" value="{{ client.settings.tts.apiKey|default('') }}" placeholder="sk-...">
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">{{ _('Model') }}</label>
+                                    <input type="text" name="model" class="textbox" value="{{ client.settings.tts.model|default('qwen3-tts-flash-realtime') }}" placeholder="qwen3-tts-flash-realtime">
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">{{ _('Endpoint') }}</label>
+                                    <input type="text" name="endpoint" class="textbox" value="{{ client.settings.tts.endpoint|default('https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation') }}" placeholder="https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation">
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">{{ _('Voice') }}</label>
+                                    <input type="text" name="voice" class="textbox" value="{{ client.settings.tts.voice|default('Cherry') }}" placeholder="Cherry">
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">{{ _('Language Type') }}</label>
+                                    <input type="text" name="languageType" class="textbox" value="{{ client.settings.tts.languageType|default('Chinese') }}" placeholder="Chinese">
+                                </div>
+                                <div class="form__group">
+                                    <button type="submit" class="button primary">{{ _('Save TTS Configuration') }}</button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Agent 配置 -->
+                        <div class="settings-panel" id="settings-agent">
+                            <h4>{{ _('Agent Configuration') }}</h4>
+                            <form id="agent-settings-form" class="settings-form">
+                                <div class="form__group">
+                                    <label class="form__label">{{ _('Select Agent') }}</label>
+                                    <select name="agentId" class="textbox">
+                                        <option value="">{{ _('-- Please Select Agent --') }}</option>
+                                        {% for agent in agents %}
+                                            <option value="{{ agent.aid }}" {% if client.settings.agent and client.settings.agent.agentId == agent.aid %}selected{% endif %}>
+                                                {{ agent.title }} ({{ agent.aid }})
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                {% if agentInfo %}
+                                    <div class="form__group">
+                                        <p>{{ _('Currently Selected Agent') }}: <strong>{{ agentInfo.title }}</strong> ({{ agentInfo.aid }})</p>
+                                    </div>
+                                {% endif %}
+                                <div class="form__group">
+                                    <button type="submit" class="button primary">{{ _('Save Agent Configuration') }}</button>
+                                    {% if client.settings.agent and client.settings.agent.agentId %}
+                                        <button type="button" class="button danger" id="clear-agent-btn">{{ _('Clear Agent') }}</button>
+                                    {% endif %}
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="medium-3 columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">{{ _('Operations') }}</h1>
+            </div>
+            <div class="section__body">
+                <a href="{{ url('client_domain', { domainId: domainId }) }}" class="button block">{{ _('Back to List') }}</a>
+                {% if handler.user.hasPriv(model.builtin.PRIV.PRIV_USER_PROFILE) %}
+                    <a href="{{ url('client_edit', { domainId: domainId, clientId: client.clientId }) }}" class="button block">{{ _('Edit Client') }}</a>
+                    <a href="{{ url('client_logs', { domainId: domainId, clientId: client.clientId }) }}" class="button block">{{ _('View Connection Logs') }}</a>
+                    <div class="client-token-section">
+                        <h4>{{ _('WebSocket Token Management') }}</h4>
+                        {% if client.wsToken %}
+                            <div class="token-info">
+                                <p><strong>{{ _('Token') }}:</strong> <code id="ws-token">{{ client.wsToken }}</code></p>
+                                {% if wsEndpoint %}
+                                    <p><strong>{{ _('Connection URL') }}:</strong></p>
+                                    <div class="endpoint-url">
+                                        <code id="ws-endpoint">{{ wsEndpoint }}</code>
+                                        <button class="button small client-copy-endpoint-btn">{{ _('Copy') }}</button>
+                                    </div>
+                                {% endif %}
+                                <button class="button block danger client-delete-token-btn" data-client-id="{{ client.clientId }}">{{ _('Delete Token') }}</button>
+                            </div>
+                        {% else %}
+                            <p>{{ _('Token not generated yet') }}</p>
+                            <button class="button block primary client-generate-token-btn" data-client-id="{{ client.clientId }}" data-domain-id="{{ domainId }}">{{ _('Generate Token') }}</button>
+                        {% endif %}
+                    </div>
+                    <form method="post" action="{{ url('client_delete', { domainId: domainId }) }}" class="client-delete-form">
+                        <input type="hidden" name="clientId" value="{{ client.clientId }}">
+                        <button type="submit" class="button block danger client-delete-btn">{{ _('Delete Client') }}</button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="client-status-ws" 
+    data-client-id="{{ client.clientId }}"
+    data-domain-id="{{ domainId }}"
+    class="client-status-ws">
+</div>
+{% endblock %}
+

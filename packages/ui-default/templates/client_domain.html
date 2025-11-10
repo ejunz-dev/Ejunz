@@ -1,0 +1,95 @@
+{% set page_name = "client_domain" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+    <div class="columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">{{ _('Client Management') }}</h1>
+                <div class="section__action">
+                    {% if handler.user.hasPriv(model.builtin.PRIV.PRIV_USER_PROFILE) %}
+                        <a href="{{ url('client_create', { domainId: domainId }) }}" class="button primary">{{ _('Create Client') }}</a>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="section__body">
+                <div class="client-endpoint-info">
+                    <h3>{{ _('WebSocket Endpoint') }}</h3>
+                    <p>{{ _('Clients can connect via the following WebSocket URL (Token must be generated first)') }}</p>
+                    <div class="endpoint-url">
+                        <code id="client-endpoint-base">{{ wsEndpointBase }}?token=YOUR_TOKEN</code>
+                        <button class="button small client-copy-base-endpoint-btn">{{ _('Copy') }}</button>
+                    </div>
+                    <div class="endpoint-instructions">
+                        <h4>{{ _('Usage Steps') }}:</h4>
+                        <ol>
+                            <li>{{ _('Generate Token on client detail page') }}</li>
+                            <li>{{ _('Connect to the WebSocket URL above using the generated Token') }}</li>
+                            <li>{{ _('After successful connection, configure ASR, TTS and Agent services') }}</li>
+                        </ol>
+                    </div>
+                </div>
+                
+                {% if clients and clients.length > 0 %}
+                    <div class="client-list">
+                        <h3>{{ _('Created Clients') }}</h3>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>{{ _('Client Name') }}</th>
+                                    <th>{{ _('Status') }}</th>
+                                    <th>{{ _('Last Connected') }}</th>
+                                    <th>{{ _('Actions') }}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for client in clients %}
+                                    <tr>
+                                        <td>
+                                            <a href="{{ url('client_detail', { domainId: domainId, clientId: client.clientId }) }}">
+                                                {{ client.name }}
+                                            </a>
+                                            {% if client.description %}
+                                                <br><small class="text-gray">{{ client.description }}</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <span class="client-status client-status-{{ client.status }}">
+                                                {% if client.status == 'connected' %}
+                                                    {{ _('Connected') }}
+                                                {% elif client.status == 'disconnected' %}
+                                                    {{ _('Disconnected') }}
+                                                {% elif client.status == 'error' %}
+                                                    {{ _('Error') }}
+                                                {% else %}
+                                                    {{ client.status }}
+                                                {% endif %}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {% if client.lastConnectedAt %}
+                                                {{ datetimeSpan(client.lastConnectedAt)|safe }}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <a href="{{ url('client_detail', { domainId: domainId, clientId: client.clientId }) }}" class="button small">{{ _('View Details') }}</a>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="client-empty-message">
+                        <p>{{ _('No clients created yet') }}</p>
+                        <p>{{ _('Click the "Create Client" button above to create a new client') }}</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

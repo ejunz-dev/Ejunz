@@ -1,0 +1,42 @@
+.page--client_detail
+    .settings-tabs
+        display: flex
+        gap: 10px
+        margin-bottom: 20px
+        border-bottom: 1px solid #ddd
+
+    .settings-tab
+        padding: 10px 20px
+        background: none
+        border: none
+        border-bottom: 2px solid transparent
+        cursor: pointer
+        font-size: 14px
+
+        &.active
+            border-bottom-color: #007bff !important
+            color: #007bff
+            font-weight: bold
+
+    .settings-panel
+        display: none
+
+        &.active
+            display: block
+
+    .client-status-badge
+        margin-left: 10px
+        display: inline-block
+        width: 10px
+        height: 10px
+        border-radius: 50%
+
+        &.client-status-badge-connected
+            background: #4ec9b0
+
+        &.client-status-badge-disconnected
+            background: #858585
+
+        &.client-status-badge-error
+            background: #f48771
+

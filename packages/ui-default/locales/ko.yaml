@@ -1,82 +1,86 @@
+  {0} 의 멤버가 됩니다.
+  500자 미만이어야 합니다.
+  and numbers in the code and it should not be longer than 64 characters.
+  Token을 생성하시겠습니까? 기존 Token이 무효화됩니다.
+  URL에 연결하세요
+  다음 WebSocket URL을 통해 연결할 수 있습니다 (먼저 Token을 생성해야 합니다)
+  대해 토론할 경우 불이익을 받을 수 있습니다.
+  뜰 것입니다.
+  모든 답글들도 제거됩니다.
+  및 Agent 서비스를 구성할 수 있습니다
+  번'
+  삭제하시겠습니까? 이 Token을 사용하는 연결이 끊어집니다.
+  생성이 끝나지 않았습니다. "계속"을 눌러 생성을 완료하십시오.
+  수 없으며 다음과 같아야 합니다.：
+  수 있습니다.
+  않을 것이고, default 역할을 가질 것입니다.
+  이메일을 보냈습니다.'
+  제한됩니다.
+  참여할 수 없습니다. 잘못되거나 만료된 링크입니다.
+  클릭하여 새 클라이언트를 만드세요
 __id: ko
 __langname: 한국어
+-- Please Select Agent --: -- Agent 선택 --
+: 초대 코드는 64글자 미만입니다.
+? The invitation code to enter to successfully join the domain. You can only use letters
 '"{data}" copied to clipboard!': “{data}”복사 완료
 '{0} comments': '{0} 댓글'
 '{0} discussions': '{0} 토론'
 '{0} is a moderator of this domain.': '{}가 그룹의 관리자입니다.'
-'{0} limit exceeded (limit: {2} operations in {1} seconds).': '{0} 제한 초과：{1} 초 {2} 번'
-'{0} problems': '{0} 문제'
-'{0} sections': '{0} 단락'
-'{0} solutions': '{0} 해설'
-'{0} views': '{0} 조회수'
-'{0}: Permissions': '{0}: 권한'
-'{0}: Roles': '{0}: 역할'
-'{0}: Users': '{0}: 사용자'
-'# My Submissions': '내 제출 기록'
-'# Submissions': '제출 기록'
-'↓ # Comments': '↓ 답글'
-'↓ # Enrollees': '↓ 등록'
-'↓ # Likes': '↓ 좋아요'
-'↓ # Stars': '↓ 북마크'
-'↓ Create Time': '↓ 생성 시각'
-'↓ Update Time': '↓ 업데이트 시각'
-'A domain ID cannot be changed after creation. It is supposed to be:': '그룹 ID는 수정할 수 없으며 다음과 같아야 합니다.：'
-'Copy "{data}" failed :(': '복사“{data}”실패 :('
-'Copy failed :(': '복사 실패 :('
+'{0} limit exceeded (limit: {2} operations in {1} seconds).': '{0} 제한 초과：{1} 초 {2}
+'↓ # Comments': ↓ 답글
+'↓ # Enrollees': ↓ 등록
+'↓ # Likes': ↓ 좋아요
+'↓ # Stars': ↓ 북마크
+'A domain ID cannot be changed after creation. It is supposed to be:': 그룹 ID는 수정할
 'Current dataset: {0}': '현재 데이터셋: {0}'
 'Discussion: Terms Of Service': 토론 약관
-'Format: category 1, category 2, ..., category n': 형식：분류1, 분류2, ..., 분류n
-'Join {0}': '참여 {0}'
+'Failed to clear Agent configuration: {0}': 'Agent 설정 지우기 실패: {0}'
+'Failed to delete Token: {0}': 'Token 삭제 실패: {0}'
+'Failed to generate Token: {0}': 'Token 생성 실패: {0}'
+'Failed to save Agent configuration: {0}': 'Agent 설정 저장 실패: {0}'
+'Failed to save ASR configuration: {0}': 'ASR 설정 저장 실패: {0}'
+'Failed to save TTS configuration: {0}': 'TTS 설정 저장 실패: {0}'
 'No': 아니오
-'Note: Problem title may not be hidden.': '주의: 문제 제목은 숨길 수 없습니다.'
-'Role {1} already exists in domain {0}.': '역할 {1}이(가) 이미 {0}에 존재합니다.'
-'Solved {0} problems, RP: {1} (No. {2})': '총 {0} 문제 해결.RP: {1} (No. {2})'
-'The value `{1}` of {0} already exists.': '{0} 의 값 `{1}` 이 이미 존재합니다.'
 'Yes': 예
-"Effects only when Difficulty is not 'Use algorithm calculated'.": 난이도가 알고리즘에 의해 정해지지 않은 경우에만 적용됩니다.
-"Split by ', '.": “, ”“，”으로 구분
-"What's file?": 파일?
-(All Problems): (전체 문제)
 (None): (N/A)
 (Not changed): 수정되지 않음
-#Sample Input: Sample Input
-#Sample Output: Sample Output
-#Star: Star
+↓ Create Time: ↓ 생성 시각
+↓ Update Time: ↓ 업데이트 시각
 Aborted: 중지됨
 About {0}: '{0}에 대하여'
 About Markdown: Markdown에 대하여
-About test data: 테스트 데이터에 대하여
 about: 소개
 About: 소개
-AC Message: AC 메시지
-Accepted Ratio: 정답률
-Accepted: 맞았습니다.
 Access Control: 접근 제어
-Account Settings: 계정 설정
 Action: 행동
 Active Sessions: 활성 세션
 Add module: 앱 모듈
 Add new data: 데이터 추가
 Add User: 사용자 추가
 Add: 추가
-All {0} Contests: 전체 {0} 대회
-All Contests: 전체 대회
-All Homeworks: 전체 과제
-All Submissions: 전체 제출
-All Training Plans: 전체 학습계획
+After successful connection, configure ASR, TTS and Agent services: 연결 성공 후 ASR, TTS
+Agent configuration cleared successfully: Agent 설정이 성공적으로 지워졌습니다
+Agent configuration saved successfully: Agent 설정이 성공적으로 저장되었습니다
+Agent Configuration: Agent 설정
 All: 전체
 Always granted all privileges: 항상 모든 권한 허가
 An error has occurred.: 문제가 발생했습니다.
-An example of dataset: 데이터셋 예시
 Any user is allowed to join this domain with an invitation code: 누구나 코드가 있으면 참여 가능
 Any user is allowed to join this domain: 누구나 참여 가능
+Are you sure you want to clear the Agent configuration?: Agent 설정을 지우시겠습니까?
+Are you sure you want to delete the Token? Connections using this Token will be disconnected.: Token을
+Are you sure you want to delete this client?: 이 클라이언트를 삭제하시겠습니까?
+Are you sure you want to generate a new Token? The old Token will be invalidated.: 새
 Argument {0} is invalid.: 인자 {0}이(가) 무효입니다.
 Arguments: 인자
-At least 4 characters: 4자 이상
-Attend Contest: 대회 참가
-Attend contests: 대회 참가
-Attended: 참가함
+ASR (Speech Recognition) Configuration: ASR (음성 인식) 설정
+ASR configuration saved successfully: ASR 설정이 성공적으로 저장되었습니다
+ASR Configuration: ASR 설정
 author: 저자
+Back to Details: 상세 정보로 돌아가기
+Back to List: 목록으로 돌아가기
+Base URL: Base URL
 Be Copied: 복사됨
 Begin at: 시작
 Begin Date: 시작 날짜
@@ -89,91 +93,70 @@ Boom!: 펑!
 Browser: 브라우저
 Built-in: 빌트인
 Bulletin: 게시판
-By clicking the button, you will become a member of the domain {0}.: 이 버튼을 클릭하면 귀하는 {0} 의 멤버가 됩니다.
-By Contest: 대회
-By Problem: 문제
+By clicking the button, you will become a member of the domain {0}.: 이 버튼을 클릭하면 귀하는
 By Username / UID: 아이디
 Calendar View: 달력 보기
 Calendar: 달력
-Can be Extended For: '추가 접수'
-Cancel Score: 채점 취소
 Cancel: 취소
 Categories: 분류
 Category: 분류
 Change Email: 이메일 변경
 Change Password: 비밀번호 변경
-Check In: 로그인
 Chinese: 중국
 Choose the background image in your profile page.: 프로필 배경을 선택하십시오.
-Claim homework: 숙제 할당
-Claim Homework: 숙제 할당
-Claimed: 할당됨
+Clear Agent: Agent 지우기
+Clear Logs: 로그 지우기
 Clear Marks: 마크 제거
 Click here to chat with me: 이곳을 눌러 대화
+Click the "Create Client" button above to create a new client: 위의 "클라이언트 만들기" 버튼을
 click to add: 추가
+Client Connection Logs: 클라이언트 연결 로그
+Client ID: 클라이언트 ID
+Client Information: 클라이언트 정보
+Client Management: 클라이언트 관리
+Client Name: 클라이언트 이름
+Clients can connect via the following WebSocket URL (Token must be generated first): 클라이언트는
 CLOSE: 닫기
-Code blocks: 코드블럭
-Code copied to clipboard!: 복사 완료
-Code language: 언어
-Code: 코드
 collapse: 병합
 Comment: 댓글
 Comments: 댓글
-Compile Error: 컴파일 에러
-Compilers' Version and Parameters: 컴파일러 버전, 파라미터
 Complete: 완료
 Completed: 완료됨
+Configuration: 설정
 Confirm deleting the selected roles?: 정말로 제거하시겠습니까?
-Confirm deleting this comment? Its replies will be deleted as well.: 정말로 제거하시겠습니까? 모든 답글들도 제거됩니다.
+Confirm deleting this comment? Its replies will be deleted as well.: 정말로 제거하시겠습니까?
 Confirm deleting this reply?: 정말로 제거하시겠습니까?
 Confirm removing the selected users?: 정말로 제거하시겠습니까?
 Confirmation mail has been sent to your new email.: 확인 이메일이 전송되었습니다.
-Congratulations! Your submission is accepted.: 축하합니다! 맞았습니다!
+Connect to the WebSocket URL above using the generated Token: 생성된 Token을 사용하여 위의 WebSocket
+Connected: 연결됨
+Connection URL: 연결 URL
 Contact Us: 연락
 Contact: 연락
 content: 매체
 Content: 매체
-Contest scoreboard is not visible.: 대회 점수판이 비공개입니다.
-Contest Scoreboard: 대회 점수판
-contest_create: 대회 생성
-contest_detail_problem_submit: 대회 상세 문제 제출
-contest_edit: 대회 수정
-contest_main: 대회
-contest_scoreboard: 대회 점수판
-contest: 대회
-Contest: 대회
-Continue: 계속
-Contributed Problems: 기여한 문제
-Contributions: 기여
-Copt Problem: 문제 복사
+Copied to clipboard: 클립보드에 복사됨
+Copy "{data}" failed :(: 복사“{data}”실패 :(
 Copy Email: 이메일 복사
+Copy failed :(: 복사 실패 :(
 Copy from: 복사
 Copy QQ Number: QQ 계정 복사
 Copy WeChat Account: WeChat 계정 복사
 Copy: 복사
 Copyright Complaint: 저작권 항의
 CPU Info: CPU 정보
-Create a contest: 대회 만들기
 Create a Discussion: 토론 만들기
-Create a problem: 문제 만들기
-Create Contest: 대회 만들기
-Create contests: 대회 만들기
+Create Client: 클라이언트 만들기
 Create Discussion in {0}: '{0}에 토론 만들기'
 Create Discussion: 토론 만들기
 Create discussions: 토론 만들기
 Create Domain: 그룹 만들기
-Create homework: 숙제 만들기
-Create Homework: 숙제 만들기
 Create Link: 링크 만들기
-Create problem solutions: 해설 만들기
-Create Problem: 문제 만들기
-Create problems: 문제 만들기
 Create Role: 역할 만들기
-Create Training Plan: 학습계획 만들기
-Create training plans: 학습계획 만들기
 Create: 만들기
 Created By: 제작자
-Current dataset comes from: 채점 데이터
+Created Clients: 생성된 클라이언트
+Created Time: 생성 시간
 current domain: 그룹
 Current Email: 이메일
 Current Location: 위치
@@ -181,36 +164,23 @@ Current password doesn't match.: 비밀번호가 틀렸습니다.
 Current Password: 현재 비밀번호
 Current Status: 현재 상태
 currently offline: 오프라인
-Data of Problem {0} not found.: 문제 {0}의 데이터가 없습니다.
-Data of problem {1} not found.: 문제 {1}의 데이터가 없습니다.
-Data of record {0} not found.: 제출 {0}의 데이터가 없습니다.
-Dataset Format: 데이터셋 형식
-Dataset: 데이터셋
-Day: 일
-Deadline: 제출 기한
-Default Code Language: 기본 언어
-Default Code Template: 기본 탬플릿
+Currently Selected Agent: 현재 선택된 Agent
+Delete Client: 클라이언트 삭제
 Delete discussion replies of own discussion: 본인의 토론의 댓글 제거
 Delete discussion replies: 토론 댓글 제거
 Delete discussions: 토론 제거
 Delete own discussion replies: 본인의 댓글 제거
 Delete own discussions: 본인의 토론 제거
-Delete own problem solution replies: 본인 해설의 댓글 제거
-Delete own problem solutions: 본인 해설 제거
-Delete problem solution replies: 해설 댓글 제거
-Delete problem solutions: 해설 제거
 Delete Selected Roles: 역할 제거
+Delete Token: Token 삭제
 delete: 제거
 Delete: 제거
+Description (Optional): 설명 (선택사항)
 Description: 문제 설명
 Destination Domain: 목표 그룹
 Development: 개발
-Difficulty Algorithm: 알고리즘 난이도
-Difficulty by admin: 관리자 난이도
-Difficulty by algorithm: 알고리즘 난이도
-Difficulty displayed: 난이도 표시
-Difficulty: 난이도
 Disabled: 비활성
+Disconnected: 연결 끊김
 Discussion {1} not found.: 토론 {1}이(가) 없습니다.
 Discussion category {1} already exists.: 토론 분류 {1}이(가) 이미 존재합니다.
 Discussion category {1} not found.: 토론 분류 {1}을(를) 찾을 수 없습니다.
@@ -224,17 +194,15 @@ discussion_node: 토론
 Discussion: 토론
 Discussions: 토론
 Display name {1} you want to set is used by others.: 이름 {1}이(가) 공개됩니다
-display name: 이름
 Display Name: 이름
 display_name: 이름
-Do not discuss solutions otherwise you will be regarded as cheating and then lose qualifications.: 풀이에 대해 토론할 경우 불이익을 받을 수 있습니다.
+Do not discuss solutions otherwise you will be regarded as cheating and then lose qualifications.: 풀이에
 Document {2} not found.: 문서 {2} 없음
 Domain {0} already exists.: 그룹 {0} 이미 존재
 Domain {0} is bulit-in and cannot be modified.: 내장 그룹 {0}은(는) 수정할 수 없습니다.
 Domain {0} not found.: 그룹 {0} 없음
 Domain ID cannot be changed once the domain is created.: 그룹 ID는 수정할 수 없습니다.
 Domain ID: 그룹 ID
-Domain Settings: 그룹 설정
 domain_dashboard: 그룹 게시판
 domain_discussion: 그룹 토론
 domain_edit: 그룹 수정
@@ -247,56 +215,35 @@ domain_user: 그룹 구성원
 domain: 그룹
 Domain: 그룹
 Don't have an account?: 계정이 없으신가요?
-Done: 완료
-Download Dataset: 데이터셋 다운로드
 Download: 다운로드
 Downvote: 싫어요
 Duration (hours): 지속시간 (h)
 Duration: 지속시간
-Edit any contests: 모든 대회 수정
-Edit any homework: 모든 과제 수정
-Edit Contest: 대회 수정
+Edit Client: 클라이언트 편집
 Edit description of this domain: 그룹 설명 수정
 Edit discussion replies of own discussion: 본인의 토론에 대한 댓글 수정
 Edit discussion replies: 토론에서 본인 댓글 수정
 Edit discussions: 토론 수정
 Edit domain settings: 그룹 설정 수정
 Edit Domain: 그룹 수정
-Edit Homework: 과제 수정
-Edit own contests: 본인의 대회 수정
 Edit own discussion replies: 본인의 토론 댓글 수정
 Edit own discussions: 본인의 토론 수정
-Edit own homework: 본인의 숙제 수정
-Edit own problem solution replies: 본인의 해설 댓글 수정
-Edit own problem solutions: 본인의 해설 수정
-Edit own problems: 본인의 문제 수정
-Edit own training plans: 본인의 학습 계획 수정
 Edit permissions of a role: 역할 권한 수정
-Edit problem solution replies: 해설 댓글 수정
-Edit problem solutions: 해설 수정
-Edit Problem: 문제 수정
-Edit problems: 문제 수정
 Edit Profile: 프로필 수정
-Edit training plans: 학습 계획 수정
 Edit: 수정
 Email Visibility: Email 공개
 Email: 이메일
+Enable Server VAD: 서버 VAD 활성화
 Enabled: 허용
 End at: End at
 End Date: End Date
 End Time: End Time
-English: English
-Enroll Training: 학습 참여
-Enrolled: 참여함
-Enrollees: 참여 없음
+Endpoint: Endpoint
+Error Message: 오류 메시지
 error: 에러
-Evaluated difficulty: 평가된 난이도
+Error: 오류
 expand: 확장
 Expire: 만료
-Export All Code: 모든 코드 내보내기
-Export as {0}: '{0}로 내보내기'
-Extension (days): 추가 (날짜)
-Extension Score Penalty: 추가 패널티
 Failed to join the domain. You are already a member.: 그룹 참여 실패. 이미 참여함.
 Feedback: 피드백
 Field {0} or {1} validation failed.: 항목 {0} 또는 {1} 검증 실패
@@ -305,11 +252,12 @@ Filter: 필터
 Forgot Password and/or Username: ID/PW 분실
 Forgot password or username?: ID/PW를 분실하셨나요?
 Formula blocks: 공식 블록
+Free Scroll: 자유 스크롤
 fs_upload: 업로드
 Gender Visibility: 성별 공개
 Gender: 성
-Hard Deadline: 마감일
-Hash: 해시
+Generate Token on client detail page: 클라이언트 상세 페이지에서 Token 생성
+Generate Token: Token 생성
 Have ALL PERMISSIONS in this domain: 이 그룹에 대한 모든 권한
 Hidden: 비공개
 Hide all tags: 모든 태그 숨기기
@@ -317,7 +265,6 @@ Hide categorical tags: 모든 분류 태그 숨기기
 Highlight discussions: 토론 강조
 Highlight: 강조
 Hint: Hint
-Hitokoto: 히토코（ヒトコト）
 home_account: 계정
 home_domain_account: 그룹 계정
 home_domain_create: 그룹 생성
@@ -326,31 +273,16 @@ home_messages: 메시지
 home_preference: 설정
 home_security: 보안
 homepage: 홈
-Homework Introduction: 과제 안내
-Homework scoreboard is not visible.: 과제 점수판이 비공개입니다.
-homework_create: 과제 만들기
-homework_detail_problem_submit: 과제 상세 문제 제출
-homework_edit: 과제 수정
-homework_main: 과제
-homework_scoreboard: 과제 점수판
-homework_status: 과제 상황
-Homework: 관제
 Host: 호스트
 hour(s): 시간
-If enabled, source code will be emailed to you after the submission is accepted.: 허용하면, 제출이 맞았을 경우 이메일로 보낼 것입니다.
-If left blank, the built-in template of the corresponding language will be used.: 공백으로 둔다면, 기본 언어로 적용합니다.
 Images: 사진
 Import from: '다음에서 가져오기: '
-Import Problem: 문제 가져오기
 Import: 가져오기
 In 1 day: 하루 안에
 In 1 month: 한달 안에
 In 1 week: 한주 안에
 In 3 days: 삼일 안에
 In 3 hours: 세시간 안에
-In following contests: 다음 대회들에서
-In following homework: 다음 과제들에서
-In following training plans: 다음 학습 계획에서
 In Progress: 처리중
 Information: 정보
 Initialize: 초기화
@@ -359,40 +291,32 @@ Inline formulas: 인라인 수식
 Insert Code: 코드 삽입
 Insert Image: 사진 삽입
 Installed Modules: 설치된 모듈
-Instead of copying the test data directly, the test data of the copied problems will be linked to the test data of the source problems (called the source test data). Thus, the copied problems can observe the changes in the source test data. The permissions of the test data of the copied problems follow the source test data, e.g., you still might not download them but the judges can. By uploading some new test data, the link will be broken and the new test data will be used.: 테스트 데이터를 직접 복사하는 대신 복사 된 문제의 테스트 데이터는 소스 문제의 테스트 데이터 (소스 테스트 데이터라고 함)에 연결됩니다. 따라서 복사 된 문제는 소스 테스트 데이터의 변경 사항을 관찰 할 수 있습니다. 복사 된 문제의 테스트 데이터에 대한 권한은 소스 테스트 데이터를 따릅니다. 예를 들어 여전히 다운로드 할 수는 없지만 심사 위원은 할 수 있습니다. 새로운 테스트 데이터를 업로드하면 링크가 끊어지고 새로운 테스트 데이터가 사용됩니다.
-Introduce must not exceed 500 characters and it will be shown in the list view.: 소개는 500자 미만이어야 합니다.
+Introduce must not exceed 500 characters and it will be shown in the list view.: 소개는
 Introduce: 소개
 Invalid password for user {0}.: 사용자 {0}에 대한 암호가 아닙니다.
 Invalid: 유효하지 않음
 Invitation Code: 초대 코드
 IO: 입출력
-It works!: 성공!
 Italic: 기울여쓰기
-Join: 참가하기
-Judge Status: 채점 현황
-judge_playground: 놀이터
-Judged At: '채점 시각'
-Judged By: '채점자'
-Judging Queue: 채점 현황
-Keep current expiration: 만료 유지
+Join {0}: 참여 {0}
+Language Type: 언어 유형
 Language: 언어
-last active at: '마지막 활동'
-last login at: '마지막 접속'
-Last Submit At: '마지막 제출'
-Last Update At: '마지막 활동'
+last active at: 마지막 활동
+Last Connected Time: 마지막 연결 시간
+Last Connected: 마지막 연결
+Last Disconnected Time: 마지막 연결 끊김 시간
+last login at: 마지막 접속
+Last Submit At: 마지막 제출
+Last Update At: 마지막 활동
 LaTeX Expressions: LaTeX 표현
 Learn More: 더 알아보기
-Leave blank to use numeric pid.: 공란으로 둘 시 자동 배정
 Limitations: 제한
 Links: 링크
 List View: 목록 보기
 Location: 위치
-Login to Attend Contest: 대회에 참가하려면 로그인하십시오
-Login to Claim Homework: 과제를 받으려면 로그인하십시오
+Lock Scroll: 스크롤 잠금
 Login to Create a Discussion: 토론을 만드려면 로그인하십시오
 Login to Submit: 제출하려면 로그인하십시오
-Login with Github: Login with Github
-Login with Google: Login with Google
 Login: 로그인
 Logout All Sessions: 모든 세션에서 로그아웃
 Logout This Session: 이 세션에서 로그아웃
@@ -402,7 +326,6 @@ Lucky: 랜덤 추천
 manage_dashboard: 대시보드 관리
 manage_join_applications: 참여 요청 관리
 manage_module: 모듈 관리
-manage_script: 스크립트 관리
 manage_setting: 설정 관리
 manage_user_import: 사용자 불러오기
 manage: 관리
@@ -410,40 +333,28 @@ Manage: 관리
 Manager: 관리
 Mark Green: 초록으로 표시
 Mark Yellow: 노랑으로 표시
+MCP Tools: MCP 도구
 Memory Cost: 메모리
 Memory Info: 메모리 정보
 Memory: 메모리
 Message {0} not found.: 메시지 {0}을(를) 찾지 못했습니다.
 Messages: 메시지
 Method: 방법
+Model: 모델
 Month: 월
-Monthly Popular: 인기(월)
-Most Upvoted Solutions: 최고 해설
 My Domains: 내 그룹
 My Files: 내 파일
 My Profile: 내 프로필
-My Recent Submissions: 내 최근 제출
 My Role: 내 역할
 name: 이름
 Name: 이름
 Network error: Network error
 Never expire: 영원히 만료되지 않음
-New dataset: 새 데이터셋
 New Email: 새 이메일
 New file: 새 파일
 New Password: 새 비밀번호
-New Training Plan: 새 학습 계획
-No comments so far...: 아직 댓글이 없네요...
-No dataset at present.: 데이터셋 없음
-No discussion yet...: 토론 없음
-No Permission to Attend Contest: 대회에 참여할 권한이 없습니다.
-No Permission to Claim Homework: 과제를 할당받을 권한이 없습니다.
-No Permission to Create a Discussion: 토론을 시작할 권한이 없습니다.
-No Permission to Submit: 제출할 권한이 없습니다.
-No problem.: 문제가 없습니다.
-No solutions so far...: 아직 해설이 없네요...
-No Submissions: 제출 없음
-No user is allowed to join this domain: 이 그룹은 참여가 불가능합니다.
+No clients created yet: 아직 생성된 클라이언트가 없습니다
+No tools available: 사용 가능한 도구가 없습니다
 no_translation_warn: ''
 None: 없음
 Not Attended: 참여하지 않음
@@ -452,30 +363,23 @@ Not Claimed: 없음
 Not Enrolled: 참가하지 않음
 Not started with a number: 숫자로 시작하지 않음
 Not wrapped with space: 공백 없음
-Numeric PID: 문제 번호
-Oh, the user doesn't have any contributions!: 아직 기여가 없습니다.
 Oh, the user hasn't created any discussions yet!: 아직 토론을 시작하지 않았습니다.
-Oh, the user hasn't submitted yet!: 아직 제출하지 않았습니다 _(:зゝ∠)
 Oh, there are no tasks that match the filter!: 결과 없음
-Oh, there is no task in the queue!: 대기열이 비었습니다.
 Ok: OK
 Only A-Z, a-z, 0-9 and _ are accepted: A-Z, a-z, 0-9 와 _만 허용됨
 Oops, there are no results.: 결과 없음
 Oops!: 앗..!
-Open in Problem Set: 문제에서 열기
-Open Scratchpad: Editor 열기
-Open Since: '시작 시각'
+Open Since: 시작 시각
 Open Source: 소스 열기
 Open: 열기
 Operating System: 시스템
+Operations: 작업
 Ops: 앗..!
 Or, with automatically filled invitation code: 또는, 자동으로 토드를 생성
 Ordered List: 배열
-Original Score: 원래 점수
 OS Info: 시스템 정보
 Owner: 소유자
 page.problem_detail.sidebar.show_category: 분류 표시
-page.training_detail.invalid_when_not_enrolled: 학습에 참여하지 않았습니다.
 pager_next: 페이지
 Params: 파라미터
 Partic.: 참여자
@@ -487,85 +391,26 @@ Peak Memory: 메모리
 perm_contest: 대회
 perm_discussion: 토론
 perm_general: 일반
-perm_homework: 과제
-perm_problem_solution: 해설
-perm_problem: 문제
-perm_ranking: 랭킹
-perm_record: 제출
-perm_training: 학습
 Permission: 권한
 Permissions: 권한
-Pick a problem randomly based on the current filter.: 필터 기반 무작위 추천
 Plan: 계획
-Please attend contest to see the problems.: 문제를 보려면 대회에 참가하십시오.
-Please claim the assignment to see the problems.: 문제를 보려면 과제를 할당받으십시오
 Please select at least one role to perform this operation.: 작업을 하려면 적어도 하나의 역할을 고르십시오.
 Please select at least one user to perform this operation.: 작업을 하려면 적어도 하나의 역할을 고르십시오.
-Preference Settings: 개인 설정
-Pretest Data: 프리테스트 데이터
-Pretest Your Code: 코드 프리테스트
-Pretest: 프리테스트
-Pretest?: 프리테스트?
 Privacy: 개인정보
-Problem {1} not found.: 문제 {1}을(를) 찾을 수 없습니다.
-Problem Data: 문제 데이터
-Problem ID List: 문제 ID 목록
-Problem Set: 문제 모음
-Problem Settings: 문제 설정
-Problem Solution List: 문제 해설 목록
-Problem Solution: 문제 해설
-Problem Tags Visibility: 문제 태그 공개
-problem_create: 문제 만들기
-problem_edit: 문제 수정
-problem_import: 문제 가져오기
-problem_main: 문제
-problem_solution: 문제 해설
-problem_statistics: 문제 통계
-problem_submit: 제출
-problem-category-delim: '|'
-problem-subcategory-delim: 、
-Problem: 문제
-problem.import.additional_file: '## Additional Files'
-problem.import.hint: '## Hint'
-problem.import.input_format: '## Input'
-problem.import.limit_and_hint: '## Limits'
-problem.import.output_format: '## Output'
-problem.import.problem_description: '## Description'
-Problems Sets: 문제 셋
-Problems: 문제
 Profile Background Image: 프로필 배경
 Progress: 진행
 Properties: 특성
+Provider: 제공자
 Public: 공개
 Published at: 공개됨
 QQ Group: QQ 그룹
 QQ Visibility: QQ 공개
-Quit Scratchpad: Editor 닫기
 Quote: 문구
 Rank: 순위
 ranking: 순위
-Read all record codes: 모든 기록 코드 읽기
-Read data of own problems: 자신의 문제 데이터 읽기
-Read data of problem: 문제 데이터 읽기
-Ready (☆▽☆): 준비 완료! (☆▽☆)
-Ready: 준비됨
-Recent {0} Records: 최근 {0} 점수
-Recent Activities: 최근 활동
-Recent Solutions: 최근 해설
-Recent Submissions: 최근 제출
-Recently Created Discussions: 최근 토론
 Recommended: 추천
-Record {0} not found.: 제출 {0}을(를) 찾을 수 없습니다.
-record_detail: 제출 세부사항
-record_main: 제출 기록
-Records: 제출
-Refresh Records: 새로고침
 Refresh: 새로고침
-Registered at: '등록'
-Rejudge all submissions: 모든 제출 재채점
-Rejudge problems: 재채점
-Rejudge records: 재평가
-Rejudge: 재채점
+Registered at: 등록
 Related Discussions: 관련 토론
 Related: 관련
 Remember me: 자동 로그인
@@ -574,7 +419,6 @@ Remove this data: 데이터 제거
 Remove: 제거
 Repeat Password: 비밀번호 재설정
 Reply discussions: 댓글 등록
-Reply problem solutions: 댓글 등록
 reply: 댓글
 Reply: 댓글
 Report: 신고
@@ -583,22 +427,21 @@ Reset Password or Find Username: 비밀번호 재설정 또는 ID 찾기
 Reset Password: 비밀번호 재설정
 Reset: 재설정
 Restart: 다시 시작
+Role {1} already exists in domain {0}.: 역할 {1}이(가) 이미 {0}에 존재합니다.
 Role Assignment: 역할
 Role has been updated to {0} for selected users.: 선택된 사용자들에 대해 역할이 {0}으로 수정되었습니다.
 Role has been updated to {0}.: 역할이 {0}으로 수정되었습니다.
-Role name can only contains numbers, letters and underscores.: 역할은 0~9, a~Z, _만 포함할 수 있습니다.
+Role name can only contains numbers, letters and underscores.: 역할은 0~9, a~Z, _만 포함할
 Role: 역할
 Roles: 역할
-RP Algorithm: RP 알고리즘
 Rule: 규칙
-Run Pretest: 프리테스트 실행
 Run: 실행
+Save Agent Configuration: Agent 설정 저장
 Save All Changes: 변경사항 저장
+Save ASR Configuration: ASR 설정 저장
+Save TTS Configuration: TTS 설정 저장
+Save: 저장
 Saved session: 세션 저장
-score canceled: 점수 취소됨
-Score: 점수
-Scoreboard (Hidden): 점수판 (비공개)
-Scoreboard: 점수판
 Scripts: 스크립트
 Search: 검색
 Secret (visible to admins): 비공개 (관리자 조회 가능)
@@ -607,10 +450,10 @@ Section: 단락
 Security: 보안
 Select a node to create discussion.: 토론을 게시할 노드를 선택하십시오.
 Select a role: 노드 선택
+Select Agent: Agent 선택
 Select User: 사용자 선택
 Selected roles have been deleted.: 선택한 역할은 이미 제거되었습니다.
 Selected users have been removed from the domain.: 선택한 사용자는 이미 그룹에서 제거되었습니다.
-Send Code after acceptance: 코드 보내기
 Send Message: 메시지 보내기
 Send Password Reset Email: 비밀번호 재설정 이메일 보내기
 Send Verification Email: 확인 이메일 보내기
@@ -629,7 +472,6 @@ setting_privacy: 개인정보 설정
 setting_server: 서버 설정
 setting_session: 세션 설정
 setting_smtp: SMTP 설정
-setting_storage: 설정 저장
 setting_usage: 언어 설정
 Settings: 설정
 Share: 공유
@@ -642,85 +484,49 @@ Sign up mail has been sent to your email.: 회원가입 이메일을 보냈습�
 Sign Up Now: 회원가입
 Sign Up: 회원가입
 Size: 크기
-Solutions Liked: 연결된 해설
-Solutions: 해설
-Solve: 해결
-Solved: 해결한 문제
-Sorry, there are no problems in the problem set.: 문제 모음에 문제가 없습니다.
-Sorry, there are no training plans.: 학습 계획 없음
-Sorry, there are no users in this domain.: 그룹에 사용자가 없습니다.
 Sorry: 죄송합니다.
-Sort by: '정렬 기준'
+Sort by: 정렬 기준
 Source type: 소스 방식
 Star Topic: 주제 북마크
-Start at: '시작 시각'
+Start at: 시작 시각
 Statistics: 분석
 Status is hidden: 결과 비공개
-Status: 결과
-Submission Statistics: 제출 결과
-Submission: 제출
-Submissions: 제출
-Submit At: '제출 시각'
-Submit By: '아아디'
-Submit problem: 문제 등록
-Submit Solution: 해설 등록
-Submit Time: 제출 시각
-Submit to Judge: 제출
-Submit Your Code: 제출
-Submit: 제출
-Submitted: 제출함
 Support: 지원
 Tags: 태그
 Technical Information: 기술 정보
 Temporary session: 임시 세션
 Terms of Service: 이용 약관
-Test data comes from: Testdata 출처
-Testdata Config: Testdata 설정
 Text: 본문
-The homework's deadline is due but in extension. You can still submit for this problem but your score will be penalized.: 추가 접수 중입니다. 제출할 수 있지만 감점될 수 있습니다.
-The invitation code to enter to successfully join the domain. You can only use letters and numbers in the code and it should not be longer than 64 characters.: 초대 코드는 64글자 미만입니다.
 The invitation code you provided is invalid.: 잘못된 초대 코드
 The link will be expired at {0}: 링크가 {0}에 만료될 것입니다.
 The role to assign when user joining the domain.: 사용자가 그룹에 참여할 때 역할
 The uploaded file is too long.: 업로드한 파일이 너무 깁니다.
 The user is already a member of the domain.: 이미 그룹에 속한 사용자입니다.
 The user is too lazy to leave something here...: 설명이 없습니다... (´・ω・｀)
-Their account will not be deleted and they will be with the default role.: 계정은 삭제되지 않을 것이고, default 역할을 가질 것입니다.
-There are no contests...: 대회 없음
-There is no homework so far ╰(*°▽°*)╯: 과제 없음 ╰(*°▽°*)╯
-This contest is not live.: 대회가 실시간이 아닙니다.
-This email was sent by {0} automatically, and please do not reply directly.: '{0}으로 이메일을 보냈습니다.'
-This homework is not open and you cannot view problems.: 과제를 열지 않았기에 문제를 볼 수 없습니다.
-This homework is not open.: 과제가 아직 닫혀 있습니다.
+The value `{1}` of {0} already exists.: '{0} 의 값 `{1}` 이 이미 존재합니다.'
+Their account will not be deleted and they will be with the default role.: 계정은 삭제되지
+This email was sent by {0} automatically, and please do not reply directly.: '{0}으로
 This is the current session: 현재 세션
-This message will be presented to those whose submissions are accepted.: 맞았을 경우 메시지가 뜰 것입니다.
+This message will be presented to those whose submissions are accepted.: 맞았을 경우 메시지가
 This page needs JavaScript to work.: 이 페이지는 Javascript가 필요합니다.
-This section cannot be challenged at present, so please complete the following sections first: 아래 섹션을 먼저 해결해 주세요.
 This type of files are not allowed to be uploaded.: 업로드할 수 없는 형식의 파일입니다.
-Time (Seconds): 시간 (s)
-Time Cost: 시간
-Time Extension: 시간 연장
 Time: 시간
 timeago_locale: ko
 Timezone: Timezone
 title: 제목
 Title: 제목
-Toggle Pretest Panel: 프리테스트
-Toggle Preview: 미리보기
-Toggle Records Panel: 점수 목록
-Total Score: 총 점수
-Total Time (Seconds): 총 시간 (s)
-Total Time: 총 시간
-Total: 합산
-Training requirement is not satisfied.: 학습 선행 조건을 충족하지 못했습니다.
-training_create: 학습 만들기
-training_edit: 학습 수정
-training_main: 학습
-Training: 학습
+Token deleted successfully: Token이 성공적으로 삭제되었습니다
+Token generated successfully: Token이 성공적으로 생성되었습니다
+Token not generated yet: 아직 Token이 생성되지 않았습니다
+Token: Token
+TTS (Text-to-Speech) Configuration: TTS (텍스트 음성 변환) 설정
+TTS configuration saved successfully: TTS 설정이 성공적으로 저장되었습니다
+TTS Configuration: TTS 설정
 Type: Type
 UI Language: UI 언어
 Uncompleted: 미완료
 Unique: 특별한
+Unknown error: 알 수 없는 오류
 Unknown field {0}.: 항목 {0} 불명
 Unknown: 불명
 Unordered List: 배열
@@ -730,19 +536,17 @@ Update Permission: 권한 갱신
 Update Settings: 설정 갱신
 Update: 갱신
 Upload File: 파일 업로드
-Upload Problem: 문제 업로드
 Upload: 업로드
-Uploaded By: '아이디'
+Uploaded By: 아이디
 Upvote: 좋아요
 Usage exceeded.: 사용 초과
+Usage Steps: 사용 단계
 Use admin specificed: 관리자 사용
-Use algorithm calculated: 알고리즘 사용
-Use average of above: 평균 사용
 User {0} already exists.: 사용자 {0}이(가) 이미 존재합니다.
 User {0} not found.: 사용자 {0}을(를) 찾을 수 없습니다.
 User can join this domain by visiting the following URL: 다음 URL을 통해 그룹에 참여할 수 있습니다.
 User ID: 아이디
-User will no longer be allowed to join the domain after expiration.: 만료 이후, 그룹 참가는 제한됩니다.
+User will no longer be allowed to join the domain after expiration.: 만료 이후, 그룹 참가는
 user_detail: 사용자 세부사항
 user_login: 로그인
 user_logout: 로그아웃
@@ -757,33 +561,17 @@ Users: 사용자
 Valid for registered users who are not members of the domain: 그룹원이 아닌 사람들에게 유효
 Valid for visitors: 방문자에게 유효
 Version: Version
-View contest scoreboard: 대회 점수판 보기
-View Contest: 대회 보기
-View contests: 대회 보기
+View Connection Logs: 연결 로그 보기
 View Details: 세부사항
-View discussions: 토론 보기
-View hidden contest submission status and scoreboard: 비공개 대회 제출 기록과 점수판 보기
-View hidden homework submission status and scoreboard: 비공개 과제 제출 기록과 점수판 보기
-View hidden problems: 비공개 문제 보기
-View homework scoreboard: 과제 점수판 보기
-View homework: 과제 보기
-View Homework: 과제 보기
 View or create discussion: 토론 보거나 시작하기
-View or submit solution: 해설 보거나 만들기
-View Owned Problems: 내 문제 보기
-View Owned Training Plans: 내 학습 계획 보기
-View problem solutions: 해설 보기
-View Problem: 문제 보기
-View problems: 문제 보기
-View ranking: 랭킹 보기
+View Parameters: 매개변수 보기
 View this domain: 이 그룹 보기
-View training plans: 학습 계획 보기
 View: 보기
-Visible to registered users: 가입한 사용자에게만 보임
 Visit: 방문
-Vote problem solutions: 문제 해설에 투표
+Voice: 음성
 Vote: 투표
-We will check code similarity after this contest.: 대회 종료 후 코드 유사도 검사를 할 예정입니다.
+WebSocket Endpoint: WebSocket 엔드포인트
+WebSocket Token Management: WebSocket Token 관리
 WeChat Visibility: WeChat 공개
 Week: 주
 What is domain?: 그룹이 무엇인가요?
@@ -791,31 +579,17 @@ What is this?: 이것이 무엇인가요?
 What's domain?: 그룹이 무엇인가요?
 What's script?: 스크립트가 무엇인가요?
 What's this?: 이것이 무엇인가요?
-Whether to show tags in the problem list.: 태그를 문제 목록에서 보일지 결정.
 wiki_about: 소개
-wiki_help: Wiki Help
 Will be used as the domain icon.: 그룹 아이콘으로 쓰일 것입니다.
-With this feature, you can copy problems that you can view from a domain to some other domain. Their title, content, tags and categories will be copied. However, their test data are not copied directly.: 이 기능을 사용하면 그룹에서 볼 수있는 문제를 다른 그룹으로 복사 할 수 있습니다. 제목, 콘텐츠, 태그 및 카테고리가 복사됩니다. 그러나 테스트 데이터는 직접 복사되지 않습니다.
 Write Your Comment: 댓글 작성
-Write Your Solution: 해설 작성
 Year: 년
-You are not allowed to join the domain. The link is either invalid or expired.: 그룹에 참여할 수 없습니다. 잘못되거나 만료된 링크입니다.
-You can create your own training plans and share them with others.: 자신의 학습 계획을 공유할 수 있습니다.
-You cannot submit for this problem because the contest is ended. You can click "Open in Problem Set" to view this problem in normal mode.: 대회가 끝났으므로 답안을 제출할 수 있습니다. "믄제에서 열기"를 누르세요.
-You cannot submit for this problem because the homework's deadline is due.: 과제 기한이 지나서 제출할 수 없습니다.
+You are not allowed to join the domain. The link is either invalid or expired.: 그룹에
 You cannot visit this domain.: 이 그룹을 방문할 수 없습니다.
 You don't have the required permission ({0}) in this domain.: 그룹 권한이 없습니다. ({0})。
 You don't have the required privilege.: 권한이 없습니다.
 You don't own any domain and don't have privilege to create domain.: 그룹을 만들 권한이 없습니다.
-You have not submitted any solutions for this problem: 아직 답안을 제출하지 않았습니다.
-You have permission to create problems for this domain.: 이 그룹에서 문제를 만들기 위한 권한이 있습니다.
-You have uncompleted domain creation operation. You can click "Continue" to finish the creation.: 그룹 생성이 끝나지 않았습니다. "계속"을 눌러 생성을 완료하십시오.
-You haven't attended this contest yet.: 아직 대회에 참가하지 않음
-You haven't claimed this homework yet.: 아직 숙제를 받지 않음
+You have uncompleted domain creation operation. You can click "Continue" to finish the creation.: 그룹
 You need to enter the invitation code to join the domain.: 초대 코드가 필요합니다.
 You're not logged in.: 로그인하십시오
-You've already attended this contest.: 이미 대회에 참가함
-You've already claimed this homework.: 이미 숙제를 받음
-You've already voted.: 이미 투표함
 Your permission: 당신의 권한
 Your role: 당신의 역할

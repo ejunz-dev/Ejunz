@@ -1,0 +1,30 @@
+{% set page_name = "client_logs" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+    <div class="columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">{{ _('Client Connection Logs') }} - {{ client.name }}</h1>
+                <div class="section__action">
+                    <a href="{{ url('client_detail', { domainId: domainId, clientId: client.clientId }) }}" class="button">{{ _('Back to Details') }}</a>
+                    <button id="clearLogs" class="button">{{ _('Clear Logs') }}</button>
+                    <button id="scrollLock" class="button">🔒 {{ _('Lock Scroll') }}</button>
+                </div>
+            </div>
+            <div class="section__body">
+                <div class="log-container" id="logContainer" data-client-id="{{ client.clientId }}" data-domain-id="{{ domainId }}">
+                    {% for log in logs %}
+                    <div class="log-entry" data-level="{{ log.level }}">
+                        <span class="log-time">[{{ log.time }}]</span>
+                        <span class="log-level log-{{ log.level }}">{{ log.level }}</span>
+                        <span class="log-message">{{ log.message }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
