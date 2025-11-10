@@ -351,6 +351,33 @@ declare module './model/mcp' {
     }
 }
 
+// Client Chat document
+declare module './model/client_chat' {
+    interface ClientChatDoc {
+        _id: ObjectId;
+        docType: document['TYPE_CLIENT_CHAT'];
+        docId: ObjectId;
+        domainId: string;
+        clientId: number;
+        conversationId: number;
+        messages: Array<{
+            role: 'user' | 'assistant' | 'tool';
+            content: string;
+            timestamp: Date;
+            toolName?: string;
+            toolCallId?: string;
+            responseTime?: number;
+            asrAudioPath?: string;
+            ttsAudioPath?: string;
+        }>;
+        messageCount: number;
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number;
+        content?: string;
+    }
+}
+
 // Client document
 declare module './model/client' {
     interface ClientDoc {
@@ -397,6 +424,7 @@ declare module './model/client' {
 }
 export type { McpServerDoc, McpToolDoc } from './model/mcp';
 export type { ClientDoc } from './model/client';
+export type { ClientChatDoc } from './model/client_chat';
 
 export interface DomainDoc extends Record<string, any> {
     _id: string,

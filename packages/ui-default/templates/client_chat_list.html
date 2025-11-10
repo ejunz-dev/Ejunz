@@ -1,0 +1,66 @@
+{% set page_name = "client_chat_list" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row" style="height: calc(100vh - 200px);">
+    <div class="medium-3 columns" style="border-right: 1px solid #e0e0e0; height: 100%; overflow-y: auto; background: #f5f5f5;">
+        <div class="section">
+            <div class="section__header">
+                <h2 class="section__title">{{ client.name }}</h2>
+            </div>
+            <div class="section__body">
+                <div id="chat-list-container">
+                    {% if chats and chats|length > 0 %}
+                        <ul class="chat-list" style="list-style: none; padding: 0; margin: 0;">
+                            {% for chat in chats %}
+                                <li class="chat-item" 
+                                    data-conversation-id="{{ chat.conversationId }}"
+                                    style="padding: 12px; margin-bottom: 8px; border-radius: 4px; cursor: pointer; transition: background 0.2s;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div style="flex: 1;">
+                                            <div style="font-size: 12px; color: #666; margin-bottom: 4px;">
+                                                {{ datetimeSpan(chat.createdAt)|safe }}
+                                            </div>
+                                            <div style="display: flex; align-items: center; gap: 8px;">
+                                                <span class="badge" style="background: #4a90e2; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px;">
+                                                    {{ chat.messageCount }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <button class="chat-delete-btn" 
+                                                data-conversation-id="{{ chat.conversationId }}"
+                                                data-client-id="{{ client.clientId }}"
+                                                style="background: none; border: none; color: #d32f2f; cursor: pointer; padding: 4px 8px; font-size: 14px;">
+                                            <span class="icon icon-delete"></span>
+                                        </button>
+                                    </div>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <div style="text-align: center; padding: 40px; color: #999;">
+                            <p>{{ _('No chat history yet') }}</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="medium-9 columns" style="height: 100%; overflow-y: auto; background: #fff;">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title" id="chat-title">{{ _('Select a conversation to view details') }}</h1>
+                <div id="chat-device-id" style="font-size: 12px; color: #666; margin-top: 4px;"></div>
+            </div>
+            <div class="section__body">
+                <div id="chat-detail-container">
+                    <div style="text-align: center; padding: 60px; color: #999;">
+                        <p>{{ _('Please select a conversation from the left sidebar to view chat details') }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
