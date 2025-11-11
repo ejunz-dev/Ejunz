@@ -33,11 +33,12 @@ class McpServerModel {
             description: server.description,
             wsEndpoint: server.wsEndpoint || `/mcp/ws`,
             wsToken: server.wsToken || null,
-            status: server.status || 'disconnected',
+            // 不再设置 status 字段，状态由实时连接管理，不存储到数据库
             lastConnectedAt: server.lastConnectedAt,
             lastDisconnectedAt: server.lastDisconnectedAt,
             errorMessage: server.errorMessage,
             toolsCount: server.toolsCount || 0,
+            type: server.type || 'provider', // 默认为 provider
             createdAt: now,
             updatedAt: now,
             owner: server.owner,

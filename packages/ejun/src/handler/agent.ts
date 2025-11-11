@@ -29,6 +29,8 @@ import { Logger } from '../logger';
 import { PassThrough } from 'stream';
 import McpServerModel, { McpToolModel } from '../model/mcp';
 import * as document from '../model/document';
+import { RepoModel } from '../model/repo';
+import NodeModel from '../model/node';
 
 const AgentLogger = new Logger('agent');
 export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
@@ -511,13 +513,15 @@ export async function processAgentChatInternal(
             chatHistory = history;
         }
 
-        // 获取已分配的工具（根据 mcpToolIds 过滤）
+        // 获取已分配的工具（根据 mcpToolIds 和 repoIds 过滤）
         AgentLogger.info('processAgentChatInternal: Getting assigned tools', { 
             domainId: adoc.domainId, 
             mcpToolIds: adoc.mcpToolIds?.length || 0,
-            mcpToolIdsArray: adoc.mcpToolIds?.map(id => id.toString()) || []
+            mcpToolIdsArray: adoc.mcpToolIds?.map(id => id.toString()) || [],
+            repoIds: adoc.repoIds?.length || 0,
+            repoIdsArray: adoc.repoIds || []
         });
-        const tools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds);
+        const tools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds);
         AgentLogger.info('processAgentChatInternal: Got tools', { 
             toolCount: tools.length, 
             toolNames: tools.map(t => t.name),
@@ -537,9 +541,20 @@ export async function processAgentChatInternal(
         const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;
 
+        // 限制 memory 长度的辅助函数
+        const truncateMemory = (memory: string, maxLength: number = 2000): string => {
+            if (!memory || memory.length <= maxLength) {
+                return memory;
+            }
+            // 如果超过长度，保留前面的部分，并添加提示
+            return memory.substring(0, maxLength) + '\n\n[... 记忆已截断，保留最重要的规则 ...]';
+        };
+
         // 添加工作规则记忆（作为补充，不覆盖角色提示词）
+        // 限制 memory 长度，避免请求体过大（最多 2000 字符）
         if (adoc.memory) {
-            systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${adoc.memory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
+            const truncatedMemory = truncateMemory(adoc.memory);
+            systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
         }
 
         // Prohibit using emojis
@@ -556,14 +571,85 @@ export async function processAgentChatInternal(
             systemMessage = systemMessage + toolsInfo;
         }
 
+        // 限制历史消息长度的辅助函数
+        const truncateMessages = (messages: any[], maxMessages: number = 20, maxChars: number = 8000): any[] => {
+            if (messages.length <= maxMessages) {
+                // 检查总字符数
+                let totalChars = 0;
+                for (const msg of messages) {
+                    const msgStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
+                    totalChars += msgStr.length;
+                }
+                if (totalChars <= maxChars) {
+                    return messages;
+                }
+            }
+            
+            // 保留系统消息和最近的对话
+            const systemMsg = messages[0]?.role === 'system' ? messages[0] : null;
+            const otherMessages = systemMsg ? messages.slice(1) : messages;
+            
+            // 从后往前截断，保留最近的消息
+            let totalChars = systemMsg ? (typeof systemMsg.content === 'string' ? systemMsg.content.length : JSON.stringify(systemMsg.content || '').length) : 0;
+            const finalMessages: any[] = systemMsg ? [systemMsg] : [];
+            
+            for (let i = otherMessages.length - 1; i >= 0; i--) {
+                const msg = otherMessages[i];
+                const msgStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
+                totalChars += msgStr.length;
+                if (totalChars > maxChars && finalMessages.length > (systemMsg ? 1 : 0)) {
+                    break;
+                }
+                finalMessages.push(msg);
+                if (finalMessages.length > maxMessages + (systemMsg ? 1 : 0)) {
+                    // 如果超过最大消息数，移除最旧的消息（保留系统消息）
+                    if (systemMsg && finalMessages.length > maxMessages + 1) {
+                        finalMessages.splice(1, 1);
+                    } else if (!systemMsg && finalMessages.length > maxMessages) {
+                        finalMessages.shift();
+                    }
+                }
+            }
+            
+            // 反转回正确的顺序（系统消息在前，然后是其他消息）
+            if (systemMsg) {
+                return [systemMsg, ...finalMessages.slice(1).reverse()];
+            } else {
+                return finalMessages.reverse();
+            }
+        };
+        
+        // 限制历史消息长度，避免请求体过大
+        // 保留最近的 20 条消息，或者总字符数不超过 8000
+        let limitedHistory = [...chatHistory];
+        const maxHistoryMessages = 20;
+        const maxHistoryChars = 8000;
+        
+        if (limitedHistory.length > maxHistoryMessages) {
+            limitedHistory = limitedHistory.slice(-maxHistoryMessages);
+        }
+        
+        // 进一步限制总字符数
+        let totalChars = systemMessage.length + message.length;
+        const finalHistory: any[] = [];
+        for (let i = limitedHistory.length - 1; i >= 0; i--) {
+            const msg = limitedHistory[i];
+            const msgStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
+            totalChars += msgStr.length;
+            if (totalChars > maxHistoryChars) {
+                break;
+            }
+            finalHistory.unshift(msg);
+        }
+        
         const requestBody: any = {
             model,
             max_tokens: 1024,
-            messages: [
+            messages: truncateMessages([
                 { role: 'system', content: systemMessage },
-                ...chatHistory,
+                ...finalHistory,
                 { role: 'user', content: message },
-            ],
+            ]),
             stream: true,
         };
 
@@ -744,7 +830,11 @@ export async function processAgentChatInternal(
 
                                                 let toolResult: any;
                                                 try {
-                                                    toolResult = await mcpClient.callTool(firstToolName, parsedArgs, adoc.domainId);
+                                                    // 如果是 repo 工具，传递 agentId 和 agentName
+                                                    const toolArgs = firstToolName.match(/^repo_\d+_/) 
+                                                        ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
+                                                        : parsedArgs;
+                                                    toolResult = await mcpClient.callTool(firstToolName, toolArgs, adoc.domainId);
                                                     AgentLogger.info(`Tool ${firstToolName} returned (internal)`, { resultLength: JSON.stringify(toolResult).length });
                                                 } catch (toolError: any) {
                                                     AgentLogger.error(`Tool ${firstToolName} failed (internal):`, toolError);
@@ -760,7 +850,7 @@ export async function processAgentChatInternal(
                                                 const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
 
                                                 // 构建消息历史（只包含第一个工具调用和结果）
-                                                messagesForTurn = [
+                                                let updatedMessages = [
                                                     ...messagesForTurn,
                                                     {
                                                         role: 'assistant',
@@ -769,6 +859,9 @@ export async function processAgentChatInternal(
                                                     },
                                                     toolMsg,
                                                 ];
+                                                
+                                                // 应用历史消息截断，避免请求体过大
+                                                messagesForTurn = truncateMessages(updatedMessages);
                                                 accumulatedContent = '';
                                                 finishReason = '';
                                                 toolCalls = [];
@@ -846,14 +939,48 @@ export async function processAgentChatInternal(
     }
 }
 
-// 辅助函数：根据 mcpToolIds 获取已分配的工具
+// 辅助函数：根据 mcpToolIds 和 repoIds 获取已分配的工具
 // Enhanced to also fetch from real-time MCP connections to ensure all tools are available
 // If mcpToolIds is empty, returns all available tools from database (since tools are synced from MCP servers to DB)
-async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[]): Promise<any[]> {
-    // If no mcpToolIds specified, get all available tools from database
-    // Tools are synced from MCP servers to database, so we can get them from DB
-    if (!mcpToolIds || mcpToolIds.length === 0) {
-        AgentLogger.info('getAssignedTools: No mcpToolIds specified, fetching all available tools from database');
+// Also includes tools from repos specified in repoIds
+async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[], repoIds?: number[]): Promise<any[]> {
+    // 首先收集所有需要包含的工具ID
+    const allToolIds = new Set<string>();
+    
+    // 添加直接指定的工具ID
+    if (mcpToolIds) {
+        for (const toolId of mcpToolIds) {
+            allToolIds.add(toolId.toString());
+        }
+    }
+    
+    // 如果指定了repoIds，获取这些repo的MCP工具
+    if (repoIds && repoIds.length > 0) {
+        AgentLogger.info('getAssignedTools: Getting tools from repos', { repoIds });
+        try {
+            // 使用已静态导入的 RepoModel 和 McpToolModel
+            for (const rpid of repoIds) {
+                const repo = await RepoModel.getRepoByRpid(domainId, rpid);
+                if (repo && repo.mcpServerId) {
+                    const tools = await McpToolModel.getByServer(domainId, repo.mcpServerId);
+                    for (const tool of tools) {
+                        allToolIds.add(tool.docId.toString());
+                    }
+                    AgentLogger.info('getAssignedTools: Found %d tools from repo %d (serverId: %d)', 
+                        tools.length, rpid, repo.mcpServerId);
+                }
+            }
+        } catch (error: any) {
+            AgentLogger.warn('getAssignedTools: Failed to get tools from repos: %s', error.message);
+        }
+    }
+    
+    // 将Set转换为ObjectId数组
+    const finalToolIds: ObjectId[] = Array.from(allToolIds).map(id => new ObjectId(id));
+    
+    // 如果没有工具ID，返回所有工具（保持原有逻辑）
+    if (finalToolIds.length === 0) {
+        AgentLogger.info('getAssignedTools: No toolIds specified, fetching all available tools from database');
         try {
             // First try to get from database (tools are synced from MCP servers)
             const servers = await McpServerModel.getByDomain(domainId);
@@ -928,7 +1055,7 @@ async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[]): Prom
     const dbToolsMap = new Map<string, any>();
     const assignedToolNames = new Set<string>();
     
-    for (const toolId of mcpToolIds) {
+    for (const toolId of finalToolIds) {
         try {
             const tool = await document.get(domainId, document.TYPE_MCP_TOOL, toolId);
             if (tool) {
@@ -1001,7 +1128,7 @@ class AgentMcpStatusHandler extends Handler {
             return;
         }
         
-        const tools = await getAssignedTools(domainId, adoc.mcpToolIds);
+        const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds);
         this.response.body = { 
             connected: true, 
             toolCount: tools.length 
@@ -1226,8 +1353,31 @@ export class AgentChatHandler extends Handler {
         // 获取已分配的工具ID列表
         const assignedToolIds = new Set((adoc.mcpToolIds || []).map(id => id.toString()));
 
-        // 获取已分配的 MCP 工具，按服务器分组
-        const serversWithTools: any[] = [];
+        // 获取所有 repo，建立 mcpServerId -> rpid 的映射
+        const repoServerIdMap = new Map<number, number>(); // mcpServerId -> rpid
+        const allRepos: any[] = [];
+        try {
+            // 使用已静态导入的 RepoModel
+            const repos = await RepoModel.getAllRepos(domainId);
+            for (const repo of repos) {
+                allRepos.push({
+                    rpid: repo.rpid,
+                    title: repo.title,
+                    mcpServerId: repo.mcpServerId,
+                });
+                if (repo.mcpServerId) {
+                    repoServerIdMap.set(repo.mcpServerId, repo.rpid);
+                }
+            }
+        } catch (error: any) {
+            AgentLogger.error('Failed to load repos: %s', error.message);
+        }
+
+        // 按类型组织已分配的 MCP 工具：provider、node、repo
+        const providerServers: any[] = [];
+        const nodeServers: any[] = []; // 暂时为空
+        const repoServers: any[] = [];
+
         try {
             const servers = await McpServerModel.getByDomain(domainId);
             for (const server of servers) {
@@ -1236,11 +1386,48 @@ export class AgentChatHandler extends Handler {
                 const assignedTools = allTools.filter(tool => assignedToolIds.has(tool._id.toString()));
                 
                 if (assignedTools.length > 0) {
-                    serversWithTools.push({
+                    // 使用服务器的 type 字段进行分类
+                    let serverType = (server as any).type;
+                    
+                    // 如果 type 字段不存在，尝试推断并更新
+                    if (!serverType) {
+                        const associatedRpid = repoServerIdMap.get(server.serverId);
+                        if (associatedRpid !== undefined) {
+                            // 从 repoServerIdMap 推断为 repo 类型
+                            serverType = 'repo';
+                            // 异步更新服务器类型（不阻塞当前请求）
+                            McpServerModel.update(domainId, server.serverId, { type: 'repo' }).catch(err => {
+                                AgentLogger.warn('Failed to update server type (chat): %s', err.message);
+                            });
+                        } else {
+                            // 尝试从名称推断
+                            const nameMatch = server.name.match(/^repo-(\d+)-/);
+                            if (nameMatch) {
+                                const inferredRpid = parseInt(nameMatch[1], 10);
+                                const repo = allRepos.find(r => r.rpid === inferredRpid);
+                                if (repo) {
+                                    serverType = 'repo';
+                                    // 异步更新服务器类型
+                                    McpServerModel.update(domainId, server.serverId, { type: 'repo' }).catch(err => {
+                                        AgentLogger.warn('Failed to update server type (chat): %s', err.message);
+                                    });
+                                } else {
+                                    serverType = 'provider'; // 默认
+                                }
+                            } else {
+                                serverType = 'provider'; // 默认
+                            }
+                        }
+                    }
+                    
+                    // repo 类型的服务器是内部服务，始终为 connected
+                    const status = serverType === 'repo' ? 'connected' : 'disconnected';
+                    
+                    const serverData = {
                         serverId: server.serverId,
                         name: server.name,
                         description: server.description,
-                        status: server.status || 'disconnected',
+                        status: status, // repo 类型为 connected，其他为 disconnected
                         toolsCount: assignedTools.length,
                         tools: assignedTools.map(tool => ({
                             _id: tool._id,
@@ -1249,12 +1436,47 @@ export class AgentChatHandler extends Handler {
                             description: tool.description,
                             inputSchema: tool.inputSchema,
                         })),
-                    });
+                    };
+                    
+                    if (serverType === 'repo') {
+                        // 这是 repo 的 MCP 服务器
+                        const associatedRpid = repoServerIdMap.get(server.serverId);
+                        // 如果 repoServerIdMap 中没有，尝试从名称推断
+                        let rpid = associatedRpid;
+                        if (rpid === undefined) {
+                            const nameMatch = server.name.match(/^repo-(\d+)-/);
+                            if (nameMatch) {
+                                rpid = parseInt(nameMatch[1], 10);
+                            }
+                        }
+                        const repo = rpid ? allRepos.find(r => r.rpid === rpid) : null;
+                        repoServers.push({
+                            ...serverData,
+                            rpid: rpid || 0,
+                            repoTitle: repo?.title || (rpid ? `Repo ${rpid}` : server.name),
+                            type: 'repo',
+                        });
+                    } else if (serverType === 'node') {
+                        // 这是 node 的 MCP 服务器
+                        nodeServers.push({
+                            ...serverData,
+                            type: 'node',
+                        });
+                    } else {
+                        // 这是外部 provider 的 MCP 服务器（默认）
+                        providerServers.push({
+                            ...serverData,
+                            type: 'provider',
+                        });
+                    }
                 }
             }
         } catch (error: any) {
             AgentLogger.error('Failed to load MCP servers and tools: %s', error.message);
         }
+
+        // 为了向后兼容，保留 serversWithTools（合并所有服务器）
+        const serversWithTools = [...providerServers, ...nodeServers, ...repoServers];
 
         // WebSocket URL for MCP status updates
         let mcpStatusWsUrl = `/mcp/status/ws/all`;
@@ -1277,7 +1499,10 @@ export class AgentChatHandler extends Handler {
             aiModel,
             apiUrl,
             wsUrl,
-            serversWithTools,
+            serversWithTools, // 向后兼容
+            providerServers,
+            nodeServers,
+            repoServers,
             mcpStatusWsUrl,
         };
     }
@@ -1319,16 +1544,27 @@ export class AgentChatHandler extends Handler {
             
         }
 
-        // 获取已分配的工具（根据 mcpToolIds 过滤）
-        const tools = await getAssignedTools(domainId, adoc.mcpToolIds);
+        // 获取已分配的工具（根据 mcpToolIds 和 repoIds 过滤）
+        const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds);
         const mcpClient = new McpClient();
         
         const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;
         
+        // 限制 memory 长度的辅助函数
+        const truncateMemory = (memory: string, maxLength: number = 2000): string => {
+            if (!memory || memory.length <= maxLength) {
+                return memory;
+            }
+            // 如果超过长度，保留前面的部分，并添加提示
+            return memory.substring(0, maxLength) + '\n\n[... 记忆已截断，保留最重要的规则 ...]';
+        };
+
         // 添加工作规则记忆（作为补充，不覆盖角色提示词）
+        // 限制 memory 长度，避免请求体过大（最多 2000 字符）
         if (adoc.memory) {
-            systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${adoc.memory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
+            const truncatedMemory = truncateMemory(adoc.memory);
+            systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
         }
         
         // Prohibit using emojis
@@ -1897,9 +2133,20 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
         const agentPrompt = this.adoc.content || '';
         let systemMessage = agentPrompt;
         
+        // 限制 memory 长度的辅助函数
+        const truncateMemory = (memory: string, maxLength: number = 2000): string => {
+            if (!memory || memory.length <= maxLength) {
+                return memory;
+            }
+            // 如果超过长度，保留前面的部分，并添加提示
+            return memory.substring(0, maxLength) + '\n\n[... 记忆已截断，保留最重要的规则 ...]';
+        };
+
         // 添加工作规则记忆
+        // 限制 memory 长度，避免请求体过大（最多 2000 字符）
         if (this.adoc.memory) {
-            systemMessage += `\n\n【工作规则记忆】\n${this.adoc.memory}\n\n请遵循以上工作规则和用户指导。`;
+            const truncatedMemory = truncateMemory(this.adoc.memory);
+            systemMessage += `\n\n【工作规则记忆】\n${truncatedMemory}\n\n请遵循以上工作规则和用户指导。`;
         }
         
         // Prohibit using emojis
@@ -2296,9 +2543,20 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
         const agentPrompt = this.adoc.content || '';
         let systemMessage = agentPrompt;
         
+        // 限制 memory 长度的辅助函数
+        const truncateMemory = (memory: string, maxLength: number = 2000): string => {
+            if (!memory || memory.length <= maxLength) {
+                return memory;
+            }
+            // 如果超过长度，保留前面的部分，并添加提示
+            return memory.substring(0, maxLength) + '\n\n[... 记忆已截断，保留最重要的规则 ...]';
+        };
+
         // 添加工作规则记忆
+        // 限制 memory 长度，避免请求体过大（最多 2000 字符）
         if (this.adoc.memory) {
-            systemMessage += `\n\n【工作规则记忆】\n${this.adoc.memory}\n\n请遵循以上工作规则和用户指导。`;
+            const truncatedMemory = truncateMemory(this.adoc.memory);
+            systemMessage += `\n\n【工作规则记忆】\n${truncatedMemory}\n\n请遵循以上工作规则和用户指导。`;
         }
         
         // Prohibit using emojis
@@ -2729,9 +2987,20 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
         const agentPrompt = this.adoc.content || '';
         let systemMessage = agentPrompt;
         
+        // 限制 memory 长度的辅助函数
+        const truncateMemory = (memory: string, maxLength: number = 2000): string => {
+            if (!memory || memory.length <= maxLength) {
+                return memory;
+            }
+            // 如果超过长度，保留前面的部分，并添加提示
+            return memory.substring(0, maxLength) + '\n\n[... 记忆已截断，保留最重要的规则 ...]';
+        };
+
         // 添加工作规则记忆
+        // 限制 memory 长度，避免请求体过大（最多 2000 字符）
         if (this.adoc.memory) {
-            systemMessage += `\n\n【工作规则记忆】\n${this.adoc.memory}\n\n请遵循以上工作规则和用户指导。`;
+            const truncatedMemory = truncateMemory(this.adoc.memory);
+            systemMessage += `\n\n【工作规则记忆】\n${truncatedMemory}\n\n请遵循以上工作规则和用户指导。`;
         }
         
         // Prohibit using emojis
@@ -3086,9 +3355,20 @@ export class AgentApiHandler extends Handler {
         const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;
         
+        // 限制 memory 长度的辅助函数
+        const truncateMemory = (memory: string, maxLength: number = 2000): string => {
+            if (!memory || memory.length <= maxLength) {
+                return memory;
+            }
+            // 如果超过长度，保留前面的部分，并添加提示
+            return memory.substring(0, maxLength) + '\n\n[... 记忆已截断，保留最重要的规则 ...]';
+        };
+
         // 添加工作规则记忆（作为补充，不覆盖角色提示词）
+        // 限制 memory 长度，避免请求体过大（最多 2000 字符）
         if (adoc.memory) {
-            systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${adoc.memory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
+            const truncatedMemory = truncateMemory(adoc.memory);
+            systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
         }
         
         // Prohibit using emojis
@@ -3323,7 +3603,11 @@ export class AgentApiHandler extends Handler {
                                                         
                                                         let toolResult: any;
                                                         try {
-                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, adoc.domainId);
+                                                            // 如果是 repo 工具，传递 agentId 和 agentName
+                                                            const toolArgs = firstToolCall.function.name.match(/^repo_\d+_/) 
+                                                                ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
+                                                                : parsedArgs;
+                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, toolArgs, adoc.domainId);
                                                             AgentLogger.info(`Tool ${firstToolCall.function.name} returned (API)`, { resultLength: JSON.stringify(toolResult).length });
                                                         } catch (toolError: any) {
                                                             AgentLogger.error(`Tool ${firstToolCall.function.name} failed (API):`, toolError);
@@ -3462,7 +3746,11 @@ export class AgentApiHandler extends Handler {
                     }
                     
                     AgentLogger.info(`Calling first tool: ${firstToolCall.function?.name} (One-by-One Mode)`);
-                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, parsedArgs, adoc.domainId);
+                    // 如果是 repo 工具，传递 agentId 和 agentName
+                    const toolArgs = firstToolCall.function?.name?.match(/^repo_\d+_/) 
+                        ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
+                        : parsedArgs;
+                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, toolArgs, adoc.domainId);
                     AgentLogger.info('Tool returned:', { toolResult });
                     
                     const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
@@ -3577,43 +3865,190 @@ export class AgentEditHandler extends Handler {
         if (!agent) {
             console.warn(`[AgentEditHandler.get] No adoc found, skipping agent_edit.`);
             this.response.template = 'agent_edit.html';
-            this.response.body = { adoc: null, allMcpTools: [], assignedToolIds: [] };
+            this.response.body = { 
+                adoc: null, 
+                providerServers: [],
+                nodeServers: [],
+                repoServers: [],
+                assignedToolIds: [],
+                allRepos: [],
+                assignedRepoIds: [],
+                allNodes: [],
+            };
             return;
         }
         const udoc = await user.getById(domainId, agent.owner);
 
-        // 获取所有可用的MCP工具（从所有MCP服务器）
-        const allMcpTools: any[] = [];
+        // 获取所有可用的repo列表，并建立 mcpServerId -> rpid 的映射
+        const allRepos: any[] = [];
+        const repoServerIdMap = new Map<number, number>(); // mcpServerId -> rpid
         try {
-            const servers = await McpServerModel.getByDomain(domainId);
-            for (const server of servers) {
-                const tools = await McpToolModel.getByServer(domainId, server.serverId);
-                for (const tool of tools) {
-                    allMcpTools.push({
-                        _id: tool._id,
-                        toolId: tool.toolId,
-                        name: tool.name,
-                        description: tool.description,
-                        inputSchema: tool.inputSchema,
-                        serverId: tool.serverId,
-                        serverName: server.name,
-                    });
+            const repos = await RepoModel.getAllRepos(domainId);
+            for (const repo of repos) {
+                const mcpServerId = (repo as any).mcpServerId;
+                allRepos.push({
+                    rpid: repo.rpid,
+                    title: repo.title,
+                    mcpServerId: mcpServerId,
+                });
+                if (mcpServerId && typeof mcpServerId === 'number') {
+                    repoServerIdMap.set(mcpServerId, repo.rpid);
+                    AgentLogger.debug('Mapped repo server: serverId=%d -> rpid=%d', mcpServerId, repo.rpid);
+                } else {
+                    AgentLogger.debug('Repo %d has no mcpServerId or invalid value: %s', repo.rpid, mcpServerId);
                 }
             }
+            AgentLogger.info('Loaded %d repos, %d with mcpServerId', repos.length, repoServerIdMap.size);
         } catch (error: any) {
-            AgentLogger.error('Failed to load MCP tools: %s', error.message);
+            AgentLogger.error('Failed to load repos: %s', error.message);
+        }
+
+        // 获取所有可用的node列表（用于 node 类型的 MCP 工具）
+        const allNodes: any[] = [];
+        try {
+            const nodes = await NodeModel.getByDomain(domainId);
+            for (const node of nodes) {
+                allNodes.push({
+                    nodeId: node.nodeId,
+                    name: node.name,
+                    description: node.description,
+                    status: node.status,
+                });
+            }
+        } catch (error: any) {
+            AgentLogger.error('Failed to load nodes: %s', error.message);
         }
 
         // 获取已分配的工具ID列表（转换为字符串数组以便模板比较）
         const assignedToolIds = (agent.mcpToolIds || []).map(id => id.toString());
+
+        // 按类型组织 MCP 工具：provider、repo、node
+        const providerServers: any[] = []; // 外部 MCP 服务
+        const nodeServers: any[] = []; // node 提供的 MCP 工具
+        const repoServers: any[] = []; // repo 的 MCP 工具
+
+        try {
+            const servers = await McpServerModel.getByDomain(domainId);
+            AgentLogger.info('Processing %d MCP servers for agent edit', servers.length);
+            
+            for (const server of servers) {
+                AgentLogger.debug('Processing server: serverId=%d, name=%s, type=%s', 
+                    server.serverId, server.name, (server as any).type || 'undefined');
+                
+                const tools = await McpToolModel.getByServer(domainId, server.serverId);
+                const serverTools = tools.map(tool => ({
+                    _id: tool._id,
+                    toolId: tool.toolId,
+                    name: tool.name,
+                    description: tool.description,
+                    inputSchema: tool.inputSchema,
+                    serverId: tool.serverId,
+                    serverName: server.name,
+                }));
+
+                // 使用服务器的 type 字段进行分类
+                let serverType = (server as any).type;
+                
+                // 根据服务器类型设置状态：repo 类型是内部服务，始终为 connected
+                const status = serverType === 'repo' ? 'connected' : 'disconnected';
+                
+                // 如果 type 字段不存在，尝试推断并更新
+                if (!serverType) {
+                    const associatedRpid = repoServerIdMap.get(server.serverId);
+                    if (associatedRpid !== undefined) {
+                        // 从 repoServerIdMap 推断为 repo 类型
+                        serverType = 'repo';
+                        // 异步更新服务器类型（不阻塞当前请求）
+                        McpServerModel.update(domainId, server.serverId, { type: 'repo' }).catch(err => {
+                            AgentLogger.warn('Failed to update server type: %s', err.message);
+                        });
+                    } else {
+                        // 尝试从名称推断
+                        const nameMatch = server.name.match(/^repo-(\d+)-/);
+                        if (nameMatch) {
+                            const inferredRpid = parseInt(nameMatch[1], 10);
+                            const repo = allRepos.find(r => r.rpid === inferredRpid);
+                            if (repo) {
+                                serverType = 'repo';
+                                // 异步更新服务器类型
+                                McpServerModel.update(domainId, server.serverId, { type: 'repo' }).catch(err => {
+                                    AgentLogger.warn('Failed to update server type: %s', err.message);
+                                });
+                            } else {
+                                serverType = 'provider'; // 默认
+                            }
+                        } else {
+                            serverType = 'provider'; // 默认
+                        }
+                    }
+                }
+                
+                if (serverType === 'repo') {
+                    // 这是 repo 的 MCP 服务器
+                    const associatedRpid = repoServerIdMap.get(server.serverId);
+                    // 如果 repoServerIdMap 中没有，尝试从名称推断
+                    let rpid = associatedRpid;
+                    if (rpid === undefined) {
+                        const nameMatch = server.name.match(/^repo-(\d+)-/);
+                        if (nameMatch) {
+                            rpid = parseInt(nameMatch[1], 10);
+                        }
+                    }
+                    const repo = rpid ? allRepos.find(r => r.rpid === rpid) : null;
+                    repoServers.push({
+                        serverId: server.serverId,
+                        serverName: server.name,
+                        serverDescription: server.description,
+                        status: status, // 不查询实时状态，仅用于显示
+                        rpid: rpid || 0,
+                        repoTitle: repo?.title || (rpid ? `Repo ${rpid}` : server.name),
+                        tools: serverTools,
+                    });
+                } else if (serverType === 'node') {
+                    // 这是 node 的 MCP 服务器
+                    nodeServers.push({
+                        serverId: server.serverId,
+                        serverName: server.name,
+                        serverDescription: server.description,
+                        status: status, // 不查询实时状态，仅用于显示
+                        tools: serverTools,
+                    });
+                } else {
+                    // 这是外部 provider 的 MCP 服务器（默认）
+                    providerServers.push({
+                        serverId: server.serverId,
+                        serverName: server.name,
+                        serverDescription: server.description,
+                        status: status, // 不查询实时状态，仅用于显示
+                        tools: serverTools,
+                    });
+                    AgentLogger.debug('Added provider server: serverId=%d, name=%s, tools=%d', 
+                        server.serverId, server.name, serverTools.length);
+                }
+            }
+            
+            AgentLogger.info('Agent edit: providerServers=%d, nodeServers=%d, repoServers=%d', 
+                providerServers.length, nodeServers.length, repoServers.length);
+        } catch (error: any) {
+            AgentLogger.error('Failed to load MCP tools: %s', error.message);
+            AgentLogger.error('Error stack: %s', error.stack);
+        }
+
+        // 获取已选择的repo ID列表
+        const assignedRepoIds = (agent.repoIds || []).map(id => id.toString());
 
         this.response.template = 'agent_edit.html';
         this.response.body = {
             adoc: agent,
             tag: agent.tag,
             udoc,
-            allMcpTools,
+            providerServers,
+            nodeServers,
+            repoServers,
             assignedToolIds,
+            allRepos,
+            assignedRepoIds,
+            allNodes,
         };
         this.UiContext.extraTitleContent = agent.title;
     }
@@ -3657,7 +4092,8 @@ export class AgentEditHandler extends Handler {
     @post('tag', Types.Content, true, null, parseCategory)
     @post('memory', Types.Content, true)
     @post('toolIds', Types.ArrayOf(Types.String), true)
-    async postUpdate(domainId: string, aid: string, title: string, content: string, tag: string[] = [], memory?: string, toolIds?: string[]) {
+    @post('repoIds', Types.ArrayOf(Types.Int), true)
+    async postUpdate(domainId: string, aid: string, title: string, content: string, tag: string[] = [], memory?: string, toolIds?: string[], repoIds?: number[]) {
         const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
     
     
@@ -3685,7 +4121,26 @@ export class AgentEditHandler extends Handler {
             }
         }
         
-        AgentLogger.info('Updating agent tools: aid=%s, toolIds=%o, validToolIds=%o', agent.aid, toolIds, validToolIds.map(id => id.toString()));
+        // 验证repo ID是否有效
+        const validRepoIds: number[] = [];
+        if (repoIds && Array.isArray(repoIds)) {
+            try {
+                // 使用已静态导入的 RepoModel
+                for (const rpid of repoIds) {
+                    const repo = await RepoModel.getRepoByRpid(domainId, rpid);
+                    if (repo) {
+                        validRepoIds.push(rpid);
+                    } else {
+                        AgentLogger.warn('Repo not found: rpid=%d', rpid);
+                    }
+                }
+            } catch (error: any) {
+                AgentLogger.warn('Failed to validate repo IDs: %s', error.message);
+            }
+        }
+        
+        AgentLogger.info('Updating agent: aid=%s, toolIds=%o, validToolIds=%o, repoIds=%o, validRepoIds=%o', 
+            agent.aid, toolIds, validToolIds.map(id => id.toString()), repoIds, validRepoIds);
     
         const agentAid = agent.aid;
         const updatedAgent = await Agent.edit(domainId, agentAid, { 
@@ -3693,7 +4148,8 @@ export class AgentEditHandler extends Handler {
             content, 
             tag: tag ?? [], 
             memory: memory || null,
-            mcpToolIds: validToolIds
+            mcpToolIds: validToolIds,
+            repoIds: validRepoIds.length > 0 ? validRepoIds : undefined
         });
         
         if (updatedAgent) {

@@ -307,12 +307,15 @@ const page = new NamedPage('agent_chat', async () => {
   
   // Collect assigned tool IDs from initial render (for filtering real-time updates)
   const assignedToolIds = new Set<string>();
-  document.querySelectorAll('.mcp-tool-item').forEach(item => {
+  // 从所有工具项中收集已分配的工具ID
+  document.querySelectorAll('[data-tool-id]').forEach(item => {
     const toolId = item.getAttribute('data-tool-id');
     if (toolId) {
-      assignedToolIds.add(toolId);
+      assignedToolIds.add(toolId.toString());
     }
   });
+  
+  console.log('Collected assigned tool IDs:', Array.from(assignedToolIds));
 
   function escapeHtml(text: string): string {
     const div = document.createElement('div');
@@ -393,9 +396,66 @@ const page = new NamedPage('agent_chat', async () => {
     }
   }
 
-  function updateServersList(servers: any[]) {
-    const container = document.getElementById('mcp-servers-list');
-    if (!container) return;
+  function updateServersList(servers: any[] | { providerServers?: any[], nodeServers?: any[], repoServers?: any[] }) {
+    // 支持新的分类格式或旧的统一格式
+    let providerServers: any[] = [];
+    let nodeServers: any[] = [];
+    let repoServers: any[] = [];
+
+    if (Array.isArray(servers)) {
+      // 向后兼容：如果是数组，按 type 字段分类，并过滤出只包含已分配工具的服务器
+      servers.forEach(server => {
+        // 过滤出只包含已分配工具的服务器
+        if (server.tools && Array.isArray(server.tools)) {
+          const assignedTools = server.tools.filter((tool: any) => {
+            const toolId = tool._id?.toString() || tool._id;
+            return assignedToolIds.has(toolId);
+          });
+          
+          // 只保留有已分配工具的服务器
+          if (assignedTools.length > 0) {
+            const filteredServer = {
+              ...server,
+              tools: assignedTools,
+              toolsCount: assignedTools.length,
+            };
+            
+            if (server.type === 'repo') {
+              repoServers.push(filteredServer);
+            } else if (server.type === 'node') {
+              nodeServers.push(filteredServer);
+            } else {
+              providerServers.push(filteredServer); // 默认归类为 provider
+            }
+          }
+        }
+      });
+    } else {
+      // 新的分类格式，也需要过滤
+      const filterServerTools = (serverList: any[]) => {
+        return serverList.map(server => {
+          if (server.tools && Array.isArray(server.tools)) {
+            const assignedTools = server.tools.filter((tool: any) => {
+              const toolId = tool._id?.toString() || tool._id;
+              return assignedToolIds.has(toolId);
+            });
+            if (assignedTools.length > 0) {
+              return {
+                ...server,
+                tools: assignedTools,
+                toolsCount: assignedTools.length,
+              };
+            }
+            return null;
+          }
+          return server;
+        }).filter((s: any) => s !== null);
+      };
+      
+      providerServers = filterServerTools(servers.providerServers || []);
+      nodeServers = filterServerTools(servers.nodeServers || []);
+      repoServers = filterServerTools(servers.repoServers || []);
+    }
 
     // Save current expanded state
     const currentExpanded: Record<string, boolean> = {};
@@ -407,26 +467,15 @@ const page = new NamedPage('agent_chat', async () => {
       }
     });
 
-    // Filter: only show assigned tools
-    const filteredServers = servers.map(server => {
-      const assignedTools = (server.tools || []).filter((tool: any) => {
-        const toolId = tool._id ? tool._id.toString() : String(tool._id);
-        return assignedToolIds.has(toolId);
-      });
-      return {
-        ...server,
-        tools: assignedTools,
-        toolsCount: assignedTools.length
-      };
-    }).filter(server => server.toolsCount > 0);
-
-    // Re-render list
-    container.innerHTML = filteredServers.map(server => {
+    // Helper function to render server HTML
+    function renderServer(server: any, type: string): string {
       const isExpanded = currentExpanded[String(server.serverId)] || false;
       const statusClass = server.status === 'connected' ? 'status-online' : 'status-offline';
       const statusText = server.status === 'connected' ? i18n('Online') : i18n('Offline');
       const toggleIcon = isExpanded ? 'icon-chevron-down' : 'icon-chevron-right';
       const toolsDisplay = isExpanded ? '' : 'style="display: none;"';
+      const serverName = type === 'repo' ? (server.repoTitle || server.name) : server.name;
+      const dataAttrs = type === 'repo' && server.rpid ? `data-type="repo" data-rpid="${server.rpid}"` : `data-type="${type}"`;
 
       const toolsHtml = server.tools && server.tools.length > 0
         ? server.tools.map((tool: any) => `
@@ -444,10 +493,10 @@ const page = new NamedPage('agent_chat', async () => {
         : `<div class="mcp-tool-empty">${i18n('No tools available')}</div>`;
 
       return `
-        <div class="mcp-server-item" data-server-id="${server.serverId}">
+        <div class="mcp-server-item" data-server-id="${server.serverId}" ${dataAttrs}>
           <div class="mcp-server-header" onclick="window.toggleServer && window.toggleServer('${String(server.serverId)}')">
             <span class="mcp-server-toggle icon ${toggleIcon}" id="toggle-${server.serverId}"></span>
-            <span class="mcp-server-name">${escapeHtml(server.name)}</span>
+            <span class="mcp-server-name">${escapeHtml(serverName)}</span>
             <span class="mcp-server-status" id="status-${server.serverId}" data-status="${server.status}">
               <span class="status-indicator ${statusClass}"></span>${statusText}
             </span>
@@ -457,7 +506,35 @@ const page = new NamedPage('agent_chat', async () => {
           </div>
         </div>
       `;
-    }).join('');
+    }
+
+    // Update Provider servers
+    const providerContainer = document.getElementById('mcp-provider-servers');
+    if (providerContainer) {
+      providerContainer.innerHTML = providerServers.map(server => renderServer(server, 'provider')).join('');
+    }
+
+    // Update Node servers
+    const nodeContainer = document.getElementById('mcp-node-servers');
+    if (nodeContainer) {
+      nodeContainer.innerHTML = nodeServers.map(server => renderServer(server, 'node')).join('');
+    }
+
+    // Update Repo servers
+    const repoContainer = document.getElementById('mcp-repo-servers');
+    if (repoContainer) {
+      repoContainer.innerHTML = repoServers.map(server => renderServer(server, 'repo')).join('');
+    }
+
+    // 向后兼容：如果存在旧的容器，也更新它
+    const oldContainer = document.getElementById('mcp-servers-list');
+    if (oldContainer) {
+      const allServers = [...providerServers, ...nodeServers, ...repoServers];
+      oldContainer.innerHTML = allServers.map(server => {
+        const type = server.type || 'provider';
+        return renderServer(server, type);
+      }).join('');
+    }
 
     // Re-bind events
     (window as any).toggleServer = (window as any).toggleServer;

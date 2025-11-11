@@ -195,6 +195,10 @@
             {{ _('Edit Repo info') }}
           </a>
 
+          <a href="{{ url('repo_mcp', domainId=repo.domainId, rpid=repo.rpid) }}" class="button secondary expanded" style="margin-bottom: 8px;">
+            {{ _('MCP Tools') }}
+          </a>
+
           {% if gitStatus %}
             {% if gitStatus.ahead > 0 %}
               <form id="push-form" method="post" action="{{ url('repo_github_push_branch', domainId=repo.domainId, rpid=repo.rpid, branch=currentBranch) }}">
