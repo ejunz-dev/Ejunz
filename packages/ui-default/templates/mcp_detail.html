@@ -33,6 +33,19 @@
                             <td>{{ server.serverId }}</td>
                         </tr>
                         <tr>
+                            <th>类型</th>
+                            <td>
+                                {% set serverType = server.type|default('provider') %}
+                                {% if serverType == 'repo' %}
+                                    <span class="badge badge--primary">Repo</span>
+                                {% elif serverType == 'node' %}
+                                    <span class="badge badge--info">Node</span>
+                                {% else %}
+                                    <span class="badge">Provider</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
                             <th>状态</th>
                             <td>
                                 <span class="server-status server-status-{{ server.status }}">

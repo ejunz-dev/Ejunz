@@ -211,6 +211,7 @@ declare module './model/agent'{
         apiKey?: string;
         memory?: string;
         mcpToolIds?: ObjectId[]; // 分配的MCP工具ID列表
+        repoIds?: number[]; // 生效的repo ID列表（rpid数组）
     }
 }
 export type { AgentDoc } from './model/agent';
@@ -243,6 +244,7 @@ export interface RPDoc {
     githubRepo?: string;    // GitHub 仓库地址，如 git@github.com:user/repo.git
     mode?: 'file' | 'manuscript'; // 显示模式：文件模式或文稿模式
     config?: Record<string, any>; // Repo 配置
+    mcpServerId?: number; // 关联的MCP服务器ID（内部调用）
 }
 
 export interface DCDoc {
@@ -319,11 +321,12 @@ declare module './model/mcp' {
         description?: string;
         wsEndpoint: string; // WebSocket 接入点路径
         wsToken?: string; // WebSocket 连接令牌（用于验证）
-        status: 'connected' | 'disconnected' | 'error'; // 服务器连接状态
+        status?: 'connected' | 'disconnected' | 'error'; // 服务器连接状态（可选，由实时连接管理，不存储到数据库）
         lastConnectedAt?: Date; // 最后连接时间
         lastDisconnectedAt?: Date; // 最后断开时间
         errorMessage?: string; // 错误信息
         toolsCount?: number; // 工具数量
+        type?: 'provider' | 'repo' | 'node'; // MCP 服务器类型：provider（外部）、repo（repo内部）、node（node提供）
         createdAt: Date;
         updatedAt: Date;
         owner: number; // 用户 ID

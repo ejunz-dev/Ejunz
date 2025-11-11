@@ -1,0 +1,206 @@
+{% import "components/form.html" as form with context %}
+{% extends "layout/basic.html" %}
+
+{% block content %}
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h2 class="section__title">{{ _("Repo MCP Tools") }}</h2>
+        <p class="section__help-text">
+          {{ _("Manage MCP tools for this repo. These tools will be available when this repo is assigned to an agent.") }}
+        </p>
+      </div>
+      <div class="section__body">
+        {% if repo.mcpServerId %}
+          <!-- Create New Tool Button -->
+          <div style="margin-bottom: 20px;">
+            <button type="button" class="rounded primary button" onclick="document.getElementById('create-tool-form').style.display = 'block';">
+              {{ _('Create New MCP Tool') }}
+            </button>
+          </div>
+
+          <!-- Create Tool Form (Initially Hidden) -->
+          <div id="create-tool-form" style="display: none; margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9;">
+            <h3 style="margin-top: 0;">{{ _('Create New MCP Tool') }}</h3>
+            <form method="post">
+              <input type="hidden" name="action" value="create">
+              {{ form.form_text({
+                  columns: 12,
+                  label: _('Tool Name (optional, auto-generated if empty)'),
+                  name: 'name',
+                  placeholder: _('e.g., repo_1_query_doc'),
+                  value: ''
+              }) }}
+              {{ form.form_text({
+                  columns: 12,
+                  label: _('Description'),
+                  name: 'description',
+                  placeholder: _('Tool description'),
+                  value: ''
+              }) }}
+              {{ form.form_select({
+                  columns: 6,
+                  label: _('Operation'),
+                  name: 'operation',
+                  options: {
+                    'query': _('Query'),
+                    'create': _('Create'),
+                    'edit': _('Edit'),
+                    'delete': _('Delete')
+                  },
+                  value: 'query'
+              }) }}
+              {{ form.form_select({
+                  columns: 6,
+                  label: _('Type'),
+                  name: 'type',
+                  options: {
+                    'doc': _('Document'),
+                    'block': _('Block')
+                  },
+                  value: 'doc'
+              }) }}
+              <div class="row">
+                <div class="columns">
+                  <button type="submit" class="rounded primary button">
+                    {{ _('Create') }}
+                  </button>
+                  <button type="button" class="rounded button" onclick="document.getElementById('create-tool-form').style.display = 'none';">
+                    {{ _('Cancel') }}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+
+          <!-- MCP Tools List -->
+          <div class="mcp-tools-list">
+            {% if mcpTools and mcpTools.length > 0 %}
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>{{ _('Tool Name') }}</th>
+                    <th>{{ _('Description') }}</th>
+                    <th>{{ _('Type') }}</th>
+                    <th>{{ _('Actions') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for tool in mcpTools %}
+                  <tr>
+                    <td><code>{{ tool.name }}</code></td>
+                    <td>{{ tool.description }}</td>
+                    <td>
+                      {% if 'query' in tool.name %}
+                        <span class="badge badge--success">{{ _('Query') }}</span>
+                      {% elif 'create' in tool.name %}
+                        <span class="badge badge--primary">{{ _('Create') }}</span>
+                      {% elif 'edit' in tool.name %}
+                        <span class="badge badge--warning">{{ _('Edit') }}</span>
+                      {% elif 'delete' in tool.name %}
+                        <span class="badge badge--danger">{{ _('Delete') }}</span>
+                      {% else %}
+                        <span class="badge">{{ _('Custom') }}</span>
+                      {% endif %}
+                      {% if 'doc' in tool.name %}
+                        <span class="badge" style="margin-left: 5px;">{{ _('Document') }}</span>
+                      {% elif 'block' in tool.name %}
+                        <span class="badge" style="margin-left: 5px;">{{ _('Block') }}</span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      <div style="display: flex; gap: 5px;">
+                        <button type="button" class="rounded button" onclick="editTool({{ tool.toolId }}, '{{ tool.name|jsesc }}', '{{ tool.description|jsesc }}', {{ tool.inputSchema|json }})">
+                          {{ _('Edit') }}
+                        </button>
+                        <form method="post" style="display: inline;" onsubmit="return confirm('{{ _('Are you sure you want to delete this tool?') }}');">
+                          <input type="hidden" name="action" value="delete">
+                          <input type="hidden" name="toolId" value="{{ tool.toolId }}">
+                          <button type="submit" class="rounded button" style="background: #dc3545; color: white;">
+                            {{ _('Delete') }}
+                          </button>
+                        </form>
+                      </div>
+                      <details style="font-size: 0.85em; margin-top: 5px;">
+                        <summary style="cursor: pointer;">{{ _('View Schema') }}</summary>
+                        <pre style="margin-top: 5px; padding: 5px; background: #f5f5f5; border-radius: 3px; overflow-x: auto;">{{ tool.inputSchema|json }}</pre>
+                      </details>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            {% else %}
+              <p class="note">{{ _('No MCP tools found. Create a new tool to get started.') }}</p>
+            {% endif %}
+          </div>
+        {% else %}
+          <p class="note">{{ _('MCP server not found for this repo. Please contact administrator.') }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Tool Modal (Hidden by default) -->
+<div id="edit-tool-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
+  <div style="max-width: 600px; margin: 50px auto; background: white; padding: 20px; border-radius: 4px;">
+    <h3 style="margin-top: 0;">{{ _('Edit MCP Tool') }}</h3>
+    <form method="post" id="edit-tool-form">
+      <input type="hidden" name="action" value="edit">
+      <input type="hidden" name="toolId" id="edit-tool-id">
+      {{ form.form_text({
+          columns: 12,
+          label: _('Tool Name'),
+          name: 'name',
+          id: 'edit-tool-name',
+          value: ''
+      }) }}
+      {{ form.form_text({
+          columns: 12,
+          label: _('Description'),
+          name: 'description',
+          id: 'edit-tool-description',
+          value: ''
+      }) }}
+      {{ form.form_textarea({
+          columns: 12,
+          label: _('Input Schema (JSON)'),
+          name: 'inputSchema',
+          id: 'edit-tool-schema',
+          value: '',
+          rows: 10
+      }) }}
+      <div class="row">
+        <div class="columns">
+          <button type="submit" class="rounded primary button">
+            {{ _('Save') }}
+          </button>
+          <button type="button" class="rounded button" onclick="document.getElementById('edit-tool-modal').style.display = 'none';">
+            {{ _('Cancel') }}
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function editTool(toolId, name, description, inputSchema) {
+  document.getElementById('edit-tool-id').value = toolId;
+  document.getElementById('edit-tool-name').value = name;
+  document.getElementById('edit-tool-description').value = description;
+  document.getElementById('edit-tool-schema').value = JSON.stringify(inputSchema, null, 2);
+  document.getElementById('edit-tool-modal').style.display = 'block';
+}
+
+// Close modal when clicking outside
+document.getElementById('edit-tool-modal').addEventListener('click', function(e) {
+  if (e.target === this) {
+    this.style.display = 'none';
+  }
+});
+</script>
+{% endblock %}
+
