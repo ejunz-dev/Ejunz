@@ -1,6 +1,0 @@
-plugins_allowed_domains:
-  family: system_plugins
-  type: yaml
-  name: ejunzrepo
-  desc: Allowed domains
-  default: [system]
