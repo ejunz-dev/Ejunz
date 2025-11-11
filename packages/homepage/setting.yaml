@@ -1,6 +1,0 @@
-spaces_allowed_domains:
-  family: system_spaces
-  type: yaml
-  name: homepage
-  desc: Allowed domains
-  default: [system]
