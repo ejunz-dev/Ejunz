@@ -37,6 +37,7 @@
                             <thead>
                                 <tr>
                                     <th>服务器名称</th>
+                                    <th>类型</th>
                                     <th>状态</th>
                                     <th>工具数量</th>
                                     <th>最后连接</th>
@@ -52,6 +53,16 @@
                                             </a>
                                             {% if server.description %}
                                                 <br><small class="text-gray">{{ server.description }}</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% set serverType = server.type|default('provider') %}
+                                            {% if serverType == 'repo' %}
+                                                <span class="badge badge--primary">Repo</span>
+                                            {% elif serverType == 'node' %}
+                                                <span class="badge badge--info">Node</span>
+                                            {% else %}
+                                                <span class="badge">Provider</span>
                                             {% endif %}
                                         </td>
                                         <td>

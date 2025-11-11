@@ -19,8 +19,231 @@ import type { BSDoc, RPDoc, DCDoc, BKDoc } from '../interface';
 import * as setting from '../model/setting';
 import https from 'https';
 import http from 'http';
+import McpServerModel, { McpToolModel } from '../model/mcp';
 
 const exec = promisify(execCb);
+
+/**
+ * 为repo创建默认的MCP工具（查询、创建、编辑、删除）
+ */
+async function createDefaultRepoMcpTools(
+    domainId: string,
+    serverId: number,
+    serverDocId: ObjectId,
+    rpid: number,
+    owner: number
+): Promise<void> {
+    const tools = [
+        {
+            name: `repo_${rpid}_query_doc`,
+            description: `查询repo ${rpid}中的文档（doc）。注意：doc是文件夹/目录结构，用于组织内容，不是实际的内容块。`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    did: { type: 'number', description: '文档ID（可选，不提供则返回所有文档）' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                },
+            },
+        },
+        {
+            name: `repo_${rpid}_create_doc`,
+            description: `在repo ${rpid}中创建文档（doc）。注意：doc是文件夹/目录结构，用于组织内容，不是实际的内容块。每次修改后会自动提交commit。`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    title: { type: 'string', description: '文档标题' },
+                    content: { type: 'string', description: '文档内容' },
+                    parentId: { type: 'number', description: '父文档ID（可选，不提供则创建根文档）' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                    commitMessage: { type: 'string', description: '提交消息（可选，AI会自动添加前缀）' },
+                },
+                required: ['title', 'content'],
+            },
+        },
+        {
+            name: `repo_${rpid}_edit_doc`,
+            description: `编辑repo ${rpid}中的文档（doc）。注意：doc是文件夹/目录结构，用于组织内容，不是实际的内容块。每次修改后会自动提交commit。`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    did: { type: 'number', description: '文档ID' },
+                    title: { type: 'string', description: '文档标题（可选）' },
+                    content: { type: 'string', description: '文档内容（可选）' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                    commitMessage: { type: 'string', description: '提交消息（可选，AI会自动添加前缀）' },
+                },
+                required: ['did'],
+            },
+        },
+        {
+            name: `repo_${rpid}_delete_doc`,
+            description: `删除repo ${rpid}中的文档（doc）。注意：doc是文件夹/目录结构。每次修改后会自动提交commit。`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    did: { type: 'number', description: '文档ID' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                    commitMessage: { type: 'string', description: '提交消息（可选，AI会自动添加前缀）' },
+                },
+                required: ['did'],
+            },
+        },
+        {
+            name: `repo_${rpid}_query_block`,
+            description: `查询repo ${rpid}中的块（block）。注意：block才是实际的内容块，包含具体的内容数据。doc只是文件夹结构。`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    bid: { type: 'number', description: '块ID（可选，不提供则返回所有块）' },
+                    did: { type: 'number', description: '文档ID（可选，用于过滤特定文档的块）' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                },
+            },
+        },
+        {
+            name: `repo_${rpid}_create_block`,
+            description: `在repo ${rpid}中创建块（block）。注意：block才是实际的内容块，包含具体的内容数据。doc只是文件夹结构。每次修改后会自动提交commit。`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    did: { type: 'number', description: '所属文档ID（doc是文件夹）' },
+                    title: { type: 'string', description: '块标题' },
+                    content: { type: 'string', description: '块内容' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                    commitMessage: { type: 'string', description: '提交消息（可选，AI会自动添加前缀）' },
+                },
+                required: ['did', 'title', 'content'],
+            },
+        },
+        {
+            name: `repo_${rpid}_edit_block`,
+            description: `编辑repo ${rpid}中的块（block）。注意：block才是实际的内容块，包含具体的内容数据。doc只是文件夹结构。每次修改后会自动提交commit。`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    bid: { type: 'number', description: '块ID' },
+                    title: { type: 'string', description: '块标题（可选）' },
+                    content: { type: 'string', description: '块内容（可选）' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                    commitMessage: { type: 'string', description: '提交消息（可选，AI会自动添加前缀）' },
+                },
+                required: ['bid'],
+            },
+        },
+        {
+            name: `repo_${rpid}_delete_block`,
+            description: `删除repo ${rpid}中的块（block）。注意：block才是实际的内容块。每次修改后会自动提交commit。`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    bid: { type: 'number', description: '块ID' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                    commitMessage: { type: 'string', description: '提交消息（可选，AI会自动添加前缀）' },
+                },
+                required: ['bid'],
+            },
+        },
+        {
+            name: `repo_${rpid}_query_structure`,
+            description: `查询repo ${rpid}的完整结构（包括所有doc和block的层级关系）。返回树形结构，方便AI理解repo的组织方式。`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                },
+            },
+        },
+        {
+            name: `repo_${rpid}_update_structure`,
+            description: `更新repo ${rpid}的结构（包括doc的层级关系和block的归属）。可以批量修改文档的父子关系和顺序。每次修改后会自动提交commit。`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    structure: { 
+                        type: 'object', 
+                        description: '结构数据，包含docs和blocks数组',
+                        properties: {
+                            docs: {
+                                type: 'array',
+                                description: '文档结构数组，每个元素包含did, parentDid, order等',
+                                items: {
+                                    type: 'object',
+                                    properties: {
+                                        did: { type: 'number' },
+                                        parentDid: { type: ['number', 'null'] },
+                                        order: { type: 'number' },
+                                        level: { type: 'number' },
+                                    },
+                                },
+                            },
+                            blocks: {
+                                type: 'array',
+                                description: '块结构数组，每个元素包含bid, parentDid, order等',
+                                items: {
+                                    type: 'object',
+                                    properties: {
+                                        bid: { type: 'number' },
+                                        parentDid: { type: 'number' },
+                                        order: { type: 'number' },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                    commitMessage: { type: 'string', description: '提交消息（可选，AI会自动添加前缀）' },
+                },
+                required: ['structure'],
+            },
+        },
+        {
+            name: `repo_${rpid}_query_branches`,
+            description: `查询repo ${rpid}的分支信息（包括本地分支和远程分支的状态、提交数、是否落后/领先等）。`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    branch: { type: 'string', description: '要查询的分支名称（可选，不提供则查询所有分支）' },
+                },
+            },
+        },
+        {
+            name: `repo_${rpid}_pull`,
+            description: `从远程仓库拉取repo ${rpid}的更新（git pull）。`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                },
+            },
+        },
+        {
+            name: `repo_${rpid}_push`,
+            description: `推送repo ${rpid}的更新到远程仓库（git push）。`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                },
+            },
+        },
+    ];
+
+    for (const tool of tools) {
+        try {
+            await McpToolModel.add({
+                domainId,
+                serverId,
+                serverDocId,
+                name: tool.name,
+                description: tool.description,
+                inputSchema: tool.inputSchema,
+                owner,
+            });
+        } catch (err) {
+            console.error(`Failed to create MCP tool ${tool.name}:`, err);
+        }
+    }
+}
 
 class DocHandler extends Handler {
     ddoc?: DCDoc;
@@ -160,6 +383,29 @@ export class RepoEditHandler extends Handler {
         
         const { docId, rpid } = await RepoModel.createRepo(domainId, this.user._id, title, content);
         
+        // 自动创建对应的 MCP server（内部调用）
+        try {
+            const mcpServerName = `repo-${rpid}-${title}`.substring(0, 50); // 限制名称长度
+            const mcpServer = await McpServerModel.add({
+                domainId,
+                name: mcpServerName,
+                description: `Repo ${title} 的 MCP 服务（内部调用）`,
+                owner: this.user._id,
+                wsToken: null, // 内部调用不需要token
+                // 不再设置 status，状态由实时连接管理（repo 内部服务不通过 WebSocket，状态始终为 disconnected）
+                type: 'repo', // 标识为 repo 类型
+            });
+            
+            // 更新repo，关联MCP server
+            await document.set(domainId, TYPE_RP, docId, { mcpServerId: mcpServer.serverId });
+            
+            // 创建默认的MCP工具（查询、创建、编辑、删除）
+            await createDefaultRepoMcpTools(domainId, mcpServer.serverId, mcpServer.docId, rpid, this.user._id);
+        } catch (err) {
+            // 创建MCP server失败不影响repo创建
+            console.error('Failed to create MCP server for repo:', err);
+        }
+        
         // 自动创建对应的 git 仓库
         try {
             await ensureRepoGitRepo(domainId, rpid);
@@ -212,6 +458,201 @@ export class RepoEditHandler extends Handler {
         this.response.redirect = this.url('base_domain', { domainId });
     }
     
+}
+
+export class RepoMcpHandler extends Handler {
+    @param('rpid', Types.Int)
+    async get(domainId: string, rpid: number) {
+        const repo = await RepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) {
+            throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
+        }
+        
+        // 获取repo的MCP工具列表
+        let mcpTools: any[] = [];
+        if (repo.mcpServerId) {
+            try {
+                const tools = await McpToolModel.getByServer(domainId, repo.mcpServerId);
+                mcpTools = tools;
+            } catch (error: any) {
+                console.error('Failed to load MCP tools:', error);
+            }
+        }
+        
+        this.response.template = 'repo_mcp.html';
+        this.response.body = { repo, mcpTools };
+    }
+
+    // POST 处理：根据 action 参数决定操作
+    @param('rpid', Types.Int)
+    @param('action', Types.String, true) // create, edit, delete
+    @param('toolId', Types.Int, true)
+    @param('name', Types.String, true)
+    @param('description', Types.String, true)
+    @param('operation', Types.String, true) // query, create, edit, delete
+    @param('type', Types.String, true) // doc, block
+    @param('inputSchema', Types.String, true) // JSON string
+    async post(domainId: string, rpid: number, action?: string, toolId?: number, name?: string, description?: string, operation?: string, type?: string, inputSchema?: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        if (action === 'delete' && toolId !== undefined) {
+            return await this.handleDelete(domainId, rpid, toolId);
+        } else if (action === 'edit' && toolId !== undefined) {
+            return await this.handleEdit(domainId, rpid, toolId, name, description, inputSchema);
+        } else if (action === 'create' && operation && type) {
+            return await this.handleCreate(domainId, rpid, name || '', description || '', operation, type);
+        } else {
+            throw new Error('Invalid action or missing parameters');
+        }
+    }
+
+    // 创建新的MCP工具
+    private async handleCreate(domainId: string, rpid: number, name: string, description: string, operation: string, type: string) {
+        const repo = await RepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) {
+            throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
+        }
+        if (!repo.mcpServerId) {
+            throw new Error('MCP server not found for this repo');
+        }
+
+        // 获取MCP服务器信息
+        const server = await McpServerModel.getByServerId(domainId, repo.mcpServerId);
+        if (!server) {
+            throw new Error('MCP server not found');
+        }
+
+        // 生成工具名称（如果未提供，则自动生成）
+        let toolName = name;
+        if (!toolName || !toolName.trim()) {
+            toolName = `repo_${rpid}_${operation}_${type}`;
+        }
+
+        // 构建默认的inputSchema
+        let inputSchema: any = {
+            type: 'object',
+            properties: {},
+            required: [],
+        };
+
+        if (type === 'doc') {
+            if (operation === 'query') {
+                inputSchema.properties = {
+                    did: { type: 'number', description: '文档ID（可选，不提供则返回所有文档）' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                };
+            } else if (operation === 'create') {
+                inputSchema.properties = {
+                    title: { type: 'string', description: '文档标题' },
+                    content: { type: 'string', description: '文档内容' },
+                    parentId: { type: 'number', description: '父文档ID（可选，不提供则创建根文档）' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                };
+                inputSchema.required = ['title', 'content'];
+            } else if (operation === 'edit') {
+                inputSchema.properties = {
+                    did: { type: 'number', description: '文档ID' },
+                    title: { type: 'string', description: '文档标题（可选）' },
+                    content: { type: 'string', description: '文档内容（可选）' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                };
+                inputSchema.required = ['did'];
+            } else if (operation === 'delete') {
+                inputSchema.properties = {
+                    did: { type: 'number', description: '文档ID' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                };
+                inputSchema.required = ['did'];
+            }
+        } else if (type === 'block') {
+            if (operation === 'query') {
+                inputSchema.properties = {
+                    bid: { type: 'number', description: '块ID（可选，不提供则返回所有块）' },
+                    did: { type: 'number', description: '文档ID（可选，用于过滤特定文档的块）' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                };
+            } else if (operation === 'create') {
+                inputSchema.properties = {
+                    did: { type: 'number', description: '所属文档ID' },
+                    title: { type: 'string', description: '块标题' },
+                    content: { type: 'string', description: '块内容' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                };
+                inputSchema.required = ['did', 'title', 'content'];
+            } else if (operation === 'edit') {
+                inputSchema.properties = {
+                    bid: { type: 'number', description: '块ID' },
+                    title: { type: 'string', description: '块标题（可选）' },
+                    content: { type: 'string', description: '块内容（可选）' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                };
+                inputSchema.required = ['bid'];
+            } else if (operation === 'delete') {
+                inputSchema.properties = {
+                    bid: { type: 'number', description: '块ID' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                };
+                inputSchema.required = ['bid'];
+            }
+        }
+
+        // 创建MCP工具
+        await McpToolModel.add({
+            domainId,
+            serverId: repo.mcpServerId,
+            serverDocId: server.docId,
+            name: toolName,
+            description: description || `Repo ${rpid} 的 ${operation} ${type} 工具`,
+            inputSchema,
+            owner: this.user._id,
+        });
+
+        this.response.redirect = this.url('repo_mcp', { domainId, rpid });
+    }
+
+    // 编辑MCP工具
+    private async handleEdit(domainId: string, rpid: number, toolId: number, name?: string, description?: string, inputSchema?: string) {
+        const repo = await RepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) {
+            throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
+        }
+        if (!repo.mcpServerId) {
+            throw new Error('MCP server not found for this repo');
+        }
+
+        const tool = await McpToolModel.getByToolId(domainId, repo.mcpServerId, toolId);
+        if (!tool) {
+            throw new NotFoundError(`MCP tool with toolId ${toolId} not found.`);
+        }
+
+        const update: any = {};
+        if (name !== undefined) update.name = name;
+        if (description !== undefined) update.description = description;
+        if (inputSchema !== undefined) {
+            try {
+                update.inputSchema = JSON.parse(inputSchema);
+            } catch (e) {
+                throw new Error('Invalid inputSchema JSON');
+            }
+        }
+
+        await McpToolModel.update(domainId, repo.mcpServerId, toolId, update);
+        this.response.redirect = this.url('repo_mcp', { domainId, rpid });
+    }
+
+    // 删除MCP工具
+    private async handleDelete(domainId: string, rpid: number, toolId: number) {
+        const repo = await RepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) {
+            throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
+        }
+        if (!repo.mcpServerId) {
+            throw new Error('MCP server not found for this repo');
+        }
+
+        await McpToolModel.del(domainId, repo.mcpServerId, toolId);
+        this.response.redirect = this.url('repo_mcp', { domainId, rpid });
+    }
 }
 
 export class RepoDetailHandler extends Handler {
@@ -2969,7 +3410,502 @@ export class RepoManuscriptBatchUpdateHandler extends Handler {
     }
 }
 
+/**
+ * 处理repo的MCP工具调用（内部调用）
+ */
+async function handleRepoMcpToolCall(domainId: string, toolName: string, args: any, agentId?: string, agentName?: string): Promise<any> {
+    // 解析工具名称：repo_{rpid}_{operation}...
+    const match = toolName.match(/^repo_(\d+)_(.+)$/);
+    if (!match) {
+        throw new Error(`Invalid repo tool name: ${toolName}`);
+    }
+
+    const rpid = parseInt(match[1], 10);
+    const operation = match[2];
+    const branch = args.branch || 'main';
+    
+    // 生成 commit 消息的函数（如果是 agent 调用）
+    const generateCommitMessage = (customMessage?: string): string => {
+        if (agentId && agentName) {
+            // Agent 提交格式：domainId/agentId/agentName: custom message
+            const prefix = `${domainId}/${agentId}/${agentName}`;
+            return customMessage && customMessage.trim() 
+                ? `${prefix}: ${customMessage.trim()}`
+                : prefix;
+        } else {
+            // 系统调用，使用默认格式
+            const prefix = `${domainId}/system/agent`;
+            return customMessage && customMessage.trim() 
+                ? `${prefix}: ${customMessage.trim()}`
+                : prefix;
+        }
+    };
+    
+    // 提交变更的辅助函数
+    const commitChanges = async (commitMessage?: string) => {
+        try {
+            const finalMessage = generateCommitMessage(commitMessage);
+            await commitRepoChanges(domainId, rpid, branch, finalMessage, 0, agentName || 'agent');
+        } catch (err) {
+            console.error('Failed to commit changes:', err);
+            // 不抛出错误，允许操作继续
+        }
+    };
+
+    // 提取 applyStructureUpdates 为独立函数（从 RepoManuscriptBatchUpdateHandler 复制）
+    const applyStructureUpdates = async (domainId: string, rpid: number, branch: string, structure: any) => {
+        const docEntries = Array.isArray(structure?.docs) ? structure.docs : [];
+        const blockEntries = Array.isArray(structure?.blocks) ? structure.blocks : [];
+
+        const docCache = new Map<number, string>();
+
+        const sortedDocs = docEntries
+            .filter((entry: any) => entry && typeof entry.did === 'number')
+            .sort((a: any, b: any) => {
+                const levelA = typeof a.level === 'number' ? a.level : Number(a.level) || 0;
+                const levelB = typeof b.level === 'number' ? b.level : Number(b.level) || 0;
+                if (levelA !== levelB) return levelA - levelB;
+                const orderA = typeof a.order === 'number' ? a.order : Number(a.order) || 0;
+                const orderB = typeof b.order === 'number' ? b.order : Number(b.order) || 0;
+                if (orderA !== orderB) return orderA - orderB;
+                return a.did - b.did;
+            });
+
+        for (const entry of sortedDocs) {
+            const did = entry.did as number;
+            const doc = await DocModel.get(domainId, { rpid, did } as any);
+            if (!doc || (doc.branch || 'main') !== branch) continue;
+
+            const parentDidValue = typeof entry.parentDid === 'number'
+                ? entry.parentDid
+                : (entry.parentDid === null ? null : undefined);
+
+            let parentPath = '';
+            if (typeof parentDidValue === 'number') {
+                if (docCache.has(parentDidValue)) {
+                    parentPath = docCache.get(parentDidValue)!;
+                } else {
+                    const parentDoc = await DocModel.get(domainId, { rpid, did: parentDidValue } as any);
+                    if (parentDoc && (parentDoc.branch || 'main') === branch) {
+                        parentPath = parentDoc.path || '';
+                        docCache.set(parentDidValue, parentPath);
+                    } else {
+                        parentPath = '';
+                    }
+                }
+            }
+
+            const newPath = parentPath ? `${parentPath}/${did}` : `/${did}`;
+            const updatePayload: any = {
+                parentId: typeof parentDidValue === 'number' ? parentDidValue : null,
+                order: typeof entry.order === 'number' ? entry.order : Number(entry.order) || 0,
+                path: newPath,
+            };
+
+            await document.set(domainId, TYPE_DC, doc.docId, updatePayload);
+            docCache.set(did, newPath);
+        }
+
+        for (const entry of blockEntries) {
+            if (!entry || typeof entry.bid !== 'number') continue;
+            const block = await BlockModel.get(domainId, { rpid, bid: entry.bid });
+            if (!block || (block.branch || 'main') !== branch) continue;
+
+            const parentDid = typeof entry.parentDid === 'number' ? entry.parentDid : null;
+            if (parentDid === null) continue;
+
+            await document.set(domainId, TYPE_BK, block.docId, {
+                did: parentDid,
+                order: typeof entry.order === 'number' ? entry.order : Number(entry.order) || 0,
+            });
+        }
+    };
+
+    try {
+        // 处理查询结构
+        if (operation === 'query_structure') {
+            const docs = await RepoModel.getDocsByRepo(domainId, rpid);
+            const filteredDocs = docs.filter(doc => (doc.branch || 'main') === branch);
+            
+            // 构建树形结构
+            const docMap = new Map<number, any>();
+            const rootDocs: any[] = [];
+            
+            // 第一遍：创建所有文档节点
+            for (const doc of filteredDocs) {
+                const docNode = {
+                    did: doc.did,
+                    title: doc.title,
+                    parentDid: (doc as any).parentId || null,
+                    order: (doc as any).order || 0,
+                    level: (doc as any).level || 0,
+                    path: (doc as any).path || '',
+                    children: [] as any[],
+                    blocks: [] as any[],
+                };
+                docMap.set(doc.did, docNode);
+            }
+            
+            // 第二遍：建立父子关系
+            for (const docNode of docMap.values()) {
+                if (docNode.parentDid && docMap.has(docNode.parentDid)) {
+                    docMap.get(docNode.parentDid)!.children.push(docNode);
+                } else {
+                    rootDocs.push(docNode);
+                }
+            }
+            
+            // 第三遍：添加块信息
+            for (const docNode of docMap.values()) {
+                const blocks = await BlockModel.getByDid(domainId, docNode.did, rpid, branch);
+                docNode.blocks = blocks.map(block => ({
+                    bid: block.bid,
+                    title: block.title,
+                    content: block.content,
+                    order: (block as any).order || 0,
+                }));
+            }
+            
+            // 排序
+            const sortNodes = (nodes: any[]) => {
+                nodes.sort((a, b) => a.order - b.order);
+                for (const node of nodes) {
+                    if (node.children.length > 0) {
+                        sortNodes(node.children);
+                    }
+                }
+            };
+            sortNodes(rootDocs);
+            
+            return { 
+                success: true, 
+                data: {
+                    docs: rootDocs,
+                    note: 'doc 是文件夹/目录结构，用于组织内容；block 才是实际的内容块，包含具体的内容数据。'
+                }
+            };
+        }
+        
+        // 处理更新结构
+        if (operation === 'update_structure') {
+            if (!args.structure) {
+                return { success: false, message: 'structure is required' };
+            }
+            
+            await applyStructureUpdates(domainId, rpid, branch, args.structure);
+            await commitChanges(args.commitMessage);
+            
+            return { success: true, message: 'Structure updated and committed' };
+        }
+        
+        // 处理查询分支
+        if (operation === 'query_branches') {
+            const repo = await RepoModel.getRepoByRpid(domainId, rpid);
+            const remoteUrl = (repo as any)?.githubUrl;
+            
+            // 获取所有本地分支
+            const repoGitPath = getRepoGitPath(domainId, rpid);
+            const localBranches: any[] = [];
+            const remoteBranches: any[] = [];
+            
+            try {
+                await exec('git rev-parse --git-dir', { cwd: repoGitPath });
+                // 是 git 仓库
+                
+                // 获取本地分支
+                try {
+                    const { stdout: localBranchList } = await exec('git branch', { cwd: repoGitPath });
+                    const branches = localBranchList.trim().split('\n').map(b => b.replace(/^\*\s*/, '').trim()).filter(Boolean);
+                    for (const branchName of branches) {
+                        const status = await getGitStatus(domainId, rpid, branchName, remoteUrl);
+                        localBranches.push({
+                            name: branchName,
+                            ...status,
+                        });
+                    }
+                } catch {}
+                
+                // 获取远程分支
+                if (remoteUrl) {
+                    try {
+                        await exec('git fetch origin', { cwd: repoGitPath }).catch(() => {});
+                        const { stdout: remoteBranchList } = await exec('git branch -r', { cwd: repoGitPath });
+                        const branches = remoteBranchList.trim().split('\n')
+                            .map(b => b.replace(/^origin\//, '').trim())
+                            .filter(b => b && !b.includes('HEAD'));
+                        for (const branchName of branches) {
+                            if (!localBranches.find(b => b.name === branchName)) {
+                                const status = await getGitStatus(domainId, rpid, branchName, remoteUrl);
+                                remoteBranches.push({
+                                    name: branchName,
+                                    ...status,
+                                });
+                            }
+                        }
+                    } catch {}
+                }
+            } catch {
+                // 不是 git 仓库
+            }
+            
+            // 如果指定了分支，只返回该分支的信息
+            if (args.branch) {
+                const targetBranch = localBranches.find(b => b.name === args.branch) || remoteBranches.find(b => b.name === args.branch);
+                return { 
+                    success: true, 
+                    data: targetBranch || { name: args.branch, hasLocalRepo: false, hasLocalBranch: false }
+                };
+            }
+            
+            return { 
+                success: true, 
+                data: {
+                    localBranches,
+                    remoteBranches,
+                }
+            };
+        }
+        
+        // 处理拉取
+        if (operation === 'pull') {
+            const repo = await RepoModel.getRepoByRpid(domainId, rpid);
+            const remoteUrl = (repo as any)?.githubUrl;
+            if (!remoteUrl) {
+                return { success: false, message: 'No remote repository configured' };
+            }
+            
+            const repoGitPath = getRepoGitPath(domainId, rpid);
+            try {
+                await exec('git rev-parse --git-dir', { cwd: repoGitPath });
+            } catch {
+                return { success: false, message: 'Not a git repository' };
+            }
+            
+            try {
+                // 确保远程 URL 正确
+                try {
+                    await exec(`git remote set-url origin ${remoteUrl}`, { cwd: repoGitPath });
+                } catch {
+                    await exec(`git remote add origin ${remoteUrl}`, { cwd: repoGitPath });
+                }
+                
+                // 切换到目标分支
+                try {
+                    await exec(`git checkout ${branch}`, { cwd: repoGitPath });
+                } catch {
+                    await exec(`git checkout -b ${branch}`, { cwd: repoGitPath });
+                }
+                
+                // 拉取
+                await exec(`git pull origin ${branch}`, { cwd: repoGitPath });
+                
+                // 同步到数据库（从 git 仓库构建到数据库）
+                // 注意：这里需要实现 buildEjunzRepoFromLocal，暂时跳过
+                // await buildEjunzRepoFromLocal(domainId, rpid, branch);
+                
+                return { success: true, message: `Pulled from remote branch ${branch}` };
+            } catch (error: any) {
+                return { success: false, message: error.message || 'Pull failed' };
+            }
+        }
+        
+        // 处理推送
+        if (operation === 'push') {
+            const repo = await RepoModel.getRepoByRpid(domainId, rpid);
+            const remoteUrl = (repo as any)?.githubUrl;
+            if (!remoteUrl) {
+                return { success: false, message: 'No remote repository configured' };
+            }
+            
+            const repoGitPath = getRepoGitPath(domainId, rpid);
+            try {
+                await exec('git rev-parse --git-dir', { cwd: repoGitPath });
+            } catch {
+                return { success: false, message: 'Not a git repository' };
+            }
+            
+            try {
+                // 确保远程 URL 正确
+                try {
+                    await exec(`git remote set-url origin ${remoteUrl}`, { cwd: repoGitPath });
+                } catch {
+                    await exec(`git remote add origin ${remoteUrl}`, { cwd: repoGitPath });
+                }
+                
+                // 切换到目标分支
+                try {
+                    await exec(`git checkout ${branch}`, { cwd: repoGitPath });
+                } catch {
+                    await exec(`git checkout -b ${branch}`, { cwd: repoGitPath });
+                }
+                
+                // 检查是否有未提交的更改
+                try {
+                    const { stdout: statusOutput } = await exec('git status --porcelain', { cwd: repoGitPath });
+                    if (statusOutput.trim().length > 0) {
+                        await exec('git add -A', { cwd: repoGitPath });
+                        const defaultMessage = generateCommitMessage();
+                        const escapedMessage = defaultMessage.replace(/'/g, "'\\''");
+                        await exec(`git commit -m '${escapedMessage}'`, { cwd: repoGitPath });
+                    }
+                } catch {}
+                
+                // 推送
+                try {
+                    await exec(`git push -u origin ${branch}`, { cwd: repoGitPath });
+                } catch {
+                    await exec(`git push origin ${branch}`, { cwd: repoGitPath });
+                }
+                
+                return { success: true, message: `Pushed to remote branch ${branch}` };
+            } catch (error: any) {
+                return { success: false, message: error.message || 'Push failed' };
+            }
+        }
+        
+        // 处理原有的 doc 和 block 操作
+        const docBlockMatch = operation.match(/^(query|create|edit|delete)_(doc|block)$/);
+        if (!docBlockMatch) {
+            throw new Error(`Unsupported operation: ${operation}`);
+        }
+        
+        const op = docBlockMatch[1];
+        const type = docBlockMatch[2];
+        
+        if (type === 'doc') {
+            if (op === 'query') {
+                if (args.did) {
+                    const doc = await DocModel.get(domainId, { rpid, did: args.did });
+                    if (!doc || (doc.branch || 'main') !== branch) {
+                        return { success: false, message: 'Document not found' };
+                    }
+                    return { success: true, data: doc };
+                } else {
+                    const docs = await RepoModel.getDocsByRepo(domainId, rpid);
+                    const filteredDocs = docs.filter(doc => (doc.branch || 'main') === branch);
+                    return { success: true, data: filteredDocs };
+                }
+            } else if (op === 'create') {
+                const did = await DocModel.generateNextDid(domainId, rpid, branch);
+                let docId: ObjectId;
+                if (args.parentId) {
+                    docId = await DocModel.addSubdocNode(
+                        domainId,
+                        [rpid], // addSubdocNode需要number[]
+                        did,
+                        args.parentId,
+                        0, // owner (系统调用)
+                        args.title,
+                        args.content,
+                        undefined,
+                        branch
+                    );
+                } else {
+                    docId = await DocModel.addRootNode(
+                        domainId,
+                        rpid,
+                        did,
+                        0, // owner (系统调用)
+                        args.title,
+                        args.content,
+                        undefined,
+                        branch
+                    );
+                }
+                const doc = await DocModel.get(domainId, docId);
+                await commitChanges(args.commitMessage);
+                return { success: true, data: doc };
+            } else if (op === 'edit') {
+                const doc = await DocModel.get(domainId, { rpid, did: args.did });
+                if (!doc || (doc.branch || 'main') !== branch) {
+                    return { success: false, message: 'Document not found' };
+                }
+                const update: any = {};
+                if (args.title !== undefined) update.title = args.title;
+                if (args.content !== undefined) update.content = args.content;
+                if (Object.keys(update).length > 0) {
+                    await DocModel.edit(domainId, doc.docId, update.title || doc.title, update.content || doc.content);
+                }
+                const updatedDoc = await DocModel.get(domainId, { rpid, did: args.did });
+                await commitChanges(args.commitMessage);
+                return { success: true, data: updatedDoc };
+            } else if (op === 'delete') {
+                const doc = await DocModel.get(domainId, { rpid, did: args.did });
+                if (!doc || (doc.branch || 'main') !== branch) {
+                    return { success: false, message: 'Document not found' };
+                }
+                await DocModel.deleteNode(domainId, doc.docId);
+                await commitChanges(args.commitMessage);
+                return { success: true, message: 'Document deleted' };
+            }
+        } else if (type === 'block') {
+            if (op === 'query') {
+                if (args.bid) {
+                    const block = await BlockModel.get(domainId, { rpid, bid: args.bid, branch });
+                    if (!block) {
+                        return { success: false, message: 'Block not found' };
+                    }
+                    return { success: true, data: block };
+                } else {
+                    const query: any = {};
+                    if (args.did) query.did = args.did;
+                    const blocks = await BlockModel.getByDid(domainId, args.did || 0, rpid, branch);
+                    return { success: true, data: blocks };
+                }
+            } else if (op === 'create') {
+                if (!args.did) {
+                    return { success: false, message: 'did is required for creating block' };
+                }
+                const docId = await BlockModel.create(
+                    domainId,
+                    rpid,
+                    args.did,
+                    0, // owner (系统调用)
+                    args.title,
+                    args.content,
+                    undefined,
+                    branch
+                );
+                const block = await BlockModel.get(domainId, docId);
+                await commitChanges(args.commitMessage);
+                return { success: true, data: block };
+            } else if (op === 'edit') {
+                const block = await BlockModel.get(domainId, { rpid, bid: args.bid, branch });
+                if (!block) {
+                    return { success: false, message: 'Block not found' };
+                }
+                const updateTitle = args.title !== undefined ? args.title : block.title;
+                const updateContent = args.content !== undefined ? args.content : block.content;
+                await BlockModel.edit(domainId, block.docId, updateTitle, updateContent);
+                const updatedBlock = await BlockModel.get(domainId, { rpid, bid: args.bid, branch });
+                await commitChanges(args.commitMessage);
+                return { success: true, data: updatedBlock };
+            } else if (op === 'delete') {
+                const block = await BlockModel.get(domainId, { rpid, bid: args.bid, branch });
+                if (!block) {
+                    return { success: false, message: 'Block not found' };
+                }
+                await BlockModel.delete(domainId, block.docId);
+                await commitChanges(args.commitMessage);
+                return { success: true, message: 'Block deleted' };
+            }
+        }
+    } catch (error: any) {
+        return { success: false, message: error.message || 'Operation failed' };
+    }
+
+    throw new Error(`Unsupported operation: ${operation}`);
+}
+
 export async function apply(ctx: Context) {
+    // 注册repo的MCP工具调用处理器（内部调用）
+    (ctx as any).on('mcp/tool/call/repo' as any, async (data: { name: string; args: any; domainId?: string; agentId?: string; agentName?: string }) => {
+        const domainId = data.domainId || ctx.domain?._id;
+        if (!domainId) {
+            throw new Error('Domain ID is required');
+        }
+        return await handleRepoMcpToolCall(domainId, data.name, data.args, data.agentId, data.agentName);
+    });
 
     ctx.Route('base_domain', '/base', BaseDomainHandler);
     ctx.Route('base_edit', '/base/:docId/edit', BaseEditHandler, PRIV.PRIV_USER_PROFILE);
@@ -2979,6 +3915,7 @@ export async function apply(ctx: Context) {
     ctx.Route('repo_detail_branch', '/base/repo/:rpid/branch/:branch', RepoDetailHandler);
     ctx.Route('repo_structure_update', '/base/repo/:rpid/update_structure', RepoStructureUpdateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_edit', '/base/repo/:rpid/edit', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('repo_mcp', '/base/repo/:rpid/mcp', RepoMcpHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('doc_create', '/base/repo/:rpid/doc/create', DocCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('doc_create_branch', '/base/repo/:rpid/branch/:branch/doc/create', DocCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('doc_create_subdoc', '/base/repo/:rpid/doc/:parentId/createsubdoc', DocCreateHandler, PRIV.PRIV_USER_PROFILE);

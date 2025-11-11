@@ -48,6 +48,7 @@ export interface RPDoc {
     branches?: string[];    // 已存在的本地分支列表
     githubRepo?: string;    // GitHub 仓库地址，如 git@github.com:user/repo.git
     mode?: 'file' | 'manuscript'; // 显示模式：文件模式或文稿模式
+    mcpServerId?: number; // 关联的MCP服务器ID（内部调用）
 }
 
 
@@ -732,6 +733,31 @@ export class RepoEditHandler extends Handler {
     
         
         const { docId, rpid } = await EjunRepoModel.createRepo(domainId, this.user._id, title, content);
+        
+        // 自动创建对应的 MCP server（内部调用）
+        try {
+            const mcpServerModel = (global as any).Ejunz?.model?.mcpServer;
+            if (mcpServerModel) {
+                const mcpServerName = `repo-${rpid}-${title}`.substring(0, 50); // 限制名称长度
+                const mcpServer = await mcpServerModel.add({
+                    domainId,
+                    name: mcpServerName,
+                    description: `Repo ${title} 的 MCP 服务（内部调用）`,
+                    owner: this.user._id,
+                    wsToken: null, // 内部调用不需要token
+                    status: 'connected', // 内部服务始终为connected
+                });
+                
+                // 更新repo，关联MCP server
+                await DocumentModel.set(domainId, TYPE_RP, docId, { mcpServerId: mcpServer.serverId });
+                
+                // 创建默认的MCP工具（查询、创建、编辑、删除）
+                await createDefaultRepoMcpTools(domainId, mcpServer.serverId, mcpServer.docId, rpid, this.user._id);
+            }
+        } catch (err) {
+            // 创建MCP server失败不影响repo创建
+            console.error('Failed to create MCP server for repo:', err);
+        }
     
         this.response.body = { docId, rpid };
         this.response.redirect = this.url('repo_detail', { domainId, rpid }); 
@@ -2047,6 +2073,145 @@ async function clearRepoBranchData(domainId: string, rpid: number, branch: strin
 }
 // (deprecated old RepoGithubPushHandler removed)
 
+/**
+ * 为repo创建默认的MCP工具（查询、创建、编辑、删除）
+ */
+async function createDefaultRepoMcpTools(
+    domainId: string,
+    serverId: number,
+    serverDocId: ObjectId,
+    rpid: number,
+    owner: number
+): Promise<void> {
+    const mcpToolModel = (global as any).Ejunz?.model?.mcpTool;
+    if (!mcpToolModel) {
+        console.error('MCP Tool Model not available');
+        return;
+    }
+
+    const tools = [
+        {
+            name: `repo_${rpid}_query_doc`,
+            description: `查询repo ${rpid}中的文档（doc）`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    did: { type: 'number', description: '文档ID（可选，不提供则返回所有文档）' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                },
+            },
+        },
+        {
+            name: `repo_${rpid}_create_doc`,
+            description: `在repo ${rpid}中创建文档（doc）`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    title: { type: 'string', description: '文档标题' },
+                    content: { type: 'string', description: '文档内容' },
+                    parentId: { type: 'number', description: '父文档ID（可选，不提供则创建根文档）' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                },
+                required: ['title', 'content'],
+            },
+        },
+        {
+            name: `repo_${rpid}_edit_doc`,
+            description: `编辑repo ${rpid}中的文档（doc）`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    did: { type: 'number', description: '文档ID' },
+                    title: { type: 'string', description: '文档标题（可选）' },
+                    content: { type: 'string', description: '文档内容（可选）' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                },
+                required: ['did'],
+            },
+        },
+        {
+            name: `repo_${rpid}_delete_doc`,
+            description: `删除repo ${rpid}中的文档（doc）`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    did: { type: 'number', description: '文档ID' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                },
+                required: ['did'],
+            },
+        },
+        {
+            name: `repo_${rpid}_query_block`,
+            description: `查询repo ${rpid}中的块（block）`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    bid: { type: 'number', description: '块ID（可选，不提供则返回所有块）' },
+                    did: { type: 'number', description: '文档ID（可选，用于过滤特定文档的块）' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                },
+            },
+        },
+        {
+            name: `repo_${rpid}_create_block`,
+            description: `在repo ${rpid}中创建块（block）`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    did: { type: 'number', description: '所属文档ID' },
+                    title: { type: 'string', description: '块标题' },
+                    content: { type: 'string', description: '块内容' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                },
+                required: ['did', 'title', 'content'],
+            },
+        },
+        {
+            name: `repo_${rpid}_edit_block`,
+            description: `编辑repo ${rpid}中的块（block）`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    bid: { type: 'number', description: '块ID' },
+                    title: { type: 'string', description: '块标题（可选）' },
+                    content: { type: 'string', description: '块内容（可选）' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                },
+                required: ['bid'],
+            },
+        },
+        {
+            name: `repo_${rpid}_delete_block`,
+            description: `删除repo ${rpid}中的块（block）`,
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    bid: { type: 'number', description: '块ID' },
+                    branch: { type: 'string', description: '分支名称（默认：main）', default: 'main' },
+                },
+                required: ['bid'],
+            },
+        },
+    ];
+
+    for (const tool of tools) {
+        try {
+            await mcpToolModel.add({
+                domainId,
+                serverId,
+                serverDocId,
+                name: tool.name,
+                description: tool.description,
+                inputSchema: tool.inputSchema,
+                owner,
+            });
+        } catch (err) {
+            console.error(`Failed to create MCP tool ${tool.name}:`, err);
+        }
+    }
+}
+
 // Repo 配置 Handler
 export class RepoConfigHandler extends Handler {
     @param('rpid', Types.Int)
@@ -2055,8 +2220,22 @@ export class RepoConfigHandler extends Handler {
         if (!repo) {
             throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
         }
+        
+        // 获取repo的MCP工具列表
+        let mcpTools: any[] = [];
+        if (repo.mcpServerId) {
+            try {
+                const mcpModel = (global as any).Ejunz?.model?.mcpTool;
+                if (mcpModel) {
+                    mcpTools = await mcpModel.getByServer(domainId, repo.mcpServerId);
+                }
+            } catch (error: any) {
+                console.error('Failed to load MCP tools:', error);
+            }
+        }
+        
         this.response.template = 'repo_config.html';
-        this.response.body = { repo };
+        this.response.body = { repo, mcpTools };
     }
 
     @param('rpid', Types.Int)

@@ -13,7 +13,21 @@ const logger = new Logger('handler/mcp');
 export class McpDomainHandler extends Handler<Context> {
     async get() {
         const servers = await McpServerModel.getByDomain(this.domain._id);
-        servers.sort((a, b) => (a.serverId || 0) - (b.serverId || 0));
+        
+        // 基于实时连接状态计算状态，repo 类型是内部服务，始终为 connected
+        const serversWithRealTimeStatus = servers.map(server => {
+            const serverType = (server as any).type || 'provider';
+            // repo 类型是内部服务，始终为 connected
+            const realTimeStatus = serverType === 'repo' 
+                ? 'connected' 
+                : (McpServerConnectionHandler.active.has(server.serverId) ? 'connected' : 'disconnected');
+            return {
+                ...server,
+                status: realTimeStatus,
+            };
+        });
+        
+        serversWithRealTimeStatus.sort((a, b) => (a.serverId || 0) - (b.serverId || 0));
         
         const wsPath = `/d/${this.domain._id}/mcp/ws`;
         const protocol = this.request.headers['x-forwarded-proto'] || (this.request.headers['x-forwarded-ssl'] === 'on' ? 'https' : 'http');
@@ -23,7 +37,7 @@ export class McpDomainHandler extends Handler<Context> {
         
         this.response.template = 'mcp_domain.html';
         this.response.body = { 
-            servers, 
+            servers: serversWithRealTimeStatus, 
             domainId: this.domain._id,
             wsEndpointBase,
         };
@@ -66,7 +80,8 @@ export class McpEditHandler extends Handler<Context> {
             description: description?.trim(),
             owner: this.user._id,
             wsToken,
-            status: 'disconnected',
+            // 不再设置 status，状态由实时连接管理
+            type: 'provider', // 用户手动创建的外部 MCP 服务器
         });
 
         this.response.redirect = this.url('mcp_detail', { domainId: this.domain._id, serverId: server.serverId });
@@ -176,6 +191,16 @@ export class McpDetailHandler extends Handler<Context> {
         const tools = await McpToolModel.getByServer(this.domain._id, serverIdNum);
         tools.sort((a, b) => (a.toolId || 0) - (b.toolId || 0));
 
+        // repo 类型是内部服务，始终为 connected；其他类型使用实时连接状态
+        const serverType = (server as any).type || 'provider';
+        const realTimeStatus = serverType === 'repo' 
+            ? 'connected' 
+            : (McpServerConnectionHandler.active.has(serverIdNum) ? 'connected' : 'disconnected');
+        const serverWithRealTimeStatus = {
+            ...server,
+            status: realTimeStatus,
+        };
+
         let wsEndpoint = null;
         if (server.wsToken) {
             const wsPath = `/d/${this.domain._id}/mcp/ws`;
@@ -186,7 +211,7 @@ export class McpDetailHandler extends Handler<Context> {
         }
 
         this.response.template = 'mcp_detail.html';
-        this.response.body = { server, tools, domainId: this.domain._id, wsEndpoint };
+        this.response.body = { server: serverWithRealTimeStatus, tools, domainId: this.domain._id, wsEndpoint };
     }
 }
 
@@ -325,24 +350,14 @@ export class McpServerConnectionHandler extends ConnectionHandler<Context> {
         // Add to active connections (singleton pattern, one connection per serverId)
         McpServerConnectionHandler.active.set(this.serverId, this);
 
-        logger.info('MCP Server WebSocket connected: %s (serverId: %d) from %s', 
-            this.serverDocId, this.serverId, this.request.ip);
+        logger.info('MCP Server WebSocket connected: %s (serverId: %d) from %s, totalActiveConnections=%d', 
+            this.serverDocId, this.serverId, this.request.ip, McpServerConnectionHandler.active.size);
 
-        await McpServerModel.updateStatus(this.domain._id, this.serverId, 'connected');
+        // 不更新数据库状态，而是通过事件系统实时通知所有监听者
+        (this.ctx.emit as any)('mcp/server/connection/update', this.serverId, 'connected');
         
         // Note: Do not send custom format messages, wait for MCP server to send initialize request
         // MCP protocol requires client (MCP server) to send initialize request first
-
-        const dispose1 = this.ctx.on('mcp/server/status/update' as any, async (...args: any[]) => {
-            const [updateServerId] = args;
-            if (updateServerId === this.serverId) {
-                const updatedServer = await McpServerModel.getByServerId(this.domain._id, this.serverId!);
-                if (updatedServer) {
-                    this.send({ type: 'status/update', server: updatedServer });
-                }
-            }
-        });
-        this.subscriptions.push({ dispose: dispose1 });
 
         (this.ctx.emit as any)('mcp/server/status/update', this.serverId);
 
@@ -519,10 +534,12 @@ export class McpServerConnectionHandler extends ConnectionHandler<Context> {
             break;
         case 'status':
             try {
+                // 不再更新数据库状态，状态由 WebSocket 连接本身管理
+                // 如果 MCP 服务器发送了状态更新消息，可以通过事件系统通知前端
                 const { status, errorMessage } = msg;
                 if (status === 'connected' || status === 'disconnected' || status === 'error') {
-                    await McpServerModel.updateStatus(this.domain._id, this.serverId, status, errorMessage);
-                    (this.ctx.emit as any)('mcp/server/status/update', this.serverId);
+                    // 只通过事件系统通知，不更新数据库
+                    (this.ctx.emit as any)('mcp/server/connection/update', this.serverId, status);
                 }
             } catch (error: any) {
                 logger.error('Failed to update status: %s', error.message);
@@ -591,14 +608,12 @@ export class McpServerConnectionHandler extends ConnectionHandler<Context> {
         this.subscriptions = [];
         
         if (this.serverId && this.accepted) {
-            McpServerConnectionHandler.active.delete(this.serverId);
+            const wasRemoved = McpServerConnectionHandler.active.delete(this.serverId);
+            logger.info('MCP Server WebSocket cleanup: serverId=%d, wasRemoved=%s, remainingConnections=%d', 
+                this.serverId, wasRemoved, McpServerConnectionHandler.active.size);
             
-            try {
-                await McpServerModel.updateStatus(this.domain._id, this.serverId, 'disconnected');
-                (this.ctx.emit as any)('mcp/server/status/update', this.serverId);
-            } catch (error: any) {
-                logger.error('Failed to update server status on disconnect: %s', error.message);
-            }
+            // 不更新数据库状态，而是通过事件系统实时通知所有监听者
+            (this.ctx.emit as any)('mcp/server/connection/update', this.serverId, 'disconnected');
         }
         
         for (const [id, pending] of this.pendingToolCalls.entries()) {
@@ -691,17 +706,35 @@ export class McpStatusConnectionHandler extends ConnectionHandler<Context> {
 
         this.serverId = serverIdNum;
 
-        logger.info('MCP Status WebSocket connected: serverId=%d', this.serverId);
+        // 使用 debug 级别，避免频繁连接时产生过多日志
+        logger.debug('MCP Status WebSocket connected: serverId=%d', this.serverId);
 
         const tools = await McpToolModel.getByServer(this.domain._id, this.serverId);
-        this.send({ type: 'init', server, tools });
+        // repo 类型是内部服务，始终为 connected；其他类型使用实时连接状态
+        const serverType = (server as any).type || 'provider';
+        const realTimeStatus = serverType === 'repo' 
+            ? 'connected' 
+            : (McpServerConnectionHandler.active.has(this.serverId) ? 'connected' : 'disconnected');
+        const serverWithRealTimeStatus = {
+            ...server,
+            status: realTimeStatus,
+        };
+        this.send({ type: 'init', server: serverWithRealTimeStatus, tools });
 
-        const dispose1 = this.ctx.on('mcp/server/status/update' as any, async (...args: any[]) => {
-            const [updateServerId] = args;
+        // 监听实时连接状态更新事件
+        const dispose1 = this.ctx.on('mcp/server/connection/update' as any, async (...args: any[]) => {
+            const [updateServerId, connectionStatus] = args;
             if (updateServerId === this.serverId) {
                 const updatedServer = await McpServerModel.getByServerId(this.domain._id, this.serverId!);
                 if (updatedServer) {
-                    this.send({ type: 'server/status', server: updatedServer });
+                    const serverType = (updatedServer as any).type || 'provider';
+                    // repo 类型是内部服务，始终为 connected；其他类型使用实时状态
+                    const status = serverType === 'repo' ? 'connected' : connectionStatus;
+                    const serverWithRealTimeStatus = {
+                        ...updatedServer,
+                        status: status,
+                    };
+                    this.send({ type: 'server/status', server: serverWithRealTimeStatus });
                 }
             }
         });
@@ -731,7 +764,16 @@ export class McpStatusConnectionHandler extends ConnectionHandler<Context> {
                     const server = await McpServerModel.getByServerId(this.domain._id, this.serverId);
                     const tools = await McpToolModel.getByServer(this.domain._id, this.serverId);
                     if (server) {
-                        this.send({ type: 'refresh', server, tools });
+                        // repo 类型是内部服务，始终为 connected；其他类型使用实时连接状态
+                        const serverType = (server as any).type || 'provider';
+                        const realTimeStatus = serverType === 'repo' 
+                            ? 'connected' 
+                            : (McpServerConnectionHandler.active.has(this.serverId) ? 'connected' : 'disconnected');
+                        const serverWithRealTimeStatus = {
+                            ...server,
+                            status: realTimeStatus,
+                        };
+                        this.send({ type: 'refresh', server: serverWithRealTimeStatus, tools });
                     }
                 }
                 break;
@@ -751,7 +793,8 @@ export class McpStatusConnectionHandler extends ConnectionHandler<Context> {
         }
         this.subscriptions = [];
         if (this.serverId) {
-            logger.info('MCP Status WebSocket disconnected: serverId=%d', this.serverId);
+            // 使用 debug 级别，避免频繁断开连接时产生过多日志
+            logger.debug('MCP Status WebSocket disconnected: serverId=%d', this.serverId);
         }
     }
 }
@@ -776,15 +819,26 @@ export class McpStatusAllConnectionHandler extends ConnectionHandler<Context> {
     async prepare() {
         const servers = await McpServerModel.getByDomain(this.domain._id);
         
+        // repo 类型是内部服务，始终为 connected；其他类型使用实时连接状态
+        const getRealTimeStatus = (serverId: number, serverType: string): 'connected' | 'disconnected' => {
+            if (serverType === 'repo') {
+                return 'connected'; // repo 类型是内部服务，始终为 connected
+            }
+            return McpServerConnectionHandler.active.has(serverId) ? 'connected' : 'disconnected';
+        };
+        
         const serversWithTools: any[] = [];
         for (const server of servers) {
             const tools = await McpToolModel.getByServer(this.domain._id, server.serverId);
+            const serverType = (server as any).type || 'provider'; // 默认为 provider
+            const realTimeStatus = getRealTimeStatus(server.serverId, serverType);
             serversWithTools.push({
                 serverId: server.serverId,
                 name: server.name,
                 description: server.description,
-                status: server.status || 'disconnected',
+                status: realTimeStatus,
                 toolsCount: server.toolsCount || 0,
+                type: serverType, // 包含 type 字段
                 tools: tools.map(tool => ({
                     _id: tool._id,
                     toolId: tool.toolId,
@@ -796,19 +850,24 @@ export class McpStatusAllConnectionHandler extends ConnectionHandler<Context> {
         }
         this.send({ type: 'init', servers: serversWithTools });
 
-        const dispose1 = this.ctx.on('mcp/server/status/update' as any, async (...args: any[]) => {
-            const [updateServerId] = args;
-            const updatedServer = await McpServerModel.getByServerId(this.domain._id, updateServerId);
-            if (updatedServer) {
+        // 监听实时连接状态更新事件
+        const dispose1 = this.ctx.on('mcp/server/connection/update' as any, async (...args: any[]) => {
+            const [updateServerId, connectionStatus] = args;
+            const server = await McpServerModel.getByServerId(this.domain._id, updateServerId);
+            if (server) {
                 const tools = await McpToolModel.getByServer(this.domain._id, updateServerId);
+                const serverType = (server as any).type || 'provider';
+                // repo 类型是内部服务，始终为 connected；其他类型使用实时状态
+                const status = serverType === 'repo' ? 'connected' : connectionStatus;
                 this.send({ 
                     type: 'server/status', 
                     server: {
-                        serverId: updatedServer.serverId,
-                        name: updatedServer.name,
-                        description: updatedServer.description,
-                        status: updatedServer.status || 'disconnected',
-                        toolsCount: updatedServer.toolsCount || 0,
+                        serverId: server.serverId,
+                        name: server.name,
+                        description: server.description,
+                        status: status,
+                        toolsCount: server.toolsCount || 0,
+                        type: serverType,
                         tools: tools.map(tool => ({
                             _id: tool._id,
                             toolId: tool.toolId,
@@ -842,7 +901,8 @@ export class McpStatusAllConnectionHandler extends ConnectionHandler<Context> {
         });
         this.subscriptions.push({ dispose: dispose2 });
 
-        logger.info('MCP Status All WebSocket connected: domainId=%s', this.domain._id);
+        // 使用 debug 级别，避免频繁连接时产生过多日志
+        logger.debug('MCP Status All WebSocket connected: domainId=%s', this.domain._id);
     }
 
     async message(msg: any) {
@@ -855,15 +915,26 @@ export class McpStatusAllConnectionHandler extends ConnectionHandler<Context> {
             case 'refresh':
                 {
                     const servers = await McpServerModel.getByDomain(this.domain._id);
+                    // repo 类型是内部服务，始终为 connected；其他类型使用实时连接状态
+                    const getRealTimeStatus = (serverId: number, serverType: string): 'connected' | 'disconnected' => {
+                        if (serverType === 'repo') {
+                            return 'connected'; // repo 类型是内部服务，始终为 connected
+                        }
+                        return McpServerConnectionHandler.active.has(serverId) ? 'connected' : 'disconnected';
+                    };
+                    
                     const serversWithTools: any[] = [];
                     for (const server of servers) {
                         const tools = await McpToolModel.getByServer(this.domain._id, server.serverId);
+                        const serverType = (server as any).type || 'provider'; // 默认为 provider
+                        const realTimeStatus = getRealTimeStatus(server.serverId, serverType);
                         serversWithTools.push({
                             serverId: server.serverId,
                             name: server.name,
                             description: server.description,
-                            status: server.status || 'disconnected',
+                            status: realTimeStatus,
                             toolsCount: server.toolsCount || 0,
+                            type: serverType, // 包含 type 字段
                             tools: tools.map(tool => ({
                                 _id: tool._id,
                                 toolId: tool.toolId,
@@ -891,7 +962,7 @@ export class McpStatusAllConnectionHandler extends ConnectionHandler<Context> {
             }
         }
         this.subscriptions = [];
-        logger.info('MCP Status All WebSocket disconnected: domainId=%s', this.domain._id);
+        logger.debug('MCP Status All WebSocket disconnected: domainId=%s', this.domain._id);
     }
 }
 

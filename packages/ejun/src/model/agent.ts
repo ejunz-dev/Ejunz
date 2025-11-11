@@ -423,6 +423,32 @@ export class McpClient {
                 throw new Error('Context not available');
             }
 
+            // 检查是否是repo的内部MCP工具（格式：repo_{rpid}_{operation}...）
+            if (name.match(/^repo_\d+_(query|create|edit|delete|update|pull|push)_/)) {
+                try {
+                    ClientLogger.info('Calling repo internal MCP tool: %s', name);
+                    // 尝试从上下文获取 agentId 和 agentName（如果是从 agent 调用）
+                    const agentId = (args as any).__agentId;
+                    const agentName = (args as any).__agentName;
+                    // 移除临时参数
+                    const cleanArgs = { ...args };
+                    delete (cleanArgs as any).__agentId;
+                    delete (cleanArgs as any).__agentName;
+                    
+                    const result = await ctx.serial('mcp/tool/call/repo', { 
+                        name, 
+                        args: cleanArgs, 
+                        domainId,
+                        agentId,
+                        agentName,
+                    });
+                    return result;
+                } catch (e) {
+                    ClientLogger.error('Repo internal MCP tool call failed: %s', (e as Error).message);
+                    throw e;
+                }
+            }
+
             // 首先尝试通过 edge 调用（如果可用）
             try {
                 const edgeTools = await ctx.serial('mcp/tools/list/edge').catch(() => []);
@@ -447,13 +473,19 @@ export class McpClient {
                     const servers = await McpServerModel.getByDomain(domainId);
                     ClientLogger.info('Found %d MCP servers in domain', servers.length);
                     
+                    // 遍历所有服务器，查找工具
+                    // repo 类型的工具已经在开头通过内部方法调用了，这里主要处理 provider 和 node 类型
                     for (const server of servers) {
-                        ClientLogger.debug('Checking server: serverId=%d, status=%s, name=%s', server.serverId, server.status, server.name);
+                        const serverType = (server as any).type || 'provider';
                         
-                        if (server.status !== 'connected') {
-                            ClientLogger.debug('Server %d is not connected, skipping', server.serverId);
+                        // repo 类型的工具已经在开头处理了，跳过
+                        if (serverType === 'repo') {
+                            ClientLogger.debug('Skipping repo server %d (already handled via internal call)', server.serverId);
                             continue;
                         }
+                        
+                        ClientLogger.debug('Checking server: serverId=%d, name=%s, type=%s', 
+                            server.serverId, server.name, serverType);
                         
                         // 检查此服务器是否有此工具
                         const tools = await McpToolModel.getByServer(domainId, server.serverId);
@@ -463,38 +495,41 @@ export class McpClient {
                         if (hasTool) {
                             ClientLogger.info('Found tool %s in server %d', name, server.serverId);
                             
-                            // 尝试使用静态方法获取连接（参考 edge.ts 的单例模式）
+                            // provider 和 node 类型需要 WebSocket 连接
                             const connection = McpServerConnectionHandler.getConnection(server.serverId);
                             
-                            // 调试信息
-                            ClientLogger.debug('Server %d connection lookup: found=%s, totalActiveServers=%d', 
-                                server.serverId, connection ? 'yes' : 'no', McpServerConnectionHandler.active.size);
+                            // 调试信息：列出所有活跃连接的 serverId
+                            const activeServerIds = Array.from(McpServerConnectionHandler.active.keys());
+                            ClientLogger.debug('Server %d connection lookup: found=%s, totalActiveServers=%d, activeServerIds=%j', 
+                                server.serverId, connection ? 'yes' : 'no', McpServerConnectionHandler.active.size, activeServerIds);
                             
-                            if (connection) {
-                                ClientLogger.info('Calling tool %s via server %d connection', name, server.serverId);
-                                
-                                // 调用工具
-                                const result = await connection.callTool(name, args);
-                                
-                                ClientLogger.info('Tool %s returned result', name);
-                                
-                                // MCP 协议返回格式：{ content: [{ type: 'text', text: ... }] }
-                                if (result?.content && Array.isArray(result.content)) {
-                                    const textContent = result.content.find((c: any) => c.type === 'text');
-                                    if (textContent?.text) {
-                                        try {
-                                            return JSON.parse(textContent.text);
-                                        } catch {
-                                            return textContent.text;
-                                        }
-                                    } else {
-                                        return result;
+                            if (!connection) {
+                                ClientLogger.warn('Server %d (type=%s) has tool %s but no active WebSocket connection. Skipping this server.', 
+                                    server.serverId, serverType, name);
+                                continue; // 跳过这个服务器，继续查找其他服务器
+                            }
+                            
+                            ClientLogger.info('Calling tool %s via server %d connection', name, server.serverId);
+                            
+                            // 调用工具
+                            const result = await connection.callTool(name, args);
+                            
+                            ClientLogger.info('Tool %s returned result', name);
+                            
+                            // MCP 协议返回格式：{ content: [{ type: 'text', text: ... }] }
+                            if (result?.content && Array.isArray(result.content)) {
+                                const textContent = result.content.find((c: any) => c.type === 'text');
+                                if (textContent?.text) {
+                                    try {
+                                        return JSON.parse(textContent.text);
+                                    } catch {
+                                        return textContent.text;
                                     }
                                 } else {
                                     return result;
                                 }
                             } else {
-                                ClientLogger.warn('Server %d has tool %s but no active connections', server.serverId, name);
+                                return result;
                             }
                         } else {
                             ClientLogger.debug('Server %d does not have tool %s', server.serverId, name);
