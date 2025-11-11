@@ -3,29 +3,54 @@ import * as document from './document';
 import { buildProjection } from '../utils';
 import type { Context } from '../context';
 import type { BSDoc, RPDoc, DCDoc, BKDoc } from '../interface';
+import db from '../service/db';
+import { Collection } from 'mongodb';
 
 export const TYPE_BS: 30 = 30;
 export const TYPE_RP: 31 = 31;
 export const TYPE_DC: 32 = 32;
 export const TYPE_BK: 33 = 33;
 
+/**
+ * Keyword index document structure
+ */
+export interface RepoKeywordIndexDoc {
+    _id?: ObjectId;
+    domainId: string;
+    rpid: number;
+    branch: string;
+    keyword: string; // keyword (lowercase)
+    type: 'doc' | 'block'; // document type
+    targetId: number; // did or bid
+    targetDocId: ObjectId; // document docId
+    title: string; // title (for display)
+    contentSnippet: string; // content snippet (for context display)
+    position: number; // keyword position in content (character offset)
+    weight: number; // weight (keywords in title have higher weight)
+    updatedAt: Date;
+}
+
+/**
+ * Keyword index collection
+ */
+export const collKeywordIndex: Collection<RepoKeywordIndexDoc> = (db as any).collection('repo.keyword_index');
+
 export class BaseModel {
     /**
-     * 获取指定 domainId 的 Base
+     * Get Base for specified domainId
      */
     static async getBase(domainId: string): Promise<BSDoc | null> {
-        // document.getMulti 已经自动包含 domainId，所以不需要在 query 中再次指定
         const results = await document.getMulti(domainId, TYPE_BS, {}).limit(1).toArray();
         return results.length ? results[0] : null;
     }
     
 
     /**
-     * 创建 Base（每个 domain 只能有一个 Base）
+     * Create Base (each domain can only have one Base)
      */
     static async createBase(domainId: string, owner: number, title: string, content: string): Promise<ObjectId> {
         const repos = await RepoModel.getAllRepos(domainId);
-        const repoIds = repos.map(repo => repo.rpid); // 获取所有 Repo 的 ID
+        const repoIds = repos.map(repo => repo.rpid);
 
         const payload: Partial<BSDoc> = {
             docType: TYPE_BS,
@@ -51,7 +76,7 @@ export class BaseModel {
     }
 
     /**
-     * 更新 Base 的 title 和 content
+     * Update Base title and content
      */
     static async updateBase(domainId: string, docId: ObjectId, title: string, content: string): Promise<void> {
         const base = await this.getBase(domainId);
@@ -106,7 +131,7 @@ export class RepoModel {
             domainId,
             rpid: newRpid,
             title,
-            content: content || '',  // 避免 null
+            content: content || '',
             owner,
             createdAt: new Date(),
         };
@@ -161,10 +186,7 @@ export class RepoModel {
         return repos;
     }
     static async getDocsByRepo(domainId: string, rpid: number): Promise<DCDoc[]> {
-        // MongoDB 中 { rpid: number } 可以匹配数组中包含该数字的文档
-        // 但为了确保兼容性，我们也查询数组格式
         const docs = await document.getMulti(domainId, TYPE_DC, { rpid }).toArray();
-        // 标准化 rpid 为数字（如果是数组，取第一个）
         return docs.map(doc => {
             if (Array.isArray(doc.rpid)) {
                 doc.rpid = doc.rpid[0];
@@ -227,6 +249,17 @@ export class DocModel {
             _.omit(payload, ['domainId', 'content', 'owner'])
         );
 
+        await RepoKeywordIndexModel.indexContent(
+            domainId,
+            parsedRpid,
+            branch,
+            'doc',
+            newDid,
+            docId,
+            title,
+            content
+        ).catch(err => console.error('Failed to update keyword index:', err));
+
         return docId;
     }
 
@@ -255,7 +288,7 @@ export class DocModel {
 
         const payload: Partial<DCDoc> = {
             domainId,
-            rpid: rpid as any, // 保持与 ejunzrepo 一致，存储数组格式（虽然接口定义为 number，但实际存储为数组）
+            rpid: rpid as any,
             did: newDid,
             parentId: parentDcid,
             title,
@@ -280,6 +313,17 @@ export class DocModel {
             _.omit(payload, ['domainId', 'content', 'owner'])
         );
 
+        await RepoKeywordIndexModel.indexContent(
+            domainId,
+            firstRpid,
+            branch,
+            'doc',
+            newDid,
+            docId,
+            title,
+            content
+        ).catch(err => console.error('Failed to update keyword index:', err));
+
         return docId;
     }
 
@@ -287,7 +331,6 @@ export class DocModel {
         if (typeof query === 'object' && 'did' in query) {
             const docs = await document.getMulti(domainId, TYPE_DC, query).limit(1).toArray();
             const doc = docs[0] || null;
-            // 标准化 rpid 为数字（如果是数组，取第一个）
             if (doc && Array.isArray(doc.rpid)) {
                 doc.rpid = doc.rpid[0];
             }
@@ -316,6 +359,26 @@ export class DocModel {
 
         const docIds = descendants.map((n) => n.docId);
         await Promise.all(docIds.map((id) => document.deleteOne(domainId, TYPE_DC, id)));
+        
+        const rpidNum = Array.isArray(node.rpid) ? node.rpid[0] : node.rpid;
+        await RepoKeywordIndexModel.removeIndex(
+            domainId,
+            rpidNum,
+            node.branch || 'main',
+            'doc',
+            node.did
+        ).catch(err => console.error('Failed to remove keyword index:', err));
+        
+        for (const desc of descendants) {
+            const descRpidNum = Array.isArray(desc.rpid) ? desc.rpid[0] : desc.rpid;
+            await RepoKeywordIndexModel.removeIndex(
+                domainId,
+                descRpidNum,
+                desc.branch || 'main',
+                'doc',
+                desc.did
+            ).catch(err => console.error('Failed to remove keyword index:', err));
+        }
     }
 
     static async incrementViews(domainId: string, docId: ObjectId): Promise<void> {
@@ -323,11 +386,26 @@ export class DocModel {
     }
 
     static async edit(domainId: string, docId: ObjectId, title: string, content: string): Promise<void> {
+        const doc = await this.get(domainId, docId);
+        if (!doc) throw new Error('Document not found');
+        
         await document.set(domainId, TYPE_DC, docId, { 
             title, 
             content,
             updateAt: new Date()
         });
+        
+        const rpidNum = Array.isArray(doc.rpid) ? doc.rpid[0] : doc.rpid;
+        await RepoKeywordIndexModel.indexContent(
+            domainId,
+            rpidNum,
+            doc.branch || 'main',
+            'doc',
+            doc.did,
+            docId,
+            title,
+            content
+        ).catch(err => console.error('Failed to update keyword index:', err));
     }
 
     static async getDocsByIds(domainId: string, dids: number[]) {
@@ -338,9 +416,250 @@ export class DocModel {
     }
 }
 
+/**
+ * Keyword index model
+ * For fast keyword search in repo
+ */
+export class RepoKeywordIndexModel {
+    /**
+     * Simple tokenization function (supports Chinese and English)
+     * For Chinese: split by character; For English: split by word
+     */
+    private static tokenize(text: string): string[] {
+        if (!text) return [];
+        const tokens: string[] = [];
+        const lowerText = text.toLowerCase();
+        
+        const regex = /[\u4e00-\u9fa5]|[a-zA-Z0-9]+/g;
+        let match;
+        while ((match = regex.exec(lowerText)) !== null) {
+            tokens.push(match[0]);
+        }
+        
+        const subTokens = new Set<string>();
+        tokens.forEach(token => {
+            if (token.length > 1) {
+                for (let i = 0; i < token.length; i++) {
+                    for (let j = i + 1; j <= token.length; j++) {
+                        subTokens.add(token.substring(i, j));
+                    }
+                }
+            }
+        });
+        
+        return Array.from(new Set([...tokens, ...subTokens]));
+    }
+
+    /**
+     * Extract keywords and build index
+     */
+    static async indexContent(
+        domainId: string,
+        rpid: number,
+        branch: string,
+        type: 'doc' | 'block',
+        targetId: number,
+        targetDocId: ObjectId,
+        title: string,
+        content: string
+    ): Promise<void> {
+        await this.removeIndex(domainId, rpid, branch, type, targetId);
+        
+        if (!title && !content) return;
+        
+        const fullText = `${title} ${content}`;
+        const tokens = this.tokenize(fullText);
+        
+        const titleTokens = this.tokenize(title);
+        const titleTokenSet = new Set(titleTokens);
+        
+        const indexDocs: Omit<RepoKeywordIndexDoc, '_id'>[] = [];
+        const seen = new Set<string>();
+        
+        for (const token of tokens) {
+            if (token.length < 2) continue;
+            if (seen.has(token)) continue;
+            seen.add(token);
+            
+            const weight = titleTokenSet.has(token) ? 2 : 1;
+            
+            const position = content.toLowerCase().indexOf(token);
+            const contentSnippet = position >= 0 
+                ? content.substring(Math.max(0, position - 20), Math.min(content.length, position + 50))
+                : '';
+            
+            indexDocs.push({
+                domainId,
+                rpid,
+                branch,
+                keyword: token,
+                type,
+                targetId,
+                targetDocId,
+                title,
+                contentSnippet,
+                position: position >= 0 ? position : 0,
+                weight,
+                updatedAt: new Date(),
+            });
+        }
+        
+        if (indexDocs.length > 0) {
+            await collKeywordIndex.insertMany(indexDocs);
+        }
+    }
+
+    /**
+     * Remove index
+     */
+    static async removeIndex(
+        domainId: string,
+        rpid: number,
+        branch: string,
+        type: 'doc' | 'block',
+        targetId: number
+    ): Promise<void> {
+        await collKeywordIndex.deleteMany({
+            domainId,
+            rpid,
+            branch,
+            type,
+            targetId,
+        });
+    }
+
+    /**
+     * Search keywords
+     */
+    static async search(
+        domainId: string,
+        rpid: number,
+        branch: string,
+        keywords: string,
+        type?: 'doc' | 'block',
+        limit: number = 50,
+        skip: number = 0
+    ): Promise<{
+        results: Array<{
+            type: 'doc' | 'block';
+            targetId: number;
+            targetDocId: ObjectId;
+            title: string;
+            contentSnippet: string;
+            score: number;
+            matchedKeywords: string[];
+        }>;
+        total: number;
+    }> {
+        const searchTokens = this.tokenize(keywords);
+        if (searchTokens.length === 0) {
+            return { results: [], total: 0 };
+        }
+        
+        const query: any = {
+            domainId,
+            rpid,
+            branch,
+            keyword: { $in: searchTokens },
+        };
+        
+        if (type) {
+            query.type = type;
+        }
+        
+        const indexEntries = await collKeywordIndex.find(query).toArray();
+        
+        const resultMap = new Map<string, {
+            type: 'doc' | 'block';
+            targetId: number;
+            targetDocId: ObjectId;
+            title: string;
+            contentSnippet: string;
+            score: number;
+            matchedKeywords: Set<string>;
+        }>();
+        
+        for (const entry of indexEntries) {
+            const key = `${entry.type}_${entry.targetId}`;
+            const existing = resultMap.get(key);
+            
+            if (existing) {
+                existing.score += entry.weight;
+                existing.matchedKeywords.add(entry.keyword);
+                if (entry.weight > 1 || !existing.contentSnippet) {
+                    existing.contentSnippet = entry.contentSnippet;
+                }
+            } else {
+                resultMap.set(key, {
+                    type: entry.type,
+                    targetId: entry.targetId,
+                    targetDocId: entry.targetDocId,
+                    title: entry.title,
+                    contentSnippet: entry.contentSnippet,
+                    score: entry.weight,
+                    matchedKeywords: new Set([entry.keyword]),
+                });
+            }
+        }
+        
+        const results = Array.from(resultMap.values())
+            .map(item => ({
+                ...item,
+                matchedKeywords: Array.from(item.matchedKeywords),
+            }))
+            .sort((a, b) => b.score - a.score)
+            .slice(skip, skip + limit);
+        
+        return {
+            results,
+            total: resultMap.size,
+        };
+    }
+
+    /**
+     * Rebuild entire repo index (for initialization or repair)
+     */
+    static async rebuildIndex(
+        domainId: string,
+        rpid: number,
+        branch: string = 'main'
+    ): Promise<void> {
+        await collKeywordIndex.deleteMany({ domainId, rpid, branch });
+        
+        const docs = await document.getMulti(domainId, TYPE_DC, { rpid, branch }).toArray();
+        for (const doc of docs) {
+            const rpidNum = Array.isArray(doc.rpid) ? doc.rpid[0] : doc.rpid;
+            await this.indexContent(
+                domainId,
+                rpidNum,
+                branch,
+                'doc',
+                doc.did,
+                doc.docId,
+                doc.title || '',
+                doc.content || ''
+            );
+        }
+        
+        const blocks = await document.getMulti(domainId, TYPE_BK, { rpid, branch }).toArray();
+        for (const block of blocks) {
+            const rpidNum = Array.isArray(block.rpid) ? block.rpid[0] : block.rpid;
+            await this.indexContent(
+                domainId,
+                rpidNum,
+                branch,
+                'block',
+                block.bid,
+                block.docId,
+                block.title || '',
+                block.content || ''
+            );
+        }
+    }
+}
+
 export class BlockModel {
     static async generateNextBid(domainId: string, rpid: number, branch: string = 'main'): Promise<number> {
-        // bid 在整个 repo 内唯一，不按分支区分
         const lastBlock = await document.getMulti(domainId, TYPE_BK, { rpid })
             .sort({ bid: -1 })
             .limit(1)
@@ -386,19 +705,37 @@ export class BlockModel {
             _.omit(payload, ['domainId', 'content', 'owner'])
         );
 
+        await RepoKeywordIndexModel.indexContent(
+            domainId,
+            rpid,
+            branch,
+            'block',
+            bid,
+            docId,
+            title,
+            content
+        ).catch(err => console.error('Failed to update keyword index:', err));
+
         return docId;
     }
 
     static async get(domainId: string, query: ObjectId | { rpid: number, bid: number, branch?: string }): Promise<BKDoc | null> {
         if (typeof query === 'object' && 'bid' in query) {
             const queryObj: any = { rpid: query.rpid, bid: query.bid };
-            // 如果指定了 branch，也过滤分支
             if (query.branch !== undefined) {
                 queryObj.branch = query.branch;
+            } else {
+                queryObj.branch = 'main';
             }
             const blocks = await document.getMulti(domainId, TYPE_BK, queryObj).limit(1).toArray();
             const block = blocks[0] || null;
-            // 标准化 rpid 为数字（如果是数组，取第一个）
+            if (block) {
+                const branchFilter = query.branch || 'main';
+                const blockBranch = block.branch || 'main';
+                if (blockBranch !== branchFilter) {
+                    return null;
+                }
+            }
             if (block && Array.isArray(block.rpid)) {
                 block.rpid = block.rpid[0];
             }
@@ -410,27 +747,63 @@ export class BlockModel {
     static async getByDid(domainId: string, did: number, rpid?: number, branch?: string): Promise<BKDoc[]> {
         const query: any = { did };
         if (rpid !== undefined) query.rpid = rpid;
-        if (branch !== undefined) query.branch = branch;
+        if (branch !== undefined) {
+            query.branch = branch;
+        } else {
+            query.branch = 'main';
+        }
         const blocks = await document.getMulti(domainId, TYPE_BK, query).toArray();
-        // 标准化 rpid 为数字（如果是数组，取第一个）
-        return blocks.map(block => {
-            if (Array.isArray(block.rpid)) {
-                block.rpid = block.rpid[0];
-            }
-            return block;
-        });
+        const branchFilter = branch || 'main';
+        return blocks
+            .filter(block => {
+                const blockBranch = block.branch || 'main';
+                return blockBranch === branchFilter;
+            })
+            .map(block => {
+                if (Array.isArray(block.rpid)) {
+                    block.rpid = block.rpid[0];
+                }
+                return block;
+            });
     }
 
     static async edit(domainId: string, docId: ObjectId, title: string, content: string): Promise<void> {
+        const block = await this.get(domainId, docId);
+        if (!block) throw new Error('Block not found');
+        
         await document.set(domainId, TYPE_BK, docId, { 
             title, 
             content,
             updateAt: new Date()
         });
+        
+        const rpidNum = Array.isArray(block.rpid) ? block.rpid[0] : block.rpid;
+        await RepoKeywordIndexModel.indexContent(
+            domainId,
+            rpidNum,
+            block.branch || 'main',
+            'block',
+            block.bid,
+            docId,
+            title,
+            content
+        ).catch(err => console.error('Failed to update keyword index:', err));
     }
 
     static async delete(domainId: string, docId: ObjectId): Promise<void> {
+        const block = await this.get(domainId, docId);
+        if (!block) throw new Error('Block not found');
+        
         await document.deleteOne(domainId, TYPE_BK, docId);
+        
+        const rpidNum = Array.isArray(block.rpid) ? block.rpid[0] : block.rpid;
+        await RepoKeywordIndexModel.removeIndex(
+            domainId,
+            rpidNum,
+            block.branch || 'main',
+            'block',
+            block.bid
+        ).catch(err => console.error('Failed to remove keyword index:', err));
     }
 
     static async incrementViews(domainId: string, docId: ObjectId): Promise<void> {
@@ -438,7 +811,16 @@ export class BlockModel {
     }
 }
 
-export function apply(ctx: Context) {}
+export function apply(ctx: Context) {
+    (ctx as any).on('ready', async () => {
+        await db.ensureIndexes(
+            collKeywordIndex,
+            { key: { domainId: 1, rpid: 1, branch: 1, keyword: 1, type: 1, targetId: 1 }, name: 'search', unique: false },
+            { key: { domainId: 1, rpid: 1, branch: 1, type: 1, targetId: 1 }, name: 'target' },
+            { key: { keyword: 1 }, name: 'keyword' },
+        );
+    });
+}
 
 // @ts-ignore
 global.Ejunz.model.bs = BaseModel;
@@ -448,5 +830,7 @@ global.Ejunz.model.rp = RepoModel;
 global.Ejunz.model.dc = DocModel;
 // @ts-ignore
 global.Ejunz.model.bk = BlockModel;
-export default { BaseModel, RepoModel, DocModel, BlockModel };
+// @ts-ignore
+global.Ejunz.model.repoKeywordIndex = RepoKeywordIndexModel;
+export default { BaseModel, RepoModel, DocModel, BlockModel, RepoKeywordIndexModel };
 
