@@ -468,41 +468,53 @@ class DocHandler extends Handler {
     }
 }
 export class BaseDomainHandler extends Handler {
-    async get({ domainId }) {
+    @param('page', Types.PositiveInt, true)
+    @param('q', Types.Content, true)
+    @param('pjax', Types.Boolean)
+    async get({ domainId }, page = 1, q = '', pjax = false) {
       domainId = domainId || this.args?.domainId || this.context?.domainId || 'system';
+      page = Number(page) || 1;
+      const limit = 20;
+      const skip = (page - 1) * limit;
   
       try {
         const base = await BaseModel.getBase(domainId);
-        const repos = await RepoModel.getAllRepos(domainId);
+        let allRepos = await RepoModel.getAllRepos(domainId);
   
-        const nodes = [
-          {
-            id: "base-root",
-            name: "Base",
-            type: "base",
-            url: this.url("base_domain", { domainId })
-          },
-          ...repos.map(repo => ({
-            id: `repo-${repo.rpid}`,
-            name: repo.title,
-            type: 'repo',
-            url: this.url('repo_detail', { domainId, rpid: repo.rpid }),
-          }))
-        ];
+        // 搜索过滤
+        if (q && q.trim()) {
+          const searchTerm = q.trim().toLowerCase();
+          allRepos = allRepos.filter(repo => 
+            repo.title.toLowerCase().includes(searchTerm) ||
+            String(repo.rpid).includes(searchTerm)
+          );
+        }
   
-        const links = repos.map(repo => ({
-          source: "base-root",
-          target: `repo-${repo.rpid}`
-        }));
+        // 分页
+        const total = allRepos.length;
+        const totalPages = Math.ceil(total / limit);
+        const repos = allRepos.slice(skip, skip + limit);
   
-        this.UiContext.forceGraphData = { nodes, links };
-  
-        this.response.template = 'base_domain.html';
-        this.response.body = {
-          domainId,
-          base: base || null,
-          repos: repos || []
-        };
+        if (pjax) {
+          const html = await this.renderHTML('partials/repo_list.html', {
+            page, totalPages, total, repos, qs: q, domainId,
+          });
+          this.response.body = {
+            title: this.renderTitle(this.translate('Base Overview')),
+            fragments: [{ html: html || '' }],
+          };
+        } else {
+          this.response.template = 'base_domain.html';
+          this.response.body = {
+            domainId,
+            base: base || null,
+            repos: repos || [],
+            page,
+            totalPages,
+            total,
+            qs: q,
+          };
+        }
   
       } catch (error) {
         console.error("Error fetching base:", error);

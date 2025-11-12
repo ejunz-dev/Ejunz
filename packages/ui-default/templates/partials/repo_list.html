@@ -1,0 +1,35 @@
+{% import "components/paginator.html" as paginator with context %}
+{% import "components/nothing.html" as nothing with context %}
+<div data-fragment-id="repo_list">
+{% if not repos.length %}
+  {{ nothing.render('Sorry, there are no repos in the base.') }}
+{% else %}
+  {{ paginator.render(page, totalPages, position='top', add_qs=('q=' + qs if qs else '')) }}
+  <table class="data-table">
+    <colgroup>
+      <col class="col--rpid">
+      <col class="col--name">
+    </colgroup>
+    <thead>
+      <tr>
+        <th class="col--rpid">{{ _('ID') }}</th>
+        <th class="col--name">{{ _('Repo') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for repo in repos -%}
+      <tr data-rpid="{{ repo.rpid }}">
+        <td class="col--rpid">{{ repo.rpid }}</td>
+        <td class="col--name">
+          <a href="{{ url('repo_detail', domainId=domainId, rpid=repo.rpid) }}">
+            {{ repo.title }}
+          </a>
+        </td>
+      </tr>
+    {%- endfor -%}
+    </tbody>
+  </table>
+  {{ paginator.render(page, totalPages, add_qs=('q=' + qs if qs else '')) }}
+{% endif %}
+</div>
+
