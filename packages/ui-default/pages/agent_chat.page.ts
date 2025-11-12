@@ -130,36 +130,45 @@ const page = new NamedPage('agent_chat', async () => {
               console.log('[Stream] Update #' + contentUpdateCount, 'New content:', parsed.content, 'Total length:', accumulatedContent.length);
             }
           } else if (parsed.type === 'tool_call_start') {
-            console.log('Tool call started:', parsed.tools);
+            console.log('Tool call started:', parsed.tools, parsed.toolCallId, parsed.iteration);
             const toolNames = parsed.tools || ['unknown'];
+            const toolCallId = parsed.toolCallId || `${toolNames[0]}-${Date.now()}`;
+            const iteration = parsed.iteration || 0;
             
             toolNames.forEach((toolName: string) => {
-              if (toolCallMessages.has(toolName)) {
+              // 使用 toolCallId 作为 key，支持同一工具的多次调用
+              const messageKey = toolCallId || `${toolName}-${Date.now()}`;
+              if (toolCallMessages.has(messageKey)) {
                 return;
               }
               
               const toolMessage = document.createElement('div');
               toolMessage.className = 'chat-message assistant tool-call-message';
-              toolMessage.id = `tool-message-${toolName}`;
+              toolMessage.id = `tool-message-${messageKey}`;
+              toolMessage.setAttribute('data-tool-call-id', messageKey);
+              toolMessage.setAttribute('data-tool-name', toolName);
               
               const toolStatus = document.createElement('div');
               toolStatus.className = 'tool-call-status calling';
+              const iterationText = iteration > 0 ? ` (#${iteration})` : '';
               toolStatus.innerHTML = `
                 <span class="loading"></span>
-                <span>Calling tool: <strong>${toolName}</strong></span>
+                <span>Calling tool: <strong>${toolName}</strong>${iterationText}</span>
               `;
               
               toolMessage.appendChild(toolStatus);
               chatMessages.appendChild(toolMessage);
               
-              toolCallMessages.set(toolName, toolMessage);
+              toolCallMessages.set(messageKey, toolMessage);
             });
             
             chatMessages.scrollTop = chatMessages.scrollHeight;
           } else if (parsed.type === 'tool_result') {
-            console.log('Tool result received:', parsed.tool, parsed.result);
+            console.log('Tool result received:', parsed.tool, parsed.result, parsed.toolCallId, parsed.iteration);
             if (parsed.tool) {
-              const toolMessage = toolCallMessages.get(parsed.tool);
+              // 优先使用 toolCallId，如果没有则使用 toolName
+              const messageKey = parsed.toolCallId || parsed.tool;
+              const toolMessage = toolCallMessages.get(messageKey);
               
               if (toolMessage) {
                 const toolStatus = toolMessage.querySelector('.tool-call-status');
@@ -178,7 +187,9 @@ const page = new NamedPage('agent_chat', async () => {
                     toolStatus.className = 'tool-call-status completed';
                     
                     if (parsed.result !== undefined) {
-                      toolCallResults[parsed.tool] = parsed.result;
+                      // 使用 toolCallId 作为 key，支持同一工具的多次调用
+                    const resultKey = parsed.toolCallId || parsed.tool;
+                    toolCallResults[resultKey] = parsed.result;
                     }
                     
                     const resultDiv = document.createElement('div');

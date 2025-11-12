@@ -1529,7 +1529,7 @@ export class AgentChatHandler extends Handler {
                 let finishReason = '';
                 let toolCalls: any[] = [];
                 let iterations = 0;
-                const maxIterations = 10;
+                const maxIterations = 50; // 增加迭代次数限制，避免过早停止
                 let streamFinished = false;
                 let waitingForToolCall = false;
 
@@ -1781,7 +1781,7 @@ export class AgentChatHandler extends Handler {
                 .set('content-type', 'application/json');
 
             let iterations = 0;
-            const maxIterations = 10;
+            const maxIterations = 50; // 增加迭代次数限制，避免过早停止
 
             while (true) {
                 const choice = currentResponse.body.choices?.[0] || {};
@@ -2068,7 +2068,7 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
             let finishReason = '';
             let toolCalls: any[] = [];
             let iterations = 0;
-            const maxIterations = 10;
+            const maxIterations = 50; // 增加迭代次数限制，避免过早停止
             let streamFinished = false;
             let waitingForToolCall = false;
 
@@ -2194,10 +2194,12 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
                                                     }
                                                     
                                                     iterations++;
-                                                    AgentLogger.info('Processing tool calls (WS)', { toolCallCount: toolCalls.length });
+                                                    AgentLogger.info('Processing tool calls (WS)', { toolCallCount: toolCalls.length, iterations, maxIterations });
                                                     
                                                     const firstToolName = toolCalls[0]?.function?.name || 'unknown';
-                                                    this.send({ type: 'tool_call_start', tools: [firstToolName] });
+                                                    // 为每次工具调用生成唯一 ID，以便 UI 可以显示多次调用
+                                                    const toolCallId = `${firstToolName}-${iterations}-${Date.now()}`;
+                                                    this.send({ type: 'tool_call_start', tools: [firstToolName], toolCallId, iteration: iterations });
                                                     
                                                     const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
                                                         id: tc.id || `call_${idx}`,
@@ -2239,7 +2241,7 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
                                                     
                                                     const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
                                                     
-                                                    this.send({ type: 'tool_result', tool: firstToolCall.function.name, result: toolResult });
+                                                    this.send({ type: 'tool_result', tool: firstToolCall.function.name, result: toolResult, toolCallId, iteration: iterations });
                                                     this.send({ type: 'tool_call_complete' });
                                                     
                                                     messagesForTurn = [
@@ -2506,7 +2508,7 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
             let finishReason = '';
             let toolCalls: any[] = [];
             let iterations = 0;
-            const maxIterations = 10;
+            const maxIterations = 50; // 增加迭代次数限制，避免过早停止
             let streamFinished = false;
             let waitingForToolCall = false;
 
@@ -2945,7 +2947,7 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
             let finishReason = '';
             let toolCalls: any[] = [];
             let iterations = 0;
-            const maxIterations = 10;
+            const maxIterations = 50; // 增加迭代次数限制，避免过早停止
             let streamFinished = false;
             let waitingForToolCall = false;
 
@@ -3335,7 +3337,7 @@ export class AgentApiHandler extends Handler {
                 let finishReason = '';
                 let toolCalls: any[] = [];
                 let iterations = 0;
-                const maxIterations = 10;
+                const maxIterations = 50; // 增加迭代次数限制，避免过早停止
                 let streamFinished = false;
                 let waitingForToolCall = false;
 
@@ -3599,7 +3601,7 @@ export class AgentApiHandler extends Handler {
                 .set('content-type', 'application/json');
 
             let iterations = 0;
-            const maxIterations = 10;
+            const maxIterations = 50; // 增加迭代次数限制，避免过早停止
 
             while (true) {
                 const choice = currentResponse.body.choices?.[0] || {};
