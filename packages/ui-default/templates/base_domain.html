@@ -21,10 +21,20 @@
 
     <div class="section">
       <div class="section__header">
-        <h2 class="section__title">{{ _("Repo Map") }}</h2>
+        <h2 class="section__title">{{ _("Repos") }}</h2>
       </div>
-      <div class="section__body">
-        <svg id="d3-base" style="width: 100%; height: 600px; background-color: #f8f8f8; border: 1px solid #ccc;"></svg>
+      <div class="section__body no-padding">
+        <form method="get" id="searchForm">
+          <div class="search">
+            <input name="q" type="text" value="{{ qs }}" placeholder="{{ _('Search repos') }}">
+            <button type="submit" id="search">
+              <span class="icon icon-search"></span>
+            </button>
+          </div>
+        </form>
+      </div>
+      <div class="section__body no-padding">
+        {% include "partials/repo_list.html" %}
       </div>
     </div>
   </div>
