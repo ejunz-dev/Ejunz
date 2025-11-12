@@ -24,6 +24,132 @@ import McpServerModel, { McpToolModel } from '../model/mcp';
 const exec = promisify(execCb);
 
 /**
+ * 共享的搜索函数：搜索 repo 中的 doc 和 block
+ * @param domainId 域名ID
+ * @param rpid repo ID
+ * @param branch 分支名
+ * @param searchTerm 搜索关键词
+ * @param searchTypes 搜索类型：'doc' | 'block' | 'both'
+ * @param limit 结果限制
+ * @param skip 跳过数量
+ * @returns 搜索结果数组
+ */
+async function searchRepoContent(
+    domainId: string,
+    rpid: number,
+    branch: string,
+    searchTerm: string,
+    searchTypes: 'doc' | 'block' | 'both' = 'both',
+    limit: number = 50,
+    skip: number = 0
+): Promise<{ results: any[], total: number }> {
+    if (!searchTerm || !searchTerm.trim()) {
+        return { results: [], total: 0 };
+    }
+    
+    const searchTermTrimmed = searchTerm.trim();
+    const allResults: any[] = [];
+    
+    // 获取该分支的所有文档
+    const repoDocsAll = await RepoModel.getDocsByRepo(domainId, rpid);
+    const repoDocs = repoDocsAll.filter(d => (d.branch || 'main') === branch);
+    
+    // 搜索文档
+    if (searchTypes === 'doc' || searchTypes === 'both') {
+        const matchingDocs = repoDocs.filter(doc => 
+            (doc.title && (doc.title.includes(searchTermTrimmed) || doc.title.toLowerCase().includes(searchTermTrimmed.toLowerCase()))) ||
+            (doc.content && (doc.content.includes(searchTermTrimmed) || doc.content.toLowerCase().includes(searchTermTrimmed.toLowerCase())))
+        );
+        
+        for (const doc of matchingDocs) {
+            const titleMatch = doc.title && (doc.title.includes(searchTermTrimmed) || doc.title.toLowerCase().includes(searchTermTrimmed.toLowerCase()));
+            const contentMatch = doc.content && (doc.content.includes(searchTermTrimmed) || doc.content.toLowerCase().includes(searchTermTrimmed.toLowerCase()));
+            
+            let contentSnippet = '';
+            if (doc.content) {
+                const contentLower = doc.content.toLowerCase();
+                const searchLower = searchTermTrimmed.toLowerCase();
+                const index = contentLower.indexOf(searchLower);
+                if (index >= 0) {
+                    const start = Math.max(0, index - 30);
+                    const end = Math.min(doc.content.length, index + searchTermTrimmed.length + 50);
+                    contentSnippet = doc.content.substring(start, end).replace(/\n/g, ' ').trim();
+                    if (start > 0) contentSnippet = '...' + contentSnippet;
+                    if (end < doc.content.length) contentSnippet = contentSnippet + '...';
+                } else {
+                    contentSnippet = doc.content.substring(0, 100).replace(/\n/g, ' ');
+                }
+            }
+            
+            allResults.push({
+                type: 'doc',
+                targetId: doc.did,
+                targetDocId: doc.docId,
+                title: doc.title || '',
+                contentSnippet,
+                score: titleMatch ? 2 : 1,
+                matchedKeywords: [searchTermTrimmed],
+            });
+        }
+    }
+    
+    // 搜索块
+    if (searchTypes === 'block' || searchTypes === 'both') {
+        for (const doc of repoDocs) {
+            try {
+                const blocks = await BlockModel.getByDid(domainId, doc.did, rpid, branch);
+                if (blocks && blocks.length > 0) {
+                    for (const block of blocks) {
+                        const titleMatch = block.title && (block.title.includes(searchTermTrimmed) || block.title.toLowerCase().includes(searchTermTrimmed.toLowerCase()));
+                        const contentMatch = block.content && (block.content.includes(searchTermTrimmed) || block.content.toLowerCase().includes(searchTermTrimmed.toLowerCase()));
+                        
+                        if (titleMatch || contentMatch) {
+                            let contentSnippet = '';
+                            if (block.content) {
+                                const contentLower = block.content.toLowerCase();
+                                const searchLower = searchTermTrimmed.toLowerCase();
+                                const index = contentLower.indexOf(searchLower);
+                                if (index >= 0) {
+                                    const start = Math.max(0, index - 30);
+                                    const end = Math.min(block.content.length, index + searchTermTrimmed.length + 50);
+                                    contentSnippet = block.content.substring(start, end).replace(/\n/g, ' ').trim();
+                                    if (start > 0) contentSnippet = '...' + contentSnippet;
+                                    if (end < block.content.length) contentSnippet = contentSnippet + '...';
+                                } else {
+                                    contentSnippet = block.content.substring(0, 100).replace(/\n/g, ' ');
+                                }
+                            }
+                            
+                            allResults.push({
+                                type: 'block',
+                                targetId: block.bid,
+                                targetDocId: block.docId,
+                                title: block.title || '',
+                                contentSnippet,
+                                score: titleMatch ? 2 : 1,
+                                matchedKeywords: [searchTermTrimmed],
+                            });
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error(`Error searching blocks for doc ${doc.did}:`, err);
+            }
+        }
+    }
+    
+    // 按分数排序并分页
+    allResults.sort((a, b) => b.score - a.score);
+    const total = allResults.length;
+    const paginatedResults = allResults.slice(skip, skip + limit);
+    
+    return {
+        results: paginatedResults,
+        total,
+    };
+}
+
+/**
  * Create default MCP tools for repo (query, create, edit, delete)
  * Skips if tool already exists, safe to call multiple times
  */
@@ -308,31 +434,19 @@ export async function createDefaultRepoMcpTools(
             },
         },
         {
-            name: `repo_${rpid}_search_doc`,
-            description: `Search folders (doc) in repo ${rpid}. Uses keyword index to quickly locate folders containing specified keywords. Note: doc is folder/category, not actual content. Actual content is stored in blocks. Supports Chinese and English search.`,
+            name: `repo_${rpid}_search`,
+            description: `Search in repo ${rpid} for folders (doc) and documents (block). Searches both folder names/descriptions and document titles/content. Returns results from both types. Note: doc is folder/category, block is actual content/document. Supports Chinese and English search.
+
+⚠️ Important: Only provide ONE keyword or phrase. Do NOT provide multiple keywords separated by spaces. Use a single, specific search term.`,
             inputSchema: {
                 type: 'object',
                 properties: {
-                    keywords: { type: 'string', description: 'Search keywords (supports multiple keywords separated by spaces)' },
+                    keyword: { type: 'string', description: 'Single search keyword or phrase (do NOT provide multiple keywords, use only one search term)' },
                     branch: { type: 'string', description: 'Branch name (default: main)', default: 'main' },
                     limit: { type: 'number', description: 'Result limit (default: 50)', default: 50 },
                     skip: { type: 'number', description: 'Skip count for pagination (default: 0)', default: 0 },
                 },
-                required: ['keywords'],
-            },
-        },
-        {
-            name: `repo_${rpid}_search_block`,
-            description: `Search documents (block) in repo ${rpid}. Uses keyword index to quickly locate documents containing specified keywords. Note: block is the actual content/document containing specific content data. doc is just a folder/category structure. Supports Chinese and English search.`,
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    keywords: { type: 'string', description: 'Search keywords (supports multiple keywords separated by spaces)' },
-                    branch: { type: 'string', description: 'Branch name (default: main)', default: 'main' },
-                    limit: { type: 'number', description: 'Result limit (default: 50)', default: 50 },
-                    skip: { type: 'number', description: 'Skip count for pagination (default: 0)', default: 0 },
-                },
-                required: ['keywords'],
+                required: ['keyword'],
             },
         },
         {
@@ -870,7 +984,10 @@ export class RepoMcpHandler extends Handler {
 export class RepoDetailHandler extends Handler {
     @param('rpid', Types.Int)
     @param('branch', Types.String, true)
-    async get(domainId: string, rpid: number, branch?: string) {
+    @param('q', Types.Content, true)
+    @param('page', Types.PositiveInt, true)
+    @param('pjax', Types.Boolean)
+    async get(domainId: string, rpid: number, branch?: string, q = '', page = 1, pjax = false) {
       if (!rpid) {
         throw new NotFoundError(`Invalid request: rpid is missing`);
       }
@@ -988,6 +1105,59 @@ export class RepoDetailHandler extends Handler {
         hasRemote: gitStatus.hasRemote || false
       } : null;
 
+      // 搜索功能
+      let searchResults: any = null;
+      let searchTotal = 0;
+      let searchTotalPages = 1;
+      const searchLimit = 20;
+      
+      if (q && q.trim()) {
+        // 使用共享的搜索函数
+        const searchResult = await searchRepoContent(
+          domainId,
+          rpid,
+          requestedBranch,
+          q,
+          'both',
+          searchLimit,
+          (page - 1) * searchLimit
+        );
+        
+        // 为搜索结果添加URL
+        const enrichedResults = await Promise.all(
+          searchResult.results.map(async (result) => {
+            let url = '';
+            if (result.type === 'doc') {
+              url = this.url('doc_detail_branch', {
+                domainId,
+                rpid,
+                branch: requestedBranch,
+                did: result.targetId
+              });
+            } else {
+              const block = await BlockModel.get(domainId, { rpid, bid: result.targetId, branch: requestedBranch });
+              if (block) {
+                url = this.url('block_detail_branch', {
+                  domainId,
+                  rpid,
+                  branch: requestedBranch,
+                  did: block.did,
+                  bid: result.targetId
+                });
+              }
+            }
+            return {
+              ...result,
+              url,
+            };
+          })
+        );
+        
+        searchResults = enrichedResults;
+        searchTotal = searchResult.total;
+        searchTotalPages = Math.ceil(searchTotal / searchLimit);
+      }
+
       const mode = (repo as any).mode || 'file';
       if (mode === 'manuscript') {
         const manuscriptData = await this.buildManuscriptData(domainId, repo.rpid, requestedBranch, repoDocs);
@@ -1002,18 +1172,43 @@ export class RepoDetailHandler extends Handler {
           ...manuscriptData,
         };
       } else {
-        this.response.template = 'repo_detail.html';
-        this.response.pjax = 'repo_detail.html';
-      this.response.body = {
-        repo,
-        rootDocs,
-        repoDocs,
-        docHierarchy,
-        currentBranch: requestedBranch,
-        branches,
-        branchStatus,
-        gitStatus,
-      };
+        if (pjax && q && q.trim()) {
+          // pjax搜索请求，只返回搜索结果
+          const html = await this.renderHTML('partials/repo_search_results.html', {
+            handler: this,
+            repo,
+            searchResults,
+            searchTotal,
+            searchTotalPages,
+            page,
+            qs: q,
+            currentBranch: requestedBranch,
+            domainId,
+            rpid,
+          });
+          this.response.body = {
+            title: this.renderTitle(repo.title),
+            fragments: [{ html: html || '', id: 'repo-search-results' }],
+          };
+        } else {
+          this.response.template = 'repo_detail.html';
+          this.response.pjax = 'repo_detail.html';
+          this.response.body = {
+            repo,
+            rootDocs,
+            repoDocs,
+            docHierarchy,
+            currentBranch: requestedBranch,
+            branches,
+            branchStatus,
+            gitStatus,
+            searchResults,
+            searchTotal,
+            searchTotalPages,
+            searchPage: page,
+            qs: q,
+          };
+        }
       }
   
       this.UiContext.docHierarchy = docHierarchy;
@@ -3358,9 +3553,21 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
     const operation = match[2];
     const branch = args.branch || 'main';
     
+    // 严禁在 main 分支进行任何修改操作
     const checkMainBranchModification = (operationType: string): void => {
-        if (branch === 'main' && ['create', 'edit', 'delete', 'update'].some(op => operationType.includes(op))) {
-            throw new Error(`Cannot perform ${operationType} operation on main branch. Please use create_branch to create a new branch first, then perform operations on the new branch.`);
+        const effectiveBranch = branch || 'main';
+        if (effectiveBranch === 'main' || effectiveBranch.toLowerCase() === 'main') {
+            if (['create', 'edit', 'delete', 'update'].some(op => operationType.includes(op))) {
+                throw new Error(`❌ FORBIDDEN: Cannot perform ${operationType} operation on main branch. Main branch is read-only. You MUST use create_branch to create a new branch first, then perform operations on the new branch.`);
+            }
+        }
+    };
+    
+    // 对于所有修改操作，强制要求非 main 分支
+    const requireNonMainBranch = (operationType: string): void => {
+        const effectiveBranch = branch || 'main';
+        if (effectiveBranch === 'main' || effectiveBranch.toLowerCase() === 'main') {
+            throw new Error(`❌ FORBIDDEN: ${operationType} operation is not allowed on main branch. Main branch is read-only. You MUST use create_branch to create a new branch first, then perform operations on the new branch.`);
         }
     };
     
@@ -3379,6 +3586,15 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
     };
     
     const commitChanges = async (commitMessage?: string, purpose?: string) => {
+        try {
+            const finalCommitMessage = await generateCommitMessage(commitMessage, purpose);
+            const userId = agentId ? parseInt(agentId) || 0 : 0;
+            const userName = agentName || 'agent';
+            await commitRepoChanges(domainId, rpid, branch, finalCommitMessage, userId, userName);
+        } catch (err) {
+            console.error('Failed to commit changes:', err);
+            throw err;
+        }
     };
 
     const applyStructureUpdates = async (domainId: string, rpid: number, branch: string, structure: any) => {
@@ -3508,11 +3724,16 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
         }
         
         if (operation === 'update_structure') {
+            requireNonMainBranch('update_structure');
+            const effectiveBranch = branch || 'main';
+            if (effectiveBranch === 'main' || effectiveBranch.toLowerCase() === 'main') {
+                return { success: false, message: '❌ FORBIDDEN: Cannot update structure on main branch. Main branch is read-only.' };
+            }
             if (!args.structure) {
                 return { success: false, message: 'structure is required' };
             }
             
-            await applyStructureUpdates(domainId, rpid, branch, args.structure);
+            await applyStructureUpdates(domainId, rpid, effectiveBranch, args.structure);
             await commitChanges(args.commitMessage);
             
             return { success: true, message: 'Structure updated and committed' };
@@ -3976,27 +4197,48 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
             };
         }
         
-        const searchMatch = operation.match(/^search_(doc|block)$/);
-        if (searchMatch) {
-            const type = searchMatch[1] as 'doc' | 'block';
-            const keywords = args.keywords || '';
+        // 统一的搜索工具（同时搜索 doc 和 block）
+        if (operation === 'search') {
+            const keyword = args.keyword || '';
             const limit = args.limit || 50;
             const skip = args.skip || 0;
             
-            if (!keywords.trim()) {
-                return { success: false, message: 'Keywords are required for search' };
+            if (!keyword.trim()) {
+                return { success: false, message: 'Keyword is required for search' };
             }
             
-            const searchResult = await RepoKeywordIndexModel.search(
+            // 只取第一个关键词（如果传入了多个）
+            const searchTerm = keyword.trim().split(/\s+/)[0];
+            
+            // 获取 repo 的当前分支（如果未指定分支）
+            let searchBranch = branch;
+            if (!args.branch) {
+                try {
+                    const repo = await RepoModel.getRepoByRpid(domainId, rpid);
+                    if (repo && (repo as any).currentBranch) {
+                        searchBranch = (repo as any).currentBranch;
+                    }
+                } catch (err) {
+                    console.error('Failed to get repo current branch:', err);
+                }
+            }
+            
+            console.log(`[MCP Search] rpid=${rpid}, branch=${searchBranch}, keyword="${searchTerm}"`);
+            
+            // 使用共享的搜索函数，搜索 both
+            const searchResult = await searchRepoContent(
                 domainId,
                 rpid,
-                branch,
-                keywords,
-                type,
+                searchBranch,
+                searchTerm,
+                'both',
                 limit,
                 skip
             );
             
+            console.log(`[MCP Search] Found ${searchResult.total} results`);
+            
+            // 为搜索结果添加完整数据和URL
             const enrichedResults = await Promise.all(
                 searchResult.results.map(async (result) => {
                     let fullData: any = null;
@@ -4095,28 +4337,13 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
             }
             
             try {
-                const repoGitPath = getRepoGitPath(domainId, rpid);
-                try {
-                    await exec('git rev-parse --git-dir', { cwd: repoGitPath });
-                } catch {
-                    return { success: false, message: 'Not a git repository' };
-                }
-                
-                try {
-                    await exec(`git checkout ${commitBranch}`, { cwd: repoGitPath });
-                } catch {
-                    return { success: false, message: `Branch ${commitBranch} not found` };
-                }
-                
-                const { stdout: statusOutput } = await exec('git status --porcelain', { cwd: repoGitPath });
-                if (statusOutput.trim().length === 0) {
-                    return { success: false, message: 'No changes to commit' };
-                }
-                
-                await exec('git add -A', { cwd: repoGitPath });
+                // 先同步数据库更改到 git 仓库
                 const commitMessage = await generateCommitMessage(args.message, purpose);
-                const escapedMessage = commitMessage.replace(/'/g, "'\\''");
-                await exec(`git commit -m '${escapedMessage}'`, { cwd: repoGitPath });
+                const userId = agentId ? parseInt(agentId) || 0 : 0;
+                const userName = agentName || 'agent';
+                
+                // 使用 commitRepoChanges 来同步数据库到 git 并提交
+                await commitRepoChanges(domainId, rpid, commitBranch, commitMessage, userId, userName);
                 
                 return {
                     success: true,
@@ -4146,15 +4373,12 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
                 const repoGitPath = await ensureRepoGitRepo(domainId, rpid);
                 
                 try {
-                    const { stdout: statusOutput } = await exec('git status --porcelain', { cwd: repoGitPath });
-                    if (statusOutput.trim().length > 0) {
-                        await exec('git add -A', { cwd: repoGitPath });
-                        const commitMessage = await generateCommitMessage('Auto commit before push', purpose);
-                        const escapedMessage = commitMessage.replace(/'/g, "'\\''");
-                        await exec(`git commit -m '${escapedMessage}'`, { cwd: repoGitPath });
-                    }
+                    const userId = agentId ? parseInt(agentId) || 0 : 0;
+                    const userName = agentName || 'agent';
+                    const commitMessage = await generateCommitMessage('Auto commit before push', purpose);
+                    await commitRepoChanges(domainId, rpid, pushBranch, commitMessage, userId, userName);
                 } catch (err) {
-                    console.error('Failed to auto commit before push:', err);
+                    console.error('Failed to sync and commit before push:', err);
                 }
                 
                 try {
@@ -4224,8 +4448,13 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
                     return { success: true, data: filteredDocs };
                 }
             } else if (op === 'create') {
-                checkMainBranchModification('create_doc');
-                const did = await DocModel.generateNextDid(domainId, rpid, branch);
+                requireNonMainBranch('create_doc');
+                // 确保使用正确的分支（不能是 main）
+                const effectiveBranch = branch || 'main';
+                if (effectiveBranch === 'main' || effectiveBranch.toLowerCase() === 'main') {
+                    return { success: false, message: '❌ FORBIDDEN: Cannot create doc on main branch. Main branch is read-only. You MUST use create_branch to create a new branch first.' };
+                }
+                const did = await DocModel.generateNextDid(domainId, rpid, effectiveBranch);
                 let docId: ObjectId;
                 if (args.parentId) {
                     docId = await DocModel.addSubdocNode(
@@ -4237,7 +4466,7 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
                         args.title,
                         args.content,
                         undefined,
-                        branch
+                        effectiveBranch
                     );
                 } else {
                     docId = await DocModel.addRootNode(
@@ -4248,15 +4477,19 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
                         args.title,
                         args.content,
                         undefined,
-                        branch
+                        effectiveBranch
                     );
                 }
                 const doc = await DocModel.get(domainId, docId);
                 return { success: true, data: doc };
             } else if (op === 'edit') {
-                checkMainBranchModification('edit_doc');
+                requireNonMainBranch('edit_doc');
+                const effectiveBranch = branch || 'main';
+                if (effectiveBranch === 'main' || effectiveBranch.toLowerCase() === 'main') {
+                    return { success: false, message: '❌ FORBIDDEN: Cannot edit doc on main branch. Main branch is read-only.' };
+                }
                 const doc = await DocModel.get(domainId, { rpid, did: args.did });
-                if (!doc || (doc.branch || 'main') !== branch) {
+                if (!doc || (doc.branch || 'main') !== effectiveBranch) {
                     return { success: false, message: 'Document not found' };
                 }
                 const update: any = {};
@@ -4268,9 +4501,13 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
                 const updatedDoc = await DocModel.get(domainId, { rpid, did: args.did });
                 return { success: true, data: updatedDoc };
             } else if (op === 'delete') {
-                checkMainBranchModification('delete_doc');
+                requireNonMainBranch('delete_doc');
+                const effectiveBranch = branch || 'main';
+                if (effectiveBranch === 'main' || effectiveBranch.toLowerCase() === 'main') {
+                    return { success: false, message: '❌ FORBIDDEN: Cannot delete doc on main branch. Main branch is read-only.' };
+                }
                 const doc = await DocModel.get(domainId, { rpid, did: args.did });
-                if (!doc || (doc.branch || 'main') !== branch) {
+                if (!doc || (doc.branch || 'main') !== effectiveBranch) {
                     return { success: false, message: 'Document not found' };
                 }
                 await DocModel.deleteNode(domainId, doc.docId);
@@ -4291,7 +4528,12 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
                     return { success: true, data: blocks };
                 }
             } else if (op === 'create') {
-                checkMainBranchModification('create_block');
+                requireNonMainBranch('create_block');
+                // 确保使用正确的分支（不能是 main）
+                const effectiveBranch = branch || 'main';
+                if (effectiveBranch === 'main' || effectiveBranch.toLowerCase() === 'main') {
+                    return { success: false, message: '❌ FORBIDDEN: Cannot create block on main branch. Main branch is read-only. You MUST use create_branch to create a new branch first.' };
+                }
                 if (!args.did) {
                     return { success: false, message: 'did is required for creating block' };
                 }
@@ -4303,24 +4545,32 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
                     args.title,
                     args.content,
                     undefined,
-                    branch
+                    effectiveBranch
                 );
                 const block = await BlockModel.get(domainId, docId);
                 return { success: true, data: block };
             } else if (op === 'edit') {
-                checkMainBranchModification('edit_block');
-                const block = await BlockModel.get(domainId, { rpid, bid: args.bid, branch });
+                requireNonMainBranch('edit_block');
+                const effectiveBranch = branch || 'main';
+                if (effectiveBranch === 'main' || effectiveBranch.toLowerCase() === 'main') {
+                    return { success: false, message: '❌ FORBIDDEN: Cannot edit block on main branch. Main branch is read-only.' };
+                }
+                const block = await BlockModel.get(domainId, { rpid, bid: args.bid, branch: effectiveBranch });
                 if (!block) {
                     return { success: false, message: 'Block not found' };
                 }
                 const updateTitle = args.title !== undefined ? args.title : block.title;
                 const updateContent = args.content !== undefined ? args.content : block.content;
                 await BlockModel.edit(domainId, block.docId, updateTitle, updateContent);
-                const updatedBlock = await BlockModel.get(domainId, { rpid, bid: args.bid, branch });
+                const updatedBlock = await BlockModel.get(domainId, { rpid, bid: args.bid, branch: effectiveBranch });
                 return { success: true, data: updatedBlock };
             } else if (op === 'delete') {
-                checkMainBranchModification('delete_block');
-                const block = await BlockModel.get(domainId, { rpid, bid: args.bid, branch });
+                requireNonMainBranch('delete_block');
+                const effectiveBranch = branch || 'main';
+                if (effectiveBranch === 'main' || effectiveBranch.toLowerCase() === 'main') {
+                    return { success: false, message: '❌ FORBIDDEN: Cannot delete block on main branch. Main branch is read-only.' };
+                }
+                const block = await BlockModel.get(domainId, { rpid, bid: args.bid, branch: effectiveBranch });
                 if (!block) {
                     return { success: false, message: 'Block not found' };
                 }

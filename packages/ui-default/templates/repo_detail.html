@@ -20,7 +20,23 @@
             <div class="section__header">
               <h2>{{ _("Document Structure") }}</h2>
             </div>
-            <div class="section__body">
+            <div class="section__body no-padding" style="position: relative;">
+              <form method="get" id="searchForm" style="position: relative; z-index: 2;">
+                <div class="search">
+                  <input name="q" type="text" value="{{ qs }}" placeholder="{{ _('Search docs and blocks') }}" autocomplete="off">
+                  <input type="hidden" name="branch" value="{{ currentBranch }}">
+                  <button type="submit" id="search">
+                    <span class="icon icon-search"></span>
+                  </button>
+                </div>
+              </form>
+              <div id="repo-search-results" data-fragment-id="repo-search-results" style="{% if not qs or not qs.strip() %}display: none;{% endif %}position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #d1d5da; border-top: none; border-radius: 0 0 6px 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 1001; max-height: 600px; overflow-y: auto; margin-top: -1px;">
+                {% if qs and qs.strip() %}
+                  {% include "partials/repo_search_results.html" %}
+                {% endif %}
+              </div>
+            </div>
+            <div class="section__body" style="position: relative; z-index: 0;">
               <div id="doc-tree-container">
                 <div id="doc-tree"></div>
                 {% if rootDocs|length == 0 %}

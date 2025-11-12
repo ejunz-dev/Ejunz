@@ -256,6 +256,10 @@ const treeStyles = `
 `;
 
 // 文档树和拖拽编辑功能
+import $ from 'jquery';
+import _ from 'lodash';
+import { pjax } from 'vj/utils';
+
 export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', async () => {
     // 注入样式
     if (!document.getElementById('doc-tree-styles')) {
@@ -1847,4 +1851,70 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
         });
       }
     }
+
+    // 搜索功能
+    function loadQuery() {
+      const q = $('[name="q"]').val().toString();
+      const branch = $('[name="branch"]').val().toString();
+      const url = new URL(window.location.href);
+      if (!q) {
+        url.searchParams.delete('q');
+      } else {
+        url.searchParams.set('q', q);
+      }
+      if (branch) {
+        url.searchParams.set('branch', branch);
+      }
+      url.searchParams.delete('page');
+      pjax.request({ url: url.toString() });
+    }
+
+    function inputChanged() {
+      loadQuery();
+    }
+
+    $('#searchForm').on('submit', (ev) => {
+      ev.preventDefault();
+      inputChanged();
+    });
+
+    $('#searchForm').find('input[name="q"]').on('input', _.debounce(inputChanged, 500));
+    
+    // 当搜索框获得焦点时显示搜索结果容器
+    $('#searchForm').find('input[name="q"]').on('focus', () => {
+      const $input = $('#searchForm').find('input[name="q"]');
+      const $results = $('#repo-search-results');
+      if ($input.val() && $input.val().trim()) {
+        $results.show();
+      }
+    });
+    
+    // 点击外部区域关闭搜索结果
+    $(document).on('click', (ev) => {
+      const $target = $(ev.target);
+      if (!$target.closest('#searchForm').length && !$target.closest('#repo-search-results').length) {
+        const $results = $('#repo-search-results');
+        if ($results.is(':visible')) {
+          const $input = $('[name="q"]');
+          if (!$input.val() || !$input.val().trim()) {
+            $results.hide();
+          }
+        }
+      }
+    });
+    
+    // pjax 更新后，如果有搜索关键词，显示搜索结果
+    $(document).on('vjContentNew', () => {
+      const $input = $('#searchForm').find('input[name="q"]');
+      const $results = $('#repo-search-results');
+      if ($input.val() && $input.val().trim()) {
+        $results.show();
+      }
+    });
+
+    // 分页
+    $(document).on('click', 'a.pager__item', (ev) => {
+      ev.preventDefault();
+      pjax.request(ev.currentTarget.getAttribute('href')).then(() => window.scrollTo(0, 0));
+    });
 });
