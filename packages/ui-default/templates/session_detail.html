@@ -1,0 +1,166 @@
+{% import "components/user.html" as user with context %}
+{% import "components/agent.html" as agent with context %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns collapsed">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ session.title or ('Session ' + session._id.toString().substring(0, 8)) }}</h1>
+        <div class="section__tools">
+          <a href="{{ url('session_domain', domainId=session.domainId) }}" class="button">
+            <span class="icon icon-back"></span> {{ _('Back to Sessions') }}
+          </a>
+        </div>
+      </div>
+      <div class="section__body">
+        {% if records and records.length %}
+          <div class="typo">
+            <h2>{{ _('Records') }} ({{ records.length }})</h2>
+            {% for record in records %}
+              {% set r = record %}
+              <div class="section" style="margin-bottom: 20px; border: 1px solid #ddd; border-radius: 4px; padding: 15px;">
+                <div class="section__header">
+                  <h3 class="section__title">
+                    <a href="{{ url('task_record_detail', domainId=r.domainId, rid=r._id) }}">
+                      {{ _('Record') }} #{{ loop.index }}
+                    </a>
+                    {% if r.status == STATUS.STATUS_TASK_WAITING %}
+                      <span class="badge badge--warning">{{ _('Waiting') }}</span>
+                    {% elif r.status == STATUS.STATUS_TASK_FETCHED %}
+                      <span class="badge badge--info">{{ _('Fetched') }}</span>
+                    {% elif r.status == STATUS.STATUS_TASK_PROCESSING %}
+                      <span class="badge badge--info">{{ _('Processing') }}</span>
+                    {% elif r.status == STATUS.STATUS_TASK_PENDING %}
+                      <span class="badge badge--warning">{{ _('Pending') }}</span>
+                    {% elif r.status == STATUS.STATUS_TASK_DELIVERED %}
+                      <span class="badge badge--success">{{ _('Delivered') }}</span>
+                    {% elif r.status in [STATUS.STATUS_TASK_ERROR_TOOL, STATUS.STATUS_TASK_ERROR_NOT_FOUND, STATUS.STATUS_TASK_ERROR_SERVER, STATUS.STATUS_TASK_ERROR_NETWORK, STATUS.STATUS_TASK_ERROR_TIMEOUT, STATUS.STATUS_TASK_ERROR_SYSTEM, STATUS.STATUS_TASK_ERROR_UNKNOWN] %}
+                      <span class="badge badge--error">{{ model.builtin.STATUS_TEXTS[r.status] }}</span>
+                    {% else %}
+                      <span class="badge">{{ model.builtin.STATUS_TEXTS[r.status] if model.builtin.STATUS_TEXTS[r.status] else r.status }}</span>
+                    {% endif %}
+                  </h3>
+                  <div class="section__tools">
+                    <a href="{{ url('task_record_detail', domainId=r.domainId, rid=r._id) }}" class="button compact">
+                      <span class="icon icon-eye"></span> {{ _('View Details') }}
+                    </a>
+                  </div>
+                </div>
+                <div class="section__body">
+                  {% if r.agentMessages and r.agentMessages.length %}
+                    <div class="chat-history" style="max-height: 400px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 4px; background: #f9f9f9;">
+                      {% for msg in r.agentMessages %}
+                        <div class="chat-message" style="margin-bottom: 10px; padding: 8px; background: {% if msg.role == 'user' %}#e3f2fd{% elif msg.role == 'assistant' %}#f5f5f5{% else %}#fff3e0{% endif %}; border-radius: 4px;">
+                          <div style="font-weight: bold; margin-bottom: 5px; color: #666; font-size: 0.9em;">
+                            {% if msg.role == 'user' %}
+                              <span class="icon icon-user"></span> {{ _('User') }}
+                            {% elif msg.role == 'assistant' %}
+                              <span class="icon icon-bot"></span> {{ _('Assistant') }}
+                            {% elif msg.role == 'tool' %}
+                              <span class="icon icon-tool"></span> {{ _('Tool') }}: {{ msg.toolName or 'Unknown' }}
+                            {% endif %}
+                            <small style="float: right;">{{ datetimeSpan(msg.timestamp, false)|safe if msg.timestamp else '' }}</small>
+                          </div>
+                          <div style="white-space: pre-wrap; word-wrap: break-word; font-size: 0.9em;">
+                            {% if msg.role == 'tool' %}
+                              <pre style="background: #fff; padding: 6px; border-radius: 3px; overflow-x: auto; font-size: 0.85em;"><code>{{ msg.content|truncate(200) }}</code></pre>
+                            {% elif msg.tool_calls %}
+                              <div style="background: #fff; padding: 6px; border-radius: 3px; font-size: 0.85em;">
+                                <strong>{{ _('Tool Call') }}:</strong>
+                                {% for tool_call in msg.tool_calls %}
+                                  <div style="margin-top: 5px;">
+                                    <code>{{ tool_call.function.name }}</code>
+                                  </div>
+                                {% endfor %}
+                              </div>
+                              {% if msg.content %}
+                                <div style="margin-top: 8px;">{{ msg.content|markdown|safe }}</div>
+                              {% endif %}
+                            {% else %}
+                              {{ msg.content|markdown|safe }}
+                            {% endif %}
+                          </div>
+                        </div>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    <p class="text-gray">{{ _('No chat history available.') }}</p>
+                  {% endif %}
+                  <div style="margin-top: 10px; font-size: 0.85em; color: #666;">
+                    <span>{{ _('Created') }}: {{ datetimeSpan(r._id, false)|safe }}</span>
+                    {% if r.agentToolCallCount is defined %}
+                      <span style="margin-left: 15px;">{{ _('Tool Calls') }}: {{ r.agentToolCallCount }}</span>
+                    {% endif %}
+                    {% if r.time is defined and r.time > 0 %}
+                      <span style="margin-left: 15px;">{{ _('Time') }}: {{ r.time|round|int }}ms</span>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="typo">
+            <p class="text-gray">{{ _('No records in this session.') }}</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="medium-3 columns">
+    <div class="section side">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Information') }}</h1>
+      </div>
+      <div class="section__body typo no-media">
+        <dl class="large horizontal">
+          <dt>{{ _('Session ID') }}</dt>
+          <dd><code>{{ session._id.toString() }}</code></dd>
+          <dt>{{ _('Agent') }}</dt>
+          <dd>
+            {% if session.agentId %}
+              <a href="{{ url('agent_detail', domainId=session.domainId, aid=session.agentId) }}">
+                {{ session.agentId }}
+              </a>
+            {% else %}
+              <span class="text-gray">-</span>
+            {% endif %}
+          </dd>
+          <dt>{{ _('Records') }}</dt>
+          <dd>
+            <span class="badge">{{ (session.recordIds|length) if session.recordIds else 0 }}</span>
+          </dd>
+          <dt>{{ _('Created At') }}</dt>
+          <dd>{{ datetimeSpan(session.createdAt, false)|safe if session.createdAt else datetimeSpan(session._id, false)|safe }}</dd>
+          <dt>{{ _('Updated At') }}</dt>
+          <dd>{{ datetimeSpan(session.updatedAt, false)|safe if session.updatedAt else '-' }}</dd>
+        </dl>
+      </div>
+    </div>
+    {% if session.uid == handler.user._id %}
+      <div class="section side">
+        <div class="section__header">
+          <h1 class="section__title">{{ _('Actions') }}</h1>
+        </div>
+        <div class="section__body">
+          <form method="post" action="{{ url('session_detail', domainId=session.domainId, sid=session._id) }}">
+            <div class="form__group">
+              <label>
+                {{ _('Title') }}
+                <input name="title" type="text" class="textbox" value="{{ session.title or '' }}" placeholder="{{ _('Session title') }}">
+              </label>
+            </div>
+            <button type="submit" class="button primary">{{ _('Update Title') }}</button>
+          </form>
+          <form method="post" action="{{ url('session_detail', domainId=session.domainId, sid=session._id) }}" style="margin-top: 15px;" onsubmit="return confirm('{{ _('Are you sure you want to delete this session?') }}');">
+            <input type="hidden" name="operation" value="delete">
+            <button type="submit" name="operation" value="delete" class="button danger">{{ _('Delete Session') }}</button>
+          </form>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+

@@ -4,6 +4,11 @@
   {{ set(UiContext, 'domainId', domainId) }}
   {{ set(UiContext, 'aid', adoc.aid) }}
   {{ set(UiContext, 'STATUS', model.builtin.STATUS) }}
+  {{ set(UiContext, 'mode', mode|default('list')) }}
+  {{ set(UiContext, 'sessionId', sessionId|default('')) }}
+  {% if recordHistory is defined %}
+  {{ set(UiContext, 'recordHistory', recordHistory) }}
+  {% endif %}
 </script>
 
 <div class="row">
@@ -12,27 +17,78 @@
       <div class="section__header">
         <h1 class="section__title">{{ adoc.title }} - {{ _('Chat') }}</h1>
         <div class="section__tools">
+          {% if mode == 'chat' %}
+          <a href="{{ url('agent_chat', domainId=domainId, aid=adoc.aid) }}" class="button" id="backToListBtn">
+            <span class="icon icon-back"></span> {{ _('Back to Sessions') }}
+          </a>
+          {% else %}
           <a href="{{ url('agent_detail', domainId=domainId, aid=adoc.aid) }}" class="button">
             <span class="icon icon-back"></span> {{ _('Back to Agent') }}
           </a>
+          {% endif %}
         </div>
       </div>
       <div class="section__body">
-        <div class="mcp-status-container">
-          <span id="mcpStatus" class="mcp-status" data-status-url="{{ url('agent_mcp_status', domainId=domainId, aid=adoc.aid) }}">MCP: Checking...</span>
-        </div>
-
-        {% if not apiKey or apiKey == '' %}
-        <div class="api-key-warning">
-          <p>⚠️ {{ _('API Key not configured. Please configure AI settings in system settings') }}</p>
+        {% if mode == 'list' %}
+        <!-- Session List Mode -->
+        <div id="sessionListMode">
+          <div style="margin-bottom: 15px;">
+            <button id="newChatBtn" class="button primary">
+              <span class="icon icon-add"></span> {{ _('New Chat') }}
+            </button>
+          </div>
+          {% if sessions and sessions.length > 0 %}
+          <div class="session-list">
+            {% for session in sessions %}
+            <div class="session-item" data-session-id="{{ session._id.toString() }}" style="border: 1px solid #ddd; border-radius: 4px; padding: 15px; margin-bottom: 10px; cursor: pointer;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="flex: 1;">
+                  <h3 style="margin: 0 0 5px 0; font-size: 1.1em;">
+                    {{ session.title or ('Session ' + session._id.toString().substring(0, 8)) }}
+                  </h3>
+                  {% if session.lastRecord and session.lastRecord.agentMessages %}
+                    {% set lastMsg = session.lastRecord.agentMessages[session.lastRecord.agentMessages.length - 1] %}
+                    <p style="margin: 5px 0; color: #666; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                      {{ lastMsg.content|truncate(100) }}
+                    </p>
+                  {% endif %}
+                  <div style="font-size: 0.85em; color: #999; margin-top: 5px;">
+                    <span>{{ (session.recordIds|length) if session.recordIds else 0 }} {{ _('records') }}</span>
+                    <span style="margin-left: 10px;">{{ datetimeSpan(session.updatedAt, false)|safe if session.updatedAt else datetimeSpan(session._id, false)|safe }}</span>
+                  </div>
+                </div>
+                <div>
+                  <span class="icon icon-chevron-right" style="color: #999;"></span>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="typo">
+            <p class="text-gray">{{ _('No sessions yet. Click "New Chat" to start a conversation.') }}</p>
+          </div>
+          {% endif %}
         </div>
         {% endif %}
+        <!-- Chat Mode (always present, hidden in list mode) -->
+        <div id="chatMode" {% if mode == 'list' %}style="display: none;"{% endif %}>
+          <div class="mcp-status-container">
+            <span id="mcpStatus" class="mcp-status" data-status-url="{{ url('agent_mcp_status', domainId=domainId, aid=adoc.aid) }}">MCP: Checking...</span>
+          </div>
 
-        <div id="chatContainer" class="chat-container">
-          <div class="chat-messages" id="chatMessages"></div>
-          <div class="chat-input-container">
-            <textarea id="chatInput" placeholder="{{ _('Type your message...') }}" rows="3"></textarea>
-            <button id="sendButton" class="button send-button">{{ _('Send') }}</button>
+          {% if not apiKey or apiKey == '' %}
+          <div class="api-key-warning">
+            <p>⚠️ {{ _('API Key not configured. Please configure AI settings in system settings') }}</p>
+          </div>
+          {% endif %}
+
+          <div id="chatContainer" class="chat-container">
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input-container">
+              <textarea id="chatInput" placeholder="{{ _('Type your message...') }}" rows="3"></textarea>
+              <button id="sendButton" class="button send-button">{{ _('Send') }}</button>
+            </div>
           </div>
         </div>
       </div>
@@ -40,6 +96,7 @@
   </div>
 
   <div class="medium-3 columns">
+    {% if mode == 'chat' %}
     <div class="section side">
       <div class="section__header">
         <h2 class="section__title">{{ _('MCP Tools') }}</h2>
@@ -181,6 +238,7 @@
         </div>
       </div>
     </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

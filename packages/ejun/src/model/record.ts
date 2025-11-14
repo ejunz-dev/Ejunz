@@ -61,6 +61,7 @@ export default class RecordModel {
         agentId: string,
         uid: number,
         initialMessage: string,
+        sessionId?: ObjectId,
     ): Promise<ObjectId> {
         const data: RecordDoc = {
             status: STATUS.STATUS_TASK_WAITING,
@@ -69,6 +70,7 @@ export default class RecordModel {
             code: initialMessage,
             domainId,
             agentId,
+            sessionId, // 关联到 session
             score: 100, // 初始分数100分，根据错误扣分
             time: 0, // 用时（毫秒）
             agentMessages: [{
