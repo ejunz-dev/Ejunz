@@ -1,5 +1,9 @@
 import { NamedPage } from 'vj/misc/Page';
 
+let sessionWebSocket: any = null;
+let sessionConnected = false;
+let sessionConnectPromise: Promise<void> | null = null;
+
 const page = new NamedPage('agent_chat', async () => {
   const chatMessages = document.getElementById('chatMessages');
   const chatInput = document.getElementById('chatInput') as HTMLTextAreaElement;
@@ -7,6 +11,305 @@ const page = new NamedPage('agent_chat', async () => {
   const mcpStatus = document.getElementById('mcpStatus');
 
   if (!chatMessages || !chatInput || !sendButton || !mcpStatus) return;
+  
+  const urlMatch = window.location.pathname.match(/\/agent\/([^\/]+)\/chat/);
+  if (!urlMatch) {
+    console.error('[AgentChat] Invalid URL format:', window.location.pathname);
+    return;
+  }
+
+  const aid = urlMatch[1];
+  
+  const UiContext = (window as any).UiContext;
+  const domainId = UiContext?.domainId;
+  
+  if (!domainId) {
+    console.error('[AgentChat] Domain ID not found in context');
+    return;
+  }
+
+  const wsPrefix = UiContext?.ws_prefix || '/';
+  
+  const connectToSession = async (): Promise<void> => {
+    if (sessionConnected && sessionWebSocket) {
+      console.log('[AgentChat] Session already connected');
+      return;
+    }
+    
+    if (sessionConnectPromise) {
+      return sessionConnectPromise;
+    }
+    
+    sessionConnectPromise = new Promise<void>((resolve, reject) => {
+      const wsUrl = `agent-chat-session?domainId=${domainId}&aid=${aid}`;
+      console.log('[AgentChat] Connecting to session WebSocket:', wsUrl);
+      
+      import('../components/socket').then(({ default: WebSocket }) => {
+        const sock = new WebSocket(wsPrefix + wsUrl, false, true);
+        sessionWebSocket = sock;
+        sessionConnected = false;
+        
+        sock.onopen = () => {
+          console.log('[AgentChat] Session WebSocket connected');
+          sessionConnected = true;
+          resolve();
+        };
+        
+    sock.onmessage = (_, data: string) => {
+      try {
+        const msg = JSON.parse(data);
+        console.log('[AgentChat] Session message received:', msg);
+        
+        if (msg.type === 'session_connected') {
+          console.log('[AgentChat] Session connected:', msg);
+        } else if (msg.type === 'record_update') {
+          console.log('[AgentChat] Record update received:', {
+            rid: msg.rid,
+            recordStatus: msg.record?.status,
+            agentMessagesCount: msg.record?.agentMessages?.length || 0,
+            lastMessageRole: msg.record?.agentMessages?.[msg.record?.agentMessages?.length - 1]?.role,
+            lastMessageContentLength: msg.record?.agentMessages?.[msg.record?.agentMessages?.length - 1]?.content?.length || 0,
+          });
+          handleRecordUpdate(msg);
+        } else if (msg.type === 'error') {
+          console.error('[AgentChat] Session error:', msg.error);
+        }
+      } catch (error: any) {
+        console.error('[AgentChat] Error processing session message:', error);
+      }
+    };
+        
+        sock.onclose = () => {
+          console.log('[AgentChat] Session WebSocket closed');
+          sessionWebSocket = null;
+          sessionConnected = false;
+          sessionConnectPromise = null;
+        };
+      }).catch((error) => {
+        sessionConnectPromise = null;
+        reject(error);
+      });
+    });
+    
+    return sessionConnectPromise;
+  };
+  
+  let currentRecordId: string | null = null;
+  
+  const handleRecordUpdate = (msg: any) => {
+    if (!msg.rid) {
+      console.warn('[AgentChat] Invalid record update message: missing rid', msg);
+      return;
+    }
+    
+    const record = msg.record || {};
+    const rid = msg.rid;
+    
+    if (Object.keys(record).length === 0 && msg.agentMessagesCount > 0) {
+      console.warn('[AgentChat] Record object is empty but agentMessagesCount > 0, data may be lost in transmission', {
+        rid,
+        agentMessagesCount: msg.agentMessagesCount,
+      });
+    }
+    
+    if (currentRecordId !== rid) {
+      console.log('[AgentChat] New record detected:', rid);
+      currentRecordId = rid;
+    }
+    
+    if (record.agentMessages && Array.isArray(record.agentMessages)) {
+      const newMessagesCount = record.agentMessages.length;
+      const existingMessages = Array.from(chatMessages.children).filter(
+        (el: any) => el.classList.contains('chat-message') && 
+        (el.classList.contains('user') || el.classList.contains('assistant') || el.classList.contains('tool'))
+      );
+      
+      console.log('[AgentChat] Processing messages:', {
+        rid,
+        currentRecordId,
+        newMessagesCount,
+        existingMessagesCount: existingMessages.length,
+        lastMessageRole: record.agentMessages[newMessagesCount - 1]?.role,
+        lastMessageContent: record.agentMessages[newMessagesCount - 1]?.content?.substring(0, 50),
+        existingMessageRoles: existingMessages.map((el: any) => {
+          if (el.classList.contains('user')) return 'user';
+          if (el.classList.contains('assistant')) return 'assistant';
+          if (el.classList.contains('tool')) return 'tool';
+          return 'unknown';
+        }),
+      });
+
+      if (currentRecordId !== rid) {
+        console.log('[AgentChat] Different record, resetting message tracking');
+        // 不重置，继续处理
+      }
+
+      const displayedNonUserCount = existingMessages.filter(
+        (el: any) => !el.classList.contains('user')
+      ).length;
+      
+      // 统计 record 中的非用户消息数量
+      const recordNonUserMessages = record.agentMessages.filter((m: any) => m.role !== 'user');
+      const recordNonUserCount = recordNonUserMessages.length;
+      
+      console.log('[AgentChat] Non-user message counts:', {
+        displayed: displayedNonUserCount,
+        inRecord: recordNonUserCount,
+        needAdd: recordNonUserCount > displayedNonUserCount,
+      });
+      
+      if (recordNonUserCount > displayedNonUserCount) {
+        let addedCount = 0;
+        const targetAddCount = recordNonUserCount - displayedNonUserCount;
+        
+        for (let i = 0; i < newMessagesCount && addedCount < targetAddCount; i++) {
+          const msgData = record.agentMessages[i];
+          
+          if (msgData.role === 'user') {
+            continue;
+          }
+          
+          let alreadyDisplayed = false;
+          
+          if (msgData.role === 'assistant') {
+            const content = msgData.content || '';
+            const toolCalls = msgData.tool_calls;
+            
+            const lastAssistant = Array.from(chatMessages.children)
+              .reverse()
+              .find((el: any) => el.classList.contains('chat-message') && el.classList.contains('assistant'));
+            
+            if (lastAssistant) {
+              if (toolCalls && toolCalls.length > 0) {
+                const toolCallName = lastAssistant.querySelector('.tool-call-item code')?.textContent;
+                if (toolCallName === toolCalls[0]?.function?.name) {
+                  alreadyDisplayed = true;
+                }
+              } else {
+                const existingContent = lastAssistant.textContent?.trim() || '';
+                if (content.trim() && 
+                    (existingContent === content.trim() || existingContent.startsWith(content.trim()))) {
+                  alreadyDisplayed = true;
+                }
+              }
+            }
+          } else if (msgData.role === 'tool') {
+            const toolName = msgData.toolName || '';
+            const content = typeof msgData.content === 'string' 
+              ? msgData.content 
+              : JSON.stringify(msgData.content, null, 2);
+            
+            const lastTool = Array.from(chatMessages.children)
+              .reverse()
+              .find((el: any) => el.classList.contains('chat-message') && el.classList.contains('tool'));
+            
+            if (lastTool) {
+              const toolHeader = lastTool.querySelector('.tool-header');
+              const toolContent = lastTool.querySelector('pre')?.textContent?.trim();
+              if (toolHeader?.textContent === `Tool: ${toolName}` && 
+                  toolContent === content.trim()) {
+                alreadyDisplayed = true;
+              }
+            }
+          }
+          
+          if (!alreadyDisplayed) {
+            if (msgData.role === 'assistant') {
+              const content = msgData.content || '';
+              const toolCalls = msgData.tool_calls;
+              console.log('[AgentChat] Adding assistant message:', { 
+                index: i,
+                contentLength: content.length, 
+                hasToolCalls: !!toolCalls 
+              });
+              addMessage('assistant', content, undefined, toolCalls);
+              chatHistory.push({
+                role: 'assistant',
+                content,
+                tool_calls: toolCalls,
+                timestamp: msgData.timestamp ? new Date(msgData.timestamp) : new Date(),
+              });
+              addedCount++;
+            } else if (msgData.role === 'tool') {
+              const content = typeof msgData.content === 'string' 
+                ? msgData.content 
+                : JSON.stringify(msgData.content, null, 2);
+              console.log('[AgentChat] Adding tool message:', { 
+                index: i,
+                toolName: msgData.toolName, 
+                contentLength: content.length 
+              });
+              addMessage('tool', content, msgData.toolName);
+              chatHistory.push({
+                role: 'tool',
+                content,
+                toolName: msgData.toolName,
+                timestamp: msgData.timestamp ? new Date(msgData.timestamp) : new Date(),
+              });
+              addedCount++;
+            }
+          }
+        }
+      }
+      
+      if (newMessagesCount > 0 && newMessagesCount <= existingMessages.length) {
+        const lastMsg = record.agentMessages[newMessagesCount - 1];
+        
+        if (lastMsg && lastMsg.role === 'assistant') {
+          const content = lastMsg.content || '';
+          const toolCalls = lastMsg.tool_calls;
+          
+          console.log('[AgentChat] Updating last assistant message:', { contentLength: content.length, hasToolCalls: !!toolCalls });
+          
+          let lastAssistantMessage: Element | null = null;
+          for (let i = existingMessages.length - 1; i >= 0; i--) {
+            const msg = existingMessages[i];
+            if (msg.classList.contains('assistant')) {
+              lastAssistantMessage = msg;
+              break;
+            }
+          }
+          
+          if (lastAssistantMessage) {
+            if (toolCalls && toolCalls.length > 0) {
+              updateLastMessage(content, toolCalls);
+            } else {
+              let contentDiv = lastAssistantMessage.querySelector('.message-content');
+              if (!contentDiv) {
+                if (lastAssistantMessage.querySelector('.tool-call-header')) {
+                  contentDiv = document.createElement('div');
+                  contentDiv.className = 'message-content';
+                  lastAssistantMessage.appendChild(contentDiv);
+                } else {
+                  contentDiv = lastAssistantMessage;
+                }
+              }
+              contentDiv.textContent = content;
+            }
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+          }
+          
+          const lastHistoryMsg = chatHistory.filter(m => m.role === 'assistant').pop();
+          if (lastHistoryMsg) {
+            lastHistoryMsg.content = content;
+            if (toolCalls) {
+              lastHistoryMsg.tool_calls = toolCalls;
+            }
+          }
+        }
+      }
+    }
+    
+    if (record.status !== undefined) {
+      if (isTerminalTaskStatus(record.status)) {
+        console.log('[AgentChat] Task completed, status:', record.status);
+        setLoading(false);
+        currentRecordId = null;
+      }
+    }
+  };
+  
+  await connectToSession();
 
   const mcpStatusUrl = mcpStatus.getAttribute('data-status-url') || '';
   const UiCtx = (window as any).UiContext || {};
@@ -24,7 +327,6 @@ const page = new NamedPage('agent_chat', async () => {
     return !ACTIVE_TASK_STATUSES.has(status);
   };
 
-  // 消息历史记录（用于上下文传递）
   let chatHistory: Array<{ role: string; content: string; timestamp?: Date; toolName?: string; tool_calls?: any[] }> = [];
 
   async function checkMcpStatus() {
@@ -98,7 +400,6 @@ const page = new NamedPage('agent_chat', async () => {
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
     
-    // 保存到历史记录
     chatHistory.push({
       role,
       content,
@@ -113,10 +414,8 @@ const page = new NamedPage('agent_chat', async () => {
     if (!lastMessage || !lastMessage.classList.contains('chat-message')) return;
     
     if (toolCalls && toolCalls.length > 0) {
-      // 更新工具调用消息
       const existingToolCalls = lastMessage.querySelectorAll('.tool-call-item');
       if (existingToolCalls.length === 0) {
-        // 如果还没有工具调用，添加
         const toolCallHeader = document.createElement('div');
         toolCallHeader.className = 'tool-call-header';
         toolCallHeader.textContent = 'Tool Call:';
@@ -150,11 +449,9 @@ const page = new NamedPage('agent_chat', async () => {
         contentDiv.textContent = content;
       }
     } else {
-      // 更新普通消息内容（流式更新）
       lastMessage.textContent = content;
     }
     
-    // 更新历史记录中的最后一条消息
     if (chatHistory.length > 0) {
       const lastHistory = chatHistory[chatHistory.length - 1];
       lastHistory.content = content;
@@ -187,14 +484,12 @@ const page = new NamedPage('agent_chat', async () => {
     const message = chatInput.value.trim();
     if (!message) return;
 
-    // 添加用户消息到界面
     addMessage('user', message);
     
     chatInput.value = '';
     setLoading(true);
 
     try {
-      // 从 URL 中提取 aid（路由格式：/agent/:aid/chat）
       const urlMatch = window.location.pathname.match(/\/agent\/([^\/]+)\/chat/);
       if (!urlMatch) {
         addMessage('error', 'Invalid URL format: ' + window.location.pathname);
@@ -204,7 +499,6 @@ const page = new NamedPage('agent_chat', async () => {
 
       const aid = urlMatch[1];
       
-      // 从 UiContext 获取 domainId（模板中已设置）
       const UiContext = (window as any).UiContext;
       const domainId = UiContext?.domainId;
       
@@ -216,7 +510,6 @@ const page = new NamedPage('agent_chat', async () => {
       
       const wsPrefix = UiContext?.ws_prefix || '/';
 
-      // 先通过 HTTP POST 创建任务记录
       const postUrl = `/d/${domainId}/agent/${aid}/chat`;
       console.log('[AgentChat] Creating task via POST:', { message, postUrl });
       
@@ -234,7 +527,7 @@ const page = new NamedPage('agent_chat', async () => {
         body: JSON.stringify({
           message,
           history: historyForBackend,
-          createTaskRecord: historyForBackend.length === 0, // 只有第一条消息创建任务记录
+          createTaskRecord: true,
         }),
       });
 
@@ -256,139 +549,28 @@ const page = new NamedPage('agent_chat', async () => {
         return;
       }
 
-      console.log('[AgentChat] Task created, connecting to record WebSocket:', taskRecordId);
+      console.log('[AgentChat] Task created, subscribing to record via session:', taskRecordId);
 
-      // 连接到 task-record-detail-conn 来接收流式更新
-      const wsUrl = `task-record-detail-conn?domainId=${domainId}&rid=${taskRecordId}`;
-      console.log('[AgentChat] Connecting to WebSocket:', wsUrl);
-
-      // 动态导入 WebSocket
-      const { default: WebSocket } = await import('../components/socket');
-      const sock = new WebSocket(wsPrefix + wsUrl, false, true);
-
-      // 用于累积当前 assistant 消息的内容
-      let currentAssistantContent = '';
-      let currentToolCalls: any[] = [];
-      let lastMessageIndex = -1; // 跟踪最后一条 assistant 消息的索引
-
-      sock.onmessage = (_, data: string) => {
-        try {
-          const msg = JSON.parse(data);
-          console.log('[AgentChat] WebSocket message received:', msg);
-
-          // 处理 record 格式的消息（来自 task-record-detail-conn）
-          if (msg.record) {
-            const record = msg.record;
-            
-            // 更新 agentMessages
-            if (record.agentMessages && Array.isArray(record.agentMessages)) {
-              const newMessagesCount = record.agentMessages.length;
-              const existingMessages = Array.from(chatMessages.children).filter(
-                (el: any) => el.classList.contains('chat-message')
-              );
-              
-              // 如果消息数量增加，添加新消息
-              if (newMessagesCount > existingMessages.length) {
-                // 添加新消息（从现有消息之后开始）
-                for (let i = existingMessages.length; i < newMessagesCount; i++) {
-                  const msgData = record.agentMessages[i];
-                  
-                  if (msgData.role === 'user') {
-                    // 用户消息：检查是否已经显示（避免重复）
-                    const lastUserMsg = chatHistory.filter(m => m.role === 'user').pop();
-                    if (!lastUserMsg || lastUserMsg.content !== msgData.content) {
-                      // 如果历史记录中没有这条用户消息，添加它（但不在界面上重复显示）
-                      // 因为用户消息在发送时已经显示了
-                      chatHistory.push({
-                        role: 'user',
-                        content: msgData.content,
-                        timestamp: msgData.timestamp ? new Date(msgData.timestamp) : new Date(),
-                      });
-                    }
-                  } else if (msgData.role === 'assistant') {
-                    // Assistant 消息
-                    const content = msgData.content || '';
-                    const toolCalls = msgData.tool_calls;
-                    addMessage('assistant', content, undefined, toolCalls);
-                    lastMessageIndex = chatHistory.length - 1;
-                    currentAssistantContent = content;
-                  } else if (msgData.role === 'tool') {
-                    // Tool 消息
-                    const content = typeof msgData.content === 'string' 
-                      ? msgData.content 
-                      : JSON.stringify(msgData.content, null, 2);
-                    addMessage('tool', content, msgData.toolName);
-                  }
-                }
-              } else if (newMessagesCount === existingMessages.length && newMessagesCount > 0) {
-                const lastMsg = record.agentMessages[newMessagesCount - 1];
-                
-                if (lastMsg && lastMsg.role === 'assistant') {
-                  const content = lastMsg.content || '';
-                  const toolCalls = lastMsg.tool_calls;
-                  
-                  const lastMessage = chatMessages.lastElementChild;
-                  if (lastMessage && lastMessage.classList.contains('chat-message') && 
-                      lastMessage.classList.contains('assistant')) {
-                    if (toolCalls && toolCalls.length > 0) {
-                      // 有工具调用，更新工具调用显示
-                      updateLastMessage(content, toolCalls);
-                    } else {
-                      const contentDiv = lastMessage.querySelector('.message-content') || lastMessage;
-                      if (contentDiv) {
-                        contentDiv.textContent = content;
-            } else {
-                        lastMessage.textContent = content;
-                      }
-                    }
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-                  }
-                  
-                  // 更新历史记录
-                  if (lastMessageIndex >= 0 && chatHistory[lastMessageIndex]) {
-                    chatHistory[lastMessageIndex].content = content;
-                    if (toolCalls) {
-                      chatHistory[lastMessageIndex].tool_calls = toolCalls;
-                    }
-                  }
-                  
-                  currentAssistantContent = content;
-                }
-              }
-              
-              if (record.status !== undefined) {
-                if (isTerminalTaskStatus(record.status)) {
-                  console.log('[AgentChat] Task completed, status:', record.status);
-                  setLoading(false);
-                  try {
-                    sock.close();
-                  } catch (e) {
-                    // ignore
-                  }
-                }
-              }
-            }
-
-            return;
-          }
-
-          if (msg.type === 'error') {
-            addMessage('error', msg.error || 'Unknown error');
-            setLoading(false);
-            sock.close();
-            return;
-          }
-
-          if (msg.type === 'done' || msg.type === 'complete') {
-            console.log('[AgentChat] Message processing completed');
-            setLoading(false);
-          }
-        } catch (error: any) {
-          console.error('[AgentChat] Error processing WebSocket message:', error);
-          addMessage('error', 'Error processing message: ' + error.message);
-          setLoading(false);
+      // 确保 session 已连接
+      try {
+        await connectToSession();
+        
+        // 再次检查连接状态
+        if (!sessionConnected || !sessionWebSocket) {
+          throw new Error('Session connection failed');
         }
-      };
+        
+        // 通过 session 订阅新的 record
+        sessionWebSocket.send(JSON.stringify({
+          type: 'subscribe_record',
+          rid: taskRecordId,
+        }));
+        console.log('[AgentChat] Subscribed to record via session:', taskRecordId);
+      } catch (error: any) {
+        console.error('[AgentChat] Failed to connect to session or subscribe:', error);
+        addMessage('error', 'Failed to connect to session: ' + (error.message || String(error)));
+        setLoading(false);
+      }
 
     } catch (error: any) {
       console.error('[AgentChat] Error:', error);
