@@ -216,7 +216,6 @@ homework_detail_problem_submit: Submit Homework Problem
 homework_edit: Homework Edit
 homework_main: Homework
 homework_scoreboard: Scoreboard
-judge_playground: Judge Playground
 main: Home
 manage_config: System Configurations
 manage_dashboard: System Dashboard
@@ -255,11 +254,13 @@ perm_problem: Problems
 perm_ranking: Ranking
 perm_record: Records
 perm_training: Trainings
+record_main: Record
 repo_config: Repo Config
 repo_create: Create Repo
 repo_detail: Repo Detail
 repo_doc: Repo Doc
 repo_edit: Edit Repo
+session_main: Session
 setting_customize: Customize
 setting_display: Display Preference
 setting_function: Function

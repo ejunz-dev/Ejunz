@@ -1,0 +1,201 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+{% set r = rdoc %}
+{% set isTaskRecord = r.agentId %}
+{% if typeof(rdoc['status']) === 'number' and not rev %}
+  {% if isTaskRecord %}
+    {{ set(UiContext, 'socketUrl', "task-record-detail-conn?domainId=" + rdoc.domainId + "&rid=" + rdoc._id) }}
+  {% else %}
+  {{ set(UiContext, 'socketUrl', "record-detail-conn?domainId=" + rdoc.domainId + "&rid=" + rdoc._id) }}
+  {% endif %}
+{% endif %}
+<div class="row">
+  <div class="medium-9 columns collapsed">
+    {% if typeof(rdoc['status']) === 'number' %}
+      {% include 'record_detail_status.html' %}
+    {% endif %}
+    
+    {% if isTaskRecord and r.agentError %}
+    <div class="section">
+      <div class="section__body">
+        <div class="typo">
+          <div class="alert alert--error">
+            <strong>{{ _('Error') }}:</strong> {{ r.agentError.message }}
+            {% if r.agentError.code %}
+              <br><small>{{ _('Code') }}: {{ r.agentError.code }}</small>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    
+    {% if isTaskRecord and r.agentMessages and r.agentMessages.length %}
+    {# Agent task record: 显示完整的聊天历史（subtask 格式） #}
+    <div class="section" id="agent-messages">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Chat History') }}</h1>
+        <div class="section__tools">
+          {% if adoc %}
+          <a href="{{ url('agent_chat', domainId=r.domainId, aid=adoc.aid, query={'recordId': r._id.toString()}) }}" class="button">
+            <span class="icon icon-comment"></span> {{ _('Continue Chat') }}
+          </a>
+          {% endif %}
+          <a href="{{ url('record_main', domainId=r.domainId) }}" class="button">
+            <span class="icon icon-back"></span> {{ _('Back to Records') }}
+          </a>
+        </div>
+      </div>
+      <div class="section__body no-padding">
+        <table class="data-table record_detail__table">
+          <colgroup>
+            <col class="col--case">
+            <col class="col--status">
+            <col class="col--time">
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="col--case record-status--border">#</th>
+              <th class="col--status">{{ _('Status') }}</th>
+              <th class="col--time">{{ _('Time Cost') }}</th>
+            </tr>
+          </thead>
+          <tbody id="agent-messages-tbody">
+          {% for msg in r.agentMessages %}
+            {% set msgIndex = loop.index %}
+            <tr class="subtask-case" data-msg-index="{{ msgIndex - 1 }}" data-role="{{ msg.role }}" {% if msg.timestamp %}data-timestamp="{{ msg.timestamp }}"{% endif %}>
+              <td class="col--case record-status--border">
+                #{{ msgIndex }}
+              </td>
+              <td class="col--status">
+              {% if msg.role == 'user' %}
+                  <span class="icon record-status--icon pass"></span>
+                  <span class="record-status--text pass">{{ _('User') }}</span>
+              {% elif msg.role == 'assistant' %}
+                  <span class="icon record-status--icon progress"></span>
+                  <span class="record-status--text progress">{{ _('Assistant') }}</span>
+              {% elif msg.role == 'tool' %}
+                  <span class="icon record-status--icon progress"></span>
+                  <span class="record-status--text progress">{{ _('Tool') }}: {{ msg.toolName or 'Unknown' }}</span>
+              {% endif %}
+                <span class="message" style="display: block; margin-top: 5px; white-space: pre-wrap; word-wrap: break-word;">
+              {% if msg.role == 'tool' %}
+                    <pre style="background: #fff; padding: 8px; border-radius: 3px; overflow-x: auto; margin: 0;"><code>{{ msg.content }}</code></pre>
+              {% elif msg.tool_calls %}
+                    <div style="background: #fff; padding: 8px; border-radius: 3px; margin: 0;">
+                  <strong>{{ _('Tool Call') }}:</strong>
+                  {% for tool_call in msg.tool_calls %}
+                  <div style="margin-top: 5px;">
+                    <code>{{ tool_call.function.name }}</code>
+                        <pre style="margin-top: 5px; background: #f5f5f5; padding: 5px; border-radius: 3px; margin: 0;">{{ tool_call.function.arguments }}</pre>
+                  </div>
+                  {% endfor %}
+                </div>
+                {% if msg.content %}
+                <div style="margin-top: 8px;">{{ msg.content|markdown|safe }}</div>
+                {% endif %}
+              {% else %}
+                    {{ msg.content|markdown|safe if msg.content else '' }}
+              {% endif %}
+                </span>
+              </td>
+              <td class="col--time">
+                <span class="time-cost">-</span>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% elif rdoc['code'] or rdoc.files.code %}
+    {# 普通 record: 显示代码 #}
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Code') }}</h1>
+        <div class="section__tools">
+          <a class="primary rounded button" href="?download=true">
+            <span class="icon icon-download"></span>
+            {{ _('Download') }}
+          </a>
+        </div>
+      </div>
+      <div class="section__body">
+        <pre class="line-numbers"><code class="language-text">{{ rdoc['code'] }}</code></pre>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <div class="medium-3 columns">
+    <div class="section side">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Information') }}</h1>
+      </div>
+      <div class="section__body typo no-media">
+        <dl class="large horizontal">
+          <dt>{{ _('Submit By') }}</dt>
+          <dd>{{ user.render_inline(udoc, modbadge=false) }}</dd>
+          {% if isTaskRecord and adoc %}
+            <dt>{{ _('Agent') }}</dt>
+            <dd>
+              <a href="{{ url('agent_detail', domainId=r.domainId, aid=adoc.aid) }}">{{ adoc.title or adoc.aid }}</a>
+            </dd>
+          {% endif %}
+          {% if isTaskRecord %}
+            {% if r.progress is defined %}
+              <dt>{{ _('Progress') }}</dt>
+              <dd>{{ r.progress }}%</dd>
+            {% endif %}
+            {% if r.agentToolCallCount is defined %}
+              <dt>{{ _('Tool Calls') }}</dt>
+              <dd>
+                {{ r.agentToolCallCount }}
+                {% if r.agentTotalToolCalls %}
+                  / {{ r.agentTotalToolCalls }}
+                {% endif %}
+              </dd>
+            {% endif %}
+            <dt>{{ _('Initial Message') }}</dt>
+            <dd style="word-wrap: break-word; max-width: 200px;">{{ r.code|truncate(100, true) }}</dd>
+          {% elif rdoc.code %}
+            <dt>{{ _('Code Length') }}</dt>
+            <dd>{{ size(rdoc.code|length) }}</dd>
+          {% endif %}
+          <dt>{{ _('Submit At') }}</dt>
+          <dd>{{ datetimeSpan(rdoc._id, false)|safe }}</dd>
+          {% if isTaskRecord and r.workerAt %}
+            <dt>{{ _('Completed At') }}</dt>
+            <dd>{{ datetimeSpan(r.workerAt, false)|safe }}</dd>
+          {% endif %}
+        </dl>
+        {% if typeof(rdoc['status']) === 'number' %}
+          {% include 'record_detail_summary.html' %}
+        {% endif %}
+      </div>
+    </div>
+    {% if allRevs|length %}
+      <div class="section side">
+        <div class="section__header">
+          <h1 class="section__title">{{ _('History') }}</h1>
+        </div>
+        <div class="section__body no-padding">
+          <ol class="menu">
+            <li class="menu__item">
+              <a href="?rev=" {% if not rev %}style="border-color: #4690d0;"{% endif %} class="menu__link">
+                {{ _('Latest Version') }}
+              </a>
+            </li>
+            {% for r, rtime in allRevs %}
+            <li class="menu__item">
+              <a href="?rev={{ r }}" {% if rev and rev.equals(r) %}style="border-color: #4690d0;"{% endif %} class="menu__link">
+                {{ datetimeSpan(rtime, false)|safe }}
+              </a>
+            </li>
+            {% endfor %}
+          </ol>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

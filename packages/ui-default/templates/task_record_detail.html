@@ -1,0 +1,151 @@
+{% import "components/user.html" as user with context %}
+{% import "components/agent.html" as agent with context %}
+{% extends "layout/basic.html" %}
+{% block content %}
+{% set r = record %}
+{% if typeof(r['status']) === 'number' and r.status in [STATUS.STATUS_TASK_WAITING, STATUS.STATUS_TASK_FETCHED, STATUS.STATUS_TASK_PROCESSING, STATUS.STATUS_TASK_PENDING] %}
+  {{ set(UiContext, 'socketUrl', "task-record-detail-conn?domainId=" + r.domainId + "&rid=" + r._id) }}
+{% endif %}
+<div class="row">
+  <div class="medium-9 columns collapsed">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Agent Task Record') }}</h1>
+        <div class="section__tools">
+          {% if adoc %}
+          <a href="{{ url('agent_chat', domainId=r.domainId, aid=adoc.aid, query={'recordId': r._id.toString()}) }}" class="button">
+            <span class="icon icon-comment"></span> {{ _('Continue Chat') }}
+          </a>
+          {% endif %}
+          <a href="{{ url('task_record_main', domainId=r.domainId) }}" class="button">
+            <span class="icon icon-back"></span> {{ _('Back to Records') }}
+          </a>
+        </div>
+      </div>
+      <div class="section__body">
+        {% if r.agentError %}
+        <div class="typo">
+          <div class="alert alert--error">
+            <strong>{{ _('Error') }}:</strong> {{ r.agentError.message }}
+            {% if r.agentError.code %}
+              <br><small>{{ _('Code') }}: {{ r.agentError.code }}</small>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
+        
+        {% if r.agentMessages and r.agentMessages.length %}
+        <div class="typo">
+          <h2>{{ _('Chat History') }}</h2>
+          <div class="chat-history" style="max-height: 600px; overflow-y: auto; border: 1px solid #ddd; padding: 15px; border-radius: 4px;">
+            {% for msg in r.agentMessages %}
+            <div class="chat-message" style="margin-bottom: 15px; padding: 10px; background: {% if msg.role == 'user' %}#e3f2fd{% elif msg.role == 'assistant' %}#f5f5f5{% else %}#fff3e0{% endif %}; border-radius: 4px;">
+              <div style="font-weight: bold; margin-bottom: 5px; color: #666;">
+                {% if msg.role == 'user' %}
+                  <span class="icon icon-user"></span> {{ _('User') }}
+                {% elif msg.role == 'assistant' %}
+                  <span class="icon icon-bot"></span> {{ _('Assistant') }}
+                {% elif msg.role == 'tool' %}
+                  <span class="icon icon-tool"></span> {{ _('Tool') }}: {{ msg.toolName or 'Unknown' }}
+                {% endif %}
+                <small style="float: right;">{{ datetimeSpan(msg.timestamp)|safe if msg.timestamp else '' }}</small>
+              </div>
+              <div style="white-space: pre-wrap; word-wrap: break-word;">
+                {% if msg.role == 'tool' %}
+                  <pre style="background: #fff; padding: 8px; border-radius: 3px; overflow-x: auto;"><code>{{ msg.content }}</code></pre>
+                {% elif msg.tool_calls %}
+                  <div style="background: #fff; padding: 8px; border-radius: 3px;">
+                    <strong>{{ _('Tool Call') }}:</strong>
+                    {% for tool_call in msg.tool_calls %}
+                    <div style="margin-top: 5px;">
+                      <code>{{ tool_call.function.name }}</code>
+                      <pre style="margin-top: 5px; background: #f5f5f5; padding: 5px; border-radius: 3px;">{{ tool_call.function.arguments }}</pre>
+                    </div>
+                    {% endfor %}
+                  </div>
+                  {% if msg.content %}
+                  <div style="margin-top: 8px;">{{ msg.content|markdown|safe }}</div>
+                  {% endif %}
+                {% else %}
+                  {{ msg.content|markdown|safe }}
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% else %}
+        <div class="typo">
+          <p class="text-gray">{{ _('No chat history available.') }}</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="medium-3 columns">
+    <div class="section side">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Information') }}</h1>
+      </div>
+      <div class="section__body typo no-media">
+        <dl class="large horizontal">
+          <dt>{{ _('Status') }}</dt>
+          <dd>
+            {% if r.status == STATUS.STATUS_TASK_WAITING %}
+              <span class="badge badge--warning">{{ _('Waiting') }}</span>
+            {% elif r.status == STATUS.STATUS_TASK_FETCHED %}
+              <span class="badge badge--info">{{ _('Fetched') }}</span>
+            {% elif r.status == STATUS.STATUS_TASK_PROCESSING %}
+              <span class="badge badge--info">{{ _('Processing') }}</span>
+            {% elif r.status == STATUS.STATUS_TASK_PENDING %}
+              <span class="badge badge--warning">{{ _('Pending') }}</span>
+            {% elif r.status == STATUS.STATUS_TASK_DELIVERED %}
+              <span class="badge badge--success">{{ _('Delivered') }}</span>
+            {% elif r.status in [STATUS.STATUS_TASK_ERROR_TOOL, STATUS.STATUS_TASK_ERROR_NOT_FOUND, STATUS.STATUS_TASK_ERROR_SERVER, STATUS.STATUS_TASK_ERROR_NETWORK, STATUS.STATUS_TASK_ERROR_TIMEOUT, STATUS.STATUS_TASK_ERROR_SYSTEM, STATUS.STATUS_TASK_ERROR_UNKNOWN] %}
+              <span class="badge badge--error">{{ model.builtin.STATUS_TEXTS[r.status] }}</span>
+            {% else %}
+              <span class="badge">{{ model.builtin.STATUS_TEXTS[r.status] if model.builtin.STATUS_TEXTS[r.status] else r.status }}</span>
+            {% endif %}
+          </dd>
+          <dt>{{ _('User') }}</dt>
+          <dd>{{ user.render_inline(udoc, modbadge=false) }}</dd>
+          {% if adoc %}
+            <dt>{{ _('Agent') }}</dt>
+            <dd>
+              <a href="{{ url('agent_detail', domainId=r.domainId, aid=adoc.aid) }}">{{ adoc.title or adoc.aid }}</a>
+            </dd>
+          {% endif %}
+          {% if r.time is defined and r.time > 0 %}
+            <dt>{{ _('Time') }}</dt>
+            <dd>{{ r.time|round|int }}ms</dd>
+          {% endif %}
+          {% if typeof(r['score']) == 'number' %}
+            <dt>{{ _('Score') }}</dt>
+            <dd>
+              <span style="color: {{ utils.status.getScoreColor(r.score|default(0)) }}">{{ r.score|default(0) }}</span>
+            </dd>
+          {% endif %}
+          {% if r.agentToolCallCount is defined %}
+            <dt>{{ _('Tool Calls') }}</dt>
+            <dd>
+              {{ r.agentToolCallCount }}
+              {% if r.agentTotalToolCalls %}
+                / {{ r.agentTotalToolCalls }}
+              {% endif %}
+            </dd>
+          {% endif %}
+          <dt>{{ _('Initial Message') }}</dt>
+          <dd style="word-wrap: break-word; max-width: 200px;">{{ r.code|truncate(100) }}</dd>
+          <dt>{{ _('Created At') }}</dt>
+          <dd>{{ datetimeSpan(r._id, false)|safe }}</dd>
+          {% if r.workerAt %}
+            <dt>{{ _('Completed At') }}</dt>
+            <dd>{{ datetimeSpan(r.workerAt, false)|safe }}</dd>
+          {% endif %}
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

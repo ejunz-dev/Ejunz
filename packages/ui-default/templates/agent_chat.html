@@ -1,5 +1,11 @@
 {% extends "layout/basic.html" %}
 {% block content %}
+<script>
+  {{ set(UiContext, 'domainId', domainId) }}
+  {{ set(UiContext, 'aid', adoc.aid) }}
+  {{ set(UiContext, 'STATUS', model.builtin.STATUS) }}
+</script>
+
 <div class="row">
   <div class="medium-9 columns">
     <div class="section">
@@ -22,7 +28,7 @@
         </div>
         {% endif %}
 
-        <div id="chatContainer" class="chat-container" data-ws-url="{{ wsUrl }}">
+        <div id="chatContainer" class="chat-container">
           <div class="chat-messages" id="chatMessages"></div>
           <div class="chat-input-container">
             <textarea id="chatInput" placeholder="{{ _('Type your message...') }}" rows="3"></textarea>
@@ -39,7 +45,10 @@
         <h2 class="section__title">{{ _('MCP Tools') }}</h2>
       </div>
       <div class="section__body">
-        <div id="mcp-tools-sidebar" data-mcp-status-ws-url="{{ mcpStatusWsUrl|default('') }}">
+        <div id="mcp-tools-sidebar">
+          {# 已注释：MCP 工具状态的 WebSocket URL
+          data-mcp-status-ws-url="{{ mcpStatusWsUrl|default('') }}"
+          #}
           <!-- Provider MCP Servers -->
           {% if providerServers and providerServers.length > 0 %}
           <div class="mcp-category">

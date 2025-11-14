@@ -1,11 +1,6 @@
 import { NamedPage } from 'vj/misc/Page';
-import { i18n } from 'vj/utils';
 
 const page = new NamedPage('agent_chat', async () => {
-  const [{ default: WebSocket }] = await Promise.all([
-    import('../components/socket'),
-  ]);
-
   const chatMessages = document.getElementById('chatMessages');
   const chatInput = document.getElementById('chatInput') as HTMLTextAreaElement;
   const sendButton = document.getElementById('sendButton') as HTMLButtonElement;
@@ -14,11 +9,23 @@ const page = new NamedPage('agent_chat', async () => {
   if (!chatMessages || !chatInput || !sendButton || !mcpStatus) return;
 
   const mcpStatusUrl = mcpStatus.getAttribute('data-status-url') || '';
-  const chatContainer = document.getElementById('chatContainer');
-  const wsUrlBase = chatContainer?.getAttribute('data-ws-url') || '';
+  const UiCtx = (window as any).UiContext || {};
+  const STATUS = UiCtx.STATUS || (window as any).STATUS || (window as any).model?.builtin?.STATUS || {};
+  const ACTIVE_TASK_STATUSES = new Set(
+    [
+      STATUS.STATUS_TASK_WAITING,
+      STATUS.STATUS_TASK_FETCHED,
+      STATUS.STATUS_TASK_PROCESSING,
+      STATUS.STATUS_TASK_PENDING,
+    ].filter((value) => typeof value === 'number'),
+  );
+  const isTerminalTaskStatus = (status?: number) => {
+    if (typeof status !== 'number') return false;
+    return !ACTIVE_TASK_STATUSES.has(status);
+  };
 
-  let history: any[] = [];
-  let sock: import('../components/socket').default | null = null;
+  // 消息历史记录（用于上下文传递）
+  let chatHistory: Array<{ role: string; content: string; timestamp?: Date; toolName?: string; tool_calls?: any[] }> = [];
 
   async function checkMcpStatus() {
     if (!mcpStatusUrl) return;
@@ -42,11 +49,120 @@ const page = new NamedPage('agent_chat', async () => {
 
   checkMcpStatus();
 
-  function addMessage(role: string, content: string) {
+  function addMessage(role: string, content: string, toolName?: string, toolCalls?: any[]) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `chat-message ${role}`;
+    
+    if (role === 'tool') {
+      const toolHeader = document.createElement('div');
+      toolHeader.className = 'tool-header';
+      toolHeader.textContent = `Tool: ${toolName || 'Unknown'}`;
+      messageDiv.appendChild(toolHeader);
+      
+      const toolContent = document.createElement('pre');
+      toolContent.textContent = content;
+      messageDiv.appendChild(toolContent);
+    } else if (toolCalls && toolCalls.length > 0) {
+      const toolCallHeader = document.createElement('div');
+      toolCallHeader.className = 'tool-call-header';
+      toolCallHeader.textContent = 'Tool Call:';
+      messageDiv.appendChild(toolCallHeader);
+      
+      toolCalls.forEach((toolCall: any) => {
+        const toolCallDiv = document.createElement('div');
+        toolCallDiv.className = 'tool-call-item';
+        const toolNameSpan = document.createElement('code');
+        toolNameSpan.textContent = toolCall.function?.name || 'unknown';
+        toolCallDiv.appendChild(toolNameSpan);
+        
+        if (toolCall.function?.arguments) {
+          const argsPre = document.createElement('pre');
+          argsPre.textContent = typeof toolCall.function.arguments === 'string' 
+            ? toolCall.function.arguments 
+            : JSON.stringify(toolCall.function.arguments, null, 2);
+          toolCallDiv.appendChild(argsPre);
+        }
+        messageDiv.appendChild(toolCallDiv);
+      });
+      
+      if (content) {
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        contentDiv.textContent = content;
+        messageDiv.appendChild(contentDiv);
+      }
+    } else {
     messageDiv.textContent = content;
+    }
+    
     chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    // 保存到历史记录
+    chatHistory.push({
+      role,
+      content,
+      timestamp: new Date(),
+      toolName,
+      tool_calls: toolCalls,
+    });
+  }
+
+  function updateLastMessage(content: string, toolCalls?: any[]) {
+    const lastMessage = chatMessages.lastElementChild;
+    if (!lastMessage || !lastMessage.classList.contains('chat-message')) return;
+    
+    if (toolCalls && toolCalls.length > 0) {
+      // 更新工具调用消息
+      const existingToolCalls = lastMessage.querySelectorAll('.tool-call-item');
+      if (existingToolCalls.length === 0) {
+        // 如果还没有工具调用，添加
+        const toolCallHeader = document.createElement('div');
+        toolCallHeader.className = 'tool-call-header';
+        toolCallHeader.textContent = 'Tool Call:';
+        lastMessage.appendChild(toolCallHeader);
+      }
+      
+      toolCalls.forEach((toolCall: any) => {
+        const toolCallDiv = document.createElement('div');
+        toolCallDiv.className = 'tool-call-item';
+        const toolNameSpan = document.createElement('code');
+        toolNameSpan.textContent = toolCall.function?.name || 'unknown';
+        toolCallDiv.appendChild(toolNameSpan);
+        
+        if (toolCall.function?.arguments) {
+          const argsPre = document.createElement('pre');
+          argsPre.textContent = typeof toolCall.function.arguments === 'string' 
+            ? toolCall.function.arguments 
+            : JSON.stringify(toolCall.function.arguments, null, 2);
+          toolCallDiv.appendChild(argsPre);
+        }
+        lastMessage.appendChild(toolCallDiv);
+      });
+      
+      if (content) {
+        let contentDiv = lastMessage.querySelector('.message-content');
+        if (!contentDiv) {
+          contentDiv = document.createElement('div');
+          contentDiv.className = 'message-content';
+          lastMessage.appendChild(contentDiv);
+        }
+        contentDiv.textContent = content;
+      }
+    } else {
+      // 更新普通消息内容（流式更新）
+      lastMessage.textContent = content;
+    }
+    
+    // 更新历史记录中的最后一条消息
+    if (chatHistory.length > 0) {
+      const lastHistory = chatHistory[chatHistory.length - 1];
+      lastHistory.content = content;
+      if (toolCalls) {
+        lastHistory.tool_calls = toolCalls;
+      }
+    }
+    
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
@@ -67,237 +183,215 @@ const page = new NamedPage('agent_chat', async () => {
     }
   }
 
-  let currentTextMessage: HTMLElement | null = null;
-  let accumulatedContent = '';
-  let contentUpdateCount = 0;
-  let toolCallMessages: Map<string, HTMLElement> = new Map();
-  let toolCallResults: Record<string, any> = {};
-
   async function sendMessage() {
     const message = chatInput.value.trim();
     if (!message) return;
 
+    // 添加用户消息到界面
     addMessage('user', message);
+    
     chatInput.value = '';
     setLoading(true);
 
-    currentTextMessage = null;
-    accumulatedContent = '';
-    contentUpdateCount = 0;
-    toolCallMessages.clear();
-    toolCallResults = {};
-
     try {
-      if (sock) {
-        sock.close();
+      // 从 URL 中提取 aid（路由格式：/agent/:aid/chat）
+      const urlMatch = window.location.pathname.match(/\/agent\/([^\/]+)\/chat/);
+      if (!urlMatch) {
+        addMessage('error', 'Invalid URL format: ' + window.location.pathname);
+        setLoading(false);
+        return;
+      }
+
+      const aid = urlMatch[1];
+      
+      // 从 UiContext 获取 domainId（模板中已设置）
+      const UiContext = (window as any).UiContext;
+      const domainId = UiContext?.domainId;
+      
+      if (!domainId) {
+        addMessage('error', 'Domain ID not found in context');
+        setLoading(false);
+        return;
       }
       
-      let wsUrl = wsUrlBase.startsWith('/') ? wsUrlBase.slice(1) : wsUrlBase;
-      sock = new WebSocket(UiContext.ws_prefix + wsUrl, false, true);
+      const wsPrefix = UiContext?.ws_prefix || '/';
 
-      sock.onopen = () => {
-        console.log('WebSocket connection established');
-        sock!.send(JSON.stringify({
-          message: message,
-          history: history
-        }));
-        console.log('Message sent');
-      };
+      // 先通过 HTTP POST 创建任务记录
+      const postUrl = `/d/${domainId}/agent/${aid}/chat`;
+      console.log('[AgentChat] Creating task via POST:', { message, postUrl });
+      
+      const historyForBackend = chatHistory.slice(0, -1).map(msg => ({
+        role: msg.role,
+        content: msg.content,
+        tool_calls: msg.tool_calls,
+      }));
 
-      sock.onmessage = (msg, data) => {
+      const response = await fetch(postUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message,
+          history: historyForBackend,
+          createTaskRecord: historyForBackend.length === 0, // 只有第一条消息创建任务记录
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        addMessage('error', 'Send failed: ' + (errorData.error || 'Unknown error'));
+              setLoading(false);
+        return;
+      }
+
+      const responseData = await response.json();
+      console.log('[AgentChat] POST response:', responseData);
+      const taskRecordId = responseData.taskRecordId;
+      
+      if (!taskRecordId) {
+        console.error('[AgentChat] Task created but record ID missing', responseData);
+        addMessage('error', 'Task created but record ID missing: ' + JSON.stringify(responseData));
+        setLoading(false);
+        return;
+      }
+
+      console.log('[AgentChat] Task created, connecting to record WebSocket:', taskRecordId);
+
+      // 连接到 task-record-detail-conn 来接收流式更新
+      const wsUrl = `task-record-detail-conn?domainId=${domainId}&rid=${taskRecordId}`;
+      console.log('[AgentChat] Connecting to WebSocket:', wsUrl);
+
+      // 动态导入 WebSocket
+      const { default: WebSocket } = await import('../components/socket');
+      const sock = new WebSocket(wsPrefix + wsUrl, false, true);
+
+      // 用于累积当前 assistant 消息的内容
+      let currentAssistantContent = '';
+      let currentToolCalls: any[] = [];
+      let lastMessageIndex = -1; // 跟踪最后一条 assistant 消息的索引
+
+      sock.onmessage = (_, data: string) => {
         try {
-          const parsed = JSON.parse(data);
-          
-          if (parsed.type === 'connected') {
-            console.log('Connection confirmed:', parsed.message);
-            return;
-          }
-          
-          if (parsed.type === 'content' && parsed.content) {
-            contentUpdateCount++;
-            accumulatedContent += parsed.content;
+          const msg = JSON.parse(data);
+          console.log('[AgentChat] WebSocket message received:', msg);
+
+          // 处理 record 格式的消息（来自 task-record-detail-conn）
+          if (msg.record) {
+            const record = msg.record;
             
-            if (!currentTextMessage) {
-              currentTextMessage = document.createElement('div');
-              currentTextMessage.className = 'chat-message assistant';
-              chatMessages.appendChild(currentTextMessage);
-            }
-            
-            currentTextMessage.textContent = accumulatedContent;
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-            
-            if (contentUpdateCount <= 10 || contentUpdateCount % 10 === 0) {
-              console.log('[Stream] Update #' + contentUpdateCount, 'New content:', parsed.content, 'Total length:', accumulatedContent.length);
-            }
-          } else if (parsed.type === 'tool_call_start') {
-            console.log('Tool call started:', parsed.tools, parsed.toolCallId, parsed.iteration);
-            const toolNames = parsed.tools || ['unknown'];
-            const toolCallId = parsed.toolCallId || `${toolNames[0]}-${Date.now()}`;
-            const iteration = parsed.iteration || 0;
-            
-            toolNames.forEach((toolName: string) => {
-              // 使用 toolCallId 作为 key，支持同一工具的多次调用
-              const messageKey = toolCallId || `${toolName}-${Date.now()}`;
-              if (toolCallMessages.has(messageKey)) {
-                return;
-              }
+            // 更新 agentMessages
+            if (record.agentMessages && Array.isArray(record.agentMessages)) {
+              const newMessagesCount = record.agentMessages.length;
+              const existingMessages = Array.from(chatMessages.children).filter(
+                (el: any) => el.classList.contains('chat-message')
+              );
               
-              const toolMessage = document.createElement('div');
-              toolMessage.className = 'chat-message assistant tool-call-message';
-              toolMessage.id = `tool-message-${messageKey}`;
-              toolMessage.setAttribute('data-tool-call-id', messageKey);
-              toolMessage.setAttribute('data-tool-name', toolName);
-              
-              const toolStatus = document.createElement('div');
-              toolStatus.className = 'tool-call-status calling';
-              const iterationText = iteration > 0 ? ` (#${iteration})` : '';
-              toolStatus.innerHTML = `
-                <span class="loading"></span>
-                <span>Calling tool: <strong>${toolName}</strong>${iterationText}</span>
-              `;
-              
-              toolMessage.appendChild(toolStatus);
-              chatMessages.appendChild(toolMessage);
-              
-              toolCallMessages.set(messageKey, toolMessage);
-            });
-            
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-          } else if (parsed.type === 'tool_result') {
-            console.log('Tool result received:', parsed.tool, parsed.result, parsed.toolCallId, parsed.iteration);
-            if (parsed.tool) {
-              // 优先使用 toolCallId，如果没有则使用 toolName
-              const messageKey = parsed.toolCallId || parsed.tool;
-              const toolMessage = toolCallMessages.get(messageKey);
-              
-              if (toolMessage) {
-                const toolStatus = toolMessage.querySelector('.tool-call-status');
-                
-                if (toolStatus) {
-                  const isSuccess = parsed.result !== undefined && parsed.result !== null;
-                  const hasError = parsed.result && typeof parsed.result === 'object' && parsed.result.error;
+              // 如果消息数量增加，添加新消息
+              if (newMessagesCount > existingMessages.length) {
+                // 添加新消息（从现有消息之后开始）
+                for (let i = existingMessages.length; i < newMessagesCount; i++) {
+                  const msgData = record.agentMessages[i];
                   
-                  if (hasError || !isSuccess) {
-                    toolStatus.className = 'tool-call-status failed';
-                    const errorMsg = hasError ? parsed.result.error : 'Tool call failed';
-                    toolStatus.innerHTML = `
-                      <span>✗ Tool call failed: <strong>${parsed.tool}</strong> - ${errorMsg}</span>
-                    `;
-                  } else {
-                    toolStatus.className = 'tool-call-status completed';
-                    
-                    if (parsed.result !== undefined) {
-                      // 使用 toolCallId 作为 key，支持同一工具的多次调用
-                    const resultKey = parsed.toolCallId || parsed.tool;
-                    toolCallResults[resultKey] = parsed.result;
+                  if (msgData.role === 'user') {
+                    // 用户消息：检查是否已经显示（避免重复）
+                    const lastUserMsg = chatHistory.filter(m => m.role === 'user').pop();
+                    if (!lastUserMsg || lastUserMsg.content !== msgData.content) {
+                      // 如果历史记录中没有这条用户消息，添加它（但不在界面上重复显示）
+                      // 因为用户消息在发送时已经显示了
+                      chatHistory.push({
+                        role: 'user',
+                        content: msgData.content,
+                        timestamp: msgData.timestamp ? new Date(msgData.timestamp) : new Date(),
+                      });
                     }
-                    
-                    const resultDiv = document.createElement('div');
-                    resultDiv.id = `tool-result-${parsed.tool}`;
-                    resultDiv.className = 'tool-call-result';
-                    resultDiv.textContent = typeof parsed.result === 'string' 
-                      ? parsed.result 
-                      : JSON.stringify(parsed.result, null, 2);
-                    
-                    const toggleBtn = document.createElement('span');
-                    toggleBtn.className = 'tool-call-toggle';
-                    toggleBtn.textContent = 'View result';
-                    toggleBtn.onclick = () => {
-                      if (resultDiv.classList.contains('expanded')) {
-                        resultDiv.classList.remove('expanded');
-                        toggleBtn.textContent = 'View result';
-                      } else {
-                        resultDiv.classList.add('expanded');
-                        toggleBtn.textContent = 'Hide result';
-                      }
-                    };
-                    
-                    toolStatus.innerHTML = `
-                      <span>✓ Tool call successful: <strong>${parsed.tool}</strong></span>
-                    `;
-                    toolStatus.appendChild(toggleBtn);
-                    toolStatus.appendChild(resultDiv);
+                  } else if (msgData.role === 'assistant') {
+                    // Assistant 消息
+                    const content = msgData.content || '';
+                    const toolCalls = msgData.tool_calls;
+                    addMessage('assistant', content, undefined, toolCalls);
+                    lastMessageIndex = chatHistory.length - 1;
+                    currentAssistantContent = content;
+                  } else if (msgData.role === 'tool') {
+                    // Tool 消息
+                    const content = typeof msgData.content === 'string' 
+                      ? msgData.content 
+                      : JSON.stringify(msgData.content, null, 2);
+                    addMessage('tool', content, msgData.toolName);
                   }
                 }
+              } else if (newMessagesCount === existingMessages.length && newMessagesCount > 0) {
+                const lastMsg = record.agentMessages[newMessagesCount - 1];
                 
-                chatMessages.scrollTop = chatMessages.scrollHeight;
+                if (lastMsg && lastMsg.role === 'assistant') {
+                  const content = lastMsg.content || '';
+                  const toolCalls = lastMsg.tool_calls;
+                  
+                  const lastMessage = chatMessages.lastElementChild;
+                  if (lastMessage && lastMessage.classList.contains('chat-message') && 
+                      lastMessage.classList.contains('assistant')) {
+                    if (toolCalls && toolCalls.length > 0) {
+                      // 有工具调用，更新工具调用显示
+                      updateLastMessage(content, toolCalls);
+                    } else {
+                      const contentDiv = lastMessage.querySelector('.message-content') || lastMessage;
+                      if (contentDiv) {
+                        contentDiv.textContent = content;
+            } else {
+                        lastMessage.textContent = content;
+                      }
+                    }
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+                  }
+                  
+                  // 更新历史记录
+                  if (lastMessageIndex >= 0 && chatHistory[lastMessageIndex]) {
+                    chatHistory[lastMessageIndex].content = content;
+                    if (toolCalls) {
+                      chatHistory[lastMessageIndex].tool_calls = toolCalls;
+                    }
+                  }
+                  
+                  currentAssistantContent = content;
+                }
+              }
+              
+              if (record.status !== undefined) {
+                if (isTerminalTaskStatus(record.status)) {
+                  console.log('[AgentChat] Task completed, status:', record.status);
+                  setLoading(false);
+                  try {
+                    sock.close();
+                  } catch (e) {
+                    // ignore
+                  }
+                }
               }
             }
-          } else if (parsed.type === 'tool_call_complete') {
-            console.log('Tool call completed');
-            
-            toolCallMessages.forEach((toolMessage, toolName) => {
-              const toolStatus = toolMessage.querySelector('.tool-call-status');
-              if (toolStatus && toolStatus.classList.contains('calling')) {
-                toolStatus.className = 'tool-call-status unknown';
-                toolStatus.innerHTML = `
-                  <span>? Tool call status unknown: <strong>${toolName}</strong></span>
-                `;
-              }
-            });
-            
-            currentTextMessage = null;
-            accumulatedContent = '';
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-          } else if (parsed.type === 'done') {
-            console.log('Received done signal, full message length:', parsed.message?.length || 0);
-            if (parsed.history) {
-              history = JSON.parse(parsed.history);
-            }
-            
-            const finalContent = accumulatedContent || parsed.message || '';
-            
-            if (currentTextMessage && finalContent) {
-              currentTextMessage.textContent = finalContent;
-            } else if (finalContent && !currentTextMessage) {
-              currentTextMessage = document.createElement('div');
-              currentTextMessage.className = 'chat-message assistant';
-              currentTextMessage.textContent = finalContent;
-              chatMessages.appendChild(currentTextMessage);
-            }
-            
-            toolCallMessages.clear();
-            currentTextMessage = null;
-            toolCallResults = {};
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-            sock!.close();
+
+            return;
+          }
+
+          if (msg.type === 'error') {
+            addMessage('error', msg.error || 'Unknown error');
             setLoading(false);
-          } else if (parsed.type === 'error') {
-            console.error('Error received:', parsed.error);
-            toolCallMessages.forEach((toolMessage, toolName) => {
-              const toolStatus = toolMessage.querySelector('.tool-call-status');
-              if (toolStatus && toolStatus.classList.contains('calling')) {
-                toolStatus.className = 'tool-call-status failed';
-                toolStatus.innerHTML = `<span>✗ Tool call error: <strong>${toolName}</strong> - ${parsed.error}</span>`;
-              }
-            });
-            addMessage('error', parsed.error);
-            sock!.close();
+            sock.close();
+            return;
+          }
+
+          if (msg.type === 'done' || msg.type === 'complete') {
+            console.log('[AgentChat] Message processing completed');
             setLoading(false);
           }
-        } catch (e) {
-          console.error('Parse error:', e, 'Data:', data);
+        } catch (error: any) {
+          console.error('[AgentChat] Error processing WebSocket message:', error);
+          addMessage('error', 'Error processing message: ' + error.message);
+          setLoading(false);
         }
       };
 
-      sock.onclose = (code, reason) => {
-        console.log('WebSocket connection closed', 'code:', code, 'reason:', reason);
-        
-        if (code >= 4000) {
-          addMessage('error', `Connection closed: ${reason || 'Unknown reason'} (code: ${code})`);
-          setLoading(false);
-        } else if (code === 1000 || code === 1001) {
-          console.log('Connection closed normally');
-          setLoading(false);
-        } else {
-          if (sock) {
-            sock.close();
-          }
-          addMessage('error', 'Connection disconnected');
-          setLoading(false);
-        }
-      };
     } catch (error: any) {
+      console.error('[AgentChat] Error:', error);
       addMessage('error', 'Send failed: ' + error.message);
       setLoading(false);
     }
@@ -310,312 +404,6 @@ const page = new NamedPage('agent_chat', async () => {
       sendMessage();
     }
   });
-
-  // MCP Tools Sidebar WebSocket Connection
-  const mcpStatusWsUrl = (document.querySelector('[data-mcp-status-ws-url]') as HTMLElement)?.getAttribute('data-mcp-status-ws-url') || '';
-  let mcpStatusWs: import('../components/socket').default | null = null;
-  let reconnectTimer: NodeJS.Timeout | null = null;
-  
-  // Collect assigned tool IDs from initial render (for filtering real-time updates)
-  const assignedToolIds = new Set<string>();
-  // 从所有工具项中收集已分配的工具ID
-  document.querySelectorAll('[data-tool-id]').forEach(item => {
-    const toolId = item.getAttribute('data-tool-id');
-    if (toolId) {
-      assignedToolIds.add(toolId.toString());
-    }
-  });
-  
-  console.log('Collected assigned tool IDs:', Array.from(assignedToolIds));
-
-  function escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  function connectMcpStatus() {
-    if (mcpStatusWs) {
-      return; // Already connected
-    }
-
-    if (!mcpStatusWsUrl) return;
-
-    try {
-      let wsUrl = mcpStatusWsUrl.startsWith('/') ? mcpStatusWsUrl.slice(1) : mcpStatusWsUrl;
-      mcpStatusWs = new WebSocket(UiContext.ws_prefix + wsUrl, false, true);
-
-      mcpStatusWs.onopen = () => {
-        console.log('MCP Status WebSocket connected');
-        mcpStatusWs!.send(JSON.stringify({ type: 'ping' }));
-        if (reconnectTimer) {
-          clearInterval(reconnectTimer);
-          reconnectTimer = null;
-        }
-        reconnectTimer = setInterval(() => {
-          if (mcpStatusWs) {
-            mcpStatusWs.send(JSON.stringify({ type: 'ping' }));
-          }
-        }, 30000);
-      };
-
-      mcpStatusWs.onmessage = (msg, data) => {
-        try {
-          const parsed = JSON.parse(data);
-          handleMcpStatusMessage(parsed);
-        } catch (e) {
-          console.error('Failed to parse WebSocket message:', e);
-        }
-      };
-
-      mcpStatusWs.onclose = () => {
-        console.log('MCP Status WebSocket closed, reconnecting...');
-        mcpStatusWs = null;
-        setTimeout(connectMcpStatus, 3000);
-      };
-    } catch (e) {
-      console.error('Failed to connect MCP Status WebSocket:', e);
-      mcpStatusWs = null;
-      setTimeout(connectMcpStatus, 3000);
-    }
-  }
-
-  function handleMcpStatusMessage(data: any) {
-    switch (data.type) {
-      case 'init':
-        if (data.servers) {
-          updateServersList(data.servers);
-        }
-        break;
-      case 'server/status':
-        if (data.server) {
-          updateServerStatus(data.server);
-        }
-        break;
-      case 'tools/update':
-        if (data.serverId && data.tools) {
-          updateServerTools(data.serverId, data.tools);
-        }
-        break;
-      case 'refresh':
-        if (data.servers) {
-          updateServersList(data.servers);
-        }
-        break;
-      case 'pong':
-        break;
-    }
-  }
-
-  function updateServersList(servers: any[] | { providerServers?: any[], nodeServers?: any[], repoServers?: any[] }) {
-    // 支持新的分类格式或旧的统一格式
-    let providerServers: any[] = [];
-    let nodeServers: any[] = [];
-    let repoServers: any[] = [];
-
-    if (Array.isArray(servers)) {
-      // 向后兼容：如果是数组，按 type 字段分类，并过滤出只包含已分配工具的服务器
-      servers.forEach(server => {
-        // 过滤出只包含已分配工具的服务器
-        if (server.tools && Array.isArray(server.tools)) {
-          const assignedTools = server.tools.filter((tool: any) => {
-            const toolId = tool._id?.toString() || tool._id;
-            return assignedToolIds.has(toolId);
-          });
-          
-          // 只保留有已分配工具的服务器
-          if (assignedTools.length > 0) {
-            const filteredServer = {
-              ...server,
-              tools: assignedTools,
-              toolsCount: assignedTools.length,
-            };
-            
-            if (server.type === 'repo') {
-              repoServers.push(filteredServer);
-            } else if (server.type === 'node') {
-              nodeServers.push(filteredServer);
-            } else {
-              providerServers.push(filteredServer); // 默认归类为 provider
-            }
-          }
-        }
-      });
-    } else {
-      // 新的分类格式，也需要过滤
-      const filterServerTools = (serverList: any[]) => {
-        return serverList.map(server => {
-          if (server.tools && Array.isArray(server.tools)) {
-            const assignedTools = server.tools.filter((tool: any) => {
-              const toolId = tool._id?.toString() || tool._id;
-              return assignedToolIds.has(toolId);
-            });
-            if (assignedTools.length > 0) {
-              return {
-                ...server,
-                tools: assignedTools,
-                toolsCount: assignedTools.length,
-              };
-            }
-            return null;
-          }
-          return server;
-        }).filter((s: any) => s !== null);
-      };
-      
-      providerServers = filterServerTools(servers.providerServers || []);
-      nodeServers = filterServerTools(servers.nodeServers || []);
-      repoServers = filterServerTools(servers.repoServers || []);
-    }
-
-    // Save current expanded state
-    const currentExpanded: Record<string, boolean> = {};
-    document.querySelectorAll('.mcp-server-item').forEach(item => {
-      const serverId = item.getAttribute('data-server-id');
-      const toolsDiv = document.getElementById(`tools-${serverId}`);
-      if (toolsDiv && toolsDiv.style.display !== 'none') {
-        currentExpanded[serverId || ''] = true;
-      }
-    });
-
-    // Helper function to render server HTML
-    function renderServer(server: any, type: string): string {
-      const isExpanded = currentExpanded[String(server.serverId)] || false;
-      const statusClass = server.status === 'connected' ? 'status-online' : 'status-offline';
-      const statusText = server.status === 'connected' ? i18n('Online') : i18n('Offline');
-      const toggleIcon = isExpanded ? 'icon-chevron-down' : 'icon-chevron-right';
-      const toolsDisplay = isExpanded ? '' : 'style="display: none;"';
-      const serverName = type === 'repo' ? (server.repoTitle || server.name) : server.name;
-      const dataAttrs = type === 'repo' && server.rpid ? `data-type="repo" data-rpid="${server.rpid}"` : `data-type="${type}"`;
-
-      const toolsHtml = server.tools && server.tools.length > 0
-        ? server.tools.map((tool: any) => `
-          <div class="mcp-tool-item" data-tool-id="${tool._id}">
-            <div class="mcp-tool-name">${escapeHtml(tool.name)}</div>
-            <div class="mcp-tool-description">${escapeHtml(tool.description || '')}</div>
-            ${tool.inputSchema ? `
-            <details class="mcp-tool-schema">
-              <summary>${i18n('View Parameters')}</summary>
-              <pre>${escapeHtml(JSON.stringify(tool.inputSchema, null, 2))}</pre>
-            </details>
-            ` : ''}
-          </div>
-        `).join('')
-        : `<div class="mcp-tool-empty">${i18n('No tools available')}</div>`;
-
-      return `
-        <div class="mcp-server-item" data-server-id="${server.serverId}" ${dataAttrs}>
-          <div class="mcp-server-header" onclick="window.toggleServer && window.toggleServer('${String(server.serverId)}')">
-            <span class="mcp-server-toggle icon ${toggleIcon}" id="toggle-${server.serverId}"></span>
-            <span class="mcp-server-name">${escapeHtml(serverName)}</span>
-            <span class="mcp-server-status" id="status-${server.serverId}" data-status="${server.status}">
-              <span class="status-indicator ${statusClass}"></span>${statusText}
-            </span>
-          </div>
-          <div class="mcp-server-tools" id="tools-${server.serverId}" ${toolsDisplay}>
-            ${toolsHtml}
-          </div>
-        </div>
-      `;
-    }
-
-    // Update Provider servers
-    const providerContainer = document.getElementById('mcp-provider-servers');
-    if (providerContainer) {
-      providerContainer.innerHTML = providerServers.map(server => renderServer(server, 'provider')).join('');
-    }
-
-    // Update Node servers
-    const nodeContainer = document.getElementById('mcp-node-servers');
-    if (nodeContainer) {
-      nodeContainer.innerHTML = nodeServers.map(server => renderServer(server, 'node')).join('');
-    }
-
-    // Update Repo servers
-    const repoContainer = document.getElementById('mcp-repo-servers');
-    if (repoContainer) {
-      repoContainer.innerHTML = repoServers.map(server => renderServer(server, 'repo')).join('');
-    }
-
-    // 向后兼容：如果存在旧的容器，也更新它
-    const oldContainer = document.getElementById('mcp-servers-list');
-    if (oldContainer) {
-      const allServers = [...providerServers, ...nodeServers, ...repoServers];
-      oldContainer.innerHTML = allServers.map(server => {
-        const type = server.type || 'provider';
-        return renderServer(server, type);
-      }).join('');
-    }
-
-    // Re-bind events
-    (window as any).toggleServer = (window as any).toggleServer;
-  }
-
-  function updateServerStatus(server: any) {
-    const statusEl = document.getElementById(`status-${server.serverId}`);
-    if (!statusEl) return;
-
-    const isOnline = server.status === 'connected';
-    statusEl.setAttribute('data-status', server.status);
-    statusEl.innerHTML = `
-      <span class="status-indicator ${isOnline ? 'status-online' : 'status-offline'}"></span>
-      ${isOnline ? i18n('Online') : i18n('Offline')}
-    `;
-  }
-
-  function updateServerTools(serverId: number, tools: any[]) {
-    const toolsDiv = document.getElementById(`tools-${serverId}`);
-    if (!toolsDiv) return;
-
-    // Filter: only show assigned tools
-    const assignedTools = (tools || []).filter(tool => {
-      const toolId = tool._id ? tool._id.toString() : String(tool._id);
-      return assignedToolIds.has(toolId);
-    });
-
-    const isExpanded = toolsDiv.style.display !== 'none';
-    const toolsHtml = assignedTools && assignedTools.length > 0
-      ? assignedTools.map(tool => `
-        <div class="mcp-tool-item" data-tool-id="${tool._id}">
-          <div class="mcp-tool-name">${escapeHtml(tool.name)}</div>
-          <div class="mcp-tool-description">${escapeHtml(tool.description || '')}</div>
-          ${tool.inputSchema ? `
-          <details class="mcp-tool-schema">
-            <summary>${i18n('View Parameters')}</summary>
-            <pre>${escapeHtml(JSON.stringify(tool.inputSchema, null, 2))}</pre>
-          </details>
-          ` : ''}
-        </div>
-      `).join('')
-      : `<div class="mcp-tool-empty">${i18n('No tools available')}</div>`;
-
-    toolsDiv.innerHTML = toolsHtml;
-    if (!isExpanded) {
-      toolsDiv.style.display = 'none';
-    }
-  }
-
-  (window as any).toggleServer = function(serverId: string) {
-    const toolsDiv = document.getElementById(`tools-${serverId}`);
-    const toggleIcon = document.getElementById(`toggle-${serverId}`);
-    if (!toolsDiv || !toggleIcon) return;
-
-    const isExpanded = toolsDiv.style.display !== 'none';
-    if (isExpanded) {
-      toolsDiv.style.display = 'none';
-      toggleIcon.className = 'mcp-server-toggle icon icon-chevron-right';
-    } else {
-      toolsDiv.style.display = 'block';
-      toggleIcon.className = 'mcp-server-toggle icon icon-chevron-down';
-    }
-  };
-
-  // Connect WebSocket after page load
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', connectMcpStatus);
-  } else {
-    connectMcpStatus();
-  }
 });
 
 export default page;

@@ -11,7 +11,7 @@ import {
     RecordNotFoundError, SolutionNotFoundError, ValidationError,DiscussionNotFoundError
 } from '../error';
 import {
-    Handler, ConnectionHandler, param, post, query, route, Types,
+    Handler, ConnectionHandler, param, post, query, route, Types, subscribe,
 } from '../service/server';
 import Agent from '../model/agent';
 import { PERM, PRIV, STATUS } from '../model/builtin';
@@ -31,9 +31,36 @@ import McpServerModel, { McpToolModel } from '../model/mcp';
 import * as document from '../model/document';
 import { RepoModel } from '../model/repo';
 import NodeModel from '../model/node';
+import { callToolViaWorker } from './worker';
+import record from '../model/record';
 
 const AgentLogger = new Logger('agent');
 export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
+
+// 工具调用辅助函数：优先使用 worker，如果 worker 不可用则直接调用
+async function callToolWithFallback(
+    toolName: string,
+    args: any,
+    domainId: string,
+    agentId?: string,
+    uid?: number,
+    taskRecordId?: ObjectId,
+    useWorker: boolean = true,
+): Promise<any> {
+    if (useWorker) {
+        try {
+            const ctx = (global as any).app || (global as any).Ejunz;
+            if (ctx) {
+                return await callToolViaWorker(ctx, toolName, args, domainId, agentId, uid, taskRecordId);
+            }
+        } catch (e) {
+            AgentLogger.warn(`Worker tool call failed, falling back to direct call: ${toolName}`, e);
+        }
+    }
+    // 回退到直接调用
+    const mcpClient = new McpClient();
+    return await mcpClient.callTool(toolName, args, domainId);
+}
 
 /**
  * Auto-update agent memory
@@ -399,6 +426,7 @@ export interface AgentChatEventCallbacks {
     onToolResult?: (tool: string, result: any) => void;
     onDone?: (message: string, history: string) => void;
     onError?: (error: string) => void;
+    taskRecordId?: ObjectId; // 可选的 task record ID，用于跟踪任务
 }
 
 export async function processAgentChatInternal(
@@ -407,7 +435,25 @@ export async function processAgentChatInternal(
     history: ChatMessage[] | string,
     callbacks: AgentChatEventCallbacks,
 ): Promise<void> {
+    const taskRecordId = callbacks.taskRecordId;
+    let toolCallCount = 0;
+    let accumulatedContent = '';
+    
     try {
+        // 如果存在任务记录，更新状态为运行中
+        if (taskRecordId) {
+            await record.updateTask(adoc.domainId, taskRecordId, {
+                status: STATUS.STATUS_TASK_PROCESSING,
+            });
+            // 保存用户消息
+            await record.updateTask(adoc.domainId, taskRecordId, {
+                agentMessages: [{
+                    role: 'user',
+                    content: message,
+                    timestamp: new Date(),
+                }],
+            });
+        }
         const domainInfo = await domain.get(adoc.domainId);
         if (!domainInfo) {
             callbacks.onError?.('Domain not found');
@@ -736,12 +782,38 @@ export async function processAgentChatInternal(
 
                                                 AgentLogger.info(`Calling first tool: ${firstToolName} (internal - One-by-One Mode)`, parsedArgs);
 
+                                                // 更新任务记录
+                                                if (taskRecordId) {
+                                                    toolCallCount++;
+                                                    await record.updateTask(adoc.domainId, taskRecordId, {
+                                                        agentToolCallCount: toolCallCount,
+                                                    });
+                                                    // 保存工具调用消息
+                                                    await record.updateTask(adoc.domainId, taskRecordId, {
+                                                        agentMessages: [{
+                                                            role: 'assistant',
+                                                            content: accumulatedContent || '',
+                                                            tool_calls: [{
+                                                                id: firstToolCall.id,
+                                                                type: 'function',
+                                                                function: {
+                                                                    name: firstToolName,
+                                                                    arguments: firstToolCall.function.arguments,
+                                                                },
+                                                            }],
+                                                            timestamp: new Date(),
+                                                        }],
+                                                    });
+                                                }
+
                                                 let toolResult: any;
                                                 try {
                                                     const toolArgs = firstToolName.match(/^repo_\d+_/) 
                                                         ? { ...parsedArgs, __agentId: (adoc as any).aid || (adoc as any)._id?.toString() || 'unknown', __agentName: (adoc as any).name || 'agent' }
                                                         : parsedArgs;
-                                                    toolResult = await mcpClient.callTool(firstToolName, toolArgs, adoc.domainId);
+                                                    const agentId = (adoc as any).aid || (adoc as any)._id?.toString();
+                                                    const uid = (adoc as any).uid || (adoc as any).owner;
+                                                    toolResult = await callToolWithFallback(firstToolName, toolArgs, adoc.domainId, agentId, uid, callbacks.taskRecordId);
                                                     AgentLogger.info(`Tool ${firstToolName} returned (internal)`, { resultLength: JSON.stringify(toolResult).length });
                                                 } catch (toolError: any) {
                                                     AgentLogger.error(`Tool ${firstToolName} failed (internal):`, toolError);
@@ -750,9 +822,32 @@ export async function processAgentChatInternal(
                                                         message: toolError.message || String(toolError),
                                                         code: toolError.code || 'UNKNOWN_ERROR',
                                                     };
+                                                    // 更新任务记录为失败
+                                                    if (taskRecordId) {
+                                                        await record.updateTask(adoc.domainId, taskRecordId, {
+                                                            status: STATUS.STATUS_TASK_ERROR_SYSTEM,
+                                                            agentError: {
+                                                                message: toolError.message || String(toolError),
+                                                                code: toolError.code || 'UNKNOWN_ERROR',
+                                                            },
+                                                        });
+                                                    }
                                                 }
 
                                                 callbacks.onToolResult?.(firstToolName, toolResult);
+                                                
+                                                // 保存工具结果消息到记录
+                                                if (taskRecordId) {
+                                                    await record.updateTask(adoc.domainId, taskRecordId, {
+                                                        agentMessages: [{
+                                                            role: 'tool',
+                                                            content: JSON.stringify(toolResult),
+                                                            tool_call_id: firstToolCall.id,
+                                                            toolName: firstToolName,
+                                                            timestamp: new Date(),
+                                                        }],
+                                                    });
+                                                }
 
                                                 const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
 
@@ -972,6 +1067,7 @@ async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[], repoI
                     name: tool.name,
                     description: tool.description,
                     inputSchema: tool.inputSchema,
+                    serverId: tool.serverId, // 包含 serverId，用于直接调用
                 });
                 assignedToolNames.add(tool.name);
             }
@@ -992,8 +1088,10 @@ async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[], repoI
         const processedNames = new Set<string>();
         
         // First, add realtime tools that match assigned tool names
+        // Note: realtime tools don't have serverId, so we prefer database tools when available
         for (const realtimeTool of realtimeTools) {
-            if (assignedToolNames.has(realtimeTool.name)) {
+            if (assignedToolNames.has(realtimeTool.name) && !dbToolsMap.has(realtimeTool.name)) {
+                // Only add realtime tool if not in database (database tools have serverId)
                 finalTools.push({
                     name: realtimeTool.name,
                     description: realtimeTool.description || '',
@@ -1003,10 +1101,11 @@ async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[], repoI
             }
         }
         
-        // Then, add database tools that weren't found in realtime (fallback)
+        // Then, add database tools (they have serverId, so prefer them)
         for (const [toolName, dbTool] of dbToolsMap) {
             if (!processedNames.has(toolName)) {
                 finalTools.push(dbTool);
+                processedNames.add(toolName);
             }
         }
         
@@ -1228,7 +1327,8 @@ export class AgentChatHandler extends Handler {
     }
 
     @param('aid', Types.String)
-    async get(domainId: string, aid: string) {
+    @param('recordId', Types.ObjectId, true)
+    async get(domainId: string, aid: string, recordId?: ObjectId) {
         await this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
         const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
@@ -1238,21 +1338,41 @@ export class AgentChatHandler extends Handler {
         }
 
         const udoc = await user.getById(domainId, adoc.owner);
+        
+        // 如果提供了 recordId，加载该记录的历史记录
+        let recordHistory: any[] = [];
+        if (recordId) {
+            try {
+                const rdoc = await record.get(domainId, recordId);
+                if (rdoc) {
+                    const r = rdoc as any;
+                    if (r.agentId) {
+                        // 验证权限
+                        if (r.uid !== this.user._id) {
+                            this.checkPerm(PERM.PERM_VIEW_RECORD);
+                        }
+                        // 提取历史记录
+                        if (r.agentMessages && Array.isArray(r.agentMessages)) {
+                            recordHistory = r.agentMessages
+                                .filter((msg: any) => msg.role === 'user' || msg.role === 'assistant')
+                                .map((msg: any) => ({
+                                    role: msg.role,
+                                    content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
+                                }));
+                        }
+                    }
+                }
+            } catch (error: any) {
+                AgentLogger.warn('Failed to load record history:', error.message);
+            }
+        }
 
         const apiKey = (this.domain as any)['apiKey'] || '';
         const aiModel = (this.domain as any)['model'] || 'deepseek-chat';
         const apiUrl = (this.domain as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
 
-        let wsUrl = `/agent/${adoc.aid}/chat-ws`;
+        // WebSocket URL 在模板中构建，不需要在这里生成
         const host = this.domain?.host;
-        if (domainId !== 'system' && (
-            !this.request.host
-            || (host instanceof Array
-                ? (!host.includes(this.request.host))
-                : this.request.host !== host)
-        )) {
-            wsUrl = `/d/${domainId}${wsUrl}`;
-        }
 
         const assignedToolIds = new Set((adoc.mcpToolIds || []).map(id => id.toString()));
 
@@ -1366,16 +1486,8 @@ export class AgentChatHandler extends Handler {
 
         const serversWithTools = [...providerServers, ...nodeServers, ...repoServers];
 
-        // WebSocket URL for MCP status updates
-        let mcpStatusWsUrl = `/mcp/status/ws/all`;
-        if (domainId !== 'system' && (
-            !this.request.host
-            || (host instanceof Array
-                ? (!host.includes(this.request.host))
-                : this.request.host !== host)
-        )) {
-            mcpStatusWsUrl = `/d/${domainId}${mcpStatusWsUrl}`;
-        }
+        // WebSocket URL for MCP status updates - 使用 url() 方法自动处理 domain 前缀
+        const mcpStatusWsUrl = this.url('mcp_status_all_conn', { domainId });
 
         this.response.template = 'agent_chat.html';
         this.response.body = {
@@ -1386,7 +1498,6 @@ export class AgentChatHandler extends Handler {
             apiKey,
             aiModel,
             apiUrl,
-            wsUrl,
             serversWithTools, // 向后兼容
             providerServers,
             nodeServers,
@@ -1410,6 +1521,7 @@ export class AgentChatHandler extends Handler {
         const message = this.request.body?.message;
         const history = this.request.body?.history || '[]';
         const stream = this.request.query?.stream === 'true' || this.request.body?.stream === true;
+        const createTaskRecord = this.request.body?.createTaskRecord !== false; // 默认创建任务记录
         
         if (!message) {
             this.response.body = { error: 'Message cannot be empty' };
@@ -1427,11 +1539,112 @@ export class AgentChatHandler extends Handler {
 
         let chatHistory: ChatMessage[] = [];
         try {
+            // history 可能是字符串或数组
+            if (typeof history === 'string') {
             chatHistory = JSON.parse(history);
+            } else if (Array.isArray(history)) {
+                chatHistory = history;
+            }
         } catch (e) {
+            // 解析失败，使用空数组
+            chatHistory = [];
+        }
+        
+        // 创建任务记录（如果是新任务）
+        let taskRecordId: ObjectId | undefined;
+        AgentLogger.info('POST chat: checking task creation', { 
+            createTaskRecord, 
+            chatHistoryLength: chatHistory?.length || 0,
+            shouldCreate: createTaskRecord && (!chatHistory || chatHistory.length === 0)
+        });
+        if (createTaskRecord && (!chatHistory || chatHistory.length === 0)) {
+            AgentLogger.info('POST chat: creating task record');
+            taskRecordId = await record.addTask(
+                domainId,
+                adoc.aid || adoc.docId.toString(),
+                this.user._id,
+                message,
+            );
+            AgentLogger.info('POST chat: task record created', { taskRecordId: taskRecordId?.toString() });
             
+            // 收集完整的上下文信息，供 worker 使用
+            const domainInfo = await domain.get(domainId);
+            if (!domainInfo) {
+                throw new Error('Domain not found');
+            }
+            
+            const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds);
+            
+            // 构建完整的系统消息（包含 agent prompt, memory, tools 等）
+            const agentPrompt = adoc.content || '';
+            let systemMessage = agentPrompt;
+            
+            const truncateMemory = (memory: string, maxLength: number = 2000): string => {
+                if (!memory || memory.length <= maxLength) {
+                    return memory;
+                }
+                return memory.substring(0, maxLength) + '\n\n[... Memory truncated, keeping most important rules ...]';
+            };
+            if (adoc.memory) {
+                const truncatedMemory = truncateMemory(adoc.memory);
+                systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
+            }
+            
+            if (systemMessage && !systemMessage.includes('do not use emoji')) {
+                systemMessage += '\n\nNote: Do not use any emoji in your responses.';
+            } else if (!systemMessage) {
+                systemMessage = 'Note: Do not use any emoji in your responses.';
+            }
+            
+            if (tools.length > 0) {
+                const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
+                  tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
+                  `\n\n【CRITICAL - YOU MUST READ THIS FIRST】\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "Find the switch"\n2. You MUST first output: "Let me help you find the switch device..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n【TOOL USAGE STRATEGY - CRITICAL】\n1. **Proactive Multi-Tool Problem Solving**: When a user's question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "Do I have classes tomorrow?" → You should: (1) FIRST say "Let me check tomorrow's schedule..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there's schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "View files in repo" → You should: (1) FIRST say "Let me search for files in the knowledge base..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   Examples: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool's result.\n5. After the last tool call completes, you should only reply with the last tool's result. Do NOT provide a comprehensive summary of all tools' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool's result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool's result → explain what you will do next → call the second tool → reply with the second tool's result, and so on. Each reply should be independent and focused on the current tool.`;
+                systemMessage = systemMessage + toolsInfo;
+            }
+            
+            // 创建 task 任务，包含完整的上下文信息
+            const taskModel = require('../model/task').default;
+            await taskModel.add({
+                type: 'task',
+                recordId: taskRecordId,
+                domainId,
+                agentId: adoc.aid || adoc.docId.toString(),
+                uid: this.user._id,
+                message,
+                history: JSON.stringify(chatHistory),
+                // 完整的上下文信息
+                context: {
+                    // Domain 配置
+                    apiKey: (domainInfo as any)['apiKey'] || '',
+                    model: (domainInfo as any)['model'] || 'deepseek-chat',
+                    apiUrl: (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions',
+                    // Agent 信息
+                    agentContent: adoc.content || '',
+                    agentMemory: adoc.memory || '',
+                    // 工具列表（序列化）
+                    tools: tools.map(tool => ({
+                        name: tool.name,
+                        description: tool.description,
+                        inputSchema: tool.inputSchema,
+                    })),
+                    // 系统消息（已构建完整）
+                    systemMessage,
+                },
+                priority: 0,
+            });
+            
+            // 任务已创建，返回任务 ID，由 worker 处理
+            const responseBody = {
+                taskRecordId: taskRecordId.toString(),
+                message: 'Task created, processing by worker',
+            };
+            AgentLogger.info('POST chat: returning taskRecordId', responseBody);
+            this.response.body = responseBody;
+            return;
         }
 
+        // 如果没有创建任务（继续对话），继续在主服务器处理
         const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds);
         const mcpClient = new McpClient();
         
@@ -1903,28 +2116,53 @@ export class AgentChatHandler extends Handler {
 export class AgentChatConnectionHandler extends ConnectionHandler {
     adoc?: AgentDoc;
 
-    @param('aid', Types.String)
-    async prepare(domainId: string, aid: string) {
+    @param('aid', Types.String, true)
+    @param('domainId', Types.String, true)
+    async prepare(domainId?: string, aid?: string) {
         try {
+            // 从查询参数获取 domainId 和 aid（类似 record-conn 的方式）
+            const queryDomainId = this.request.query.domainId as string || domainId;
+            const queryAid = this.request.query.aid as string || aid;
+            
+            AgentLogger.info('WebSocket connection attempt for agent chat', { 
+                queryDomainId, 
+                queryAid, 
+                pathDomainId: domainId, 
+                pathAid: aid,
+                requestPath: this.request.path, 
+                requestIp: this.request.ip,
+                query: this.request.query 
+            });
+            
             await this.checkPriv(PRIV.PRIV_USER_PROFILE);
             
-            if (!aid) {
+            const finalDomainId = queryDomainId || this.args.domainId;
+            const finalAid = queryAid;
+            
+            if (!finalAid) {
                 AgentLogger.warn('WebSocket connection rejected: Agent ID is required');
                 this.close(4000, 'Agent ID is required');
                 return;
             }
 
-            const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
-            this.adoc = await Agent.get(domainId, normalizedId);
+            if (!finalDomainId) {
+                AgentLogger.warn('WebSocket connection rejected: Domain ID is required');
+                this.close(4000, 'Domain ID is required');
+                return;
+            }
+
+            const normalizedId: number | string = /^\d+$/.test(finalAid) ? Number(finalAid) : finalAid;
+            AgentLogger.info('Looking up agent', { normalizedId, domainId: finalDomainId });
+            this.adoc = await Agent.get(finalDomainId, normalizedId);
             if (!this.adoc) {
-                AgentLogger.warn('WebSocket connection rejected: Agent not found', { aid: normalizedId, domainId });
+                AgentLogger.warn('WebSocket connection rejected: Agent not found', { aid: normalizedId, domainId: finalDomainId });
                 this.close(4000, `Agent not found: ${normalizedId}`);
                 return;
             }
 
-            AgentLogger.info('WebSocket connection established for agent chat', { aid, domainId });
+            AgentLogger.info('WebSocket connection established for agent chat', { aid: normalizedId, domainId: finalDomainId, agentTitle: this.adoc.title });
             this.send({ type: 'connected', message: 'WebSocket connection established' });
-            AgentLogger.info('WebSocket prepare completed successfully', { aid, domainId });
+            AgentLogger.info('WebSocket prepare completed successfully', { aid: normalizedId, domainId: finalDomainId });
         } catch (error: any) {
             AgentLogger.error('Error in WebSocket prepare:', error);
             try {
@@ -1973,6 +2211,7 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
         
         const message = messageText;
         const history = historyData;
+        const createTaskRecord = (msg as any)?.createTaskRecord !== false; // 默认创建任务记录
         if (!message) {
             this.send({ type: 'error', error: 'Message cannot be empty' });
             return;
@@ -2000,7 +2239,100 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
         } catch (e) {
             // ignore parse error
         }
+        
+        // 创建任务记录（如果是新任务）
+        let taskRecordId: ObjectId | undefined;
+        let toolCallCount = 0;
+        if (createTaskRecord && (!chatHistory || chatHistory.length === 0)) {
+            taskRecordId = await record.addTask(
+                domainId,
+                this.adoc.aid || this.adoc.docId?.toString() || this.adoc.aid,
+                this.user._id,
+                message,
+            );
+            
+            // 收集完整的上下文信息，供 worker 使用
+            const domainInfo = await domain.get(domainId);
+            if (!domainInfo) {
+                throw new Error('Domain not found');
+            }
+            
+            const tools = await getAssignedTools(this.domain._id, this.adoc.mcpToolIds);
+            
+            // 构建完整的系统消息（包含 agent prompt, memory, tools 等）
+            const agentPrompt = this.adoc.content || '';
+            let systemMessage = agentPrompt;
+            
+            const truncateMemory = (memory: string, maxLength: number = 2000): string => {
+                if (!memory || memory.length <= maxLength) {
+                    return memory;
+                }
+                return memory.substring(0, maxLength) + '\n\n[... Memory truncated, keeping most important rules ...]';
+            };
+            if (this.adoc.memory) {
+                const truncatedMemory = truncateMemory(this.adoc.memory);
+                systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
+            }
+            
+            if (systemMessage && !systemMessage.includes('do not use emoji')) {
+                systemMessage += '\n\nNote: Do not use any emoji in your responses.';
+            } else if (!systemMessage) {
+                systemMessage = 'Note: Do not use any emoji in your responses.';
+            }
+            
+            if (tools.length > 0) {
+                const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
+                  tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
+                  '\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools**: When you need to call a tool, you MUST first stream a message to the user explaining what you are about to do (e.g., "Let me search the knowledge base", "Let me check the relevant information"). This gives the user immediate feedback and makes the conversation feel natural and responsive. Only after you have explained what you are doing should you call the tool.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool\'s result.\n5. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool\'s result → explain what you will do next → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
+                systemMessage = systemMessage + toolsInfo;
+            }
+            
+            // 创建 task 任务，包含完整的上下文信息
+            const taskModel = require('../model/task').default;
+            await taskModel.add({
+                type: 'task',
+                recordId: taskRecordId,
+                domainId,
+                agentId: this.adoc.aid || this.adoc.docId?.toString() || this.adoc.aid,
+                uid: this.user._id,
+                message,
+                history: JSON.stringify(chatHistory),
+                // 完整的上下文信息
+                context: {
+                    // Domain 配置
+                    apiKey: (domainInfo as any)['apiKey'] || '',
+                    model: (domainInfo as any)['model'] || 'deepseek-chat',
+                    apiUrl: (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions',
+                    // Agent 信息
+                    agentContent: this.adoc.content || '',
+                    agentMemory: this.adoc.memory || '',
+                    // 工具列表（序列化）
+                    tools: tools.map(tool => ({
+                        name: tool.name,
+                        description: tool.description,
+                        inputSchema: tool.inputSchema,
+                    })),
+                    // 系统消息（已构建完整）
+                    systemMessage,
+                },
+                priority: 0,
+            });
+            
+            // 任务已创建，通知客户端，任务将通过 worker 处理
+            // 客户端应该连接到 task-record-detail-conn 来接收流式更新
+            const recordDetailConnUrl = `task-record-detail-conn?domainId=${domainId}&rid=${taskRecordId}`;
+            this.send({
+                type: 'task_created',
+                taskRecordId: taskRecordId.toString(),
+                recordDetailConnUrl,
+                message: 'Task created, worker will process it',
+            });
+            // 任务已创建并通过 worker 处理，不在这里直接处理
+            return;
+        }
 
+        // 如果是继续对话（有历史记录），不创建新任务，直接在主服务器处理
+        // 这种情况不需要创建任务记录，直接流式处理
         const tools = await getAssignedTools(this.domain._id, this.adoc.mcpToolIds);
         const mcpClient = new McpClient();
         
@@ -2283,11 +2615,29 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
                                                     
                                                     if (!streamFinished) {
                                                         streamFinished = true;
+                                                        // 保存助手回复到任务记录
+                                                        if (taskRecordId && accumulatedContent) {
+                                                            await record.updateTask(this.domain._id, taskRecordId, {
+                                                                agentMessages: [{
+                                                                    role: 'assistant',
+                                                                    content: accumulatedContent,
+                                                                    timestamp: new Date(),
+                                                                }],
+                                                            });
+                                                        }
+                                                        
+                                                        // 完成任务记录
+                                                        if (taskRecordId) {
+                                                            await record.updateTask(this.domain._id, taskRecordId, {
+                                                                status: STATUS.STATUS_TASK_DELIVERED,
+                                                            });
+                                                        }
+                                                        
                                                         this.send({ type: 'done', message: accumulatedContent, history: JSON.stringify([
                                                             ...chatHistory,
                                                             { role: 'user', content: message },
                                                             { role: 'assistant', content: accumulatedContent },
-                                                        ]) });
+                                                        ]), taskRecordId: taskRecordId?.toString() });
                                                     }
                                                 }
                                                 resolve();
@@ -2338,6 +2688,7 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
             this.send({ type: 'error', error: JSON.stringify(error.response?.body || error.message) });
         }
     }
+
 }
 
 export class AgentStreamConnectionHandler extends ConnectionHandler {
@@ -4046,10 +4397,13 @@ export async function apply(ctx: Context) {
     ctx.Route('agent_create', '/agent/create', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_detail', '/agent/:aid', AgentDetailHandler);
     ctx.Route('agent_chat', '/agent/:aid/chat', AgentChatHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Connection('agent_chat_ws', '/agent/:aid/chat-ws', AgentChatConnectionHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Connection('agent_chat_conn', '/agent-chat-conn', AgentChatConnectionHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_edit', '/agent/:aid/edit', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_mcp_status', '/agent/:aid/mcp-tools/status', AgentMcpStatusHandler);
     ctx.Route('agent_api', '/api/agent', AgentApiHandler);
     ctx.Connection('agent_api_ws', '/api/agent/chat-ws', AgentApiConnectionHandler);
     ctx.Connection('agent_stream_ws', '/api/agent/:aid/stream', AgentStreamConnectionHandler);
+    
+    // 注册 agent task record 路由
+    // Agent task record routes are now in record.ts
 }

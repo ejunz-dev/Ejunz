@@ -1,0 +1,37 @@
+{% import "components/record.html" as record_component with context %}
+{% import "components/user.html" as user with context %}
+{% import "components/agent.html" as agent with context %}
+<tr data-rid="{{ r['_id'] }}">
+  {{ record_component.render_task_status_td(r, allDomain = false) }}
+  <td class="col--agent">
+    {% if adoc %}
+      <a href="{{ url('agent_detail', domainId=r.domainId|default(handler.args.domainId), aid=adoc.aid) }}">{{ adoc.title or adoc.aid }}</a>
+    {% else %}
+      <span class="text-gray">{{ r.agentId or '-' }}</span>
+    {% endif %}
+  </td>
+  <td class="col--user">{{ user.render_inline(udoc, avatar=false, badge=false) }}</td>
+  <td class="col--time">
+    {% if r.time is defined and r.time > 0 %}
+      {{ r.time|round|int }}ms
+    {% else %}
+      -
+    {% endif %}
+  </td>
+  <td class="col--tool-calls">
+    {% if r.agentToolCallCount is defined %}
+      {{ r.agentToolCallCount }}
+      {% if r.agentTotalToolCalls %}
+        / {{ r.agentTotalToolCalls }}
+      {% endif %}
+    {% else %}
+      -
+    {% endif %}
+  </td>
+  <td class="col--submit-at">
+    <a href="{{ url('record_detail', domainId=r.domainId|default(handler.args.domainId), rid=r._id) }}">
+      {{ datetimeSpan(r['_id'])|safe }}
+    </a>
+  </td>
+</tr>
+

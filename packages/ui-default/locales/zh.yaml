@@ -579,6 +579,7 @@ Rank: 排名
 ranking: 排名
 Ranking: 排名
 Recommended: 推荐
+record_main: 记录
 Refresh: 刷新
 Registered at: 注册于
 Related Discussions: 相关讨论
@@ -636,6 +637,7 @@ Send Problem: 发送题枝
 Send Verification Email: 发送验证邮件
 Send: 发送
 Service Status: 服务状态
+session_main: 会话
 Set Role: 设置角色
 Set Roles for Selected User: 设置所选用户的角色
 Set Roles for selected users: 为所选用户设置角色

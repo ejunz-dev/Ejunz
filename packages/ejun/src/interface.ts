@@ -717,6 +717,28 @@ export interface EjunzGlobal {
 }
 
 
+// Extend RecordDoc to support agent tasks
+declare module '@ejunz/common/types' {
+    export interface RecordDoc {
+        // Task fields (when lang === 'task')
+        agentId?: string;
+        agentMessages?: Array<{
+            role: 'user' | 'assistant' | 'tool';
+            content: string;
+            timestamp: Date;
+            toolName?: string;
+            toolResult?: any;
+        }>;
+        agentToolCallCount?: number;
+        agentTotalToolCalls?: number;
+        agentError?: {
+            message: string;
+            code?: string;
+            stack?: string;
+        };
+    }
+}
+
 declare global {
     namespace NodeJS {
         interface Global {

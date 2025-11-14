@@ -1,0 +1,105 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+{{ set(
+  UiContext, 'socketUrl',
+  "task-record-conn?domainId=" + handler.args.domainId
+  + (("&aid=" + filterAid) if filterAid else "")
+  + (("&uidOrName=" + filterUidOrName) if filterUidOrName else "")
+  + (("&status=" + filterStatus) if filterStatus else "")
+) }}
+{{ set(UiContext, 'rids', records.map(eval("r=>r._id.toString()"))) }}
+<div class="row">
+  <div class="medium-12 columns">
+    <form method="get">
+      <div class="section">
+        <div class="section__header">
+          <h1 class="section__title">{{ _('Filter') }}</h1>
+          <div class="section__tools">
+            <button type="submit" class="primary button"><span class="icon icon-filter"></span> {{ _('Filter') }}</button>
+            <a href="{{ url('task_record_main') }}" class="button">{{ _('Reset') }}</a>
+          </div>
+        </div>
+        <div class="section__body">
+          <div class="row">
+            <div class="medium-3 columns">
+              <label>
+                {{ _('By Agent ID / Name') }}
+                <input name="aid" type="text" class="textbox" value="{{ filterAid }}" autocomplete="off" data-autofocus>
+              </label>
+            </div>
+            <div class="medium-3 columns">
+              <label class="filter-user">
+                {{ _('By Username / UID') }}
+                <input name="uidOrName" type="text" class="textbox" value="{{ filterUidOrName }}" autocomplete="off">
+              </label>
+            </div>
+            <div class="medium-3 columns">
+              <label>
+                {{ _('By Status') }}
+              </label>
+              <select class="compact select" name="status">
+                <option value="">{{ _('All Status') }}</option>
+                <option value="pending" {% if filterStatus == 'pending' %}selected{% endif %}>{{ _('Pending') }}</option>
+                <option value="running" {% if filterStatus == 'running' %}selected{% endif %}>{{ _('Running') }}</option>
+                <option value="completed" {% if filterStatus == 'completed' %}selected{% endif %}>{{ _('Completed') }}</option>
+                <option value="failed" {% if filterStatus == 'failed' %}selected{% endif %}>{{ _('Failed') }}</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Agent Task Records') }}</h1>
+      </div>
+      <div class="section__body no-padding">
+      {% if not records.length %}
+        {% if not filterAid and not filterUidOrName and not filterStatus %}
+        {{ nothing.render('Oh, there is no agent task record!') }}
+        {% else %}
+        {{ nothing.render('Oh, there are no records that match the filter!') }}
+        {% endif %}
+      {% else %}
+        <table class="data-table record_main__table">
+          <colgroup>
+            <col class="col--status">
+            <col class="col--agent">
+            <col class="col--user">
+            <col class="col--progress">
+            <col class="col--tool-calls">
+            <col class="col--submit-at">
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="col--status record-status--border">{{ _('Status') }}</th>
+              <th class="col--agent">{{ _('Agent') }}</th>
+              <th class="col--user">{{ _('User') }}</th>
+              <th class="col--progress">{{ _('Progress') }}</th>
+              <th class="col--tool-calls">{{ _('Tool Calls') }}</th>
+              <th class="col--submit-at">{{ _('Created At') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+          {%- for record in records -%}
+            {% set udoc = udict[record['uid']] %}
+            {% set adoc = adict[record['agentId']] if record['agentId'] else null %}
+            {% include 'task_record_main_tr.html' %}
+          {%- endfor -%}
+          </tbody>
+        </table>
+        <ul class="pager">
+          <li>
+            <a class="pager__item next link" href="?page={{ page + 1 }}{{
+              (('&aid=' + filterAid) if filterAid else '')
+              + (('&uidOrName=' + filterUidOrName) if filterUidOrName else '')
+              + (('&status=' + filterStatus) if filterStatus else '') }}">{{ _('pager_next') }}</a>
+          </li>
+        </ul>
+      {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
