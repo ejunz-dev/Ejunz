@@ -98,26 +98,175 @@ export async function apply(ctx: EjunzContext) {
                 
                 let limitedHistory = truncateMessages(chatHistory);
                 
+                // 清理和规范化历史消息格式，确保符合 API 要求
+                const normalizeMessages = (messages: any[]): any[] => {
+                    const normalized: any[] = [];
+                    const usedToolCallIds = new Set<string>(); // 跟踪已使用的 tool_call_id
+                    let lastAssistantToolCallIds: string[] = []; // 跟踪最近的 assistant 消息的所有 tool_call ids
+                    
+                    for (let i = 0; i < messages.length; i++) {
+                        const msg = messages[i];
+                        const normalizedMsg: any = {
+                            role: msg.role,
+                            content: msg.content || '',
+                        };
+                        
+                        // 处理 assistant 消息的 tool_calls
+                        if (msg.role === 'assistant' && msg.tool_calls && Array.isArray(msg.tool_calls)) {
+                            lastAssistantToolCallIds = []; // 重置，因为这是新的 assistant 消息
+                            normalizedMsg.tool_calls = msg.tool_calls.map((tc: any) => {
+                                let toolCallId = '';
+                                let toolCallName = '';
+                                let toolCallArgs = '';
+                                
+                                if (typeof tc === 'object' && tc.function) {
+                                    // 已经是正确格式
+                                    toolCallId = tc.id || '';
+                                    toolCallName = tc.function.name || '';
+                                    toolCallArgs = typeof tc.function.arguments === 'string' 
+                                        ? tc.function.arguments 
+                                        : JSON.stringify(tc.function.arguments || {});
+                                } else if (typeof tc === 'object') {
+                                    // 可能是简化的格式，需要转换
+                                    toolCallId = tc.id || '';
+                                    toolCallName = tc.name || tc.function?.name || '';
+                                    toolCallArgs = typeof tc.arguments === 'string'
+                                        ? tc.arguments
+                                        : JSON.stringify(tc.arguments || tc.function?.arguments || {});
+                                }
+                                
+                                // 保存所有 tool_call 的 id
+                                if (toolCallId) {
+                                    lastAssistantToolCallIds.push(toolCallId);
+                                }
+                                
+                                return {
+                                    id: toolCallId,
+                                    type: 'function',
+                                    function: {
+                                        name: toolCallName,
+                                        arguments: toolCallArgs,
+                                    },
+                                };
+                            });
+                        }
+                        
+                        // 处理 tool 角色的消息，确保有 tool_call_id 且不重复
+                        if (msg.role === 'tool') {
+                            let toolCallId: string | null = null;
+                            
+                            // 优先使用消息中的 tool_call_id
+                            if (msg.tool_call_id) {
+                                toolCallId = msg.tool_call_id;
+                            } else if (lastAssistantToolCallIds.length > 0) {
+                                // 如果没有，使用前一条 assistant 消息的第一个 tool_call id
+                                toolCallId = lastAssistantToolCallIds[0];
+                            } else {
+                                // 如果都没有，尝试从前面查找最近的 assistant 消息的 tool_call id
+                                for (let j = i - 1; j >= 0; j--) {
+                                    const prevMsg = messages[j];
+                                    if (prevMsg.role === 'assistant' && prevMsg.tool_calls && Array.isArray(prevMsg.tool_calls) && prevMsg.tool_calls.length > 0) {
+                                        const firstToolCall = prevMsg.tool_calls[0];
+                                        if (firstToolCall && firstToolCall.id) {
+                                            toolCallId = firstToolCall.id;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // 检查是否已经使用过这个 tool_call_id（去重）
+                            if (toolCallId && usedToolCallIds.has(toolCallId)) {
+                                logger.warn('Duplicate tool message detected for tool_call_id: %s, skipping', toolCallId);
+                                continue; // 跳过重复的 tool 消息
+                            }
+                            
+                            if (toolCallId) {
+                                normalizedMsg.tool_call_id = toolCallId;
+                                usedToolCallIds.add(toolCallId);
+                                // 从 lastAssistantToolCallIds 中移除已使用的 id
+                                const index = lastAssistantToolCallIds.indexOf(toolCallId);
+                                if (index > -1) {
+                                    lastAssistantToolCallIds.splice(index, 1);
+                                }
+                            } else {
+                                logger.warn('Tool message missing tool_call_id at index %d, skipping', i);
+                                continue; // 跳过没有 tool_call_id 的 tool 消息
+                            }
+                        }
+                        
+                        normalized.push(normalizedMsg);
+                    }
+                    
+                    return normalized;
+                };
+                
+                const normalizedHistory = normalizeMessages(limitedHistory);
+                
+                // 验证消息格式
+                for (const msg of normalizedHistory) {
+                    if (msg.role === 'assistant' && msg.tool_calls) {
+                        for (const tc of msg.tool_calls) {
+                            if (!tc.id || !tc.function || !tc.function.name) {
+                                logger.warn('Invalid tool_call format: %s', JSON.stringify(tc));
+                            }
+                        }
+                    }
+                }
+                
                 const requestBody: any = {
                     model: context.model || 'deepseek-chat',
                     max_tokens: 1024,
                     messages: [
                         { role: 'system', content: context.systemMessage },
-                        ...limitedHistory,
+                        ...normalizedHistory,
                         { role: 'user', content: message },
                     ],
                     stream: true,
                 };
                 
                 if (context.tools && context.tools.length > 0) {
-                    requestBody.tools = context.tools.map((tool: any) => ({
-                        type: 'function',
-                        function: {
-                            name: tool.name,
-                            description: tool.description || '',
-                            parameters: tool.inputSchema || {},
-                        },
-                    }));
+                    requestBody.tools = context.tools.map((tool: any) => {
+                        let parameters = tool.inputSchema || {};
+                        if (typeof parameters !== 'object' || Array.isArray(parameters)) {
+                            parameters = {};
+                        }
+                        if (!parameters.type) {
+                            parameters.type = 'object';
+                        }
+                        if (!parameters.properties) {
+                            parameters.properties = {};
+                        }
+                        if (!parameters.required) {
+                            parameters.required = [];
+                        }
+                        return {
+                            type: 'function',
+                            function: {
+                                name: tool.name || '',
+                                description: tool.description || '',
+                                parameters,
+                            },
+                        };
+                    });
+                    logger.debug('Built tools for API request: count=%d', requestBody.tools.length);
+                }
+                
+                logger.debug('API request body: model=%s, messages count=%d, tools count=%d', 
+                    requestBody.model, 
+                    requestBody.messages.length,
+                    requestBody.tools?.length || 0);
+                
+                // 记录消息格式以便调试
+                if (normalizedHistory.length > 0) {
+                    logger.debug('History messages: %s', JSON.stringify(normalizedHistory.map((msg: any) => ({
+                        role: msg.role,
+                        hasContent: !!msg.content,
+                        contentLength: msg.content?.length || 0,
+                        hasToolCalls: !!msg.tool_calls,
+                        toolCallsCount: msg.tool_calls?.length || 0,
+                        hasToolCallId: !!msg.tool_call_id,
+                    }))));
                 }
                 
                 let iterations = 0;
@@ -191,6 +340,13 @@ export async function apply(ctx: EjunzContext) {
                             .send(requestBody)
                             .timeout(120000)
                             .parse((res, callback) => {
+                                let responseStatus = res.status || 200;
+                                
+                                // 检查状态码，如果是错误状态码，记录但不立即失败
+                                if (responseStatus >= 400) {
+                                    logger.warn('API response status: %d, but continuing to process stream', responseStatus);
+                                }
+                                
                                 res.setEncoding('utf8');
                                 let buffer = '';
                                 
@@ -212,6 +368,21 @@ export async function apply(ctx: EjunzContext) {
                                         
                                         try {
                                             const parsed = JSON.parse(data);
+                                            
+                                            // 检查是否有错误信息
+                                            if (parsed.error) {
+                                                logger.error('API error in stream: %s', JSON.stringify(parsed.error));
+                                                streamFinished = true;
+                                                const error = new Error(parsed.error.message || JSON.stringify(parsed.error));
+                                                callback(error, undefined);
+                                                if (streamReject) {
+                                                    streamReject(error);
+                                                } else {
+                                                    reject(error);
+                                                }
+                                                return;
+                                            }
+                                            
                                             const choice = parsed.choices?.[0];
                                             const delta = choice?.delta;
                                             
@@ -244,19 +415,33 @@ export async function apply(ctx: EjunzContext) {
                                 
                                 res.on('end', () => {
                                     streamFinished = true;
-                                    logger.info('Stream ended: finish_reason=%s, accumulatedContent length=%d, toolCalls length=%d, content preview=%s', 
+                                    logger.info('Stream ended: status=%d, finish_reason=%s, accumulatedContent length=%d, toolCalls length=%d, content preview=%s', 
+                                        responseStatus,
                                         finishReason, 
                                         accumulatedContent.length,
                                         toolCalls.length,
                                         accumulatedContent.substring(0, 100));
-                                    callback(null, undefined);
-                                    if (streamResolve) {
-                                        streamResolve();
+                                    
+                                    // 只有在状态码 >= 400 且没有接收到任何有效数据时才报错
+                                    if (responseStatus >= 400 && accumulatedContent.length === 0 && toolCalls.length === 0 && !finishReason) {
+                                        const error = new Error(`API request failed with status ${responseStatus}`);
+                                        callback(error, undefined);
+                                        if (streamReject) {
+                                            streamReject(error);
+                                        } else {
+                                            reject(error);
+                                        }
+                                    } else {
+                                        callback(null, undefined);
+                                        if (streamResolve) {
+                                            streamResolve();
+                                        }
                                     }
                                 });
                                 
                                 res.on('error', (err) => {
                                     streamFinished = true;
+                                    logger.error('Stream error: %s', err.message || String(err));
                                     if (streamReject) {
                                         streamReject(err);
                                     } else {
@@ -265,14 +450,30 @@ export async function apply(ctx: EjunzContext) {
                                 });
                             });
                         
+                        req.on('error', (err: any) => {
+                            streamFinished = true;
+                            logger.error('Request error: %s', err.message || String(err));
+                            if (streamReject) {
+                                streamReject(err);
+                            } else {
+                                reject(err);
+                            }
+                        });
+                        
                         req.end((err, res) => {
-                            if (err) {
+                            // req.end() 只处理网络层面的错误，HTTP 状态码错误在 res.on('end') 中处理
+                            if (err && !streamFinished) {
+                                // 只有在流还没有结束时才处理错误
+                                // 如果流已经结束，说明数据已经处理完成，不需要再报错
+                                streamFinished = true;
+                                logger.error('Request network error: %s', err.message || String(err));
                                 if (streamReject) {
                                     streamReject(err);
                                 } else {
                                     reject(err);
                                 }
                             }
+                            // 注意：HTTP 状态码错误（如 400）会在 res.on('end') 中处理
                         });
                     });
                     
@@ -404,26 +605,43 @@ export async function apply(ctx: EjunzContext) {
                             break;
                         }
                         
+                        // 构建工具调用后的消息，确保格式正确
+                        const assistantMsg = {
+                            role: 'assistant',
+                            content: accumulatedContent || null,
+                            tool_calls: [{
+                                id: toolCall.id,
+                                type: 'function',
+                                function: {
+                                    name: toolCall.function.name,
+                                    arguments: toolCall.function.arguments,
+                                },
+                            }],
+                        };
+                        
+                        const toolMsg = {
+                            role: 'tool',
+                            content: JSON.stringify(toolResult),
+                            tool_call_id: toolCall.id,
+                        };
+                        
                         messagesForTurn = [
                             ...messagesForTurn,
-                            {
-                                role: 'assistant',
-                                content: accumulatedContent,
-                                tool_calls: [toolCall],
-                            },
-                            {
-                                role: 'tool',
-                                content: JSON.stringify(toolResult),
-                                tool_call_id: toolCall.id,
-                            },
+                            assistantMsg,
+                            toolMsg,
                         ];
                         
                         messagesForTurn = truncateMessages(messagesForTurn);
                         
+                        // 规范化消息格式
+                        const normalizedMessagesForTurn = normalizeMessages(messagesForTurn);
+                        
                         requestBody.messages = [
                             { role: 'system', content: context.systemMessage },
-                            ...messagesForTurn,
+                            ...normalizedMessagesForTurn,
                         ];
+                        
+                        logger.debug('Next iteration request: messages count=%d', requestBody.messages.length);
                         
                         accumulatedContent = '';
                     } else {
