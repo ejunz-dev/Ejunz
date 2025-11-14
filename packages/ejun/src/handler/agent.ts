@@ -33,6 +33,7 @@ import { RepoModel } from '../model/repo';
 import NodeModel from '../model/node';
 import { callToolViaWorker } from './worker';
 import record from '../model/record';
+import { RecordDoc } from '../interface';
 
 const AgentLogger = new Logger('agent');
 export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
@@ -1550,14 +1551,13 @@ export class AgentChatHandler extends Handler {
             chatHistory = [];
         }
         
-        // 创建任务记录（如果是新任务）
+        // 创建任务记录（每次发送消息都创建新的任务记录）
         let taskRecordId: ObjectId | undefined;
         AgentLogger.info('POST chat: checking task creation', { 
             createTaskRecord, 
             chatHistoryLength: chatHistory?.length || 0,
-            shouldCreate: createTaskRecord && (!chatHistory || chatHistory.length === 0)
         });
-        if (createTaskRecord && (!chatHistory || chatHistory.length === 0)) {
+        if (createTaskRecord) {
             AgentLogger.info('POST chat: creating task record');
             taskRecordId = await record.addTask(
                 domainId,
@@ -2689,6 +2689,259 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
         }
     }
 
+}
+
+export class AgentChatSessionConnectionHandler extends ConnectionHandler {
+    private subscribedRids: Set<string> = new Set();
+    private subscriptions: Array<{ dispose: () => void; rid: string }> = [];
+    private domainId: string = '';
+    private aid: string = '';
+    adoc?: AgentDoc;
+
+    @param('aid', Types.String, true)
+    @param('domainId', Types.String, true)
+    async prepare(domainId?: string, aid?: string) {
+        try {
+            const queryDomainId = this.request.query.domainId as string || domainId;
+            const queryAid = this.request.query.aid as string || aid;
+            
+            const finalDomainId = queryDomainId || this.args.domainId;
+            const finalAid = queryAid;
+            
+            if (!finalAid) {
+                this.close(4000, 'Agent ID is required');
+                return;
+            }
+            
+            if (!finalDomainId) {
+                this.close(4000, 'Domain ID is required');
+                return;
+            }
+            
+            this.domainId = finalDomainId;
+            this.aid = finalAid;
+            
+            const adoc = await Agent.get(finalDomainId, finalAid);
+            if (!adoc) {
+                this.close(4000, 'Agent not found');
+                return;
+            }
+            
+            this.adoc = adoc;
+            
+            AgentLogger.info('Agent chat session connected', { domainId: finalDomainId, aid: finalAid, userId: this.user._id });
+            
+            this.send({ type: 'session_connected', domainId: finalDomainId, aid: finalAid });
+        } catch (error: any) {
+            AgentLogger.error('Agent chat session prepare error:', error);
+            try {
+                this.close(4000, error.message || String(error));
+            } catch (e) {
+                // ignore
+            }
+        }
+    }
+
+    async message(msg: any) {
+        try {
+            if (!msg || typeof msg !== 'object') {
+                AgentLogger.warn('Invalid message format:', msg);
+                this.send({ type: 'error', error: 'Invalid message format' });
+                return;
+            }
+            
+            if (msg.type === 'subscribe_record' && msg.rid) {
+                await this.subscribeRecord(msg.rid);
+            } else if (msg.type === 'unsubscribe_record' && msg.rid) {
+                this.unsubscribeRecord(msg.rid);
+            } else {
+                AgentLogger.warn('Unknown message type:', msg.type);
+                this.send({ type: 'error', error: `Unknown message type: ${msg.type}` });
+            }
+        } catch (error: any) {
+            AgentLogger.error('Agent chat session message error:', error);
+            AgentLogger.error('Error stack:', error.stack);
+            this.send({ type: 'error', error: error.message || String(error) });
+        }
+    }
+
+    private async subscribeRecord(rid: string) {
+        if (this.subscribedRids.has(rid)) {
+            AgentLogger.debug('Record already subscribed:', { rid });
+            return;
+        }
+        
+        try {
+            if (!this.domainId || !this.aid) {
+                AgentLogger.error('Session not properly initialized', { domainId: this.domainId, aid: this.aid });
+                this.send({ type: 'error', error: 'Session not properly initialized' });
+                return;
+            }
+            
+            AgentLogger.debug('Subscribing to record', { rid, domainId: this.domainId, aid: this.aid });
+            
+            const rdoc = await record.get(this.domainId, new ObjectId(rid));
+            if (!rdoc) {
+                AgentLogger.warn('Record not found', { rid, domainId: this.domainId });
+                this.send({ type: 'error', error: `Record not found: ${rid}` });
+                return;
+            }
+            
+            const r = rdoc as any;
+            if (!r.agentId || r.agentId !== this.aid) {
+                AgentLogger.warn('Record does not belong to agent', { rid, recordAgentId: r.agentId, sessionAid: this.aid });
+                this.send({ type: 'error', error: `Record does not belong to this agent: ${rid}` });
+                return;
+            }
+            
+            if (r.uid !== this.user._id) {
+                this.checkPerm(PERM.PERM_VIEW_RECORD);
+            }
+            
+            this.subscribedRids.add(rid);
+            const [adoc, udoc] = await Promise.all([
+                this.aid ? Agent.get(this.domainId, this.aid).catch(() => null) : Promise.resolve(null),
+                user.getById(this.domainId, r.uid),
+            ]);
+            
+            // 手动构建 record 对象，只包含需要的字段，避免序列化问题
+            const recordData: any = {
+                _id: r._id?.toString(),
+                domainId: r.domainId,
+                uid: r.uid,
+                pid: r.pid,
+                status: r.status,
+                score: r.score,
+                time: r.time,
+                memory: r.memory,
+                lang: r.lang,
+                code: r.code,
+                agentId: r.agentId,
+                agentMessages: r.agentMessages || [],
+                agentToolCallCount: r.agentToolCallCount,
+                createdAt: r.createdAt,
+                updatedAt: r.updatedAt,
+            };
+            
+            AgentLogger.debug('Sending initial record update', { 
+                rid, 
+                recordKeys: Object.keys(recordData),
+                agentMessagesCount: (recordData.agentMessages || []).length 
+            });
+            
+            this.send({
+                type: 'record_update',
+                rid,
+                record: recordData,
+                adoc,
+                udoc,
+            });
+            
+            const dispose = this.ctx.on('record/change' as any, async (rdoc: any) => {
+                const r = rdoc as any;
+                AgentLogger.debug('Record change event received in session', {
+                    rid: r._id?.toString(),
+                    subscribedRid: rid,
+                    agentId: r.agentId,
+                    sessionAid: this.aid,
+                    matches: r._id?.toString() === rid && r.agentId === this.aid,
+                });
+                
+                if (r._id.toString() === rid && r.agentId === this.aid) {
+                    // 重新从数据库获取完整的 record，确保所有字段都存在
+                    try {
+                        const fullRecord = await record.get(this.domainId, new ObjectId(rid));
+                        if (!fullRecord) {
+                            AgentLogger.warn('Record not found when sending update', { rid });
+                            return;
+                        }
+                        
+                        // 手动构建 record 对象，只包含需要的字段，避免序列化问题
+                        const r = fullRecord as any;
+                        const recordData: any = {
+                            _id: r._id?.toString(),
+                            domainId: r.domainId,
+                            uid: r.uid,
+                            pid: r.pid,
+                            status: r.status,
+                            score: r.score,
+                            time: r.time,
+                            memory: r.memory,
+                            lang: r.lang,
+                            code: r.code,
+                            agentId: r.agentId,
+                            agentMessages: r.agentMessages || [],
+                            agentToolCallCount: r.agentToolCallCount,
+                            createdAt: r.createdAt,
+                            updatedAt: r.updatedAt,
+                        };
+                        
+                        AgentLogger.debug('Sending record update to client', { 
+                            rid, 
+                            recordKeys: Object.keys(recordData),
+                            agentMessagesCount: (recordData.agentMessages || []).length 
+                        });
+                        
+                        const [adoc, udoc] = await Promise.all([
+                            this.aid ? Agent.get(this.domainId, this.aid).catch(() => null) : Promise.resolve(null),
+                            user.getById(this.domainId, r.uid),
+                        ]);
+                        
+                        this.send({
+                            type: 'record_update',
+                            rid,
+                            record: recordData,
+                            adoc,
+                            udoc,
+                        });
+                        AgentLogger.debug('Record update sent to client', { rid });
+                    } catch (error: any) {
+                        AgentLogger.error('Error sending record update:', error);
+                    }
+                }
+            });
+            
+            this.subscriptions.push({ dispose, rid });
+            
+            AgentLogger.debug('Subscribed to record', { rid, domainId: this.domainId, aid: this.aid });
+        } catch (error: any) {
+            AgentLogger.error('Error subscribing to record:', error);
+            this.send({ type: 'error', error: error.message || String(error) });
+        }
+    }
+
+    private unsubscribeRecord(rid: string) {
+        if (!this.subscribedRids.has(rid)) {
+            return;
+        }
+        
+        this.subscribedRids.delete(rid);
+        
+        const subscription = this.subscriptions.find((sub) => sub.rid === rid);
+        
+        if (subscription) {
+            subscription.dispose();
+            const index = this.subscriptions.indexOf(subscription);
+            if (index > -1) {
+                this.subscriptions.splice(index, 1);
+            }
+        }
+        
+        AgentLogger.debug('Unsubscribed from record', { rid });
+    }
+
+    async cleanup() {
+        for (const subscription of this.subscriptions) {
+            try {
+                subscription.dispose();
+            } catch (e) {
+                // ignore
+            }
+        }
+        this.subscriptions = [];
+        this.subscribedRids.clear();
+        AgentLogger.info('Agent chat session cleaned up', { domainId: this.domainId, aid: this.aid });
+    }
 }
 
 export class AgentStreamConnectionHandler extends ConnectionHandler {
@@ -4398,6 +4651,7 @@ export async function apply(ctx: Context) {
     ctx.Route('agent_detail', '/agent/:aid', AgentDetailHandler);
     ctx.Route('agent_chat', '/agent/:aid/chat', AgentChatHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Connection('agent_chat_conn', '/agent-chat-conn', AgentChatConnectionHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Connection('agent_chat_session', '/agent-chat-session', AgentChatSessionConnectionHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_edit', '/agent/:aid/edit', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_mcp_status', '/agent/:aid/mcp-tools/status', AgentMcpStatusHandler);
     ctx.Route('agent_api', '/api/agent', AgentApiHandler);
