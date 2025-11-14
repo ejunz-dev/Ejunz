@@ -1,0 +1,72 @@
+{% import "components/record.html" as record_component with context %}
+{% import "components/user.html" as user with context %}
+{% import "components/agent.html" as agent with context %}
+<tr data-sid="{{ session._id.toString() }}">
+  <td class="col--status session-status--border session-status--{{ session.status }}">
+    <div class="col--status__text">
+      <span class="icon session-status--icon session-status--icon-{{ session.status }}"></span>
+      <a 
+        href="{{ url('session_detail', domainId=session.domainId, sid=session._id) }}"
+        class="session-status--text session-status--{{ session.status }}"
+      >
+        {% if session.status == 'working' %}
+          {{ _('Working') }}
+        {% elif session.status == 'active' %}
+          {{ _('Active') }}
+        {% else %}
+          {{ _('Detached') }}
+        {% endif %}
+      </a>
+    </div>
+  </td>
+  <td class="col--agent">
+    {% if adoc %}
+      <a href="{{ url('agent_detail', domainId=session.domainId, aid=adoc.aid) }}">{{ adoc.title or adoc.aid }}</a>
+    {% elif session.agentId %}
+      <a href="{{ url('agent_detail', domainId=session.domainId, aid=session.agentId) }}">{{ session.agentId }}</a>
+    {% else %}
+      <span class="text-gray">-</span>
+    {% endif %}
+  </td>
+  <td class="col--user">
+    {% if udoc %}
+      {{ user.render_inline(udoc, avatar=false, badge=false) }}
+    {% else %}
+      <span class="text-gray">-</span>
+    {% endif %}
+  </td>
+  <td class="col--records">
+    <div class="session-records-blocks">
+      {% if session.records %}
+        {% for record in session.records %}
+          {% set record_score = record.score|default(0) if record.score is defined else 0 %}
+          {% set record_status_code = model.builtin.STATUS_CODES[record.status] if record.status is defined else 'pending' %}
+          {% if record_score > 0 %}
+            {% set record_color = utils.status.getScoreColor(record_score) %}
+          {% else %}
+            {% if record_status_code == 'pass' %}
+              {% set record_color = '#25ad40' %}
+            {% elif record_status_code == 'fail' %}
+              {% set record_color = '#fb5555' %}
+            {% elif record_status_code == 'progress' %}
+              {% set record_color = '#f39800' %}
+            {% else %}
+              {% set record_color = '#9fa0a0' %}
+            {% endif %}
+          {% endif %}
+          <a 
+            href="{{ url('record_detail', domainId=session.domainId, rid=record._id) }}"
+            class="session-record-block"
+            style="background-color: {{ record_color }}"
+            title="Record {{ record._id.toString().substring(0, 8) }} - Score: {{ record_score }} - Status: {{ model.builtin.STATUS_TEXTS[record.status] if record.status is defined else 'Unknown' }}"
+          ></a>
+        {% endfor %}
+      {% endif %}
+    </div>
+  </td>
+  <td class="col--submit-at">
+    <a href="{{ url('session_detail', domainId=session.domainId, sid=session._id) }}">
+      {{ datetimeSpan(session['_id'])|safe }}
+    </a>
+  </td>
+</tr>

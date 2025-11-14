@@ -33,6 +33,8 @@ import { RepoModel } from '../model/repo';
 import NodeModel from '../model/node';
 import { callToolViaWorker } from './worker';
 import record from '../model/record';
+import SessionModel from '../model/session';
+import { SessionConnectionTracker } from './session';
 import { RecordDoc } from '../interface';
 
 const AgentLogger = new Logger('agent');
@@ -1328,8 +1330,9 @@ export class AgentChatHandler extends Handler {
     }
 
     @param('aid', Types.String)
-    @param('recordId', Types.ObjectId, true)
-    async get(domainId: string, aid: string, recordId?: ObjectId) {
+    @query('new', Types.Boolean, true)
+    @query('sid', Types.ObjectId, true)
+    async get(domainId: string, aid: string, newChat?: boolean, sid?: ObjectId) {
         await this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
         const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
@@ -1340,31 +1343,83 @@ export class AgentChatHandler extends Handler {
 
         const udoc = await user.getById(domainId, adoc.owner);
         
-        // 如果提供了 recordId，加载该记录的历史记录
+        // 如果不是新建聊天且没有指定 session，显示 session 列表
+        if (!newChat && !sid) {
+            // 获取该 agent 下的所有 session
+            const sessions = await SessionModel.getMulti(domainId, {
+                agentId: adoc.aid || adoc.docId?.toString() || adoc.aid,
+                uid: this.user._id,
+            }, {
+                sort: { _id: -1 },
+                limit: 50,
+            }).toArray();
+            
+            // 获取每个 session 的 record 信息
+            const recordIds = sessions.flatMap(s => s.recordIds || []);
+            const records = recordIds.length > 0 
+                ? await record.getList(domainId, recordIds)
+                : {};
+            
+            // 为每个 session 添加 record 详情
+            const sessionsWithRecords = sessions.map(s => ({
+                ...s,
+                records: (s.recordIds || []).map(rid => records[rid.toString()]).filter(Boolean),
+                lastRecord: (s.recordIds || []).length > 0 
+                    ? records[(s.recordIds || [])[s.recordIds.length - 1].toString()]
+                    : null,
+            }));
+            
+            // 读取域的配置（用于显示 API Key 警告等）
+            const apiKey = (this.domain as any)['apiKey'] || '';
+            const aiModel = (this.domain as any)['model'] || 'deepseek-chat';
+            const apiUrl = (this.domain as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
+            
+            this.response.template = 'agent_chat.html';
+            this.response.body = {
+                domainId,
+                aid: adoc.aid,
+                adoc,
+                udoc,
+                mode: 'list', // 列表模式
+                sessions: sessionsWithRecords,
+                apiKey,
+                aiModel,
+                apiUrl,
+            };
+            return;
+        }
+        
+        // 聊天模式：新建或指定 session
+        let currentSessionId: ObjectId | undefined = sid;
         let recordHistory: any[] = [];
-        if (recordId) {
-            try {
-                const rdoc = await record.get(domainId, recordId);
-                if (rdoc) {
-                    const r = rdoc as any;
-                    if (r.agentId) {
-                        // 验证权限
-                        if (r.uid !== this.user._id) {
-                            this.checkPerm(PERM.PERM_VIEW_RECORD);
+        
+        if (sid) {
+            // 加载指定 session 的信息
+            const sdoc = await SessionModel.get(domainId, sid);
+            if (sdoc && sdoc.agentId === (adoc.aid || adoc.docId?.toString() || adoc.aid) && sdoc.uid === this.user._id) {
+                // 获取 session 中最后一个 record 的历史记录
+                if (sdoc.recordIds && sdoc.recordIds.length > 0) {
+                    const lastRecordId = sdoc.recordIds[sdoc.recordIds.length - 1];
+                    try {
+                        const rdoc = await record.get(domainId, lastRecordId);
+                        if (rdoc) {
+                            const r = rdoc as any;
+                            if (r.agentMessages && Array.isArray(r.agentMessages)) {
+                                recordHistory = r.agentMessages
+                                    .filter((msg: any) => msg.role === 'user' || msg.role === 'assistant')
+                                    .map((msg: any) => ({
+                                        role: msg.role,
+                                        content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
+                                    }));
+                            }
                         }
-                        // 提取历史记录
-                        if (r.agentMessages && Array.isArray(r.agentMessages)) {
-                            recordHistory = r.agentMessages
-                                .filter((msg: any) => msg.role === 'user' || msg.role === 'assistant')
-                                .map((msg: any) => ({
-                                    role: msg.role,
-                                    content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
-                                }));
-                        }
+                    } catch (error: any) {
+                        AgentLogger.warn('Failed to load session record history:', error.message);
                     }
                 }
-            } catch (error: any) {
-                AgentLogger.warn('Failed to load record history:', error.message);
+            } else {
+                // Session 无效，重置为新建模式
+                currentSessionId = undefined;
             }
         }
 
@@ -1504,6 +1559,9 @@ export class AgentChatHandler extends Handler {
             nodeServers,
             repoServers,
             mcpStatusWsUrl,
+            mode: 'chat', // 聊天模式
+            sessionId: currentSessionId?.toString(),
+            recordHistory,
         };
     }
 
@@ -1551,6 +1609,40 @@ export class AgentChatHandler extends Handler {
             chatHistory = [];
         }
         
+        // 获取或创建 session
+        let sessionId: ObjectId | undefined;
+        const sessionIdParam = this.request.body?.sessionId;
+        if (sessionIdParam) {
+            // 使用现有 session
+            try {
+                sessionId = new ObjectId(sessionIdParam);
+                const sdoc = await SessionModel.get(domainId, sessionId);
+                if (!sdoc || sdoc.agentId !== (adoc.aid || adoc.docId?.toString() || adoc.aid) || sdoc.uid !== this.user._id) {
+                    AgentLogger.warn('Invalid session ID or session does not belong to user/agent', { sessionId: sessionIdParam });
+                    sessionId = undefined; // 如果 session 无效，创建新的
+                }
+            } catch (e) {
+                AgentLogger.warn('Invalid session ID format', { sessionId: sessionIdParam, error: e });
+                sessionId = undefined;
+            }
+        }
+        
+        // 如果没有有效的 session，创建新 session
+        if (!sessionId) {
+            sessionId = await SessionModel.add(
+                domainId,
+                adoc.aid || adoc.docId?.toString() || adoc.aid,
+                this.user._id,
+                undefined, // title 可以后续更新
+                undefined, // context 会在创建 task 时设置
+            );
+            AgentLogger.info('Created new session', { sessionId: sessionId.toString(), domainId, agentId: adoc.aid });
+        }
+        
+        // 获取 session 的 context（如果有）
+        const sdoc = await SessionModel.get(domainId, sessionId);
+        let sessionContext = sdoc?.context || {};
+        
         // 创建任务记录（每次发送消息都创建新的任务记录）
         let taskRecordId: ObjectId | undefined;
         AgentLogger.info('POST chat: checking task creation', { 
@@ -1564,8 +1656,13 @@ export class AgentChatHandler extends Handler {
                 adoc.aid || adoc.docId.toString(),
                 this.user._id,
                 message,
+                sessionId, // 关联到 session
             );
-            AgentLogger.info('POST chat: task record created', { taskRecordId: taskRecordId?.toString() });
+            
+            // 将 record 添加到 session
+            await SessionModel.addRecord(domainId, sessionId, taskRecordId);
+            
+            AgentLogger.info('POST chat: task record created', { taskRecordId: taskRecordId?.toString(), sessionId: sessionId.toString() });
             
             // 收集完整的上下文信息，供 worker 使用
             const domainInfo = await domain.get(domainId);
@@ -1603,40 +1700,50 @@ export class AgentChatHandler extends Handler {
                 systemMessage = systemMessage + toolsInfo;
             }
             
+            // 合并 session context 和当前 context
+            const context = {
+                ...sessionContext, // 先使用 session 的 context
+                // Domain 配置
+                apiKey: (domainInfo as any)['apiKey'] || '',
+                model: (domainInfo as any)['model'] || 'deepseek-chat',
+                apiUrl: (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions',
+                // Agent 信息
+                agentContent: adoc.content || '',
+                agentMemory: adoc.memory || '',
+                // 工具列表（序列化）
+                tools: tools.map(tool => ({
+                    name: tool.name,
+                    description: tool.description,
+                    inputSchema: tool.inputSchema,
+                })),
+                // 系统消息（已构建完整）
+                systemMessage,
+            };
+            
+            // 更新 session 的 context（保存最新的上下文信息）
+            await SessionModel.update(domainId, sessionId, {
+                context,
+            });
+            
             // 创建 task 任务，包含完整的上下文信息
             const taskModel = require('../model/task').default;
             await taskModel.add({
                 type: 'task',
                 recordId: taskRecordId,
+                sessionId, // 关联到 session
                 domainId,
                 agentId: adoc.aid || adoc.docId.toString(),
                 uid: this.user._id,
                 message,
                 history: JSON.stringify(chatHistory),
-                // 完整的上下文信息
-                context: {
-                    // Domain 配置
-                    apiKey: (domainInfo as any)['apiKey'] || '',
-                    model: (domainInfo as any)['model'] || 'deepseek-chat',
-                    apiUrl: (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions',
-                    // Agent 信息
-                    agentContent: adoc.content || '',
-                    agentMemory: adoc.memory || '',
-                    // 工具列表（序列化）
-                    tools: tools.map(tool => ({
-                        name: tool.name,
-                        description: tool.description,
-                        inputSchema: tool.inputSchema,
-                    })),
-                    // 系统消息（已构建完整）
-                    systemMessage,
-                },
+                context,
                 priority: 0,
             });
             
             // 任务已创建，返回任务 ID，由 worker 处理
             const responseBody = {
                 taskRecordId: taskRecordId.toString(),
+                sessionId: sessionId.toString(),
                 message: 'Task created, processing by worker',
             };
             AgentLogger.info('POST chat: returning taskRecordId', responseBody);
@@ -2115,6 +2222,7 @@ export class AgentChatHandler extends Handler {
 
 export class AgentChatConnectionHandler extends ConnectionHandler {
     adoc?: AgentDoc;
+    private currentSessionId?: ObjectId;
 
     @param('aid', Types.String, true)
     @param('domainId', Types.String, true)
@@ -2240,6 +2348,44 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
             // ignore parse error
         }
         
+        // 获取或创建 session
+        let sessionId: ObjectId | undefined;
+        const sessionIdParam = (msg as any)?.sessionId;
+        if (sessionIdParam) {
+            // 使用现有 session
+            try {
+                sessionId = new ObjectId(sessionIdParam);
+                const sdoc = await SessionModel.get(domainId, sessionId);
+                if (!sdoc || sdoc.agentId !== (this.adoc.aid || this.adoc.docId?.toString() || this.adoc.aid) || sdoc.uid !== this.user._id) {
+                    AgentLogger.warn('Invalid session ID or session does not belong to user/agent', { sessionId: sessionIdParam });
+                    sessionId = undefined; // 如果 session 无效，创建新的
+                }
+            } catch (e) {
+                AgentLogger.warn('Invalid session ID format', { sessionId: sessionIdParam, error: e });
+                sessionId = undefined;
+            }
+        }
+        
+        // 如果没有有效的 session，创建新 session
+        if (!sessionId) {
+            sessionId = await SessionModel.add(
+                domainId,
+                this.adoc.aid || this.adoc.docId?.toString() || this.adoc.aid,
+                this.user._id,
+                undefined, // title 可以后续更新
+                undefined, // context 会在创建 task 时设置
+            );
+            AgentLogger.info('Created new session', { sessionId: sessionId.toString(), domainId, agentId: this.adoc.aid });
+        }
+        
+        // 跟踪 session 连接
+        this.currentSessionId = sessionId;
+        SessionConnectionTracker.add(sessionId.toString(), this);
+        
+        // 获取 session 的 context（如果有）
+        const sdoc = await SessionModel.get(domainId, sessionId);
+        let sessionContext = sdoc?.context || {};
+        
         // 创建任务记录（如果是新任务）
         let taskRecordId: ObjectId | undefined;
         let toolCallCount = 0;
@@ -2249,7 +2395,11 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
                 this.adoc.aid || this.adoc.docId?.toString() || this.adoc.aid,
                 this.user._id,
                 message,
+                sessionId, // 关联到 session
             );
+            
+            // 将 record 添加到 session
+            await SessionModel.addRecord(domainId, sessionId, taskRecordId);
             
             // 收集完整的上下文信息，供 worker 使用
             const domainInfo = await domain.get(domainId);
@@ -2287,34 +2437,43 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
                 systemMessage = systemMessage + toolsInfo;
             }
             
+            // 合并 session context 和当前 context
+            const context = {
+                ...sessionContext, // 先使用 session 的 context
+                // Domain 配置
+                apiKey: (domainInfo as any)['apiKey'] || '',
+                model: (domainInfo as any)['model'] || 'deepseek-chat',
+                apiUrl: (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions',
+                // Agent 信息
+                agentContent: this.adoc.content || '',
+                agentMemory: this.adoc.memory || '',
+                // 工具列表（序列化）
+                tools: tools.map(tool => ({
+                    name: tool.name,
+                    description: tool.description,
+                    inputSchema: tool.inputSchema,
+                })),
+                // 系统消息（已构建完整）
+                systemMessage,
+            };
+            
+            // 更新 session 的 context（保存最新的上下文信息）
+            await SessionModel.update(domainId, sessionId, {
+                context,
+            });
+            
             // 创建 task 任务，包含完整的上下文信息
             const taskModel = require('../model/task').default;
             await taskModel.add({
                 type: 'task',
                 recordId: taskRecordId,
+                sessionId, // 关联到 session
                 domainId,
                 agentId: this.adoc.aid || this.adoc.docId?.toString() || this.adoc.aid,
                 uid: this.user._id,
                 message,
                 history: JSON.stringify(chatHistory),
-                // 完整的上下文信息
-                context: {
-                    // Domain 配置
-                    apiKey: (domainInfo as any)['apiKey'] || '',
-                    model: (domainInfo as any)['model'] || 'deepseek-chat',
-                    apiUrl: (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions',
-                    // Agent 信息
-                    agentContent: this.adoc.content || '',
-                    agentMemory: this.adoc.memory || '',
-                    // 工具列表（序列化）
-                    tools: tools.map(tool => ({
-                        name: tool.name,
-                        description: tool.description,
-                        inputSchema: tool.inputSchema,
-                    })),
-                    // 系统消息（已构建完整）
-                    systemMessage,
-                },
+                context,
                 priority: 0,
             });
             
@@ -2324,6 +2483,7 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
             this.send({
                 type: 'task_created',
                 taskRecordId: taskRecordId.toString(),
+                sessionId: sessionId.toString(),
                 recordDetailConnUrl,
                 message: 'Task created, worker will process it',
             });
@@ -2686,6 +2846,13 @@ export class AgentChatConnectionHandler extends ConnectionHandler {
         } catch (error: any) {
             AgentLogger.error('AI Chat Error (WS):', error);
             this.send({ type: 'error', error: JSON.stringify(error.response?.body || error.message) });
+        }
+    }
+
+    async cleanup() {
+        if (this.currentSessionId) {
+            SessionConnectionTracker.remove(this.currentSessionId.toString(), this);
+            this.currentSessionId = undefined;
         }
     }
 
@@ -4642,8 +4809,6 @@ export class AgentEditHandler extends Handler {
     
 
 }
-
-
 
 export async function apply(ctx: Context) {
     ctx.Route('agent_domain', '/agent', AgentMainHandler);
