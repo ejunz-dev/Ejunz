@@ -193,23 +193,19 @@ class RecordMainConnectionHandler extends ConnectionHandler {
     @param('all', Types.Boolean)
     @param('allDomain', Types.Boolean)
     @param('noTemplate', Types.Boolean, true)
-    @param('domainId', Types.String, true)
     async prepare(
         domainId: string, uidOrName?: string,
         status?: string, aid?: string,
         pretest = false, all = false, allDomain = false, noTemplate = false,
     ) {
         try {
-            // 从查询参数获取 domainId（如果路径参数没有提供）
-            const queryDomainId = this.request.query.domainId as string || domainId || this.args.domainId;
-            const finalDomainId = queryDomainId;
+            const finalDomainId = domainId || this.request.query.domainId as string || this.args.domainId;
             
             if (!finalDomainId) {
                 this.close(4000, 'Domain ID is required');
                 return;
             }
             
-            // 确保 this.args.domainId 被设置
             this.args.domainId = finalDomainId;
             
             if (pretest) {
@@ -224,13 +220,14 @@ class RecordMainConnectionHandler extends ConnectionHandler {
                     else {
                         this.close(4000, `User not found: ${uidOrName}`);
                         return;
+                    }
+                }
             }
+            
+            if (this.uid && this.uid !== this.user._id) {
+                this.checkPerm(PERM.PERM_VIEW_RECORD);
             }
-        }
             
-        if (this.uid !== this.user._id) this.checkPerm(PERM.PERM_VIEW_RECORD);
-            
-            // 支持字符串状态过滤（waiting, fetched, working, pending, delivered, 以及各种error）
             if (status) {
                 const statusMap: Record<string, number> = {
                     'waiting': STATUS.STATUS_TASK_WAITING,
@@ -245,7 +242,6 @@ class RecordMainConnectionHandler extends ConnectionHandler {
                     'error-timeout': STATUS.STATUS_TASK_ERROR_TIMEOUT,
                     'error-system': STATUS.STATUS_TASK_ERROR_SYSTEM,
                     'error-unknown': STATUS.STATUS_TASK_ERROR_UNKNOWN,
-                    // 向后兼容
                     'working': STATUS.STATUS_TASK_PROCESSING,
                     'running': STATUS.STATUS_TASK_PROCESSING,
                     'completed': STATUS.STATUS_TASK_DELIVERED,
@@ -256,7 +252,6 @@ class RecordMainConnectionHandler extends ConnectionHandler {
                 }
             }
             
-            // 支持按 agent ID 过滤
             if (aid) {
                 const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
                 try {
@@ -278,10 +273,9 @@ class RecordMainConnectionHandler extends ConnectionHandler {
                 this.checkPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN);
             this.allDomain = true;
         }
-        this.noTemplate = noTemplate;
-        this.throttleQueueClear = throttle(this.queueClear, 100, { trailing: true });
+            this.noTemplate = noTemplate;
+            this.throttleQueueClear = throttle(this.queueClear, 100, { trailing: true });
         } catch (error: any) {
-            console.error('[RecordMainConnectionHandler] Error in prepare:', error);
             try {
                 this.close(4000, error.message || String(error));
             } catch (e) {
@@ -293,11 +287,7 @@ class RecordMainConnectionHandler extends ConnectionHandler {
     async message(msg: { rids: string[] }) {
         if (!(msg.rids instanceof Array)) return;
         const rids = msg.rids.map((id) => new ObjectId(id));
-        // 只查询 task 记录（通过 agentId 存在来识别）
-        const rdocs = await record.getMulti(this.args.domainId, { 
-            _id: { $in: rids },
-            agentId: { $exists: true, $ne: null },
-        })
+        const rdocs = await record.getMulti(this.args.domainId, { _id: { $in: rids } })
             .project<RecordDoc>(buildProjection(record.PROJECTION_LIST)).toArray();
         for (const rdoc of rdocs) this.onRecordChange(rdoc);
     }
@@ -313,17 +303,12 @@ class RecordMainConnectionHandler extends ConnectionHandler {
             if (r.domainId !== this.args.domainId) return;
         }
         
-        // 移除 pid 和 tid 检查（评测功能已移除）
-        // if (typeof this.pid === 'number' && r.pid !== this.pid) return;
         if (typeof this.uid === 'number' && r.uid !== this.uid) return;
         if (this.status && r.status !== this.status) return;
-
-        // 按 agent ID 过滤
         if (this.aid && r.agentId !== this.aid) return;
 
         const udoc = await user.getById(this.args.domainId, r.uid);
         
-        // 加载 agent 信息
         let adoc = null;
         if (r.agentId) {
             try {
@@ -338,7 +323,6 @@ class RecordMainConnectionHandler extends ConnectionHandler {
         } else if (this.noTemplate) {
             this.queueSend(r._id.toHexString(), async () => ({ rdoc }));
         } else {
-            // 使用 task_record_main_tr.html 模板
             this.queueSend(r._id.toHexString(), async () => ({
                 html: await this.renderHTML('task_record_main_tr.html', {
                     rdoc, udoc, adoc, r, allDomain: this.allDomain,
@@ -354,6 +338,10 @@ class RecordMainConnectionHandler extends ConnectionHandler {
 
     async queueClear() {
         await Promise.all([...this.queue.values()].map(async (fn) => this.send(await fn())));
+        this.queue.clear();
+    }
+
+    async cleanup() {
         this.queue.clear();
     }
 }
@@ -539,6 +527,8 @@ class TaskRecordMainConnectionHandler extends ConnectionHandler {
     uid?: number;
     status?: string;
     noTemplate = false;
+    queue: Map<string, () => Promise<any>> = new Map();
+    throttleQueueClear: () => void;
 
     @param('aid', Types.String, true)
     @param('uidOrName', Types.UidOrName, true)
@@ -553,33 +543,16 @@ class TaskRecordMainConnectionHandler extends ConnectionHandler {
         noTemplate = false,
     ) {
         try {
-            console.log('[TaskRecordMainConnectionHandler] prepare called', {
-                domainId,
-                aid,
-                uidOrName,
-                status,
-                noTemplate,
-                queryDomainId: this.request.query.domainId,
-                queryAid: this.request.query.aid,
-                queryUidOrName: this.request.query.uidOrName,
-                argsDomainId: this.args.domainId,
-                requestPath: this.request.path,
-                requestQuery: this.request.query,
-            });
-            
-            // 从查询参数获取 domainId（类似 agent-chat-conn 的方式）
             const queryDomainId = this.request.query.domainId as string || domainId || this.args.domainId;
             const queryAid = this.request.query.aid as string || aid;
             const queryUidOrName = this.request.query.uidOrName as string || uidOrName;
             const finalDomainId = queryDomainId;
             
             if (!finalDomainId) {
-                console.error('[TaskRecordMainConnectionHandler] Domain ID is required');
                 this.close(4000, 'Domain ID is required');
                 return;
             }
             
-            // 确保 this.args.domainId 被设置
             this.args.domainId = finalDomainId;
             
             if (queryAid) this.aid = queryAid;
@@ -588,7 +561,6 @@ class TaskRecordMainConnectionHandler extends ConnectionHandler {
                     || await user.getByUname(finalDomainId, queryUidOrName);
             if (udoc) this.uid = udoc._id;
                 else {
-                    console.error('[TaskRecordMainConnectionHandler] User not found:', queryUidOrName);
                     this.close(4000, `User not found: ${queryUidOrName}`);
                     return;
                 }
@@ -599,15 +571,8 @@ class TaskRecordMainConnectionHandler extends ConnectionHandler {
             this.checkPerm(PERM.PERM_VIEW_RECORD);
             }
             
-            console.log('[TaskRecordMainConnectionHandler] prepare completed successfully', {
-                domainId: finalDomainId,
-                aid: this.aid,
-                uid: this.uid,
-                noTemplate: this.noTemplate,
-            });
+            this.throttleQueueClear = throttle(this.queueClear, 100, { trailing: true });
         } catch (error: any) {
-            console.error('[TaskRecordMainConnectionHandler] Error in prepare:', error);
-            console.error('[TaskRecordMainConnectionHandler] Error stack:', error.stack);
             try {
                 this.close(4000, error.message || String(error));
             } catch (e) {
@@ -616,11 +581,21 @@ class TaskRecordMainConnectionHandler extends ConnectionHandler {
         }
     }
 
+    async message(msg: { rids: string[] }) {
+        if (!(msg.rids instanceof Array)) return;
+        const rids = msg.rids.map((id) => new ObjectId(id));
+        const rdocs = await record.getMulti(this.args.domainId, { 
+            _id: { $in: rids },
+            agentId: { $exists: true, $ne: null },
+        })
+            .project<RecordDoc>(buildProjection(record.PROJECTION_LIST)).toArray();
+        for (const rdoc of rdocs) this.onRecordChange(rdoc);
+    }
+
     @subscribe('record/change')
     async onRecordChange(rdoc: RecordDoc) {
         const r = rdoc as any;
         if (r.domainId !== this.args.domainId) return;
-        // 通过 agentId 存在来识别 task 记录
         if (!r.agentId) return;
         const agentId = r.agentId;
         if (this.aid && agentId !== this.aid) return;
@@ -650,19 +625,34 @@ class TaskRecordMainConnectionHandler extends ConnectionHandler {
 
         if (this.noTemplate) {
             // 返回 JSON 格式的 record 数据，用于前端直接处理
-            this.send({ rdoc: r });
+            this.queueSend(r._id.toHexString(), async () => ({ rdoc: r }));
         } else {
-        const [udoc, adoc] = await Promise.all([
-            user.getById(this.args.domainId, r.uid),
-            agentId ? Agent.get(this.args.domainId, agentId).catch(() => null) : Promise.resolve(null),
-        ]);
-
-        this.send({
-                html: await this.renderHTML('task_record_main_tr.html', {
-                record: rdoc, udoc, adoc,
-            }),
-        });
+            this.queueSend(r._id.toHexString(), async () => {
+                const [udoc, adoc] = await Promise.all([
+                    user.getById(this.args.domainId, r.uid),
+                    agentId ? Agent.get(this.args.domainId, agentId).catch(() => null) : Promise.resolve(null),
+                ]);
+                return {
+                    html: await this.renderHTML('task_record_main_tr.html', {
+                        r, udoc, adoc,
+                    }),
+                };
+            });
         }
+    }
+
+    queueSend(rid: string, fn: () => Promise<any>) {
+        this.queue.set(rid, fn);
+        this.throttleQueueClear();
+    }
+
+    async queueClear() {
+        await Promise.all([...this.queue.values()].map(async (fn) => this.send(await fn())));
+        this.queue.clear();
+    }
+
+    async cleanup() {
+        this.queue.clear();
     }
 }
 
