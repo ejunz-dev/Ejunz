@@ -416,7 +416,7 @@ export class McpClient {
         }
     }
 
-    async callTool(name: string, args: any, domainId?: string): Promise<any> {
+    async callTool(name: string, args: any, domainId?: string, serverId?: number): Promise<any> {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
             if (!ctx) {
@@ -467,13 +467,44 @@ export class McpClient {
                 ClientLogger.debug('Edge tools not available: %s', (e as Error).message);
             }
 
-            // If edge is not available, try calling via local MCP server
+            // If serverId is provided (from agent configuration), use it directly
+            if (serverId && domainId) {
+                try {
+                    ClientLogger.debug('Using configured serverId=%d for tool=%s', serverId, name);
+                    const connection = McpServerConnectionHandler.getConnection(serverId);
+                    if (connection) {
+                        ClientLogger.info('Calling tool %s via configured server %d', name, serverId);
+                        const result = await connection.callTool(name, args);
+                        // MCP protocol return format: { content: [{ type: 'text', text: ... }] }
+                        if (result?.content && Array.isArray(result.content)) {
+                            const textContent = result.content.find((c: any) => c.type === 'text');
+                            if (textContent?.text) {
+                                try {
+                                    return JSON.parse(textContent.text);
+                                } catch {
+                                    return textContent.text;
+                                }
+                            } else {
+                                return result;
+                            }
+                        } else {
+                            return result;
+                        }
+                    } else {
+                        ClientLogger.warn('Configured serverId=%d has no active connection for tool=%s, falling back to search', serverId, name);
+                    }
+                } catch (e) {
+                    ClientLogger.warn('Failed to call tool via configured serverId=%d: %s, falling back to search', serverId, (e as Error).message);
+                }
+            }
+
+            // If edge is not available and no serverId provided, try calling via local MCP server (search all)
             if (domainId) {
                 try {
-                    ClientLogger.info('Looking for tool in local MCP servers: tool=%s, domainId=%s', name, domainId);
+                    ClientLogger.debug('Looking for tool in local MCP servers: tool=%s, domainId=%s', name, domainId);
                     
                     const servers = await McpServerModel.getByDomain(domainId);
-                    ClientLogger.info('Found %d MCP servers in domain', servers.length);
+                    ClientLogger.debug('Found %d MCP servers in domain', servers.length);
                     
                     // repo type tools are already called via internal method at the beginning, here mainly handle provider and node types
                     for (const server of servers) {
