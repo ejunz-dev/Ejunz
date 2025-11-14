@@ -717,11 +717,25 @@ export interface EjunzGlobal {
 }
 
 
+// Session
+export interface SessionDoc {
+    _id: ObjectId;
+    domainId: string;
+    agentId: string;
+    uid: number;
+    recordIds: ObjectId[];
+    title?: string;
+    context?: any; // 共享的上下文信息，用于 session 内的所有 task
+    createdAt: Date;
+    updatedAt: Date;
+}
+
 // Extend RecordDoc to support agent tasks
 declare module '@ejunz/common/types' {
     export interface RecordDoc {
         // Task fields (when lang === 'task')
         agentId?: string;
+        sessionId?: ObjectId; // 关联的 session ID
         agentMessages?: Array<{
             role: 'user' | 'assistant' | 'tool';
             content: string;

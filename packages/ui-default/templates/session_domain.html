@@ -1,0 +1,114 @@
+{% set page_name = "session_domain" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+{{ set(
+  UiContext, 'socketUrl',
+  "session-conn?domainId=" + handler.args.domainId
+  + (("&aid=" + filterAid) if filterAid else "")
+  + (("&uidOrName=" + filterUidOrName) if filterUidOrName else "")
+  + (("&status=" + filterStatus) if filterStatus else "")
+) }}
+{{ set(UiContext, 'sids', sessions.map(eval("s=>s._id.toString()"))) }}
+<div class="row">
+  <div class="medium-12 columns">
+    <form method="get">
+      <div class="section">
+        <div class="section__header">
+          <h1 class="section__title">{{ _('Filter') }}</h1>
+          <div class="section__tools">
+            <button type="submit" class="primary button"><span class="icon icon-filter"></span> {{ _('Filter') }}</button>
+            <a href="{{ url('session_domain') }}" class="button">{{ _('Reset') }}</a>
+          </div>
+        </div>
+        <div class="section__body">
+          <div class="row">
+            <div class="medium-3 columns">
+              <label>
+                {{ _('By Agent ID / Name') }}
+                <input name="aid" type="text" class="textbox" value="{{ filterAid }}" autocomplete="off" data-autofocus>
+              </label>
+            </div>
+            <div class="medium-3 columns">
+              <label class="filter-user">
+                {{ _('By Username / UID') }}
+                <input name="uidOrName" type="text" class="textbox" value="{{ filterUidOrName }}" autocomplete="off">
+              </label>
+            </div>
+            <div class="medium-3 columns">
+              <label>
+                {{ _('By Status') }}
+              </label>
+              <select class="compact select" name="status">
+                <option value="">{{ _('All Status') }}</option>
+                <option value="working" {% if filterStatus == 'working' %}selected{% endif %}>{{ _('Working') }}</option>
+                <option value="active" {% if filterStatus == 'active' %}selected{% endif %}>{{ _('Active') }}</option>
+                <option value="detached" {% if filterStatus == 'detached' %}selected{% endif %}>{{ _('Detached') }}</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Sessions') }}</h1>
+      </div>
+      <div class="section__body no-padding">
+      {% if not sessions.length %}
+        {% if not filterAid and not filterUidOrName and not filterStatus %}
+        {{ nothing.render('Oh, there is no session!') }}
+        {% else %}
+        {{ nothing.render('Oh, there are no sessions that match the filter!') }}
+        {% endif %}
+      {% else %}
+        <table class="data-table session_domain__table">
+          <colgroup>
+            <col class="col--status">
+            <col class="col--agent">
+            <col class="col--user">
+            <col class="col--records">
+            <col class="col--submit-at">
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="col--status record-status--border">{{ _('Status') }}</th>
+              <th class="col--agent">{{ _('Agent') }}</th>
+              <th class="col--user">{{ _('User') }}</th>
+              <th class="col--records">{{ _('Records') }}</th>
+              <th class="col--submit-at">{{ _('Created At') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+          {%- for session in sessions -%}
+            {% set udoc = udict[session['uid']] %}
+            {% set adoc = adict[session['agentId']] if session['agentId'] and adict else null %}
+            {% include 'session_domain_tr.html' %}
+          {%- endfor -%}
+          </tbody>
+        </table>
+        {% if pageCount > 1 %}
+        <ul class="pager">
+          {% if page > 1 %}
+          <li>
+            <a class="pager__item prev link" href="?page={{ page - 1 }}{{
+              (('&aid=' + filterAid) if filterAid else '')
+              + (('&uidOrName=' + filterUidOrName) if filterUidOrName else '')
+              + (('&status=' + filterStatus) if filterStatus else '') }}">{{ _('pager_prev') }}</a>
+          </li>
+          {% endif %}
+          {% if page < pageCount %}
+          <li>
+            <a class="pager__item next link" href="?page={{ page + 1 }}{{
+              (('&aid=' + filterAid) if filterAid else '')
+              + (('&uidOrName=' + filterUidOrName) if filterUidOrName else '')
+              + (('&status=' + filterStatus) if filterStatus else '') }}">{{ _('pager_next') }}</a>
+          </li>
+          {% endif %}
+        </ul>
+        {% endif %}
+      {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

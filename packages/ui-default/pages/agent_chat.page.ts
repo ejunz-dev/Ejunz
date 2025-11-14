@@ -3,33 +3,25 @@ import { NamedPage } from 'vj/misc/Page';
 let sessionWebSocket: any = null;
 let sessionConnected = false;
 let sessionConnectPromise: Promise<void> | null = null;
+let currentSessionId: string | null = null;
 
 const page = new NamedPage('agent_chat', async () => {
-  const chatMessages = document.getElementById('chatMessages');
-  const chatInput = document.getElementById('chatInput') as HTMLTextAreaElement;
-  const sendButton = document.getElementById('sendButton') as HTMLButtonElement;
-  const mcpStatus = document.getElementById('mcpStatus');
-
-  if (!chatMessages || !chatInput || !sendButton || !mcpStatus) return;
-  
-  const urlMatch = window.location.pathname.match(/\/agent\/([^\/]+)\/chat/);
-  if (!urlMatch) {
-    console.error('[AgentChat] Invalid URL format:', window.location.pathname);
-    return;
-  }
-
-  const aid = urlMatch[1];
-  
   const UiContext = (window as any).UiContext;
   const domainId = UiContext?.domainId;
+  const mode = UiContext?.mode || 'list';
+  const sessionId = UiContext?.sessionId || '';
+  const aid = UiContext?.aid;
   
-  if (!domainId) {
-    console.error('[AgentChat] Domain ID not found in context');
+  if (!domainId || !aid) {
+    console.error('[AgentChat] Missing domainId or aid');
     return;
   }
 
   const wsPrefix = UiContext?.ws_prefix || '/';
-  
+  const urlMatch = window.location.pathname.match(/\/agent\/([^\/]+)\/chat/);
+  const urlAid = urlMatch ? urlMatch[1] : aid;
+
+  // 共享的 connectToSession, sendMessage 等函数定义（需要在列表模式之前定义）
   const connectToSession = async (): Promise<void> => {
     if (sessionConnected && sessionWebSocket) {
       console.log('[AgentChat] Session already connected');
@@ -41,7 +33,7 @@ const page = new NamedPage('agent_chat', async () => {
     }
     
     sessionConnectPromise = new Promise<void>((resolve, reject) => {
-      const wsUrl = `agent-chat-session?domainId=${domainId}&aid=${aid}`;
+      const wsUrl = `agent-chat-session?domainId=${domainId}&aid=${urlAid}`;
       console.log('[AgentChat] Connecting to session WebSocket:', wsUrl);
       
       import('../components/socket').then(({ default: WebSocket }) => {
@@ -55,29 +47,22 @@ const page = new NamedPage('agent_chat', async () => {
           resolve();
         };
         
-    sock.onmessage = (_, data: string) => {
-      try {
-        const msg = JSON.parse(data);
-        console.log('[AgentChat] Session message received:', msg);
-        
-        if (msg.type === 'session_connected') {
-          console.log('[AgentChat] Session connected:', msg);
-        } else if (msg.type === 'record_update') {
-          console.log('[AgentChat] Record update received:', {
-            rid: msg.rid,
-            recordStatus: msg.record?.status,
-            agentMessagesCount: msg.record?.agentMessages?.length || 0,
-            lastMessageRole: msg.record?.agentMessages?.[msg.record?.agentMessages?.length - 1]?.role,
-            lastMessageContentLength: msg.record?.agentMessages?.[msg.record?.agentMessages?.length - 1]?.content?.length || 0,
-          });
-          handleRecordUpdate(msg);
-        } else if (msg.type === 'error') {
-          console.error('[AgentChat] Session error:', msg.error);
-        }
-      } catch (error: any) {
-        console.error('[AgentChat] Error processing session message:', error);
-      }
-    };
+        sock.onmessage = (_, data: string) => {
+          try {
+            const msg = JSON.parse(data);
+            console.log('[AgentChat] Session message received:', msg);
+            
+            if (msg.type === 'session_connected') {
+              console.log('[AgentChat] Session connected:', msg);
+            } else if (msg.type === 'record_update') {
+              handleRecordUpdate(msg);
+            } else if (msg.type === 'error') {
+              console.error('[AgentChat] Session error:', msg.error);
+            }
+          } catch (error: any) {
+            console.error('[AgentChat] Error processing session message:', error);
+          }
+        };
         
         sock.onclose = () => {
           console.log('[AgentChat] Session WebSocket closed');
@@ -97,6 +82,9 @@ const page = new NamedPage('agent_chat', async () => {
   let currentRecordId: string | null = null;
   
   const handleRecordUpdate = (msg: any) => {
+    const chatMessages = document.getElementById('chatMessages');
+    if (!chatMessages) return;
+    
     if (!msg.rid) {
       console.warn('[AgentChat] Invalid record update message: missing rid', msg);
       return;
@@ -104,13 +92,6 @@ const page = new NamedPage('agent_chat', async () => {
     
     const record = msg.record || {};
     const rid = msg.rid;
-    
-    if (Object.keys(record).length === 0 && msg.agentMessagesCount > 0) {
-      console.warn('[AgentChat] Record object is empty but agentMessagesCount > 0, data may be lost in transmission', {
-        rid,
-        agentMessagesCount: msg.agentMessagesCount,
-      });
-    }
     
     if (currentRecordId !== rid) {
       console.log('[AgentChat] New record detected:', rid);
@@ -124,39 +105,12 @@ const page = new NamedPage('agent_chat', async () => {
         (el.classList.contains('user') || el.classList.contains('assistant') || el.classList.contains('tool'))
       );
       
-      console.log('[AgentChat] Processing messages:', {
-        rid,
-        currentRecordId,
-        newMessagesCount,
-        existingMessagesCount: existingMessages.length,
-        lastMessageRole: record.agentMessages[newMessagesCount - 1]?.role,
-        lastMessageContent: record.agentMessages[newMessagesCount - 1]?.content?.substring(0, 50),
-        existingMessageRoles: existingMessages.map((el: any) => {
-          if (el.classList.contains('user')) return 'user';
-          if (el.classList.contains('assistant')) return 'assistant';
-          if (el.classList.contains('tool')) return 'tool';
-          return 'unknown';
-        }),
-      });
-
-      if (currentRecordId !== rid) {
-        console.log('[AgentChat] Different record, resetting message tracking');
-        // 不重置，继续处理
-      }
-
       const displayedNonUserCount = existingMessages.filter(
         (el: any) => !el.classList.contains('user')
       ).length;
       
-      // 统计 record 中的非用户消息数量
       const recordNonUserMessages = record.agentMessages.filter((m: any) => m.role !== 'user');
       const recordNonUserCount = recordNonUserMessages.length;
-      
-      console.log('[AgentChat] Non-user message counts:', {
-        displayed: displayedNonUserCount,
-        inRecord: recordNonUserCount,
-        needAdd: recordNonUserCount > displayedNonUserCount,
-      });
       
       if (recordNonUserCount > displayedNonUserCount) {
         let addedCount = 0;
@@ -217,35 +171,13 @@ const page = new NamedPage('agent_chat', async () => {
             if (msgData.role === 'assistant') {
               const content = msgData.content || '';
               const toolCalls = msgData.tool_calls;
-              console.log('[AgentChat] Adding assistant message:', { 
-                index: i,
-                contentLength: content.length, 
-                hasToolCalls: !!toolCalls 
-              });
               addMessage('assistant', content, undefined, toolCalls);
-              chatHistory.push({
-                role: 'assistant',
-                content,
-                tool_calls: toolCalls,
-                timestamp: msgData.timestamp ? new Date(msgData.timestamp) : new Date(),
-              });
               addedCount++;
             } else if (msgData.role === 'tool') {
               const content = typeof msgData.content === 'string' 
                 ? msgData.content 
                 : JSON.stringify(msgData.content, null, 2);
-              console.log('[AgentChat] Adding tool message:', { 
-                index: i,
-                toolName: msgData.toolName, 
-                contentLength: content.length 
-              });
               addMessage('tool', content, msgData.toolName);
-              chatHistory.push({
-                role: 'tool',
-                content,
-                toolName: msgData.toolName,
-                timestamp: msgData.timestamp ? new Date(msgData.timestamp) : new Date(),
-              });
               addedCount++;
             }
           }
@@ -258,8 +190,6 @@ const page = new NamedPage('agent_chat', async () => {
         if (lastMsg && lastMsg.role === 'assistant') {
           const content = lastMsg.content || '';
           const toolCalls = lastMsg.tool_calls;
-          
-          console.log('[AgentChat] Updating last assistant message:', { contentLength: content.length, hasToolCalls: !!toolCalls });
           
           let lastAssistantMessage: Element | null = null;
           for (let i = existingMessages.length - 1; i >= 0; i--) {
@@ -288,17 +218,24 @@ const page = new NamedPage('agent_chat', async () => {
             }
             chatMessages.scrollTop = chatMessages.scrollHeight;
           }
-          
-          const lastHistoryMsg = chatHistory.filter(m => m.role === 'assistant').pop();
-          if (lastHistoryMsg) {
-            lastHistoryMsg.content = content;
-            if (toolCalls) {
-              lastHistoryMsg.tool_calls = toolCalls;
-            }
-          }
         }
       }
     }
+    
+    const UiCtx = (window as any).UiContext || {};
+    const STATUS = UiCtx.STATUS || (window as any).STATUS || (window as any).model?.builtin?.STATUS || {};
+    const ACTIVE_TASK_STATUSES = new Set(
+      [
+        STATUS.STATUS_TASK_WAITING,
+        STATUS.STATUS_TASK_FETCHED,
+        STATUS.STATUS_TASK_PROCESSING,
+        STATUS.STATUS_TASK_PENDING,
+      ].filter((value) => typeof value === 'number'),
+    );
+    const isTerminalTaskStatus = (status?: number) => {
+      if (typeof status !== 'number') return false;
+      return !ACTIVE_TASK_STATUSES.has(status);
+    };
     
     if (record.status !== undefined) {
       if (isTerminalTaskStatus(record.status)) {
@@ -309,49 +246,10 @@ const page = new NamedPage('agent_chat', async () => {
     }
   };
   
-  await connectToSession();
-
-  const mcpStatusUrl = mcpStatus.getAttribute('data-status-url') || '';
-  const UiCtx = (window as any).UiContext || {};
-  const STATUS = UiCtx.STATUS || (window as any).STATUS || (window as any).model?.builtin?.STATUS || {};
-  const ACTIVE_TASK_STATUSES = new Set(
-    [
-      STATUS.STATUS_TASK_WAITING,
-      STATUS.STATUS_TASK_FETCHED,
-      STATUS.STATUS_TASK_PROCESSING,
-      STATUS.STATUS_TASK_PENDING,
-    ].filter((value) => typeof value === 'number'),
-  );
-  const isTerminalTaskStatus = (status?: number) => {
-    if (typeof status !== 'number') return false;
-    return !ACTIVE_TASK_STATUSES.has(status);
-  };
-
-  let chatHistory: Array<{ role: string; content: string; timestamp?: Date; toolName?: string; tool_calls?: any[] }> = [];
-
-  async function checkMcpStatus() {
-    if (!mcpStatusUrl) return;
-    try {
-      const response = await fetch(mcpStatusUrl, { 
-        method: 'GET'
-      });
-      const data = await response.json();
-      if (data.connected) {
-        mcpStatus.textContent = `MCP: Connected (${data.toolCount} tools)`;
-        mcpStatus.className = 'mcp-status connected';
-      } else {
-        mcpStatus.textContent = 'MCP: Disconnected';
-        mcpStatus.className = 'mcp-status disconnected';
-      }
-    } catch (e) {
-      mcpStatus.textContent = 'MCP: Disconnected';
-      mcpStatus.className = 'mcp-status disconnected';
-    }
-  }
-
-  checkMcpStatus();
-
   function addMessage(role: string, content: string, toolName?: string, toolCalls?: any[]) {
+    const chatMessages = document.getElementById('chatMessages');
+    if (!chatMessages) return;
+    
     const messageDiv = document.createElement('div');
     messageDiv.className = `chat-message ${role}`;
     
@@ -394,22 +292,17 @@ const page = new NamedPage('agent_chat', async () => {
         messageDiv.appendChild(contentDiv);
       }
     } else {
-    messageDiv.textContent = content;
+      messageDiv.textContent = content;
     }
     
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
-    
-    chatHistory.push({
-      role,
-      content,
-      timestamp: new Date(),
-      toolName,
-      tool_calls: toolCalls,
-    });
   }
 
   function updateLastMessage(content: string, toolCalls?: any[]) {
+    const chatMessages = document.getElementById('chatMessages');
+    if (!chatMessages) return;
+    
     const lastMessage = chatMessages.lastElementChild;
     if (!lastMessage || !lastMessage.classList.contains('chat-message')) return;
     
@@ -452,20 +345,15 @@ const page = new NamedPage('agent_chat', async () => {
       lastMessage.textContent = content;
     }
     
-    if (chatHistory.length > 0) {
-      const lastHistory = chatHistory[chatHistory.length - 1];
-      lastHistory.content = content;
-      if (toolCalls) {
-        lastHistory.tool_calls = toolCalls;
-      }
-    }
-    
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
-  const originalButtonText = sendButton.textContent || 'Send';
+  const originalButtonText = 'Send';
 
   function setLoading(loading: boolean) {
+    const sendButton = document.getElementById('sendButton') as HTMLButtonElement;
+    if (!sendButton) return;
+    
     sendButton.disabled = loading;
     if (loading && !sendButton.querySelector('.loading')) {
       const loader = document.createElement('span');
@@ -481,6 +369,11 @@ const page = new NamedPage('agent_chat', async () => {
   }
 
   async function sendMessage() {
+    const chatInput = document.getElementById('chatInput') as HTMLTextAreaElement;
+    const chatMessages = document.getElementById('chatMessages');
+    
+    if (!chatInput || !chatMessages) return;
+    
     const message = chatInput.value.trim();
     if (!message) return;
 
@@ -490,35 +383,9 @@ const page = new NamedPage('agent_chat', async () => {
     setLoading(true);
 
     try {
-      const urlMatch = window.location.pathname.match(/\/agent\/([^\/]+)\/chat/);
-      if (!urlMatch) {
-        addMessage('error', 'Invalid URL format: ' + window.location.pathname);
-        setLoading(false);
-        return;
-      }
-
-      const aid = urlMatch[1];
+      const postUrl = `/d/${domainId}/agent/${urlAid}/chat`;
+      console.log('[AgentChat] Creating task via POST:', { message, postUrl, sessionId: currentSessionId });
       
-      const UiContext = (window as any).UiContext;
-      const domainId = UiContext?.domainId;
-      
-      if (!domainId) {
-        addMessage('error', 'Domain ID not found in context');
-        setLoading(false);
-        return;
-      }
-      
-      const wsPrefix = UiContext?.ws_prefix || '/';
-
-      const postUrl = `/d/${domainId}/agent/${aid}/chat`;
-      console.log('[AgentChat] Creating task via POST:', { message, postUrl });
-      
-      const historyForBackend = chatHistory.slice(0, -1).map(msg => ({
-        role: msg.role,
-        content: msg.content,
-        tool_calls: msg.tool_calls,
-      }));
-
       const response = await fetch(postUrl, {
         method: 'POST',
         headers: {
@@ -526,21 +393,24 @@ const page = new NamedPage('agent_chat', async () => {
         },
         body: JSON.stringify({
           message,
-          history: historyForBackend,
+          history: [],
           createTaskRecord: true,
+          // 如果 currentSessionId 为 null，不传 sessionId，让后端创建新 session
+          ...(currentSessionId ? { sessionId: currentSessionId } : {}),
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
         addMessage('error', 'Send failed: ' + (errorData.error || 'Unknown error'));
-              setLoading(false);
+        setLoading(false);
         return;
       }
 
       const responseData = await response.json();
       console.log('[AgentChat] POST response:', responseData);
       const taskRecordId = responseData.taskRecordId;
+      const newSessionId = responseData.sessionId;
       
       if (!taskRecordId) {
         console.error('[AgentChat] Task created but record ID missing', responseData);
@@ -549,13 +419,25 @@ const page = new NamedPage('agent_chat', async () => {
         return;
       }
 
+      // 如果返回了新的 sessionId（第一次发送消息时创建），无刷新切换到该 session 的 URL
+      if (newSessionId && newSessionId !== currentSessionId) {
+        currentSessionId = newSessionId;
+        const newUrl = `/d/${domainId}/agent/${urlAid}/chat?sid=${newSessionId}`;
+        // 使用 pushState 更新 URL，不刷新页面（类似 DeepSeek 的行为）
+        window.history.pushState({ mode: 'chat', sessionId: newSessionId }, '', newUrl);
+        // 更新 UiContext 中的 sessionId
+        if (UiContext) {
+          UiContext.sessionId = newSessionId;
+        }
+        console.log('[AgentChat] Session created and URL updated:', newSessionId);
+      }
+
       console.log('[AgentChat] Task created, subscribing to record via session:', taskRecordId);
 
       // 确保 session 已连接
       try {
         await connectToSession();
         
-        // 再次检查连接状态
         if (!sessionConnected || !sessionWebSocket) {
           throw new Error('Session connection failed');
         }
@@ -578,6 +460,141 @@ const page = new NamedPage('agent_chat', async () => {
       setLoading(false);
     }
   }
+
+  // 列表模式
+  if (mode === 'list') {
+    const sessionListMode = document.getElementById('sessionListMode');
+    const newChatBtn = document.getElementById('newChatBtn');
+    const sessionItems = document.querySelectorAll('.session-item');
+    const chatMode = document.getElementById('chatMode');
+    
+    if (!sessionListMode) return;
+    
+    // 隐藏聊天模式（如果存在）
+    if (chatMode) chatMode.style.display = 'none';
+    
+    // 新建会话按钮：切换到聊天模式（纯前端行为，不改变 URL）
+    if (newChatBtn) {
+      newChatBtn.addEventListener('click', () => {
+        // 切换到聊天模式（URL 不变，纯前端切换）
+        sessionListMode.style.display = 'none';
+        const chatMode = document.getElementById('chatMode');
+        if (chatMode) {
+          chatMode.style.display = 'block';
+          // 重置 sessionId，表示这是一个新会话
+          currentSessionId = null;
+          // 清空聊天消息
+          const chatMessages = document.getElementById('chatMessages');
+          if (chatMessages) {
+            chatMessages.innerHTML = '';
+          }
+          // 初始化聊天模式（延迟执行，确保 DOM 已更新）
+          setTimeout(() => {
+            initChatModeForList();
+          }, 100);
+        } else {
+          // 如果聊天模式不存在，跳转到新建聊天页面
+          window.location.href = `/d/${domainId}/agent/${urlAid}/chat?new=true`;
+        }
+        // 不更新 URL，保持当前 URL 不变
+      });
+    }
+    
+    // 点击 session 项：跳转到对应的 session URL
+    sessionItems.forEach(item => {
+      item.addEventListener('click', () => {
+        const sid = item.getAttribute('data-session-id');
+        if (sid) {
+          window.location.href = `/d/${domainId}/agent/${urlAid}/chat?sid=${sid}`;
+        }
+      });
+    });
+    
+    return;
+  }
+  
+  // 初始化聊天模式的函数（在列表模式下切换到聊天模式时调用）
+  function initChatModeForList() {
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput') as HTMLTextAreaElement;
+    const sendButton = document.getElementById('sendButton') as HTMLButtonElement;
+    
+    if (!chatMessages || !chatInput || !sendButton) {
+      console.error('[AgentChat] Chat mode elements not found');
+      return;
+    }
+    
+    // 连接 session WebSocket
+    connectToSession().then(() => {
+      console.log('[AgentChat] Chat mode initialized from list mode');
+    });
+    
+    // 设置发送按钮事件（使用一次性事件，避免重复绑定）
+    const sendHandler = () => {
+      sendMessage();
+    };
+    const keyHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    };
+    
+    sendButton.addEventListener('click', sendHandler);
+    chatInput.addEventListener('keydown', keyHandler);
+  }
+
+  // 聊天模式
+  const chatMode = document.getElementById('chatMode');
+  const chatMessages = document.getElementById('chatMessages');
+  const chatInput = document.getElementById('chatInput') as HTMLTextAreaElement;
+  const sendButton = document.getElementById('sendButton') as HTMLButtonElement;
+  const mcpStatus = document.getElementById('mcpStatus');
+  
+  if (!chatMode || !chatMessages || !chatInput || !sendButton) return;
+  
+  // 显示聊天模式
+  chatMode.style.display = 'block';
+  currentSessionId = sessionId || null;
+  
+  // 加载历史记录（如果有）
+  const recordHistory = UiContext?.recordHistory || [];
+  if (recordHistory && Array.isArray(recordHistory) && recordHistory.length > 0) {
+    recordHistory.forEach((msg: any) => {
+      if (msg.role === 'user' || msg.role === 'assistant') {
+        addMessage(msg.role, msg.content, undefined, msg.tool_calls);
+      }
+    });
+  }
+
+  // 使用共享的 connectToSession 函数（已在列表模式下定义）
+  await connectToSession();
+
+  if (mcpStatus) {
+    const mcpStatusUrl = mcpStatus.getAttribute('data-status-url') || '';
+    async function checkMcpStatus() {
+      if (!mcpStatusUrl) return;
+      try {
+        const response = await fetch(mcpStatusUrl, { 
+          method: 'GET'
+        });
+        const data = await response.json();
+        if (data.connected) {
+          mcpStatus.textContent = `MCP: Connected (${data.toolCount} tools)`;
+          mcpStatus.className = 'mcp-status connected';
+        } else {
+          mcpStatus.textContent = 'MCP: Disconnected';
+          mcpStatus.className = 'mcp-status disconnected';
+        }
+      } catch (e) {
+        mcpStatus.textContent = 'MCP: Disconnected';
+        mcpStatus.className = 'mcp-status disconnected';
+      }
+    }
+    checkMcpStatus();
+  }
+
+  // 使用共享的 sendMessage 函数（已在列表模式下定义）
 
   sendButton.addEventListener('click', sendMessage);
   chatInput.addEventListener('keydown', (e) => {
