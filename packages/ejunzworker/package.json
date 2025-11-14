@@ -1,0 +1,25 @@
+{
+    "name": "@ejunz/ejunzworker",
+    "bin": "bin/ejunzworker.js",
+    "version": "0.0.1",
+    "main": "./src/index.ts",
+    "repository": "https://github.com/ejunz-dev/Ejunz.git",
+    "dependencies": {
+        "@ejunz/common": "workspace:^",
+        "@ejunz/utils": "workspace:^",
+        "@zip.js/zip.js": "^2.8.10",
+        "cac": "^6.7.14",
+        "p-queue": "^9.0.0",
+        "schemastery": "^3.17.2",
+        "semver": "^7.7.3",
+        "shell-quote": "^1.8.3",
+        "superagent": "^10.2.3",
+        "ws": "^8.18.3"
+    },
+    "preferUnplugged": true,
+    "license": "AGPL-3.0-or-later",
+    "devDependencies": {
+        "@types/shell-quote": "^1.7.5",
+        "@types/ws": "^8.18.1"
+    }
+}
