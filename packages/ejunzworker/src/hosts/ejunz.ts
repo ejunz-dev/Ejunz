@@ -40,11 +40,11 @@ export default class Ejunz implements Session {
     }
 
     async fetchFile<T extends string | null>(namespace: T, files: Record<string, string>): Promise<T extends null ? string : null> {
-        throw new SystemError('fetchFile not supported (judge service removed)');
+        throw new SystemError('fetchFile not supported (worker service removed)');
     }
 
     async postFile(target: string, filename: string, file: string, retry = 3) {
-        throw new SystemError('postFile not supported (judge service removed)');
+        throw new SystemError('postFile not supported (worker service removed)');
     }
 
     getLang(name: string, doThrow = true) {
