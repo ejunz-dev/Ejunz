@@ -8,36 +8,7 @@ export default new AutoloadPage('client_domain,client_detail', async () => {
         import('../components/socket'),
     ]);
 
-    function generateToken(clientId, domainId) {
-        if (!confirm(i18n('Are you sure you want to generate a new Token? The old Token will be invalidated.'))) return;
-        
-        $.ajax({
-            url: `/client/${clientId}/generate-token`,
-            method: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify({ clientId }),
-        }).then((response) => {
-            if (response.wsToken) {
-                $('#ws-token').text(response.wsToken);
-                // Build WebSocket URL
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const host = window.location.host;
-                const wsPath = `/d/${domainId}/client/ws`;
-                const endpoint = `${protocol}//${host}${wsPath}?token=${response.wsToken}`;
-                $('#ws-endpoint').text(endpoint);
-                if ($('.endpoint-url').length === 0) {
-                    $('.token-info').append(`<div class="endpoint-url"><code id="ws-endpoint">${endpoint}</code><button class="button small client-copy-endpoint-btn">${i18n('Copy')}</button></div>`);
-                }
-                if ($('.token-info').length === 0) {
-                    $('.section__body').prepend(`<div class="token-info"><p><strong>Token:</strong> <code id="ws-token">${response.wsToken}</code></p></div>`);
-                }
-                Notification.success(i18n('Token generated successfully'));
-                setTimeout(() => location.reload(), 1000);
-            }
-        }).catch((error) => {
-            Notification.error(i18n('Failed to generate Token: {0}').replace('{0}', error.responseJSON?.error || error.message || i18n('Unknown error')));
-        });
-    }
+    // Token 生成功能已迁移到 edge 页面
 
     function deleteToken(clientId) {
         if (!confirm(i18n('Are you sure you want to delete the Token? Connections using this Token will be disconnected.'))) return;
@@ -75,12 +46,7 @@ export default new AutoloadPage('client_domain,client_detail', async () => {
         });
     }
 
-    // Bind token management button events
-    $(document).on('click', '.client-generate-token-btn', function() {
-        const clientId = $(this).data('client-id');
-        const domainId = $(this).data('domain-id');
-        generateToken(clientId, domainId);
-    });
+    // Token 生成按钮已移除，请使用 edge 页面生成
 
     $(document).on('click', '.client-delete-token-btn', function() {
         const clientId = $(this).data('client-id');

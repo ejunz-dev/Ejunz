@@ -1,0 +1,28 @@
+<div class="dialog dialog--edge-token" style="display:none">
+  <div class="dialog__content">
+    <div class="dialog--edge-token__main">
+      <form id="edge-token-form">
+        <div class="dialog--edge-token__close-container supplementary">
+          <a name="dialog--edge-token__close" href="javascript:;">{{ _('CLOSE') }}</a>
+        </div>
+        <h1 class="dialog--edge-token__title">{{ _('Generate Access Token') }}</h1>
+        <p class="dialog--edge-token__note">{{ _('Select the type of access point to generate a token') }}</p>
+        <div class="row"><div class="columns">
+          <label class="material textbox">
+            {{ _('Access Point Type') }}
+            <select name="type" data-autofocus required>
+              <option value="">{{ _('Please select') }}</option>
+              <option value="provider">{{ _('Provider (MCP)') }}</option>
+              <option value="node">{{ _('Node') }}</option>
+              <option value="client">{{ _('Client') }}</option>
+            </select>
+          </label>
+        </div></div>
+        <div class="row"><div class="columns">
+          <input type="submit" value="{{ _('Generate Token') }}" name="generate_submit" class="expanded rounded primary button">
+        </div></div>
+      </form>
+    </div>
+  </div>
+</div>
+

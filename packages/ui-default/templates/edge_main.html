@@ -1,0 +1,133 @@
+{% set page_name = "edge_main" %}
+{% extends "layout/basic.html" %}
+{% import "components/edge.html" as edge_component with context %}
+{% block content %}
+{% include "partials/edge_token_dialog.html" %}
+{{ set(
+  UiContext, 'socketUrl',
+  "edge-main-conn?domainId=" + handler.args.domainId
+) }}
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Edge Connection Status') }}</h1>
+        <div class="section__action">
+          {% if handler.user.hasPriv(model.builtin.PRIV.PRIV_USER_PROFILE) %}
+            <button class="button primary" name="edge-generate-token-btn">{{ _('Generate Token') }}</button>
+          {% endif %}
+        </div>
+      </div>
+      <div class="section__body no-padding">
+        {% set hasItems = (mcpServers|length > 0) or (clients|length > 0) or (nodes|length > 0) %}
+        {% if hasItems %}
+          <table class="data-table record_main__table">
+            <colgroup>
+              <col class="col--status">
+              <col class="col--type">
+              <col class="col--name">
+              <col class="col--info">
+              <col class="col--last-connected">
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="col--status record-status--border">{{ _('Status') }}</th>
+                <th class="col--type">{{ _('Type') }}</th>
+                <th class="col--name">{{ _('Name') }}</th>
+                <th class="col--info">{{ _('Info') }}</th>
+                <th class="col--last-connected">{{ _('Last Connected') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for server in mcpServers %}
+                <tr data-type="mcp" data-id="{{ server.serverId }}">
+                  {{ edge_component.render_edge_status_td(server, 'mcp') }}
+                  <td class="col--type">
+                    {% set serverType = server.type|default('provider') %}
+                    {% if serverType == 'repo' %}
+                      <span class="badge badge--primary">MCP Repo</span>
+                    {% elif serverType == 'node' %}
+                      <span class="badge badge--info">MCP Node</span>
+                    {% else %}
+                      <span class="badge">MCP</span>
+                    {% endif %}
+                  </td>
+                  <td class="col--name">
+                    <a href="{{ url('mcp_detail', { domainId: domainId, serverId: server.serverId }) }}">
+                      {{ server.name|default('MCP ' + server.serverId|string) }}
+                    </a>
+                    {% if server.description %}
+                      <br><small class="text-gray">{{ server.description }}</small>
+                    {% endif %}
+                  </td>
+                  <td class="col--info">
+                    {{ server.toolsCount|default(0) }} {{ _('tools') }}
+                  </td>
+                  <td class="col--last-connected">
+                    {% if server.lastConnectedAt %}
+                      {{ datetimeSpan(server.lastConnectedAt)|safe }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+              {% for client in clients %}
+                <tr data-type="client" data-id="{{ client.clientId }}">
+                  {{ edge_component.render_edge_status_td(client, 'client') }}
+                  <td class="col--type">
+                    <span class="badge badge--success">Client</span>
+                  </td>
+                  <td class="col--name">
+                    <a href="{{ url('client_detail', { domainId: domainId, clientId: client.clientId }) }}">
+                      {{ client.name|default('Client ' + client.clientId|string) }}
+                    </a>
+                    {% if client.description %}
+                      <br><small class="text-gray">{{ client.description }}</small>
+                    {% endif %}
+                  </td>
+                  <td class="col--info">-</td>
+                  <td class="col--last-connected">
+                    {% if client.lastConnectedAt %}
+                      {{ datetimeSpan(client.lastConnectedAt)|safe }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+              {% for node in nodes %}
+                <tr data-type="node" data-id="{{ node.nodeId }}">
+                  {{ edge_component.render_edge_status_td(node, 'node') }}
+                  <td class="col--type">
+                    <span class="badge badge--warning">Node</span>
+                  </td>
+                  <td class="col--name">
+                    <a href="{{ url('node_detail', { domainId: domainId, nodeId: node.nodeId }) }}">
+                      {{ node.name|default('Node ' + node.nodeId|string) }}
+                    </a>
+                    {% if node.description %}
+                      <br><small class="text-gray">{{ node.description }}</small>
+                    {% endif %}
+                  </td>
+                  <td class="col--info">-</td>
+                  <td class="col--last-connected">
+                    {% if node.lastConnectedAt %}
+                      {{ datetimeSpan(node.lastConnectedAt)|safe }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          {{ nothing.render('Oh, there is no edge connection!') }}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
