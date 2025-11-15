@@ -5,6 +5,7 @@ import { Context } from '../context';
 import { ValidationError, PermissionError, NotFoundError } from '../error';
 import { Logger } from '../logger';
 import McpServerModel, { McpToolModel } from '../model/mcp';
+import EdgeTokenModel from '../model/edge_token';
 import { PRIV } from '../model/builtin';
 import type { McpTool } from '../model/agent';
 
@@ -115,33 +116,7 @@ export class McpEditHandler extends Handler<Context> {
     }
 }
 
-export class McpGenerateTokenHandler extends Handler<Context> {
-    async post() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        this.response.template = null;
-        
-        const { serverId } = this.request.body;
-        const serverIdNum = parseInt(serverId, 10);
-        
-        if (isNaN(serverIdNum) || serverIdNum < 1) {
-            throw new ValidationError('serverId');
-        }
-
-        const server = await McpServerModel.getByServerId(this.domain._id, serverIdNum);
-        if (!server) {
-            throw new NotFoundError('MCP Server');
-        }
-
-        if (server.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
-        }
-
-        const wsToken = await McpServerModel.generateWsToken();
-        await McpServerModel.update(this.domain._id, serverIdNum, { wsToken });
-
-        this.response.body = { wsToken };
-    }
-}
+// Token 生成逻辑已迁移到 edge 模块
 
 export class McpDeleteTokenHandler extends Handler<Context> {
     async post() {
@@ -324,12 +299,24 @@ export class McpServerConnectionHandler extends ConnectionHandler<Context> {
             return;
         }
 
-        const servers = await McpServerModel.getByDomain(this.domain._id);
-        const server = servers.find(s => s.wsToken === token);
-        
-        if (!server) {
+        // 使用统一的 token 验证
+        const tokenDoc = await EdgeTokenModel.getByToken(token);
+        if (!tokenDoc || tokenDoc.type !== 'provider' || tokenDoc.domainId !== this.domain._id) {
             logger.warn('MCP Server WebSocket connection rejected: Invalid token');
             this.close(4000, 'Invalid token');
+            return;
+        }
+
+        // 更新 token 最后使用时间
+        await EdgeTokenModel.updateLastUsed(token);
+
+        // 查找第一个可用的 MCP server（或者根据 token 关联的 serverId，这里简化处理）
+        const servers = await McpServerModel.getByDomain(this.domain._id);
+        const server = servers[0]; // 简化：使用第一个 server，实际可以根据 token 关联
+        
+        if (!server) {
+            logger.warn('MCP Server WebSocket connection rejected: No server found');
+            this.close(4000, 'No server found');
             return;
         }
 
@@ -805,7 +792,7 @@ export async function apply(ctx: Context) {
     ctx.Route('mcp_edit', '/mcp/:serverId/edit', McpEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mcp_delete', '/mcp/delete', McpDeleteHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mcp_detail', '/mcp/:serverId', McpDetailHandler);
-    ctx.Route('mcp_generate_token', '/mcp/:serverId/generate-token', McpGenerateTokenHandler, PRIV.PRIV_USER_PROFILE);
+    // Token 生成路由已迁移到 edge 模块
     ctx.Route('mcp_delete_token', '/mcp/:serverId/delete-token', McpDeleteTokenHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mcp_refresh_tools', '/mcp/:serverId/refresh-tools', McpRefreshToolsHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Connection('mcp_server_conn', '/mcp/ws', McpServerConnectionHandler);

@@ -1,0 +1,130 @@
+// Edge Status Styles - 使用与 record 相同的样式系统
+$edge-status-color = {
+  'connected': $success-color,
+  'disconnected': $invalid-color,
+  'working': $progress-color,
+}
+
+$edge-status-icon = {
+  'connected': $icon-check,
+  'disconnected': $icon-close,
+  'working': $icon-hourglass,
+}
+
+// 扩展 record-status 样式以支持 edge 状态
+.record-status--border
+  for key, value in $edge-status-color
+    &.edge-status--{key}
+      border-left: rem(3px) solid lighten(value, 10%)
+
+.record-status--text
+  for key, value in $edge-status-color
+    &.edge-status--{key}
+      color: value !important
+
+.record-status--icon
+  for key, value in $edge-status-icon
+    &.edge-status-icon--{key}:before
+      content: value
+      color: $edge-status-color[key]
+
+// 使用与 record_main 相同的表格样式
+.page--edge_main
+  .col--status
+    width: rem(170px)
+    position: relative
+
+  .col--type
+    width: rem(120px)
+    text-align: center
+
+  .col--name
+    width: rem(200px)
+
+  .col--info
+    width: rem(100px)
+    text-align: center
+
+  .col--last-connected
+    width: rem(150px)
+    text-align: center
+
+  .col--status__text
+    position: relative
+    z-index: 2
+
+  .col--status__progress-container
+    position: absolute
+    left: 0
+    top: 0
+    width: 100%
+    height: 100%
+    z-index: 1
+
+  .col--status__progress
+    position: absolute
+    left: 0
+    top: 0
+    height: 100%
+    background: #fff6d1
+
+.edge-status-list
+  display: flex
+  flex-direction: column
+  gap: rem(10px)
+
+.edge-status-item
+  padding: rem(12px) rem(16px)
+  border: 1px solid $border-color
+  border-radius: rem(4px)
+  background: $bg-color
+  transition: all 0.2s ease
+  
+  &:hover
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1)
+  
+  &__header
+    display: flex
+    justify-content: space-between
+    align-items: center
+  
+  &__name
+    font-weight: 500
+    color: $text-1-color
+  
+  &__status
+    display: inline-flex
+    align-items: center
+    gap: rem(6px)
+    padding: rem(4px) rem(12px)
+    border-radius: rem(12px)
+    font-size: rem(14px)
+    font-weight: 500
+
+.edge-status
+  for key, value in $edge-status-color
+    &--{key}
+      color: value !important
+      background: lighten(value, 90%)
+      border: 1px solid lighten(value, 70%)
+
+.edge-status-icon
+  display: inline-block
+  width: 1em
+  height: 1em
+  for key, value in $edge-status-icon
+    &--{key}:before
+      content: value
+      color: $edge-status-color[key]
+
+// 工作状态动画
+.edge-status--working
+  .edge-status-icon--working:before
+    animation: spin 1s linear infinite
+
+@keyframes spin
+  from
+    transform: rotate(0deg)
+  to
+    transform: rotate(360deg)
+

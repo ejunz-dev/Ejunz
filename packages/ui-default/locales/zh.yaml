@@ -14,6 +14,7 @@ __langname: 简体中文
 '↓ Create Time': '↓ 创建时间'
 '↓ Update Time': '↓ 更新时间'
 'A domain ID cannot be changed after creation. It is supposed to be:': '创建后将无法更改 ID。ID 必须满足以下条件：'
+'Access Point Type': 接入点类型
 'Add Root Doc': 添加根文档
 'After successful connection, configure ASR, TTS and Agent services': 连接成功后，可以配置 ASR、TTS 和 Agent 服务
 'Agent configuration cleared successfully': Agent 配置已清除
@@ -63,6 +64,7 @@ __langname: 简体中文
 'Currently Selected Agent': 当前选择的 Agent
 'Default message': 默认消息
 'Delete Client': 删除客户端
+'Delete Server': 删除服务器
 'Delete Token': 删除 Token
 'Description (Optional)': 描述（可选）
 'Device': 设备
@@ -72,6 +74,8 @@ __langname: 简体中文
 'Download Audio': 下载音频
 'Download Recording': 下载录音
 'Drop here to delete': 拖到这里删除
+'Edge Connection Status': Edge 连接状态
+'Edge page': Edge 页面
 'Edit Client': 编辑客户端
 'Enable Server VAD': 启用服务器 VAD
 'Endpoint': Endpoint
@@ -84,6 +88,7 @@ __langname: 简体中文
 'Failed to delete conversation': 删除对话失败
 'Failed to delete Token: {0}': '删除 Token 失败: {0}'
 'Failed to generate Token: {0}': '生成 Token 失败: {0}'
+'Failed to generate token: {0}': 生成 token 失败: {0}
 'Failed to load chat details': 加载聊天详情失败
 'Failed to play audio. The audio format may not be supported by your browser.': 播放音频失败。您的浏览器可能不支持此音频格式。
 'Failed to pull from GitHub': 从 GitHub 拉取失败
@@ -97,9 +102,11 @@ __langname: 简体中文
 'Folder/Directory': 文件夹/目录
 'Format: category 1, sub category 1.1, sub category 1.2, ..., sub category 1.x, ..., category n, sub category n.1, sub category n.2, ..., sub category n.m, ...': 格式：分类1, 子分类1.1, 子分类1.2, ..., 子分类1.x, ..., 分类n, 子分类n.1, 子分类n.2, ..., 子分类n.m, ...
 'Free Scroll': 自由滚动
+'Generate Access Token': 生成接入点 Token
 'Generate Token on client detail page': 在客户端详情页面生成 Token
 'Generate Token': 生成 Token
 'Git Status': Git 状态
+'Input Schema': 输入模式
 'Join {0}': '加入 {0}'
 'Language Type': 语言类型
 'Last Commit': 最后提交
@@ -126,18 +133,23 @@ __langname: 简体中文
 'No recording available': 无录音可用
 'No remote repository configured': 未配置远程仓库
 'No tools available': 暂无工具
+'No tools yet. Tools list will be automatically synced after server connection.': 暂无工具。服务器连接后会自动同步工具列表。
 'No': 否
 'Operations': 操作
 'Original score: {0}': '原得分: {0}'
 'Play Audio': 播放音频
 'Play Recording': 播放录音
+'Please generate token on': 请在
 'Please select a conversation from the left sidebar to view chat details': 请从左侧边栏选择一个对话以查看聊天详情
+'Please select': 请选择
+'Provider (MCP)': Provider (MCP)
 'Provider': 提供商
 'Pulling from GitHub...': 正在从 GitHub 拉取...
 'Pulling...': 拉取中...
 'Push will create a new remote branch': 推送将创建新的远程分支
 'Pushing to GitHub...': 正在推送到 GitHub...
 'Pushing...': 推送中...
+'Refresh Tools List': 刷新工具列表
 'Remote branch exists. Use Pull to sync with remote changes.': 远程分支存在。使用 Pull 同步远程更改。
 'Remote branch not found': 远程分支未找到
 'Remote Branch Status': 远程分支状态
@@ -154,6 +166,9 @@ __langname: 简体中文
 'Saving': 保存中
 'Select a conversation to view details': 选择对话以查看详情
 'Select Agent': 选择 Agent
+'Select the type of access point to generate a token': 选择接入点类型以生成 token
+'Server ID': 服务器 ID
+'Server Information': 服务器信息
 'Successfully pulled from GitHub': 成功从 GitHub 拉取
 'Successfully pushed to GitHub': 成功推送到 GitHub
 'Table of Contents': 目录
@@ -162,9 +177,12 @@ __langname: 简体中文
 'Token deleted successfully': Token 已删除
 'Token generated successfully': Token 已生成
 'Token not generated yet': 尚未生成 Token
+'Token will be deleted if not used within 30 minutes': Token 如果 30 分钟未使用将被删除
 'Token': Token
 'Tool call successful': 工具调用成功
 'Tool': 工具
+'Tools Count': 工具数量
+'Tools List': 工具列表
 'TTS (Text-to-Speech) Configuration': TTS (文本转语音) 配置
 'TTS configuration saved successfully': TTS 配置已保存
 'TTS Configuration': TTS 配置
@@ -177,6 +195,8 @@ __langname: 简体中文
 'Voice': 语音
 'WebSocket Endpoint': WebSocket 接入点
 'WebSocket Token Management': WebSocket Token 管理
+'WebSocket URL': WebSocket URL
+'Working': 工作中
 'Yes': 是
 'your custom message': 您的自定义消息
 (None): (无)

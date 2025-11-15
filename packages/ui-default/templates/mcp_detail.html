@@ -9,11 +9,11 @@
                 <div class="section__action">
                     <span class="server-status server-status-{{ server.status }}">
                         {% if server.status == 'connected' %}
-                            已连接
+                            {{ _('Connected') }}
                         {% elif server.status == 'disconnected' %}
-                            已断开
+                            {{ _('Disconnected') }}
                         {% elif server.status == 'error' %}
-                            错误
+                            {{ _('Error') }}
                         {% else %}
                             {{ server.status }}
                         {% endif %}
@@ -26,14 +26,14 @@
                 {% endif %}
                 
                 <div class="server-info">
-                    <h3>服务器信息</h3>
+                    <h3>{{ _('Server Information') }}</h3>
                     <table class="data-table">
                         <tr>
-                            <th>服务器 ID</th>
+                            <th>{{ _('Server ID') }}</th>
                             <td>{{ server.serverId }}</td>
                         </tr>
                         <tr>
-                            <th>类型</th>
+                            <th>{{ _('Type') }}</th>
                             <td>
                                 {% set serverType = server.type|default('provider') %}
                                 {% if serverType == 'repo' %}
@@ -46,15 +46,15 @@
                             </td>
                         </tr>
                         <tr>
-                            <th>状态</th>
+                            <th>{{ _('Status') }}</th>
                             <td>
                                 <span class="server-status server-status-{{ server.status }}">
                                     {% if server.status == 'connected' %}
-                                        已连接
+                                        {{ _('Connected') }}
                                     {% elif server.status == 'disconnected' %}
-                                        已断开
+                                        {{ _('Disconnected') }}
                                     {% elif server.status == 'error' %}
-                                        错误
+                                        {{ _('Error') }}
                                     {% else %}
                                         {{ server.status }}
                                     {% endif %}
@@ -62,11 +62,11 @@
                             </td>
                         </tr>
                         <tr>
-                            <th>工具数量</th>
+                            <th>{{ _('Tools Count') }}</th>
                             <td>{{ server.toolsCount|default(0) }}</td>
                         </tr>
                         <tr>
-                            <th>最后连接时间</th>
+                            <th>{{ _('Last Connected Time') }}</th>
                             <td>
                                 {% if server.lastConnectedAt %}
                                     {{ datetimeSpan(server.lastConnectedAt)|safe }}
@@ -76,7 +76,7 @@
                             </td>
                         </tr>
                         <tr>
-                            <th>最后断开时间</th>
+                            <th>{{ _('Last Disconnected Time') }}</th>
                             <td>
                                 {% if server.lastDisconnectedAt %}
                                     {{ datetimeSpan(server.lastDisconnectedAt)|safe }}
@@ -87,12 +87,12 @@
                         </tr>
                         {% if server.errorMessage %}
                             <tr>
-                                <th>错误信息</th>
+                                <th>{{ _('Error Message') }}</th>
                                 <td class="text-danger">{{ server.errorMessage }}</td>
                             </tr>
                         {% endif %}
                         <tr>
-                            <th>创建时间</th>
+                            <th>{{ _('Created Time') }}</th>
                             <td>
                                 {% if server.createdAt %}
                                     {{ datetimeSpan(server.createdAt)|safe }}
@@ -106,10 +106,10 @@
 
                 <div class="tools-section">
                     <div class="tools-section-header">
-                        <h3>工具列表</h3>
+                        <h3>{{ _('Tools List') }}</h3>
                         {% if handler.user.hasPriv(model.builtin.PRIV.PRIV_USER_PROFILE) %}
                             <button class="button small mcp-refresh-tools-btn" data-server-id="{{ server.serverId }}" data-domain-id="{{ domainId }}">
-                                刷新工具列表
+                                {{ _('Refresh Tools List') }}
                             </button>
                         {% endif %}
                     </div>
@@ -126,7 +126,7 @@
                                     </div>
                                     {% if tool.inputSchema %}
                                         <div class="tool-schema">
-                                            <strong>输入模式：</strong>
+                                            <strong>{{ _('Input Schema') }}:</strong>
                                             <pre><code>{{ tool.inputSchema|json|safe }}</code></pre>
                                         </div>
                                     {% endif %}
@@ -134,7 +134,7 @@
                             {% endfor %}
                         </div>
                     {% else %}
-                        <p class="text-gray">暂无工具。服务器连接后会自动同步工具列表。</p>
+                        <p class="text-gray">{{ _('No tools yet. Tools list will be automatically synced after server connection.') }}</p>
                     {% endif %}
                 </div>
             </div>
@@ -143,33 +143,33 @@
     <div class="medium-3 columns">
         <div class="section">
             <div class="section__header">
-                <h1 class="section__title">操作</h1>
+                <h1 class="section__title">{{ _('Actions') }}</h1>
             </div>
             <div class="section__body">
-                <a href="{{ url('mcp_domain', { domainId: domainId }) }}" class="button block">返回列表</a>
+                <a href="{{ url('mcp_domain', { domainId: domainId }) }}" class="button block">{{ _('Back to List') }}</a>
                 {% if handler.user.hasPriv(model.builtin.PRIV.PRIV_USER_PROFILE) %}
                     <div class="mcp-token-section">
-                        <h4>WebSocket Token 管理</h4>
+                        <h4>{{ _('WebSocket Token Management') }}</h4>
                         {% if server.wsToken %}
                             <div class="token-info">
-                                <p><strong>Token:</strong> <code id="ws-token">{{ server.wsToken }}</code></p>
+                                <p><strong>{{ _('Token') }}:</strong> <code id="ws-token">{{ server.wsToken }}</code></p>
                                 {% if wsEndpoint %}
-                                    <p><strong>连接 URL:</strong></p>
+                                    <p><strong>{{ _('Connection URL') }}:</strong></p>
                                     <div class="endpoint-url">
                                         <code id="ws-endpoint">{{ wsEndpoint }}</code>
-                                        <button class="button small mcp-copy-endpoint-btn">复制</button>
+                                        <button class="button small mcp-copy-endpoint-btn">{{ _('Copy') }}</button>
                                     </div>
                                 {% endif %}
-                                <button class="button block danger mcp-delete-token-btn" data-server-id="{{ server.serverId }}">删除 Token</button>
+                                <button class="button block danger mcp-delete-token-btn" data-server-id="{{ server.serverId }}">{{ _('Delete Token') }}</button>
                             </div>
                         {% else %}
-                            <p>尚未生成 Token</p>
-                            <button class="button block primary mcp-generate-token-btn" data-server-id="{{ server.serverId }}" data-domain-id="{{ domainId }}">生成 Token</button>
+                            <p>{{ _('Token not generated yet') }}</p>
+                            <p class="text-gray" style="font-size: 0.9em;">{{ _('Please generate token on') }} <a href="{{ url('edge_main', { domainId: domainId }) }}">{{ _('Edge page') }}</a></p>
                         {% endif %}
                     </div>
                     <form method="post" action="{{ url('mcp_delete', { domainId: domainId }) }}" class="mcp-delete-form">
                         <input type="hidden" name="serverId" value="{{ server.serverId }}">
-                        <button type="submit" class="button block danger mcp-delete-server-btn">删除服务器</button>
+                        <button type="submit" class="button block danger mcp-delete-server-btn">{{ _('Delete Server') }}</button>
                     </form>
                 {% endif %}
             </div>

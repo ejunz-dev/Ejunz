@@ -1,0 +1,32 @@
+{% macro render_edge_status_td(item, type, class='') %}
+{% set statusCode = 'pass' if item.status == 'connected' else ('fail' if item.status == 'disconnected' else 'progress') %}
+{% set statusText = _('Online') if item.status == 'connected' else (_('Offline') if item.status == 'disconnected' else _('Working')) %}
+{% set detailUrl = '' %}
+{% if type == 'mcp' %}
+  {% set detailUrl = url('mcp_detail', { domainId: handler.args.domainId, serverId: item.serverId }) %}
+{% elif type == 'client' %}
+  {% set detailUrl = url('client_detail', { domainId: handler.args.domainId, clientId: item.clientId }) %}
+{% elif type == 'node' %}
+  {% set detailUrl = url('node_detail', { domainId: handler.args.domainId, nodeId: item.nodeId }) %}
+{% endif %}
+<td class="col--status record-status--border {{ class }} {{ statusCode }}">
+  <div class="col--status__text">
+    <span class="icon record-status--icon {{ statusCode }}"></span>
+    {% if detailUrl %}
+      <a href="{{ detailUrl }}" class="record-status--text {{ statusCode }}">
+        {{ statusText }}
+      </a>
+    {% else %}
+      <span class="record-status--text {{ statusCode }}">
+        {{ statusText }}
+      </span>
+    {% endif %}
+  </div>
+  {% if item.status == 'working' %}
+    <div class="col--status__progress-container">
+      <div class="col--status__progress" style="width: 50%"></div>
+    </div>
+  {% endif %}
+</td>
+{% endmacro %}
+
