@@ -1,0 +1,53 @@
+{% import "components/edge.html" as edge_component with context %}
+<tr data-type="{{ itemType }}" data-id="{{ itemId }}">
+  {{ edge_component.render_edge_status_td(item, itemType) }}
+  <td class="col--type">
+    {% if itemType == 'mcp' %}
+      {% set serverType = item.type|default('provider') %}
+      {% if serverType == 'repo' %}
+        <span class="badge badge--primary">MCP Repo</span>
+      {% elif serverType == 'node' %}
+        <span class="badge badge--info">MCP Node</span>
+      {% else %}
+        <span class="badge">MCP</span>
+      {% endif %}
+    {% elif itemType == 'client' %}
+      <span class="badge badge--success">Client</span>
+    {% elif itemType == 'node' %}
+      <span class="badge badge--warning">Node</span>
+    {% endif %}
+  </td>
+  <td class="col--name">
+    {% if itemType == 'mcp' %}
+      <a href="{{ url('mcp_detail', { domainId: domainId, serverId: item.serverId }) }}">
+        {{ item.name|default('MCP ' + item.serverId|string) }}
+      </a>
+    {% elif itemType == 'client' %}
+      <a href="{{ url('client_detail', { domainId: domainId, clientId: item.clientId }) }}">
+        {{ item.name|default('Client ' + item.clientId|string) }}
+      </a>
+    {% elif itemType == 'node' %}
+      <a href="{{ url('node_detail', { domainId: domainId, nodeId: item.nodeId }) }}">
+        {{ item.name|default('Node ' + item.nodeId|string) }}
+      </a>
+    {% endif %}
+    {% if item.description %}
+      <br><small class="text-gray">{{ item.description }}</small>
+    {% endif %}
+  </td>
+  <td class="col--info">
+    {% if itemType == 'mcp' %}
+      {{ item.toolsCount|default(0) }} {{ _('tools') }}
+    {% else %}
+      -
+    {% endif %}
+  </td>
+  <td class="col--last-connected">
+    {% if item.lastConnectedAt %}
+      {{ datetimeSpan(item.lastConnectedAt)|safe }}
+    {% else %}
+      -
+    {% endif %}
+  </td>
+</tr>
+

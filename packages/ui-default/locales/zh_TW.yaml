@@ -7,99 +7,40 @@ __langname: 正體中文
 '↓ # Enrollees': ↓ 參與人數
 '↓ # Likes': ↓ 贊數
 '↓ # Stars': ↓ 收藏數
-↓ Create Time: ↓ 創建時間
-↓ Update Time: ↓ 更新時間
-After successful connection, configure ASR, TTS and Agent services: 連接成功後，可以配置 ASR、TTS
-Agent configuration cleared successfully: Agent 配置已清除
-Agent configuration saved successfully: Agent 配置已保存
-Agent Configuration: Agent 配置
-Are you sure you want to clear the Agent configuration?: 確定要清除 Agent 配置嗎？
-Are you sure you want to delete the Token? Connections using this Token will be disconnected.: 確定要刪除
-Are you sure you want to delete this client?: 確定要刪除此客戶端嗎？
-Are you sure you want to generate a new Token? The old Token will be invalidated.: 確定要生成新的
-ASR (Speech Recognition) Configuration: ASR (語音識別) 配置
-ASR configuration saved successfully: ASR 配置已保存
-ASR Configuration: ASR 配置
-Back to Details: 返回詳情
-Back to List: 返回列表
-Base URL: Base URL
-Clear Agent: 清除 Agent
-Clear Logs: 清空日誌
-Click the "Create Client" button above to create a new client: 點擊上方"創建客戶端"按鈕來創建新的客戶端
-Client Connection Logs: 客戶端連接日誌
-Client ID: 客戶端 ID
-Client Information: 客戶端資訊
-Client Management: 客戶端管理
-Client Name: 客戶端名稱
-Clients can connect via the following WebSocket URL (Token must be generated first): 客戶端可以通過以下
-Configuration: 配置
-Connect to the WebSocket URL above using the generated Token: 使用生成的 Token 連接到上述 WebSocket
-Connected: 已連接
-Connection URL: 連接 URL
-Copied to clipboard: 已複製到剪貼板
-Create Client: 創建客戶端
-Created Clients: 已創建的客戶端
-Created Time: 創建時間
-Currently Selected Agent: 當前選擇的 Agent
-Delete Client: 刪除客戶端
-Delete Token: 刪除 Token
-Description (Optional): 描述（可選）
-Disconnected: 已斷開
-Edit Client: 編輯客戶端
-Enable Server VAD: 啟用伺服器 VAD
-Endpoint: Endpoint
-Error Message: 錯誤資訊
-Error: 錯誤
-Free Scroll: 自由滾動
-Generate Token on client detail page: 在客戶端詳情頁面生成 Token
-Generate Token: 生成 Token
-Language Type: 語言類型
-Last Connected Time: 最後連接時間
-Last Connected: 最後連接
-Last Disconnected Time: 最後斷開時間
-Lock Scroll: 鎖定滾動
-MCP Tools: MCP 工具
-Model: 模型
-No clients created yet: 暫無已創建的客戶端
-No tools available: 暫無工具
 'No': 否
-Operations: 操作
-Provider: 提供商
-Save Agent Configuration: 保存 Agent 配置
-Save ASR Configuration: 保存 ASR 配置
-Save TTS Configuration: 保存 TTS 配置
-Save: 保存
-Select Agent: 選擇 Agent
-Token deleted successfully: Token 已刪除
-Token generated successfully: Token 已生成
-Token not generated yet: 尚未生成 Token
-Token: Token
-TTS (Text-to-Speech) Configuration: TTS (文本轉語音) 配置
-TTS configuration saved successfully: TTS 配置已保存
-TTS Configuration: TTS 配置
-Unknown error: 未知錯誤
-Usage Steps: 使用步驟
-View Connection Logs: 查看連接日誌
-View Parameters: 查看參數
-Voice: 語音
-WebSocket Endpoint: WebSocket 接入點
-WebSocket Token Management: WebSocket Token 管理
 'Yes': 是
 (None): (無)
+↓ Create Time: ↓ 創建時間
+↓ Update Time: ↓ 更新時間
 About Markdown: 關於 Markdown
 About: 關於
 Access Control: 訪問控制
+Access Point Type: 接入點類型
 Action: 動作
 Active Sessions: 活動會話
 Add new data: 新增新資料
 Add User: 新增使用者
 Add: 新增
+After successful connection, configure ASR, TTS and Agent services: 連接成功後，可以配置 ASR、TTS
+Agent configuration cleared successfully: Agent 配置已清除
+Agent configuration saved successfully: Agent 配置已保存
+Agent Configuration: Agent 配置
 All: 全部
 Always granted all privileges: 總是擁有所有域許可權
 An error has occurred.: 發生了一個錯誤。
 API: API
+Are you sure you want to clear the Agent configuration?: 確定要清除 Agent 配置嗎？
+Are you sure you want to delete the Token? Connections using this Token will be disconnected.: 確定要刪除
+Are you sure you want to delete this client?: 確定要刪除此客戶端嗎？
+Are you sure you want to generate a new Token? The old Token will be invalidated.: 確定要生成新的
 Arguments: 參數
+ASR (Speech Recognition) Configuration: ASR (語音識別) 配置
+ASR configuration saved successfully: ASR 配置已保存
+ASR Configuration: ASR 配置
 author: 作者
+Back to Details: 返回詳情
+Back to List: 返回列表
+Base URL: Base URL
 Begin Date: 開始日期
 Begin Time: 開始時間
 Belongs to: 屬於
@@ -113,42 +54,65 @@ Cancel: 取消
 Category: 分類
 Change Email: 修改電子郵件
 Change Password: 修改密碼
+Clear Agent: 清除 Agent
+Clear Logs: 清空日誌
 Click here to chat with me: 點選這裡與我聊天
+Click the "Create Client" button above to create a new client: 點擊上方"創建客戶端"按鈕來創建新的客戶端
+Client Connection Logs: 客戶端連接日誌
+Client ID: 客戶端 ID
+Client Information: 客戶端資訊
+Client Management: 客戶端管理
+Client Name: 客戶端名稱
+Clients can connect via the following WebSocket URL (Token must be generated first): 客戶端可以通過以下
 CLOSE: 關閉
 Comment: 評論
 Comments: 評論
 CommonMark Syntax: CommonMark 語法
+Configuration: 配置
 Confirm deleting the selected roles?: 您確定刪除所選角色嗎？
 Confirm removing the selected users?: 您確定將所選使用者移除嗎？
 Confirmation mail has been sent to your new email.: 確認郵件已經發送到您的新電子郵箱。
+Connect to the WebSocket URL above using the generated Token: 使用生成的 Token 連接到上述 WebSocket
+Connected: 已連接
+Connection URL: 連接 URL
 Contact Us: 聯絡我們
 Contact: 聯絡
 content: 內容
 Content: 內容
+Copied to clipboard: 已複製到剪貼板
 Create a Discussion: 創建一個討論
+Create Client: 創建客戶端
 Create Discussion in {0}: 在 {0} 下創建討論
 Create Discussion: 創建討論
 Create discussions: 創建討論
 Create Domain: 創建域
 Create Role: 創建角色
 Create: 創建
+Created Clients: 已創建的客戶端
+Created Time: 創建時間
 current domain: 當前域
 Current Email: 當前電子郵件
 Current Location: 當前位置
 Current password doesn't match.: 當前密碼輸入錯誤。
 Current Password: 當前密碼
 currently offline: 目前離線
+Currently Selected Agent: 當前選擇的 Agent
+Delete Client: 刪除客戶端
 Delete discussion replies of own discussion: 刪除自己討論中的回覆
 Delete discussion replies: 刪除討論回覆
 Delete discussions: 刪除討論
 Delete own discussion replies: 刪除討論中自己的回覆
 Delete own discussions: 刪除自己的討論
 Delete Selected Roles: 刪除所選角色
+Delete Server: 刪除伺服器
+Delete Token: 刪除 Token
 delete: 刪除
 Delete: 刪除
+Description (Optional): 描述（可選）
 Description: 說明
 Development: 開發
 Disabled: 關閉
+Disconnected: 已斷開
 Discussion {1} not found.: 討論 {1} 不存在。
 Discussion category {1} already exists.: 討論分類 {1} 已經存在。
 Discussion category {1} not found.: 討論分類 {1} 不存在。
@@ -171,6 +135,9 @@ Don't have an account?: 還沒有賬戶？
 Download: 下載
 Duration (hours): 持續時間 (小時)
 Duration: 持續時間
+Edge Connection Status: Edge 連接狀態
+Edge page: Edge 頁面
+Edit Client: 編輯客戶端
 Edit description of this domain: 修改此域描述
 Edit discussion replies of own discussion: 修改自己討論中的回覆
 Edit discussion replies: 修改討論的回覆
@@ -182,18 +149,27 @@ Edit permissions of a role: 修改角色許可權
 Edit: 編輯
 Email Visibility: Email 可見性
 Email: 電子郵件
+Enable Server VAD: 啟用伺服器 VAD
 Enabled: 開啟
 End at: 結束於
 End Date: 結束日期
 End Time: 結束時間
+Endpoint: Endpoint
+Error Message: 錯誤資訊
 error: 錯誤
+Error: 錯誤
+Failed to generate token: {0}: 生成 token 失敗: {0}
 Field {0} or {1} validation failed.: 欄位 {0} 或 {1} 驗證失敗。
 Field {0} validation failed.: 欄位 {0} 驗證失敗。
 Footer: 頁尾
 Forgot password or username?: 忘記密碼或者使用者名？
 Formula blocks: 公式區塊
+Free Scroll: 自由滾動
 Gender Visibility: 性別可見性
 Gender: 性別
+Generate Access Token: 生成接入點 Token
+Generate Token on client detail page: 在客戶端詳情頁面生成 Token
+Generate Token: 生成 Token
 Have ALL PERMISSIONS in this domain: 在此域中擁有全部許可權
 Help: 幫助
 Hidden: 隱藏
@@ -214,8 +190,13 @@ Images: 圖片
 Information: 資訊
 Inline codes: 行內程式碼
 Inline formulas: 行內公式
+Input Schema: 輸入模式
+Language Type: 語言類型
 Language: 語言
 last active at: 最後活動於
+Last Connected Time: 最後連接時間
+Last Connected: 最後連接
+Last Disconnected Time: 最後斷開時間
 last login at: 最後登入於
 Last Submit At: 最後遞交於
 Last Update At: 最後活動時間
@@ -226,6 +207,7 @@ List View: 列表視圖
 Live: 正在進行
 Live...: 正在進行…
 Location: 位置
+Lock Scroll: 鎖定滾動
 Login to Create a Discussion: 登入後創建討論
 Login to Submit: 登入後遞交
 Login: 登入
@@ -237,10 +219,12 @@ manage_dashboard: 系統管理
 manage_join_applications: 加域申請
 manage: 管理
 Manage: 管理
+MCP Tools: MCP 工具
 Memory Cost: 記憶體佔用
 Memory: 記憶體
 Message {0} not found.: 訊息 {0} 不存在。
 Messages: 訊息
+Model: 模型
 My Domains: 我的域
 My Profile: 我的資料
 My Role: 我的角色
@@ -248,6 +232,9 @@ Name: 名稱
 New Email: 新電子郵件
 New Password: 新密碼
 New: 創建
+No clients created yet: 暫無已創建的客戶端
+No tools available: 暫無工具
+No tools yet. Tools list will be automatically synced after server connection.: 暫無工具。伺服器連接後會自動同步工具列表。
 no_translation_warn: <blockquote class="warn">這部分內容正在翻譯。</blockquote>
 Not Attended: 未參加
 Not available: 不可用
@@ -260,6 +247,7 @@ Oops!: Oops!
 Open Since: 開始時間
 Open Source: 開源
 Operating System: 作業系統
+Operations: 操作
 Owner: 所有者
 pager_first: « 第一頁
 pager_last: 末頁 »
@@ -276,15 +264,20 @@ perm_discussion: 討論
 perm_general: 一般
 Permission: 許可權
 Permissions: 許可權
+Please generate token on: 請在
 Please select at least one role to perform this operation.: 請選擇至少一個角色來進行操作。
 Please select at least one user to perform this operation.: 請選擇至少一個使用者來進行操作。
+Please select: 請選擇
 Privacy: 隱私
 Properties: 屬性
+Provider (MCP): Provider (MCP)
+Provider: 提供商
 Public: 公開
 Published at: 發表於
 QQ Group: QQ 群
 QQ Visibility: QQ 可見性
 Rank: 排名
+Refresh Tools List: 重新整理工具列表
 Refresh: 重新整理
 Registered at: 註冊於
 Related Discussions: 相關討論
@@ -306,19 +299,27 @@ Role name can only contains numbers, letters and underscores.: 角色名稱只�
 Role: 角色
 Roles: 角色
 Rule: 規則
+Save Agent Configuration: 保存 Agent 配置
 Save All Changes: 儲存所有修改
+Save ASR Configuration: 保存 ASR 配置
+Save TTS Configuration: 保存 TTS 配置
+Save: 保存
 Saved session: 已儲存的會話
 Secret (visible to admins): 保密（對管理員可見）
 Secret: 保密
 Security: 安全
 Select a node to create discussion.: 選擇一個節點來發表討論。
 Select a role: 選擇一個角色
+Select Agent: 選擇 Agent
+Select the type of access point to generate a token: 選擇接入點類型以生成 token
 Select User: 選擇使用者
 Selected roles have been deleted.: 所選角色已刪除。
 Selected users have been removed from the domain.: 所選使用者已從此域中移除。
 Send Password Reset Email: 傳送密碼重置郵件
 Send Verification Email: 傳送驗證郵件
 Send: 傳送
+Server ID: 伺服器 ID
+Server Information: 伺服器資訊
 Service Status: 服務狀態
 Set Role: 設定角色
 Set Roles for Selected User: 設定所選使用者的角色
@@ -358,9 +359,20 @@ timeago_locale: zh_TW
 Timezone: 時區
 title: 標題
 Title: 標題
+Token deleted successfully: Token 已刪除
+Token generated successfully: Token 已生成
+Token not generated yet: 尚未生成 Token
+Token will be deleted if not used within 30 minutes: Token 如果 30 分鐘未使用將被刪除
+Token: Token
+Tools Count: 工具數量
+Tools List: 工具列表
+TTS (Text-to-Speech) Configuration: TTS (文本轉語音) 配置
+TTS configuration saved successfully: TTS 配置已保存
+TTS Configuration: TTS 配置
 Type: 類型
 UI Language: 使用者介面語言
 Unique: 唯一
+Unknown error: 未知錯誤
 Unknown field {0}.: 未知欄位 {0}。
 Unknown: 未知
 Unstar Topic: 取消收藏
@@ -369,6 +381,7 @@ Update Permission: 更新許可權
 Update: 更新
 Upload: 上傳
 Uploaded By: 上傳者
+Usage Steps: 使用步驟
 User {0} already exists.: 使用者 {0} 已存在。
 User {0} not found.: 使用者 {0} 不存在。
 User ID: 使用者 ID
@@ -385,18 +398,25 @@ Users with those roles will be removed from the domain.: 擁有這些角色的�
 Users: 使用者
 Valid for registered users who are not members of the domain: 對域外註冊使用者有效
 Valid for visitors: 對未登入的遊客有效
+View Connection Logs: 查看連接日誌
 View Details: 檢視詳情
 View or create discussion: 檢視與發表討論
+View Parameters: 查看參數
 View this domain: 檢視此域
 View: 檢視
 Visit: 檢視
+Voice: 語音
 Vote: 投票
+WebSocket Endpoint: WebSocket 接入點
+WebSocket Token Management: WebSocket Token 管理
+WebSocket URL: WebSocket URL
 WeChat Visibility: 微信可見性
 WeChat: 微信
 What is domain?: 什麼是域?
 What's domain?: 什麼是域？
 wiki_about: 關於
 Will be used as the domain icon.: 將被用作圖示。
+Working: 工作中
 Write Your Comment: 發表您的評論
 You don't have the required permission ({0}) in this domain.: 您在該域中無相應許可權 ({0})。
 You don't have the required privilege.: 您沒有相應的特權。

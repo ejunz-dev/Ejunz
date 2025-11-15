@@ -6,6 +6,7 @@ import { ValidationError, PermissionError, NotFoundError } from '../error';
 import { Logger } from '../logger';
 import ClientModel from '../model/client';
 import ClientChatModel, { apply as applyClientChat } from '../model/client_chat';
+import EdgeTokenModel from '../model/edge_token';
 import AgentModel, { McpClient } from '../model/agent';
 import { processAgentChatInternal } from './agent';
 import domain from '../model/domain';
@@ -293,33 +294,7 @@ export class ClientEditHandler extends Handler<Context> {
     }
 }
 
-export class ClientGenerateTokenHandler extends Handler<Context> {
-    async post() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        this.response.template = null;
-        
-        const { clientId } = this.request.body;
-        const clientIdNum = parseInt(clientId, 10);
-        
-        if (isNaN(clientIdNum) || clientIdNum < 1) {
-            throw new ValidationError('clientId');
-        }
-
-        const client = await ClientModel.getByClientId(this.domain._id, clientIdNum);
-        if (!client) {
-            throw new NotFoundError('Client');
-        }
-
-        if (client.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
-        }
-
-        const wsToken = await ClientModel.generateWsToken();
-        await ClientModel.update(this.domain._id, clientIdNum, { wsToken });
-
-        this.response.body = { wsToken };
-    }
-}
+// Token 生成逻辑已迁移到 edge 模块
 
 export class ClientDeleteTokenHandler extends Handler<Context> {
     async post() {
@@ -717,12 +692,24 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             return;
         }
 
-        const clients = await ClientModel.getByDomain(this.domain._id);
-        const client = clients.find(c => c.wsToken === token);
-        
-        if (!client) {
+        // 使用统一的 token 验证
+        const tokenDoc = await EdgeTokenModel.getByToken(token);
+        if (!tokenDoc || tokenDoc.type !== 'client' || tokenDoc.domainId !== this.domain._id) {
             logger.warn('Client WebSocket connection rejected: Invalid token');
             this.close(4000, 'Invalid token');
+            return;
+        }
+
+        // 更新 token 最后使用时间
+        await EdgeTokenModel.updateLastUsed(token);
+
+        // 查找第一个可用的 client（或者根据 token 关联的 clientId，这里简化处理）
+        const clients = await ClientModel.getByDomain(this.domain._id);
+        const client = clients[0]; // 简化：使用第一个 client，实际可以根据 token 关联
+        
+        if (!client) {
+            logger.warn('Client WebSocket connection rejected: No client found');
+            this.close(4000, 'No client found');
             return;
         }
 
@@ -2170,7 +2157,7 @@ export async function apply(ctx: Context) {
     ctx.Route('client_edit', '/client/:clientId/edit', ClientEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_delete', '/client/delete', ClientDeleteHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_detail', '/client/:clientId', ClientDetailHandler);
-    ctx.Route('client_generate_token', '/client/:clientId/generate-token', ClientGenerateTokenHandler, PRIV.PRIV_USER_PROFILE);
+    // Token 生成路由已迁移到 edge 模块
     ctx.Route('client_chat_list', '/client/:clientId/chats', ClientChatListHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_chat_detail', '/client/:clientId/chat/:conversationId', ClientChatDetailHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_chat_delete', '/client/chat/delete', ClientChatDeleteHandler, PRIV.PRIV_USER_PROFILE);

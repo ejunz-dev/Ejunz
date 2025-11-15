@@ -1,0 +1,95 @@
+{% set page_name = "edge_status" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+    <div class="medium-12 columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">Edge 连接状态</h1>
+            </div>
+            <div class="section__body">
+                <!-- MCP 服务器状态 -->
+                <div class="edge-status-section">
+                    <h2>MCP 服务器</h2>
+                    <div class="edge-status-list" id="edge-mcp-list">
+                        {% for server in mcpServers %}
+                        <div class="edge-status-item" data-id="{{ server.serverId }}" data-type="mcp">
+                            <div class="edge-status-item__header">
+                                <span class="edge-status-item__name">{{ server.name|default('MCP ' + server.serverId|string) }}</span>
+                                <span class="edge-status-item__status edge-status--{{ server.status }}">
+                                    <span class="icon edge-status-icon edge-status-icon--{{ server.status }}"></span>
+                                    {% if server.status == 'connected' %}
+                                        在线
+                                    {% elif server.status == 'disconnected' %}
+                                        离线
+                                    {% elif server.status == 'working' %}
+                                        工作中
+                                    {% else %}
+                                        {{ server.status }}
+                                    {% endif %}
+                                </span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Client 状态 -->
+                <div class="edge-status-section">
+                    <h2>Client</h2>
+                    <div class="edge-status-list" id="edge-client-list">
+                        {% for client in clients %}
+                        <div class="edge-status-item" data-id="{{ client.clientId }}" data-type="client">
+                            <div class="edge-status-item__header">
+                                <span class="edge-status-item__name">{{ client.name|default('Client ' + client.clientId|string) }}</span>
+                                <span class="edge-status-item__status edge-status--{{ client.status }}">
+                                    <span class="icon edge-status-icon edge-status-icon--{{ client.status }}"></span>
+                                    {% if client.status == 'connected' %}
+                                        在线
+                                    {% elif client.status == 'disconnected' %}
+                                        离线
+                                    {% elif client.status == 'working' %}
+                                        工作中
+                                    {% else %}
+                                        {{ client.status }}
+                                    {% endif %}
+                                </span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Node 状态 -->
+                <div class="edge-status-section">
+                    <h2>Node</h2>
+                    <div class="edge-status-list" id="edge-node-list">
+                        {% for node in nodes %}
+                        <div class="edge-status-item" data-id="{{ node.nodeId }}" data-type="node">
+                            <div class="edge-status-item__header">
+                                <span class="edge-status-item__name">{{ node.name|default('Node ' + node.nodeId|string) }}</span>
+                                <span class="edge-status-item__status edge-status--{{ node.status }}">
+                                    <span class="icon edge-status-icon edge-status-icon--{{ node.status }}"></span>
+                                    {% if node.status == 'connected' %}
+                                        在线
+                                    {% elif node.status == 'disconnected' %}
+                                        离线
+                                    {% elif node.status == 'working' %}
+                                        工作中
+                                    {% else %}
+                                        {{ node.status }}
+                                    {% endif %}
+                                </span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="edge-status-ws" data-domain-id="{{ handler.args.domainId }}" class="edge-status-ws"></div>
+{% endblock %}
+

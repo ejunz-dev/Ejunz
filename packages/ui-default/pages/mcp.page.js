@@ -7,37 +7,7 @@ export default new AutoloadPage('mcp_domain,mcp_detail', async () => {
         import('../components/socket'),
     ]);
 
-    // Token 管理功能
-    function generateToken(serverId, domainId) {
-        if (!confirm('确定要生成新的 Token 吗？旧的 Token 将失效。')) return;
-        
-        $.ajax({
-            url: `/mcp/${serverId}/generate-token`,
-            method: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify({ serverId }),
-        }).then((response) => {
-            if (response.wsToken) {
-                $('#ws-token').text(response.wsToken);
-                // 构建 WebSocket URL
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const host = window.location.host;
-                const wsPath = `/d/${domainId}/mcp/ws`;
-                const endpoint = `${protocol}//${host}${wsPath}?token=${response.wsToken}`;
-                $('#ws-endpoint').text(endpoint);
-                if ($('.endpoint-url').length === 0) {
-                    $('.token-info').append(`<div class="endpoint-url"><code id="ws-endpoint">${endpoint}</code><button class="button small mcp-copy-endpoint-btn">复制</button></div>`);
-                }
-                if ($('.token-info').length === 0) {
-                    $('.section__body').prepend(`<div class="token-info"><p><strong>Token:</strong> <code id="ws-token">${response.wsToken}</code></p></div>`);
-                }
-                Notification.success('Token 已生成');
-                setTimeout(() => location.reload(), 1000);
-            }
-        }).catch((error) => {
-            Notification.error('生成 Token 失败: ' + (error.responseJSON?.error || error.message || '未知错误'));
-        });
-    }
+    // Token 生成功能已迁移到 edge 页面
 
     function deleteToken(serverId) {
         if (!confirm('确定要删除 Token 吗？使用此 Token 的连接将断开。')) return;
@@ -75,12 +45,7 @@ export default new AutoloadPage('mcp_domain,mcp_detail', async () => {
         });
     }
 
-    // 绑定 Token 管理按钮事件
-    $(document).on('click', '.mcp-generate-token-btn', function() {
-        const serverId = $(this).data('server-id');
-        const domainId = $(this).data('domain-id');
-        generateToken(serverId, domainId);
-    });
+    // Token 生成按钮已移除，请使用 edge 页面生成
 
     $(document).on('click', '.mcp-delete-token-btn', function() {
         const serverId = $(this).data('server-id');
