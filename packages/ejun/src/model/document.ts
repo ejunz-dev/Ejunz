@@ -6,7 +6,7 @@ import {
 import { Context } from '../context';
 import {
     Content, ContestClarificationDoc, DiscussionDoc,
-    DiscussionReplyDoc, AgentDoc, BSDoc, RPDoc, DCDoc, BKDoc, NodeDoc, McpServerDoc, McpToolDoc, ClientDoc, ClientChatDoc,
+    DiscussionReplyDoc, AgentDoc, BSDoc, RPDoc, DCDoc, BKDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc,
 } from '../interface';
 import bus from '../service/bus';
 import db from '../service/db';
@@ -27,10 +27,10 @@ export const TYPE_RP: 31 = 31;
 export const TYPE_DC: 32 = 32;
 export const TYPE_BK: 33 = 33;
 export const TYPE_NODE: 40 = 40;
-export const TYPE_MCP_SERVER: 50 = 50;
-export const TYPE_MCP_TOOL: 51 = 51;
 export const TYPE_CLIENT: 60 = 60;
 export const TYPE_CLIENT_CHAT: 61 = 61;
+export const TYPE_EDGE: 70 = 70;
+export const TYPE_TOOL: 80 = 80; // 工具
 
 export interface DocType {
     [TYPE_AGENT]: AgentDoc;
@@ -41,10 +41,10 @@ export interface DocType {
     [TYPE_DC]: DCDoc;
     [TYPE_BK]: BKDoc;
     [TYPE_NODE]: NodeDoc;
-    [TYPE_MCP_SERVER]: McpServerDoc;
-    [TYPE_MCP_TOOL]: McpToolDoc;
     [TYPE_CLIENT]: ClientDoc;
     [TYPE_CLIENT_CHAT]: ClientChatDoc;
+    [TYPE_EDGE]: EdgeDoc;
+    [TYPE_TOOL]: ToolDoc;
 }
 
 export interface DocStatusType {
@@ -536,8 +536,8 @@ global.Ejunz.model.document = {
     TYPE_DC,
     TYPE_BK,
     TYPE_NODE,
-    TYPE_MCP_SERVER,
-    TYPE_MCP_TOOL,
     TYPE_CLIENT,
     TYPE_CLIENT_CHAT,
+    TYPE_EDGE,
+    TYPE_TOOL,
 };
