@@ -28,8 +28,9 @@ import SystemModel from './system';
 import user from './user';
 import * as document from './document';
 import db from '../service/db';
-import McpServerModel, { McpToolModel } from './mcp';
-import { McpServerConnectionHandler } from '../handler/mcp';
+import EdgeModel from './edge';
+import ToolModel from './tool';
+import { EdgeServerConnectionHandler } from '../handler/edge';
 import _ from 'lodash';
 
 export type Field = keyof AgentDoc;
@@ -382,7 +383,7 @@ export interface ChatMessage {
     content: string;
 }
 
-export interface McpTool {
+export interface EdgeTool {
     name: string;
     description: string;
     inputSchema: {
@@ -394,7 +395,7 @@ export interface McpTool {
 const ClientLogger = new AppLogger('mcp');
 
 export class McpClient {
-    async getTools(): Promise<McpTool[]> {
+    async getTools(): Promise<EdgeTool[]> {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
             const edgeP = (async () => {
@@ -405,8 +406,8 @@ export class McpClient {
             })();
             const [edgeTools, localTools] = await Promise.all([edgeP, localP]);
             ClientLogger.info('Tool sources:', { edgeCount: (edgeTools || []).length, localCount: (localTools || []).length });
-            const merged: Record<string, McpTool> = Object.create(null);
-            for (const t of ([] as McpTool[]).concat(edgeTools || [], localTools || [])) merged[t.name] = t;
+            const merged: Record<string, EdgeTool> = Object.create(null);
+            for (const t of ([] as EdgeTool[]).concat(edgeTools || [], localTools || [])) merged[t.name] = t;
             const list = Object.values(merged);
             ClientLogger.info('Got tool list (merged):', { toolCount: list.length });
             return list;
@@ -455,7 +456,7 @@ export class McpClient {
             // First try to call via edge (if available)
             try {
                 const edgeTools = await ctx.serial('mcp/tools/list/edge').catch(() => []);
-                const inEdge = (edgeTools || []).some((t: McpTool) => t.name === name);
+                const inEdge = (edgeTools || []).some((t: EdgeTool) => t.name === name);
                 if (inEdge) {
                     try {
                         return await ctx.serial('mcp/tool/call/edge', { name, args });
@@ -467,79 +468,32 @@ export class McpClient {
                 ClientLogger.debug('Edge tools not available: %s', (e as Error).message);
             }
 
-            // If serverId is provided (from agent configuration), use it directly
-            if (serverId && domainId) {
-                try {
-                    ClientLogger.debug('Using configured serverId=%d for tool=%s', serverId, name);
-                    const connection = McpServerConnectionHandler.getConnection(serverId);
-                    if (connection) {
-                        ClientLogger.info('Calling tool %s via configured server %d', name, serverId);
-                        const result = await connection.callTool(name, args);
-                        // MCP protocol return format: { content: [{ type: 'text', text: ... }] }
-                        if (result?.content && Array.isArray(result.content)) {
-                            const textContent = result.content.find((c: any) => c.type === 'text');
-                            if (textContent?.text) {
-                                try {
-                                    return JSON.parse(textContent.text);
-                                } catch {
-                                    return textContent.text;
-                                }
-                            } else {
-                                return result;
-                            }
-                        } else {
-                            return result;
-                        }
-                    } else {
-                        ClientLogger.warn('Configured serverId=%d has no active connection for tool=%s, falling back to search', serverId, name);
-                    }
-                } catch (e) {
-                    ClientLogger.warn('Failed to call tool via configured serverId=%d: %s, falling back to search', serverId, (e as Error).message);
-                }
-            }
-
-            // If edge is not available and no serverId provided, try calling via local MCP server (search all)
+            // Search for tool in Edge/Tool model
             if (domainId) {
                 try {
-                    ClientLogger.debug('Looking for tool in local MCP servers: tool=%s, domainId=%s', name, domainId);
+                    ClientLogger.debug('Looking for tool in Edge servers: tool=%s, domainId=%s', name, domainId);
                     
-                    const servers = await McpServerModel.getByDomain(domainId);
-                    ClientLogger.debug('Found %d MCP servers in domain', servers.length);
+                    const edges = await EdgeModel.getByDomain(domainId);
+                    const connectedEdges = edges.filter(edge => edge.tokenUsedAt);
+                    ClientLogger.debug('Found %d connected edges in domain', connectedEdges.length);
                     
-                    // repo type tools are already called via internal method at the beginning, here mainly handle provider and node types
-                    for (const server of servers) {
-                        const serverType = (server as any).type || 'provider';
-                        
-                        // repo type tools already handled at the beginning, skip
-                        if (serverType === 'repo') {
-                            ClientLogger.debug('Skipping repo server %d (already handled via internal call)', server.serverId);
-                            continue;
-                        }
-                        
-                        ClientLogger.debug('Checking server: serverId=%d, name=%s, type=%s', 
-                            server.serverId, server.name, serverType);
-                        
-                        const tools = await McpToolModel.getByServer(domainId, server.serverId);
-                        ClientLogger.debug('Server %d has %d tools', server.serverId, tools.length);
+                    for (const edge of connectedEdges) {
+                        const tools = await ToolModel.getByEdgeDocId(domainId, edge._id);
+                        ClientLogger.debug('Edge %s has %d tools', edge._id, tools.length);
                         
                         const hasTool = tools.some(t => t.name === name);
                         if (hasTool) {
-                            ClientLogger.info('Found tool %s in server %d', name, server.serverId);
+                            ClientLogger.info('Found tool %s in edge %s', name, edge._id);
                             
-                            // provider and node types require WebSocket connection
-                            const connection = McpServerConnectionHandler.getConnection(server.serverId);
-                            
-                            const activeServerIds = Array.from(McpServerConnectionHandler.active.keys());
-                            ClientLogger.debug('Server %d connection lookup: found=%s, totalActiveServers=%d, activeServerIds=%j', 
-                                server.serverId, connection ? 'yes' : 'no', McpServerConnectionHandler.active.size, activeServerIds);
+                            const connection = EdgeServerConnectionHandler.getConnection(edge.token);
                             
                             if (!connection) {
-                                ClientLogger.warn('Server %d (type=%s) has tool %s but no active WebSocket connection. Skipping this server.', 
-                                    server.serverId, serverType, name);
+                                ClientLogger.warn('Edge %s (token: %s) has tool %s but no active WebSocket connection. Skipping this edge.', 
+                                    edge._id, edge.token, name);
                                 continue;
                             }
                             
-                            ClientLogger.info('Calling tool %s via server %d connection', name, server.serverId);
+                            ClientLogger.info('Calling tool %s via edge %s connection (token: %s)', name, edge._id, edge.token);
                             
                             const result = await connection.callTool(name, args);
                             
@@ -561,13 +515,13 @@ export class McpClient {
                                 return result;
                             }
                         } else {
-                            ClientLogger.debug('Server %d does not have tool %s', server.serverId, name);
+                            ClientLogger.debug('Edge %s does not have tool %s', edge._id, name);
                         }
                     }
                     
-                    ClientLogger.warn('Tool %s not found in any connected MCP server', name);
+                    ClientLogger.warn('Tool %s not found in any connected Edge server', name);
                 } catch (e) {
-                    ClientLogger.error('Local MCP tool call failed: %s', (e as Error).message);
+                    ClientLogger.error('Edge tool call failed: %s', (e as Error).message);
                     ClientLogger.error('Stack: %s', (e as Error).stack);
                 }
             } else {
@@ -577,7 +531,7 @@ export class McpClient {
             // Finally try calling via local event
             try {
                 const localTools = await ctx.serial('mcp/tools/list/local').catch(() => []);
-                const inLocal = (localTools || []).some((t: McpTool) => t.name === name);
+                const inLocal = (localTools || []).some((t: EdgeTool) => t.name === name);
                 if (inLocal) {
                     return await ctx.serial('mcp/tool/call/local', { name, args });
                 }

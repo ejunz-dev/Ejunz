@@ -1,133 +1,92 @@
 {% set page_name = "edge_main" %}
 {% extends "layout/basic.html" %}
-{% import "components/edge.html" as edge_component with context %}
 {% block content %}
-{% include "partials/edge_token_dialog.html" %}
 {{ set(
   UiContext, 'socketUrl',
-  "edge-main-conn?domainId=" + handler.args.domainId
+  "edge/status/ws?domainId=" + handler.args.domainId
 ) }}
 <div class="row">
   <div class="medium-12 columns">
     <div class="section">
       <div class="section__header">
-        <h1 class="section__title">{{ _('Edge Connection Status') }}</h1>
-        <div class="section__action">
+        <h1 class="section__title">接入点管理</h1>
+        <div class="section__tools">
           {% if handler.user.hasPriv(model.builtin.PRIV.PRIV_USER_PROFILE) %}
-            <button class="button primary" name="edge-generate-token-btn">{{ _('Generate Token') }}</button>
+            <button type="button" class="primary button" id="generate-token-btn">
+              <span class="icon icon-add"></span> 生成接入点
+            </button>
           {% endif %}
         </div>
       </div>
       <div class="section__body no-padding">
-        {% set hasItems = (mcpServers|length > 0) or (clients|length > 0) or (nodes|length > 0) %}
-        {% if hasItems %}
-          <table class="data-table record_main__table">
+        {% if not edges or not edges.length %}
+          <div class="typo">
+            <p>暂无已连接的 Edge 设备。生成接入点后，当设备通过接入点连接时，会显示在这里。</p>
+          </div>
+        {% else %}
+          <table class="data-table edge_main__table">
             <colgroup>
+              <col class="col--id">
               <col class="col--status">
               <col class="col--type">
-              <col class="col--name">
-              <col class="col--info">
-              <col class="col--last-connected">
+              <col class="col--created">
+              <col class="col--used">
+              <col class="col--action">
             </colgroup>
             <thead>
               <tr>
-                <th class="col--status record-status--border">{{ _('Status') }}</th>
-                <th class="col--type">{{ _('Type') }}</th>
-                <th class="col--name">{{ _('Name') }}</th>
-                <th class="col--info">{{ _('Info') }}</th>
-                <th class="col--last-connected">{{ _('Last Connected') }}</th>
+                <th class="col--id">ID</th>
+                <th class="col--status">状态</th>
+                <th class="col--type">类型</th>
+                <th class="col--created">创建时间</th>
+                <th class="col--used">使用时间</th>
+                <th class="col--action">操作</th>
               </tr>
             </thead>
             <tbody>
-              {% for server in mcpServers %}
-                <tr data-type="mcp" data-id="{{ server.serverId }}">
-                  {{ edge_component.render_edge_status_td(server, 'mcp') }}
-                  <td class="col--type">
-                    {% set serverType = server.type|default('provider') %}
-                    {% if serverType == 'repo' %}
-                      <span class="badge badge--primary">MCP Repo</span>
-                    {% elif serverType == 'node' %}
-                      <span class="badge badge--info">MCP Node</span>
-                    {% else %}
-                      <span class="badge">MCP</span>
-                    {% endif %}
-                  </td>
-                  <td class="col--name">
-                    <a href="{{ url('mcp_detail', { domainId: domainId, serverId: server.serverId }) }}">
-                      {{ server.name|default('MCP ' + server.serverId|string) }}
-                    </a>
-                    {% if server.description %}
-                      <br><small class="text-gray">{{ server.description }}</small>
-                    {% endif %}
-                  </td>
-                  <td class="col--info">
-                    {{ server.toolsCount|default(0) }} {{ _('tools') }}
-                  </td>
-                  <td class="col--last-connected">
-                    {% if server.lastConnectedAt %}
-                      {{ datetimeSpan(server.lastConnectedAt)|safe }}
-                    {% else %}
-                      -
-                    {% endif %}
-                  </td>
-                </tr>
-              {% endfor %}
-              {% for client in clients %}
-                <tr data-type="client" data-id="{{ client.clientId }}">
-                  {{ edge_component.render_edge_status_td(client, 'client') }}
-                  <td class="col--type">
-                    <span class="badge badge--success">Client</span>
-                  </td>
-                  <td class="col--name">
-                    <a href="{{ url('client_detail', { domainId: domainId, clientId: client.clientId }) }}">
-                      {{ client.name|default('Client ' + client.clientId|string) }}
-                    </a>
-                    {% if client.description %}
-                      <br><small class="text-gray">{{ client.description }}</small>
-                    {% endif %}
-                  </td>
-                  <td class="col--info">-</td>
-                  <td class="col--last-connected">
-                    {% if client.lastConnectedAt %}
-                      {{ datetimeSpan(client.lastConnectedAt)|safe }}
-                    {% else %}
-                      -
-                    {% endif %}
-                  </td>
-                </tr>
-              {% endfor %}
-              {% for node in nodes %}
-                <tr data-type="node" data-id="{{ node.nodeId }}">
-                  {{ edge_component.render_edge_status_td(node, 'node') }}
-                  <td class="col--type">
-                    <span class="badge badge--warning">Node</span>
-                  </td>
-                  <td class="col--name">
-                    <a href="{{ url('node_detail', { domainId: domainId, nodeId: node.nodeId }) }}">
-                      {{ node.name|default('Node ' + node.nodeId|string) }}
-                    </a>
-                    {% if node.description %}
-                      <br><small class="text-gray">{{ node.description }}</small>
-                    {% endif %}
-                  </td>
-                  <td class="col--info">-</td>
-                  <td class="col--last-connected">
-                    {% if node.lastConnectedAt %}
-                      {{ datetimeSpan(node.lastConnectedAt)|safe }}
-                    {% else %}
-                      -
-                    {% endif %}
-                  </td>
-                </tr>
-              {% endfor %}
+              {%- for edge in edges -%}
+                {% include 'edge_main_tr.html' %}
+              {%- endfor -%}
             </tbody>
           </table>
-        {% else %}
-          {{ nothing.render('Oh, there is no edge connection!') }}
         {% endif %}
       </div>
     </div>
   </div>
 </div>
-{% endblock %}
 
+<div class="dialog dialog--signin" id="token-dialog" style="display:none">
+  <div class="dialog__content">
+    <div class="dialog--signin__bg">
+      <div class="dialog--signin__side">
+        <h1>接入点信息</h1>
+        <p>请保存以下信息，Token 将作为接入点的唯一标识。</p>
+      </div>
+    </div>
+    <div class="dialog--signin__main">
+      <div class="dialog--signin__close-container supplementary">
+        <a name="token-dialog__close" href="javascript:;">{{ _('CLOSE') }}</a>
+      </div>
+      <h1 class="dialog--signin__title">接入点 Token</h1>
+      <div class="row"><div class="columns">
+        <label class="material textbox">
+          Token
+          <input type="text" id="token-display" readonly>
+        </label>
+      </div></div>
+      <div class="row"><div class="columns">
+        <label class="material textbox">
+          WebSocket 接入点
+          <input type="text" id="ws-endpoint-display" readonly>
+        </label>
+      </div></div>
+      <div class="row"><div class="columns">
+        <button class="expanded rounded primary button" id="copy-token-btn">复制 Token</button>
+      </div></div>
+      <div class="row"><div class="columns">
+        <button class="expanded rounded button" id="copy-endpoint-btn">复制接入点 URL</button>
+      </div></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
