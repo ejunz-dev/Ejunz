@@ -183,14 +183,15 @@ const page = new NamedPage('tool_main', async () => {
       statusText = '离线';
     }
     const domainId = UiContext.domain._id;
-    const edgeUrl = `/d/${domainId}/edge/list`;
+    const edgeUrl = `/d/${domainId}/edge/${tool.edgeId}`;
+    const toolUrl = `/d/${domainId}/tool/${tool._id}`;
     
     const $newRow = $(`
       <tr data-tool-id="${tool.toolId}" data-edge-token="${tool.edgeToken}">
-        <td class="col--server"><a href="${edgeUrl}">${tool.edgeName}</a></td>
-        <td class="col--name"><code>${tool.name}</code></td>
-        <td class="col--description">${tool.description || ''}</td>
         <td class="col--status"><span class="tool-status tool-status-${tool.edgeStatus}">${statusText}</span></td>
+        <td class="col--server"><a href="${edgeUrl}"><code>${tool.edgeId}</code></a></td>
+        <td class="col--name"><a href="${toolUrl}"><code>${tool.name}</code></a></td>
+        <td class="col--description">${tool.description || ''}</td>
       </tr>
     `);
     

@@ -193,25 +193,6 @@ const page = new NamedPage('edge_main', async () => {
     tokenDialog.hide();
   });
 
-  // 查看接入点按钮
-  $(document).on('click', '.view-endpoint-btn', function() {
-    const token = $(this).data('token');
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const domainId = UiContext.domain._id;
-    const wsPath = `/d/${domainId}/mcp/ws`;
-    const endpoint = `${protocol}//${host}${wsPath}?token=${token}`;
-    
-    const tokenDialog = DomDialog.getOrConstruct($('#token-dialog'), {
-      cancelByClickingBack: true,
-      cancelByEsc: true,
-    }) as any;
-    
-    $('#token-display').val(token);
-    $('#ws-endpoint-display').val(endpoint);
-    
-    tokenDialog.show();
-  });
 });
 
 export default page;
