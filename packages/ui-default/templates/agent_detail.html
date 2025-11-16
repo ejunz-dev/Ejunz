@@ -176,7 +176,7 @@
         </div>
         {% else %}
         <p class="note">{{ _('No MCP tools available. Please configure MCP servers first.') }}</p>
-        <a href="{{ url('mcp_domain', domainId=domainId) }}" class="button">{{ _('Go to MCP Settings') }}</a>
+        <a href="{{ url('edge_domain', domainId=domainId) }}" class="button">{{ _('Go to Edge Settings') }}</a>
         {% endif %}
       </div>
     </div>
