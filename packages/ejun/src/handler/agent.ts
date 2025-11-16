@@ -27,7 +27,9 @@ import { randomstring } from '@ejunz/utils';
 import { McpClient, ChatMessage } from '../model/agent';
 import { Logger } from '../logger';
 import { PassThrough } from 'stream';
-import McpServerModel, { McpToolModel } from '../model/mcp';
+import EdgeModel from '../model/edge';
+import ToolModel from '../model/tool';
+import { EdgeServerConnectionHandler } from './edge';
 import * as document from '../model/document';
 import { RepoModel } from '../model/repo';
 import NodeModel from '../model/node';
@@ -953,109 +955,14 @@ async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[], repoI
         }
     }
     
-    if (repoIds && repoIds.length > 0) {
-        AgentLogger.info('getAssignedTools: Getting tools from repos', { repoIds });
-        try {
-            const { createDefaultRepoMcpTools } = await import('./repo');
-            const { default: McpServerModel } = await import('../model/mcp');
-            
-            for (const rpid of repoIds) {
-                const repo = await RepoModel.getRepoByRpid(domainId, rpid);
-                if (repo && repo.mcpServerId) {
-                    try {
-                        const server = await McpServerModel.getByServerId(domainId, repo.mcpServerId);
-                        if (server) {
-                            await createDefaultRepoMcpTools(domainId, repo.mcpServerId, server.docId, rpid, repo.owner);
-                        }
-                    } catch (error: any) {
-                        AgentLogger.warn('getAssignedTools: Failed to ensure default tools for repo %d: %s', rpid, error.message);
-                    }
-                    
-                    const tools = await McpToolModel.getByServer(domainId, repo.mcpServerId);
-                    for (const tool of tools) {
-                        allToolIds.add(tool.docId.toString());
-                    }
-                    AgentLogger.info('getAssignedTools: Found %d tools from repo %d (serverId: %d)', 
-                        tools.length, rpid, repo.mcpServerId);
-                }
-            }
-        } catch (error: any) {
-            AgentLogger.warn('getAssignedTools: Failed to get tools from repos: %s', error.message);
-        }
-    }
+    // Repo tools are now handled through Edge/Tool model, skip this section
+    // if (repoIds && repoIds.length > 0) { ... }
     
     const finalToolIds: ObjectId[] = Array.from(allToolIds).map(id => new ObjectId(id));
     
     if (finalToolIds.length === 0) {
-        AgentLogger.info('getAssignedTools: No toolIds specified, fetching all available tools from database');
-        try {
-            // First try to get from database (tools are synced from MCP servers)
-            const servers = await McpServerModel.getByDomain(domainId);
-            const allTools: any[] = [];
-            for (const server of servers) {
-                const tools = await McpToolModel.getByServer(domainId, server.serverId);
-                for (const tool of tools) {
-                    allTools.push({
-                        name: tool.name,
-                        description: tool.description,
-                        inputSchema: tool.inputSchema,
-                    });
-                }
-            }
-            AgentLogger.info('getAssignedTools: Got all tools from database', { 
-                toolCount: allTools.length, 
-                toolNames: allTools.map(t => t.name),
-                serverCount: servers.length
-            });
-            
-            // Also try to get from real-time connections to merge any new tools
-            try {
-                const mcpClient = new McpClient();
-                const realtimeTools = await mcpClient.getTools();
-                if (realtimeTools.length > 0) {
-                    AgentLogger.info('getAssignedTools: Also found realtime tools', { 
-                        realtimeCount: realtimeTools.length 
-                    });
-                    // Merge realtime tools with database tools (realtime takes priority)
-                    const toolMap = new Map<string, any>();
-                    // First add database tools
-                    for (const tool of allTools) {
-                        toolMap.set(tool.name, tool);
-                    }
-                    // Then add/override with realtime tools
-                    for (const tool of realtimeTools) {
-                        toolMap.set(tool.name, {
-                            name: tool.name,
-                            description: tool.description || '',
-                            inputSchema: tool.inputSchema || null,
-                        });
-                    }
-                    return Array.from(toolMap.values());
-                }
-            } catch (realtimeError: any) {
-                AgentLogger.debug('Failed to fetch realtime tools (non-critical): %s', realtimeError.message);
-            }
-            
-            return allTools;
-        } catch (dbError: any) {
-            AgentLogger.warn('Failed to fetch all tools from database: %s', dbError.message);
-            // Last resort: try realtime connections
-            try {
-                const mcpClient = new McpClient();
-                const realtimeTools = await mcpClient.getTools();
-                AgentLogger.info('getAssignedTools: Got tools from realtime (fallback)', { 
-                    toolCount: realtimeTools.length 
-                });
-                return realtimeTools.map(tool => ({
-                    name: tool.name,
-                    description: tool.description || '',
-                    inputSchema: tool.inputSchema || null,
-                }));
-            } catch (realtimeError: any) {
-                AgentLogger.warn('Failed to fetch tools from realtime (fallback): %s', realtimeError.message);
-                return [];
-            }
-        }
+        AgentLogger.info('getAssignedTools: No toolIds specified, returning empty array');
+        return [];
     }
     
     // First, get tools from database and build a map by tool name
@@ -1064,15 +971,20 @@ async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[], repoI
     
     for (const toolId of finalToolIds) {
         try {
-            const tool = await document.get(domainId, document.TYPE_MCP_TOOL, toolId);
-            if (tool) {
-                dbToolsMap.set(tool.name, {
-                    name: tool.name,
-                    description: tool.description,
-                    inputSchema: tool.inputSchema,
-                    serverId: tool.serverId, // 包含 serverId，用于直接调用
-                });
-                assignedToolNames.add(tool.name);
+            const tool = await ToolModel.get(toolId);
+            if (tool && tool.domainId === domainId) {
+                // 获取 edge 信息以获取 token
+                const edge = await EdgeModel.get(tool.edgeDocId);
+                if (edge) {
+                    dbToolsMap.set(tool.name, {
+                        name: tool.name,
+                        description: tool.description,
+                        inputSchema: tool.inputSchema,
+                        token: edge.token, // 使用 token 而不是 serverId
+                        edgeId: edge._id,
+                    });
+                    assignedToolNames.add(tool.name);
+                }
             }
         } catch (error) {
             AgentLogger.warn('Invalid tool ID: %s', toolId.toString());
@@ -1091,10 +1003,10 @@ async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[], repoI
         const processedNames = new Set<string>();
         
         // First, add realtime tools that match assigned tool names
-        // Note: realtime tools don't have serverId, so we prefer database tools when available
+        // Note: realtime tools don't have token, so we prefer database tools when available
         for (const realtimeTool of realtimeTools) {
             if (assignedToolNames.has(realtimeTool.name) && !dbToolsMap.has(realtimeTool.name)) {
-                // Only add realtime tool if not in database (database tools have serverId)
+                // Only add realtime tool if not in database (database tools have token)
                 finalTools.push({
                     name: realtimeTool.name,
                     description: realtimeTool.description || '',
@@ -1104,7 +1016,7 @@ async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[], repoI
             }
         }
         
-        // Then, add database tools (they have serverId, so prefer them)
+        // Then, add database tools (they have token, so prefer them)
         for (const [toolName, dbTool] of dbToolsMap) {
             if (!processedNames.has(toolName)) {
                 finalTools.push(dbTool);
@@ -1189,29 +1101,6 @@ export class AgentDetailHandler extends Handler {
             apiUrl = `${protocol}://${host}/api/agent`;
         }
 
-        const allMcpTools: any[] = [];
-        try {
-            const servers = await McpServerModel.getByDomain(domainId);
-            for (const server of servers) {
-                const tools = await McpToolModel.getByServer(domainId, server.serverId);
-                for (const tool of tools) {
-                    allMcpTools.push({
-                        _id: tool._id,
-                        toolId: tool.toolId,
-                        name: tool.name,
-                        description: tool.description,
-                        inputSchema: tool.inputSchema,
-                        serverId: tool.serverId,
-                        serverName: server.name,
-                    });
-                }
-            }
-        } catch (error: any) {
-            AgentLogger.error('Failed to load MCP tools: %s', error.message);
-        }
-
-        const assignedToolIds = (adoc.mcpToolIds || []).map(id => id.toString());
-
         this.response.template = 'agent_detail.html';
         this.response.body = {
             domainId,
@@ -1219,8 +1108,6 @@ export class AgentDetailHandler extends Handler {
             adoc,
             udoc,
             apiUrl,
-            allMcpTools,
-            assignedToolIds,
         };
 
     }
@@ -1292,7 +1179,7 @@ export class AgentDetailHandler extends Handler {
             for (const toolIdStr of toolIds) {
                 try {
                     const toolId = new ObjectId(toolIdStr);
-                    const tool = await document.get(domainId, document.TYPE_MCP_TOOL, toolId);
+                    const tool = await document.get(domainId, document.TYPE_TOOL, toolId);
                     if (tool) {
                         validToolIds.push(toolId);
                     }
@@ -1432,71 +1319,27 @@ export class AgentChatHandler extends Handler {
 
         const assignedToolIds = new Set((adoc.mcpToolIds || []).map(id => id.toString()));
 
-        const repoServerIdMap = new Map<number, number>(); // mcpServerId -> rpid
-        const allRepos: any[] = [];
-        try {
-            const repos = await RepoModel.getAllRepos(domainId);
-            for (const repo of repos) {
-                allRepos.push({
-                    rpid: repo.rpid,
-                    title: repo.title,
-                    mcpServerId: repo.mcpServerId,
-                });
-                if (repo.mcpServerId) {
-                    repoServerIdMap.set(repo.mcpServerId, repo.rpid);
-                }
-            }
-        } catch (error: any) {
-            AgentLogger.error('Failed to load repos: %s', error.message);
-        }
-
-        const providerServers: any[] = [];
-        const nodeServers: any[] = []; // 暂时为空
-        const repoServers: any[] = [];
+        // Load tools from Edge/Tool model
+        const edgesWithTools: any[] = [];
 
         try {
-            const servers = await McpServerModel.getByDomain(domainId);
-            for (const server of servers) {
-                const allTools = await McpToolModel.getByServer(domainId, server.serverId);
+            const edges = await EdgeModel.getByDomain(domainId);
+            const connectedEdges = edges.filter(edge => edge.tokenUsedAt);
+            
+            for (const edge of connectedEdges) {
+                const allTools = await ToolModel.getByEdgeDocId(domainId, edge._id);
                 const assignedTools = allTools.filter(tool => assignedToolIds.has(tool._id.toString()));
                 
                 if (assignedTools.length > 0) {
-                    let serverType = (server as any).type;
+                    const isConnected = EdgeServerConnectionHandler.active.has(edge.token);
+                    const status = isConnected ? (allTools.length > 0 ? 'working' : 'online') : 'offline';
                     
-                    if (!serverType) {
-                        const associatedRpid = repoServerIdMap.get(server.serverId);
-                        if (associatedRpid !== undefined) {
-                            serverType = 'repo';
-                            McpServerModel.update(domainId, server.serverId, { type: 'repo' }).catch(err => {
-                                AgentLogger.warn('Failed to update server type (chat): %s', err.message);
-                            });
-                        } else {
-                            const nameMatch = server.name.match(/^repo-(\d+)-/);
-                            if (nameMatch) {
-                                const inferredRpid = parseInt(nameMatch[1], 10);
-                                const repo = allRepos.find(r => r.rpid === inferredRpid);
-                                if (repo) {
-                                    serverType = 'repo';
-                                    McpServerModel.update(domainId, server.serverId, { type: 'repo' }).catch(err => {
-                                        AgentLogger.warn('Failed to update server type (chat): %s', err.message);
-                                    });
-                                } else {
-                                    serverType = 'provider'; // 默认
-                                }
-                            } else {
-                                serverType = 'provider'; // 默认
-                            }
-                        }
-                    }
-                    
-                    // repo 类型的服务器是内部服务，始终为 connected
-                    const status = serverType === 'repo' ? 'connected' : 'disconnected';
-                    
-                    const serverData = {
-                        serverId: server.serverId,
-                        name: server.name,
-                        description: server.description,
-                        status: status, // repo 类型为 connected，其他为 disconnected
+                    edgesWithTools.push({
+                        edgeId: edge._id,
+                        edgeIdNum: edge.edgeId,
+                        name: edge.name || `Edge-${edge.edgeId}`,
+                        description: edge.description || '',
+                        status: status,
                         toolsCount: assignedTools.length,
                         tools: assignedTools.map(tool => ({
                             _id: tool._id,
@@ -1505,45 +1348,12 @@ export class AgentChatHandler extends Handler {
                             description: tool.description,
                             inputSchema: tool.inputSchema,
                         })),
-                    };
-                    
-                    if (serverType === 'repo') {
-                        const associatedRpid = repoServerIdMap.get(server.serverId);
-                        let rpid = associatedRpid;
-                        if (rpid === undefined) {
-                            const nameMatch = server.name.match(/^repo-(\d+)-/);
-                            if (nameMatch) {
-                                rpid = parseInt(nameMatch[1], 10);
-                            }
-                        }
-                        const repo = rpid ? allRepos.find(r => r.rpid === rpid) : null;
-                        repoServers.push({
-                            ...serverData,
-                            rpid: rpid || 0,
-                            repoTitle: repo?.title || (rpid ? `Repo ${rpid}` : server.name),
-                            type: 'repo',
-                        });
-                    } else if (serverType === 'node') {
-                        nodeServers.push({
-                            ...serverData,
-                            type: 'node',
-                        });
-                    } else {
-                        providerServers.push({
-                            ...serverData,
-                            type: 'provider',
-                        });
-                    }
+                    });
                 }
             }
         } catch (error: any) {
-            AgentLogger.error('Failed to load MCP servers and tools: %s', error.message);
+            AgentLogger.error('Failed to load Edge servers and tools: %s', error.message);
         }
-
-        const serversWithTools = [...providerServers, ...nodeServers, ...repoServers];
-
-        // WebSocket URL for MCP status updates - 使用 url() 方法自动处理 domain 前缀
-        const mcpStatusWsUrl = this.url('mcp_status_all_conn', { domainId });
 
         this.response.template = 'agent_chat.html';
         this.response.body = {
@@ -1554,11 +1364,7 @@ export class AgentChatHandler extends Handler {
             apiKey,
             aiModel,
             apiUrl,
-            serversWithTools, // 向后兼容
-            providerServers,
-            nodeServers,
-            repoServers,
-            mcpStatusWsUrl,
+            edgesWithTools,
             mode: 'chat', // 聊天模式
             sessionId: currentSessionId?.toString(),
             recordHistory,
@@ -2220,643 +2026,6 @@ export class AgentChatHandler extends Handler {
     }
 }
 
-export class AgentChatConnectionHandler extends ConnectionHandler {
-    adoc?: AgentDoc;
-    private currentSessionId?: ObjectId;
-
-    @param('aid', Types.String, true)
-    @param('domainId', Types.String, true)
-    async prepare(domainId?: string, aid?: string) {
-        try {
-            // 从查询参数获取 domainId 和 aid（类似 record-conn 的方式）
-            const queryDomainId = this.request.query.domainId as string || domainId;
-            const queryAid = this.request.query.aid as string || aid;
-            
-            AgentLogger.info('WebSocket connection attempt for agent chat', { 
-                queryDomainId, 
-                queryAid, 
-                pathDomainId: domainId, 
-                pathAid: aid,
-                requestPath: this.request.path, 
-                requestIp: this.request.ip,
-                query: this.request.query 
-            });
-            
-            await this.checkPriv(PRIV.PRIV_USER_PROFILE);
-            
-            const finalDomainId = queryDomainId || this.args.domainId;
-            const finalAid = queryAid;
-            
-            if (!finalAid) {
-                AgentLogger.warn('WebSocket connection rejected: Agent ID is required');
-                this.close(4000, 'Agent ID is required');
-                return;
-            }
-
-            if (!finalDomainId) {
-                AgentLogger.warn('WebSocket connection rejected: Domain ID is required');
-                this.close(4000, 'Domain ID is required');
-                return;
-            }
-
-            const normalizedId: number | string = /^\d+$/.test(finalAid) ? Number(finalAid) : finalAid;
-            AgentLogger.info('Looking up agent', { normalizedId, domainId: finalDomainId });
-            this.adoc = await Agent.get(finalDomainId, normalizedId);
-            if (!this.adoc) {
-                AgentLogger.warn('WebSocket connection rejected: Agent not found', { aid: normalizedId, domainId: finalDomainId });
-                this.close(4000, `Agent not found: ${normalizedId}`);
-                return;
-            }
-
-            AgentLogger.info('WebSocket connection established for agent chat', { aid: normalizedId, domainId: finalDomainId, agentTitle: this.adoc.title });
-            this.send({ type: 'connected', message: 'WebSocket connection established' });
-            AgentLogger.info('WebSocket prepare completed successfully', { aid: normalizedId, domainId: finalDomainId });
-        } catch (error: any) {
-            AgentLogger.error('Error in WebSocket prepare:', error);
-            try {
-                this.send({ type: 'error', error: error.message || String(error) });
-            } catch (e) {
-                // ignore
-            }
-            try {
-                this.close(4000, error.message || String(error));
-            } catch (e) {
-                // ignore
-            }
-        }
-    }
-
-    async message(msg: any) {
-        AgentLogger.info('Received WebSocket message', { hasAdoc: !!this.adoc, msgType: typeof msg });
-        
-        if (!this.adoc) {
-            AgentLogger.warn('WebSocket message rejected: Agent not found');
-            this.send({ type: 'error', error: 'Agent not found' });
-            return;
-        }
-
-        let messageText: string;
-        let historyData: any;
-        
-        if (typeof msg === 'string') {
-            try {
-                const parsed = JSON.parse(msg);
-                messageText = parsed.message;
-                historyData = parsed.history;
-            } catch (e) {
-                AgentLogger.warn('Failed to parse message as JSON string', e);
-                this.send({ type: 'error', error: 'Invalid message format' });
-                return;
-            }
-        } else if (typeof msg === 'object' && msg !== null) {
-            messageText = msg.message;
-            historyData = msg.history;
-        } else {
-            AgentLogger.warn('Invalid message type', typeof msg);
-            this.send({ type: 'error', error: 'Invalid message format' });
-            return;
-        }
-        
-        const message = messageText;
-        const history = historyData;
-        const createTaskRecord = (msg as any)?.createTaskRecord !== false; // 默认创建任务记录
-        if (!message) {
-            this.send({ type: 'error', error: 'Message cannot be empty' });
-            return;
-        }
-
-        const domainId = this.adoc.domainId;
-        const domainInfo = await domain.get(domainId);
-        if (!domainInfo) {
-            this.send({ type: 'error', error: 'Domain not found' });
-            return;
-        }
-
-        const apiKey = (domainInfo as any)['apiKey'] || '';
-        const model = (domainInfo as any)['model'] || 'deepseek-chat';
-        const apiUrl = (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
-
-        if (!apiKey) {
-            this.send({ type: 'error', error: 'API Key not configured' });
-            return;
-        }
-
-        let chatHistory: ChatMessage[] = [];
-        try {
-            chatHistory = Array.isArray(history) ? history : JSON.parse(history || '[]');
-        } catch (e) {
-            // ignore parse error
-        }
-        
-        // 获取或创建 session
-        let sessionId: ObjectId | undefined;
-        const sessionIdParam = (msg as any)?.sessionId;
-        if (sessionIdParam) {
-            // 使用现有 session
-            try {
-                sessionId = new ObjectId(sessionIdParam);
-                const sdoc = await SessionModel.get(domainId, sessionId);
-                if (!sdoc || sdoc.agentId !== (this.adoc.aid || this.adoc.docId?.toString() || this.adoc.aid) || sdoc.uid !== this.user._id) {
-                    AgentLogger.warn('Invalid session ID or session does not belong to user/agent', { sessionId: sessionIdParam });
-                    sessionId = undefined; // 如果 session 无效，创建新的
-                }
-            } catch (e) {
-                AgentLogger.warn('Invalid session ID format', { sessionId: sessionIdParam, error: e });
-                sessionId = undefined;
-            }
-        }
-        
-        // 如果没有有效的 session，创建新 session
-        if (!sessionId) {
-            sessionId = await SessionModel.add(
-                domainId,
-                this.adoc.aid || this.adoc.docId?.toString() || this.adoc.aid,
-                this.user._id,
-                undefined, // title 可以后续更新
-                undefined, // context 会在创建 task 时设置
-            );
-            AgentLogger.info('Created new session', { sessionId: sessionId.toString(), domainId, agentId: this.adoc.aid });
-        }
-        
-        // 跟踪 session 连接
-        this.currentSessionId = sessionId;
-        SessionConnectionTracker.add(sessionId.toString(), this);
-        
-        // 获取 session 的 context（如果有）
-        const sdoc = await SessionModel.get(domainId, sessionId);
-        let sessionContext = sdoc?.context || {};
-        
-        // 创建任务记录（如果是新任务）
-        let taskRecordId: ObjectId | undefined;
-        let toolCallCount = 0;
-        if (createTaskRecord && (!chatHistory || chatHistory.length === 0)) {
-            taskRecordId = await record.addTask(
-                domainId,
-                this.adoc.aid || this.adoc.docId?.toString() || this.adoc.aid,
-                this.user._id,
-                message,
-                sessionId, // 关联到 session
-            );
-            
-            // 将 record 添加到 session
-            await SessionModel.addRecord(domainId, sessionId, taskRecordId);
-            
-            // 收集完整的上下文信息，供 worker 使用
-            const domainInfo = await domain.get(domainId);
-            if (!domainInfo) {
-                throw new Error('Domain not found');
-            }
-            
-            const tools = await getAssignedTools(this.domain._id, this.adoc.mcpToolIds);
-            
-            // 构建完整的系统消息（包含 agent prompt, memory, tools 等）
-            const agentPrompt = this.adoc.content || '';
-            let systemMessage = agentPrompt;
-            
-            const truncateMemory = (memory: string, maxLength: number = 2000): string => {
-                if (!memory || memory.length <= maxLength) {
-                    return memory;
-                }
-                return memory.substring(0, maxLength) + '\n\n[... Memory truncated, keeping most important rules ...]';
-            };
-            if (this.adoc.memory) {
-                const truncatedMemory = truncateMemory(this.adoc.memory);
-                systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
-            }
-            
-            if (systemMessage && !systemMessage.includes('do not use emoji')) {
-                systemMessage += '\n\nNote: Do not use any emoji in your responses.';
-            } else if (!systemMessage) {
-                systemMessage = 'Note: Do not use any emoji in your responses.';
-            }
-            
-            if (tools.length > 0) {
-                const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
-                  tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
-                  '\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools**: When you need to call a tool, you MUST first stream a message to the user explaining what you are about to do (e.g., "Let me search the knowledge base", "Let me check the relevant information"). This gives the user immediate feedback and makes the conversation feel natural and responsive. Only after you have explained what you are doing should you call the tool.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool\'s result.\n5. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool\'s result → explain what you will do next → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
-                systemMessage = systemMessage + toolsInfo;
-            }
-            
-            // 合并 session context 和当前 context
-            const context = {
-                ...sessionContext, // 先使用 session 的 context
-                // Domain 配置
-                apiKey: (domainInfo as any)['apiKey'] || '',
-                model: (domainInfo as any)['model'] || 'deepseek-chat',
-                apiUrl: (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions',
-                // Agent 信息
-                agentContent: this.adoc.content || '',
-                agentMemory: this.adoc.memory || '',
-                // 工具列表（序列化）
-                tools: tools.map(tool => ({
-                    name: tool.name,
-                    description: tool.description,
-                    inputSchema: tool.inputSchema,
-                })),
-                // 系统消息（已构建完整）
-                systemMessage,
-            };
-            
-            // 更新 session 的 context（保存最新的上下文信息）
-            await SessionModel.update(domainId, sessionId, {
-                context,
-            });
-            
-            // 创建 task 任务，包含完整的上下文信息
-            const taskModel = require('../model/task').default;
-            await taskModel.add({
-                type: 'task',
-                recordId: taskRecordId,
-                sessionId, // 关联到 session
-                domainId,
-                agentId: this.adoc.aid || this.adoc.docId?.toString() || this.adoc.aid,
-                uid: this.user._id,
-                message,
-                history: JSON.stringify(chatHistory),
-                context,
-                priority: 0,
-            });
-            
-            // 任务已创建，通知客户端，任务将通过 worker 处理
-            // 客户端应该连接到 task-record-detail-conn 来接收流式更新
-            const recordDetailConnUrl = `task-record-detail-conn?domainId=${domainId}&rid=${taskRecordId}`;
-            this.send({
-                type: 'task_created',
-                taskRecordId: taskRecordId.toString(),
-                sessionId: sessionId.toString(),
-                recordDetailConnUrl,
-                message: 'Task created, worker will process it',
-            });
-            // 任务已创建并通过 worker 处理，不在这里直接处理
-            return;
-        }
-
-        // 如果是继续对话（有历史记录），不创建新任务，直接在主服务器处理
-        // 这种情况不需要创建任务记录，直接流式处理
-        const tools = await getAssignedTools(this.domain._id, this.adoc.mcpToolIds);
-        const mcpClient = new McpClient();
-        
-        const agentPrompt = this.adoc.content || '';
-        let systemMessage = agentPrompt;
-        
-        // 限制 memory 长度的辅助函数
-        const truncateMemory = (memory: string, maxLength: number = 2000): string => {
-            if (!memory || memory.length <= maxLength) {
-                return memory;
-            }
-            return memory.substring(0, maxLength) + '\n\n[... Memory truncated, keeping most important rules ...]';
-        };
-
-        // 添加工作规则记忆
-        // 限制 memory 长度，避免请求体过大（最多 2000 字符）
-        if (this.adoc.memory) {
-            const truncatedMemory = truncateMemory(this.adoc.memory);
-            systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
-        }
-        
-        // Prohibit using emojis
-        if (systemMessage && !systemMessage.includes('do not use emoji')) {
-            systemMessage += '\n\nNote: Do not use any emoji in your responses.';
-        } else if (!systemMessage) {
-            systemMessage = 'Note: Do not use any emoji in your responses.';
-        }
-        if (tools.length > 0) {
-            const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
-              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
-              `\n\n【CRITICAL - YOU MUST READ THIS FIRST】\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "Find the switch"\n2. You MUST first output: "Let me help you find the switch device..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n【TOOL USAGE STRATEGY - CRITICAL】\n1. **Proactive Multi-Tool Problem Solving**: When a user's question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "Do I have classes tomorrow?" → You should: (1) FIRST say "Let me check tomorrow's schedule..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there's schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "View files in repo" → You should: (1) FIRST say "Let me search for files in the knowledge base..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   Examples: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool's result.\n5. After the last tool call completes, you should only reply with the last tool's result. Do NOT provide a comprehensive summary of all tools' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool's result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool's result → explain what you will do next → call the second tool → reply with the second tool's result, and so on. Each reply should be independent and focused on the current tool.`;
-            systemMessage = systemMessage + toolsInfo;
-        }
-
-        try {
-            const requestBody: any = {
-                model,
-                max_tokens: 1024,
-                messages: [
-                    { role: 'system', content: systemMessage },
-                    ...chatHistory,
-                    { role: 'user', content: message },
-                ],
-                stream: true,
-            };
-
-            if (tools.length > 0) {
-                requestBody.tools = tools.map(tool => ({
-                    type: 'function',
-                    function: {
-                        name: tool.name,
-                        description: tool.description,
-                        parameters: tool.inputSchema,
-                    },
-                }));
-            }
-
-            let messagesForTurn: any[] = [
-                { role: 'system', content: systemMessage },
-                ...chatHistory,
-                { role: 'user', content: message },
-            ];
-
-            let accumulatedContent = '';
-            let finishReason = '';
-            let toolCalls: any[] = [];
-            let iterations = 0;
-            const maxIterations = 50; // 增加迭代次数限制，避免过早停止
-            let streamFinished = false;
-            let waitingForToolCall = false;
-
-            const processStream = async () => {
-                try {
-                    AgentLogger.info('Starting WebSocket stream request', { apiUrl, model, iterations, streamFinished, waitingForToolCall });
-                    streamFinished = false;
-                    waitingForToolCall = false;
-                    
-                    await new Promise<void>((resolve, reject) => {
-                        const req = request.post(apiUrl)
-                            .send(requestBody)
-                            .set('Authorization', `Bearer ${apiKey}`)
-                            .set('content-type', 'application/json')
-                            .buffer(false)
-                            .timeout(60000)
-                            .parse((res, callback) => {
-                                res.setEncoding('utf8');
-                                let buffer = '';
-                                
-                                res.on('data', (chunk: string) => {
-                                    if (streamFinished) return;
-                                    
-                                    buffer += chunk;
-                                    const lines = buffer.split('\n');
-                                    buffer = lines.pop() || '';
-                                    
-                                    for (const line of lines) {
-                                        if (!line.trim() || !line.startsWith('data: ')) continue;
-                                        const data = line.slice(6).trim();
-                                        if (data === '[DONE]') {
-                                            if (waitingForToolCall) {
-                                                AgentLogger.info('Received [DONE] but waiting for tool call, ignoring (WS)');
-                                                callback(null, undefined);
-                                                return;
-                                            }
-                                            streamFinished = true;
-                                            this.send({ type: 'done', message: accumulatedContent, history: JSON.stringify([
-                                                ...chatHistory,
-                                                { role: 'user', content: message },
-                                                { role: 'assistant', content: accumulatedContent },
-                                            ]) });
-                                            if (this.adoc && accumulatedContent) {
-                                                updateAgentMemory(
-                                                    this.adoc.domainId,
-                                                    this.adoc,
-                                                    chatHistory,
-                                                    message,
-                                                    accumulatedContent,
-                                                ).catch(err => AgentLogger.error('Failed to update memory in background', err));
-                                            }
-                                            callback(null, undefined);
-                                            return;
-                                        }
-                                        if (!data) continue;
-                                        
-                                        try {
-                                            const parsed = JSON.parse(data);
-                                            const choice = parsed.choices?.[0];
-                                            const delta = choice?.delta;
-                                            
-                                            if (delta?.content) {
-                                                accumulatedContent += delta.content;
-                                                this.send({ type: 'content', content: delta.content });
-                                            }
-                                            
-                                            if (choice?.finish_reason) {
-                                                finishReason = choice.finish_reason;
-                                                if (finishReason === 'tool_calls') {
-                                                    waitingForToolCall = true;
-                                                    AgentLogger.info('Tool call detected (WS)', { 
-                                                        hasContent: !!accumulatedContent && accumulatedContent.trim().length > 0,
-                                                        contentLength: accumulatedContent.length 
-                                                    });
-                                                    // AI应该已经在流式输出中说明了要做什么，这里只需要记录
-                                                    if (!accumulatedContent || !accumulatedContent.trim()) {
-                                                        AgentLogger.warn('AI called tool without providing context message first (WS)');
-                                                    }
-                                                }
-                                            }
-                                            
-                                            if (delta?.tool_calls) {
-                                                for (const toolCall of delta.tool_calls || []) {
-                                                    // 这是为了确保每次只执行一个工具
-                                                    if (toolCall.index === 0 || toolCalls.length === 0) {
-                                                        const idx = toolCall.index || 0;
-                                                        if (idx === 0) {
-                                                            if (!toolCalls[0]) toolCalls[0] = { id: '', type: 'function', function: { name: '', arguments: '' } };
-                                                            if (toolCall.id) toolCalls[0].id = toolCall.id;
-                                                            if (toolCall.function?.name) toolCalls[0].function.name = toolCall.function.name;
-                                                            if (toolCall.function?.arguments) toolCalls[0].function.arguments += toolCall.function.arguments;
-                                                        }
-                                                    } else {
-                                                        AgentLogger.info(`Ignoring additional tool call (index ${toolCall.index}), only processing first tool (Stream)`);
-                                                    }
-                                                }
-                                            }
-                                        } catch (e) {
-                                            AgentLogger.warn('Parse error in stream (WS):', e);
-                                        }
-                                    }
-                                });
-                                
-                                res.on('end', async () => {
-                                    AgentLogger.info('Stream ended (WS)', { finishReason, iterations, accumulatedLength: accumulatedContent.length, waitingForToolCall });
-                                    callback(null, undefined);
-                                    
-                                    if (!streamFinished || waitingForToolCall) {
-                                        (async () => {
-                                            try {
-                                                AgentLogger.info('Stream end handler check (WS)', { 
-                                                    finishReason, 
-                                                    toolCallsLength: toolCalls.length, 
-                                                    iterations, 
-                                                    maxIterations,
-                                                    streamFinished,
-                                                    waitingForToolCall
-                                                });
-                                                
-                                                if (finishReason === 'tool_calls' && toolCalls.length > 0 && iterations < maxIterations) {
-                                                    if (streamFinished) {
-                                                        streamFinished = false;
-                                                    }
-                                                    
-                                                    iterations++;
-                                                    AgentLogger.info('Processing tool calls (WS)', { toolCallCount: toolCalls.length, iterations, maxIterations });
-                                                    
-                                                    const firstToolName = toolCalls[0]?.function?.name || 'unknown';
-                                                    // 为每次工具调用生成唯一 ID，以便 UI 可以显示多次调用
-                                                    const toolCallId = `${firstToolName}-${iterations}-${Date.now()}`;
-                                                    this.send({ type: 'tool_call_start', tools: [firstToolName], toolCallId, iteration: iterations });
-                                                    
-                                                    const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
-                                                        id: tc.id || `call_${idx}`,
-                                                        type: tc.type || 'function',
-                                                        function: {
-                                                            name: tc.function.name,
-                                                            arguments: tc.function.arguments,
-                                                        },
-                                                    })) };
-                                                    
-                                                    const firstToolCall = assistantForTools.tool_calls[0];
-                                                    
-                                                    if (!firstToolCall) {
-                                                        AgentLogger.warn('No tool call found in assistant message (WS)');
-                                                        return;
-                                                    }
-                                                    
-                                                    let parsedArgs: any = {};
-                                                    try {
-                                                        parsedArgs = JSON.parse(firstToolCall.function.arguments);
-                                                    } catch (e) {
-                                                        parsedArgs = {};
-                                                    }
-                                                    
-                                                    AgentLogger.info(`Calling first tool: ${firstToolCall.function.name} (WS - One-by-One Mode)`, { parsedArgs, domainId });
-                                                    
-                                                    let toolResult: any;
-                                                    try {
-                                                        toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, domainId);
-                                                        AgentLogger.info(`Tool ${firstToolCall.function.name} returned (WS)`, { resultLength: JSON.stringify(toolResult).length });
-                                                    } catch (toolError: any) {
-                                                        AgentLogger.error(`Tool ${firstToolCall.function.name} failed (WS):`, toolError);
-                                                        toolResult = {
-                                                            error: true,
-                                                            message: toolError.message || String(toolError),
-                                                            code: toolError.code || 'UNKNOWN_ERROR',
-                                                        };
-                                                    }
-                                                    
-                                                    const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
-                                                    
-                                                    this.send({ type: 'tool_result', tool: firstToolCall.function.name, result: toolResult, toolCallId, iteration: iterations });
-                                                    this.send({ type: 'tool_call_complete' });
-                                                    
-                                                    messagesForTurn = [
-                                                        ...messagesForTurn,
-                                                        { 
-                                                            role: 'assistant', 
-                                                            content: accumulatedContent, 
-                                                            tool_calls: [firstToolCall] // 只包含已调用的工具
-                                                        },
-                                                        toolMsg,
-                                                    ];
-                                                    accumulatedContent = '';
-                                                    finishReason = '';
-                                                    toolCalls = [];
-                                                    waitingForToolCall = false;
-                                                    requestBody.messages = messagesForTurn;
-                                                    requestBody.stream = true;
-                                                    AgentLogger.info('Continuing stream after first tool call (WS)', { 
-                                                        toolName: firstToolCall.function.name,
-                                                        remainingTools: assistantForTools.tool_calls.length - 1
-                                                    });
-                                                    try {
-                                                        await processStream();
-                                                    } catch (streamError: any) {
-                                                        AgentLogger.error('Error in processStream continuation (WS):', streamError);
-                                                        this.send({ type: 'error', error: streamError.message || String(streamError) });
-                                                        streamFinished = true;
-                                                        waitingForToolCall = false;
-                                                    }
-                                                } else {
-                                                    AgentLogger.info('Ending stream (WS)', { 
-                                                        reason: iterations >= maxIterations ? 'max_iterations' : 'no_tool_calls',
-                                                        iterations,
-                                                        maxIterations,
-                                                        finishReason,
-                                                        toolCallsLength: toolCalls.length,
-                                                        accumulatedLength: accumulatedContent.length
-                                                    });
-                                                    
-                                                    if (!streamFinished) {
-                                                        streamFinished = true;
-                                                        // 保存助手回复到任务记录
-                                                        if (taskRecordId && accumulatedContent) {
-                                                            await record.updateTask(this.domain._id, taskRecordId, {
-                                                                agentMessages: [{
-                                                                    role: 'assistant',
-                                                                    content: accumulatedContent,
-                                                                    timestamp: new Date(),
-                                                                }],
-                                                            });
-                                                        }
-                                                        
-                                                        // 完成任务记录
-                                                        if (taskRecordId) {
-                                                            await record.updateTask(this.domain._id, taskRecordId, {
-                                                                status: STATUS.STATUS_TASK_DELIVERED,
-                                                            });
-                                                        }
-                                                        
-                                                        this.send({ type: 'done', message: accumulatedContent, history: JSON.stringify([
-                                                            ...chatHistory,
-                                                            { role: 'user', content: message },
-                                                            { role: 'assistant', content: accumulatedContent },
-                                                        ]), taskRecordId: taskRecordId?.toString() });
-                                                    }
-                                                }
-                                                resolve();
-                                            } catch (err: any) {
-                                                AgentLogger.error('Error in stream end handler (WS):', err);
-                                                this.send({ type: 'error', error: err.message || String(err) });
-                                                resolve();
-                                            }
-                                        })();
-                                    } else {
-                                        resolve();
-                                    }
-                                });
-                                
-                                res.on('error', (err: any) => {
-                                    AgentLogger.error('Stream response error (WS):', err);
-                                    callback(err, undefined);
-                                    reject(err);
-                                });
-                            });
-                        
-                        req.on('error', (err: any) => {
-                            AgentLogger.error('Stream request error (WS):', err);
-                            this.send({ type: 'error', error: err.message || String(err) });
-                            reject(err);
-                        });
-                        
-                        req.end();
-                    });
-                } catch (error: any) {
-                    AgentLogger.error('Stream setup error (WS):', error);
-                    AgentLogger.error('Stream setup error stack (WS):', error.stack);
-                    this.send({ type: 'error', error: error.message || String(error) });
-                    streamFinished = true;
-                    waitingForToolCall = false;
-                }
-            };
-            
-            try {
-                await processStream();
-            } catch (error: any) {
-                AgentLogger.error('Fatal error in processStream (WS):', error);
-                AgentLogger.error('Fatal error stack (WS):', error.stack);
-                this.send({ type: 'error', error: error.message || String(error) });
-            }
-        } catch (error: any) {
-            AgentLogger.error('AI Chat Error (WS):', error);
-            this.send({ type: 'error', error: JSON.stringify(error.response?.body || error.message) });
-        }
-    }
-
-    async cleanup() {
-        if (this.currentSessionId) {
-            SessionConnectionTracker.remove(this.currentSessionId.toString(), this);
-            this.currentSessionId = undefined;
-        }
-    }
-
-}
 
 export class AgentChatSessionConnectionHandler extends ConnectionHandler {
     private subscribedRids: Set<string> = new Set();
@@ -4515,170 +3684,25 @@ export class AgentEditHandler extends Handler {
             this.response.template = 'agent_edit.html';
             this.response.body = { 
                 adoc: null, 
-                providerServers: [],
-                nodeServers: [],
-                repoServers: [],
-                assignedToolIds: [],
                 allRepos: [],
                 assignedRepoIds: [],
-                allNodes: [],
             };
             return;
         }
         const udoc = await user.getById(domainId, agent.owner);
 
-        // 获取所有可用的repo列表，并建立 mcpServerId -> rpid 的映射
+        // 获取所有可用的repo列表
         const allRepos: any[] = [];
-        const repoServerIdMap = new Map<number, number>(); // mcpServerId -> rpid
         try {
             const repos = await RepoModel.getAllRepos(domainId);
             for (const repo of repos) {
-                const mcpServerId = (repo as any).mcpServerId;
                 allRepos.push({
                     rpid: repo.rpid,
                     title: repo.title,
-                    mcpServerId: mcpServerId,
                 });
-                if (mcpServerId && typeof mcpServerId === 'number') {
-                    repoServerIdMap.set(mcpServerId, repo.rpid);
-                    AgentLogger.debug('Mapped repo server: serverId=%d -> rpid=%d', mcpServerId, repo.rpid);
-                } else {
-                    AgentLogger.debug('Repo %d has no mcpServerId or invalid value: %s', repo.rpid, mcpServerId);
-                }
             }
-            AgentLogger.info('Loaded %d repos, %d with mcpServerId', repos.length, repoServerIdMap.size);
         } catch (error: any) {
             AgentLogger.error('Failed to load repos: %s', error.message);
-        }
-
-        // 获取所有可用的node列表（用于 node 类型的 MCP 工具）
-        const allNodes: any[] = [];
-        try {
-            const nodes = await NodeModel.getByDomain(domainId);
-            for (const node of nodes) {
-                allNodes.push({
-                    nodeId: node.nodeId,
-                    name: node.name,
-                    description: node.description,
-                    status: node.status,
-                });
-            }
-        } catch (error: any) {
-            AgentLogger.error('Failed to load nodes: %s', error.message);
-        }
-
-        const assignedToolIds = (agent.mcpToolIds || []).map(id => id.toString());
-
-        // 按类型组织 MCP 工具：provider、repo、node
-        const providerServers: any[] = []; // 外部 MCP 服务
-        const nodeServers: any[] = []; // node 提供的 MCP 工具
-        const repoServers: any[] = []; // repo 的 MCP 工具
-
-        try {
-            const servers = await McpServerModel.getByDomain(domainId);
-            AgentLogger.info('Processing %d MCP servers for agent edit', servers.length);
-            
-            for (const server of servers) {
-                AgentLogger.debug('Processing server: serverId=%d, name=%s, type=%s', 
-                    server.serverId, server.name, (server as any).type || 'undefined');
-                
-                const tools = await McpToolModel.getByServer(domainId, server.serverId);
-                const serverTools = tools.map(tool => ({
-                    _id: tool._id,
-                    toolId: tool.toolId,
-                    name: tool.name,
-                    description: tool.description,
-                    inputSchema: tool.inputSchema,
-                    serverId: tool.serverId,
-                    serverName: server.name,
-                }));
-
-                // 使用服务器的 type 字段进行分类
-                let serverType = (server as any).type;
-                
-                // 根据服务器类型设置状态：repo 类型是内部服务，始终为 connected
-                const status = serverType === 'repo' ? 'connected' : 'disconnected';
-                
-                // 如果 type 字段不存在，尝试推断并更新
-                if (!serverType) {
-                    const associatedRpid = repoServerIdMap.get(server.serverId);
-                    if (associatedRpid !== undefined) {
-                        // 从 repoServerIdMap 推断为 repo 类型
-                        serverType = 'repo';
-                        // 异步更新服务器类型（不阻塞当前请求）
-                        McpServerModel.update(domainId, server.serverId, { type: 'repo' }).catch(err => {
-                            AgentLogger.warn('Failed to update server type: %s', err.message);
-                        });
-                    } else {
-                        // 尝试从名称推断
-                        const nameMatch = server.name.match(/^repo-(\d+)-/);
-                        if (nameMatch) {
-                            const inferredRpid = parseInt(nameMatch[1], 10);
-                            const repo = allRepos.find(r => r.rpid === inferredRpid);
-                            if (repo) {
-                                serverType = 'repo';
-                                // 异步更新服务器类型
-                                McpServerModel.update(domainId, server.serverId, { type: 'repo' }).catch(err => {
-                                    AgentLogger.warn('Failed to update server type: %s', err.message);
-                                });
-                            } else {
-                                serverType = 'provider'; // 默认
-                            }
-                        } else {
-                            serverType = 'provider'; // 默认
-                        }
-                    }
-                }
-                
-                if (serverType === 'repo') {
-                    // 这是 repo 的 MCP 服务器
-                    const associatedRpid = repoServerIdMap.get(server.serverId);
-                    // 如果 repoServerIdMap 中没有，尝试从名称推断
-                    let rpid = associatedRpid;
-                    if (rpid === undefined) {
-                        const nameMatch = server.name.match(/^repo-(\d+)-/);
-                        if (nameMatch) {
-                            rpid = parseInt(nameMatch[1], 10);
-                        }
-                    }
-                    const repo = rpid ? allRepos.find(r => r.rpid === rpid) : null;
-                    repoServers.push({
-                        serverId: server.serverId,
-                        serverName: server.name,
-                        serverDescription: server.description,
-                        status: status, // 不查询实时状态，仅用于显示
-                        rpid: rpid || 0,
-                        repoTitle: repo?.title || (rpid ? `Repo ${rpid}` : server.name),
-                        tools: serverTools,
-                    });
-                } else if (serverType === 'node') {
-                    // 这是 node 的 MCP 服务器
-                    nodeServers.push({
-                        serverId: server.serverId,
-                        serverName: server.name,
-                        serverDescription: server.description,
-                        status: status, // 不查询实时状态，仅用于显示
-                        tools: serverTools,
-                    });
-                } else {
-                    // 这是外部 provider 的 MCP 服务器（默认）
-                    providerServers.push({
-                        serverId: server.serverId,
-                        serverName: server.name,
-                        serverDescription: server.description,
-                        status: status, // 不查询实时状态，仅用于显示
-                        tools: serverTools,
-                    });
-                    AgentLogger.debug('Added provider server: serverId=%d, name=%s, tools=%d', 
-                        server.serverId, server.name, serverTools.length);
-                }
-            }
-            
-            AgentLogger.info('Agent edit: providerServers=%d, nodeServers=%d, repoServers=%d', 
-                providerServers.length, nodeServers.length, repoServers.length);
-        } catch (error: any) {
-            AgentLogger.error('Failed to load MCP tools: %s', error.message);
-            AgentLogger.error('Error stack: %s', error.stack);
         }
 
         // 获取已选择的repo ID列表
@@ -4689,13 +3713,8 @@ export class AgentEditHandler extends Handler {
             adoc: agent,
             tag: agent.tag,
             udoc,
-            providerServers,
-            nodeServers,
-            repoServers,
-            assignedToolIds,
             allRepos,
             assignedRepoIds,
-            allNodes,
         };
         this.UiContext.extraTitleContent = agent.title;
     }
@@ -4754,7 +3773,7 @@ export class AgentEditHandler extends Handler {
             for (const toolIdStr of toolIds) {
                 try {
                     const toolId = new ObjectId(toolIdStr);
-                    const tool = await document.get(domainId, document.TYPE_MCP_TOOL, toolId);
+                    const tool = await document.get(domainId, document.TYPE_TOOL, toolId);
                     if (tool) {
                         validToolIds.push(toolId);
                     } else {
@@ -4810,12 +3829,104 @@ export class AgentEditHandler extends Handler {
 
 }
 
+export class AgentEdgeConfigHandler extends Handler {
+    adoc?: AgentDoc;
+
+    @param('aid', Types.String)
+    async prepare(domainId: string, aid: string) {
+        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
+        this.adoc = await Agent.get(domainId, normalizedId);
+        if (!this.adoc) {
+            throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
+        }
+        if (this.adoc.owner !== this.user._id) {
+            this.checkPriv(PRIV.PRIV_EDIT_SYSTEM);
+        }
+    }
+
+    @param('aid', Types.String)
+    async get(domainId: string, aid: string) {
+        const edges = await EdgeModel.getByDomain(domainId);
+        const connectedEdges = edges.filter(edge => edge.tokenUsedAt);
+        
+        const edgesWithTools: any[] = [];
+        const assignedToolIds = new Set((this.adoc!.mcpToolIds || []).map(id => id.toString()));
+        
+        for (const edge of connectedEdges) {
+            const tools = await ToolModel.getByEdgeDocId(domainId, edge._id);
+            const isConnected = EdgeServerConnectionHandler.active.has(edge.token);
+            
+            let status: 'online' | 'offline' | 'working' = edge.status;
+            if (isConnected) {
+                status = tools.length > 0 ? 'working' : 'online';
+            } else {
+                status = 'offline';
+            }
+            
+            edgesWithTools.push({
+                ...edge,
+                status,
+                tools: tools.map(tool => ({
+                    ...tool,
+                    isAssigned: assignedToolIds.has(tool._id.toString()),
+                })),
+            });
+        }
+        
+        edgesWithTools.sort((a, b) => (a.edgeId || 0) - (b.edgeId || 0));
+        
+        this.response.template = 'agent_edge_config.html';
+        this.response.body = {
+            adoc: this.adoc,
+            edges: edgesWithTools,
+            domainId: this.domain._id,
+        };
+    }
+
+    @param('aid', Types.String)
+    @post('toolIds', Types.ArrayOf(Types.String), true)
+    async post(domainId: string, aid: string, toolIds?: string[]) {
+        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
+        const agent = await Agent.get(domainId, normalizedId);
+        if (!agent) {
+            throw new NotFoundError(`Agent not found`);
+        }
+        
+        const validToolIds: ObjectId[] = [];
+        if (toolIds && Array.isArray(toolIds)) {
+            for (const toolIdStr of toolIds) {
+                try {
+                    const toolId = new ObjectId(toolIdStr);
+                    const tool = await document.get(domainId, document.TYPE_TOOL, toolId);
+                    if (tool) {
+                        validToolIds.push(toolId);
+                    } else {
+                        AgentLogger.warn('Tool not found: %s', toolIdStr);
+                    }
+                } catch (error) {
+                    AgentLogger.warn('Invalid tool ID: %s', toolIdStr);
+                }
+            }
+        }
+        
+        const agentAid = agent.aid;
+        await Agent.edit(domainId, agentAid, { 
+            mcpToolIds: validToolIds,
+        });
+        
+        AgentLogger.info('Agent edge tools updated: aid=%s, toolIds=%o', agentAid, validToolIds.map(id => id.toString()));
+        
+        this.response.body = { aid: agentAid };
+        this.response.redirect = this.url('agent_detail', { uid: this.user._id, aid: agentAid });
+    }
+}
+
 export async function apply(ctx: Context) {
     ctx.Route('agent_domain', '/agent', AgentMainHandler);
     ctx.Route('agent_create', '/agent/create', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_detail', '/agent/:aid', AgentDetailHandler);
+    ctx.Route('agent_edge_config', '/agent/:aid/edge-config', AgentEdgeConfigHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_chat', '/agent/:aid/chat', AgentChatHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Connection('agent_chat_conn', '/agent-chat-conn', AgentChatConnectionHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Connection('agent_chat_session', '/agent-chat-session', AgentChatSessionConnectionHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_edit', '/agent/:aid/edit', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_mcp_status', '/agent/:aid/mcp-tools/status', AgentMcpStatusHandler);
