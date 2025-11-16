@@ -1,0 +1,47 @@
+{% set page_name = "tool_main" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+{{ set(
+  UiContext, 'socketUrl',
+  "tool/status/ws?domainId=" + handler.args.domainId
+) }}
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">MCP 工具管理</h1>
+      </div>
+      <div class="section__body no-padding">
+        {% if not tools or not tools.length %}
+          <div class="typo">
+            <p>暂无注册的 MCP 工具。当 MCP 服务器连接并注册工具后，它们将显示在这里。</p>
+          </div>
+        {% else %}
+          <table class="data-table tool_main__table">
+            <colgroup>
+              <col class="col--server">
+              <col class="col--name">
+              <col class="col--description">
+              <col class="col--status">
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="col--server">服务器</th>
+                <th class="col--name">工具名称</th>
+                <th class="col--description">描述</th>
+                <th class="col--status">状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              {%- for tool in tools -%}
+                {% include 'tool_main_tr.html' %}
+              {%- endfor -%}
+            </tbody>
+          </table>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

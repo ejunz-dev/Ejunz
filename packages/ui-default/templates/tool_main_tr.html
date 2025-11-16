@@ -1,0 +1,25 @@
+<tr data-tool-id="{{ tool.toolId }}" data-edge-token="{{ tool.edgeToken }}">
+  <td class="col--server">
+    <a href="{{ url('edge_domain', { domainId: domainId }) }}">
+      {{ tool.edgeName }}
+    </a>
+  </td>
+  <td class="col--name">
+    <code>{{ tool.name }}</code>
+  </td>
+  <td class="col--description">
+    {{ tool.description or '' }}
+  </td>
+  <td class="col--status">
+    <span class="tool-status tool-status-{{ tool.edgeStatus }}">
+      {% if tool.edgeStatus == 'working' %}
+        工作中
+      {% elif tool.edgeStatus == 'online' %}
+        在线
+      {% else %}
+        离线
+      {% endif %}
+    </span>
+  </td>
+</tr>
+

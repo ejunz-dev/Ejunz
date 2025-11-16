@@ -427,6 +427,56 @@ declare module './model/client' {
 }
 export type { McpServerDoc, McpToolDoc } from './model/mcp';
 export type { ClientDoc } from './model/client';
+
+declare module './model/edge' {
+    interface EdgeDoc {
+        _id: ObjectId;
+        docType: document['TYPE_EDGE'];
+        docId: ObjectId;
+        domainId: string;
+        edgeId: number;
+        token: string;
+        type: 'provider' | 'repo' | 'node';
+        status: 'online' | 'offline' | 'working';
+        tokenCreatedAt: Date;
+        tokenUsedAt?: Date;
+        name?: string;
+        description?: string;
+        wsEndpoint?: string;
+        lastConnectedAt?: Date;
+        lastDisconnectedAt?: Date;
+        errorMessage?: string;
+        toolsCount?: number;
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number;
+        content?: string;
+    }
+}
+export type { EdgeDoc } from './model/edge';
+
+declare module './model/tool' {
+    interface ToolDoc {
+        _id: ObjectId;
+        docType: document['TYPE_TOOL'];
+        docId: ObjectId;
+        domainId: string;
+        token: string;
+        edgeDocId: ObjectId;
+        toolId: number;
+        name: string;
+        description: string;
+        inputSchema: {
+            type: string;
+            properties?: Record<string, any>;
+        };
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number;
+        content?: string;
+    }
+}
+export type { ToolDoc } from './model/tool';
 export type { ClientChatDoc } from './model/client_chat';
 
 export interface DomainDoc extends Record<string, any> {
@@ -668,6 +718,8 @@ export interface Model {
     nodeDevice: typeof import('./model/node').NodeDeviceModel,
     mcpServer: typeof import('./model/mcp').default,
     mcpTool: typeof import('./model/mcp').McpToolModel,
+    edge: typeof import('./model/edge').default,
+    tool: typeof import('./model/tool').default,
 }
 
 export interface GeoIP {

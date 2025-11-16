@@ -1,0 +1,41 @@
+<tr data-edge-id="{{ edge._id }}">
+  <td class="col--id">
+    <code>{{ edge._id }}</code>
+  </td>
+  <td class="col--status">
+    <span class="edge-status edge-status-{{ edge.status }}">
+      {% if edge.status == 'online' %}
+        在线
+      {% elif edge.status == 'offline' %}
+        离线
+      {% elif edge.status == 'working' %}
+        工作中
+      {% else %}
+        {{ edge.status }}
+      {% endif %}
+    </span>
+  </td>
+  <td class="col--type">
+    {% if edge.type == 'repo' %}
+      <span class="badge badge--primary">Repo</span>
+    {% elif edge.type == 'node' %}
+      <span class="badge badge--info">Node</span>
+    {% else %}
+      <span class="badge">Provider</span>
+    {% endif %}
+  </td>
+  <td class="col--created">
+    {{ datetimeSpan(edge.tokenCreatedAt)|safe }}
+  </td>
+  <td class="col--used">
+    {% if edge.tokenUsedAt %}
+      {{ datetimeSpan(edge.tokenUsedAt)|safe }}
+    {% else %}
+      <span class="text-gray">未使用</span>
+    {% endif %}
+  </td>
+  <td class="col--action">
+    <a href="javascript:;" class="button small view-endpoint-btn" data-token="{{ edge.token }}">查看接入点</a>
+  </td>
+</tr>
+
