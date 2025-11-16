@@ -1,9 +1,12 @@
-import { ConnectionHandler, Handler } from '@ejunz/framework';
+import { ObjectId } from 'mongodb';
+import { ConnectionHandler, Handler, param, Types } from '@ejunz/framework';
 import { Context } from '../context';
 import { Logger } from '../logger';
 import EdgeModel from '../model/edge';
 import ToolModel from '../model/tool';
 import { EdgeServerConnectionHandler } from './edge';
+import { ValidationError } from '../error';
+import type { ToolDoc } from '../interface';
 
 const logger = new Logger('handler/tool');
 
@@ -21,6 +24,7 @@ export class ToolDomainHandler extends Handler<Context> {
                 allTools.push({
                     ...tool,
                     edgeToken: edge.token,
+                    edgeId: edge._id,
                     edgeName: edge.name || `Edge-${edge.edgeId}`,
                     edgeStatus: isConnected ? (tools.length > 0 ? 'working' : 'online') : 'offline',
                 });
@@ -49,6 +53,46 @@ export class ToolDomainHandler extends Handler<Context> {
     }
 }
 
+export class ToolDetailHandler extends Handler<Context> {
+    tool: ToolDoc;
+
+    @param('toolId', Types.ObjectId)
+    async prepare(domainId: string, toolId: ObjectId) {
+        const tool = await ToolModel.get(toolId);
+        if (!tool || tool.domainId !== domainId) {
+            throw new ValidationError('Tool not found');
+        }
+        this.tool = tool;
+    }
+
+    @param('toolId', Types.ObjectId)
+    async get(domainId: string, toolId: ObjectId) {
+        const edge = await EdgeModel.get(this.tool.edgeDocId);
+        if (!edge) {
+            throw new ValidationError('Edge not found');
+        }
+        
+        const isConnected = EdgeServerConnectionHandler.active.has(edge.token);
+        let edgeStatus: 'online' | 'offline' | 'working' = edge.status;
+        if (isConnected) {
+            const tools = await ToolModel.getByToken(domainId, edge.token);
+            edgeStatus = tools.length > 0 ? 'working' : 'online';
+        } else {
+            edgeStatus = 'offline';
+        }
+
+        this.response.template = 'tool_detail.html';
+        this.response.body = {
+            tool: this.tool,
+            edge: {
+                ...edge,
+                status: edgeStatus,
+            },
+            domainId: this.domain._id,
+        };
+    }
+}
+
 export class ToolStatusConnectionHandler extends ConnectionHandler<Context> {
     noCheckPermView = true;
     private subscriptions: Array<{ dispose: () => void }> = [];
@@ -65,6 +109,7 @@ export class ToolStatusConnectionHandler extends ConnectionHandler<Context> {
                 allTools.push({
                     ...tool,
                     edgeToken: edge.token,
+                    edgeId: edge._id,
                     edgeName: edge.name || `Edge-${edge.edgeId}`,
                     edgeStatus: isConnected ? (tools.length > 0 ? 'working' : 'online') : 'offline',
                 });
@@ -91,6 +136,7 @@ export class ToolStatusConnectionHandler extends ConnectionHandler<Context> {
                 const toolsWithStatus = tools.map(tool => ({
                     ...tool,
                     edgeToken: edge.token,
+                    edgeId: edge._id,
                     edgeName: edge.name || `Edge-${edge.edgeId}`,
                     edgeStatus: isConnected ? (tools.length > 0 ? 'working' : 'online') : 'offline',
                 }));
@@ -116,6 +162,7 @@ export class ToolStatusConnectionHandler extends ConnectionHandler<Context> {
                 const toolsWithStatus = tools.map(tool => ({
                     ...tool,
                     edgeToken: edge.token,
+                    edgeId: edge._id,
                     edgeName: edge.name || `Edge-${edge.edgeId}`,
                     edgeStatus: finalStatus,
                 }));
@@ -150,6 +197,7 @@ export class ToolStatusConnectionHandler extends ConnectionHandler<Context> {
                             allTools.push({
                                 ...tool,
                                 edgeToken: edge.token,
+                                edgeId: edge._id,
                                 edgeName: edge.name || `Edge-${edge.edgeId}`,
                                 edgeStatus: isConnected ? (tools.length > 0 ? 'working' : 'online') : 'offline',
                             });
@@ -187,6 +235,7 @@ export class ToolStatusConnectionHandler extends ConnectionHandler<Context> {
 
 export async function apply(ctx: Context) {
     ctx.Route('tool_domain', '/tool/list', ToolDomainHandler);
+    ctx.Route('tool_detail', '/tool/:toolId', ToolDetailHandler);
     ctx.Connection('tool_status_conn', '/tool/status/ws', ToolStatusConnectionHandler);
 }
 

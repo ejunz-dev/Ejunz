@@ -1,11 +1,12 @@
 import { ObjectId } from 'mongodb';
-import { ConnectionHandler, Handler } from '@ejunz/framework';
+import { ConnectionHandler, Handler, param, Types } from '@ejunz/framework';
 import { Context } from '../context';
 import { Logger } from '../logger';
 import EdgeModel from '../model/edge';
 import ToolModel from '../model/tool';
 import { PRIV } from '../model/builtin';
 import { ValidationError, PermissionError } from '../error';
+import type { EdgeDoc } from '../interface';
 
 const logger = new Logger('edge');
 
@@ -581,6 +582,47 @@ export class EdgeDomainHandler extends Handler<Context> {
     }
 }
 
+export class EdgeDetailHandler extends Handler<Context> {
+    edge: EdgeDoc;
+
+    @param('edgeId', Types.ObjectId)
+    async prepare(domainId: string, edgeId: ObjectId) {
+        const edge = await EdgeModel.get(edgeId);
+        if (!edge || edge.domainId !== domainId) {
+            throw new ValidationError('Edge not found');
+        }
+        this.edge = edge;
+    }
+
+    @param('edgeId', Types.ObjectId)
+    async get(domainId: string, edgeId: ObjectId) {
+        const tools = await ToolModel.getByEdgeDocId(domainId, this.edge._id);
+        const isConnected = EdgeServerConnectionHandler.active.has(this.edge.token);
+        
+        let status: 'online' | 'offline' | 'working' = this.edge.status;
+        if (isConnected) {
+            status = tools.length > 0 ? 'working' : 'online';
+        } else {
+            status = 'offline';
+        }
+
+        this.response.template = 'edge_detail.html';
+        this.response.body = {
+            edge: {
+                ...this.edge,
+                status,
+            },
+            tools: tools.map(tool => ({
+                ...tool,
+                edgeToken: this.edge.token,
+                edgeName: this.edge.name || `Edge-${this.edge.edgeId}`,
+                edgeStatus: status,
+            })),
+            domainId: this.domain._id,
+        };
+    }
+}
+
 export class EdgeGenerateTokenHandler extends Handler<Context> {
     async post() {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
@@ -801,6 +843,7 @@ export async function apply(ctx: Context) {
     ctx.Connection('edge_conn', '/edge/conn', EdgeConnectionHandler);
     ctx.Route('edge_rpc', '/edge/rpc', EdgeRpcHandler as any);
     ctx.Route('edge_domain', '/edge/list', EdgeDomainHandler);
+    ctx.Route('edge_detail', '/edge/:edgeId', EdgeDetailHandler);
     ctx.Route('edge_generate_token', '/edge/generate-token', EdgeGenerateTokenHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Connection('edge_status_conn', '/edge/status/ws', EdgeStatusConnectionHandler);
     // Edge server WebSocket connection (for external edge servers to connect)

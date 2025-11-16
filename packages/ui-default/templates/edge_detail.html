@@ -1,0 +1,127 @@
+{% set page_name = "edge_detail" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">Edge 设备详情</h1>
+        <div class="section__tools">
+          <a href="{{ url('edge_domain', { domainId: domainId }) }}" class="button">
+            <span class="icon icon-back"></span> 返回列表
+          </a>
+        </div>
+      </div>
+      <div class="section__body">
+        <div class="typo">
+          <h2>基本信息</h2>
+          <table class="data-table">
+            <tbody>
+              <tr>
+                <td class="col--key">ID</td>
+                <td><code>{{ edge._id }}</code></td>
+              </tr>
+              <tr>
+                <td class="col--key">名称</td>
+                <td>{{ edge.name or '未命名' }}</td>
+              </tr>
+              <tr>
+                <td class="col--key">类型</td>
+                <td>
+                  {% if edge.type == 'repo' %}
+                    <span class="badge badge--primary">Repo</span>
+                  {% elif edge.type == 'node' %}
+                    <span class="badge badge--info">Node</span>
+                  {% else %}
+                    <span class="badge">Provider</span>
+                  {% endif %}
+                </td>
+              </tr>
+              <tr>
+                <td class="col--key">状态</td>
+                <td>
+                  <span class="edge-status edge-status-{{ edge.status }}">
+                    {% if edge.status == 'online' %}
+                      在线
+                    {% elif edge.status == 'offline' %}
+                      离线
+                    {% elif edge.status == 'working' %}
+                      工作中
+                    {% else %}
+                      {{ edge.status }}
+                    {% endif %}
+                  </span>
+                </td>
+              </tr>
+              <tr>
+                <td class="col--key">Token 创建时间</td>
+                <td>{{ datetimeSpan(edge.tokenCreatedAt)|safe }}</td>
+              </tr>
+              <tr>
+                <td class="col--key">首次连接时间</td>
+                <td>
+                  {% if edge.tokenUsedAt %}
+                    {{ datetimeSpan(edge.tokenUsedAt)|safe }}
+                  {% else %}
+                    <span class="text-gray">未连接</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% if edge.description %}
+              <tr>
+                <td class="col--key">描述</td>
+                <td>{{ edge.description }}</td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">工具列表 ({{ tools|length }})</h1>
+      </div>
+      <div class="section__body no-padding">
+        {% if not tools or not tools.length %}
+          <div class="typo">
+            <p>该 Edge 设备尚未提供任何工具。</p>
+          </div>
+        {% else %}
+          <table class="data-table">
+            <colgroup>
+              <col class="col--name">
+              <col class="col--description">
+              <col class="col--action">
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="col--name">工具名称</th>
+                <th class="col--description">描述</th>
+                <th class="col--action">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {%- for tool in tools -%}
+              <tr>
+                <td class="col--name">
+                  <code>{{ tool.name }}</code>
+                </td>
+                <td class="col--description">
+                  {{ tool.description or '' }}
+                </td>
+                <td class="col--action">
+                  <a href="{{ url('tool_detail', { domainId: domainId, toolId: tool._id }) }}" class="button small">查看详情</a>
+                </td>
+              </tr>
+              {%- endfor -%}
+            </tbody>
+          </table>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
