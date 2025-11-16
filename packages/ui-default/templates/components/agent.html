@@ -1,0 +1,12 @@
+{% macro render_agent_title(adoc, invalid=false, small=false) %}
+{%- if not invalid -%}
+  {% set _linkArgs = { aid:adoc.aid } %}
+  <a href="{{ url('agent_detail', _linkArgs) }}"{% if small %} data-tooltip="{{ adoc.title }}"{% endif %}>
+{%- endif -%}
+{%- if not small -%}&nbsp;&nbsp;{{ adoc.title }}{%- endif -%}  
+{%- if not invalid -%}
+  </a>
+{%- endif -%}
+{% endmacro %}
+
+

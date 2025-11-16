@@ -12,8 +12,6 @@ import message from '../model/message';
 import * as oplog from '../model/oplog';
 import user from '../model/user';
 import { Handler, param, Types } from '../service/server';
-import SystemModel from '../model/system';
-import yaml from 'js-yaml';
 
 export const typeMapper = {
     problem: document.TYPE_PROBLEM,
@@ -21,7 +19,6 @@ export const typeMapper = {
     node: document.TYPE_DISCUSSION_NODE,
     training: document.TYPE_TRAINING,
     homework: document.TYPE_CONTEST,
-    docs: document.TYPE_DOCS,
 };
 
 class DiscussionHandler extends Handler {
@@ -71,16 +68,11 @@ class DiscussionMainHandler extends Handler {
     @param('page', Types.PositiveInt, true)
     @param('all', Types.Boolean)
     async get(domainId: string, page = 1, all = false) {
-        console.log('Resolved domainId:', domainId);
-    console.log('Request headers:', this.request.headers);
-    console.log('Request query:', this.request.query);
-    console.log('Context domain:', this.context.EjunzContext.domain);
-
         // Limit to known types
         const parentType = { $in: Object.keys(typeMapper).map((i) => typeMapper[i]) };
         all &&= this.user.hasPerm(PERM.PERM_MOD_BADGE);
         const [ddocs, dpcount] = await this.paginate(
-            discussion.getMulti(domainId, { parentType, ...all ? {} : { hidden: false } }),
+            discussion.getMulti(domainId, { parentType, ...all ? {} : { hidden: false } }).hint('discussionSort'),
             page,
             'discussion',
         );
@@ -93,7 +85,6 @@ class DiscussionMainHandler extends Handler {
         this.response.body = {
             ddocs, dpcount, udict, page, page_name: 'discussion_main', vndict, vnode: {}, vnodes,
         };
-        console.log('response',this.response.body)
     }
 }
 
@@ -104,7 +95,7 @@ class DiscussionNodeHandler extends DiscussionHandler {
     async get(domainId: string, type: string, _name: string, page = 1) {
         let name: ObjectId | string | number;
         if (ObjectId.isValid(_name)) name = new ObjectId(_name);
-        else if (isSafeInteger(parseInt(_name, 10))) name = parseInt(_name, 10);
+        else if (isSafeInteger(Number.parseInt(_name, 10))) name = Number.parseInt(_name, 10);
         else name = _name;
         const hidden = this.user.own(this.vnode) || this.user.hasPerm(PERM.PERM_EDIT_DISCUSSION) ? {} : { hidden: false };
         const [ddocs, dpcount] = await this.paginate(
@@ -130,7 +121,6 @@ class DiscussionNodeHandler extends DiscussionHandler {
             page_name: 'discussion_node',
             vnodes,
         };
-        console.log('response',this.response.body)
     }
 }
 
@@ -167,7 +157,6 @@ class DiscussionCreateHandler extends DiscussionHandler {
         this.response.redirect = this.url('discussion_detail', { did });
     }
 }
-
 
 class DiscussionDetailHandler extends DiscussionHandler {
     @param('did', Types.ObjectId)
@@ -211,7 +200,6 @@ class DiscussionDetailHandler extends DiscussionHandler {
         this.response.body = {
             path, ddoc: this.ddoc, dsdoc, drdocs, page, pcount, drcount, udict, vnode: this.vnode, reactions,
         };
-        console.log('typeDisplay',{ type: discussion.typeDisplay[this.ddoc.parentType], name: this.ddoc.parentId })
     }
 
     async post() {
@@ -250,9 +238,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
             message: 'User {0} mentioned you in {1:link}',
             params: [this.user.uname, `/d/${domainId}${this.request.path}`],
         });
-        for (const uid of uids) {
-            message.send(1, uid, msg, message.FLAG_RICHTEXT | message.FLAG_UNREAD);
-        }
+        await message.send(1, uids, msg, message.FLAG_RICHTEXT | message.FLAG_UNREAD);
         const drid = await discussion.addReply(domainId, did, this.user._id, content, this.request.ip);
         this.back({ drid });
     }
@@ -269,9 +255,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
             message: 'User {0} mentioned you in {1:link}',
             params: [this.user.uname, `/d/${domainId}${this.request.path}`],
         });
-        for (const uid of uids) {
-            message.send(1, uid, msg, message.FLAG_RICHTEXT | message.FLAG_UNREAD);
-        }
+        await message.send(1, uids, msg, message.FLAG_RICHTEXT | message.FLAG_UNREAD);
         await discussion.addTailReply(domainId, drid, this.user._id, content, this.request.ip);
         this.back();
     }
@@ -291,8 +275,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
     @param('drid', Types.ObjectId)
     async postDeleteReply(domainId: string, drid: ObjectId) {
         const deleteBy = this.user.own(this.drdoc) ? 'self' : this.user.own(this.ddoc) ? 'DiscussionOwner' : 'Admin';
-        if (!(this.user.own(this.ddoc)
-            && this.user.hasPerm(PERM.PERM_DELETE_DISCUSSION_REPLY_SELF_DISCUSSION))) {
+        if (!this.user.own(this.ddoc) || !this.user.hasPerm(PERM.PERM_DELETE_DISCUSSION_REPLY_SELF_DISCUSSION)) {
             if (!this.user.own(this.drdoc)) {
                 this.checkPerm(PERM.PERM_DELETE_DISCUSSION_REPLY);
             } else this.checkPerm(PERM.PERM_DELETE_DISCUSSION_REPLY_SELF);
@@ -332,8 +315,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
     @param('drrid', Types.ObjectId)
     async postDeleteTailReply(domainId: string, drid: ObjectId, drrid: ObjectId) {
         const deleteBy = this.user.own(this.drrdoc) ? 'self' : 'Admin';
-        if (!(this.user.own(this.drrdoc)
-            && this.user.hasPerm(PERM.PERM_DELETE_DISCUSSION_REPLY_SELF))) {
+        if (!this.user.own(this.drrdoc) || !this.user.hasPerm(PERM.PERM_DELETE_DISCUSSION_REPLY_SELF)) {
             this.checkPerm(PERM.PERM_DELETE_DISCUSSION_REPLY);
         }
         const msg = JSON.stringify({
@@ -354,15 +336,10 @@ class DiscussionDetailHandler extends DiscussionHandler {
     }
 
     @param('did', Types.ObjectId)
-    async postStar(domainId: string, did: ObjectId) {
-        await discussion.setStar(domainId, did, this.user._id, true);
-        this.back({ star: true });
-    }
-
-    @param('did', Types.ObjectId)
-    async postUnstar(domainId: string, did: ObjectId) {
-        await discussion.setStar(domainId, did, this.user._id, false);
-        this.back({ star: false });
+    @param('star', Types.Boolean)
+    async postStar(domainId: string, did: ObjectId, star = false) {
+        await discussion.setStar(domainId, did, this.user._id, star);
+        this.back({ star });
     }
 }
 
@@ -391,15 +368,8 @@ class DiscussionRawHandler extends DiscussionHandler {
 
 class DiscussionEditHandler extends DiscussionHandler {
     async get() {
-        const path = [
-            ['Ejunz', 'homepage'],
-            ['discussion_main', 'discussion_main'],
-            [this.vnode.title, 'discussion_node', { type: discussion.typeDisplay[this.ddoc.parentType], name: this.ddoc.parentId }, true],
-            [this.ddoc.title, 'discussion_detail', { did: this.ddoc.docId }, true],
-            ['discussion_edit', null],
-        ];
         this.response.template = 'discussion_edit.html';
-        this.response.body = { ddoc: this.ddoc, path };
+        this.response.body = { ddoc: this.ddoc };
     }
 
     @param('did', Types.ObjectId)
@@ -460,53 +430,4 @@ export async function apply(ctx) {
     ctx.Route('discussion_tail_reply_raw', '/discuss/:did/:drid/:drrid/raw', DiscussionRawHandler);
     ctx.Route('discussion_node', '/discuss/:type/:name', DiscussionNodeHandler);
     ctx.Route('discussion_create', '/discuss/:type/:name/create', DiscussionCreateHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_CREATE_DISCUSSION);
-
-    const customChecker = (handler) => {
-        if (handler.user._id === 2) {
-            console.log('用户是superadmin', handler.user._id);
-            return true;
-        } else {
-            const hasPermission = handler.user.hasPerm(PERM.PERM_VIEW_DISCUSSION);
-            console.log(`User ${handler.user._id} has permission: ${hasPermission}`);
-            return hasPermission;
-        }
-        
-    };
-    
-    function ToOverrideNav(h) {
-        if (!h.response.body.overrideNav) {
-            h.response.body.overrideNav = [];
-        }
-
-        h.response.body.overrideNav.push(
-            {
-                name: 'discussion_main',
-                args: {},
-                displayName: 'discussion_main',
-                checker: customChecker,
-            },
-
-        );
-        
-    }
-
-    ctx.on('handler/after/Talkspace#get', async (h) => {
-        ToOverrideNav(h);
-    });
-
-    ctx.on('handler/after', async (h) => {
-        if (h.request.path.includes('/discuss')) {
-            if (!h.response.body.overrideNav) {
-                h.response.body.overrideNav = [];
-            }
-            h.response.body.overrideNav.push(
-                {
-                    name: 'discussion_main',
-                    args: {},
-                    displayName: 'discussion_main',
-                    checker: customChecker,
-                }
-            );
-        }
-    });
 }

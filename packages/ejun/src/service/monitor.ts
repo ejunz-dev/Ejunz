@@ -4,7 +4,7 @@ import type { StatusUpdate } from '@ejunz/utils/lib/sysinfo';
 import * as sysinfo from '@ejunz/utils/lib/sysinfo';
 import { Context } from '../context';
 import { Logger } from '../logger';
-import * as bus from './bus';
+import bus from './bus';
 import db from './db';
 
 const coll = db.collection('status');
@@ -20,7 +20,6 @@ export async function feedback(): Promise<[string, StatusUpdate]> {
     const [domainCount, userCount, problemCount, discussionCount, recordCount] = await Promise.all([
         domain.coll.count(),
         user.coll.count(),
-        document.coll.count({ docType: document.TYPE_PROBLEM }),
         document.coll.count({ docType: document.TYPE_DISCUSSION }),
         record.coll.count(),
     ]);
@@ -31,20 +30,13 @@ export async function feedback(): Promise<[string, StatusUpdate]> {
         url,
         domainCount,
         userCount,
-        problemCount,
         discussionCount,
         recordCount,
-        addons: global.addons,
+        addons: Object.values(global.addons),
         memory: inf.memory,
         osinfo: inf.osinfo,
         cpu: inf.cpu,
     };
-    try {
-        let host = system.get('ejunzjudge.sandbox_host') || 'http://localhost:5050/';
-        if (!host.endsWith('/')) host += '/';
-        const res = await superagent.get(`${host}version`);
-        info.sandbox = res.body;
-    } catch (e) { }
     try {
         const status = await db.db.admin().serverStatus();
         info.dbVersion = status.version;
@@ -83,27 +75,24 @@ export async function update() {
     );
 }
 
-export async function updateJudge(args) {
+export async function updateworker(args) {
     const $set = { ...args, updateAt: new Date() };
-    await bus.parallel('monitor/update', 'judge', $set);
+    await bus.parallel('monitor/update', 'worker', $set);
     return await coll.updateOne(
-        { mid: args.mid, type: 'judge' },
+        { mid: args.mid, type: 'worker' },
         { $set },
         { upsert: true },
     );
 }
 
-export function apply(ctx: Context) {
+export async function apply(ctx: Context) {
     if (process.env.NODE_APP_INSTANCE !== '0') return;
-    ctx.on('app/started', async () => {
-        sysinfo.get().then((info) => {
-            coll.updateOne(
-                { mid: info.mid, type: 'server' },
-                { $set: { ...info, updateAt: new Date(), type: 'server' } },
-                { upsert: true },
-            );
-            feedback();
-            setInterval(update, 1800 * 1000);
-        });
-    });
+    const info = await sysinfo.get();
+    coll.updateOne(
+        { mid: info.mid, type: 'server' },
+        { $set: { ...info, updateAt: new Date(), type: 'server' } },
+        { upsert: true },
+    );
+    feedback();
+    return ctx.interval(update, 1800 * 1000); // eslint-disable-line
 }

@@ -1,51 +1,28 @@
-/* eslint-disable object-curly-newline */
-import { sum } from 'lodash';
+// import { pick, sum } from 'lodash'; // 已移除 judge 相关功能，不再需要
 import moment from 'moment-timezone';
 import {
-    Filter, MatchKeysAndValues,
+    Filter, FindOptions, MatchKeysAndValues,
     ObjectId, OnlyFieldsOfType, PushOperator, UpdateFilter,
 } from 'mongodb';
 import { Context } from '../context';
-import { ProblemNotFoundError } from '../error';
-import {
-    JudgeMeta, ProblemConfigFile, RecordDoc,
-} from '../interface';
+import { RecordDoc } from '../interface';
 import db from '../service/db';
 import { MaybeArray, NumberKeys } from '../typeutils';
 import { ArgMethod, buildProjection, Time } from '../utils';
 import { STATUS } from './builtin';
-import problem from './problem';
-import task from './task';
+import bus from '../service/bus';
+import { Logger } from '../logger';
+
+const logger = new Logger('model/record');
 
 export default class RecordModel {
     static coll = db.collection('record');
-    static collStat = db.collection('record.stat');
+    
     static PROJECTION_LIST: (keyof RecordDoc)[] = [
-        '_id', 'score', 'time', 'memory', 'lang',
-        'uid', 'pid', 'rejudged', 'progress', 'domainId',
-        'contest', 'judger', 'judgeAt', 'status', 'source',
-        'files', 'hackTarget',
+        '_id', 'status', 'score', 'time', 'domainId',
+        'uid', 'agentId',
+        'agentMessages', 'agentToolCallCount', 'agentTotalToolCalls', 'agentError',
     ];
-
-    static STAT_QUERY = {
-        time: [{ time: -1 }, { time: 1 }],
-        memory: [{ memory: -1 }, { memory: 1 }],
-        length: [{ length: -1 }, { length: 1 }],
-        date: [{ _id: -1 }, { _id: 1 }],
-    };
-
-    static RECORD_PRETEST = new ObjectId('000000000000000000000000');
-    static RECORD_GENERATE = new ObjectId('000000000000000000000001');
-
-    static async submissionPriority(uid: number, base: number = 0) {
-        const timeRecent = await RecordModel.coll
-            .find({ _id: { $gte: Time.getObjectID(moment().add(-30, 'minutes')) }, uid, rejudged: { $ne: true } })
-            .project({ time: 1, status: 1 }).toArray();
-        const pending = timeRecent.filter((i) => [
-            STATUS.STATUS_WAITING, STATUS.STATUS_FETCHED, STATUS.STATUS_COMPILING, STATUS.STATUS_JUDGING,
-        ].includes(i.status)).length;
-        return Math.max(base - 10000, base - (pending * 1000 + 1) * (sum(timeRecent.map((i) => i.time || 0)) / 10000 + 1));
-    }
 
     static async get(_id: ObjectId): Promise<RecordDoc | null>;
     static async get(domainId: string, _id: ObjectId): Promise<RecordDoc | null>;
@@ -77,106 +54,83 @@ export default class RecordModel {
         };
     }
 
-    static async judge(domainId: string, rids: MaybeArray<ObjectId>, priority = 0, config: ProblemConfigFile = {}, meta: Partial<JudgeMeta> = {}) {
-        rids = rids instanceof Array ? rids : [rids];
-        if (!rids.length) return null;
-        const rdocs = (await Promise.all(rids.map((rid) => RecordModel.get(domainId, rid)))).filter((i) => i);
-        if (!rdocs.length) return null;
-        let source = `${domainId}/${rdocs[0].pid}`;
-        await task.deleteMany({ rid: { $in: rids } });
-        let pdoc = await problem.get(domainId, rdocs[0].pid);
-        if (!pdoc) throw new ProblemNotFoundError(domainId, rdocs[0].pid);
-        if (pdoc.reference) {
-            pdoc = await problem.get(pdoc.reference.domainId, pdoc.reference.pid);
-            if (!pdoc) throw new ProblemNotFoundError(domainId, rdocs[0].pid);
-            source = `${pdoc.domainId}/${pdoc.docId}`;
-        }
-        meta = { ...meta, problemOwner: pdoc.owner };
-        return await task.addMany(rdocs.map((rdoc) => {
-            let type = 'judge';
-            if (typeof pdoc.config === 'string') throw new Error(pdoc.config);
-            if (pdoc.config.type === 'remote_judge' && rdoc.contest?.toHexString() !== '0'.repeat(24)) type = 'remotejudge';
-            else if (meta?.type === 'generate') type = 'generate';
-            return ({
-                ...(pdoc.config as any), // TODO deprecate this
-                lang: rdoc.lang,
-                priority,
-                type,
-                rid: rdoc._id,
-                domainId,
-                config: {
-                    ...(pdoc.config as any),
-                    ...config,
-                },
-                data: pdoc.data,
-                source,
-                meta,
-            } as any);
-        }));
-    }
+    // worker 和 add 方法已移除（judge 相关功能已删除，只保留 task 相关方法）
 
-    static async add(
-        domainId: string, pid: number, uid: number,
-        lang: string, code: string, addTask: boolean,
-        args: {
-            contest?: ObjectId,
-            input?: string,
-            files?: Record<string, string>,
-            hackTarget?: ObjectId,
-            type: 'judge' | 'rejudge' | 'pretest' | 'hack' | 'generate',
-        } = { type: 'judge' },
-    ) {
+    static async addTask(
+        domainId: string,
+        agentId: string,
+        uid: number,
+        initialMessage: string,
+        sessionId?: ObjectId,
+    ): Promise<ObjectId> {
         const data: RecordDoc = {
-            status: STATUS.STATUS_WAITING,
+            status: STATUS.STATUS_TASK_WAITING,
             _id: new ObjectId(),
             uid,
-            code,
-            lang,
-            pid,
+            code: initialMessage,
             domainId,
-            score: 0,
-            time: 0,
-            memory: 0,
-            judgeTexts: [],
-            compilerTexts: [],
-            testCases: [],
-            judger: null,
-            judgeAt: null,
-            rejudged: false,
-        };
-        let isContest = !!args.contest;
-        if (args.contest) data.contest = args.contest;
-        if (args.files) data.files = args.files;
-        if (args.hackTarget) data.hackTarget = args.hackTarget;
-        if (args.type === 'rejudge') {
-            args.type = 'judge';
-            data.rejudged = true;
-        } else if (args.type === 'pretest') {
-            data.input = args.input || '';
-            isContest = false;
-            data.contest = RecordModel.RECORD_PRETEST;
-        } else if (args.type === 'generate') {
-            data.contest = RecordModel.RECORD_GENERATE;
-        }
+            agentId,
+            sessionId, // 关联到 session
+            score: 100, // 初始分数100分，根据错误扣分
+            time: 0, // 用时（毫秒）
+            agentMessages: [{
+                role: 'user',
+                content: initialMessage,
+                timestamp: new Date(),
+            }],
+            agentToolCallCount: 0,
+            agentTotalToolCalls: 0,
+        } as any;
         const res = await RecordModel.coll.insertOne(data);
         bus.broadcast('record/change', data);
-        if (addTask) {
-            const priority = await RecordModel.submissionPriority(uid, args.type === 'pretest' ? -20 : (isContest ? 50 : 0));
-            await RecordModel.judge(domainId, res.insertedId, priority, isContest ? { detail: false } : {}, {
-                type: args.type,
-                rejudge: data.rejudged,
-            });
-        }
         return res.insertedId;
     }
 
-    static getMulti(domainId: string, query: any) {
-        if (domainId) query = { domainId, ...query };
-        return RecordModel.coll.find(query);
+    static async updateTask(
+        domainId: string,
+        recordId: ObjectId,
+        update: {
+            status?: number;
+            score?: number;
+            time?: number;
+            agentToolCallCount?: number;
+            agentError?: { message: string; code?: string; stack?: string };
+            agentMessages?: Array<{
+                role: 'user' | 'assistant' | 'tool';
+                content: string;
+                timestamp: Date;
+                toolName?: string;
+                toolResult?: any;
+                tool_call_id?: string;
+                tool_calls?: any[];
+            }>;
+        },
+    ): Promise<RecordDoc | null> {
+        const $set: any = {};
+        if (update.status !== undefined) $set.status = update.status;
+        if (update.score !== undefined) $set.score = update.score;
+        if (update.time !== undefined) $set.time = update.time;
+        if (update.agentToolCallCount !== undefined) $set.agentToolCallCount = update.agentToolCallCount;
+        if (update.agentError !== undefined) $set.agentError = update.agentError;
+        let updated: RecordDoc | null = null;
+        if (update.agentMessages) {
+            // Push new messages
+            updated = await RecordModel.update(domainId, recordId, $set, {
+                agentMessages: { $each: update.agentMessages },
+            } as any);
+        } else {
+            updated = await RecordModel.update(domainId, recordId, $set);
+        }
+        // 广播 record/change 事件，通知 WebSocket 连接更新
+        if (updated) {
+            (bus as any).broadcast('record/change', updated);
+        }
+        return updated;
     }
 
-    static getMultiStat(domainId: string, query: any, sortBy: any = { _id: -1 }) {
-        return RecordModel.collStat.find({ domainId, ...query }).sort(sortBy);
+    static getMulti(domainId: string, query: any, options?: FindOptions) {
+        if (domainId) query = { domainId, ...query };
+        return RecordModel.coll.find(query, options);
     }
 
     static async update(
@@ -196,14 +150,18 @@ export default class RecordModel {
             return null;
         }
         if (Object.keys($update).length) {
-            const res = await RecordModel.coll.findOneAndUpdate(
+            const updated = await RecordModel.coll.findOneAndUpdate(
                 { _id, domainId },
                 $update,
                 { returnDocument: 'after' },
             );
-            return res.value || null;
+            // 如果更新了 agentMessages，广播事件
+            if (updated && ($set && Object.keys($set).some(k => k.startsWith('agentMessages')) || $push && ($push as any).agentMessages)) {
+                (bus as any).broadcast('record/change', updated);
+            }
+            return updated;
         }
-        return await RecordModel.get(domainId, _id);
+        return await RecordModel.coll.findOne({ _id }, { readPreference: 'primary' });
     }
 
     static async updateMulti(
@@ -218,25 +176,6 @@ export default class RecordModel {
         if ($unset && Object.keys($unset).length) $update.$unset = $unset;
         const res = await RecordModel.coll.updateMany({ domainId, ...$match }, $update);
         return res.modifiedCount;
-    }
-
-    static async reset(domainId: string, rid: MaybeArray<ObjectId>, isRejudge: boolean) {
-        const upd: any = {
-            score: 0,
-            status: STATUS.STATUS_WAITING,
-            time: 0,
-            memory: 0,
-            testCases: [],
-            subtasks: {},
-            judgeTexts: [],
-            compilerTexts: [],
-            judgeAt: null,
-            judger: null,
-        };
-        if (isRejudge) upd.rejudged = true;
-        await RecordModel.collStat.deleteMany(rid instanceof Array ? { _id: { $in: rid } } : { _id: rid });
-        await task.deleteMany(rid instanceof Array ? { rid: { $in: rid } } : { rid });
-        return RecordModel.update(domainId, rid, upd);
     }
 
     static count(domainId: string, query: any) {
@@ -256,47 +195,73 @@ export default class RecordModel {
     }
 }
 
-export function apply(ctx: Context) {
-    // Mark problem as deleted
-    ctx.on('problem/delete', (domainId, docId) => Promise.all([
-        RecordModel.coll.deleteMany({ domainId, pid: docId }),
-        RecordModel.collStat.deleteMany({ domainId, pid: docId }),
-    ]));
+export async function apply(ctx: Context) {
     ctx.on('domain/delete', (domainId) => RecordModel.coll.deleteMany({ domainId }));
-    ctx.on('record/judge', async (rdoc, updated) => {
-        if (rdoc.status === STATUS.STATUS_ACCEPTED && updated) {
-            await RecordModel.collStat.updateOne({
-                _id: rdoc._id,
-            }, {
-                $set: {
-                    domainId: rdoc.domainId,
-                    pid: rdoc.pid,
-                    uid: rdoc.uid,
-                    time: rdoc.time,
-                    memory: rdoc.memory,
-                    length: rdoc.code?.length || 0,
-                    lang: rdoc.lang,
-                },
-            }, { upsert: true });
+    
+    // 监听 agent 完成事件
+    ctx.on('task/agent-completed', async (payload: { recordId: string; domainId: string; taskId?: string }) => {
+        try {
+            const recordId = new ObjectId(payload.recordId);
+            const rdoc = await RecordModel.get(payload.domainId, recordId);
+            if (rdoc && rdoc.agentId) {
+                // 标记任务已完成，清除超时定时器
+                // 这里可以添加额外的处理逻辑
+                logger.info('Agent completed for record: %s', recordId.toString());
+            }
+        } catch (e) {
+            logger.error('Error handling task/agent-completed event:', e);
         }
     });
-    ctx.on('ready', () => Promise.all([
+    
+    // 超时检查：定期检查working/pending状态的任务，如果超过一定时间没有完成，设置为0分
+    const TIMEOUT_MS = 2 * 60 * 1000; // 2分钟超时
+    setInterval(async () => {
+        try {
+            const timeoutThreshold = new Date(Date.now() - TIMEOUT_MS);
+            // 查找processing或pending状态且创建时间超过阈值的记录
+            const timeoutRecords = await RecordModel.coll.find({
+                status: { $in: [STATUS.STATUS_TASK_PROCESSING, STATUS.STATUS_TASK_PENDING] },
+                agentId: { $exists: true, $ne: null },
+                _id: { $lte: Time.getObjectID(timeoutThreshold) },
+            }).toArray();
+            
+            for (const rdoc of timeoutRecords) {
+                const elapsedTime = Date.now() - rdoc._id.getTimestamp().getTime();
+                // 根据超时原因设置不同的错误状态（基于2分钟超时阈值）
+                let errorStatus = STATUS.STATUS_TASK_ERROR_TIMEOUT;
+                if (elapsedTime > 2.5 * 60 * 1000) {
+                    // 超过2.5分钟，可能是系统问题
+                    errorStatus = STATUS.STATUS_TASK_ERROR_SYSTEM;
+                } else if (elapsedTime > 2.2 * 60 * 1000) {
+                    // 超过2.2分钟，可能是网络问题
+                    errorStatus = STATUS.STATUS_TASK_ERROR_NETWORK;
+                }
+                
+                await RecordModel.updateTask(rdoc.domainId, rdoc._id, {
+                    status: errorStatus,
+                    score: 0,
+                    time: elapsedTime,
+                    agentError: {
+                        message: 'Agent did not complete within timeout period',
+                        code: 'TIMEOUT',
+                    },
+                });
+                
+                logger.warn('Task timeout: recordId=%s, elapsedTime=%dms', rdoc._id.toString(), elapsedTime);
+            }
+        } catch (e) {
+            logger.error('Error in timeout check:', e);
+        }
+    }, 30000); // 每30秒检查一次，更及时地检测超时
+    
+    await Promise.all([
         db.ensureIndexes(
             RecordModel.coll,
-            { key: { domainId: 1, pid: 1 }, name: 'delete' },
-            { key: { domainId: 1, contest: 1, _id: -1 }, name: 'basic' },
-            { key: { domainId: 1, contest: 1, uid: 1, _id: -1 }, name: 'withUser' },
-            { key: { domainId: 1, contest: 1, pid: 1, _id: -1 }, name: 'withProblem' },
-            { key: { domainId: 1, contest: 1, pid: 1, uid: 1, _id: -1 }, name: 'withUserAndProblem' },
-            { key: { domainId: 1, contest: 1, status: 1, _id: -1 }, name: 'withStatus' },
+            { key: { domainId: 1, _id: -1 }, name: 'basic' },
+            { key: { domainId: 1, uid: 1, _id: -1 }, name: 'withUser' },
+            { key: { domainId: 1, status: 1, _id: -1 }, name: 'withStatus' },
+            { key: { domainId: 1, agentId: 1, _id: -1 }, name: 'withAgent' },
         ),
-        db.ensureIndexes(
-            RecordModel.collStat,
-            { key: { domainId: 1, pid: 1, uid: 1, _id: -1 }, name: 'basic' },
-            { key: { domainId: 1, pid: 1, uid: 1, time: 1 }, name: 'time' },
-            { key: { domainId: 1, pid: 1, uid: 1, memory: 1 }, name: 'memory' },
-            { key: { domainId: 1, pid: 1, uid: 1, length: 1 }, name: 'length' },
-        ),
-    ]) as any);
+    ]);
 }
 global.Ejunz.model.record = RecordModel;

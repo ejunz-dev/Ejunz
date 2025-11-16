@@ -1,0 +1,225 @@
+.device-list
+  display: grid
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr))
+  gap: 20px
+
+.device-card
+  border: 1px solid #ddd
+  border-radius: 8px
+  padding: 20px
+  background: #fff
+
+.device-header
+  display: flex
+  justify-content: space-between
+  align-items: center
+  margin-bottom: 10px
+
+.device-name
+  margin: 0
+  font-size: 18px
+
+.device-type
+  font-size: 12px
+  color: #888
+  background: #f5f5f5
+  padding: 4px 8px
+  border-radius: 4px
+
+.device-info
+  font-size: 12px
+  color: #666
+  margin: 10px 0
+
+.device-state
+  margin: 15px 0
+  padding: 10px
+  background: #f9f9f9
+  border-radius: 4px
+
+.state-items
+  display: flex
+  flex-direction: column
+  gap: 8px
+
+.state-item
+  display: flex
+  justify-content: space-between
+
+.state-key
+  font-weight: bold
+  color: #666
+
+.state-value
+  color: #333
+
+.device-controls
+  margin-top: 15px
+
+.control-buttons
+  display: flex
+  flex-direction: column
+  gap: 10px
+
+.control-btn
+  padding: 8px 16px
+  border: 1px solid #ddd
+  border-radius: 4px
+  background: #fff
+  cursor: pointer
+  transition: all 0.2s
+
+  &:hover
+    background: #f5f5f5
+
+  &.active
+    background: #4caf50
+    color: white
+    border-color: #4caf50
+
+// 滑动式开关样式
+.switch-control
+  display: flex
+  align-items: center
+  gap: 12px
+
+.switch-text
+  font-size: 14px
+  color: #333
+  min-width: 40px
+
+.switch-label
+  position: relative
+  display: inline-block
+  width: 50px
+  height: 26px
+  cursor: pointer
+
+.switch-toggle
+  opacity: 0
+  width: 0
+  height: 0
+  position: absolute
+
+.switch-slider
+  position: absolute
+  top: 0
+  left: 0
+  right: 0
+  bottom: 0
+  background: #ccc
+  border-radius: 13px
+  transition: background 0.3s ease
+  cursor: pointer
+
+  &::before
+    position: absolute
+    content: ""
+    height: 22px
+    width: 22px
+    left: 2px
+    bottom: 2px
+    background: white
+    border-radius: 50%
+    transition: transform 0.3s ease
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2)
+
+.switch-toggle:checked + .switch-slider
+  background: #4caf50
+
+  &::before
+    transform: translateX(24px)
+
+.brightness-control
+  display: flex
+  flex-direction: column
+  gap: 8px
+
+  label
+    font-size: 12px
+    color: #666
+
+.brightness-slider
+  width: 100%
+
+.no-devices
+  text-align: center
+  padding: 40px
+  color: #888
+
+.mqtt-connection-title
+  margin-top: 15px
+
+.endpoint-actions
+  margin-top: 15px
+
+.endpoint-result
+  margin-top: 15px
+  display: none
+
+.delete-node-btn
+  width: 100%
+  margin-top: 20px
+
+.node-list
+  display: grid
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr))
+  gap: 20px
+
+.node-item
+  border: 1px solid #ddd
+  border-radius: 8px
+  padding: 20px
+  background: #fff
+
+.node-header
+  display: flex
+  justify-content: space-between
+  align-items: center
+  margin-bottom: 10px
+
+  h3
+    margin: 0
+
+.node-status
+  padding: 4px 12px
+  border-radius: 12px
+  font-size: 12px
+  font-weight: bold
+
+  &.active
+    background: #4caf50
+    color: white
+
+  &.inactive
+    background: #ff9800
+    color: white
+
+  &.disconnected
+    background: #f44336
+    color: white
+
+.node-description
+  color: #666
+  margin: 10px 0
+
+.node-info
+  font-size: 12px
+  color: #888
+  margin: 10px 0
+
+  code
+    background: #f5f5f5
+    padding: 2px 6px
+    border-radius: 3px
+
+.node-actions
+  margin-top: 15px
+
+.node-no-endpoint
+  color: #888
+
+.node-empty-message
+  color: #888
+  padding: 20px
+

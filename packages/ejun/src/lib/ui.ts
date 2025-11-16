@@ -53,33 +53,36 @@ export const ProblemAdd = (name, args, icon = 'add', text = 'Create Problem') =>
 export const RepoAdd = (name, args, icon = 'add', text = 'Create Repository') => {
     inject('RepoAdd', name, { ...args, icon, text });
 };
-inject('NavMainDropdown', 'homepage', { prefix: 'homepage' },PERM.PERM_EDIT_DOMAIN);
-inject('NavMainDropdown', 'workspace_main', { prefix: 'workspace' }, PERM.PERM_EDIT_DOMAIN);
-inject('NavMainDropdown', 'production_main', { prefix: 'productionhub' }, PERM.PERM_EDIT_DOMAIN);
-inject('NavMainDropdown', 'processing_main', { prefix: 'processinghub' }, PERM.PERM_EDIT_DOMAIN);
-inject('NavMainDropdown', 'teamspace_main', { prefix: 'teamspace' }, PERM.PERM_EDIT_DOMAIN);
-inject('NavMainDropdown', 'talkspace_main', { prefix: 'talkspace' }, PERM.PERM_EDIT_DOMAIN);
-inject('NavMainDropdown', 'filespace_main', { prefix: 'storagehub' }, PERM.PERM_EDIT_DOMAIN);
+export const AgentAdd = (name, args, icon = 'add', text = 'Create Agent') => {
+    inject('AgentAdd', name, { ...args, icon, text });
+};
+// inject('NavMainDropdown', 'homepage', { prefix: 'homepage' });
+// inject('NavMainDropdown', 'workspace_main', { prefix: 'workspace' });
+// inject('NavMainDropdown', 'production_main', { prefix: 'productionhub' });
+// inject('NavMainDropdown', 'processing_main', { prefix: 'processinghub' });
+// inject('NavMainDropdown', 'teamspace_main', { prefix: 'teamspace' });
+// inject('NavMainDropdown', 'talkspace_main');
 
-// inject('Nav', 'homepage', { prefix: 'homepage' });
-// inject('Nav', 'problem_main', { prefix: 'problem' }, PERM.PERM_VIEW_PROBLEM);
-// inject('Nav', 'training_main', { prefix: 'training' }, PERM.PERM_VIEW_TRAINING);
-// inject('Nav', 'contest_main', { prefix: 'contest' }, PERM.PERM_VIEW_CONTEST);
-// inject('Nav', 'homework_main', { prefix: 'homework' }, PERM.PERM_VIEW_HOMEWORK);
-// inject('Nav', 'record_main', {
-//     prefix: 'record',
-//     query: (handler) => (handler.user.hasPriv(PRIV.PRIV_USER_PROFILE)
-//         ? ({ uidOrName: handler.user._id })
-//         : ({})),
-// });
-// inject('Nav', 'ranking', { prefix: 'ranking' }, PERM.PERM_VIEW_RANKING);
 
-inject('Nav', 'forest_domain', { prefix: 'tree' }, PERM.PERM_EDIT_DOMAIN);
+inject('Nav', 'homepage', { prefix: 'homepage' });
+inject('Nav', 'agent_domain', { prefix: 'agent' });
+inject('Nav', 'record_main', { prefix: 'record' });
+inject('Nav', 'session_domain', { prefix: 'session' });
+inject('Nav', 'base_domain', { prefix: 'base' });
+inject('Nav', 'discussion_main', { prefix: 'discussion' });
+inject('Nav', 'node_domain', { prefix: 'node' });
+inject('Nav', 'edge_domain', { prefix: 'edge' });
+inject('Nav', 'tool_domain', { prefix: 'tool' });
+inject('Nav', 'client_domain', { prefix: 'client' });
+
+
+
 
 inject('NavDropdown', 'domain_dashboard', { prefix: 'domain' }, PERM.PERM_EDIT_DOMAIN);
 inject('NavDropdown', 'manage_dashboard', { prefix: 'manage' }, PRIV.PRIV_EDIT_SYSTEM);
 inject('ProblemAdd', 'problem_create', { icon: 'add', text: 'Create Problem' });
 inject('RepoAdd', 'repo_create', { icon: 'add', text: 'Create Repository' });
+inject('AgentAdd', 'agent_create', { icon: 'add', text: 'Create Agent' });
 inject('ControlPanel', 'manage_dashboard');
 inject('ControlPanel', 'manage_script');
 inject('ControlPanel', 'manage_user_import');

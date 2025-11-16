@@ -1,7 +1,7 @@
 /* eslint-disable no-await-in-loop */
 import { Logger } from '@ejunz/utils';
 import { Context, Service } from '../context';
-import * as system from '../model/system';
+import system from '../model/system';
 
 export type MigrationScript = null | (() => Promise<boolean | void>);
 const logger = new Logger('migration');

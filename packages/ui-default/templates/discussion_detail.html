@@ -14,9 +14,6 @@
             {% elif ddoc.parentType == model.document.TYPE_CONTEST %}
               <span class="v-center icon icon-award"></span>
               {{ _('Contest:') }}
-            {% elif ddoc.parentType == model.document.TYPE_DOCS %}
-              <span class="v-center icon icon-book"></span>
-              {{ _('Docs:') }}
             {% elif ddoc.parentType == model.document.TYPE_PROBLEM %}
               <span class="v-center icon icon-flag"></span>
               {{ _('Problem:') }}
@@ -131,7 +128,7 @@
           </div>
         </div>
       </div>
-      <div class="section__body">
+      {# <div class="section__body">
         <div class="balancer sidebar-user-stat">
           <div class="balancer__body">
             <div class="numbox">
@@ -146,7 +143,7 @@
             </div>
           </div>
         </div>
-      </div>
+      </div> #}
     </div>
     {% if vnode.type == model.document.TYPE_PROBLEM %}
       {% set pdoc = vnode %}

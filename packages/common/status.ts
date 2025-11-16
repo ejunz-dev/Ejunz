@@ -1,0 +1,91 @@
+export enum STATUS {
+    STATUS_TASK_WAITING = 0,
+    STATUS_TASK_DELIVERED = 1,
+    STATUS_TASK_FETCHED = 22,
+    STATUS_TASK_PROCESSING = 21,
+    STATUS_TASK_PENDING = 20,
+    STATUS_TASK_ERROR_TOOL = 2,
+    STATUS_TASK_ERROR_NOT_FOUND = 3,
+    STATUS_TASK_ERROR_SERVER = 4,
+    STATUS_TASK_ERROR_NETWORK = 5,
+    STATUS_TASK_ERROR_TIMEOUT = 6,
+    STATUS_TASK_ERROR_SYSTEM = 7,
+    STATUS_TASK_ERROR_UNKNOWN = 8,
+}
+
+export const STATUS_TEXTS: Record<STATUS, string> = {
+    [STATUS.STATUS_TASK_WAITING]: 'Waiting',
+    [STATUS.STATUS_TASK_DELIVERED]: 'Delivered',
+    [STATUS.STATUS_TASK_FETCHED]: 'Fetched',
+    [STATUS.STATUS_TASK_PROCESSING]: 'Processing',
+    [STATUS.STATUS_TASK_PENDING]: 'Pending',
+    [STATUS.STATUS_TASK_ERROR_TOOL]: 'Tool Error',
+    [STATUS.STATUS_TASK_ERROR_NOT_FOUND]: 'Tool Not Found',
+    [STATUS.STATUS_TASK_ERROR_SERVER]: 'Server Error',
+    [STATUS.STATUS_TASK_ERROR_NETWORK]: 'Network Error',
+    [STATUS.STATUS_TASK_ERROR_TIMEOUT]: 'Timeout',
+    [STATUS.STATUS_TASK_ERROR_SYSTEM]: 'System Error',
+    [STATUS.STATUS_TASK_ERROR_UNKNOWN]: 'Unknown Error',
+};
+
+export const STATUS_SHORT_TEXTS: Partial<Record<STATUS, string>> = {
+    [STATUS.STATUS_TASK_WAITING]: 'WAIT',
+    [STATUS.STATUS_TASK_DELIVERED]: 'DELV',
+    [STATUS.STATUS_TASK_FETCHED]: 'FETCH',
+    [STATUS.STATUS_TASK_PROCESSING]: 'PROC',
+    [STATUS.STATUS_TASK_PENDING]: 'PEND',
+    [STATUS.STATUS_TASK_ERROR_TOOL]: 'TOOL',
+    [STATUS.STATUS_TASK_ERROR_NOT_FOUND]: 'NFND',
+    [STATUS.STATUS_TASK_ERROR_SERVER]: 'SRVR',
+    [STATUS.STATUS_TASK_ERROR_NETWORK]: 'NET',
+    [STATUS.STATUS_TASK_ERROR_TIMEOUT]: 'TIME',
+    [STATUS.STATUS_TASK_ERROR_SYSTEM]: 'SYS',
+    [STATUS.STATUS_TASK_ERROR_UNKNOWN]: 'UNKN',
+};
+
+export const STATUS_CODES: Record<STATUS, string> = {
+    [STATUS.STATUS_TASK_WAITING]: 'pending',
+    [STATUS.STATUS_TASK_DELIVERED]: 'pass',
+    [STATUS.STATUS_TASK_FETCHED]: 'progress',
+    [STATUS.STATUS_TASK_PROCESSING]: 'progress',
+    [STATUS.STATUS_TASK_PENDING]: 'progress',
+    [STATUS.STATUS_TASK_ERROR_TOOL]: 'fail',
+    [STATUS.STATUS_TASK_ERROR_NOT_FOUND]: 'fail',
+    [STATUS.STATUS_TASK_ERROR_SERVER]: 'fail',
+    [STATUS.STATUS_TASK_ERROR_NETWORK]: 'fail',
+    [STATUS.STATUS_TASK_ERROR_TIMEOUT]: 'fail',
+    [STATUS.STATUS_TASK_ERROR_SYSTEM]: 'fail',
+    [STATUS.STATUS_TASK_ERROR_UNKNOWN]: 'fail',
+};
+
+export function getScoreColor(score: number | string): string {
+    if (score === null || score === undefined || !Number.isFinite(+score)) return '#000000';
+    return [
+        '#ff4f4f',
+        '#ff694f',
+        '#f8603a',
+        '#fc8354',
+        '#fa9231',
+        '#f7bb3b',
+        '#ecdb44',
+        '#e2ec52',
+        '#b0d628',
+        '#93b127',
+        '#25ad40',
+    ][Math.floor((Number(score) || 0) / 10)];
+}
+
+export const USER_GENDER_MALE = 0;
+export const USER_GENDER_FEMALE = 1;
+export const USER_GENDER_OTHER = 2;
+export const USER_GENDERS = [USER_GENDER_MALE, USER_GENDER_FEMALE, USER_GENDER_OTHER];
+export const USER_GENDER_RANGE = {
+    [USER_GENDER_MALE]: 'Boy ♂',
+    [USER_GENDER_FEMALE]: 'Girl ♀',
+    [USER_GENDER_OTHER]: 'Other',
+};
+export const USER_GENDER_ICONS = {
+    [USER_GENDER_MALE]: '♂',
+    [USER_GENDER_FEMALE]: '♀',
+    [USER_GENDER_OTHER]: '?',
+};

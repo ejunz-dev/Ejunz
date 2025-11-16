@@ -1,68 +1,35 @@
 {% import "components/paginator.html" as paginator with context %}
-{% import "components/record.html" as record with context %}
-{% import "components/repo.html" as repo with context %}
 {% import "components/nothing.html" as nothing with context %}
 <div data-fragment-id="repo_list">
-{% if not rdocs.length %}
-  {{ nothing.render('Sorry, there are no problems in the problem set.') }}
+{% if not repos.length %}
+  {{ nothing.render('Sorry, there are no repos in the base.') }}
 {% else %}
-  {{ paginator.render(page, ppcount, position='top', add_qs=('q=' + qs if qs else '')) }}
-  <table class="data-table hide-problem-tag">
+  {{ paginator.render(page, totalPages, position='top', add_qs=('q=' + qs if qs else '')) }}
+  <table class="data-table">
     <colgroup>
-      <col class="col--checkbox display-mode-hide">
-      <col class="col--rid display-mode-hide">
-    {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
-      <col class="col--status edit-mode-hide">
-    {% endif %}
+      <col class="col--rpid">
       <col class="col--name">
-      <col class="col--files">
-
     </colgroup>
     <thead>
       <tr>
-        <th class="col--checkbox display-mode-hide">
-          <label class="compact checkbox">
-            <input type="checkbox" name="select_all" data-checkbox-toggle="problem">
-          </label>
-        </th>
-
-        {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
-
-        {% endif %}
-        <th class="col--name">{{ _('Repository') }}
-        <th class="col--files">{{ _('Files') }}
-
-          </th>
-
+        <th class="col--rpid">{{ _('ID') }}</th>
+        <th class="col--name">{{ _('Repo') }}</th>
       </tr>
     </thead>
     <tbody>
-      {%- for rdoc in rdocs -%}
-      {% set psdoc = psdict[rdoc.domainId + '#' + rdoc.docId] %}
-      <tr data-rid="{{ rdoc.docId }}">
-        <td class="col--checkbox display-mode-hide">
-          <label class="compact checkbox">
-            <input type="checkbox" data-checkbox-group="problem" data-checkbox-range>
-          </label>
+      {%- for repo in repos -%}
+      <tr data-rpid="{{ repo.rpid }}">
+        <td class="col--rpid">{{ repo.rpid }}</td>
+        <td class="col--name">
+          <a href="{{ url('repo_detail', domainId=domainId, rpid=repo.rpid) }}">
+            {{ repo.title }}
+          </a>
         </td>
-        <td class="col--rid display-mode-hide">{{ rdoc.docId }}</td>
-        {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
-          {% if psdoc['rid'] %}
-            {{ record.render_status_td(psdoc, rid_key='rid', class="edit-mode-hide", allDomain=rdoc.domainId!==handler.args.domainId) }}
-          {% else %}
-            <td class="col--status record-status--border edit-mode-hide"></td>
-          {% endif %}
-        {% endif %}
-        <td class="col--name col--problem-name">
-
-          {{ repo.render_repo_title(rdoc) }}
-        </td>
-        <td class="col--files">{{ rdoc.files|length }}</td>
-        
       </tr>
     {%- endfor -%}
     </tbody>
   </table>
-  {{ paginator.render(page, ppcount, add_qs=('q=' + qs if qs else '')) }}
+  {{ paginator.render(page, totalPages, add_qs=('q=' + qs if qs else '')) }}
 {% endif %}
 </div>
+

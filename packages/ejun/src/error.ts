@@ -42,12 +42,11 @@ export const HomeworkNotLiveError = Err('HomeworkNotLiveError', ForbiddenError, 
 export const HomeworkNotAttendedError = Err('HomeworkNotAttendedError', ForbiddenError, "You haven't claimed this homework yet.");
 export const RoleAlreadyExistError = Err('RoleAlreadyExistError', ForbiddenError, 'This role already exists.');
 export const DomainAlreadyExistsError = Err('DomainAlreadyExistsError', ForbiddenError, 'The domain {0} already exists.');
-export const DomainJoinForbiddenError = Err('DomainJoinForbiddenError', ForbiddenError, 'You are not allowed to join the domain. The link is either invalid or expired.');
+export const DomainJoinForbiddenError = Err('DomainJoinForbiddenError', ForbiddenError, 'You are not allowed to join domain {0}. {1}');
 export const DomainJoinAlreadyMemberError = Err('DomainJoinAlreadyMemberError', ForbiddenError, 'Failed to join the domain. You are already a member.');
 export const InvalidJoinInvitationCodeError = Err('InvalidJoinInvitationCodeError', ForbiddenError, 'The invitation code you provided is invalid.');
 export const CurrentPasswordError = Err('CurrentPasswordError', ForbiddenError, "Current password doesn't match.");
 export const DiscussionLockedError = Err('DiscussionLockedError', ForbiddenError, 'The discussion is locked, you can not reply anymore.');
-export const HubLockedError = Err('HubLockedError', ForbiddenError, 'The hub is locked, you can not reply anymore.');
 export const NotAssignedError = Err('NotAssignedError', ForbiddenError, 'You are not assigned to this {0}.');
 export const FileLimitExceededError = Err('FileLimitExceededError', ForbiddenError, 'File {0} limit exceeded.');
 export const FileUploadError = Err('FileUploadError', ForbiddenError, 'File upload failed.');
@@ -57,6 +56,7 @@ export const ProblemAlreadyExistError = Err('ProblemAlreadyExistError', Forbidde
 export const ProblemAlreadyUsedByContestError = Err('ProblemAlreadyUsedByContestError', ForbiddenError, 'Problem {0} is already used by contest {1}.');
 export const ProblemNotAllowPretestError = Err('ProblemNotAllowPretestError', ForbiddenError, 'Pretesting is not supported for {0}.');
 export const ProblemNotAllowLanguageError = Err('ProblemNotAllowSubmitError', ForbiddenError, 'This language is not allowed to submit.');
+export const ProblemNotAllowCopyError = Err('ProblemNotAllowCopyError', ForbiddenError, 'You are not allowed to copy this problem from {0} to {1}.');
 
 export const PretestRejudgeFailedError = Err('PretestRejudgeFailedError', BadRequestError, 'Cannot rejudge a pretest record.');
 export const HackRejudgeFailedError = Err('HackRejudgeFailedError', BadRequestError, 'Cannot rejudge a hack record.');
@@ -80,8 +80,5 @@ export const TrainingNotFoundError = Err('TrainingNotFoundError', DocumentNotFou
 export const ContestNotFoundError = Err('ContestNotFoundError', DocumentNotFoundError, 'Contest {1} not found.');
 export const DiscussionNotFoundError = Err('DiscussionNotFoundError', DocumentNotFoundError, 'Discussion {1} not found.');
 export const DiscussionNodeNotFoundError = Err('DiscussionNodeNotFoundError', DocumentNotFoundError, 'Discussion node {1} not found.');
-export const HubNotFoundError = Err('HubNotFoundError', DocumentNotFoundError, 'Hub {1} not found.');
-export const HubNodeNotFoundError = Err('HubNodeNotFoundError', DocumentNotFoundError, 'Hub node {1} not found.');
 
 export const NotLaunchedByPM2Error = Err('NotLaunchedByPM2Error', BadRequestError, 'Not launched by PM2.');
-

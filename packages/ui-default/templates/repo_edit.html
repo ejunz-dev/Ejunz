@@ -1,110 +1,60 @@
 {% import "components/form.html" as form with context %}
 {% extends "layout/basic.html" %}
+
 {% block content %}
 <div class="row">
   <div class="medium-9 columns">
     <div class="section">
+      <div class="section__header">
+        <h2 class="section__title">
+          {% if repo %}
+            {{ _("Edit Repo") }}
+          {% else %}
+            {{ _("Create Repo") }}
+          {% endif %}
+        </h2>
+      </div>
       <div class="section__body">
-        <form method="post" enctype="multipart/form-data">
-          <div class="row">
-            <div class="medium-12 columns">
-              <label>
-                {{ _('Reponame') }}
-                <input 
-                  name="title" 
-                  placeholder="{{ _('Enter repository title') }}"
-                  value="{{ ddoc.title|default('') }}" 
-                  class="textbox" 
-                  required 
-                  autofocus>
-              </label>
-            </div>
-          </div>
-
-          {{ form.form_textarea({
-                columns: 12,
-                label: _('Content'),
-                name: 'content',
-                value: ddoc.content|default(''),
-                hotkeys: 'ctrl+enter:submit',
-                markdown: true,
-                required: true,
-                extra_style: 'height: 500px',
-                extra_textarea_class: 'auto-resize',
-                id: 'content-textarea'
-              }) }}
-
-          {{ form.form_text({
-               row: false,
-               columns: 9,
-               label: _('Tags'),
-               help_text: _('Split by \', \'.'),
-               name: 'tag',
-               value: ddoc['tag']|default([])|join(', ')
-             }) }}
-
-          {% if not ddoc %}
-          <div class="row">
-            <div class="medium-12 columns">
-              <label>
-                {{ _('Upload File') }}
-                <input type="file" name="file" class="textbox">
-              </label>
-            </div>
-          </div>
-
-          <div class="row">
-            <div class="medium-12 columns">
-              <label>
-                {{ _('Custom File Name (Optional)') }}
-                <input 
-                  name="filename" 
-                  placeholder="{{ _('Enter custom file name') }}" 
-                  value="" 
-                  class="textbox">
-              </label>
-            </div>
-          </div>
-          
-          <div class="row version-row" style="display: none;">
-            <div class="medium-12 columns">
-              <label>
-                {{ _('File Version (Optional)') }}
-                <input 
-                  name="version" 
-                  placeholder="{{ _('Enter file version') }}" 
-                  value="" 
-                  class="textbox">
-              </label>
-            </div>
-          </div>
+        <form method="post">
+          <!-- Hidden input to store repo ID if editing -->
+          {% if repo %}
+            <input type="hidden" name="rpid" value="{{ repo.rpid }}">
           {% endif %}
 
-          <div class="row">
-            <div class="medium-12 columns">
-              <label>
-                <input type="checkbox" name="isIterative" id="isIterativeCheckbox" {% if ddoc.isIterative %}checked{% endif %}>
-                {{ _('Enable Iterative Mode') }}
-              </label>
-            </div>
-          </div>
+          {{ form.form_text({
+              columns: 12,
+              label: _('Repo Title'),
+              name: 'title',
+              placeholder: _('Enter repo title'),
+              value: repo.title|default(''),
+              autofocus: true
+          }) }}
 
-          <input type="hidden" name="isIterative" value="false">
+           {{ form.form_textarea({
+                columns:12,
+                label:_('Repo Content'),
+                name:'content',
+                value:repo.content|default(''),
+                markdown:true
+            }) }}
 
           <div class="row">
             <div class="columns">
               <button 
                 name="operation" 
-                value="{{ 'update' if ddoc else 'create' }}" 
-                data-default-submit 
+                value="{% if repo %}update{% else %}create{% endif %}" 
                 type="submit" 
                 class="rounded primary button">
-                {{ _('Update') if ddoc else _('Create') }} (Ctrl+Enter)
+                {% if repo %}
+                  {{ _('Update Repo') }}
+                {% else %}
+                  {{ _('Create Repo') }}
+                {% endif %}
               </button>
-              {% if ddoc and (handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) or handler.user.own(ddoc)) %}
-              <button name="operation" value="delete" type="submit" class="rounded button">
-                {{ _('Delete') }}
-              </button>
+              {% if repo and (handler.user.own(repo) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) %}
+                <button name="operation" value="delete" type="submit" class="rounded button">
+                  {{ _('Delete Repo') }}
+                </button>
               {% endif %}
               <button type="button" class="rounded button" onclick="window.history.go(-1)">
                 {{ _('Cancel') }}
@@ -115,37 +65,9 @@
       </div>
     </div>
   </div>
+  
   <div class="medium-3 columns">
-    <div class="section side visiable nojs--hide section--problem-sidebar-tags">
-      <div class="section__header">
-        <h1 class="section__title">{{ _('Categories') }} ({{ _('click to add') }})</h1>
-      </div>
-      <div class="section__body problem-sidebar-tags__detail">
-        {% include "partials/category.html" %}
-      </div>
-    </div>
+    {% include 'components/md_hint.html' %}
   </div>
 </div>
-
-<script>
-  document.addEventListener('DOMContentLoaded', function() {
-    const isIterativeCheckbox = document.getElementById('isIterativeCheckbox');
-    const versionRow = document.querySelector('.version-row');
-    const hiddenField = document.querySelector('input[name="isIterative"][type="hidden"]');
-
-    function toggleVersionRow() {
-      if (isIterativeCheckbox.checked) {
-        versionRow.style.display = 'block';
-      } else {
-        versionRow.style.display = 'none';
-      }
-    }
-
-    isIterativeCheckbox.addEventListener('change', function() {
-      hiddenField.disabled = isIterativeCheckbox.checked;
-      toggleVersionRow();
-    });
-    toggleVersionRow(); // 初始化时调用一次
-  });
-</script>
 {% endblock %}

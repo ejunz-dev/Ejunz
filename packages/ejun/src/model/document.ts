@@ -6,10 +6,9 @@ import {
 import { Context } from '../context';
 import {
     Content, ContestClarificationDoc, DiscussionDoc,
-    DiscussionReplyDoc, ProblemDoc, ProblemStatusDoc,
-    Tdoc, TrainingDoc,DocsDoc,RepoDoc,HubDoc,HubReplyDoc,HubTailReplyDoc
+    DiscussionReplyDoc, AgentDoc, BSDoc, RPDoc, DCDoc, BKDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc,
 } from '../interface';
-import * as bus from '../service/bus';
+import bus from '../service/bus';
 import db from '../service/db';
 import { ArrayKeys, MaybeArray, NumberKeys, Projection } from '../typeutils';
 import { buildProjection } from '../utils';
@@ -19,42 +18,36 @@ type NormalArrayKeys<O, P = any> = Exclude<ArrayKeys<O, P>, Symbol>;
 
 export const coll = db.collection('document');
 export const collStatus = db.collection('document.status');
-export const TYPE_DOCS: 100 = 100;
-export const TYPE_REPO: 110 = 110;
-export const TYPE_HUB_NODE: 120 = 120;
-export const TYPE_HUB: 121 = 121;
-export const TYPE_HUB_REPLY: 122 = 122;
-export const TYPE_PROBLEM: 10 = 10;
-export const TYPE_PROBLEM_SOLUTION: 11 = 11;
-export const TYPE_PROBLEM_LIST: 12 = 12;
 export const TYPE_DISCUSSION_NODE: 20 = 20;
 export const TYPE_DISCUSSION: 21 = 21;
 export const TYPE_DISCUSSION_REPLY: 22 = 22;
-export const TYPE_CONTEST: 30 = 30;
-export const TYPE_CONTEST_CLARIFICATION: 31 = 31;
-export const TYPE_TRAINING: 40 = 40;
-/** @deprecated use `TYPE_CONTEST` with rule `homework` instead. */
-export const TYPE_HOMEWORK: 60 = 60;
+export const TYPE_AGENT: 10 = 10;
+export const TYPE_BS: 30 = 30;
+export const TYPE_RP: 31 = 31;
+export const TYPE_DC: 32 = 32;
+export const TYPE_BK: 33 = 33;
+export const TYPE_NODE: 40 = 40;
+export const TYPE_CLIENT: 60 = 60;
+export const TYPE_CLIENT_CHAT: 61 = 61;
+export const TYPE_EDGE: 70 = 70;
+export const TYPE_TOOL: 80 = 80; // 工具
 
 export interface DocType {
-    [TYPE_DOCS]: DocsDoc;
-    [TYPE_REPO]: RepoDoc;
-    [TYPE_HUB]: HubDoc;
-    [TYPE_HUB_NODE]: any;
-    [TYPE_HUB_REPLY]: any;
-    [TYPE_PROBLEM]: ProblemDoc;
-    [TYPE_PROBLEM_SOLUTION]: any;
-    [TYPE_PROBLEM_LIST]: any;
-    [TYPE_DISCUSSION_NODE]: any;
+    [TYPE_AGENT]: AgentDoc;
     [TYPE_DISCUSSION]: DiscussionDoc;
     [TYPE_DISCUSSION_REPLY]: DiscussionReplyDoc;
-    [TYPE_CONTEST]: Tdoc;
-    [TYPE_CONTEST_CLARIFICATION]: ContestClarificationDoc;
-    [TYPE_TRAINING]: TrainingDoc;
+    [TYPE_BS]: BSDoc;
+    [TYPE_RP]: RPDoc;
+    [TYPE_DC]: DCDoc;
+    [TYPE_BK]: BKDoc;
+    [TYPE_NODE]: NodeDoc;
+    [TYPE_CLIENT]: ClientDoc;
+    [TYPE_CLIENT_CHAT]: ClientChatDoc;
+    [TYPE_EDGE]: EdgeDoc;
+    [TYPE_TOOL]: ToolDoc;
 }
 
 export interface DocStatusType {
-    [TYPE_PROBLEM]: ProblemStatusDoc,
     // FIXME: this need to be typed
     [key: number]: any
 }
@@ -503,7 +496,6 @@ export async function apply(ctx: Context) {
 global.Ejunz.model.document = {
     coll,
     collStatus,
-
     add,
     addToSet,
     cappedIncStatus,
@@ -524,6 +516,7 @@ global.Ejunz.model.document = {
     incStatus,
     pull,
     push,
+    pushwithid,
     revInitStatus,
     revPushStatus,
     revSetStatus,
@@ -534,19 +527,17 @@ global.Ejunz.model.document = {
     setMultiStatus,
     setSub,
 
-    TYPE_CONTEST,
-    TYPE_CONTEST_CLARIFICATION,
+    TYPE_AGENT,
     TYPE_DISCUSSION,
     TYPE_DISCUSSION_NODE,
     TYPE_DISCUSSION_REPLY,
-    TYPE_HOMEWORK,
-    TYPE_PROBLEM,
-    TYPE_PROBLEM_LIST,
-    TYPE_PROBLEM_SOLUTION,
-    TYPE_TRAINING,
-    TYPE_DOCS,
-    TYPE_REPO,
-    TYPE_HUB,
-    TYPE_HUB_NODE,
-    TYPE_HUB_REPLY,
+    TYPE_BS,
+    TYPE_RP,
+    TYPE_DC,
+    TYPE_BK,
+    TYPE_NODE,
+    TYPE_CLIENT,
+    TYPE_CLIENT_CHAT,
+    TYPE_EDGE,
+    TYPE_TOOL,
 };

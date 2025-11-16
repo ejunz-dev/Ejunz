@@ -1,0 +1,92 @@
+{% set page_name = "edge_main" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+{{ set(
+  UiContext, 'socketUrl',
+  "edge/status/ws?domainId=" + handler.args.domainId
+) }}
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">接入点管理</h1>
+        <div class="section__tools">
+          {% if handler.user.hasPriv(model.builtin.PRIV.PRIV_USER_PROFILE) %}
+            <button type="button" class="primary button" id="generate-token-btn">
+              <span class="icon icon-add"></span> 生成接入点
+            </button>
+          {% endif %}
+        </div>
+      </div>
+      <div class="section__body no-padding">
+        {% if not edges or not edges.length %}
+          <div class="typo">
+            <p>暂无已连接的 Edge 设备。生成接入点后，当设备通过接入点连接时，会显示在这里。</p>
+          </div>
+        {% else %}
+          <table class="data-table edge_main__table">
+            <colgroup>
+              <col class="col--id">
+              <col class="col--status">
+              <col class="col--type">
+              <col class="col--created">
+              <col class="col--used">
+              <col class="col--action">
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="col--id">ID</th>
+                <th class="col--status">状态</th>
+                <th class="col--type">类型</th>
+                <th class="col--created">创建时间</th>
+                <th class="col--used">使用时间</th>
+                <th class="col--action">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {%- for edge in edges -%}
+                {% include 'edge_main_tr.html' %}
+              {%- endfor -%}
+            </tbody>
+          </table>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dialog dialog--signin" id="token-dialog" style="display:none">
+  <div class="dialog__content">
+    <div class="dialog--signin__bg">
+      <div class="dialog--signin__side">
+        <h1>接入点信息</h1>
+        <p>请保存以下信息，Token 将作为接入点的唯一标识。</p>
+      </div>
+    </div>
+    <div class="dialog--signin__main">
+      <div class="dialog--signin__close-container supplementary">
+        <a name="token-dialog__close" href="javascript:;">{{ _('CLOSE') }}</a>
+      </div>
+      <h1 class="dialog--signin__title">接入点 Token</h1>
+      <div class="row"><div class="columns">
+        <label class="material textbox">
+          Token
+          <input type="text" id="token-display" readonly>
+        </label>
+      </div></div>
+      <div class="row"><div class="columns">
+        <label class="material textbox">
+          WebSocket 接入点
+          <input type="text" id="ws-endpoint-display" readonly>
+        </label>
+      </div></div>
+      <div class="row"><div class="columns">
+        <button class="expanded rounded primary button" id="copy-token-btn">复制 Token</button>
+      </div></div>
+      <div class="row"><div class="columns">
+        <button class="expanded rounded button" id="copy-endpoint-btn">复制接入点 URL</button>
+      </div></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

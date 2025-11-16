@@ -1,16 +1,14 @@
+import type { AttestationFormat, CredentialDeviceType, } from '@simplewebauthn/server';
 import type { AuthenticationExtensionsAuthenticatorOutputs } from '@simplewebauthn/server/esm/helpers/decodeAuthenticatorExtensions';
-import type { AttestationFormat } from '@simplewebauthn/server/helpers';
-import { CredentialDeviceType } from '@simplewebauthn/types';
 import type fs from 'fs';
 import type { Dictionary, NumericDictionary } from 'lodash';
 import type { Binary, FindCursor, ObjectId } from 'mongodb';
 import type { Context } from './context';
 import type { DocStatusType } from './model/document';
-import type { ProblemDoc } from './model/problem';
-import type { DocsDoc } from './model/doc';
-import type { RepoDoc } from './model/repo'; 
+import type { AgentDoc } from './model/agent';
 import type { Handler } from './service/server';
-import type { HubDoc } from './model/hub';
+
+export * from '@ejunz/common/types';
 
 type document = typeof import('./model/document');
 
@@ -20,46 +18,39 @@ export interface System {
 }
 
 export interface SystemKeys {
-    'smtp.user': string,
-    'smtp.from': string,
-    'smtp.pass': string,
-    'smtp.host': string,
-    'smtp.port': number,
-    'smtp.secure': boolean,
-    'installid': string,
-    'server.name': string,
-    'server.url': string,
-    'server.xff': string,
-    'server.xhost': string,
-    'server.port': number,
-    'server.language': string,
-    'limit.problem_files_max': number,
-    'problem.categories': string,
-    'session.keys': string[],
-    'session.saved_expire_seconds': number,
-    'session.unsaved_expire_seconds': number,
-    'user.quota': number,
+    'smtp.user': string;
+    'smtp.from': string;
+    'smtp.pass': string;
+    'smtp.host': string;
+    'smtp.port': number;
+    'smtp.secure': boolean;
+    installid: string;
+    'server.name': string;
+    'server.url': string;
+    'server.xff': string;
+    'server.xhost': string;
+    'server.host': string;
+    'server.port': number;
+    'server.language': string;
+    'limit.problem_files_max': number;
+    'problem.categories': string;
+    'session.keys': string[];
+    'session.saved_expire_seconds': number;
+    'session.unsaved_expire_seconds': number;
+    'user.quota': number;
 }
 
 export interface Setting {
-    family: string,
-    key: string,
-    range: [string, string][] | Record<string, string>,
-    value: any,
-    type: string,
-    subType?: string,
-    name: string,
-    desc: string,
-    flag: number,
-}
-
-export interface OAuthUserResponse {
-    _id: string;
-    email: string;
-    avatar?: string;
-    bio?: string;
-    uname?: string[];
-    viewLang?: string;
+    family: string;
+    key: string;
+    range: [string, string][] | Record<string, string>;
+    value: any;
+    type: string;
+    subType?: string;
+    name: string;
+    desc: string;
+    flag: number;
+    validation?: (val: any) => boolean;
 }
 
 export interface Authenticator {
@@ -76,7 +67,7 @@ export interface Authenticator {
     userVerified: boolean;
     credentialDeviceType: CredentialDeviceType;
     credentialBackedUp: boolean;
-    authenticatorExtensionResults?: AuthenticationExtensionsAuthenticatorOutputs;
+    authenticatorExtensionResults?: ParsedAuthenticatorData['extensionsData'];
     authenticatorAttachment: 'platform' | 'cross-platform';
 }
 
@@ -153,22 +144,6 @@ export interface FileInfo {
     lastModified: Date,
 }
 
-export interface TestCaseConfig {
-    input: string;
-    output: string;
-    time?: string;
-    memory?: string;
-    score?: number;
-}
-
-export enum ProblemType {
-    Default = 'default',
-    SubmitAnswer = 'submit_answer',
-    Interactive = 'interactive',
-    Objective = 'objective',
-    Remote = 'remote_judge',
-}
-
 export enum SubtaskType {
     min = 'min',
     max = 'max',
@@ -185,43 +160,6 @@ export interface SubtaskConfig {
     cases?: TestCaseConfig[];
 }
 
-export interface ProblemConfigFile {
-    type?: ProblemType;
-    subType?: string;
-    target?: string;
-    score?: number;
-    time?: string;
-    memory?: string;
-    filename?: string;
-    checker_type?: string;
-    checker?: string;
-    interactor?: string;
-    user_extra_files?: string[];
-    judge_extra_files?: string[];
-    detail?: boolean;
-    answers?: Record<string, [string | string[], number]>;
-    redirect?: string;
-    cases?: TestCaseConfig[];
-    subtasks?: SubtaskConfig[];
-    langs?: string[];
-    validator?: string;
-    time_limit_rate?: Record<string, number>;
-    memory_limit_rate?: Record<string, number>;
-}
-
-export interface ProblemConfig {
-    redirect?: [string, string];
-    count: number;
-    memoryMax: number;
-    memoryMin: number;
-    timeMax: number;
-    timeMin: number;
-    langs?: string[];
-    type: string;
-    subType?: string;
-    target?: string;
-    hackable?: boolean;
-}
 
 export interface PlainContentNode {
     type: 'Plain',
@@ -253,303 +191,293 @@ export interface Document {
     maintainer?: number[];
 }
 
-declare module './model/problem' {
-    // eslint-disable-next-line @typescript-eslint/no-shadow
-    interface ProblemDoc {
-        docType: document['TYPE_PROBLEM'];
+
+
+declare module './model/agent'{
+    interface AgentDoc {
+        docType: document['TYPE_AGENT'];
         docId: number;
-        pid: string;
+        aid: string;
         title: string;
         content: string;
-        nSubmit: number;
-        nAccept: number;
-        tag: string[];
-        options: { label: string; value: string }[]; 
-        answer: { label: string; value: string } | null;
-        data: FileInfo[];
-        additional_file: FileInfo[];
-        hidden?: boolean;
-        html?: boolean;
-        stats?: any;
-        difficulty?: number;
-        sort?: string;
-        reference?: {
-            domainId: string;
-            pid: number;
-        };
-        associatedDocumentId?: number | null;
-
-        /** string (errormsg) */
-        config: string | ProblemConfig;
-    }
-}
-export type { ProblemDoc } from './model/problem';
-export type ProblemDict = NumericDictionary<ProblemDoc>;
-
-declare module './model/doc'{
-    interface DocsDoc {
-        docType: document['TYPE_DOCS'];
-        docId: number;
-        domainId: string,
-        lid: string;
-        owner: number;
-        title: string;
-        content: string;
+        tag?: string[];
         ip: string;
         updateAt: Date;
         nReply: number;
         views: number;
         reply: any[];
-        react: Record<string, number>;
-    }
-}
-export type { DocsDoc } from './model/doc';
-export type DocsDict = NumericDictionary<DocsDoc>;
-
-
-declare module './model/repo'{
-    interface RepoDoc {
-        docType: document['TYPE_REPO'];
-        docId: number;
-        domainId: string,
-        rid: string;
+        domainId: string;
         owner: number;
-        content: string;
-        title: string;
-        ip: string;
-        updateAt: Date;
-        nReply: number;
-        views: number;
-        reply: any[];
-        react: Record<string, number>;
-        isIterative?: boolean;
-        tag: string[];    
-        files: {
-            filename: string;           
-            version: string;
-            path: string;            
-            size: number;           
-            lastModified: Date;      
-            etag?: string;     
-            tag: string[];   
-        }[];
-    }                
-    }         
-    export type { RepoDoc } from './model/repo';
-    export type RepoDict = NumericDictionary<RepoDoc>;
-    
-    export type { HubDoc } from './model/hub';
-    declare module './model/hub' {
-        interface HubDoc {
-            docType: document['TYPE_HUB'];
-            docId: ObjectId;
-            parentType: number;
-            parentId: ObjectId | number | string;
-            title: string;
-            content: string;
-            ip: string;
-            pin: boolean;
-            highlight: boolean;
-            updateAt: Date;
-            nReply: number;
-            views: number;
-            edited?: boolean;
-            editor?: number;
-            react: Record<string, number>;
-            sort: number;
-            lastRCount: number;
-            lock?: boolean;
-            hidden?: boolean;
-            hubimage: HubFileInfo[];
-        }
+        apiKey?: string;
+        memory?: string;
+        mcpToolIds?: ObjectId[]; // 分配的MCP工具ID列表
+        repoIds?: number[]; // 生效的repo ID列表（rpid数组）
     }
-    
-    export interface HubReplyDoc extends Document {
-        // docType: document['TYPE_HUB_REPLY'];
-        docId: ObjectId;
-        // parentType: document['TYPE_HUB'];
-        parentId: ObjectId;
-        ip: string;
-        content: string;
-        reply: HubTailReplyDoc[];
-        edited?: boolean;
-        editor?: number;
-        react: Record<string, number>;
-        commentfile: HubFileInfo[];
-        replyfile: HubFileInfo[];
-        hubSubImage: HubFileInfo[];
-        x: number;
-        y: number;
-    }
-    
-    export interface HubTailReplyDoc {
-        _id: ObjectId;
-        owner: number;
-        content: string;
-        ip: string;
-        edited?: boolean;
-        editor?: number;
-        replyfile: HubFileInfo[];
-        x: number;
-        y: number;
-    }
-
-export interface HubFileInfo extends FileInfo {
-   /** storage path */
-   _id: string,
-   /** filename */
-   name: string,
-   /** file size (in bytes) */
-   size: number,
-   etag: string,
-   lastModified: Date,
 }
+export type { AgentDoc } from './model/agent';
 
-
-
-export interface ProblemStatusDoc extends StatusDocBase {
-    docId: number;
-    docType: 10;
-    rid?: ObjectId;
-    score?: number;
-    status?: number;
-    nSubmit?: number;
-    nAccept?: number;
-    star?: boolean;
-}
-
-export interface TestCase {
-    id?: number;
-    subtaskId?: number;
-    score?: number;
-    time: number;
-    memory: number;
-    status: number;
-    message: string;
-}
-
-export interface RecordDoc {
-    _id: ObjectId;
-    domainId: string;
-    pid: number;
-    uid: number;
-    lang: string;
-    code: string;
-    score: number;
-    memory: number;
-    time: number;
-    judgeTexts: (string | JudgeMessage)[];
-    compilerTexts: string[];
-    testCases: Required<TestCase>[];
-    rejudged: boolean;
-    source?: string;
-    /** judge uid */
-    judger: number;
-    judgeAt: Date;
-    status: number;
-    progress?: number;
-    /** pretest */
-    input?: string;
-    /** hack target rid */
-    hackTarget?: ObjectId;
-    /** 0 if pretest&script */
-    contest?: ObjectId;
-
-    files?: Record<string, string>
-    subtasks?: Record<number, SubtaskResult>;
-}
-
-export interface RecordStatDoc {
-    _id: ObjectId;
-    domainId: string;
-    pid: number;
-    uid: number;
-    time: number;
-    memory: number;
-    length: number;
-    lang: string;
-}
-export interface JudgeMeta {
-    problemOwner: number;
-    hackRejudge?: string;
-    rejudge?: boolean;
-    // FIXME stricter types
-    type?: string;
-}
-
-export interface JudgeRequest extends Omit<RecordDoc, '_id' | 'testCases'> {
-    priority: number;
-    type: 'judge' | 'generate';
-    rid: ObjectId;
-    config: ProblemConfigFile;
-    meta: JudgeMeta;
-    data: FileInfo[];
-    source: string;
-}
-
-export interface ScoreboardNode {
-    type: 'string' | 'rank' | 'user' | 'email' | 'record' | 'records' | 'problem' | 'solved' | 'time' | 'total_score';
-    value: string; // 显示分数
-    raw?: any;
-    score?: number; // 原始分数（100，不含赛制加成）
-    style?: string;
-    hover?: string;
-}
-export type ScoreboardRow = ScoreboardNode[] & { raw?: any };
-
-export type PenaltyRules = Dictionary<number>;
-
-export interface TrainingNode {
-    _id: number,
-    title: string,
-    requireNids: number[],
-    pids: number[],
-}
-
-export interface Tdoc extends Document {
+// Repo/Base/Doc/Block documents
+export interface BSDoc {
+    docType: document['TYPE_BS']; // Base 
     docId: ObjectId;
-    // docType: document['TYPE_CONTEST'];
-    beginAt: Date;
-    endAt: Date;
-    attend: number;
+    domainId: string;
+    rpids: number[]; // 存储所有 Repo ID
     title: string;
     content: string;
-    rule: string;
-    pids: number[];
-    rated?: boolean;
-    _code?: string;
-    assign?: string[];
-    files?: FileInfo[];
-    allowViewCode?: boolean;
-
-    // For contest
-    lockAt?: Date;
-    unlocked?: boolean;
-    autoHide?: boolean;
-    balloon?: Record<number, string>;
-    score?: Record<number, number>;
-
-    /**
-     * In hours
-     * 在比赛有效时间内选择特定的 X 小时参加比赛（从首次打开比赛算起）
-     */
-    duration: number;
-
-    // For homework
-    penaltySince?: Date;
-    penaltyRules?: PenaltyRules;
-
-    // For training
-    description?: string;
-    dag?: TrainingNode[];
+    owner: number;
+    createdAt: Date;
+    updateAt: Date;
 }
 
-export interface TrainingDoc extends Omit<Tdoc, 'docType'> {
-    // docType: document['TYPE_TRAINING'],
-    description: string;
-    pin?: number;
-    dag: TrainingNode[];
+export interface RPDoc {
+    docType: document['TYPE_RP'];  // 标识它是一个 Repo
+    docId: ObjectId;
+    domainId: string;
+    rpid: number;
+    title: string;
+    content: string;
+    owner: number;
+    createdAt: Date;
+    updateAt: Date;
+    currentBranch?: string; // 当前编辑分支
+    branches?: string[];    // 已存在的本地分支列表
+    githubRepo?: string;    // GitHub 仓库地址，如 git@github.com:user/repo.git
+    mode?: 'file' | 'manuscript'; // 显示模式：文件模式或文稿模式
+    config?: Record<string, any>; // Repo 配置
+    mcpServerId?: number; // 关联的MCP服务器ID（内部调用）
 }
+
+export interface DCDoc {
+    docType: document['TYPE_DC'];
+    docId: ObjectId;
+    domainId: string;
+    rpid: number;
+    did: number;  // Doc ID，从1开始
+    owner: number;
+    title: string;
+    content: string;
+    ip: string;
+    updateAt: Date;
+    views: number;
+    parentId?: number|null;
+    path: string;
+    doc: boolean;
+    childrenCount?: number;
+    createdAt?: Date;
+    branch?: string; // 所属分支，默认为 main
+    order?: number;
+}
+
+export interface BKDoc {
+    docType: document['TYPE_BK'];
+    docId: ObjectId;
+    domainId: string;
+    rpid: number;
+    did: number;  // 关联的 doc ID
+    bid: number;  // Block ID，从1开始
+    owner: number;
+    title: string;
+    content: string;
+    ip: string;
+    updateAt: Date;
+    views: number;
+    createdAt?: Date;
+    branch?: string; // 所属分支，默认为 main
+    order?: number;
+}
+
+// Node document
+declare module './model/node' {
+    interface NodeDoc {
+        _id: ObjectId; // document 系统自动添加
+        docType: document['TYPE_NODE'];
+        docId: ObjectId; // 由 mongo 自动生成
+        domainId: string;
+        nodeId: number; // 节点 ID，从 1 开始（业务 ID）
+        name: string;
+        description?: string;
+        wsEndpoint?: string; // WebSocket 接入点路径（可选，生成接入点时设置）
+        mqttClientId?: string; // MQTT 客户端 ID
+        status: 'active' | 'inactive' | 'disconnected';
+        host?: string; // Node 主机地址
+        port?: number; // Node 端口
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number; // 用户 ID
+        content?: string; // document 系统要求
+    }
+}
+export type { NodeDoc } from './model/node';
+
+// MCP Server document
+declare module './model/mcp' {
+    interface McpServerDoc {
+        _id: ObjectId; // document 系统自动添加
+        docType: document['TYPE_MCP_SERVER'];
+        docId: ObjectId; // 由 mongo 自动生成
+        domainId: string;
+        serverId: number; // MCP 服务器 ID，从 1 开始（业务 ID）
+        name: string;
+        description?: string;
+        wsEndpoint: string; // WebSocket 接入点路径
+        wsToken?: string; // WebSocket 连接令牌（用于验证）
+        status?: 'connected' | 'disconnected' | 'error'; // 服务器连接状态（可选，由实时连接管理，不存储到数据库）
+        lastConnectedAt?: Date; // 最后连接时间
+        lastDisconnectedAt?: Date; // 最后断开时间
+        errorMessage?: string; // 错误信息
+        toolsCount?: number; // 工具数量
+        type?: 'provider' | 'repo' | 'node'; // MCP 服务器类型：provider（外部）、repo（repo内部）、node（node提供）
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number; // 用户 ID
+        content?: string; // document 系统要求
+    }
+
+    interface McpToolDoc {
+        _id: ObjectId; // document 系统自动添加
+        docType: document['TYPE_MCP_TOOL'];
+        docId: ObjectId; // 由 mongo 自动生成
+        domainId: string;
+        serverId: number; // 所属 MCP 服务器 ID
+        serverDocId: ObjectId; // 所属 MCP 服务器的 docId
+        toolId: number; // 工具 ID，从 1 开始（业务 ID）
+        name: string; // 工具名称
+        description: string; // 工具描述
+        inputSchema: {
+            type: string;
+            properties?: Record<string, any>;
+        }; // 工具输入模式
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number; // 用户 ID
+        content?: string; // document 系统要求
+    }
+}
+
+// Client Chat document
+declare module './model/client_chat' {
+    interface ClientChatDoc {
+        _id: ObjectId;
+        docType: document['TYPE_CLIENT_CHAT'];
+        docId: ObjectId;
+        domainId: string;
+        clientId: number;
+        conversationId: number;
+        messages: Array<{
+            role: 'user' | 'assistant' | 'tool';
+            content: string;
+            timestamp: Date;
+            toolName?: string;
+            toolCallId?: string;
+            responseTime?: number;
+            asrAudioPath?: string;
+            ttsAudioPath?: string;
+        }>;
+        messageCount: number;
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number;
+        content?: string;
+    }
+}
+
+// Client document
+declare module './model/client' {
+    interface ClientDoc {
+        _id: ObjectId;
+        docType: document['TYPE_CLIENT'];
+        docId: ObjectId;
+        domainId: string;
+        clientId: number;
+        name: string;
+        description?: string;
+        wsEndpoint: string;
+        wsToken?: string;
+        status: 'connected' | 'disconnected' | 'error';
+        lastConnectedAt?: Date;
+        lastDisconnectedAt?: Date;
+        errorMessage?: string;
+        settings: {
+            asr?: {
+                provider: string;
+                apiKey: string;
+                model: string;
+                enableServerVad?: boolean;
+                baseUrl?: string;
+                language?: string;
+            };
+            tts?: {
+                provider: string;
+                apiKey: string;
+                endpoint?: string;
+                model: string;
+                voice?: string;
+                languageType?: string;
+            };
+            agent?: {
+                agentId?: string;
+                agentDocId?: ObjectId;
+            };
+        };
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number;
+        content?: string;
+    }
+}
+export type { McpServerDoc, McpToolDoc } from './model/mcp';
+export type { ClientDoc } from './model/client';
+
+declare module './model/edge' {
+    interface EdgeDoc {
+        _id: ObjectId;
+        docType: document['TYPE_EDGE'];
+        docId: ObjectId;
+        domainId: string;
+        edgeId: number;
+        token: string;
+        type: 'provider' | 'repo' | 'node';
+        status: 'online' | 'offline' | 'working';
+        tokenCreatedAt: Date;
+        tokenUsedAt?: Date;
+        name?: string;
+        description?: string;
+        wsEndpoint?: string;
+        lastConnectedAt?: Date;
+        lastDisconnectedAt?: Date;
+        errorMessage?: string;
+        toolsCount?: number;
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number;
+        content?: string;
+    }
+}
+export type { EdgeDoc } from './model/edge';
+
+declare module './model/tool' {
+    interface ToolDoc {
+        _id: ObjectId;
+        docType: document['TYPE_TOOL'];
+        docId: ObjectId;
+        domainId: string;
+        token: string;
+        edgeDocId: ObjectId;
+        toolId: number;
+        name: string;
+        description: string;
+        inputSchema: {
+            type: string;
+            properties?: Record<string, any>;
+        };
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number;
+        content?: string;
+    }
+}
+export type { ToolDoc } from './model/tool';
+export type { ClientChatDoc } from './model/client_chat';
 
 export interface DomainDoc extends Record<string, any> {
     _id: string,
@@ -634,7 +562,7 @@ export interface ContestClarificationDoc extends Document {
     docId: ObjectId;
     // parentType: document['TYPE_CONTEST'];
     parentId: ObjectId;
-    // 0: contest -1: technique [pid]: problem
+    // -1: technique
     subject: number;
     ip: string;
     content: string;
@@ -655,86 +583,12 @@ export interface OplogDoc extends Record<string, any> {
     type: string,
 }
 
-export interface ContestStat extends Record<string, any> {
-    detail: Record<number, Record<string, any>>,
-    unrank?: boolean,
-}
-
-export interface ScoreboardConfig {
-    isExport: boolean;
-    showDisplayName: boolean;
-    lockAt?: Date;
-}
-
-export interface ContestRule<T = any> {
-    _originalRule?: Partial<ContestRule<T>>;
-    TEXT: string;
-    hidden?: boolean;
-    check: (args: any) => any;
-    statusSort: Record<string, 1 | -1>;
-    submitAfterAccept: boolean;
-    showScoreboard: (tdoc: Tdoc, now: Date) => boolean;
-    showSelfRecord: (tdoc: Tdoc, now: Date) => boolean;
-    showRecord: (tdoc: Tdoc, now: Date) => boolean;
-    stat: (this: ContestRule<T>, tdoc: Tdoc, journal: any[]) => ContestStat & T;
-    scoreboardHeader: (
-        this: ContestRule<T>, config: ScoreboardConfig, _: (s: string) => string,
-        tdoc: Tdoc, pdict: ProblemDict,
-    ) => Promise<ScoreboardRow>;
-    scoreboardRow: (
-        this: ContestRule<T>, config: ScoreboardConfig, _: (s: string) => string,
-        tdoc: Tdoc, pdict: ProblemDict, udoc: BaseUser, rank: number, tsdoc: ContestStat & T,
-        meta?: any,
-    ) => Promise<ScoreboardRow>;
-    scoreboard: (
-        this: ContestRule<T>, config: ScoreboardConfig, _: (s: string) => string,
-        tdoc: Tdoc, pdict: ProblemDict, cursor: FindCursor<ContestStat & T>,
-    ) => Promise<[board: ScoreboardRow[], udict: BaseUserDict]>;
-    ranked: (tdoc: Tdoc, cursor: FindCursor<ContestStat & T>) => Promise<[number, ContestStat & T][]>;
-    applyProjection: (tdoc: Tdoc, rdoc: RecordDoc, user: User) => RecordDoc;
-}
-
-export type ContestRules = Dictionary<ContestRule>;
-export type ProblemImporter = (url: string, handler: any) => Promise<[ProblemDoc, fs.ReadStream?]> | [ProblemDoc, fs.ReadStream?];
-
 export interface Script {
     run: (args: any, report: Function) => any,
     description: string,
     validate: any,
 }
 
-export interface JudgeMessage {
-    message: string;
-    params?: string[];
-    stack?: string;
-}
-
-export interface SubtaskResult {
-    type: SubtaskType;
-    score: number;
-    status: number;
-}
-
-export interface JudgeResultBody {
-    key: string;
-    domainId: string;
-    rid: ObjectId;
-    judger?: number;
-    progress?: number;
-    addProgress?: number;
-    case?: TestCase;
-    cases?: TestCase[];
-    status?: number;
-    score?: number;
-    /** in miliseconds */
-    time?: number;
-    /** in kilobytes */
-    memory?: number;
-    message?: string | JudgeMessage;
-    compilerText?: string;
-    nop?: boolean;
-    subtasks?: Record<number, SubtaskResult>;
-}
 
 export interface Task {
     _id: ObjectId;
@@ -786,12 +640,7 @@ export interface OpCountDoc {
     opcount: number;
 }
 
-export interface OauthMap {
-    /** source openId */
-    _id: string;
-    /** target uid */
-    uid: number;
-}
+export type { OauthMap, OAuthProvider, OAuthUserResponse } from './model/oauth';
 
 export interface DiscussionHistoryDoc {
     title?: string;
@@ -804,43 +653,24 @@ export interface DiscussionHistoryDoc {
     ip: string;
 }
 
-export interface HubHistoryDoc {
-    title?: string;
-    content: string;
-    domainId: string;
-    docId: ObjectId;
-    /** Create time */
-    time: Date;
-    uid: number;
-    ip: string;
-    x: number;
-    y: number;
-}
-export interface ContestBalloonDoc {
+export interface LockDoc {
     _id: ObjectId;
-    domainId: string;
-    tid: ObjectId;
-    pid: number;
-    uid: number;
-    first?: boolean;
-    /** Sent by */
-    sent?: number;
-    sentAt?: Date;
+    key: string;
+    lockAt: Date;
+    daemonId: string;
 }
+
 
 declare module './service/db' {
     interface Collections {
         'blacklist': BlacklistDoc;
         'domain': DomainDoc;
         'domain.user': any;
-        'record': RecordDoc;
-        'record.stat': RecordStatDoc;
         'document': any;
         'document.status': StatusDocBase & {
             [K in keyof DocStatusType]: { docType: K } & DocStatusType[K];
         }[keyof DocStatusType];
         'discussion.history': DiscussionHistoryDoc;
-        'hub.history': HubHistoryDoc;
         'user': Udoc;
         'user.preference': UserPreferenceDoc;
         'vuser': VUdoc;
@@ -857,45 +687,39 @@ declare module './service/db' {
         'event': EventDoc;
         'opcount': OpCountDoc;
         'schedule': Schedule;
-        'contest.balloon': ContestBalloonDoc;
+        'node': import('./model/node').NodeDoc;
+        'node.device': import('./model/node').NodeDeviceDoc;
     }
 }
 
 export interface Model {
     blacklist: typeof import('./model/blacklist').default,
     builtin: typeof import('./model/builtin'),
-    contest: typeof import('./model/contest'),
     discussion: typeof import('./model/discussion'),
     document: Omit<typeof import('./model/document'), 'apply'>,
     domain: typeof import('./model/domain').default,
-    doc: typeof import('./model/doc').default,
-    repo: typeof import('./model/repo').default,
+    agent: typeof import('./model/agent').default,
     message: typeof import('./model/message').default,
     opcount: typeof import('./model/opcount'),
-    problem: typeof import('./model/problem').default,
-    record: typeof import('./model/record').default,
     setting: typeof import('./model/setting'),
-    solution: typeof import('./model/solution').default,
-    system: typeof import('./model/system'),
+    system: typeof import('./model/system').default,
     task: typeof import('./model/task').default,
     schedule: typeof import('./model/schedule').default;
     oplog: typeof import('./model/oplog'),
     token: typeof import('./model/token').default,
-    training: typeof import('./model/training'),
     user: typeof import('./model/user').default,
     oauth: typeof import('./model/oauth').default,
     storage: typeof import('./model/storage').default,
-    rp: typeof import('./script/rating').RpTypes,
-    hub: typeof import('./model/hub'),
-    file: typeof import('./model/file').default,
-}
-
-export interface EjunzService {
-    /** @deprecated */
-    bus: Context,
-    db: typeof import('./service/db').default,
-    server: typeof import('./service/server'),
-    storage: typeof import('./service/storage').default,
+    bs: typeof import('./model/repo').BaseModel,
+    rp: typeof import('./model/repo').RepoModel,
+    dc: typeof import('./model/repo').DocModel,
+    bk: typeof import('./model/repo').BlockModel,
+    node: typeof import('./model/node').default,
+    nodeDevice: typeof import('./model/node').NodeDeviceModel,
+    mcpServer: typeof import('./model/mcp').default,
+    mcpTool: typeof import('./model/mcp').McpToolModel,
+    edge: typeof import('./model/edge').default,
+    tool: typeof import('./model/tool').default,
 }
 
 export interface GeoIP {
@@ -903,44 +727,32 @@ export interface GeoIP {
     lookup: (ip: string, locale?: string) => any,
 }
 
-export interface ProblemSearchResponse {
+export interface RepoSearchResponse {
     hits: string[];
     total: number;
     countRelation: 'eq' | 'gte';
 }
-export interface ProblemSearchOptions {
+export interface RepoSearchOptions {
     limit?: number;
     skip?: number;
 }
 
-export type ProblemSearch = (domainId: string, q: string, options?: ProblemSearchOptions) => Promise<ProblemSearchResponse>;
+export type RepoSearch = (domainId: string, q: string, options?: RepoSearchOptions) => Promise<RepoSearchResponse>;
 
-export interface Lib extends Record<string, any> {
-    difficulty: typeof import('./lib/difficulty').default;
-    buildContent: typeof import('./lib/content').buildContent;
-    // mail: typeof import('./lib/mail');
-    // rating: typeof import('./lib/rating').default;
-    testdataConfig: typeof import('./lib/testdataConfig');
-    problemSearch: ProblemSearch;
+export interface Lib {
+    repoSearch: RepoSearch;
 }
 
+
 export type UIInjectableFields = 
-'ProblemAdd' |'RepoAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel' | 'ProfileHeaderContact' | 'Home_Domain' | 'NavDropdown' | 'NavMainDropdown'
+    'ProblemAdd' |'RepoAdd' | 'AgentAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel' | 'ProfileHeaderContact' | 'Home_Domain' | 'NavDropdown' | 'NavMainDropdown'
 export interface UI {
-    template: Record<string, string>,
     nodes: Record<UIInjectableFields, any[]>,
     getNodes: typeof import('./lib/ui').getNodes,
     inject: typeof import('./lib/ui').inject,
 }
 
 export interface ModuleInterfaces {
-    oauth: {
-        text: string;
-        icon?: string;
-        get: (this: Handler) => Promise<void>;
-        callback: (this: Handler, args: Record<string, any>) => Promise<OAuthUserResponse>;
-        lockUsername?: boolean;
-    };
     hash: (password: string, salt: string, user: User) => boolean | string | Promise<string>;
 }
 
@@ -948,8 +760,6 @@ export interface EjunzGlobal {
     version: Record<string, string>;
     model: Model;
     script: Record<string, Script>;
-    service: EjunzService;
-    lib: Lib;
     module: { [K in keyof ModuleInterfaces]: Record<string, ModuleInterfaces[K]> };
     ui: UI;
     error: typeof import('./error');
@@ -958,21 +768,53 @@ export interface EjunzGlobal {
     locales: Record<string, Record<string, string> & Record<symbol, Record<string, string>>>;
 }
 
+
+// Session
+export interface SessionDoc {
+    _id: ObjectId;
+    domainId: string;
+    agentId: string;
+    uid: number;
+    recordIds: ObjectId[];
+    title?: string;
+    context?: any; // 共享的上下文信息，用于 session 内的所有 task
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+// Extend RecordDoc to support agent tasks
+declare module '@ejunz/common/types' {
+    export interface RecordDoc {
+        // Task fields (when lang === 'task')
+        agentId?: string;
+        sessionId?: ObjectId; // 关联的 session ID
+        agentMessages?: Array<{
+            role: 'user' | 'assistant' | 'tool';
+            content: string;
+            timestamp: Date;
+            toolName?: string;
+            toolResult?: any;
+        }>;
+        agentToolCallCount?: number;
+        agentTotalToolCalls?: number;
+        agentError?: {
+            message: string;
+            code?: string;
+            stack?: string;
+        };
+    }
+}
+
 declare global {
     namespace NodeJS {
         interface Global {
-            Ejunz: EjunzGlobal, 
-            addons: string[],
+            Ejunz: EjunzGlobal;
+            addons: string[];
         }
     }
     /** @deprecated */
     var bus: Context; // eslint-disable-line
     var app: Context; // eslint-disable-line
     var Ejunz: EjunzGlobal; // eslint-disable-line
-    var addons: string[]; // eslint-disable-line
-}
-
-export interface RepoSearchOptions {
-    limit?: number;
-    skip?: number;
+    var addons: Record<string, string>; // eslint-disable-line
 }

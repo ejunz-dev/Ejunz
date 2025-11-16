@@ -1,0 +1,141 @@
+{% import "components/form.html" as form with context %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__body">
+        <form method="post">
+          <div class="row">
+            <div class="medium-12 columns">
+              <label>
+                {{ _('Agentname') }}
+                <input 
+                  name="title" 
+                  placeholder="{{ _('Enter agent title') }}"
+                  value="{{ adoc.title|default('') }}" 
+                  class="textbox" 
+                  required 
+                  autofocus>
+              </label>
+            </div>
+          </div>
+
+          {{ form.form_textarea({
+                columns: 12,
+                label: _('Content'),
+                name: 'content',
+                value: adoc.content|default(''),
+                hotkeys: 'ctrl+enter:submit',
+                markdown: true,
+                required: true,
+                extra_style: 'height: 500px',
+                extra_textarea_class: 'auto-resize',
+                id: 'content-textarea'
+              }) }}
+
+          {{ form.form_text({
+               row: false,
+               columns: 9,
+               label: _('Tags'),
+               help_text: _('Split by \', \'.'),
+               name: 'tag',
+               value: adoc['tag']|default([])|join(', ')
+             }) }}
+
+          {{ form.form_textarea({
+                columns: 12,
+                label: _('Memory'),
+                name: 'memory',
+                value: adoc.memory|default(''),
+                help_text: _('Agent工作规则记忆：记录工具使用规则、用户指导和工作方式。系统会在每次对话后自动更新。'),
+                markdown: false,
+                required: false,
+                extra_style: 'height: 200px'
+              }) }}
+
+          <!-- Repo Selection -->
+          <div class="row" style="margin-top: 20px;">
+            <div class="medium-12 columns">
+              <label>
+                {{ _('Repos') }}
+                <p class="help-text" style="margin-top: 5px; margin-bottom: 10px;">
+                  {{ _('Select repos to enable for this agent. MCP tools from selected repos will be automatically available.') }}
+                </p>
+                
+                {% if allRepos and allRepos.length > 0 %}
+                <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 4px; background: #f9f9f9;">
+                  {% for repo in allRepos %}
+                  <div class="repo-item" style="margin-bottom: 10px; padding: 10px; border: 1px solid #eee; border-radius: 4px; background: white;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                      <input type="checkbox" 
+                             name="repoIds" 
+                             value="{{ repo.rpid }}" 
+                             {% if repo.rpid|string in assignedRepoIds or repo.rpid in assignedRepoIds %}checked{% endif %}
+                             style="margin-right: 10px;">
+                      <div style="flex: 1;">
+                        <div style="font-weight: bold;">
+                          {{ repo.title }}
+                          <span style="font-size: 0.85em; color: #666; font-weight: normal;">(ID: {{ repo.rpid }})</span>
+                        </div>
+                        {% if repo.mcpServerId %}
+                        <div style="font-size: 0.85em; color: #666; margin-top: 3px;">
+                          <span class="badge badge--success">{{ _('MCP Enabled') }}</span>
+                        </div>
+                        {% else %}
+                        <div style="font-size: 0.85em; color: #999; margin-top: 3px;">
+                          <span class="badge">{{ _('No MCP Server') }}</span>
+                        </div>
+                        {% endif %}
+                      </div>
+                    </label>
+                  </div>
+                  {% endfor %}
+                </div>
+                {% else %}
+                <p class="note" style="margin-top: 10px;">
+                  {{ _('No repos available. Please create repos first.') }}
+                </p>
+                {% endif %}
+              </label>
+            </div>
+          </div>
+
+
+          <div class="row">
+            <div class="columns">
+              <button 
+                name="operation" 
+                value="{{ 'update' if adoc else 'create' }}" 
+                data-default-submit 
+                type="submit" 
+                class="rounded primary button">
+                {{ _('Update') if adoc else _('Create') }} (Ctrl+Enter)
+              </button>
+              {% if adoc and (handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) or handler.user.own(adoc)) %}
+              <button name="operation" value="delete" type="submit" class="rounded button">
+                {{ _('Delete') }}
+              </button>
+              {% endif %}
+              <button type="button" class="rounded button" onclick="window.history.go(-1)">
+                {{ _('Cancel') }}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="medium-3 columns">
+    <div class="section side visiable nojs--hide section--problem-sidebar-tags">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Categories') }} ({{ _('click to add') }})</h1>
+      </div>
+      <div class="section__body problem-sidebar-tags__detail">
+        {% include "partials/category.html" %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

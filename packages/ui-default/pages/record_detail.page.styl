@@ -18,6 +18,25 @@
   .col--case, .col--status
     border-right: 1px solid $table-border-color
   
+  .col--status
+    width: auto
+    min-width: rem(300px)
+  
+  td.col--status, th.col--status
+    white-space: normal !important
+    overflow: visible !important
+    text-overflow: clip !important
+    word-wrap: break-word
+    word-break: break-word
+    
+  td.col--status .message
+    white-space: pre-wrap
+    word-wrap: break-word
+    word-break: break-word
+    overflow: visible
+    display: block
+    max-width: none
+  
   .subtask
     background-color: #fff !important
     height: rem(30px)

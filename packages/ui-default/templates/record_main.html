@@ -1,11 +1,12 @@
+{% set page_name = "record_main" %}
 {% extends "layout/basic.html" %}
 {% block content %}
 {{ set(
   UiContext, 'socketUrl',
   "record-conn?domainId=" + handler.args.domainId
-  + (("&tid=" + filterTid) if filterTid else "")
   + (("&uidOrName=" + filterUidOrName) if filterUidOrName else "")
-  + (("&pid=" + filterPid) if filterPid else "")
+  + (("&aid=" + filterAid) if filterAid else "")
+  + (("&status=" + filterStatus) if filterStatus else "")
   + ("&all=1" if all else "")
   + ("&allDomain=1" if allDomain else "")
 ) }}
@@ -23,41 +24,28 @@
         </div>
         <div class="section__body">
           <div class="row">
-            <div class="medium-2 columns">
-              <label class="filter-user">
-                {{ _('By Username / UID') }}
-                <input name="uidOrName" type="text" class="textbox" value="{{ filterUidOrName }}" autocomplete="off" data-autofocus>
-              </label>
-            </div>
-            <div class="medium-2 columns">
+            <div class="medium-3 columns">
               <label>
-                {{ _('By Problem') }}
-                <input name="pid" type="text" class="textbox" value="{{ filterPid }}">
-              </label>
-            </div>
-            <div class="medium-2 columns">
-              <label>
-                {{ _('By Contest') }}
-                <input name="tid" type="text" class="textbox" value="{{ filterTid }}">
+                {{ _('By Agent ID / Name') }}
+                <input name="aid" type="text" class="textbox" value="{{ filterAid }}" autocomplete="off" data-autofocus>
               </label>
             </div>
             <div class="medium-3 columns">
-              <label>
-                {{ _('By Language') }}
+              <label class="filter-user">
+                {{ _('By Username / UID') }}
+                <input name="uidOrName" type="text" class="textbox" value="{{ filterUidOrName }}" autocomplete="off">
               </label>
-              <select class="compact select" name="lang">
-                <option value="">{{ _('All Languages') }}</option>
-              </select>
             </div>
             <div class="medium-3 columns">
               <label>
                 {{ _('By Status') }}
               </label>
               <select class="compact select" name="status">
-                <option value="" {% if typeof(filterStatus) != 'number' %}selected{% else %}{% endif %}>{{ _('All Submissions') }}</option>
-                {%- for k,v in utils.status.STATUS_TEXTS -%}
-                <option value="{{k}}" {% if filterStatus == k %}selected{% else %}{% endif %}>{{v}}</option>
-                {%- endfor -%}
+                <option value="">{{ _('All Status') }}</option>
+                <option value="pending" {% if filterStatus == 'pending' %}selected{% endif %}>{{ _('Pending') }}</option>
+                <option value="running" {% if filterStatus == 'running' %}selected{% endif %}>{{ _('Running') }}</option>
+                <option value="completed" {% if filterStatus == 'completed' %}selected{% endif %}>{{ _('Completed') }}</option>
+                <option value="failed" {% if filterStatus == 'failed' %}selected{% endif %}>{{ _('Failed') }}</option>
               </select>
             </div>
           </div>
@@ -67,54 +55,52 @@
     <div class="section">
       <div class="section__body no-padding">
       {% if not rdocs.length %}
-        {% if not filterUidOrName and not filterPid and not filterTid %}
-        {{ nothing.render('Oh, there is no task in the queue!') }}
+        {% if not filterAid and not filterUidOrName and not filterStatus %}
+        {{ nothing.render('Oh, there is no agent task record!') }}
         {% else %}
-        {{ nothing.render('Oh, there are no tasks that match the filter!') }}
+        {{ nothing.render('Oh, there are no records that match the filter!') }}
         {% endif %}
       {% else %}
         <table class="data-table record_main__table">
           <colgroup>
             <col class="col--status">
-            <col class="col--problem">
-            <col class="col--submit-by">
+            <col class="col--agent">
+            <col class="col--user">
             <col class="col--time">
-            <col class="col--memory">
-            <col class="col--lang">
+            <col class="col--tool-calls">
             <col class="col--submit-at">
           </colgroup>
           <thead>
             <tr>
               <th class="col--status record-status--border">{{ _('Status') }}</th>
-              <th class="col--problem">{{ _('Problem') }}</th>
-              <th class="col--submit-by">{{ _('Submit By') }}</th>
+              <th class="col--agent">{{ _('Agent') }}</th>
+              <th class="col--user">{{ _('User') }}</th>
               <th class="col--time">{{ _('Time') }}</th>
-              <th class="col--memory">{{ _('Memory') }}</th>
-              <th class="col--lang">{{ _('Language') }}</th>
-              <th class="col--submit-at">{{ _('Submit At') }}</th>
+              <th class="col--tool-calls">{{ _('Tool Calls') }}</th>
+              <th class="col--submit-at">{{ _('Created At') }}</th>
             </tr>
           </thead>
           <tbody>
           {%- for rdoc in rdocs -%}
             {% set udoc = udict[rdoc['uid']] %}
-            {% set pdoc = pdict[rdoc['pid']] %}
-            {% include 'record_main_tr.html' %}
+            {% set r = rdoc %}
+            {% if r.agentId %}
+              {% set adoc = adict[r.agentId] if r.agentId and adict else null %}
+              {% include 'task_record_main_tr.html' %}
+            {% endif %}
           {%- endfor -%}
           </tbody>
         </table>
-        {% if handler.user.hasPriv(PRIV.PRIV_VIEW_JUDGE_STATISTICS) or filterTid or filterPid or filterUidOrName %}
         <ul class="pager">
           <li>
             <a class="pager__item next link" href="?page={{ page + 1 }}{{
-              (('&tid=' + filterTid) if filterTid else '')
+              (('&aid=' + filterAid) if filterAid else '')
               + (('&uidOrName=' + filterUidOrName) if filterUidOrName else '')
-              + (('&lang=' + filterLang) if filterLang else '')
               + (('&status=' + filterStatus) if filterStatus else '')
-              + (('&pid=' + filterPid) if filterPid else '')
-              + ('&allDomain=1' if all else '') }}">{{ _('pager_next') }}</a>
+              + ('&all=1' if all else '')
+              + ('&allDomain=1' if allDomain else '') }}">{{ _('pager_next') }}</a>
           </li>
         </ul>
-        {% endif %}
       {% endif %}
       </div>
     </div>
