@@ -140,44 +140,14 @@
     {% if handler.user.own(adoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
     <div class="section">
       <div class="section__header">
-        <h2 class="section__title">{{ _('MCP Tools') }}</h2>
+        <h2 class="section__title">{{ _('Edge Tools') }}</h2>
       </div>
       <div class="section__body">
-        {% if allMcpTools and allMcpTools.length > 0 %}
-        <p class="help-text">{{ _('Assigned tools for this agent. Edit in the edit page.') }}</p>
         <div style="margin-top: 15px;">
-          <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 4px;">
-            {% for tool in allMcpTools %}
-            {% if tool._id.toString() in assignedToolIds %}
-            <div class="tool-item" style="margin-bottom: 10px; padding: 10px; border: 1px solid #eee; border-radius: 4px; background: #f0f8ff;">
-              <div style="font-weight: bold; margin-bottom: 5px;">
-                <span class="icon icon-check" style="color: #28a745; margin-right: 5px;"></span>
-                {{ tool.name }}
-                <span style="font-size: 0.85em; color: #666; font-weight: normal;">({{ tool.serverName }})</span>
-              </div>
-              <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">
-                {{ tool.description }}
-              </div>
-              {% if tool.inputSchema %}
-              <details style="font-size: 0.85em; color: #888;">
-                <summary style="cursor: pointer;">查看参数</summary>
-                <pre style="margin-top: 5px; padding: 5px; background: #f5f5f5; border-radius: 3px; overflow-x: auto;">{{ tool.inputSchema|json }}</pre>
-              </details>
-              {% endif %}
-            </div>
-            {% endif %}
-            {% endfor %}
-          </div>
-        </div>
-        <div style="margin-top: 15px;">
-          <a href="{{ url('agent_edit', domainId=domainId, aid=adoc.aid) }}" class="button primary">
-            {{ _('Edit Tools') }}
+          <a href="{{ url('agent_edge_config', { uid: adoc.owner, aid: adoc.aid }) }}" class="button primary">
+            <span class="icon icon-edit"></span> 配置 Edge 工具
           </a>
         </div>
-        {% else %}
-        <p class="note">{{ _('No MCP tools available. Please configure MCP servers first.') }}</p>
-        <a href="{{ url('edge_domain', domainId=domainId) }}" class="button">{{ _('Go to Edge Settings') }}</a>
-        {% endif %}
       </div>
     </div>
     {% endif %}
