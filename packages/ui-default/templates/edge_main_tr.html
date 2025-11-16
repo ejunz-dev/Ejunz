@@ -1,7 +1,7 @@
 <tr data-edge-id="{{ edge._id }}">
   <td class="col--id">
-    <a href="{{ url('edge_detail', { domainId: handler.args.domainId, edgeId: edge._id }) }}">
-      <code>{{ edge._id }}</code>
+    <a href="{{ url('edge_detail', { domainId: handler.args.domainId, eid: edge.eid }) }}">
+      <code>{{ edge.eid }}</code>
     </a>
   </td>
   <td class="col--status">
@@ -37,7 +37,7 @@
     {% endif %}
   </td>
   <td class="col--action">
-    <a href="{{ url('edge_detail', { domainId: handler.args.domainId, edgeId: edge._id }) }}" class="button small">查看详情</a>
+    <a href="{{ url('edge_detail', { domainId: handler.args.domainId, eid: edge.eid }) }}" class="button small">查看详情</a>
   </td>
 </tr>
 

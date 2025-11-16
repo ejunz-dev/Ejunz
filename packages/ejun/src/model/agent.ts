@@ -474,8 +474,12 @@ export class McpClient {
                     ClientLogger.debug('Looking for tool in Edge servers: tool=%s, domainId=%s', name, domainId);
                     
                     const edges = await EdgeModel.getByDomain(domainId);
-                    const connectedEdges = edges.filter(edge => edge.tokenUsedAt);
-                    ClientLogger.debug('Found %d connected edges in domain', connectedEdges.length);
+                    // 只检查有活跃 WebSocket 连接的 edge
+                    const connectedEdges = edges.filter(edge => {
+                        const hasActiveConnection = EdgeServerConnectionHandler.active.has(edge.token);
+                        return hasActiveConnection;
+                    });
+                    ClientLogger.debug('Found %d connected edges in domain (with active WebSocket)', connectedEdges.length);
                     
                     for (const edge of connectedEdges) {
                         const tools = await ToolModel.getByEdgeDocId(domainId, edge._id);

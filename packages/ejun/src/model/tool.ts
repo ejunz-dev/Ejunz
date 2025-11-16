@@ -10,11 +10,11 @@ const logger = new Logger('model/tool');
 class ToolModel {
     static async generateNextToolId(domainId: string, token: string): Promise<number> {
         const lastTool = await document.getMulti(domainId, document.TYPE_TOOL, { token })
-            .sort({ toolId: -1 })
+            .sort({ tid: -1 })
             .limit(1)
-            .project({ toolId: 1 })
+            .project({ tid: 1 })
             .toArray();
-        return (lastTool[0]?.toolId || 0) + 1;
+        return (lastTool[0]?.tid || 0) + 1;
     }
 
     static async add(
@@ -28,14 +28,14 @@ class ToolModel {
             owner: number;
         },
     ): Promise<ToolDoc> {
-        const toolId = await this.generateNextToolId(tool.domainId, tool.token);
+        const tid = await this.generateNextToolId(tool.domainId, tool.token);
         const now = new Date();
         
         const payload: Partial<ToolDoc> = {
             domainId: tool.domainId,
             token: tool.token,
             edgeDocId: tool.edgeDocId,
-            toolId,
+            tid,
             name: tool.name,
             description: tool.description,
             inputSchema: tool.inputSchema,
@@ -59,16 +59,16 @@ class ToolModel {
         const edge = await EdgeModel.getByToken(tool.domainId, tool.token);
         if (edge) {
             const toolsCount = await this.countByToken(tool.domainId, tool.token);
-            await EdgeModel.update(tool.domainId, edge.edgeId, { toolsCount });
+            await EdgeModel.update(tool.domainId, edge.eid, { toolsCount });
         }
 
-        return await this.getByToolId(tool.domainId, tool.token, toolId) as ToolDoc;
+        return await this.getByToolId(tool.domainId, tool.token, tid) as ToolDoc;
     }
 
     static async get(_id: ObjectId): Promise<ToolDoc | null> {
         const doc = await document.coll.findOne({ _id });
         if (!doc) return null;
-        return await this.getByToolId(doc.domainId, doc.token, doc.toolId);
+        return await this.getByToolId(doc.domainId, doc.token, doc.tid);
     }
 
     static async getByToken(domainId: string, token: string): Promise<ToolDoc[]> {
@@ -79,15 +79,15 @@ class ToolModel {
         return await document.getMulti(domainId, document.TYPE_TOOL, { edgeDocId }).toArray() as ToolDoc[];
     }
 
-    static async update(domainId: string, token: string, toolId: number, update: Partial<ToolDoc>): Promise<ToolDoc> {
-        const tool = await this.getByToolId(domainId, token, toolId);
+    static async update(domainId: string, token: string, tid: number, update: Partial<ToolDoc>): Promise<ToolDoc> {
+        const tool = await this.getByToolId(domainId, token, tid);
         if (!tool) throw new Error('Tool not found');
         const $set = { ...update, updatedAt: new Date() };
         return await document.set(domainId, document.TYPE_TOOL, tool.docId, $set) as ToolDoc;
     }
 
-    static async del(domainId: string, token: string, toolId: number) {
-        const tool = await this.getByToolId(domainId, token, toolId);
+    static async del(domainId: string, token: string, tid: number) {
+        const tool = await this.getByToolId(domainId, token, tid);
         if (!tool) return;
         await document.deleteOne(domainId, document.TYPE_TOOL, tool.docId);
         
@@ -95,7 +95,7 @@ class ToolModel {
         const edge = await EdgeModel.getByToken(domainId, token);
         if (edge) {
             const toolsCount = await this.countByToken(domainId, token);
-            await EdgeModel.update(domainId, edge.edgeId, { toolsCount });
+            await EdgeModel.update(domainId, edge.eid, { toolsCount });
         }
     }
 
@@ -103,8 +103,8 @@ class ToolModel {
         return await document.deleteMulti(domainId, document.TYPE_TOOL, { token });
     }
 
-    static async getByToolId(domainId: string, token: string, toolId: number): Promise<ToolDoc | null> {
-        const tools = await document.getMulti(domainId, document.TYPE_TOOL, { token, toolId })
+    static async getByToolId(domainId: string, token: string, tid: number): Promise<ToolDoc | null> {
+        const tools = await document.getMulti(domainId, document.TYPE_TOOL, { token, tid })
             .limit(1)
             .toArray();
         return (tools[0] as ToolDoc) || null;
@@ -114,28 +114,28 @@ class ToolModel {
         return await document.count(domainId, document.TYPE_TOOL, { token });
     }
 
-    // Clean up duplicate tools (keep only the one with smallest toolId for each tool name)
+    // Clean up duplicate tools (keep only the one with smallest tid for each tool name)
     static async cleanupDuplicates(domainId: string, token: string): Promise<number> {
         const existingTools = await this.getByToken(domainId, token);
         
-        const sortedTools = existingTools.sort((a, b) => a.toolId - b.toolId);
+        const sortedTools = existingTools.sort((a, b) => a.tid - b.tid);
         
         const toolNameToFirstId = new Map<string, number>();
         const duplicateToolIds: number[] = [];
         
         for (const tool of sortedTools) {
             if (!toolNameToFirstId.has(tool.name)) {
-                toolNameToFirstId.set(tool.name, tool.toolId);
+                toolNameToFirstId.set(tool.name, tool.tid);
             } else {
-                duplicateToolIds.push(tool.toolId);
-                logger.warn('Found duplicate tool: %s (toolId: %d), will be removed (keeping toolId: %d)', 
-                    tool.name, tool.toolId, toolNameToFirstId.get(tool.name));
+                duplicateToolIds.push(tool.tid);
+                logger.warn('Found duplicate tool: %s (tid: %d), will be removed (keeping tid: %d)', 
+                    tool.name, tool.tid, toolNameToFirstId.get(tool.name));
             }
         }
         
         let deletedCount = 0;
-        for (const toolId of duplicateToolIds) {
-            await this.del(domainId, token, toolId);
+        for (const tid of duplicateToolIds) {
+            await this.del(domainId, token, tid);
             deletedCount++;
         }
         
@@ -144,7 +144,7 @@ class ToolModel {
             const toolsCount = await this.countByToken(domainId, token);
             const edge = await EdgeModel.getByToken(domainId, token);
             if (edge) {
-                await EdgeModel.update(domainId, edge.edgeId, { toolsCount });
+                await EdgeModel.update(domainId, edge.eid, { toolsCount });
             }
         }
         
@@ -186,8 +186,8 @@ class ToolModel {
                 if (duplicateCheck.length > 0) {
                     // If duplicate found, update existing tool instead of creating new
                     const existing = duplicateCheck[0] as ToolDoc;
-                    logger.warn('Tool %s already exists (toolId: %d), updating instead of creating', tool.name, existing.toolId);
-                    await this.update(domainId, token, existing.toolId, {
+                    logger.warn('Tool %s already exists (tid: %d), updating instead of creating', tool.name, existing.tid);
+                    await this.update(domainId, token, existing.tid, {
                         description: tool.description,
                         inputSchema: tool.inputSchema,
                     });
@@ -215,7 +215,7 @@ class ToolModel {
                     JSON.stringify(existingTool.inputSchema) !== JSON.stringify(tool.inputSchema);
                 
                 if (needsUpdate) {
-                    await this.update(domainId, token, existingTool.toolId, {
+                    await this.update(domainId, token, existingTool.tid, {
                         description: tool.description,
                         inputSchema: tool.inputSchema,
                     });
@@ -228,8 +228,8 @@ class ToolModel {
         for (const existingTool of finalTools) {
             if (!newToolNames.has(existingTool.name)) {
                 // Tool no longer exists in server list, delete it
-                logger.info('Removing tool that no longer exists: %s (toolId: %d)', existingTool.name, existingTool.toolId);
-                await this.del(domainId, token, existingTool.toolId);
+                logger.info('Removing tool that no longer exists: %s (tid: %d)', existingTool.name, existingTool.tid);
+                await this.del(domainId, token, existingTool.tid);
             }
         }
 
@@ -242,7 +242,7 @@ class ToolModel {
         const toolsCount = await this.countByToken(domainId, token);
         const edge = await EdgeModel.getByToken(domainId, token);
         if (edge) {
-            await EdgeModel.update(domainId, edge.edgeId, { toolsCount });
+            await EdgeModel.update(domainId, edge.eid, { toolsCount });
         }
         
         logger.info('Tools sync completed: token=%s, toolsCount=%d', token, toolsCount);

@@ -30,7 +30,7 @@ export const TYPE_NODE: 40 = 40;
 export const TYPE_CLIENT: 60 = 60;
 export const TYPE_CLIENT_CHAT: 61 = 61;
 export const TYPE_EDGE: 70 = 70;
-export const TYPE_TOOL: 80 = 80; // 工具
+export const TYPE_TOOL: 80 = 80;
 
 export interface DocType {
     [TYPE_AGENT]: AgentDoc;

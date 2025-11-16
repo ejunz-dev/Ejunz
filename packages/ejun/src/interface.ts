@@ -434,7 +434,7 @@ declare module './model/edge' {
         docType: document['TYPE_EDGE'];
         docId: ObjectId;
         domainId: string;
-        edgeId: number;
+        eid: number; // Edge ID，从 1 开始（业务 ID，用于路由显示）
         token: string;
         type: 'provider' | 'repo' | 'node';
         status: 'online' | 'offline' | 'working';
@@ -463,7 +463,7 @@ declare module './model/tool' {
         domainId: string;
         token: string;
         edgeDocId: ObjectId;
-        toolId: number;
+        tid: number; // Tool ID，从 1 开始（业务 ID，用于路由显示）
         name: string;
         description: string;
         inputSchema: {
