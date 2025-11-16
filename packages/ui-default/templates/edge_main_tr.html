@@ -1,53 +1,43 @@
-{% import "components/edge.html" as edge_component with context %}
-<tr data-type="{{ itemType }}" data-id="{{ itemId }}">
-  {{ edge_component.render_edge_status_td(item, itemType) }}
-  <td class="col--type">
-    {% if itemType == 'mcp' %}
-      {% set serverType = item.type|default('provider') %}
-      {% if serverType == 'repo' %}
-        <span class="badge badge--primary">MCP Repo</span>
-      {% elif serverType == 'node' %}
-        <span class="badge badge--info">MCP Node</span>
+<tr data-edge-id="{{ edge._id }}">
+  <td class="col--id">
+    <a href="{{ url('edge_detail', { domainId: handler.args.domainId, edgeId: edge._id }) }}">
+      <code>{{ edge._id }}</code>
+    </a>
+  </td>
+  <td class="col--status">
+    <span class="edge-status edge-status-{{ edge.status }}">
+      {% if edge.status == 'online' %}
+        在线
+      {% elif edge.status == 'offline' %}
+        离线
+      {% elif edge.status == 'working' %}
+        工作中
       {% else %}
-        <span class="badge">MCP</span>
+        {{ edge.status }}
       {% endif %}
-    {% elif itemType == 'client' %}
-      <span class="badge badge--success">Client</span>
-    {% elif itemType == 'node' %}
-      <span class="badge badge--warning">Node</span>
-    {% endif %}
+    </span>
   </td>
-  <td class="col--name">
-    {% if itemType == 'mcp' %}
-      <a href="{{ url('mcp_detail', { domainId: domainId, serverId: item.serverId }) }}">
-        {{ item.name|default('MCP ' + item.serverId|string) }}
-      </a>
-    {% elif itemType == 'client' %}
-      <a href="{{ url('client_detail', { domainId: domainId, clientId: item.clientId }) }}">
-        {{ item.name|default('Client ' + item.clientId|string) }}
-      </a>
-    {% elif itemType == 'node' %}
-      <a href="{{ url('node_detail', { domainId: domainId, nodeId: item.nodeId }) }}">
-        {{ item.name|default('Node ' + item.nodeId|string) }}
-      </a>
-    {% endif %}
-    {% if item.description %}
-      <br><small class="text-gray">{{ item.description }}</small>
-    {% endif %}
-  </td>
-  <td class="col--info">
-    {% if itemType == 'mcp' %}
-      {{ item.toolsCount|default(0) }} {{ _('tools') }}
+  <td class="col--type">
+    {% if edge.type == 'repo' %}
+      <span class="badge badge--primary">Repo</span>
+    {% elif edge.type == 'node' %}
+      <span class="badge badge--info">Node</span>
     {% else %}
-      -
+      <span class="badge">Provider</span>
     {% endif %}
   </td>
-  <td class="col--last-connected">
-    {% if item.lastConnectedAt %}
-      {{ datetimeSpan(item.lastConnectedAt)|safe }}
+  <td class="col--created">
+    {{ datetimeSpan(edge.tokenCreatedAt)|safe }}
+  </td>
+  <td class="col--used">
+    {% if edge.tokenUsedAt %}
+      {{ datetimeSpan(edge.tokenUsedAt)|safe }}
     {% else %}
-      -
+      <span class="text-gray">未使用</span>
     {% endif %}
+  </td>
+  <td class="col--action">
+    <a href="{{ url('edge_detail', { domainId: handler.args.domainId, edgeId: edge._id }) }}" class="button small">查看详情</a>
   </td>
 </tr>
 
