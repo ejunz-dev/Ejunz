@@ -213,11 +213,11 @@ error: 에러
 Error: 오류
 expand: 확장
 Expire: 만료
-Failed to generate token: {0}: Token 생성 실패: {0}
-Failed to join the domain. You are already a member.: 그룹 참여 실패. 이미 참여함.
+'Failed to generate token: {0}': 'Token 생성 실패: {0}'
+'Failed to join the domain. You are already a member.': '그룹 참여 실패. 이미 참여함.'
 Feedback: 피드백
-Field {0} or {1} validation failed.: 항목 {0} 또는 {1} 검증 실패
-Field {0} validation failed.: 항목 {0} 검증 실패
+'Field {0} or {1} validation failed.': '항목 {0} 또는 {1} 검증 실패'
+'Field {0} validation failed.': '항목 {0} 검증 실패'
 Filter: 필터
 Forgot Password and/or Username: ID/PW 분실
 Forgot password or username?: ID/PW를 분실하셨나요?
@@ -367,7 +367,7 @@ perm_general: 일반
 Permission: 권한
 Permissions: 권한
 Plan: 계획
-Please generate token on: 다음에서 Token 생성:
+'Please generate token on': '다음에서 Token 생성:'
 Please select at least one role to perform this operation.: 작업을 하려면 적어도 하나의 역할을 고르십시오.
 Please select at least one user to perform this operation.: 작업을 하려면 적어도 하나의 역할을 고르십시오.
 Please select: 선택하세요
@@ -554,8 +554,6 @@ Visit: 방문
 Voice: 음성
 Vote: 투표
 WebSocket Endpoint: WebSocket 엔드포인트
-WebSocket Endpoint: WebSocket 엔드포인트
-WebSocket Token Management: WebSocket Token 관리
 WebSocket Token Management: WebSocket Token 관리
 WebSocket URL: WebSocket URL
 WeChat Visibility: WeChat 공개

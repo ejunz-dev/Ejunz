@@ -158,7 +158,7 @@ Endpoint: Endpoint
 Error Message: 錯誤資訊
 error: 錯誤
 Error: 錯誤
-Failed to generate token: {0}: 生成 token 失敗: {0}
+'Failed to generate token: {0}': '生成 token 失敗: {0}'
 Field {0} or {1} validation failed.: 欄位 {0} 或 {1} 驗證失敗。
 Field {0} validation failed.: 欄位 {0} 驗證失敗。
 Footer: 頁尾

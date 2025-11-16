@@ -74,14 +74,14 @@ __langname: English
 'Error Message': Error Message
 'Error': Error
 'Failed to clear Agent configuration: {0}': 'Failed to clear Agent configuration: {0}'
-'Failed to delete conversation': Failed to delete conversation
+'Failed to delete conversation': 'Failed to delete conversation'
 'Failed to delete Token: {0}': 'Failed to delete Token: {0}'
+'Failed to generate token: {0}': 'Failed to generate token: {0}'
 'Failed to generate Token: {0}': 'Failed to generate Token: {0}'
-'Failed to generate token: {0}': Failed to generate token: {0}
-'Failed to load chat details': Failed to load chat details
-'Failed to play audio. The audio format may not be supported by your browser.': Failed to play audio. The audio format may not be supported by your browser.
-'Failed to pull from GitHub': Failed to pull from GitHub
-'Failed to push to GitHub': Failed to push to GitHub
+'Failed to load chat details': 'Failed to load chat details'
+'Failed to play audio. The audio format may not be supported by your browser.': 'Failed to play audio. The audio format may not be supported by your browser.'
+'Failed to pull from GitHub': 'Failed to pull from GitHub'
+'Failed to push to GitHub': 'Failed to push to GitHub'
 'Failed to save Agent configuration: {0}': 'Failed to save Agent configuration: {0}'
 'Failed to save ASR configuration: {0}': 'Failed to save ASR configuration: {0}'
 'Failed to save TTS configuration: {0}': 'Failed to save TTS configuration: {0}'
@@ -304,4 +304,4 @@ user_lostpass: Lost Password
 user_register: Register
 user_sudo: Entering Sudo Mode
 wiki_about: About
-wiki_help: Help
+wiki_help: Helpz
