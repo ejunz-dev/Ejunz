@@ -10,11 +10,11 @@ const logger = new Logger('model/edge');
 class EdgeModel {
     static async generateNextEdgeId(domainId: string): Promise<number> {
         const lastEdge = await document.getMulti(domainId, document.TYPE_EDGE, {})
-            .sort({ edgeId: -1 })
+            .sort({ eid: -1 })
             .limit(1)
-            .project({ edgeId: 1 })
+            .project({ eid: 1 })
             .toArray();
-        return (lastEdge[0]?.edgeId || 0) + 1;
+        return (lastEdge[0]?.eid || 0) + 1;
     }
 
     static async generateToken(): Promise<string> {
@@ -22,13 +22,13 @@ class EdgeModel {
     }
 
     static async add(edge: Partial<EdgeDoc> & { domainId: string; owner: number; type: 'provider' | 'repo' | 'node' }): Promise<EdgeDoc> {
-        const edgeId = await this.generateNextEdgeId(edge.domainId);
+        const eid = await this.generateNextEdgeId(edge.domainId);
         const token = await this.generateToken();
         const now = new Date();
         
         const payload: Partial<EdgeDoc> = {
             domainId: edge.domainId,
-            edgeId,
+            eid,
             token,
             type: edge.type,
             status: 'offline',
@@ -56,21 +56,21 @@ class EdgeModel {
                 const edgeDoc = await this.getByToken(edge.domainId, token);
                 if (edgeDoc && !edgeDoc.tokenUsedAt) {
                     // token未使用，删除
-                    await this.del(edge.domainId, edgeId);
-                    logger.info('Auto-deleted unused edge token: edgeId=%d, token=%s', edgeId, token);
+                    await this.del(edge.domainId, eid);
+                    logger.info('Auto-deleted unused edge token: eid=%d, token=%s', eid, token);
                 }
             } catch (error) {
                 logger.error('Failed to auto-delete unused edge token: %s', (error as Error).message);
             }
         }, 30 * 60 * 1000); // 30分钟
 
-        return await this.getByEdgeId(edge.domainId, edgeId) as EdgeDoc;
+        return await this.getByEdgeId(edge.domainId, eid) as EdgeDoc;
     }
 
     static async get(_id: ObjectId): Promise<EdgeDoc | null> {
         const doc = await document.coll.findOne({ _id });
         if (!doc) return null;
-        return await this.getByEdgeId(doc.domainId, doc.edgeId);
+        return await this.getByEdgeId(doc.domainId, doc.eid);
     }
 
     static async getByDomain(domainId: string): Promise<EdgeDoc[]> {
@@ -88,8 +88,8 @@ class EdgeModel {
         return (edges[0] as EdgeDoc) || null;
     }
 
-    static async update(domainId: string, edgeId: number, update: Partial<EdgeDoc>): Promise<EdgeDoc> {
-        const edge = await this.getByEdgeId(domainId, edgeId);
+    static async update(domainId: string, eid: number, update: Partial<EdgeDoc>): Promise<EdgeDoc> {
+        const edge = await this.getByEdgeId(domainId, eid);
         if (!edge) throw new Error('Edge not found');
         const $set = { ...update, updatedAt: new Date() };
         return await document.set(domainId, document.TYPE_EDGE, edge.docId, $set) as EdgeDoc;
@@ -97,20 +97,20 @@ class EdgeModel {
 
     static async updateStatus(
         domainId: string,
-        edgeId: number,
+        eid: number,
         status: 'online' | 'offline' | 'working',
     ): Promise<EdgeDoc> {
-        return await this.update(domainId, edgeId, { status });
+        return await this.update(domainId, eid, { status });
     }
 
-    static async del(domainId: string, edgeId: number) {
-        const edge = await this.getByEdgeId(domainId, edgeId);
+    static async del(domainId: string, eid: number) {
+        const edge = await this.getByEdgeId(domainId, eid);
         if (!edge) return;
         return await document.deleteOne(domainId, document.TYPE_EDGE, edge.docId);
     }
 
-    static async getByEdgeId(domainId: string, edgeId: number): Promise<EdgeDoc | null> {
-        const edges = await document.getMulti(domainId, document.TYPE_EDGE, { edgeId })
+    static async getByEdgeId(domainId: string, eid: number): Promise<EdgeDoc | null> {
+        const edges = await document.getMulti(domainId, document.TYPE_EDGE, { eid })
             .limit(1)
             .toArray();
         return (edges[0] as EdgeDoc) || null;

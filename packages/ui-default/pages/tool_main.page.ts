@@ -118,8 +118,8 @@ const page = new NamedPage('tool_main', async () => {
   }
 
   // 更新工具状态
-  function updateToolStatus(toolId: number, edgeToken: string, tool: any) {
-    const $row = $(`.tool_main__table tr[data-tool-id="${toolId}"][data-edge-token="${edgeToken}"]`);
+  function updateToolStatus(tid: number, edgeToken: string, tool: any) {
+    const $row = $(`.tool_main__table tr[data-tool-id="${tid}"][data-edge-token="${edgeToken}"]`);
     if ($row.length) {
       // 更新状态
       const $statusCell = $row.find('.col--status .tool-status');
@@ -153,23 +153,53 @@ const page = new NamedPage('tool_main', async () => {
   // 更新edge状态
   function updateServerStatus(token: string, tools: any[]) {
     tools.forEach(tool => {
-      updateToolStatus(tool.toolId, token, tool);
+      updateToolStatus(tool.tid, token, tool);
     });
   }
 
   // 添加工具到表格
   function addToolToTable(tool: any) {
-    const $tbody = $('.tool_main__table tbody');
+    let $tbody = $('.tool_main__table tbody');
     if ($tbody.length === 0) {
-      // 如果没有表格，需要重新加载页面
-      location.reload();
-      return;
+      // 如果没有表格，尝试创建表格结构
+      const $sectionBody = $('.section__body');
+      if ($sectionBody.length === 0) {
+        // 如果连 section body 都没有，说明页面结构有问题，刷新页面
+        location.reload();
+        return;
+      }
+      
+      // 移除"暂无工具"的提示
+      $sectionBody.find('.typo').remove();
+      
+      // 创建表格结构
+      const $table = $(`
+        <table class="data-table tool_main__table">
+          <colgroup>
+            <col class="col--status">
+            <col class="col--server">
+            <col class="col--name">
+            <col class="col--description">
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="col--status">状态</th>
+              <th class="col--server">服务器</th>
+              <th class="col--name">工具名称</th>
+              <th class="col--description">描述</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      `);
+      $sectionBody.append($table);
+      $tbody = $table.find('tbody');
     }
     
     // 检查是否已存在
-    const $existing = $(`.tool_main__table tr[data-tool-id="${tool.toolId}"][data-edge-token="${tool.edgeToken}"]`);
+    const $existing = $(`.tool_main__table tr[data-tool-id="${tool.tid}"][data-edge-token="${tool.edgeToken}"]`);
     if ($existing.length > 0) {
-      updateToolStatus(tool.toolId, tool.edgeToken, tool);
+      updateToolStatus(tool.tid, tool.edgeToken, tool);
       return;
     }
     
@@ -183,13 +213,13 @@ const page = new NamedPage('tool_main', async () => {
       statusText = '离线';
     }
     const domainId = UiContext.domain._id;
-    const edgeUrl = `/d/${domainId}/edge/${tool.edgeId}`;
-    const toolUrl = `/d/${domainId}/tool/${tool._id}`;
+    const edgeUrl = `/d/${domainId}/edge/${tool.eid}`;
+    const toolUrl = `/d/${domainId}/tool/${tool.tid}`;
     
     const $newRow = $(`
-      <tr data-tool-id="${tool.toolId}" data-edge-token="${tool.edgeToken}">
+      <tr data-tool-id="${tool.tid}" data-edge-token="${tool.edgeToken}">
         <td class="col--status"><span class="tool-status tool-status-${tool.edgeStatus}">${statusText}</span></td>
-        <td class="col--server"><a href="${edgeUrl}"><code>${tool.edgeId}</code></a></td>
+        <td class="col--server"><a href="${edgeUrl}"><code>${tool.eid}</code></a></td>
         <td class="col--name"><a href="${toolUrl}"><code>${tool.name}</code></a></td>
         <td class="col--description">${tool.description || ''}</td>
       </tr>
@@ -201,11 +231,41 @@ const page = new NamedPage('tool_main', async () => {
 
   // 更新整个表格
   function updateToolsTable(tools: any[]) {
-    const $tbody = $('.tool_main__table tbody');
+    let $tbody = $('.tool_main__table tbody');
     if ($tbody.length === 0) {
-      // 如果没有表格，需要重新加载页面
-      location.reload();
-      return;
+      // 如果没有表格，尝试创建表格结构
+      const $sectionBody = $('.section__body');
+      if ($sectionBody.length === 0) {
+        // 如果连 section body 都没有，说明页面结构有问题，刷新页面
+        location.reload();
+        return;
+      }
+      
+      // 移除"暂无工具"的提示
+      $sectionBody.find('.typo').remove();
+      
+      // 创建表格结构
+      const $table = $(`
+        <table class="data-table tool_main__table">
+          <colgroup>
+            <col class="col--status">
+            <col class="col--server">
+            <col class="col--name">
+            <col class="col--description">
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="col--status">状态</th>
+              <th class="col--server">服务器</th>
+              <th class="col--name">工具名称</th>
+              <th class="col--description">描述</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      `);
+      $sectionBody.append($table);
+      $tbody = $table.find('tbody');
     }
     
     // 清空现有行

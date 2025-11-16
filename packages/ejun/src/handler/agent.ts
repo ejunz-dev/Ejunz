@@ -1336,14 +1336,14 @@ export class AgentChatHandler extends Handler {
                     
                     edgesWithTools.push({
                         edgeId: edge._id,
-                        edgeIdNum: edge.edgeId,
-                        name: edge.name || `Edge-${edge.edgeId}`,
+                        eid: edge.eid,
+                        name: edge.name || `Edge-${edge.eid}`,
                         description: edge.description || '',
                         status: status,
                         toolsCount: assignedTools.length,
                         tools: assignedTools.map(tool => ({
                             _id: tool._id,
-                            toolId: tool.toolId,
+                            tid: tool.tid,
                             name: tool.name,
                             description: tool.description,
                             inputSchema: tool.inputSchema,
@@ -3873,7 +3873,7 @@ export class AgentEdgeConfigHandler extends Handler {
             });
         }
         
-        edgesWithTools.sort((a, b) => (a.edgeId || 0) - (b.edgeId || 0));
+        edgesWithTools.sort((a, b) => (a.eid || 0) - (b.eid || 0));
         
         this.response.template = 'agent_edge_config.html';
         this.response.body = {

@@ -1,4 +1,4 @@
-<tr data-tool-id="{{ tool.toolId }}" data-edge-token="{{ tool.edgeToken }}">
+<tr data-tool-id="{{ tool.tid }}" data-edge-token="{{ tool.edgeToken }}">
   <td class="col--status">
     <span class="tool-status tool-status-{{ tool.edgeStatus }}">
       {% if tool.edgeStatus == 'working' %}
@@ -11,12 +11,12 @@
     </span>
   </td>
   <td class="col--server">
-    <a href="{{ url('edge_detail', { domainId: handler.args.domainId, edgeId: tool.edgeId }) }}">
-      <code>{{ tool.edgeId }}</code>
+    <a href="{{ url('edge_detail', { domainId: handler.args.domainId, eid: tool.eid }) }}">
+      <code>{{ tool.eid }}</code>
     </a>
   </td>
   <td class="col--name">
-    <a href="{{ url('tool_detail', { domainId: handler.args.domainId, toolId: tool._id }) }}">
+    <a href="{{ url('tool_detail', { domainId: handler.args.domainId, tid: tool.tid }) }}">
       <code>{{ tool.name }}</code>
     </a>
   </td>
