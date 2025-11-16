@@ -1,0 +1,177 @@
+{% set page_name = "agent_edge_config" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">配置 Edge 工具</h1>
+        <div class="section__tools">
+          <a href="{{ url('agent_detail', { uid: adoc.owner, aid: adoc.aid }) }}" class="button">
+            <span class="icon icon-back"></span> 返回详情
+          </a>
+        </div>
+      </div>
+      <div class="section__body">
+        <form method="post">
+          <div class="typo">
+            <p class="help-text" style="margin-bottom: 20px;">
+              选择要为 Agent "{{ adoc.title }}" 配置的 Edge 工具。可以展开每个 Edge 设备查看其提供的工具，然后选择需要的工具。
+            </p>
+            
+            {% if not edges or not edges.length %}
+            <div class="typo">
+              <p class="note">暂无已连接的 Edge 设备。请先创建接入点并让设备连接。</p>
+              <a href="{{ url('edge_domain', { domainId: domainId }) }}" class="button">前往 Edge 管理</a>
+            </div>
+            {% else %}
+            <div style="max-height: 600px; overflow-y: auto; border: 1px solid #ddd; padding: 15px; border-radius: 4px; background: #f9f9f9;">
+              {% for edge in edges %}
+              <div class="edge-group" style="margin-bottom: 15px; padding: 15px; border: 1px solid #ddd; border-radius: 4px; background: white;">
+                <label style="display: flex; align-items: center; cursor: pointer; margin-bottom: 10px;">
+                  <input type="checkbox" 
+                         class="edge-select-all" 
+                         data-edge-id="{{ edge._id }}"
+                         style="margin-right: 10px;">
+                  <div style="flex: 1; font-weight: bold;">
+                    <code>{{ edge._id }}</code>
+                    {% if edge.name %}
+                      <span style="font-size: 0.9em; color: #666; font-weight: normal; margin-left: 10px;">{{ edge.name }}</span>
+                    {% endif %}
+                    <span style="font-size: 0.85em; color: #666; font-weight: normal; margin-left: 10px;">
+                      ({{ edge.tools|length }} 个工具)
+                    </span>
+                    <span class="edge-status edge-status-{{ edge.status }}" style="margin-left: 10px;">
+                      {% if edge.status == 'online' %}
+                        在线
+                      {% elif edge.status == 'offline' %}
+                        离线
+                      {% elif edge.status == 'working' %}
+                        工作中
+                      {% else %}
+                        {{ edge.status }}
+                      {% endif %}
+                    </span>
+                  </div>
+                  <button type="button" class="button" onclick="toggleEdgeTools('edge-{{ edge._id }}')" style="font-size: 0.85em;">
+                    <span id="toggle-edge-{{ edge._id }}">▶</span> 展开
+                  </button>
+                </label>
+                <div id="edge-{{ edge._id }}" style="display: none; margin-left: 30px; margin-top: 10px;">
+                  {% if edge.tools and edge.tools.length > 0 %}
+                  {% for tool in edge.tools %}
+                  <div class="tool-item" style="margin-bottom: 8px; padding: 10px; border: 1px solid #eee; border-radius: 3px; background: #fafafa;">
+                    <label style="display: flex; align-items: flex-start; cursor: pointer;">
+                      <input type="checkbox" 
+                             name="toolIds" 
+                             value="{{ tool._id.toString() }}" 
+                             class="tool-checkbox"
+                             data-edge-id="{{ edge._id }}"
+                             {% if tool.isAssigned %}checked{% endif %}
+                             style="margin-right: 10px; margin-top: 3px;">
+                      <div style="flex: 1;">
+                        <div style="font-weight: bold; margin-bottom: 3px;">
+                          <code>{{ tool.name }}</code>
+                        </div>
+                        <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">
+                          {{ tool.description or '无描述' }}
+                        </div>
+                        {% if tool.inputSchema %}
+                        <details style="font-size: 0.85em; color: #888;">
+                          <summary style="cursor: pointer;">查看参数</summary>
+                          <pre style="margin-top: 5px; padding: 8px; background: #f5f5f5; border-radius: 3px; overflow-x: auto; font-size: 0.8em;">{{ tool.inputSchema|tojson(indent=2) }}</pre>
+                        </details>
+                        {% endif %}
+                      </div>
+                    </label>
+                  </div>
+                  {% endfor %}
+                  {% else %}
+                  <p class="note" style="font-size: 0.9em;">该 Edge 设备尚未提供任何工具。</p>
+                  {% endif %}
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="row" style="margin-top: 20px;">
+            <div class="columns">
+              <button 
+                type="submit" 
+                class="rounded primary button">
+                保存配置
+              </button>
+              <a href="{{ url('agent_detail', { uid: adoc.owner, aid: adoc.aid }) }}" class="rounded button">
+                取消
+              </a>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 展开/折叠 Edge 工具列表
+  function toggleEdgeTools(containerId) {
+    const container = document.getElementById(containerId);
+    const toggle = document.getElementById('toggle-' + containerId);
+    if (container.style.display === 'none') {
+      container.style.display = 'block';
+      toggle.textContent = '▼';
+    } else {
+      container.style.display = 'none';
+      toggle.textContent = '▶';
+    }
+  }
+
+  // 全选/取消全选 Edge 下的所有工具
+  document.addEventListener('DOMContentLoaded', function() {
+    // Edge 全选
+    document.querySelectorAll('.edge-select-all').forEach(function(checkbox) {
+      checkbox.addEventListener('change', function() {
+        const edgeId = this.getAttribute('data-edge-id');
+        const toolCheckboxes = document.querySelectorAll('.tool-checkbox[data-edge-id="' + edgeId + '"]');
+        toolCheckboxes.forEach(function(tool) {
+          tool.checked = checkbox.checked;
+        });
+      });
+    });
+
+    // 工具复选框变化时，更新全选复选框状态
+    document.querySelectorAll('.tool-checkbox').forEach(function(tool) {
+      tool.addEventListener('change', function() {
+        const edgeId = this.getAttribute('data-edge-id');
+        
+        if (edgeId) {
+          const edgeCheckbox = document.querySelector('.edge-select-all[data-edge-id="' + edgeId + '"]');
+          if (edgeCheckbox) {
+            const toolCheckboxes = document.querySelectorAll('.tool-checkbox[data-edge-id="' + edgeId + '"]');
+            const allChecked = Array.from(toolCheckboxes).every(function(cb) { return cb.checked; });
+            const someChecked = Array.from(toolCheckboxes).some(function(cb) { return cb.checked; });
+            edgeCheckbox.checked = allChecked;
+            edgeCheckbox.indeterminate = someChecked && !allChecked;
+          }
+        }
+      });
+    });
+
+    // 初始化全选复选框状态
+    document.querySelectorAll('.edge-select-all').forEach(function(checkbox) {
+      const edgeId = checkbox.getAttribute('data-edge-id');
+      
+      if (edgeId) {
+        const toolCheckboxes = document.querySelectorAll('.tool-checkbox[data-edge-id="' + edgeId + '"]');
+        const allChecked = Array.from(toolCheckboxes).every(function(cb) { return cb.checked; });
+        const someChecked = Array.from(toolCheckboxes).some(function(cb) { return cb.checked; });
+        checkbox.checked = allChecked;
+        checkbox.indeterminate = someChecked && !allChecked;
+      }
+    });
+  });
+</script>
+{% endblock %}
+
