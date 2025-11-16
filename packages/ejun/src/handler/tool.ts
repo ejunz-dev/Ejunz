@@ -5,7 +5,7 @@ import { Logger } from '../logger';
 import EdgeModel from '../model/edge';
 import ToolModel from '../model/tool';
 import { EdgeServerConnectionHandler } from './edge';
-import { ValidationError } from '../error';
+import { ValidationError, NotFoundError } from '../error';
 import type { ToolDoc } from '../interface';
 
 const logger = new Logger('handler/tool');
@@ -25,7 +25,8 @@ export class ToolDomainHandler extends Handler<Context> {
                     ...tool,
                     edgeToken: edge.token,
                     edgeId: edge._id,
-                    edgeName: edge.name || `Edge-${edge.edgeId}`,
+                    eid: edge.eid,
+                    edgeName: edge.name || `Edge-${edge.eid}`,
                     edgeStatus: isConnected ? (tools.length > 0 ? 'working' : 'online') : 'offline',
                 });
             }
@@ -35,7 +36,7 @@ export class ToolDomainHandler extends Handler<Context> {
             if (a.edgeName !== b.edgeName) {
                 return a.edgeName.localeCompare(b.edgeName);
             }
-            return (a.toolId || 0) - (b.toolId || 0);
+            return (a.tid || 0) - (b.tid || 0);
         });
         
         const wsPath = `/d/${this.domain._id}/tool/status/ws`;
@@ -56,17 +57,37 @@ export class ToolDomainHandler extends Handler<Context> {
 export class ToolDetailHandler extends Handler<Context> {
     tool: ToolDoc;
 
-    @param('toolId', Types.ObjectId)
-    async prepare(domainId: string, toolId: ObjectId) {
-        const tool = await ToolModel.get(toolId);
-        if (!tool || tool.domainId !== domainId) {
+    async get() {
+        const { tid } = this.request.params;
+        
+        // 如果 tid 包含点号（如 .css.map），说明是静态资源，不应该匹配这个路由
+        // 框架应该先处理静态资源，但如果到达这里，说明是无效的 tid
+        if (tid && (tid.includes('.') || !/^\d+$/.test(tid))) {
+            // 返回 404，让静态资源处理器处理
+            throw new NotFoundError(tid);
+        }
+        
+        const tidNum = parseInt(tid, 10);
+        if (isNaN(tidNum) || tidNum < 1) {
+            throw new ValidationError('tid');
+        }
+        
+        // 需要先找到对应的 edge，然后通过 token 和 tid 查找 tool
+        const edges = await EdgeModel.getByDomain(this.domain._id);
+        let foundTool: ToolDoc | null = null;
+        
+        for (const edge of edges) {
+            const tool = await ToolModel.getByToolId(this.domain._id, edge.token, tidNum);
+            if (tool && tool.domainId === this.domain._id) {
+                foundTool = tool;
+                break;
+            }
+        }
+        
+        if (!foundTool) {
             throw new ValidationError('Tool not found');
         }
-        this.tool = tool;
-    }
-
-    @param('toolId', Types.ObjectId)
-    async get(domainId: string, toolId: ObjectId) {
+        this.tool = foundTool;
         const edge = await EdgeModel.get(this.tool.edgeDocId);
         if (!edge) {
             throw new ValidationError('Edge not found');
@@ -75,7 +96,7 @@ export class ToolDetailHandler extends Handler<Context> {
         const isConnected = EdgeServerConnectionHandler.active.has(edge.token);
         let edgeStatus: 'online' | 'offline' | 'working' = edge.status;
         if (isConnected) {
-            const tools = await ToolModel.getByToken(domainId, edge.token);
+            const tools = await ToolModel.getByToken(this.domain._id, edge.token);
             edgeStatus = tools.length > 0 ? 'working' : 'online';
         } else {
             edgeStatus = 'offline';
@@ -110,7 +131,7 @@ export class ToolStatusConnectionHandler extends ConnectionHandler<Context> {
                     ...tool,
                     edgeToken: edge.token,
                     edgeId: edge._id,
-                    edgeName: edge.name || `Edge-${edge.edgeId}`,
+                    edgeName: edge.name || `Edge-${edge.eid}`,
                     edgeStatus: isConnected ? (tools.length > 0 ? 'working' : 'online') : 'offline',
                 });
             }
@@ -120,7 +141,7 @@ export class ToolStatusConnectionHandler extends ConnectionHandler<Context> {
             if (a.edgeName !== b.edgeName) {
                 return a.edgeName.localeCompare(b.edgeName);
             }
-            return (a.toolId || 0) - (b.toolId || 0);
+            return (a.tid || 0) - (b.tid || 0);
         });
         
         this.send({ type: 'init', tools: allTools });
@@ -137,7 +158,8 @@ export class ToolStatusConnectionHandler extends ConnectionHandler<Context> {
                     ...tool,
                     edgeToken: edge.token,
                     edgeId: edge._id,
-                    edgeName: edge.name || `Edge-${edge.edgeId}`,
+                    eid: edge.eid,
+                    edgeName: edge.name || `Edge-${edge.eid}`,
                     edgeStatus: isConnected ? (tools.length > 0 ? 'working' : 'online') : 'offline',
                 }));
                 
@@ -163,7 +185,8 @@ export class ToolStatusConnectionHandler extends ConnectionHandler<Context> {
                     ...tool,
                     edgeToken: edge.token,
                     edgeId: edge._id,
-                    edgeName: edge.name || `Edge-${edge.edgeId}`,
+                    eid: edge.eid,
+                    edgeName: edge.name || `Edge-${edge.eid}`,
                     edgeStatus: finalStatus,
                 }));
                 
@@ -198,7 +221,8 @@ export class ToolStatusConnectionHandler extends ConnectionHandler<Context> {
                                 ...tool,
                                 edgeToken: edge.token,
                                 edgeId: edge._id,
-                                edgeName: edge.name || `Edge-${edge.edgeId}`,
+                                eid: edge.eid,
+                                edgeName: edge.name || `Edge-${edge.eid}`,
                                 edgeStatus: isConnected ? (tools.length > 0 ? 'working' : 'online') : 'offline',
                             });
                         }
@@ -208,7 +232,7 @@ export class ToolStatusConnectionHandler extends ConnectionHandler<Context> {
                         if (a.edgeName !== b.edgeName) {
                             return a.edgeName.localeCompare(b.edgeName);
                         }
-                        return (a.toolId || 0) - (b.toolId || 0);
+                        return (a.tid || 0) - (b.tid || 0);
                     });
                     
                     this.send({ type: 'refresh', tools: allTools });
@@ -235,7 +259,7 @@ export class ToolStatusConnectionHandler extends ConnectionHandler<Context> {
 
 export async function apply(ctx: Context) {
     ctx.Route('tool_domain', '/tool/list', ToolDomainHandler);
-    ctx.Route('tool_detail', '/tool/:toolId', ToolDetailHandler);
+    ctx.Route('tool_detail', '/tool/:tid', ToolDetailHandler);
     ctx.Connection('tool_status_conn', '/tool/status/ws', ToolStatusConnectionHandler);
 }
 

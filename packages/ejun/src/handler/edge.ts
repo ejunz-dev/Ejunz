@@ -5,7 +5,7 @@ import { Logger } from '../logger';
 import EdgeModel from '../model/edge';
 import ToolModel from '../model/tool';
 import { PRIV } from '../model/builtin';
-import { ValidationError, PermissionError } from '../error';
+import { ValidationError, PermissionError, NotFoundError } from '../error';
 import type { EdgeDoc } from '../interface';
 
 const logger = new Logger('edge');
@@ -197,7 +197,7 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
         // 更新edge状态，标记为已使用
         const wasFirstConnection = !edge.tokenUsedAt;
         try {
-            await EdgeModel.update(this.domain._id, edge.edgeId, {
+            await EdgeModel.update(this.domain._id, edge.eid, {
                 status: 'online',
                 tokenUsedAt: edge.tokenUsedAt || new Date(),
             });
@@ -473,7 +473,7 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
             try {
                 const edge = await EdgeModel.getByToken(this.domain._id, this.token);
                 if (edge) {
-                    await EdgeModel.update(this.domain._id, edge.edgeId, { status: 'offline' });
+                    await EdgeModel.update(this.domain._id, edge.eid, { status: 'offline' });
                     (this.ctx.emit as any)('edge/status/update', this.token, 'offline');
                 }
             } catch (error) {
@@ -565,7 +565,7 @@ export class EdgeDomainHandler extends Handler<Context> {
             };
         }));
         
-        edgesWithStatus.sort((a, b) => (a.edgeId || 0) - (b.edgeId || 0));
+        edgesWithStatus.sort((a, b) => (a.eid || 0) - (b.eid || 0));
         
         const wsPath = `/d/${this.domain._id}/edge/status/ws`;
         const protocol = this.request.headers['x-forwarded-proto'] || (this.request.headers['x-forwarded-ssl'] === 'on' ? 'https' : 'http');
@@ -585,18 +585,26 @@ export class EdgeDomainHandler extends Handler<Context> {
 export class EdgeDetailHandler extends Handler<Context> {
     edge: EdgeDoc;
 
-    @param('edgeId', Types.ObjectId)
-    async prepare(domainId: string, edgeId: ObjectId) {
-        const edge = await EdgeModel.get(edgeId);
-        if (!edge || edge.domainId !== domainId) {
+    async get() {
+        const { eid } = this.request.params;
+        
+        // 如果 eid 包含点号（如 .css.map）或不是纯数字，说明是静态资源或其他路由，不应该匹配这个路由
+        if (eid && (eid.includes('.') || !/^\d+$/.test(eid))) {
+            // 返回 404，让静态资源处理器或其他路由处理
+            throw new NotFoundError(eid);
+        }
+        
+        const eidNum = parseInt(eid, 10);
+        if (isNaN(eidNum) || eidNum < 1) {
+            throw new ValidationError('eid');
+        }
+        
+        const edge = await EdgeModel.getByEdgeId(this.domain._id, eidNum);
+        if (!edge || edge.domainId !== this.domain._id) {
             throw new ValidationError('Edge not found');
         }
         this.edge = edge;
-    }
-
-    @param('edgeId', Types.ObjectId)
-    async get(domainId: string, edgeId: ObjectId) {
-        const tools = await ToolModel.getByEdgeDocId(domainId, this.edge._id);
+        const tools = await ToolModel.getByEdgeDocId(this.domain._id, this.edge._id);
         const isConnected = EdgeServerConnectionHandler.active.has(this.edge.token);
         
         let status: 'online' | 'offline' | 'working' = this.edge.status;
@@ -615,7 +623,7 @@ export class EdgeDetailHandler extends Handler<Context> {
             tools: tools.map(tool => ({
                 ...tool,
                 edgeToken: this.edge.token,
-                edgeName: this.edge.name || `Edge-${this.edge.edgeId}`,
+                edgeName: this.edge.name || `Edge-${this.edge.eid}`,
                 edgeStatus: status,
             })),
             domainId: this.domain._id,
@@ -691,7 +699,7 @@ export class EdgeStatusConnectionHandler extends ConnectionHandler<Context> {
             const edge = await EdgeModel.getByToken(this.domain._id, token);
             if (edge && edge.tokenUsedAt) { // 只处理已连接的 edge
                 // 更新edge状态
-                await EdgeModel.updateStatus(this.domain._id, edge.edgeId, status);
+                await EdgeModel.updateStatus(this.domain._id, edge.eid, status);
                 
                 // 重新计算状态
                 const isConnected = EdgeServerConnectionHandler.active.has(token);
@@ -744,7 +752,7 @@ export class EdgeStatusConnectionHandler extends ConnectionHandler<Context> {
                 const isConnected = EdgeServerConnectionHandler.active.has(token);
                 const status = isConnected ? (tools.length > 0 ? 'working' : 'online') : 'offline';
                 
-                await EdgeModel.updateStatus(this.domain._id, edge.edgeId, status);
+                await EdgeModel.updateStatus(this.domain._id, edge.eid, status);
                 
                 const edgeWithStatus = {
                     ...edge,
@@ -843,10 +851,9 @@ export async function apply(ctx: Context) {
     ctx.Connection('edge_conn', '/edge/conn', EdgeConnectionHandler);
     ctx.Route('edge_rpc', '/edge/rpc', EdgeRpcHandler as any);
     ctx.Route('edge_domain', '/edge/list', EdgeDomainHandler);
-    ctx.Route('edge_detail', '/edge/:edgeId', EdgeDetailHandler);
     ctx.Route('edge_generate_token', '/edge/generate-token', EdgeGenerateTokenHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('edge_detail', '/edge/:eid', EdgeDetailHandler);
     ctx.Connection('edge_status_conn', '/edge/status/ws', EdgeStatusConnectionHandler);
-    // Edge server WebSocket connection (for external edge servers to connect)
     ctx.Connection('edge_server_conn', '/mcp/ws', EdgeServerConnectionHandler);
 
     // Expose MCP via app events for Agent chat

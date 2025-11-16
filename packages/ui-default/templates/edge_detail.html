@@ -112,7 +112,7 @@
                   {{ tool.description or '' }}
                 </td>
                 <td class="col--action">
-                  <a href="{{ url('tool_detail', { domainId: domainId, toolId: tool._id }) }}" class="button small">查看详情</a>
+                  <a href="{{ url('tool_detail', { domainId: domainId, tid: tool.tid }) }}" class="button small">查看详情</a>
                 </td>
               </tr>
               {%- endfor -%}

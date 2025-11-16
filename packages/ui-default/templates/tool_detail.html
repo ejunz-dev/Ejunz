@@ -28,8 +28,8 @@
               <tr>
                 <td class="col--key">来自 Edge</td>
                 <td>
-                  <a href="{{ url('edge_detail', { domainId: domainId, edgeId: edge._id }) }}">
-                    {{ edge.name or ('Edge-' + edge.edgeId|string) }}
+                  <a href="{{ url('edge_detail', { domainId: domainId, eid: edge.eid }) }}">
+                    {{ edge.name or ('Edge-' + edge.eid|string) }}
                   </a>
                   <span class="edge-status edge-status-{{ edge.status }}" style="margin-left: 10px;">
                     {% if edge.status == 'online' %}
@@ -50,7 +50,7 @@
               </tr>
               <tr>
                 <td class="col--key">Tool ID</td>
-                <td><code>{{ tool.toolId }}</code></td>
+                <td><code>{{ tool.tid }}</code></td>
               </tr>
               <tr>
                 <td class="col--key">创建时间</td>
