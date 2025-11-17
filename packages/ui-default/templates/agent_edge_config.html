@@ -79,7 +79,7 @@
                         {% if tool.inputSchema %}
                         <details style="font-size: 0.85em; color: #888;">
                           <summary style="cursor: pointer;">查看参数</summary>
-                          <pre style="margin-top: 5px; padding: 8px; background: #f5f5f5; border-radius: 3px; overflow-x: auto; font-size: 0.8em;">{{ tool.inputSchema|tojson(indent=2) }}</pre>
+                          <pre style="margin-top: 5px; padding: 8px; background: #f5f5f5; border-radius: 3px; overflow-x: auto; font-size: 0.8em;">{{ tool.inputSchema|json }}</pre>
                         </details>
                         {% endif %}
                       </div>
