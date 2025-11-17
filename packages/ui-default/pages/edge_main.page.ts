@@ -183,6 +183,25 @@ const page = new NamedPage('edge_main', async () => {
           } else {
             $('#node-link-container').hide();
           }
+        } else if (response.type === 'client') {
+          // Client 类型：只显示 WebSocket
+          $('#ws-endpoint-container').show();
+          $('#ws-endpoint-display').val(response.wsEndpoint || '');
+          
+          $('#mqtt-info-container').hide();
+          $('#mqtt-ws-container').hide();
+          $('#mqtt-auth-container').hide();
+          $('#copy-mqtt-btn-container').hide();
+          
+          // Client 类型：显示提示信息（client 将在连接时创建）
+          if (response.note) {
+            $('#node-link-container').show();
+            $('#node-link').text(response.note).attr('href', '#').css('cursor', 'default').off('click').on('click', (e) => {
+              e.preventDefault();
+            });
+          } else {
+            $('#node-link-container').hide();
+          }
         } else {
           // Provider 类型：只显示 WebSocket
           $('#ws-endpoint-container').show();
