@@ -4,9 +4,12 @@ import { Context } from '../context';
 import { Logger } from '../logger';
 import EdgeModel from '../model/edge';
 import ToolModel from '../model/tool';
+import NodeModel from '../model/node';
+import EdgeTokenModel from '../model/edge_token';
 import { PRIV } from '../model/builtin';
 import { ValidationError, PermissionError, NotFoundError } from '../error';
 import type { EdgeDoc } from '../interface';
+import type { EdgeBridgeEnvelope } from '../service/bus';
 
 const logger = new Logger('edge');
 
@@ -152,6 +155,7 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
     private subscriptions: Array<{ dispose: () => void }> = [];
     private accepted = false;
     private pendingToolCalls = new Map<string, { resolve: (value: any) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout }>();
+    private outboundBridgeDisposer: (() => void) | null = null;
     
     static getConnection(token: string): EdgeServerConnectionHandler | null {
         return EdgeServerConnectionHandler.active.get(token) || null;
@@ -165,14 +169,29 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
             return;
         }
 
-        // 直接通过 token 查找 Edge
-        const edge = await EdgeModel.getByToken(this.domain._id, token);
-        
-        if (!edge) {
+        // 先查找 token 记录
+        const tokenDoc = await EdgeTokenModel.getByToken(token);
+        if (!tokenDoc || tokenDoc.domainId !== this.domain._id) {
             logger.warn('Edge Server WebSocket connection rejected: Invalid token');
             this.close(4000, 'Invalid token');
             return;
         }
+
+        // 查找或创建 Edge
+        let edge = await EdgeModel.getByToken(this.domain._id, token);
+        if (!edge) {
+            // Edge 不存在，创建 Edge（使用 tokenDoc 中的 token）
+            edge = await EdgeModel.add({
+                domainId: this.domain._id,
+                type: tokenDoc.type as 'provider' | 'client' | 'node',
+                owner: this.user._id,
+                token: tokenDoc.token,
+            });
+            logger.info('Created edge on connection: eid=%d, token=%s, type=%s', edge.eid, token, tokenDoc.type);
+        }
+
+        // 更新 token 最后使用时间
+        await EdgeTokenModel.updateLastUsed(token);
 
         // Singleton pattern: reject new connection if one already exists
         if (EdgeServerConnectionHandler.active.has(token)) {
@@ -190,6 +209,7 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
 
         // Add to active connections (singleton pattern, one connection per token)
         EdgeServerConnectionHandler.active.set(token, this);
+        this.registerOutboundBridgeListener();
 
         logger.info('Edge Server WebSocket connected: %s (token: %s) from %s, totalActiveConnections=%d', 
             this.edgeDocId, token, this.request.ip, EdgeServerConnectionHandler.active.size);
@@ -201,6 +221,31 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
                 status: 'online',
                 tokenUsedAt: edge.tokenUsedAt || new Date(),
             });
+            
+            // 如果是 node 类型，自动创建 node 并建立双向关联（下游无需发送 nodeId）
+            if (edge.type === 'node') {
+                if (edge.nodeId) {
+                    // 已有关联的 node，更新 node 状态
+                    const node = await NodeModel.getByNodeId(this.domain._id, edge.nodeId);
+                    if (node) {
+                        await NodeModel.update(this.domain._id, node.nid, { status: 'active' });
+                        logger.info('Node already exists, updated status to active: nid=%d, edgeId=%d', node.nid, edge.eid);
+                    }
+                } else {
+                    // 自动创建 node 并建立双向关联（系统自动处理，下游无需发送 nodeId）
+                    const node = await NodeModel.add({
+                        domainId: this.domain._id,
+                        name: `Node-${edge.eid}`,
+                        owner: edge.owner,
+                        edgeId: edge.eid,
+                    });
+                    await EdgeModel.update(this.domain._id, edge.eid, { nodeId: node.nid });
+                    logger.info('Auto-created node for edge on connection: nid=%d, edgeId=%d (downstream does not need to send nodeId)', node.nid, edge.eid);
+                    
+                    // 发送 node/connected 事件，让前端显示这个 node
+                    (this.ctx.emit as any)('node/connected', node);
+                }
+            }
             
             // 如果是首次连接，发送 edge/connected 事件，让前端显示这个 edge
             if (wasFirstConnection) {
@@ -242,169 +287,44 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
             return;
         }
 
-        // Handle JSON-RPC format messages (reference edge.ts implementation)
-        if (msg && typeof msg === 'object' && msg.jsonrpc === '2.0' && msg.id !== undefined) {
-            const rec = this.pendingToolCalls.get(String(msg.id));
-            if (rec) {
-                this.pendingToolCalls.delete(String(msg.id));
-                clearTimeout(rec.timeout);
-                logger.debug('Tool call response received: token=%s, id=%s, hasError=%s', this.token, msg.id, !!msg.error);
-                if ('error' in msg && msg.error) {
-                    rec.reject(new Error(msg.error.message || 'Tool call failed'));
-                } else {
-                    rec.resolve(msg.result);
-                }
-                return;
-            } else {
-                logger.debug('Received JSON-RPC response with id=%s but no matching pending call: token=%s, pendingIds=%j', msg.id, this.token, Array.from(this.pendingToolCalls.keys()));
-            }
-            
-            if (msg.error) {
-                logger.warn('JSON-RPC error from Edge server: token=%s, error=%j', this.token, msg.error);
-                if (msg.error.code === -32601 && msg.error.message?.includes('Method not found')) {
-                    logger.debug('Method not found, MCP server may use different protocol');
-                }
-                return;
-            }
-            
-            if (msg.method) {
-                const requestId = msg.id;
-                const reply = (result: any) => {
-                    this.send({ jsonrpc: '2.0', id: requestId, result });
-                };
-                
-                if (msg.method === 'initialize') {
-                    // MCP protocol: handle initialization request
-                    logger.info('Edge server sent initialize request: token=%s', this.token);
-                    reply({
-                        protocolVersion: '2024-11-05',
-                        capabilities: {
-                            tools: {},
-                        },
-                        serverInfo: {
-                            name: 'ejunz-mcp-receiver',
-                            version: '1.0.0',
-                        },
-                    });
-                    setTimeout(() => {
-                        if (this.accepted && this.token) {
-                            const requestId = Date.now();
-                            this.send({
-                                jsonrpc: '2.0',
-                                method: 'tools/list',
-                                id: requestId,
-                                params: {},
-                            });
-                        }
-                    }, 100);
-                    return;
-                }
-                
-                if (msg.method === 'notifications/initialized') {
-                    // MCP protocol: client initialization complete notification
-                    logger.info('Edge server initialized: token=%s', this.token);
-                    setTimeout(() => {
-                        if (this.accepted && this.token) {
-                            const requestId = Date.now();
-                            this.send({
-                                jsonrpc: '2.0',
-                                method: 'tools/list',
-                                id: requestId,
-                                params: {},
-                            });
-                        }
-                    }, 100);
-                    return;
-                }
-                
-                logger.debug('Unknown JSON-RPC method from Edge server: token=%s, method=%s', this.token, msg.method);
-                if (msg.id !== undefined && msg.id !== null) {
-                    this.send({
-                        jsonrpc: '2.0',
-                        id: msg.id,
-                        error: { code: -32601, message: 'Method not found' },
-                    });
-                }
-                return;
-            }
-            
-            if (msg.result !== undefined) {
-                if (msg.result && typeof msg.result === 'object') {
-                    if (msg.result.tools && Array.isArray(msg.result.tools)) {
-                        await this.handleToolsList(msg.result.tools);
-                        return;
-                    } else if (Array.isArray(msg.result)) {
-                        await this.handleToolsList(msg.result);
-                        return;
-                    }
+        if (EdgeServerConnectionHandler.isBridgeEnvelope(msg)) {
+            const envelope = EdgeServerConnectionHandler.normalizeEnvelope(
+                msg,
+                this.token,
+                'inbound',
+                this.domain._id,
+            );
+            // Auto-fill nodeId from edge association if missing
+            await this.autoFillNodeIdFromEdge(envelope);
+            if (envelope.protocol === 'mcp') {
+                const rpcPayload = EdgeServerConnectionHandler.extractJsonRpcPayload(envelope);
+                if (rpcPayload) {
+                    await this.handleMcpJsonRpcMessage(rpcPayload);
                 }
             }
-        }
-
-        const { type } = msg;
-
-        if (!type) {
-            if (Array.isArray(msg)) {
-                logger.debug('Received tools array directly from Edge server: token=%s, count=%d', this.token, msg.length);
-                await this.handleToolsList(msg);
-                return;
-            } else if (msg.tools && Array.isArray(msg.tools)) {
-                logger.debug('Received tools in tools field from Edge server: token=%s, count=%d', this.token, msg.tools.length);
-                await this.handleToolsList(msg.tools);
-                return;
-            } else if (msg.data && Array.isArray(msg.data)) {
-                logger.debug('Received tools in data field from Edge server: token=%s, count=%d', this.token, msg.data.length);
-                await this.handleToolsList(msg.data);
-                return;
-            } else if (msg.result) {
-                if (Array.isArray(msg.result)) {
-                    logger.debug('Received tools in result array from Edge server: token=%s, count=%d', this.token, msg.result.length);
-                    await this.handleToolsList(msg.result);
-                    return;
-                } else if (msg.result.tools && Array.isArray(msg.result.tools)) {
-                    logger.debug('Received tools in result.tools from Edge server: token=%s, count=%d', this.token, msg.result.tools.length);
-                    await this.handleToolsList(msg.result.tools);
-                    return;
-                }
-            } else if (msg.content) {
-                if (Array.isArray(msg.content)) {
-                    logger.debug('Received tools in content field from Edge server: token=%s, count=%d', this.token, msg.content.length);
-                    await this.handleToolsList(msg.content);
-                    return;
-                } else if (msg.content.tools && Array.isArray(msg.content.tools)) {
-                    logger.debug('Received tools in content.tools from Edge server: token=%s, count=%d', this.token, msg.content.tools.length);
-                    await this.handleToolsList(msg.content.tools);
-                    return;
-                }
-            }
-            logger.debug('Received message without recognized tools format from Edge server: token=%s, msg=%j', this.token, msg);
+            (this.ctx.emit as any)('edge/ws/inbound', this.token, envelope);
             return;
         }
 
-        switch (type) {
-        case 'ping':
-            this.send({ type: 'pong' });
-            break;
-        case 'tools/list':
-        case 'tools/list/response':
-            await this.handleToolsList(msg.tools || msg.data || []);
-            break;
-        case 'status':
-            try {
-                // 不再更新数据库状态，状态由 WebSocket 连接本身管理
-                // 如果 MCP 服务器发送了状态更新消息，可以通过事件系统通知前端
-                const { status, errorMessage } = msg;
-                if (status === 'connected' || status === 'disconnected' || status === 'error') {
-                    // 只通过事件系统通知，不更新数据库
-                    (this.ctx.emit as any)('mcp/server/connection/update', this.token, status);
-                }
-            } catch (error: any) {
-                logger.error('Failed to update status: %s', error.message);
-            }
-            break;
-        default:
-            logger.debug('Unknown message type from Edge server: token=%s, type=%s', this.token, type);
+        if (EdgeServerConnectionHandler.isJsonRpcMessage(msg)) {
+            await this.handleMcpJsonRpcMessage(msg);
+            const normalized = EdgeServerConnectionHandler.normalizeEnvelope(
+                {
+                    protocol: 'mcp',
+                    action: 'jsonrpc',
+                    payload: msg,
+                },
+                this.token,
+                'inbound',
+                this.domain._id,
+            );
+            // Auto-fill nodeId from edge association if missing
+            await this.autoFillNodeIdFromEdge(normalized);
+            (this.ctx.emit as any)('edge/ws/inbound', this.token, normalized);
+            return;
         }
+
+        await this.handleMcpSideChannelMessage(msg);
     }
 
     private async handleToolsList(tools: any[]) {
@@ -463,6 +383,15 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
             }
         }
         this.subscriptions = [];
+
+        if (this.outboundBridgeDisposer) {
+            try {
+                this.outboundBridgeDisposer();
+            } catch {
+                // ignore
+            }
+            this.outboundBridgeDisposer = null;
+        }
         
         if (this.token && this.accepted) {
             const wasRemoved = EdgeServerConnectionHandler.active.delete(this.token);
@@ -492,6 +421,280 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
 
         if (this.accepted) {
             logger.info('Edge Server WebSocket disconnected: token=%s from %s', this.token, this.request.ip);
+        }
+    }
+
+    private registerOutboundBridgeListener() {
+        if (!this.token) return;
+
+        if (this.outboundBridgeDisposer) {
+            try {
+                this.outboundBridgeDisposer();
+            } catch {
+                // ignore
+            }
+            this.outboundBridgeDisposer = null;
+        }
+
+        const token = this.token;
+        this.outboundBridgeDisposer = this.ctx.on('edge/ws/outbound' as any, ((targetToken: string, envelope: EdgeBridgeEnvelope) => {
+            if (!this.accepted || !token || targetToken !== token) return;
+
+            try {
+                const normalized = EdgeServerConnectionHandler.normalizeEnvelope(
+                    envelope,
+                    token,
+                    'outbound',
+                    this.domain._id,
+                );
+                const outboundPayload = normalized.protocol === 'mcp'
+                    ? EdgeServerConnectionHandler.extractJsonRpcPayload(normalized) ?? normalized.payload
+                    : normalized;
+                this.send(outboundPayload);
+            } catch (error) {
+                logger.error('Failed to forward outbound edge envelope: token=%s, error=%s', token, (error as Error).message);
+            }
+        }) as any);
+    }
+
+    private static isBridgeEnvelope(msg: any): msg is EdgeBridgeEnvelope {
+        return Boolean(msg && typeof msg === 'object' && typeof msg.protocol === 'string');
+    }
+
+    private static isJsonRpcMessage(msg: any): boolean {
+        return Boolean(msg && typeof msg === 'object' && msg.jsonrpc === '2.0');
+    }
+
+    private static extractJsonRpcPayload(envelope: EdgeBridgeEnvelope): any {
+        if (!envelope) return null;
+        const payload = envelope.payload;
+        if (!payload) return null;
+        if (typeof payload === 'string') {
+            try {
+                return JSON.parse(payload);
+            } catch {
+                return null;
+            }
+        }
+        return payload;
+    }
+
+    private async handleMcpJsonRpcMessage(msg: any) {
+        if (!msg || typeof msg !== 'object') return;
+
+        if (msg.id !== undefined) {
+            const rec = this.pendingToolCalls.get(String(msg.id));
+            if (rec && !msg.method) {
+                this.pendingToolCalls.delete(String(msg.id));
+                clearTimeout(rec.timeout);
+                logger.debug('Tool call response received: token=%s, id=%s, hasError=%s', this.token, msg.id, !!msg.error);
+                if ('error' in msg && msg.error) {
+                    rec.reject(new Error(msg.error.message || 'Tool call failed'));
+                } else {
+                    rec.resolve(msg.result);
+                }
+                return;
+            }
+        }
+
+        if (msg.error) {
+            logger.warn('JSON-RPC error from Edge server: token=%s, error=%j', this.token, msg.error);
+            if (msg.error.code === -32601 && msg.error.message?.includes('Method not found')) {
+                logger.debug('Method not found, MCP server may use different protocol');
+            }
+            return;
+        }
+
+        if (msg.method) {
+            const requestId = msg.id;
+            const reply = (result: any) => {
+                if (requestId === undefined || requestId === null) return;
+                this.send({
+                    jsonrpc: '2.0',
+                    id: requestId,
+                    result,
+                });
+            };
+
+            if (msg.method === 'initialize') {
+                logger.info('Edge server sent initialize request: token=%s', this.token);
+                reply({
+                    protocolVersion: '2024-11-05',
+                    capabilities: {
+                        tools: {},
+                    },
+                    serverInfo: {
+                        name: 'ejunz-mcp-receiver',
+                        version: '1.0.0',
+                    },
+                });
+                setTimeout(() => {
+                    if (this.accepted && this.token) {
+                        const requestId = Date.now();
+                        this.send({
+                            jsonrpc: '2.0',
+                            method: 'tools/list',
+                            id: requestId,
+                            params: {},
+                        });
+                    }
+                }, 100);
+                return;
+            }
+
+            if (msg.method === 'notifications/initialized') {
+                logger.info('Edge server initialized: token=%s', this.token);
+                setTimeout(() => {
+                    if (this.accepted && this.token) {
+                        const requestId = Date.now();
+                        this.send({
+                            jsonrpc: '2.0',
+                            method: 'tools/list',
+                            id: requestId,
+                            params: {},
+                        });
+                    }
+                }, 100);
+                return;
+            }
+
+            if (msg.method === 'notifications/tools-update') {
+                // Handle tools update notification (no id, just notification)
+                logger.debug('Received tools update notification: token=%s', this.token);
+                if (msg.params && msg.params.tools && Array.isArray(msg.params.tools)) {
+                    await this.handleToolsList(msg.params.tools);
+                }
+                return;
+            }
+
+            logger.debug('Unknown JSON-RPC method from Edge server: token=%s, method=%s', this.token, msg.method);
+            if (msg.id !== undefined && msg.id !== null) {
+                this.send({
+                    jsonrpc: '2.0',
+                    id: msg.id,
+                    error: { code: -32601, message: 'Method not found' },
+                });
+            }
+            return;
+        }
+
+        if (msg.result !== undefined) {
+            if (msg.result && typeof msg.result === 'object') {
+                if (msg.result.tools && Array.isArray(msg.result.tools)) {
+                    await this.handleToolsList(msg.result.tools);
+                    return;
+                } else if (Array.isArray(msg.result)) {
+                    await this.handleToolsList(msg.result);
+                    return;
+                }
+            }
+        }
+
+        await this.handleMcpSideChannelMessage(msg);
+    }
+
+    private async handleMcpSideChannelMessage(msg: any) {
+        if (!msg || typeof msg !== 'object') return;
+
+        const { type } = msg;
+
+        if (!type) {
+            if (Array.isArray(msg)) {
+                logger.debug('Received tools array directly from Edge server: token=%s, count=%d', this.token, msg.length);
+                await this.handleToolsList(msg);
+                return;
+            } else if (msg.tools && Array.isArray(msg.tools)) {
+                logger.debug('Received tools in tools field from Edge server: token=%s, count=%d', this.token, msg.tools.length);
+                await this.handleToolsList(msg.tools);
+                return;
+            } else if (msg.data && Array.isArray(msg.data)) {
+                logger.debug('Received tools in data field from Edge server: token=%s, count=%d', this.token, msg.data.length);
+                await this.handleToolsList(msg.data);
+                return;
+            } else if (msg.result) {
+                if (Array.isArray(msg.result)) {
+                    logger.debug('Received tools in result array from Edge server: token=%s, count=%d', this.token, msg.result.length);
+                    await this.handleToolsList(msg.result);
+                    return;
+                } else if (msg.result.tools && Array.isArray(msg.result.tools)) {
+                    logger.debug('Received tools in result.tools from Edge server: token=%s, count=%d', this.token, msg.result.tools.length);
+                    await this.handleToolsList(msg.result.tools);
+                    return;
+                }
+            } else if (msg.content) {
+                if (Array.isArray(msg.content)) {
+                    logger.debug('Received tools in content field from Edge server: token=%s, count=%d', this.token, msg.content.length);
+                    await this.handleToolsList(msg.content);
+                    return;
+                } else if (msg.content.tools && Array.isArray(msg.content.tools)) {
+                    logger.debug('Received tools in content.tools from Edge server: token=%s, count=%d', this.token, msg.content.tools.length);
+                    await this.handleToolsList(msg.content.tools);
+                    return;
+                }
+            }
+            logger.debug('Received message without recognized tools format from Edge server: token=%s, msg=%j', this.token, msg);
+            return;
+        }
+
+        switch (type) {
+        case 'ping':
+            this.send({ type: 'pong' });
+            break;
+        case 'tools/list':
+        case 'tools/list/response':
+            await this.handleToolsList(msg.tools || msg.data || []);
+            break;
+        case 'status':
+            try {
+                const { status } = msg;
+                if (status === 'connected' || status === 'disconnected' || status === 'error') {
+                    (this.ctx.emit as any)('mcp/server/connection/update', this.token, status);
+                }
+            } catch (error: any) {
+                logger.error('Failed to update status: %s', error.message);
+            }
+            break;
+        default:
+            logger.debug('Unknown message type from Edge server: token=%s, type=%s', this.token, type);
+        }
+    }
+
+    private static normalizeEnvelope(
+        envelope: EdgeBridgeEnvelope,
+        token?: string | null,
+        direction?: 'inbound' | 'outbound',
+        domainId?: string,
+    ): EdgeBridgeEnvelope {
+        const normalizedTraceId = envelope.traceId || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        return {
+            ...envelope,
+            traceId: normalizedTraceId,
+            token: envelope.token || token || undefined,
+            direction: direction || envelope.direction,
+            domainId: envelope.domainId || domainId,
+            timestamp: envelope.timestamp || Date.now(),
+        };
+    }
+
+    private async autoFillNodeIdFromEdge(envelope: EdgeBridgeEnvelope) {
+        // If nodeId is already provided by downstream, use it (backward compatibility)
+        if (envelope.nodeId !== undefined && envelope.nodeId !== null) {
+            return;
+        }
+
+        // Auto-fill nodeId from edge association (preferred method, downstream does not need to send nodeId)
+        if (!this.token || !this.domain._id) {
+            return;
+        }
+
+        try {
+            const edge = await EdgeModel.getByToken(this.domain._id, this.token);
+            if (edge && edge.type === 'node' && edge.nodeId) {
+                envelope.nodeId = edge.nodeId;
+                logger.debug('Auto-filled nodeId from edge association: token=%s, nodeId=%s (downstream does not need to send nodeId)', this.token, edge.nodeId);
+            }
+        } catch (error) {
+            logger.debug('Failed to auto-fill nodeId from edge: token=%s, error=%s', this.token, (error as Error).message);
         }
     }
 
@@ -614,6 +817,12 @@ export class EdgeDetailHandler extends Handler<Context> {
             status = 'offline';
         }
 
+        // 如果是 node 类型，获取关联的 node 信息
+        let node = null;
+        if (edge.type === 'node' && edge.nodeId) {
+            node = await NodeModel.getByNodeId(this.domain._id, edge.nodeId);
+        }
+
         this.response.template = 'edge_detail.html';
         this.response.body = {
             edge: {
@@ -626,34 +835,72 @@ export class EdgeDetailHandler extends Handler<Context> {
                 edgeName: this.edge.name || `Edge-${this.edge.eid}`,
                 edgeStatus: status,
             })),
+            node, // 关联的 node 信息（如果是 node 类型）
             domainId: this.domain._id,
         };
     }
 }
 
 export class EdgeGenerateTokenHandler extends Handler<Context> {
-    async post() {
+    @param('type', Types.String, true)
+    async post(domainId: string, type?: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         this.response.template = null;
         
-        const edge = await EdgeModel.add({
-            domainId: this.domain._id,
-            type: 'provider',
-            owner: this.user._id,
-        });
+        // 默认类型为 provider，支持 provider、client、node
+        const edgeType = (type === 'client' || type === 'node') ? type : 'provider';
         
-        const wsPath = `/d/${this.domain._id}/mcp/ws`;
+        // 只生成 token，不创建 edge
+        const token = await EdgeTokenModel.generateToken();
+        await EdgeTokenModel.add(this.domain._id, edgeType as 'provider' | 'client' | 'node', token);
+        
         const protocol = this.request.headers['x-forwarded-proto'] || (this.request.headers['x-forwarded-ssl'] === 'on' ? 'https' : 'http');
         const wsProtocol = protocol === 'https' ? 'wss' : 'ws';
         const host = this.request.host || this.request.headers.host || 'localhost';
-        const wsEndpoint = `${wsProtocol}://${host}${wsPath}?token=${edge.token}`;
         
-        this.response.body = { 
-            success: true, 
-            token: edge.token,
-            wsEndpoint,
+        let responseBody: any = {
+            success: true,
+            token: token,
+            type: edgeType,
         };
         
+        if (edgeType === 'node') {
+            // Node 类型：生成 MQTT 接入点信息（edge 和 node 将在连接时创建）
+            const mqttTcpHost = host.split(':')[0];
+            const mqttTcpPort = parseInt(process.env.MQTT_PORT || '1883', 10);
+            const hostParts = host.split(':');
+            let wsPort: number | string = '';
+            if (hostParts.length > 1) {
+                wsPort = hostParts[1];
+            } else {
+                wsPort = protocol === 'https' ? 443 : 80;
+            }
+            
+            const wsPath = `/d/${this.domain._id}/mcp/ws`;
+            const wsEndpoint = `${wsProtocol}://${host}${wsPath}?token=${token}`;
+            
+            responseBody.wsEndpoint = wsEndpoint;
+            // MQTT 接入点信息（注意：连接时会创建 edge 和 node，MQTT 用户名/密码将使用 node.nid）
+            responseBody.mqtt = {
+                wsUrl: `${wsProtocol}://${host}/mqtt/ws`,
+                wsHost: mqttTcpHost,
+                wsPort: wsPort,
+                tcpUrl: `mqtt://${mqttTcpHost}:${mqttTcpPort}`,
+                tcpHost: mqttTcpHost,
+                tcpPort: mqttTcpPort,
+                // 注意：连接前无法确定 eid/nid，连接后会创建 edge 和 node
+                username: `${this.domain._id}:<nid>`,
+                password: `${this.domain._id}:<nid>`,
+            };
+            responseBody.note = 'Edge 和 Node 将在通过此 token 连接时自动创建';
+        } else {
+            // Provider 和 Client 类型：只生成 WebSocket 接入点
+            const wsPath = `/d/${this.domain._id}/mcp/ws`;
+            const wsEndpoint = `${wsProtocol}://${host}${wsPath}?token=${token}`;
+            responseBody.wsEndpoint = wsEndpoint;
+        }
+        
+        this.response.body = responseBody;
     }
 }
 

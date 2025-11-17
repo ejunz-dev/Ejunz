@@ -30,29 +30,30 @@ class NodeModel {
 
     static async generateNextNodeId(domainId: string): Promise<number> {
         const lastNode = await document.getMulti(domainId, document.TYPE_NODE, {})
-            .sort({ nodeId: -1 })
+            .sort({ nid: -1 })
             .limit(1)
-            .project({ nodeId: 1 })
+            .project({ nid: 1 })
             .toArray();
-        return (lastNode[0]?.nodeId || 0) + 1;
+        return (lastNode[0]?.nid || 0) + 1;
     }
 
-    static async add(node: Partial<NodeDoc> & { domainId: string; name: string; owner: number }): Promise<NodeDoc> {
-        const nodeId = await this.generateNextNodeId(node.domainId);
+    static async add(node: Partial<NodeDoc> & { domainId: string; name: string; owner: number; edgeId?: number }): Promise<NodeDoc> {
+        const nid = await this.generateNextNodeId(node.domainId);
         const now = new Date();
         
         const payload: Partial<NodeDoc> = {
             domainId: node.domainId,
-            nodeId,
+            nid,
             name: node.name,
             description: node.description,
             status: node.status || 'inactive',
+            edgeId: node.edgeId,
             createdAt: now,
             updatedAt: now,
             owner: node.owner,
         };
 
-        // docId 由 mongo 自动生成（ObjectId），nodeId 是业务 ID（从 1 开始）
+        // docId 由 mongo 自动生成（ObjectId），nid 是业务 ID（从 1 开始）
         await document.add(
             node.domainId,
             node.name, // content
@@ -64,14 +65,14 @@ class NodeModel {
             payload,
         );
 
-        return await this.getByNodeId(node.domainId, nodeId) as NodeDoc;
+        return await this.getByNodeId(node.domainId, nid) as NodeDoc;
     }
 
     static async get(_id: ObjectId): Promise<NodeDoc | null> {
-        // 通过 _id 查找需要先找到对应的 domainId 和 nodeId
+        // 通过 _id 查找需要先找到对应的 domainId 和 nid
         const doc = await document.coll.findOne({ _id });
         if (!doc) return null;
-        return await this.getByNodeId(doc.domainId, doc.nodeId);
+        return await this.getByNodeId(doc.domainId, doc.nid);
     }
 
     static async getByDomain(domainId: string): Promise<NodeDoc[]> {
@@ -82,15 +83,15 @@ class NodeModel {
         return await document.getMulti(domainId, document.TYPE_NODE, { owner }).toArray() as NodeDoc[];
     }
 
-    static async update(domainId: string, nodeId: number, update: Partial<NodeDoc>): Promise<NodeDoc> {
-        const node = await this.getByNodeId(domainId, nodeId);
+    static async update(domainId: string, nid: number, update: Partial<NodeDoc>): Promise<NodeDoc> {
+        const node = await this.getByNodeId(domainId, nid);
         if (!node) throw new Error('Node not found');
         const $set = { ...update, updatedAt: new Date() };
         return await document.set(domainId, document.TYPE_NODE, node.docId, $set) as NodeDoc;
     }
 
-    static async del(domainId: string, nodeId: number) {
-        const node = await this.getByNodeId(domainId, nodeId);
+    static async del(domainId: string, nid: number) {
+        const node = await this.getByNodeId(domainId, nid);
         if (!node) return;
         // 删除节点时同时删除相关设备
         if (node._id) {
@@ -99,13 +100,21 @@ class NodeModel {
         return await document.deleteOne(domainId, document.TYPE_NODE, node.docId);
     }
 
-    static async findByDomainAndNodeId(domainId: string, nodeId: number): Promise<NodeDoc | null> {
-        return await this.getByNodeId(domainId, nodeId);
+    static async findByDomainAndNodeId(domainId: string, nid: number): Promise<NodeDoc | null> {
+        return await this.getByNodeId(domainId, nid);
     }
 
-    static async getByNodeId(domainId: string, nodeId: number): Promise<NodeDoc | null> {
-        // 通过 nodeId 查询，因为 docId 是 ObjectId
-        const nodes = await document.getMulti(domainId, document.TYPE_NODE, { nodeId })
+    static async getByNodeId(domainId: string, nid: number): Promise<NodeDoc | null> {
+        // 通过 nid 查询，因为 docId 是 ObjectId
+        const nodes = await document.getMulti(domainId, document.TYPE_NODE, { nid })
+            .limit(1)
+            .toArray();
+        return (nodes[0] as NodeDoc) || null;
+    }
+    
+    static async getByEdgeId(domainId: string, edgeId: number): Promise<NodeDoc | null> {
+        // 通过 edgeId 查找关联的 node
+        const nodes = await document.getMulti(domainId, document.TYPE_NODE, { edgeId })
             .limit(1)
             .toArray();
         return (nodes[0] as NodeDoc) || null;

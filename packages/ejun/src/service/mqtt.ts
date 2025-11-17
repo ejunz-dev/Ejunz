@@ -4,8 +4,11 @@ import { Context, Service } from '../context';
 import { Logger } from '../logger';
 import { ObjectId } from 'mongodb';
 import NodeModel, { NodeDeviceModel } from '../model/node';
+import EdgeModel from '../model/edge';
 import * as document from '../model/document';
 import { Duplex } from 'stream';
+import type { EdgeBridgeEnvelope, Disposable } from './bus';
+import type { NodeDoc } from '../interface';
 
 const logger = new Logger('mqtt');
 
@@ -81,6 +84,8 @@ export class MqttService extends Service {
     private tcpServer: Server | null = null;
     private activeConnections: Map<string, { nodeId: ObjectId; clientId: string }> = new Map();
     private nodeConnections: Map<ObjectId, any> = new Map();
+    private bridgeDisposables: Disposable[] = [];
+    private nodeDocCache: Map<string, ObjectId> = new Map();
 
     createWebSocketStream(ws: any, req: any): Duplex {
         return createWebSocketStream(ws, req);
@@ -120,36 +125,75 @@ export class MqttService extends Service {
                         return;
                     }
 
-                    const [domainId, nodeIdStr] = parts;
-                    const nodeId = parseInt(nodeIdStr, 10);
-                    if (isNaN(nodeId) || nodeId < 1) {
-                        logger.warn('MQTT authentication failed: invalid nodeId %s (domainId: %s)', nodeIdStr, domainId);
-                        const err = new Error('Invalid nodeId: must be a positive integer') as any;
+                    const [domainId, idStr] = parts;
+                    const id = parseInt(idStr, 10);
+                    if (isNaN(id) || id < 1) {
+                        logger.warn('MQTT authentication failed: invalid id %s (domainId: %s)', idStr, domainId);
+                        const err = new Error('Invalid id: must be a positive integer') as any;
                         err.returnCode = 4; // Not authorized
                         callback(err, null);
                         return;
                     }
 
-                    logger.debug('Looking up node: domainId=%s, nodeId=%s', domainId, nodeId);
-                    const node = await NodeModel.getByNodeId(domainId, nodeId);
+                    // 先尝试作为 node.nid 查找
+                    logger.debug('Looking up node: domainId=%s, nid=%s', domainId, id);
+                    let node = await NodeModel.getByNodeId(domainId, id);
+                    
+                    // 如果 node 不存在，尝试作为 edge.eid 查找（用于 node 类型的 edge 首次连接）
                     if (!node) {
-                        logger.warn('MQTT authentication failed: node not found (domainId: %s, nodeId: %s)', domainId, nodeId);
-                        const err = new Error('Node not found') as any;
+                        logger.debug('Node not found by nid, trying as edge.eid: domainId=%s, eid=%s', domainId, id);
+                        let edge = await EdgeModel.getByEdgeId(domainId, id);
+                        
+                        // 如果 edge 不存在，尝试查找所有 node 类型的 token，看是否有匹配的
+                        // 注意：这需要 edge 已经通过 WebSocket 连接过，否则无法确定 token 对应的 edge
+                        if (!edge) {
+                            logger.warn('MQTT authentication failed: edge not found (domainId: %s, eid: %s). Edge must be connected via WebSocket first.', domainId, id);
+                            const err = new Error('Edge not found. Please connect via WebSocket first to create edge and node.') as any;
                         err.returnCode = 4; // Not authorized
                         callback(err, null);
                         return;
                     }
                     
-                    logger.info('Node found for MQTT authentication: nodeId=%s, domainId=%s', node.nodeId, node.domainId);
+                        if (edge.type === 'node') {
+                            // 通过 edge.eid 找到 node 类型的 edge，创建 node
+                            logger.info('Found node-type edge, creating node: edgeId=%d, domainId=%s', edge.eid, domainId);
+                            node = await NodeModel.add({
+                                domainId: edge.domainId,
+                                name: `Node-${edge.eid}`,
+                                owner: edge.owner,
+                                edgeId: edge.eid,
+                            });
+                            await EdgeModel.update(edge.domainId, edge.eid, { nodeId: node.nid });
+                            logger.info('Created node for edge via MQTT: nid=%d, edgeId=%d', node.nid, edge.eid);
+                            
+                            // 发送 node/connected 事件
+                            try {
+                                const ctx = (global as any).Ejunz?.ctx;
+                                if (ctx) {
+                                    (ctx.emit as any)('node/connected', node);
+                                }
+                            } catch (e) {
+                                // ignore
+                            }
+                        } else {
+                            logger.warn('MQTT authentication failed: edge is not node type (domainId: %s, eid: %s, type: %s)', domainId, id, edge.type);
+                            const err = new Error('Edge is not node type') as any;
+                            err.returnCode = 4; // Not authorized
+                            callback(err, null);
+                            return;
+                        }
+                    }
+                    
+                    logger.info('Node found for MQTT authentication: nid=%s, domainId=%s', node.nid, node.domainId);
 
-                    await NodeModel.update(node.domainId, node.nodeId, { status: 'active', mqttClientId: client.id });
+                    await NodeModel.update(node.domainId, node.nid, { status: 'active', mqttClientId: client.id });
                     // Get node document _id (ObjectId) for device queries
-                    const nodeDoc = await document.coll.findOne({ domainId, docType: document.TYPE_NODE, nodeId: node.nodeId });
+                    const nodeDoc = await document.coll.findOne({ domainId, docType: document.TYPE_NODE, nid: node.nid });
                     if (nodeDoc && nodeDoc._id) {
                         this.activeConnections.set(client.id, { nodeId: nodeDoc._id, clientId: client.id });
                         logger.info('MQTT client authenticated: %s (node: %s)', client.id, nodeDoc._id);
                     } else {
-                        logger.warn('Failed to find node document for domainId: %s, nodeId: %s', domainId, node.nodeId);
+                        logger.warn('Failed to find node document for domainId: %s, nid: %s', domainId, node.nid);
                     }
                     callback(null, true);
                 } catch (error) {
@@ -195,7 +239,7 @@ export class MqttService extends Service {
                     const node = await document.coll.findOne({ _id: conn.nodeId });
                     if (node) {
                         // NodeModel.update requires numeric nodeId, not ObjectId docId
-                        await NodeModel.update(node.domainId, node.nodeId, { status: 'disconnected' });
+                        await NodeModel.update(node.domainId, node.nid, { status: 'disconnected' });
                         (this.ctx.emit as any)('node/status/update', conn.nodeId, 'disconnected');
                     } else {
                         logger.warn('Node not found for disconnected client: %s (nodeId: %s)', client.id, conn.nodeId);
@@ -258,11 +302,14 @@ export class MqttService extends Service {
         logger.info('  - MQTT TCP server: port %d', mqttPort);
         logger.info('  - MQTT WebSocket endpoint: /mqtt/ws (handled by NodeMqttConnectionHandler)');
 
+        this.registerEdgeBridgeListeners();
+
         yield () => {
             if (this.tcpServer) {
                 this.tcpServer.close();
             }
             this.broker.close();
+            this.disposeBridgeListeners();
         };
     }
 
@@ -433,7 +480,7 @@ export class MqttService extends Service {
             logger.warn('Node not found for nodeId: %s', nodeId);
             return;
         }
-        const fullTopic = `node/${node.nodeId}/${topic}`;
+        const fullTopic = `node/${node.nid}/${topic}`;
         const message = {
             cmd: 'publish' as const,
             topic: fullTopic,
@@ -444,8 +491,10 @@ export class MqttService extends Service {
         };
         logger.info('Publishing MQTT message: topic=%s, payload=%O', fullTopic, payload);
         this.broker.publish(message, () => {
-            logger.info('Published to node %s: topic=%s', node.nodeId, fullTopic);
+            logger.info('Published to node %s: topic=%s', node.nid, fullTopic);
         });
+
+        await this.emitEdgeBridgeOutbound(node, fullTopic, payload);
     }
 
     // Publish device control command via MQTT
@@ -458,12 +507,12 @@ export class MqttService extends Service {
         }
         
         const topic = `devices/${deviceId}/set`;
-        const fullTopic = `node/${node.nodeId}/${topic}`;
+        const fullTopic = `node/${node.nid}/${topic}`;
         logger.info('Publishing control command to local MQTT broker: topic=%s (full: %s), command=%O', 
             topic, fullTopic, command);
         await this.publishToNode(nodeId, topic, command);
         logger.info('Sent device control command via MQTT to local broker, node %s, device %s, full topic: %s', 
-            node.nodeId, deviceId, fullTopic);
+            node.nid, deviceId, fullTopic);
         
         // Also publish to zigbee2mqtt format: convert {"on": true} -> {"state": "ON"}
         const zigbee2mqttTopic = `zigbee2mqtt/${deviceId}/set`;
@@ -543,7 +592,7 @@ export class MqttService extends Service {
                 }
             }
             
-            const stateTopic = `node/${node.nodeId}/devices/${deviceId}/state`;
+            const stateTopic = `node/${node.nid}/devices/${deviceId}/state`;
             const stateMessage = {
                 cmd: 'publish' as const,
                 topic: stateTopic,
@@ -598,6 +647,141 @@ export class MqttService extends Service {
             clientId,
             nodeId: conn.nodeId,
         }));
+    }
+
+    private registerEdgeBridgeListeners() {
+        const inbound = this.ctx.on('edge/ws/inbound' as any, ((token: string, envelope: EdgeBridgeEnvelope) => {
+            this.handleEdgeInboundEnvelope(token, envelope).catch((error: Error) => {
+                logger.error('Edge bridge inbound failed: %s', error.message);
+            });
+        }) as any);
+        this.bridgeDisposables.push(inbound);
+    }
+
+    private disposeBridgeListeners() {
+        for (const dispose of this.bridgeDisposables) {
+            try {
+                dispose?.();
+            } catch {
+                // ignore
+            }
+        }
+        this.bridgeDisposables = [];
+    }
+
+    private async handleEdgeInboundEnvelope(token: string, envelope: EdgeBridgeEnvelope) {
+        if (!envelope || envelope.protocol !== 'mqtt') {
+            return;
+        }
+
+        const domainId = envelope.domainId;
+        if (!domainId) {
+            logger.warn('MQTT bridge inbound missing domainId: token=%s', token);
+            return;
+        }
+
+        // Find node via edge token association (preferred method, no need for downstream to send nodeId)
+        let nodeDocId: ObjectId | null = null;
+        let nodeNumericId: number | null = null;
+
+        if (token) {
+            try {
+                const edge = await EdgeModel.getByToken(domainId, token);
+                if (edge && edge.type === 'node' && edge.nodeId) {
+                    nodeNumericId = edge.nodeId;
+                    nodeDocId = await this.getNodeDocId(domainId, nodeNumericId);
+                    logger.debug('MQTT bridge found node via edge token: token=%s, nodeId=%s', token, nodeNumericId);
+                }
+            } catch (error) {
+                logger.debug('MQTT bridge failed to find node via edge: token=%s, error=%s', token, (error as Error).message);
+            }
+        }
+
+        // Fallback: if nodeId is provided in envelope, try to use it
+        if (!nodeDocId && envelope.nodeId !== undefined && envelope.nodeId !== null) {
+            const nodeIdentifier = envelope.nodeId;
+            const parsedNumericId = typeof nodeIdentifier === 'number'
+                ? nodeIdentifier
+                : parseInt(String(nodeIdentifier), 10);
+            
+            if (Number.isFinite(parsedNumericId)) {
+                nodeNumericId = parsedNumericId;
+                nodeDocId = await this.getNodeDocId(domainId, nodeNumericId);
+                logger.debug('MQTT bridge found node via envelope nodeId: nodeId=%s', nodeNumericId);
+            }
+        }
+
+        if (!nodeDocId || !nodeNumericId) {
+            logger.warn('MQTT bridge inbound node not found: domainId=%s, nodeId=%s, token=%s', domainId, envelope.nodeId, token);
+            return;
+        }
+
+        const topic = typeof envelope.channel === 'string' && envelope.channel.length > 0
+            ? envelope.channel
+            : null;
+        if (!topic) {
+            logger.warn('MQTT bridge inbound missing channel/topic: domainId=%s, nodeId=%s', domainId, nodeNumericId);
+            return;
+        }
+
+        const normalizedTopic = topic.startsWith('node/')
+            ? topic
+            : `node/${nodeNumericId}/${topic}`;
+
+        const payloadString = typeof envelope.payload === 'string'
+            ? envelope.payload
+            : JSON.stringify(envelope.payload ?? {});
+
+        logger.info('MQTT bridge inbound message: token=%s, topic=%s, trace=%s', token, normalizedTopic, envelope.traceId);
+        await this.handleNodeMessage(nodeDocId, normalizedTopic, payloadString);
+    }
+
+    private async getNodeDocId(domainId: string, nodeNumericId: number): Promise<ObjectId | null> {
+        const cacheKey = `${domainId}:${nodeNumericId}`;
+        const cached = this.nodeDocCache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const node = await NodeModel.getByNodeId(domainId, nodeNumericId);
+        if (node && node._id) {
+            this.nodeDocCache.set(cacheKey, node._id);
+            return node._id;
+        }
+        return null;
+    }
+
+    private async emitEdgeBridgeOutbound(node: NodeDoc, fullTopic: string, payload: any) {
+        try {
+            if (!node.edgeId) {
+                logger.debug('Node has no edge binding, skip edge bridge publish: nid=%s', node.nid);
+                return;
+            }
+
+            const edge = await EdgeModel.getByEdgeId(node.domainId, node.edgeId);
+            if (!edge || !edge.token) {
+                logger.warn('Edge not found for node, skip edge bridge publish: domainId=%s, nodeId=%s', node.domainId, node.nid);
+                return;
+            }
+
+            const envelope: EdgeBridgeEnvelope = {
+                protocol: 'mqtt',
+                action: 'publish',
+                channel: fullTopic,
+                payload,
+                nodeId: node.nid,
+                domainId: node.domainId,
+                qos: 1,
+                meta: {
+                    source: 'cloud',
+                },
+            };
+
+            (this.ctx.emit as any)('edge/ws/outbound', edge.token, envelope);
+            logger.debug('Edge bridge outbound publish: token=%s, topic=%s', edge.token, fullTopic);
+        } catch (error) {
+            logger.error('Edge bridge outbound failed: %s', (error as Error).message);
+        }
     }
 }
 

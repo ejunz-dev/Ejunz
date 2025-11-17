@@ -13,6 +13,23 @@ import type { DocType } from '../model/document';
 export type Disposable = () => void;
 export type VoidReturn = Promise<any> | any;
 
+export type EdgeBridgeProtocol = 'mqtt' | 'mcp' | string;
+
+export interface EdgeBridgeEnvelope {
+    protocol: EdgeBridgeProtocol;
+    channel?: string;
+    action?: string;
+    payload: any;
+    traceId?: string;
+    token?: string;
+    nodeId?: string | number;
+    domainId?: string;
+    qos?: 0 | 1 | 2;
+    timestamp?: number;
+    direction?: 'inbound' | 'outbound';
+    meta?: Record<string, any>;
+}
+
 export interface EventMap {
     'app/listen': () => void;
     'app/started': () => void;
@@ -67,6 +84,10 @@ export interface EventMap {
     'discussion/add': (payload: Partial<DiscussionDoc>) => VoidReturn;
 
     'oplog/log': (type: string, handler: Handler<Context> | ConnectionHandler<Context>, args: any, data: any) => VoidReturn;
+
+    // Edge bridge events (single WebSocket for MCP + MQTT)
+    'edge/ws/inbound': (token: string, envelope: EdgeBridgeEnvelope) => VoidReturn;
+    'edge/ws/outbound': (token: string, envelope: EdgeBridgeEnvelope) => VoidReturn;
 }
 
 export function apply(ctx: Context) {
