@@ -22,7 +22,7 @@ class ClientModel {
         return randomstring(32);
     }
 
-    static async add(client: Partial<ClientDoc> & { domainId: string; name: string; owner: number }): Promise<ClientDoc> {
+    static async add(client: Partial<ClientDoc> & { domainId: string; name: string; owner: number; edgeId?: number }): Promise<ClientDoc> {
         const clientId = await this.generateNextClientId(client.domainId);
         const now = new Date();
         
@@ -37,6 +37,7 @@ class ClientModel {
             lastConnectedAt: client.lastConnectedAt,
             lastDisconnectedAt: client.lastDisconnectedAt,
             errorMessage: client.errorMessage,
+            edgeId: client.edgeId,
             settings: client.settings || {
                 asr: undefined,
                 tts: undefined,
