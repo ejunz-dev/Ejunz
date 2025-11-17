@@ -73,7 +73,7 @@
       <div class="section__body">
         <div class="typo">
           {% if tool.inputSchema %}
-            <pre style="white-space: pre-wrap; word-wrap: break-word; background: #f5f5f5; padding: 15px; border-radius: 4px; overflow-x: auto;">{{ tool.inputSchema|tojson(indent=2) }}</pre>
+            <pre style="white-space: pre-wrap; word-wrap: break-word; background: #f5f5f5; padding: 15px; border-radius: 4px; overflow-x: auto;">{{ tool.inputSchema|json }}</pre>
           {% else %}
             <p class="text-gray">该工具没有定义输入参数。</p>
           {% endif %}
