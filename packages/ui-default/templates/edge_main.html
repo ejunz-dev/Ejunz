@@ -67,24 +67,62 @@
       <div class="dialog--signin__close-container supplementary">
         <a name="token-dialog__close" href="javascript:;">{{ _('CLOSE') }}</a>
       </div>
-      <h1 class="dialog--signin__title">接入点 Token</h1>
+      <h1 class="dialog--signin__title">生成接入点</h1>
+      <div class="row"><div class="columns">
+        <label class="material textbox">
+          类型
+          <select id="edge-type-select">
+            <option value="provider">Provider (WebSocket)</option>
+            <option value="node">Node (MQTT + WebSocket)</option>
+          </select>
+        </label>
+      </div></div>
+      <div class="row"><div class="columns">
+        <button class="expanded rounded primary button" id="generate-token-confirm-btn">生成接入点</button>
+      </div></div>
+      <hr style="margin: 1em 0;">
+      <h2 class="dialog--signin__title" style="font-size: 1.2em; margin-top: 1em;">接入点信息</h2>
       <div class="row"><div class="columns">
         <label class="material textbox">
           Token
           <input type="text" id="token-display" readonly>
         </label>
       </div></div>
-      <div class="row"><div class="columns">
+      <div class="row"><div class="columns" id="ws-endpoint-container">
         <label class="material textbox">
           WebSocket 接入点
           <input type="text" id="ws-endpoint-display" readonly>
         </label>
+      </div></div>
+      <div class="row"><div class="columns" id="mqtt-info-container" style="display:none;">
+        <label class="material textbox">
+          MQTT TCP 地址
+          <input type="text" id="mqtt-tcp-url-display" readonly>
+        </label>
+      </div></div>
+      <div class="row"><div class="columns" id="mqtt-ws-container" style="display:none;">
+        <label class="material textbox">
+          MQTT WebSocket 地址
+          <input type="text" id="mqtt-ws-url-display" readonly>
+        </label>
+      </div></div>
+      <div class="row"><div class="columns" id="mqtt-auth-container" style="display:none;">
+        <label class="material textbox">
+          MQTT 用户名/密码
+          <input type="text" id="mqtt-auth-display" readonly>
+        </label>
+      </div></div>
+      <div class="row"><div class="columns" id="node-link-container" style="display:none;">
+        <p class="text-gray">关联的 Node: <a href="#" id="node-link" target="_blank">查看详情</a></p>
       </div></div>
       <div class="row"><div class="columns">
         <button class="expanded rounded primary button" id="copy-token-btn">复制 Token</button>
       </div></div>
       <div class="row"><div class="columns">
         <button class="expanded rounded button" id="copy-endpoint-btn">复制接入点 URL</button>
+      </div></div>
+      <div class="row"><div class="columns" id="copy-mqtt-btn-container" style="display:none;">
+        <button class="expanded rounded button" id="copy-mqtt-btn">复制 MQTT 配置</button>
       </div></div>
     </div>
   </div>

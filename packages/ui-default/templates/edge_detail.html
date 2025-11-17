@@ -28,10 +28,10 @@
               <tr>
                 <td class="col--key">类型</td>
                 <td>
-                  {% if edge.type == 'repo' %}
-                    <span class="badge badge--primary">Repo</span>
-                  {% elif edge.type == 'node' %}
+                  {% if edge.type == 'node' %}
                     <span class="badge badge--info">Node</span>
+                  {% elif edge.type == 'client' %}
+                    <span class="badge badge--warning">Client</span>
                   {% else %}
                     <span class="badge">Provider</span>
                   {% endif %}
@@ -71,6 +71,16 @@
               <tr>
                 <td class="col--key">描述</td>
                 <td>{{ edge.description }}</td>
+              </tr>
+              {% endif %}
+              {% if edge.type == 'node' and node %}
+              <tr>
+                <td class="col--key">关联 Node</td>
+                <td>
+                  <a href="{{ url('node_detail', { domainId: domainId, nid: node.nid }) }}">
+                    {{ node.name }} (NID: {{ node.nid }})
+                  </a>
+                </td>
               </tr>
               {% endif %}
             </tbody>
