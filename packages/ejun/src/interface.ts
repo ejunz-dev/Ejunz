@@ -398,6 +398,7 @@ declare module './model/client' {
         lastConnectedAt?: Date;
         lastDisconnectedAt?: Date;
         errorMessage?: string;
+        edgeId?: number; // 关联的 Edge ID（当通过 edge 接入时）
         settings: {
             asr?: {
                 provider: string;
@@ -449,6 +450,7 @@ declare module './model/edge' {
         errorMessage?: string;
         toolsCount?: number;
         nodeId?: number; // 关联的 Node ID（当 type='node' 时）
+        clientId?: number; // 关联的 Client ID（当 type='client' 时）
         createdAt: Date;
         updatedAt: Date;
         owner: number;

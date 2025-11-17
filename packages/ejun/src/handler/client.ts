@@ -6,7 +6,9 @@ import { ValidationError, PermissionError, NotFoundError } from '../error';
 import { Logger } from '../logger';
 import ClientModel from '../model/client';
 import ClientChatModel, { apply as applyClientChat } from '../model/client_chat';
+import EdgeModel from '../model/edge';
 import EdgeTokenModel from '../model/edge_token';
+import { EdgeServerConnectionHandler } from './edge';
 import AgentModel, { McpClient } from '../model/agent';
 import { processAgentChatInternal } from './agent';
 import domain from '../model/domain';
@@ -660,6 +662,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
     static active = new Map<number, ClientConnectionHandler>();
     private clientId: number | null = null;
     private clientDocId: ObjectId | null = null;
+    private token: string | null = null; // 保存 token，用于 cleanup 时从 EdgeServerConnectionHandler 删除
     private subscriptions: Array<{ dispose: () => void }> = [];
     private eventSubscriptions: ClientSubscription[] = [];
     private accepted = false;
@@ -703,13 +706,70 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         // 更新 token 最后使用时间
         await EdgeTokenModel.updateLastUsed(token);
 
-        // 查找第一个可用的 client（或者根据 token 关联的 clientId，这里简化处理）
-        const clients = await ClientModel.getByDomain(this.domain._id);
-        const client = clients[0]; // 简化：使用第一个 client，实际可以根据 token 关联
+        // 查找或创建 Edge
+        let edge = await EdgeModel.getByToken(this.domain._id, token);
+        if (!edge) {
+            // Edge 不存在，创建 Edge（使用 tokenDoc 中的 token）
+            // 如果没有用户认证，使用默认 owner（1）或从 domain 获取
+            const owner = this.user?._id || 1;
+            edge = await EdgeModel.add({
+                domainId: this.domain._id,
+                type: tokenDoc.type as 'provider' | 'client' | 'node',
+                owner: owner,
+                token: tokenDoc.token,
+            });
+            logger.info('Created edge on client connection: eid=%d, token=%s, type=%s, owner=%d', edge.eid, token, tokenDoc.type, owner);
+        }
+        
+        // 更新 edge 状态
+        const wasFirstConnection = !edge.tokenUsedAt;
+        try {
+            await EdgeModel.update(this.domain._id, edge.eid, {
+                status: 'online',
+                tokenUsedAt: edge.tokenUsedAt || new Date(),
+            });
+            
+            // 如果是首次连接，发送 edge/connected 事件
+            if (wasFirstConnection) {
+                const updatedEdge = await EdgeModel.getByToken(this.domain._id, token);
+                if (updatedEdge) {
+                    (this.ctx.emit as any)('edge/connected', updatedEdge);
+                }
+            }
+            
+            (this.ctx.emit as any)('edge/status/update', token, 'online');
+        } catch (error) {
+            logger.error('Failed to update edge status: %s', (error as Error).message);
+        }
+
+        // 查找或创建关联的 client
+        let client: any = null;
+        if (edge.clientId) {
+            // Edge 已有关联的 client，使用它
+            client = await ClientModel.getByClientId(this.domain._id, edge.clientId);
+            if (client) {
+                logger.info('Client already exists, using existing client: clientId=%d, edgeId=%d', client.clientId, edge.eid);
+            }
+        }
         
         if (!client) {
-            logger.warn('Client WebSocket connection rejected: No client found');
-            this.close(4000, 'No client found');
+            // 自动创建 client 并建立双向关联
+            client = await ClientModel.add({
+                domainId: this.domain._id,
+                name: `Client-${edge.eid}`,
+                owner: edge.owner,
+                edgeId: edge.eid,
+            });
+            await EdgeModel.update(this.domain._id, edge.eid, { clientId: client.clientId });
+            logger.info('Auto-created client for edge on connection: clientId=%d, edgeId=%d', client.clientId, edge.eid);
+            
+            // 发送 client/connected 事件，让前端显示这个 client
+            (this.ctx.emit as any)('client/connected', client);
+        }
+        
+        if (!client) {
+            logger.warn('Client WebSocket connection rejected: Failed to create client');
+            this.close(4000, 'Failed to create client');
             return;
         }
 
@@ -725,14 +785,19 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
 
         this.clientId = client.clientId;
         this.clientDocId = client.docId;
+        this.token = token; // 保存 token
         this.client = client;
         this.accepted = true;
 
         // Add to active connections (singleton pattern, one connection per clientId)
         ClientConnectionHandler.active.set(this.clientId, this);
+        
+        // 同时注册到 EdgeServerConnectionHandler，以便状态检查统一（和 node/provider 一样）
+        // 注意：这里使用 token 作为 key，和 EdgeServerConnectionHandler 保持一致
+        EdgeServerConnectionHandler.active.set(token, this as any);
 
-        logger.info('Client WebSocket connected: %s (clientId: %d) from %s', 
-            this.clientDocId, this.clientId, this.request.ip);
+        logger.info('Client WebSocket connected: %s (clientId: %d, token: %s) from %s', 
+            this.clientDocId, this.clientId, token, this.request.ip);
 
         addClientLog(this.clientId, 'info', `Client connected: ${this.request.ip}`);
 
@@ -1924,9 +1989,23 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         if (this.clientId && this.accepted) {
             ClientConnectionHandler.active.delete(this.clientId);
             
+            // 从 EdgeServerConnectionHandler 中删除（和 node/provider 一样）
+            if (this.token) {
+                EdgeServerConnectionHandler.active.delete(this.token);
+            }
+            
             try {
                 await ClientModel.updateStatus(this.domain._id, this.clientId, 'disconnected');
                 (this.ctx.emit as any)('client/status/update', this.clientId);
+                
+                // 更新 edge 状态为离线（和 EdgeServerConnectionHandler.cleanup 一样）
+                if (this.token) {
+                    const edge = await EdgeModel.getByToken(this.domain._id, this.token);
+                    if (edge) {
+                        await EdgeModel.update(this.domain._id, edge.eid, { status: 'offline' });
+                        (this.ctx.emit as any)('edge/status/update', this.token, 'offline');
+                    }
+                }
             } catch (error: any) {
                 logger.error('Failed to update client status on disconnect: %s', error.message);
             }

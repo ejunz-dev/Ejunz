@@ -5,6 +5,7 @@ import { Logger } from '../logger';
 import EdgeModel from '../model/edge';
 import ToolModel from '../model/tool';
 import NodeModel from '../model/node';
+import ClientModel from '../model/client';
 import EdgeTokenModel from '../model/edge_token';
 import { PRIV } from '../model/builtin';
 import { ValidationError, PermissionError, NotFoundError } from '../error';
@@ -244,6 +245,31 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
                     
                     // 发送 node/connected 事件，让前端显示这个 node
                     (this.ctx.emit as any)('node/connected', node);
+                }
+            }
+            
+            // 如果是 client 类型，自动创建 client 并建立双向关联（下游无需发送 clientId）
+            if (edge.type === 'client') {
+                if (edge.clientId) {
+                    // 已有关联的 client，更新 client 状态
+                    const client = await ClientModel.getByClientId(this.domain._id, edge.clientId);
+                    if (client) {
+                        await ClientModel.updateStatus(this.domain._id, client.clientId, 'connected');
+                        logger.info('Client already exists, updated status to connected: clientId=%d, edgeId=%d', client.clientId, edge.eid);
+                    }
+                } else {
+                    // 自动创建 client 并建立双向关联（系统自动处理，下游无需发送 clientId）
+                    const client = await ClientModel.add({
+                        domainId: this.domain._id,
+                        name: `Client-${edge.eid}`,
+                        owner: edge.owner,
+                        edgeId: edge.eid,
+                    });
+                    await EdgeModel.update(this.domain._id, edge.eid, { clientId: client.clientId });
+                    logger.info('Auto-created client for edge on connection: clientId=%d, edgeId=%d (downstream does not need to send clientId)', client.clientId, edge.eid);
+                    
+                    // 发送 client/connected 事件，让前端显示这个 client
+                    (this.ctx.emit as any)('client/connected', client);
                 }
             }
             
@@ -750,8 +776,10 @@ export class EdgeDomainHandler extends Handler<Context> {
         
         // 计算实时状态：检查是否有Edge服务器在使用这个token
         const edgesWithStatus = await Promise.all(connectedEdges.map(async (edge) => {
-            // 检查是否有Edge服务器在使用这个token
-            const isConnected = EdgeServerConnectionHandler.active.has(edge.token);
+            // 检查是否有Edge服务器在使用这个token（通过 /mcp/ws 连接）
+            let isConnected = EdgeServerConnectionHandler.active.has(edge.token);
+            
+            // Client 类型现在也通过 EdgeServerConnectionHandler 管理，不需要额外检查
             
             let status: 'online' | 'offline' | 'working' = edge.status;
             if (isConnected) {
@@ -893,8 +921,14 @@ export class EdgeGenerateTokenHandler extends Handler<Context> {
                 password: `${this.domain._id}:<nid>`,
             };
             responseBody.note = 'Edge 和 Node 将在通过此 token 连接时自动创建';
+        } else if (edgeType === 'client') {
+            // Client 类型：只生成 WebSocket 接入点（edge 和 client 将在连接时创建）
+            const wsPath = `/d/${this.domain._id}/mcp/ws`;
+            const wsEndpoint = `${wsProtocol}://${host}${wsPath}?token=${token}`;
+            responseBody.wsEndpoint = wsEndpoint;
+            responseBody.note = 'Edge 和 Client 将在通过此 token 连接时自动创建';
         } else {
-            // Provider 和 Client 类型：只生成 WebSocket 接入点
+            // Provider 类型：只生成 WebSocket 接入点
             const wsPath = `/d/${this.domain._id}/mcp/ws`;
             const wsEndpoint = `${wsProtocol}://${host}${wsPath}?token=${token}`;
             responseBody.wsEndpoint = wsEndpoint;
@@ -917,7 +951,10 @@ export class EdgeStatusConnectionHandler extends ConnectionHandler<Context> {
         
         // 计算实时状态
         const edgesWithStatus = await Promise.all(connectedEdges.map(async (edge) => {
-            const isConnected = EdgeServerConnectionHandler.active.has(edge.token);
+            // 检查是否有Edge服务器在使用这个token（通过 /mcp/ws 连接）
+            let isConnected = EdgeServerConnectionHandler.active.has(edge.token);
+            
+            // Client 类型现在也通过 EdgeServerConnectionHandler 管理，不需要额外检查
             
             let status: 'online' | 'offline' | 'working' = edge.status;
             if (isConnected) {
@@ -949,7 +986,7 @@ export class EdgeStatusConnectionHandler extends ConnectionHandler<Context> {
                 await EdgeModel.updateStatus(this.domain._id, edge.eid, status);
                 
                 // 重新计算状态
-                const isConnected = EdgeServerConnectionHandler.active.has(token);
+                let isConnected = EdgeServerConnectionHandler.active.has(token);
                 
                 let finalStatus: 'online' | 'offline' | 'working' = status;
                 if (isConnected) {
@@ -975,7 +1012,10 @@ export class EdgeStatusConnectionHandler extends ConnectionHandler<Context> {
         const dispose2 = this.ctx.on('edge/connected' as any, async (...args: any[]) => {
             const [edge] = args;
             // 重新计算状态
-            const isConnected = EdgeServerConnectionHandler.active.has(edge.token);
+            let isConnected = EdgeServerConnectionHandler.active.has(edge.token);
+            
+            // Client 类型现在也通过 EdgeServerConnectionHandler 管理，不需要额外检查
+            
             const tools = await ToolModel.getByToken(this.domain._id, edge.token);
             const status = isConnected ? (tools.length > 0 ? 'working' : 'online') : 'offline';
             
