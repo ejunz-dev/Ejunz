@@ -293,7 +293,7 @@ declare module './model/node' {
         docType: document['TYPE_NODE'];
         docId: ObjectId; // 由 mongo 自动生成
         domainId: string;
-        nodeId: number; // 节点 ID，从 1 开始（业务 ID）
+        nid: number; // Node ID，从 1 开始（业务 ID，用于路由显示）
         name: string;
         description?: string;
         wsEndpoint?: string; // WebSocket 接入点路径（可选，生成接入点时设置）
@@ -301,6 +301,7 @@ declare module './model/node' {
         status: 'active' | 'inactive' | 'disconnected';
         host?: string; // Node 主机地址
         port?: number; // Node 端口
+        edgeId?: number; // 关联的 Edge ID（当通过 edge 接入时）
         createdAt: Date;
         updatedAt: Date;
         owner: number; // 用户 ID
@@ -436,7 +437,7 @@ declare module './model/edge' {
         domainId: string;
         eid: number; // Edge ID，从 1 开始（业务 ID，用于路由显示）
         token: string;
-        type: 'provider' | 'repo' | 'node';
+        type: 'provider' | 'client' | 'node';
         status: 'online' | 'offline' | 'working';
         tokenCreatedAt: Date;
         tokenUsedAt?: Date;
@@ -447,6 +448,7 @@ declare module './model/edge' {
         lastDisconnectedAt?: Date;
         errorMessage?: string;
         toolsCount?: number;
+        nodeId?: number; // 关联的 Node ID（当 type='node' 时）
         createdAt: Date;
         updatedAt: Date;
         owner: number;

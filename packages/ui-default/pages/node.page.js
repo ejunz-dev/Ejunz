@@ -349,19 +349,23 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
 
     function renderDeviceControls(device) {
         const capabilities = device.capabilities || [];
+        const state = device.state || {};
         let html = '<div class="control-buttons">';
         
-        if (capabilities.includes('on') || capabilities.includes('off')) {
+        // 检查是否应该显示开关：有 capabilities 或状态中有开关相关字段
+        const hasSwitchCapability = capabilities.some(cap => cap === 'on' || cap === 'off' || cap === 'switch');
+        const hasSwitchState = state.on !== undefined || state.state !== undefined || state.power !== undefined;
+        
+        if (hasSwitchCapability || hasSwitchState) {
             // 检查设备状态：支持多种格式
             let isOn = false;
-            const state = device.state || {};
             
             if (state.on !== undefined) {
-                isOn = state.on === true || state.on === 1;
+                isOn = state.on === true || state.on === 1 || state.on === '是' || state.on === 'ON' || state.on === 'on';
             } else if (state.state !== undefined) {
                 const stateValue = state.state;
                 if (typeof stateValue === 'string') {
-                    isOn = /^(ON|on|ONLINE|online|true|1)$/i.test(stateValue);
+                    isOn = /^(ON|on|ONLINE|online|true|1|是)$/i.test(stateValue);
                 } else if (typeof stateValue === 'boolean') {
                     isOn = stateValue;
                 } else if (typeof stateValue === 'number') {
@@ -370,7 +374,7 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
             } else if (state.power !== undefined) {
                 const powerValue = state.power;
                 if (typeof powerValue === 'string') {
-                    isOn = /^(ON|on|ONLINE|online|true|1)$/i.test(powerValue);
+                    isOn = /^(ON|on|ONLINE|online|true|1|是)$/i.test(powerValue);
                 } else if (typeof powerValue === 'boolean') {
                     isOn = powerValue;
                 } else if (typeof powerValue === 'number') {
@@ -492,11 +496,11 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
         if (hasOnState) {
             let isOn = false;
             if (state.on !== undefined) {
-                isOn = state.on === true || state.on === 1 || state.on === 'ON' || state.on === 'on';
+                isOn = state.on === true || state.on === 1 || state.on === '是' || state.on === 'ON' || state.on === 'on';
             } else if (state.state !== undefined) {
                 const stateValue = state.state;
                 if (typeof stateValue === 'string') {
-                    isOn = /^(ON|on|ONLINE|online|true|1)$/i.test(stateValue);
+                    isOn = /^(ON|on|ONLINE|online|true|1|是)$/i.test(stateValue);
                 } else if (typeof stateValue === 'boolean') {
                     isOn = stateValue;
                 } else if (typeof stateValue === 'number') {
@@ -505,7 +509,7 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
             } else if (state.power !== undefined) {
                 const powerValue = state.power;
                 if (typeof powerValue === 'string') {
-                    isOn = /^(ON|on|ONLINE|online|true|1)$/i.test(powerValue);
+                    isOn = /^(ON|on|ONLINE|online|true|1|是)$/i.test(powerValue);
                 } else if (typeof powerValue === 'boolean') {
                     isOn = powerValue;
                 } else if (typeof powerValue === 'number') {
@@ -522,6 +526,26 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
                 $toggle.prop('checked', isOn);
                 if ($switchText.length) {
                     $switchText.text(isOn ? '开启' : '关闭');
+                }
+            } else {
+                // 如果开关不存在但应该有开关，重新渲染设备控制区域
+                const $controls = $device.find('.device-controls');
+                if ($controls.length && hasOnState) {
+                    // 获取设备数据并重新渲染控制区域
+                    const device = {
+                        deviceId: deviceId,
+                        capabilities: [],
+                        state: state
+                    };
+                    $controls.html(renderDeviceControls(device));
+                    // 重新绑定事件
+                    $controls.find('.switch-toggle').on('change', function() {
+                        const $toggle = $(this);
+                        const action = $toggle.data('action');
+                        const deviceId = $toggle.data('device-id');
+                        const isChecked = $toggle.is(':checked');
+                        controlDevice(deviceId, action, isChecked);
+                    });
                 }
             }
         }

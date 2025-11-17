@@ -18,10 +18,10 @@
     </span>
   </td>
   <td class="col--type">
-    {% if edge.type == 'repo' %}
-      <span class="badge badge--primary">Repo</span>
-    {% elif edge.type == 'node' %}
+    {% if edge.type == 'node' %}
       <span class="badge badge--info">Node</span>
+    {% elif edge.type == 'client' %}
+      <span class="badge badge--warning">Client</span>
     {% else %}
       <span class="badge">Provider</span>
     {% endif %}

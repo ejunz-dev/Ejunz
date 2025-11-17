@@ -16,7 +16,7 @@
                 {% endif %}
                 
                 <div class="node-container" 
-                    data-node-id="{{ node.nodeId }}" 
+                    data-node-id="{{ node.nid }}" 
                     data-node-status="{{ node.status }}"
                     data-node-data="{{ nodeDataJson }}">
                     <div class="device-list">
@@ -52,11 +52,21 @@
                                     </div>
                                     <div class="device-controls">
                                         <div class="control-buttons">
-                                            {% if 'on' in device.capabilities or 'off' in device.capabilities %}
+                                            {# 检查是否应该显示开关：有 capabilities 或状态中有开关相关字段 #}
+                                            {% set state = device.state or {} %}
+                                            {% set hasSwitchCapability = false %}
+                                            {% if device.capabilities %}
+                                                {% for cap in device.capabilities %}
+                                                    {% if cap == 'on' or cap == 'off' or cap == 'switch' %}
+                                                        {% set hasSwitchCapability = true %}
+                                                    {% endif %}
+                                                {% endfor %}
+                                            {% endif %}
+                                            {% set hasSwitchState = state.on is defined or state.state is defined or state.power is defined %}
+                                            {% if hasSwitchCapability or hasSwitchState %}
                                                 {# 检查多种状态格式 #}
-                                                {% set state = device.state or {} %}
                                                 {% set isOn = false %}
-                                                {% if state.on === true or state.on == 1 %}
+                                                {% if state.on === true or state.on == 1 or state.on == '是' %}
                                                     {% set isOn = true %}
                                                 {% elif state.state %}
                                                     {% if state.state == 'ON' or state.state == 'on' or state.state == 'ONLINE' or state.state == 'online' or state.state == true or state.state == 1 %}
@@ -107,9 +117,17 @@
             </div>
             <div class="section__body">
                 {% if handler.user.own(node) or handler.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN) %}
-                <a href="{{ url('node_edit', domainId=domainId, nodeId=node.nodeId) }}" class="button primary expanded">
+                <a href="{{ url('node_edit', domainId=domainId, nid=node.nid) }}" class="button primary expanded">
                     {{ _('Edit') }}
                 </a>
+                {% endif %}
+                {% if edge %}
+                <div style="margin-top: 1em;">
+                    <p><strong>关联 Edge:</strong></p>
+                    <a href="{{ url('edge_detail', { domainId: domainId, eid: edge.eid }) }}" class="button expanded">
+                        查看 Edge 详情 (EID: {{ edge.eid }})
+                    </a>
+                </div>
                 {% endif %}
             </div>
         </div>
@@ -163,9 +181,9 @@
                     
                     <p class="text-gray"><small>MQTT Topic 说明：</small></p>
                     <ul class="text-gray" style="font-size: 0.9em; margin-left: 1.5em;">
-                        <li>设备发现：发布到 <code>node/{{ node.nodeId }}/devices/discover</code>，消息格式：<code>{"devices": [{"id": "device1", "name": "设备名称", ...}]}</code></li>
-                        <li>状态更新：发布到 <code>node/{{ node.nodeId }}/devices/{deviceId}/state</code>，消息格式：<code>{"state": {...}}</code></li>
-                        <li>接收控制：订阅 <code>node/{{ node.nodeId }}/devices/{deviceId}/set</code> 或 <code>node/{{ node.nodeId }}/devices/+/set</code></li>
+                        <li>设备发现：发布到 <code>node/{{ node.nid }}/devices/discover</code>，消息格式：<code>{"devices": [{"id": "device1", "name": "设备名称", ...}]}</code></li>
+                        <li>状态更新：发布到 <code>node/{{ node.nid }}/devices/{deviceId}/state</code>，消息格式：<code>{"state": {...}}</code></li>
+                        <li>接收控制：订阅 <code>node/{{ node.nid }}/devices/{deviceId}/set</code> 或 <code>node/{{ node.nid }}/devices/+/set</code></li>
                     </ul>
                     
                     <hr style="margin: 1em 0;">
@@ -184,7 +202,7 @@
                     </ul>
                     
                     <div class="endpoint-actions">
-                        <form method="post" class="form--inline endpoint-form" data-operation="deleteEndpoint" data-domain-id="{{ domainId }}" data-node-id="{{ node.nodeId }}">
+                        <form method="post" class="form--inline endpoint-form" data-operation="deleteEndpoint" data-domain-id="{{ domainId }}" data-nid="{{ node.nid }}">
                             <input type="hidden" name="operation" value="deleteEndpoint">
                             <button type="submit" class="button danger">{{ _('Delete Connection URL') }}</button>
                         </form>
@@ -193,7 +211,7 @@
                 {% else %}
                 <p>{{ _('No connection URL generated yet. Click the button below to generate one.') }}</p>
                 <div class="endpoint-actions">
-                    <form method="post" class="form--inline endpoint-form" data-operation="generateEndpoint" data-domain-id="{{ domainId }}" data-node-id="{{ node.nodeId }}">
+                    <form method="post" class="form--inline endpoint-form" data-operation="generateEndpoint" data-domain-id="{{ domainId }}" data-nid="{{ node.nid }}">
                         <input type="hidden" name="operation" value="generateEndpoint">
                         <button type="submit" class="button primary">{{ _('Generate Connection URL') }}</button>
                     </form>
@@ -201,7 +219,7 @@
                 <div id="endpoint-result" class="endpoint-result"></div>
                 {% endif %}
                 
-                <button class="button danger delete-node-btn" data-node-id="{{ node.nodeId }}">
+                <button class="button danger delete-node-btn" data-nid="{{ node.nid }}">
                     删除节点
                 </button>
             </div>
