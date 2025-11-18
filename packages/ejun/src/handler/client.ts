@@ -11,108 +11,58 @@ import EdgeTokenModel from '../model/edge_token';
 import { EdgeServerConnectionHandler } from './edge';
 import AgentModel, { McpClient } from '../model/agent';
 import { processAgentChatInternal } from './agent';
+import SessionModel from '../model/session';
+import record from '../model/record';
 import domain from '../model/domain';
 import * as document from '../model/document';
-import { PRIV } from '../model/builtin';
+import { PRIV, STATUS } from '../model/builtin';
 import WebSocket from 'ws';
 import request from 'superagent';
 import Agent from '../model/agent';
+import ToolModel from '../model/tool';
 
 const logger = new Logger('handler/client');
 
 // Get assigned tools (consistent with getAssignedTools in agent.ts)
-// Enhanced to also fetch from real-time MCP connections to ensure all tools are available
-// If mcpToolIds is empty, returns all available tools from database (since tools are synced from MCP servers to DB)
+// Uses ToolModel and EdgeModel to get tools with token information
 async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[]): Promise<any[]> {
-    // If no mcpToolIds specified, get all available tools from database
-    // Tools are synced from MCP servers to database, so we can get them from DB
-    if (!mcpToolIds || mcpToolIds.length === 0) {
-        logger.info('getAssignedTools: No mcpToolIds specified, fetching all available tools from database');
-        try {
-            // First try to get from database (tools are synced from MCP servers)
-            const { default: McpServerModel, McpToolModel } = await import('../model/mcp');
-            const servers = await McpServerModel.getByDomain(domainId);
-            const allTools: any[] = [];
-            for (const server of servers) {
-                const tools = await McpToolModel.getByServer(domainId, server.serverId);
-                for (const tool of tools) {
-                    allTools.push({
-                        name: tool.name,
-                        description: tool.description,
-                        inputSchema: tool.inputSchema,
-                    });
-                }
-            }
-            logger.info('getAssignedTools: Got all tools from database', { 
-                toolCount: allTools.length, 
-                toolNames: allTools.map(t => t.name),
-                serverCount: servers.length
-            });
-            
-            // Also try to get from real-time connections to merge any new tools
-            try {
-                const mcpClient = new McpClient();
-                const realtimeTools = await mcpClient.getTools();
-                if (realtimeTools.length > 0) {
-                    logger.info('getAssignedTools: Also found realtime tools', { 
-                        realtimeCount: realtimeTools.length 
-                    });
-                    // Merge realtime tools with database tools (realtime takes priority)
-                    const toolMap = new Map<string, any>();
-                    // First add database tools
-                    for (const tool of allTools) {
-                        toolMap.set(tool.name, tool);
-                    }
-                    // Then add/override with realtime tools
-                    for (const tool of realtimeTools) {
-                        toolMap.set(tool.name, {
-                            name: tool.name,
-                            description: tool.description || '',
-                            inputSchema: tool.inputSchema || null,
-                        });
-                    }
-                    return Array.from(toolMap.values());
-                }
-            } catch (realtimeError: any) {
-                logger.debug('Failed to fetch realtime tools (non-critical): %s', realtimeError.message);
-            }
-            
-            return allTools;
-        } catch (dbError: any) {
-            logger.warn('Failed to fetch all tools from database: %s', dbError.message);
-            // Last resort: try realtime connections
-            try {
-                const mcpClient = new McpClient();
-                const realtimeTools = await mcpClient.getTools();
-                logger.info('getAssignedTools: Got tools from realtime (fallback)', { 
-                    toolCount: realtimeTools.length 
-                });
-                return realtimeTools.map(tool => ({
-                    name: tool.name,
-                    description: tool.description || '',
-                    inputSchema: tool.inputSchema || null,
-                }));
-            } catch (realtimeError: any) {
-                logger.warn('Failed to fetch tools from realtime (fallback): %s', realtimeError.message);
-        return [];
-            }
+    const allToolIds = new Set<string>();
+    
+    if (mcpToolIds) {
+        for (const toolId of mcpToolIds) {
+            allToolIds.add(toolId.toString());
         }
     }
+    
+    const finalToolIds: ObjectId[] = Array.from(allToolIds).map(id => new ObjectId(id));
+    
+    if (finalToolIds.length === 0) {
+        logger.info('getAssignedTools: No toolIds specified, returning empty array. domainId=%s, mcpToolIds=%o', 
+            domainId, mcpToolIds);
+        return [];
+    }
+    
+    logger.info('getAssignedTools: Processing %d toolIds: %o', finalToolIds.length, finalToolIds.map(id => id.toString()));
     
     // First, get tools from database and build a map by tool name
     const dbToolsMap = new Map<string, any>();
     const assignedToolNames = new Set<string>();
     
-    for (const toolId of mcpToolIds) {
+    for (const toolId of finalToolIds) {
         try {
-            const tool = await document.get(domainId, document.TYPE_MCP_TOOL, toolId);
-            if (tool) {
-                dbToolsMap.set(tool.name, {
-                    name: tool.name,
-                    description: tool.description,
-                    inputSchema: tool.inputSchema,
-                });
-                assignedToolNames.add(tool.name);
+            const tool = await ToolModel.get(toolId);
+            if (tool && tool.domainId === domainId) {
+                const edge = await EdgeModel.get(tool.edgeDocId);
+                if (edge) {
+                    dbToolsMap.set(tool.name, {
+                        name: tool.name,
+                        description: tool.description,
+                        inputSchema: tool.inputSchema,
+                        token: edge.token,
+                        edgeId: edge._id,
+                    });
+                    assignedToolNames.add(tool.name);
+                }
             }
         } catch (error) {
             logger.warn('Invalid tool ID: %s', toolId.toString());
@@ -131,8 +81,10 @@ async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[]): Prom
         const processedNames = new Set<string>();
         
         // First, add realtime tools that match assigned tool names
+        // Note: realtime tools don't have token, so we prefer database tools when available
         for (const realtimeTool of realtimeTools) {
-            if (assignedToolNames.has(realtimeTool.name)) {
+            if (assignedToolNames.has(realtimeTool.name) && !dbToolsMap.has(realtimeTool.name)) {
+                // Only add realtime tool if not in database (database tools have token)
                 finalTools.push({
                     name: realtimeTool.name,
                     description: realtimeTool.description || '',
@@ -142,15 +94,22 @@ async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[]): Prom
             }
         }
         
-        // Then, add database tools that weren't found in realtime (fallback)
+        // Then, add database tools (they have token, so prefer them)
         for (const [toolName, dbTool] of dbToolsMap) {
             if (!processedNames.has(toolName)) {
                 finalTools.push(dbTool);
+                processedNames.add(toolName);
             }
         }
         
         logger.info('getAssignedTools: dbTools=%d, realtimeTools=%d, matchedTools=%d, finalTools=%d', 
             dbToolsMap.size, realtimeTools.length, processedNames.size, finalTools.length);
+        logger.info('getAssignedTools: details', {
+            dbToolNames: Array.from(dbToolsMap.keys()),
+            realtimeToolNames: realtimeTools.map(t => t.name),
+            assignedToolNames: Array.from(assignedToolNames),
+            finalToolNames: finalTools.map(t => t.name)
+        });
         
         return finalTools;
     } catch (error: any) {
@@ -296,7 +255,7 @@ export class ClientEditHandler extends Handler<Context> {
     }
 }
 
-// Token 生成逻辑已迁移到 edge 模块
+// Token generation logic has been moved to edge module
 
 export class ClientDeleteTokenHandler extends Handler<Context> {
     async post() {
@@ -662,7 +621,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
     static active = new Map<number, ClientConnectionHandler>();
     private clientId: number | null = null;
     private clientDocId: ObjectId | null = null;
-    private token: string | null = null; // 保存 token，用于 cleanup 时从 EdgeServerConnectionHandler 删除
+    private token: string | null = null;
     private subscriptions: Array<{ dispose: () => void }> = [];
     private eventSubscriptions: ClientSubscription[] = [];
     private accepted = false;
@@ -680,6 +639,10 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
     private currentAsrAudioBuffers: Buffer[] = [];
     private currentTtsAudioBuffers: Buffer[] = [];
     private currentConversationId: number | null = null;
+    private currentSessionId: ObjectId | null = null;
+    private sessionActive: boolean = false;
+    private subscribedRecordIds: Set<string> = new Set();
+    private pendingAgentDoneRecords: Map<string, { taskRecordId: string; message: string }> = new Map();
     // Promise resolver for waiting TTS playback completion before tool calls
     private ttsPlaybackWaitPromise: { resolve: () => void; reject: (error: Error) => void } | null = null;
     
@@ -695,7 +658,6 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             return;
         }
 
-        // 使用统一的 token 验证
         const tokenDoc = await EdgeTokenModel.getByToken(token);
         if (!tokenDoc || tokenDoc.type !== 'client' || tokenDoc.domainId !== this.domain._id) {
             logger.warn('Client WebSocket connection rejected: Invalid token');
@@ -703,25 +665,21 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             return;
         }
 
-        // 更新 token 最后使用时间
         await EdgeTokenModel.updateLastUsed(token);
 
-        // 查找或创建 Edge
         let edge = await EdgeModel.getByToken(this.domain._id, token);
         if (!edge) {
-            // Edge 不存在，创建 Edge（使用 tokenDoc 中的 token）
-            // 如果没有用户认证，使用默认 owner（1）或从 domain 获取
-            const owner = this.user?._id || 1;
+            const owner = tokenDoc.owner || this.user?._id || 1;
             edge = await EdgeModel.add({
                 domainId: this.domain._id,
                 type: tokenDoc.type as 'provider' | 'client' | 'node',
                 owner: owner,
                 token: tokenDoc.token,
             });
-            logger.info('Created edge on client connection: eid=%d, token=%s, type=%s, owner=%d', edge.eid, token, tokenDoc.type, owner);
+            logger.info('Created edge on client connection: eid=%d, token=%s, type=%s, owner=%d (from token.owner=%d)', 
+                edge.eid, token, tokenDoc.type, owner, tokenDoc.owner || -1);
         }
         
-        // 更新 edge 状态
         const wasFirstConnection = !edge.tokenUsedAt;
         try {
             await EdgeModel.update(this.domain._id, edge.eid, {
@@ -729,7 +687,6 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 tokenUsedAt: edge.tokenUsedAt || new Date(),
             });
             
-            // 如果是首次连接，发送 edge/connected 事件
             if (wasFirstConnection) {
                 const updatedEdge = await EdgeModel.getByToken(this.domain._id, token);
                 if (updatedEdge) {
@@ -742,10 +699,8 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             logger.error('Failed to update edge status: %s', (error as Error).message);
         }
 
-        // 查找或创建关联的 client
         let client: any = null;
         if (edge.clientId) {
-            // Edge 已有关联的 client，使用它
             client = await ClientModel.getByClientId(this.domain._id, edge.clientId);
             if (client) {
                 logger.info('Client already exists, using existing client: clientId=%d, edgeId=%d', client.clientId, edge.eid);
@@ -753,7 +708,6 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         }
         
         if (!client) {
-            // 自动创建 client 并建立双向关联
             client = await ClientModel.add({
                 domainId: this.domain._id,
                 name: `Client-${edge.eid}`,
@@ -763,7 +717,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             await EdgeModel.update(this.domain._id, edge.eid, { clientId: client.clientId });
             logger.info('Auto-created client for edge on connection: clientId=%d, edgeId=%d', client.clientId, edge.eid);
             
-            // 发送 client/connected 事件，让前端显示这个 client
+            logger.info('Client connected event published: clientId=%d', client.clientId);
             (this.ctx.emit as any)('client/connected', client);
         }
         
@@ -785,15 +739,15 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
 
         this.clientId = client.clientId;
         this.clientDocId = client.docId;
-        this.token = token; // 保存 token
+        this.token = token;
         this.client = client;
         this.accepted = true;
 
         // Add to active connections (singleton pattern, one connection per clientId)
         ClientConnectionHandler.active.set(this.clientId, this);
         
-        // 同时注册到 EdgeServerConnectionHandler，以便状态检查统一（和 node/provider 一样）
-        // 注意：这里使用 token 作为 key，和 EdgeServerConnectionHandler 保持一致
+        // Register with EdgeServerConnectionHandler for unified status checking (same as node/provider)
+        // Note: Use token as key to match EdgeServerConnectionHandler
         EdgeServerConnectionHandler.active.set(token, this as any);
 
         logger.info('Client WebSocket connected: %s (clientId: %d, token: %s) from %s', 
@@ -823,6 +777,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         });
         this.subscriptions.push({ dispose: dispose1 });
 
+        logger.info('Client status update event published: clientId=%d', this.clientId);
         (this.ctx.emit as any)('client/status/update', this.clientId);
     }
 
@@ -861,12 +816,8 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                         return;
                     }
                     
-                    if (event === 'client/asr/audio') {
-                        logger.debug('Received ASR audio event: clientId=%d, payload length=%d', this.clientId, payloadArray.length);
-                        if (payloadArray.length > 0 && payloadArray[0]?.audio) {
-                            const audioLength = typeof payloadArray[0].audio === 'string' ? payloadArray[0].audio.length : 0;
-                            logger.debug('ASR audio data length: %d chars', audioLength);
-                        }
+                    if (event !== 'client/asr/audio') {
+                        logger.info('Client published event: clientId=%d, event=%s', this.clientId, event);
                     }
                     
                     const args = [event, this.clientId, payloadArray];
@@ -921,10 +872,15 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             return;
         }
 
-        // Compatible with legacy message format (type field)
         const type = msg.type || msg.key;
 
+        if (type) {
+            logger.info('Client message received: clientId=%d, type=%s, keys=%s', 
+                this.clientId, type, Object.keys(msg).join(','));
+        }
+
         if (!type) {
+            logger.warn('Client message without type: clientId=%d, msg=%o', this.clientId, msg);
             return;
         }
 
@@ -938,20 +894,30 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 const { status, errorMessage } = msg;
                 if (status === 'connected' || status === 'disconnected' || status === 'error') {
                     await ClientModel.updateStatus(this.domain._id, this.clientId, status, errorMessage);
+                    logger.info('Client status update event published: clientId=%d, status=%s', this.clientId, status);
                     (this.ctx.emit as any)('client/status/update', this.clientId);
                 }
             } catch (error: any) {
                 logger.error('Failed to update status: %s', error.message);
             }
             break;
+        case 'session.create':
+            await this.handleSessionCreate(msg);
+            break;
+        case 'session.over':
+            await this.handleSessionOver(msg);
+            break;
+        case 'voice_chat':
+            await this.handleVoiceChat(msg);
+            break;
         default:
-            // Other message types handled via event system (backward compatible)
-            if (type && type !== 'ping' && type !== 'status') {
+            if (type && type !== 'ping' && type !== 'status' && type !== 'session.create' && type !== 'session.over' && type !== 'voice_chat') {
                 try {
                     if (type === 'asr/audio' && msg.audio) {
                         const args = [`client/${type}`, this.clientId, [{ audio: msg.audio }]];
                         (this.ctx.parallel as any).apply(this.ctx, args);
                     } else {
+                        logger.info('Client published event: clientId=%d, event=client/%s', this.clientId, type);
                         const args = [`client/${type}`, this.clientId, msg];
                         (this.ctx.parallel as any).apply(this.ctx, args);
                     }
@@ -973,6 +939,17 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             logger.debug('ASR WebSocket connecting, waiting...: clientId=%d', this.clientId);
             return new Promise((resolve, reject) => {
                 const timeout = setTimeout(() => {
+                    logger.error('ASR WebSocket connection timeout (waiting for existing connection): clientId=%d', this.clientId);
+                    if (this.asrWs && this.asrWs.readyState !== 1) {
+                        try {
+                            this.asrWs.removeAllListeners();
+                            this.asrWs.close();
+                        } catch (e) {
+                            // ignore
+                        }
+                        this.asrWs = null;
+                    }
+                    this.asrTaskId = null;
                     reject(new Error('ASR WebSocket connection timeout'));
                 }, 5000);
                 
@@ -981,9 +958,16 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                         clearInterval(checkInterval);
                         clearTimeout(timeout);
                         resolve();
-                    } else if (this.asrWs && this.asrWs.readyState === 3) { // 3 = CLOSED
+                    } else if (this.asrWs && this.asrWs.readyState === 3) {
                         clearInterval(checkInterval);
                         clearTimeout(timeout);
+                        try {
+                            this.asrWs.removeAllListeners();
+                        } catch (e) {
+                            // ignore
+                        }
+                        this.asrWs = null;
+                        this.asrTaskId = null;
                         reject(new Error('ASR WebSocket connection closed'));
                     }
                 }, 100);
@@ -1030,6 +1014,16 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 const connectionTimeout = setTimeout(() => {
                     logger.error('ASR WebSocket connection timeout: clientId=%d', this.clientId);
                     addClientLog(this.clientId, 'error', 'ASR WebSocket connection timeout');
+                    if (this.asrWs) {
+                        try {
+                            this.asrWs.removeAllListeners();
+                            this.asrWs.close();
+                        } catch (e) {
+                            // ignore
+                        }
+                        this.asrWs = null;
+                    }
+                    this.asrTaskId = null;
                     reject(new Error('ASR WebSocket connection timeout'));
                 }, 10000);
 
@@ -1096,36 +1090,53 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                     clearTimeout(connectionTimeout);
                     logger.error('ASR WebSocket connection error: %s', error.message);
                     addClientLog(this.clientId, 'error', `ASR WebSocket connection error: ${error.message}`);
+                    if (this.asrWs) {
+                        try {
+                            this.asrWs.removeAllListeners();
+                            this.asrWs.close();
+                        } catch (e) {
+                            // ignore
+                        }
+                        this.asrWs = null;
+                    }
+                    this.asrTaskId = null;
                     reject(error);
                 });
 
                 this.asrWs!.on('close', (code: number, reason: Buffer) => {
                     logger.warn('ASR WebSocket closed: clientId=%d, code=%d, reason=%s', 
-                        this.clientId, code, reason.toString());
-                    addClientLog(this.clientId, 'warn', `ASR WebSocket closed: code=${code}, reason=${reason.toString()}`);
-                    this.asrWs = null;
+                        this.clientId, code, reason?.toString() || '');
+                    addClientLog(this.clientId, 'warn', `ASR WebSocket closed: code=${code}, reason=${reason?.toString() || ''}`);
+                    clearTimeout(connectionTimeout);
+                    if (this.asrWs) {
+                        try {
+                            this.asrWs.removeAllListeners();
+                        } catch (e) {
+                            // ignore
+                        }
+                        this.asrWs = null;
+                    }
                     this.asrTaskId = null;
                     this.asrInitResolved = false;
                     if (this.asrInitPromise) {
-                        this.asrInitPromise.reject(new Error(`ASR WebSocket closed: ${reason.toString()}`));
+                        this.asrInitPromise.reject(new Error(`ASR WebSocket closed: ${reason?.toString() || 'unknown reason'}`));
                         this.asrInitPromise = null;
                     }
+                    this.sendEvent('asr/error', [{ message: 'ASR WebSocket connection closed' }]);
                 });
 
                         this.asrWs!.on('message', (data: Buffer) => {
                         try {
                             const rawData = data.toString();
-                            logger.info('ASR raw message received: clientId=%d, length=%d bytes', 
-                                this.clientId, rawData.length);
-                            logger.debug('ASR raw message preview: clientId=%d, preview=%s', 
-                                this.clientId, rawData.substring(0, 500));
-                            
                             const message = JSON.parse(rawData);
                             
-                            logger.info('ASR message parsed: clientId=%d, type=%s, event_id=%s', 
-                                this.clientId, 
-                                message.type || 'unknown',
-                                message.event_id || 'none');
+                            const importantAsrTypes = ['conversation.item.input_audio_transcription.completed', 'error', 'session.created'];
+                            if (importantAsrTypes.includes(message.type)) {
+                                logger.info('ASR message: clientId=%d, type=%s, event_id=%s', 
+                                    this.clientId, 
+                                    message.type || 'unknown',
+                                    message.event_id || 'none');
+                            }
                             addClientLog(this.clientId, 'info', 
                                 `Received ASR message: type=${message.type || 'unknown'}, event_id=${message.event_id || 'none'}`);
                     if (!this.asrInitResolved && this.asrInitPromise) {
@@ -1183,6 +1194,20 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                                                 this.clientId, agentId, text.substring(0, 50));
                                             addClientLog(this.clientId, 'info', `ASR final result, auto-triggering Agent chat: ${text.substring(0, 50)}...`);
                                             
+                                            if (!this.sessionActive || !this.currentSessionId) {
+                                                logger.info('ASR completion: No active session, creating session first: clientId=%d', this.clientId);
+                                                try {
+                                                    await this.handleSessionCreate({ 
+                                                        event_id: `auto-${Date.now()}`,
+                                                        type: 'session.create'
+                                                    });
+                                                } catch (error: any) {
+                                                    logger.error('ASR completion: Failed to auto-create session: %s', error.message);
+                                                    this.sendEvent('agent/error', [{ message: `Failed to create session: ${error.message}` }]);
+                                                    return;
+                                                }
+                                            }
+                                            
                                             try {
                                                 logger.info('ASR completion: calling handleAgentChat directly: clientId=%d', this.clientId);
                                                 await this.handleAgentChat({ message: text, history: [] });
@@ -1220,7 +1245,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                                 addClientLog(this.clientId, 'debug', 'ASR sentence ended');
                                 this.sendEvent('asr/sentence_end', []);
                             } else {
-                                logger.info('ASR unknown message type: clientId=%d, type=%s', 
+                                logger.debug('ASR unknown message type: clientId=%d, type=%s', 
                                     this.clientId, message.type);
                             }
                 } catch (error: any) {
@@ -1239,8 +1264,11 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
     private sendEvent(event: string, payload: any[]) {
         try {
             const message = { event, payload };
-            logger.debug('sendEvent: clientId=%d, event=%s, payload length=%d', 
-                this.clientId, event, payload.length);
+            const importantEvents = ['agent/done', 'client/agent/done', 'agent/error', 'agent/content', 'session.created', 'session.ended', 'asr/result', 'tts/done'];
+            if (importantEvents.includes(event)) {
+                logger.info('Client event sent: clientId=%d, event=%s, payload length=%d', 
+                    this.clientId, event, payload.length);
+            }
             this.send(message);
         } catch (error: any) {
             logger.error('sendEvent failed: clientId=%d, event=%s, error=%s', 
@@ -1274,6 +1302,17 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             await this.ensureAsrConnection();
         } catch (error: any) {
             logger.error('Failed to ensure ASR connection: %s', error.message);
+            // 清理失败的连接
+            if (this.asrWs) {
+                try {
+                    this.asrWs.removeAllListeners();
+                    this.asrWs.close();
+                } catch (e) {
+                    // ignore
+                }
+                this.asrWs = null;
+            }
+            this.asrTaskId = null;
             this.sendEvent('asr/error', [{ message: `ASR connection failed: ${error.message}` }]);
             return;
         }
@@ -1281,7 +1320,18 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         if (!this.asrWs || this.asrWs.readyState !== 1) { // 1 = OPEN
             logger.warn('ASR WebSocket not connected after ensure: clientId=%d, readyState=%d', 
                 this.clientId, this.asrWs?.readyState || -1);
-            this.sendEvent('asr/error', [{ message: 'ASR WebSocket not connected' }]);
+            // 清理无效的连接
+            if (this.asrWs && this.asrWs.readyState !== 1) {
+                try {
+                    this.asrWs.removeAllListeners();
+                    this.asrWs.close();
+                } catch (e) {
+                    // ignore
+                }
+                this.asrWs = null;
+                this.asrTaskId = null;
+            }
+            this.sendEvent('asr/error', [{ message: 'ASR WebSocket not connected, please retry' }]);
             return;
         }
 
@@ -1303,8 +1353,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 // Collect ASR audio for saving to chat history
                 this.currentAsrAudioBuffers.push(audioData);
                 
-                logger.debug('Processing ASR audio: clientId=%d, audioData length=%d bytes', this.clientId, audioData.length);
-                addClientLog(this.clientId, 'debug', `Processing ASR audio data: ${audioData.length} bytes`);
+                // ASR 音频处理很频繁，不记录日志（减少噪音）
 
                 if (!this.asrTaskId) {
                     logger.warn('ASR task not initialized: clientId=%d', this.clientId);
@@ -1317,8 +1366,6 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                     audio: audioBase64,
                 };
                 
-                logger.debug('Sending audio to ASR: clientId=%d, audio length=%d bytes (base64: %d chars)', 
-                    this.clientId, audioData.length, audioBase64.length);
                 this.asrWs.send(JSON.stringify(audioMessage));
             } catch (error: any) {
                 logger.error('Failed to send audio to ASR: %s', error.message);
@@ -1347,7 +1394,23 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
 
     async handleAsrRecordingStarted(payload: any[]) {
         addClientLog(this.clientId, 'info', 'Recording started');
-        await this.ensureAsrConnection();
+        try {
+            await this.ensureAsrConnection();
+        } catch (error: any) {
+            logger.error('Failed to ensure ASR connection on recording start: %s', error.message);
+            // 清理失败的连接
+            if (this.asrWs) {
+                try {
+                    this.asrWs.removeAllListeners();
+                    this.asrWs.close();
+                } catch (e) {
+                    // ignore
+                }
+                this.asrWs = null;
+            }
+            this.asrTaskId = null;
+            this.sendEvent('asr/error', [{ message: `ASR connection failed: ${error.message}` }]);
+        }
     }
 
     async handleAsrRecordingCompleted(payload: any[]) {
@@ -1518,13 +1581,14 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 this.ttsWs!.on('message', (data: Buffer) => {
                     try {
                         const rawData = data.toString();
-                        logger.debug('TTS raw message received: clientId=%d, length=%d bytes', 
-                            this.clientId, rawData.length);
-                        
                         const message = JSON.parse(rawData);
                         
-                        logger.debug('TTS message parsed: clientId=%d, type=%s', 
-                            this.clientId, message.type || 'unknown');
+                        // 只记录重要的 TTS 消息类型（减少日志噪音）
+                        const importantTtsTypes = ['session.created', 'response.audio.done', 'error', 'response.done'];
+                        if (importantTtsTypes.includes(message.type)) {
+                            logger.info('TTS message: clientId=%d, type=%s', 
+                                this.clientId, message.type || 'unknown');
+                        }
                         
                         if (!this.ttsInitResolved && this.ttsInitPromise) {
                             if (message.type === 'session.created') {
@@ -1569,14 +1633,27 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                             if (this.pendingCommits === 0) {
                                 this.sendEvent('tts/done', []);
                                 addClientLog(this.clientId, 'info', 'All TTS audio generation completed');
+                                
+                                // TTS 音频生成完成，发送所有等待的 agent/done 事件
+                                // 客户端会等待播放完成后发送 session.over
+                                for (const [recordId, recordInfo] of this.pendingAgentDoneRecords.entries()) {
+                                    logger.info('Sending agent/done after TTS completion: clientId=%d, rid=%s', 
+                                        this.clientId, recordId);
+                                    this.sendEvent('agent/done', [{
+                                        taskRecordId: recordInfo.taskRecordId,
+                                        message: recordInfo.message,
+                                    }]);
+                                    this.sendEvent('client/agent/done', [{
+                                        taskRecordId: recordInfo.taskRecordId,
+                                        message: recordInfo.message,
+                                    }]);
+                                }
+                                this.pendingAgentDoneRecords.clear();
                             }
                         } else if (message.type === 'error') {
                             const errorMsg = message.error?.message || 'TTS task failed';
                             addClientLog(this.clientId, 'error', `TTS error: ${errorMsg}`);
                             this.sendEvent('tts/error', [{ message: errorMsg }]);
-                        } else {
-                            logger.debug('TTS unknown message type: clientId=%d, type=%s', 
-                                this.clientId, message.type);
                         }
                     } catch (error: any) {
                         logger.error('Failed to parse TTS message: %s, raw data: %s', error.message, data.toString().substring(0, 200));
@@ -1649,16 +1726,12 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             text: sentence,
         };
         this.ttsWs.send(JSON.stringify(appendEvent));
-        logger.debug('TTS append text: clientId=%d, sentence=%s', this.clientId, sentence.substring(0, 30));
-        addClientLog(this.clientId, 'debug', `TTS append: ${sentence.substring(0, 30)}...`);
-
+        // TTS append 和 commit 很频繁，不记录日志（减少噪音）
         const commitEvent = {
             type: 'input_text_buffer.commit',
         };
         this.ttsWs.send(JSON.stringify(commitEvent));
         this.pendingCommits++;
-        logger.debug('TTS commit: clientId=%d, pendingCommits=%d', this.clientId, this.pendingCommits);
-        addClientLog(this.clientId, 'debug', `TTS commit, pending: ${this.pendingCommits}`);
     }
 
     async handleTtsText(msg: any) {
@@ -1679,10 +1752,82 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         this.sendEvent('tts/stopped', []);
     }
 
-    async handleAgentChat(msg: any) {
-        logger.info('handleAgentChat called: clientId=%d, msg=%o', this.clientId, msg);
-        addClientLog(this.clientId, 'info', `Starting Agent chat: message=${msg?.message?.substring(0, 50) || 'no message'}...`);
+    async handleSessionCreate(msg: any) {
+        if (this.sessionActive && this.currentSessionId) {
+            this.send({ type: 'session.created', event_id: msg.event_id });
+            return;
+        }
         
+        if (!this.client || !this.client.settings?.agent) {
+            this.sendEvent('agent/error', [{ message: 'Agent config not set' }]);
+            return;
+        }
+        
+        const agentConfig = this.client.settings.agent;
+        if (!agentConfig.agentId) {
+            this.sendEvent('agent/error', [{ message: 'Agent ID not configured' }]);
+            return;
+        }
+        
+        try {
+            const currentClient = await ClientModel.getByClientId(this.domain._id, this.clientId);
+            const sessionUid = currentClient?.owner || this.client.owner;
+            const sessionId = await SessionModel.add(
+                this.domain._id,
+                agentConfig.agentId,
+                sessionUid,
+                'client',
+                undefined,
+                undefined,
+            );
+            
+            const createdSession = await SessionModel.get(this.domain._id, sessionId);
+            if (!createdSession) {
+                this.sendEvent('agent/error', [{ message: 'Failed to create session' }]);
+                return;
+            }
+            
+            this.currentSessionId = sessionId;
+            this.sessionActive = true;
+            
+            this.send({ type: 'session.created', event_id: msg.event_id, session_id: sessionId.toString() });
+        } catch (error: any) {
+            logger.error('Error creating session: clientId=%d, error=%s', this.clientId, error.message);
+            this.sendEvent('agent/error', [{ message: `Failed to create session: ${error.message}` }]);
+        }
+    }
+
+    async handleSessionOver(msg: any) {
+        if (!this.sessionActive || !this.currentSessionId) {
+            this.send({ type: 'session.ended', event_id: msg.event_id });
+            return;
+        }
+        
+        const sessionId = this.currentSessionId;
+        this.currentSessionId = null;
+        this.sessionActive = false;
+        
+        this.send({ type: 'session.ended', event_id: msg.event_id, session_id: sessionId.toString() });
+    }
+
+    async handleVoiceChat(msg: any) {
+        const isSystemMessage = msg.isSystemMessage === true;
+        const message = msg.message || msg.text;
+        
+        if (!message || typeof message !== 'string') {
+            this.sendEvent('agent/error', [{ message: 'Invalid message content' }]);
+            return;
+        }
+        
+        await this.handleAgentChat({
+            message,
+            history: msg.history || [],
+            createTaskRecord: msg.createTaskRecord !== false,
+            isSystemMessage,
+        });
+    }
+
+    async handleAgentChat(msg: any) {
         if (!this.client || !this.client.settings?.agent) {
             logger.warn('handleAgentChat: Agent config not set: clientId=%d', this.clientId);
             this.sendEvent('agent/error', [{ message: 'Agent config not set' }]);
@@ -1700,6 +1845,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
 
         const message = msg.message;
         const history = msg.history || [];
+        const createTaskRecord = msg.createTaskRecord !== false;
 
         if (!message || typeof message !== 'string') {
             logger.warn('handleAgentChat: Invalid message: clientId=%d, message=%o', this.clientId, message);
@@ -1708,6 +1854,128 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             return;
         }
 
+        const agents = await AgentModel.getMulti(this.domain._id, { aid: agentConfig.agentId }, AgentModel.PROJECTION_DETAIL).toArray();
+        if (agents.length === 0) {
+            logger.error('handleAgentChat: Agent not found: clientId=%d, agentId=%s', this.clientId, agentConfig.agentId);
+            this.sendEvent('agent/error', [{ message: 'Agent not found' }]);
+            addClientLog(this.clientId, 'error', `Agent not found: ${agentConfig.agentId}`);
+            return;
+        }
+        const agent = agents[0];
+
+        if (createTaskRecord) {
+            const latestClient = await ClientModel.getByClientId(this.domain._id, this.clientId);
+            const recordUid = latestClient?.owner || this.client.owner;
+            
+            const sessionId = await SessionModel.add(
+                this.domain._id,
+                agentConfig.agentId,
+                recordUid,
+                'client',
+                undefined,
+                undefined,
+            );
+            this.currentSessionId = sessionId;
+            this.sessionActive = true;
+            
+            const taskRecordId = await record.addTask(
+                this.domain._id,
+                agentConfig.agentId,
+                recordUid,
+                message,
+                sessionId,
+            );
+            
+            await SessionModel.addRecord(this.domain._id, sessionId, taskRecordId);
+            
+            const domainInfo = await domain.get(this.domain._id);
+            if (!domainInfo) {
+                this.sendEvent('agent/error', [{ message: 'Domain not found' }]);
+                return;
+            }
+            
+            const tools = await getAssignedTools(this.domain._id, agent.mcpToolIds);
+            
+            const agentPrompt = agent.content || '';
+            let systemMessage = agentPrompt;
+            
+            const truncateMemory = (memory: string, maxLength: number = 2000): string => {
+                if (!memory || memory.length <= maxLength) {
+                    return memory;
+                }
+                return memory.substring(0, maxLength) + '\n\n[... Memory truncated, keeping most important rules ...]';
+            };
+            if (agent.memory) {
+                const truncatedMemory = truncateMemory(agent.memory);
+                systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
+            }
+            
+            if (systemMessage && !systemMessage.includes('do not use emoji')) {
+                systemMessage += '\n\nNote: Do not use any emoji in your responses.';
+            } else if (!systemMessage) {
+                systemMessage = 'Note: Do not use any emoji in your responses.';
+            }
+            
+            if (tools.length > 0) {
+                const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
+                  tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
+                  `\n\n【CRITICAL - YOU MUST READ THIS FIRST】\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "Find the switch"\n2. You MUST first output: "Let me help you find the switch device..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n【TOOL USAGE STRATEGY - CRITICAL】\n1. **Proactive Multi-Tool Problem Solving**: When a user's question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "Do I have classes tomorrow?" → You should: (1) FIRST say "Let me check tomorrow's schedule..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there's schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "View files in repo" → You should: (1) FIRST say "Let me search for files in the knowledge base..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   Examples: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool's result.\n5. After the last tool call completes, you should only reply with the last tool's result. Do NOT provide a comprehensive summary of all tools' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool's result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool's result → explain what you will do next → call the second tool → reply with the second tool's result, and so on. Each reply should be independent and focused on the current tool.`;
+                systemMessage = systemMessage + toolsInfo;
+            }
+            
+            const sdoc = await SessionModel.get(this.domain._id, sessionId);
+            let sessionContext = sdoc?.context || {};
+            
+            const context = {
+                ...sessionContext,
+                apiKey: (domainInfo as any)['apiKey'] || '',
+                model: (domainInfo as any)['model'] || 'deepseek-chat',
+                apiUrl: (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions',
+                agentContent: agent.content || '',
+                agentMemory: agent.memory || '',
+                tools: tools.map(tool => ({
+                    name: tool.name,
+                    description: tool.description,
+                    inputSchema: tool.inputSchema,
+                })),
+                systemMessage,
+            };
+            
+            await SessionModel.update(this.domain._id, sessionId, {
+                context,
+            });
+            
+            const latestClientForTask = await ClientModel.getByClientId(this.domain._id, this.clientId);
+            const taskUid = latestClientForTask?.owner || this.client.owner;
+            
+            const taskModel = require('../model/task').default;
+            await taskModel.add({
+                type: 'task',
+                recordId: taskRecordId,
+                sessionId,
+                domainId: this.domain._id,
+                agentId: agentConfig.agentId,
+                uid: taskUid,
+                message,
+                history: JSON.stringify(history),
+                context,
+                priority: 0,
+            });
+            
+            this.subscribeRecord(taskRecordId.toString(), agentConfig.agentId);
+            
+            this.sendEvent('agent/task_created', [{
+                taskRecordId: taskRecordId.toString(),
+                sessionId: sessionId.toString(),
+                message: 'Task created, processing by worker',
+            }]);
+            
+            logger.info('Task created for client, processing by worker: clientId=%d, taskRecordId=%s', 
+                this.clientId, taskRecordId.toString());
+            return;
+        }
+
+        // 如果没有创建任务（继续对话），继续在主服务器处理
         this.currentTtsAudioBuffers = [];
         const chatMessages: Array<{
             role: 'user' | 'assistant' | 'tool';
@@ -1748,18 +2016,6 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         let currentToolCall: { toolName: string; toolCallId?: string; startTime: number } | null = null;
 
         try {
-            logger.info('handleAgentChat: Fetching agent: clientId=%d, agentId=%s', this.clientId, agentConfig.agentId);
-            addClientLog(this.clientId, 'info', `Fetching Agent info: agentId=${agentConfig.agentId}`);
-            
-            const agents = await AgentModel.getMulti(this.domain._id, { aid: agentConfig.agentId }).toArray();
-            if (agents.length === 0) {
-                logger.error('handleAgentChat: Agent not found: clientId=%d, agentId=%s', this.clientId, agentConfig.agentId);
-                this.sendEvent('agent/error', [{ message: 'Agent not found' }]);
-                addClientLog(this.clientId, 'error', `Agent not found: ${agentConfig.agentId}`);
-                return;
-            }
-
-            const agent = agents[0];
             logger.info('handleAgentChat: Agent found: clientId=%d, agentId=%s, agentDocId=%s', 
                 this.clientId, agentConfig.agentId, agent.docId);
             addClientLog(this.clientId, 'info', `Agent info retrieved: agentId=${agentConfig.agentId}, docId=${agent.docId}`);
@@ -1884,6 +2140,11 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                         message: finalMessage,
                         history: finalHistory,
                     }]);
+                    // 同时发送 client/agent/done 事件（兼容性）
+                    this.sendEvent('client/agent/done', [{
+                        message: finalMessage,
+                        history: finalHistory,
+                    }]);
                     addClientLog(this.clientId, 'info', `Agent chat completed: ${finalMessage.substring(0, 50)}...`);
                     
                     try {
@@ -1940,6 +2201,97 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         }
     }
 
+    private subscribeRecord(rid: string, agentId: string) {
+        if (this.subscribedRecordIds.has(rid)) {
+            logger.debug('Record already subscribed: clientId=%d, rid=%s', this.clientId, rid);
+            return;
+        }
+        
+        this.subscribedRecordIds.add(rid);
+        
+        const dispose = this.ctx.on('record/change' as any, async (rdoc: any) => {
+            const r = rdoc as any;
+            if (!r || !r._id) return;
+            
+            const recordId = r._id.toString();
+            if (recordId !== rid) return;
+            if (r.agentId !== agentId) return;
+            if (r.domainId !== this.domain._id) return;
+            
+            if (r.status === STATUS.STATUS_TASK_DELIVERED || r.status === STATUS.STATUS_TASK_ERROR_SYSTEM) {
+                logger.info('Record status changed: clientId=%d, rid=%s, status=%s', 
+                    this.clientId, recordId, r.status);
+            }
+            
+            try {
+                const fullRecord = await record.get(this.domain._id, new ObjectId(rid));
+                if (!fullRecord) {
+                    logger.warn('Record not found when processing update: clientId=%d, rid=%s', this.clientId, rid);
+                    return;
+                }
+                
+                const recordData = fullRecord as any;
+                
+                const agentMessages = recordData.agentMessages || [];
+                const assistantMessages = agentMessages.filter((msg: any) => msg.role === 'assistant');
+                
+                if (recordData.status === STATUS.STATUS_TASK_DELIVERED && assistantMessages.length > 0) {
+                    const lastAssistantMessage = assistantMessages[assistantMessages.length - 1];
+                    const content = lastAssistantMessage.content || '';
+                    
+                    if (content) {
+                        logger.info('Sending agent reply to client: clientId=%d, rid=%s, content length=%d', 
+                            this.clientId, rid, content.length);
+                        
+                        this.sendEvent('agent/content', [content]);
+                        
+                        if (this.client?.settings?.tts) {
+                            this.pendingAgentDoneRecords.set(rid, {
+                                taskRecordId: rid,
+                                message: content,
+                            });
+                            
+                            await this.addTtsText(content).catch((error: any) => {
+                                logger.warn('Failed to generate TTS for agent reply: %s', error.message);
+                                this.pendingAgentDoneRecords.delete(rid);
+                                this.sendEvent('agent/done', [{
+                                    taskRecordId: rid,
+                                    message: content,
+                                }]);
+                                this.sendEvent('client/agent/done', [{
+                                    taskRecordId: rid,
+                                    message: content,
+                                }]);
+                            });
+                        } else {
+                            this.sendEvent('agent/done', [{
+                                taskRecordId: rid,
+                                message: content,
+                            }]);
+                            this.sendEvent('client/agent/done', [{
+                                taskRecordId: rid,
+                                message: content,
+                            }]);
+                        }
+                    }
+                } else if (recordData.status === STATUS.STATUS_TASK_ERROR_SYSTEM) {
+                    const errorMsg = recordData.agentError?.message || 'Task processing failed';
+                    logger.error('Task processing failed: clientId=%d, rid=%s, error=%s', 
+                        this.clientId, rid, errorMsg);
+                    this.sendEvent('agent/error', [{ message: errorMsg }]);
+                }
+            } catch (error: any) {
+                logger.error('Error processing record update for client: clientId=%d, rid=%s, error=%s', 
+                    this.clientId, rid, error.message);
+            }
+        });
+        
+        this.subscriptions.push({ dispose });
+        
+        logger.debug('Subscribed to record: clientId=%d, rid=%s, agentId=%s', 
+            this.clientId, rid, agentId);
+    }
+
     async cleanup() {
         // Unsubscribe from all events
         for (const sub of this.eventSubscriptions) {
@@ -1989,16 +2341,15 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         if (this.clientId && this.accepted) {
             ClientConnectionHandler.active.delete(this.clientId);
             
-            // 从 EdgeServerConnectionHandler 中删除（和 node/provider 一样）
             if (this.token) {
                 EdgeServerConnectionHandler.active.delete(this.token);
             }
             
             try {
                 await ClientModel.updateStatus(this.domain._id, this.clientId, 'disconnected');
+                logger.info('Client status update event published: clientId=%d, status=disconnected', this.clientId);
                 (this.ctx.emit as any)('client/status/update', this.clientId);
                 
-                // 更新 edge 状态为离线（和 EdgeServerConnectionHandler.cleanup 一样）
                 if (this.token) {
                     const edge = await EdgeModel.getByToken(this.domain._id, this.token);
                     if (edge) {
@@ -2010,6 +2361,9 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 logger.error('Failed to update client status on disconnect: %s', error.message);
             }
         }
+        
+        this.currentSessionId = null;
+        this.sessionActive = false;
 
         if (this.accepted && this.clientId) {
             logger.info('Client WebSocket disconnected: clientId=%d from %s', this.clientId, this.request.ip);
@@ -2309,6 +2663,32 @@ export async function apply(ctx: Context) {
         if (handler) {
             addClientLog(clientId, 'info', `Agent chat request: ${msg.message ? msg.message.substring(0, 50) + (msg.message.length > 50 ? '...' : '') : 'no message'}`);
             await handler.handleAgentChat(msg);
+        }
+    });
+
+    // Session management events (new protocol)
+    (ctx as any).on('client/session/create', async (clientId: number, msg: any) => {
+        const handler = ClientConnectionHandler.getConnection(clientId);
+        if (handler) {
+            addClientLog(clientId, 'info', 'Session create event received via Cordis');
+            await handler.handleSessionCreate(msg);
+        }
+    });
+
+    (ctx as any).on('client/session/over', async (clientId: number, msg: any) => {
+        const handler = ClientConnectionHandler.getConnection(clientId);
+        if (handler) {
+            addClientLog(clientId, 'info', 'Session over event received via Cordis');
+            await handler.handleSessionOver(msg);
+        }
+    });
+
+    // Voice chat events (new protocol)
+    (ctx as any).on('client/voice_chat', async (clientId: number, msg: any) => {
+        const handler = ClientConnectionHandler.getConnection(clientId);
+        if (handler) {
+            addClientLog(clientId, 'info', `Voice chat request via Cordis: ${msg.message ? msg.message.substring(0, 50) + (msg.message.length > 50 ? '...' : '') : 'no message'}, isSystemMessage=${msg.isSystemMessage || false}`);
+            await handler.handleVoiceChat(msg);
         }
     });
 }

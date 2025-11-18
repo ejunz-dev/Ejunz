@@ -1439,10 +1439,11 @@ export class AgentChatHandler extends Handler {
                 domainId,
                 adoc.aid || adoc.docId?.toString() || adoc.aid,
                 this.user._id,
+                'chat', // session 类型：chat
                 undefined, // title 可以后续更新
                 undefined, // context 会在创建 task 时设置
             );
-            AgentLogger.info('Created new session', { sessionId: sessionId.toString(), domainId, agentId: adoc.aid });
+            AgentLogger.info('Created new session', { sessionId: sessionId.toString(), domainId, agentId: adoc.aid, type: 'chat' });
         }
         
         // 获取 session 的 context（如果有）
@@ -1450,19 +1451,33 @@ export class AgentChatHandler extends Handler {
         let sessionContext = sdoc?.context || {};
         
         // 创建任务记录（每次发送消息都创建新的任务记录）
+        // 如果没有 session，创建新 session（所有 record 都必须有 session）
         let taskRecordId: ObjectId | undefined;
         AgentLogger.info('POST chat: checking task creation', { 
             createTaskRecord, 
             chatHistoryLength: chatHistory?.length || 0,
         });
         if (createTaskRecord) {
+            // 确保有 session（如果没有，创建新 session）
+            if (!sessionId) {
+                sessionId = await SessionModel.add(
+                    domainId,
+                    adoc.aid || adoc.docId?.toString() || adoc.aid,
+                    this.user._id,
+                    'chat', // session 类型：chat
+                    undefined, // title 可以后续更新
+                    undefined, // context 会在创建 task 时设置
+                );
+                AgentLogger.info('Auto-created session for record: sessionId=%s, type=chat', sessionId.toString());
+            }
+            
             AgentLogger.info('POST chat: creating task record');
             taskRecordId = await record.addTask(
                 domainId,
                 adoc.aid || adoc.docId.toString(),
                 this.user._id,
                 message,
-                sessionId, // 关联到 session
+                sessionId, // 关联到 session（必需）
             );
             
             // 将 record 添加到 session

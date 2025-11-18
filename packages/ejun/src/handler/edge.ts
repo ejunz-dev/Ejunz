@@ -880,7 +880,7 @@ export class EdgeGenerateTokenHandler extends Handler<Context> {
         
         // 只生成 token，不创建 edge
         const token = await EdgeTokenModel.generateToken();
-        await EdgeTokenModel.add(this.domain._id, edgeType as 'provider' | 'client' | 'node', token);
+        await EdgeTokenModel.add(this.domain._id, edgeType as 'provider' | 'client' | 'node', token, this.user._id);
         
         const protocol = this.request.headers['x-forwarded-proto'] || (this.request.headers['x-forwarded-ssl'] === 'on' ? 'https' : 'http');
         const wsProtocol = protocol === 'https' ? 'wss' : 'ws';
