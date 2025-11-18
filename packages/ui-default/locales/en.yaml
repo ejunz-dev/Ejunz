@@ -191,7 +191,7 @@ __langname: English
 agent_detail: Agent Detail
 agent_domain: Agent
 agent_edit: Edit Agent
-base_domain: Knowledge Base
+base_domain: Base
 block_create: Create Block
 block_detail: Block Detail
 block_edit: Edit Block
@@ -222,6 +222,7 @@ domain_main: Main
 domain_permission: Domain Permission
 domain_role: Domain Role
 domain_user: Domain User
+edge_domain: Edge
 fs_upload: File Upload
 home_account: Account Settings
 home_domain_account: Profile @ Domain
@@ -280,6 +281,7 @@ repo_create: Create Repo
 repo_detail: Repo Detail
 repo_doc: Repo Doc
 repo_edit: Edit Repo
+session_domain: Session
 session_main: Session
 setting_customize: Customize
 setting_display: Display Preference
@@ -293,6 +295,7 @@ setting_session: Session Settings
 setting_smtp: SMTP Settings
 setting_usage: Usage Preference
 timeago_locale: en_US
+tool_domain: Tool
 training_create: Training Create
 training_detail: Training Detail
 training_edit: Training Edit
