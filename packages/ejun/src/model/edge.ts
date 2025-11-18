@@ -21,7 +21,7 @@ class EdgeModel {
         return randomstring(32);
     }
 
-    static async add(edge: Partial<EdgeDoc> & { domainId: string; owner: number; type: 'provider' | 'client' | 'node'; token?: string }): Promise<EdgeDoc> {
+    static async add(edge: Partial<EdgeDoc> & { domainId: string; owner: number; type: 'provider' | 'client' | 'node' | 'repo'; token?: string }): Promise<EdgeDoc> {
         const eid = await this.generateNextEdgeId(edge.domainId);
         const token = edge.token || await this.generateToken();
         const now = new Date();

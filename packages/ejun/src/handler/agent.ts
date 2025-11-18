@@ -955,8 +955,27 @@ async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[], repoI
         }
     }
     
-    // Repo tools are now handled through Edge/Tool model, skip this section
-    // if (repoIds && repoIds.length > 0) { ... }
+    // Repo tools are now handled through Edge/Tool model
+    // When agent has repoIds, automatically include tools from those repos
+    if (repoIds && repoIds.length > 0) {
+        for (const rpid of repoIds) {
+            try {
+                const repo = await RepoModel.getRepoByRpid(domainId, rpid);
+                if (repo && repo.edgeId) {
+                    const edge = await EdgeModel.getByEdgeId(domainId, repo.edgeId);
+                    if (edge && edge.token) {
+                        const repoTools = await ToolModel.getByToken(domainId, edge.token);
+                        for (const tool of repoTools) {
+                            // Add repo tools to the map (they will be included in final tools)
+                            allToolIds.add(tool._id.toString());
+                        }
+                    }
+                }
+            } catch (error) {
+                AgentLogger.warn('Failed to get tools for repo %d: %s', rpid, (error as Error).message);
+            }
+        }
+    }
     
     const finalToolIds: ObjectId[] = Array.from(allToolIds).map(id => new ObjectId(id));
     
