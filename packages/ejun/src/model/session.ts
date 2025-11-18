@@ -17,7 +17,7 @@ export default class SessionModel {
     static coll = db.collection('session' as any);
     
     static PROJECTION_LIST: (keyof SessionDoc)[] = [
-        '_id', 'domainId', 'agentId', 'uid', 'recordIds', 'title', 'context',
+        '_id', 'domainId', 'agentId', 'uid', 'recordIds', 'type', 'title', 'context',
         'createdAt', 'updatedAt',
     ];
 
@@ -52,6 +52,7 @@ export default class SessionModel {
         domainId: string,
         agentId: string,
         uid: number,
+        type: 'client' | 'chat',
         title?: string,
         context?: any,
     ): Promise<ObjectId> {
@@ -61,6 +62,7 @@ export default class SessionModel {
             agentId,
             uid,
             recordIds: [],
+            type,
             title: title || `Session ${new Date().toLocaleString()}`,
             context: context || {},
             createdAt: new Date(),

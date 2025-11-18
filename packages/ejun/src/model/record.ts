@@ -61,7 +61,7 @@ export default class RecordModel {
         agentId: string,
         uid: number,
         initialMessage: string,
-        sessionId?: ObjectId,
+        sessionId: ObjectId, // sessionId 现在是必需的
     ): Promise<ObjectId> {
         const data: RecordDoc = {
             status: STATUS.STATUS_TASK_WAITING,

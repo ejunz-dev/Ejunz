@@ -780,6 +780,7 @@ export interface SessionDoc {
     agentId: string;
     uid: number;
     recordIds: ObjectId[];
+    type: 'client' | 'chat'; // session 类型：client（客户端会话）、chat（聊天会话）
     title?: string;
     context?: any; // 共享的上下文信息，用于 session 内的所有 task
     createdAt: Date;
