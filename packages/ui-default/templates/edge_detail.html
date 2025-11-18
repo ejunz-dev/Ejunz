@@ -32,6 +32,8 @@
                     <span class="badge badge--info">Node</span>
                   {% elif edge.type == 'client' %}
                     <span class="badge badge--warning">Client</span>
+                  {% elif edge.type == 'repo' %}
+                    <span class="badge badge--success">Repo</span>
                   {% else %}
                     <span class="badge">Provider</span>
                   {% endif %}

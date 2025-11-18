@@ -244,7 +244,8 @@ export interface RPDoc {
     githubRepo?: string;    // GitHub 仓库地址，如 git@github.com:user/repo.git
     mode?: 'file' | 'manuscript'; // 显示模式：文件模式或文稿模式
     config?: Record<string, any>; // Repo 配置
-    mcpServerId?: number; // 关联的MCP服务器ID（内部调用）
+    mcpServerId?: number; // 关联的MCP服务器ID（内部调用，已废弃）
+    edgeId?: number; // 关联的Edge ID（当MCP激活时）
 }
 
 export interface DCDoc {
@@ -438,7 +439,7 @@ declare module './model/edge' {
         domainId: string;
         eid: number; // Edge ID，从 1 开始（业务 ID，用于路由显示）
         token: string;
-        type: 'provider' | 'client' | 'node';
+        type: 'provider' | 'client' | 'node' | 'repo';
         status: 'online' | 'offline' | 'working';
         tokenCreatedAt: Date;
         tokenUsedAt?: Date;
