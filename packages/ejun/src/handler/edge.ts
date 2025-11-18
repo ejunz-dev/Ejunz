@@ -486,15 +486,15 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
         }) as any);
     }
 
-    private static isBridgeEnvelope(msg: any): msg is EdgeBridgeEnvelope {
+    static isBridgeEnvelope(msg: any): msg is EdgeBridgeEnvelope {
         return Boolean(msg && typeof msg === 'object' && typeof msg.protocol === 'string');
     }
 
-    private static isJsonRpcMessage(msg: any): boolean {
+    static isJsonRpcMessage(msg: any): boolean {
         return Boolean(msg && typeof msg === 'object' && msg.jsonrpc === '2.0');
     }
 
-    private static extractJsonRpcPayload(envelope: EdgeBridgeEnvelope): any {
+    static extractJsonRpcPayload(envelope: EdgeBridgeEnvelope): any {
         if (!envelope) return null;
         const payload = envelope.payload;
         if (!payload) return null;
@@ -688,7 +688,7 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
         }
     }
 
-    private static normalizeEnvelope(
+    static normalizeEnvelope(
         envelope: EdgeBridgeEnvelope,
         token?: string | null,
         direction?: 'inbound' | 'outbound',
