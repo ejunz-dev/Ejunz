@@ -184,7 +184,7 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
             // Edge 不存在，创建 Edge（使用 tokenDoc 中的 token）
             edge = await EdgeModel.add({
                 domainId: this.domain._id,
-                type: tokenDoc.type as 'provider' | 'client' | 'node',
+                type: tokenDoc.type as 'provider' | 'client' | 'node' | 'repo',
                 owner: this.user._id,
                 token: tokenDoc.token,
             });
@@ -774,11 +774,20 @@ export class EdgeDomainHandler extends Handler<Context> {
     async get() {
         const allEdges = await EdgeModel.getByDomain(this.domain._id);
         
-        // 只显示已连接的 edge（有 tokenUsedAt 的）
-        const connectedEdges = allEdges.filter(edge => edge.tokenUsedAt);
+        // 显示已连接的 edge（有 tokenUsedAt 的）或者 repo 类型的 edge（内部使用，不需要连接）
+        const connectedEdges = allEdges.filter(edge => edge.tokenUsedAt || edge.type === 'repo');
         
         // 计算实时状态：检查是否有Edge服务器在使用这个token
         const edgesWithStatus = await Promise.all(connectedEdges.map(async (edge) => {
+            // Repo 类型的 edge 是内部使用，激活后就是在线状态（不需要 WebSocket 连接）
+            if (edge.type === 'repo') {
+                // repo 类型的 edge 激活后就是在线状态，直接使用数据库中的状态
+                return {
+                    ...edge,
+                    status: edge.status || 'online',
+                };
+            }
+            
             // 检查是否有Edge服务器在使用这个token（通过 /mcp/ws 连接）
             let isConnected = EdgeServerConnectionHandler.active.has(edge.token);
             
@@ -878,12 +887,12 @@ export class EdgeGenerateTokenHandler extends Handler<Context> {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         this.response.template = null;
         
-        // 默认类型为 provider，支持 provider、client、node
-        const edgeType = (type === 'client' || type === 'node') ? type : 'provider';
+        // 默认类型为 provider，支持 provider、client、node、repo
+        const edgeType = (type === 'client' || type === 'node' || type === 'repo') ? type : 'provider';
         
         // 只生成 token，不创建 edge
         const token = await EdgeTokenModel.generateToken();
-        await EdgeTokenModel.add(this.domain._id, edgeType as 'provider' | 'client' | 'node', token, this.user._id);
+        await EdgeTokenModel.add(this.domain._id, edgeType as 'provider' | 'client' | 'node' | 'repo', token, this.user._id);
         
         const protocol = this.request.headers['x-forwarded-proto'] || (this.request.headers['x-forwarded-ssl'] === 'on' ? 'https' : 'http');
         const wsProtocol = protocol === 'https' ? 'wss' : 'ws';

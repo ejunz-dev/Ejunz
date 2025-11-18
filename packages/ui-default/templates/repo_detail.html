@@ -211,9 +211,17 @@
             {{ _('Edit Repo info') }}
           </a>
 
-          <a href="{{ url('repo_mcp', domainId=repo.domainId, rpid=repo.rpid) }}" class="button secondary expanded" style="margin-bottom: 8px;">
-            {{ _('MCP Tools') }}
-          </a>
+          {% if repo.edgeId %}
+            <a href="{{ url('repo_mcp', domainId=repo.domainId, rpid=repo.rpid) }}" class="button secondary expanded" style="margin-bottom: 8px;">
+              {{ _('MCP Tools') }}
+            </a>
+          {% else %}
+            <form method="post" action="{{ url('repo_activate_mcp', domainId=repo.domainId, rpid=repo.rpid) }}" style="margin-bottom: 8px;">
+              <button type="submit" class="button secondary expanded">
+                {{ _('Activate MCP') }}
+              </button>
+            </form>
+          {% endif %}
 
           {% if gitStatus %}
             {% if gitStatus.ahead > 0 %}

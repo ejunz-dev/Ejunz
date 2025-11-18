@@ -20,6 +20,9 @@ import * as setting from '../model/setting';
 import https from 'https';
 import http from 'http';
 import McpServerModel, { McpToolModel } from '../model/mcp';
+import EdgeModel from '../model/edge';
+import EdgeTokenModel from '../model/edge_token';
+import ToolModel from '../model/tool';
 
 const exec = promisify(execCb);
 
@@ -718,24 +721,6 @@ export class RepoEditHandler extends Handler {
         const { docId, rpid } = await RepoModel.createRepo(domainId, this.user._id, title, content);
         
         try {
-            const mcpServerName = `repo-${rpid}-${title}`.substring(0, 50);
-            const mcpServer = await McpServerModel.add({
-                domainId,
-                name: mcpServerName,
-                description: `MCP service for repo ${title} (internal)`,
-                owner: this.user._id,
-                wsToken: null,
-                type: 'repo',
-            });
-            
-            await document.set(domainId, TYPE_RP, docId, { mcpServerId: mcpServer.serverId });
-            
-            await createDefaultRepoMcpTools(domainId, mcpServer.serverId, mcpServer.docId, rpid, this.user._id);
-        } catch (err) {
-            console.error('Failed to create MCP server for repo:', err);
-        }
-        
-        try {
             await ensureRepoGitRepo(domainId, rpid);
             
             try {
@@ -793,18 +778,24 @@ export class RepoMcpHandler extends Handler {
             throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
         }
         
-        if (repo.mcpServerId) {
+        let mcpTools: any[] = [];
+        let edge: any = null;
+        
+        // 从edge获取工具（新方式）
+        if (repo.edgeId) {
             try {
-                const server = await McpServerModel.getByServerId(domainId, repo.mcpServerId);
-                if (server) {
-                    await createDefaultRepoMcpTools(domainId, repo.mcpServerId, server.docId, rpid, repo.owner);
+                edge = await EdgeModel.getByEdgeId(domainId, repo.edgeId);
+                if (edge && edge.token) {
+                    const tools = await ToolModel.getByToken(domainId, edge.token);
+                    mcpTools = tools;
                 }
             } catch (error: any) {
-                console.error('Failed to ensure default MCP tools:', error);
+                console.error('Failed to load MCP tools from edge:', error);
             }
         }
-        let mcpTools: any[] = [];
-        if (repo.mcpServerId) {
+        
+        // 兼容旧方式（从mcpServerId获取）
+        if (mcpTools.length === 0 && repo.mcpServerId) {
             try {
                 const tools = await McpToolModel.getByServer(domainId, repo.mcpServerId);
                 mcpTools = tools;
@@ -814,7 +805,7 @@ export class RepoMcpHandler extends Handler {
         }
         
         this.response.template = 'repo_mcp.html';
-        this.response.body = { repo, mcpTools };
+        this.response.body = { repo, mcpTools, edge };
     }
 
     @param('rpid', Types.Int)
@@ -978,6 +969,457 @@ export class RepoMcpHandler extends Handler {
 
         await McpToolModel.del(domainId, repo.mcpServerId, toolId);
         this.response.redirect = this.url('repo_mcp', { domainId, rpid });
+    }
+}
+
+export class RepoActivateMcpHandler extends Handler {
+    @param('rpid', Types.Int)
+    async post(domainId: string, rpid: number) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const repo = await RepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) {
+            throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
+        }
+        
+        // 如果已经激活，直接返回
+        if (repo.edgeId) {
+            const existingEdge = await EdgeModel.getByEdgeId(domainId, repo.edgeId);
+            if (existingEdge) {
+                this.response.body = { success: true, edgeId: repo.edgeId, message: 'MCP already activated' };
+                return;
+            }
+        }
+        
+        try {
+            // 1. 创建edge token（类型为repo）
+            const token = await EdgeTokenModel.generateToken();
+            await EdgeTokenModel.add(domainId, 'repo', token, this.user._id);
+            
+            // 2. 创建edge（类型为repo）
+            const edge = await EdgeModel.add({
+                domainId,
+                type: 'repo',
+                owner: this.user._id,
+                token: token,
+                name: `repo-${rpid}-${repo.title}`.substring(0, 50),
+                description: `MCP service for repo ${repo.title} (internal)`,
+            });
+            
+            // repo 类型的 edge 是内部使用，激活后就是在线状态
+            await EdgeModel.update(domainId, edge.eid, {
+                status: 'online',
+                tokenUsedAt: new Date(), // 标记为已使用
+            });
+            
+            // 3. 生成默认工具列表
+            const tools = await this.generateDefaultRepoTools(rpid);
+            
+            // 4. 通过ToolModel注册工具
+            await ToolModel.syncToolsFromEdge(
+                domainId,
+                token,
+                edge.docId,
+                tools,
+                this.user._id,
+            );
+            
+            // 5. 将edge的eid关联到repo
+            await document.set(domainId, TYPE_RP, repo.docId, { edgeId: edge.eid });
+            
+            this.response.body = { success: true, edgeId: edge.eid, token: token, toolsCount: tools.length };
+        } catch (error: any) {
+            console.error('Failed to activate MCP for repo:', error);
+            throw new Error(`Failed to activate MCP: ${error.message}`);
+        }
+    }
+    
+    /**
+     * 生成默认的repo工具列表（与createDefaultRepoMcpTools相同，但返回格式适配ToolModel）
+     */
+    private async generateDefaultRepoTools(rpid: number): Promise<Array<{ name: string; description: string; inputSchema: any }>> {
+        return [
+            {
+                name: `repo_${rpid}_query_doc`,
+                description: `Query folders (doc) in repo ${rpid}. Note: doc is a folder/category structure for organizing content, not actual content. Actual content is stored in blocks.`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        did: { type: 'number', description: 'Folder ID (optional, returns all folders if not provided)' },
+                        branch: { type: 'string', description: 'Branch name (default: main)', default: 'main' },
+                    },
+                },
+            },
+            {
+                name: `repo_${rpid}_create_doc`,
+                description: `Create folder (doc) in repo ${rpid}. Note: doc is a folder/category structure for organizing content, not actual content. Actual content is stored in blocks.
+
+⚠️ Required workflow (must follow strictly):
+1. Step 1: Use repo_${rpid}_create_branch to create a new branch (cannot use main branch)
+2. Step 2: Perform create/edit/delete operations on the new branch (this tool)
+3. Step 3: Use repo_${rpid}_commit to commit all changes
+4. Step 4: Use repo_${rpid}_push to push to remote
+
+❌ Forbidden: Directly modify on main branch (main branch is read-only)
+✅ Allowed: Query operations (query/search/ask) on main branch`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        title: { type: 'string', description: 'Folder name' },
+                        content: { type: 'string', description: 'Folder description (optional)' },
+                        parentId: { type: 'number', description: 'Parent folder ID (optional, creates root folder if not provided)' },
+                        branch: { type: 'string', description: 'Branch name (must be non-main branch, main is read-only. Use create_branch first if branch not exists)' },
+                        commitMessage: { type: 'string', description: 'Commit message (optional, AI will auto-add prefix)' },
+                    },
+                    required: ['title', 'branch'],
+                },
+            },
+            {
+                name: `repo_${rpid}_edit_doc`,
+                description: `Edit folder (doc) in repo ${rpid}. Note: doc is a folder/category structure for organizing content, not actual content. Actual content is stored in blocks.
+
+⚠️ Required workflow (must follow strictly):
+1. Step 1: Use repo_${rpid}_create_branch to create a new branch (cannot use main branch)
+2. Step 2: Perform create/edit/delete operations on the new branch (this tool)
+3. Step 3: Use repo_${rpid}_commit to commit all changes
+4. Step 4: Use repo_${rpid}_push to push to remote
+
+❌ Forbidden: Directly modify on main branch (main branch is read-only)
+✅ Allowed: Query operations (query/search/ask) on main branch`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        did: { type: 'number', description: 'Folder ID' },
+                        title: { type: 'string', description: 'Folder name (optional)' },
+                        content: { type: 'string', description: 'Folder description (optional)' },
+                        branch: { type: 'string', description: 'Branch name (must be non-main branch, main is read-only. Use create_branch first if branch not exists)' },
+                        commitMessage: { type: 'string', description: 'Commit message (optional, AI will auto-add prefix)' },
+                    },
+                    required: ['did', 'branch'],
+                },
+            },
+            {
+                name: `repo_${rpid}_delete_doc`,
+                description: `Delete folder (doc) in repo ${rpid}. Note: doc is a folder/category structure for organizing content.
+
+⚠️ Required workflow (must follow strictly):
+1. Step 1: Use repo_${rpid}_create_branch to create a new branch (cannot use main branch)
+2. Step 2: Perform create/edit/delete operations on the new branch (this tool)
+3. Step 3: Use repo_${rpid}_commit to commit all changes
+4. Step 4: Use repo_${rpid}_push to push to remote
+
+❌ Forbidden: Directly modify on main branch (main branch is read-only)
+✅ Allowed: Query operations (query/search/ask) on main branch`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        did: { type: 'number', description: 'Folder ID' },
+                        branch: { type: 'string', description: 'Branch name (must be non-main branch, main is read-only. Use create_branch first if branch not exists)' },
+                        commitMessage: { type: 'string', description: 'Commit message (optional, AI will auto-add prefix)' },
+                    },
+                    required: ['did', 'branch'],
+                },
+            },
+            {
+                name: `repo_${rpid}_query_block`,
+                description: `Query documents (block) in repo ${rpid}. Note: block is the actual content/document containing specific content data. doc is just a folder/category structure for organizing blocks.`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        bid: { type: 'number', description: 'Document ID (optional, returns all documents if not provided)' },
+                        did: { type: 'number', description: 'Folder ID (optional, filters documents under specific folder)' },
+                        branch: { type: 'string', description: 'Branch name (default: main)', default: 'main' },
+                    },
+                },
+            },
+            {
+                name: `repo_${rpid}_create_block`,
+                description: `Create document (block) in repo ${rpid}. Note: block is the actual content/document containing specific content data. doc is just a folder/category structure for organizing blocks.
+
+⚠️ Required workflow (must follow strictly):
+1. Step 1: Use repo_${rpid}_create_branch to create a new branch (cannot use main branch)
+2. Step 2: Perform create/edit/delete operations on the new branch (this tool)
+3. Step 3: Use repo_${rpid}_commit to commit all changes
+4. Step 4: Use repo_${rpid}_push to push to remote
+
+❌ Forbidden: Directly modify on main branch (main branch is read-only)
+✅ Allowed: Query operations (query/search/ask) on main branch`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        did: { type: 'number', description: 'Parent folder ID (doc is folder/category)' },
+                        title: { type: 'string', description: 'Document title' },
+                        content: { type: 'string', description: 'Document content' },
+                        branch: { type: 'string', description: 'Branch name (must be non-main branch, main is read-only. Use create_branch first if branch not exists)' },
+                        commitMessage: { type: 'string', description: 'Commit message (optional, AI will auto-add prefix)' },
+                    },
+                    required: ['did', 'title', 'content', 'branch'],
+                },
+            },
+            {
+                name: `repo_${rpid}_edit_block`,
+                description: `Edit document (block) in repo ${rpid}. Note: block is the actual content/document containing specific content data. doc is just a folder/category structure for organizing blocks.
+
+⚠️ Required workflow (must follow strictly):
+1. Step 1: Use repo_${rpid}_create_branch to create a new branch (cannot use main branch)
+2. Step 2: Perform create/edit/delete operations on the new branch (this tool)
+3. Step 3: Use repo_${rpid}_commit to commit all changes
+4. Step 4: Use repo_${rpid}_push to push to remote
+
+❌ Forbidden: Directly modify on main branch (main branch is read-only)
+✅ Allowed: Query operations (query/search/ask) on main branch`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        bid: { type: 'number', description: 'Document ID' },
+                        title: { type: 'string', description: 'Document title (optional)' },
+                        content: { type: 'string', description: 'Document content (optional)' },
+                        branch: { type: 'string', description: 'Branch name (must be non-main branch, main is read-only. Use create_branch first if branch not exists)' },
+                        commitMessage: { type: 'string', description: 'Commit message (optional, AI will auto-add prefix)' },
+                    },
+                    required: ['bid', 'branch'],
+                },
+            },
+            {
+                name: `repo_${rpid}_delete_block`,
+                description: `Delete document (block) in repo ${rpid}. Note: block is the actual content/document.
+
+⚠️ Required workflow (must follow strictly):
+1. Step 1: Use repo_${rpid}_create_branch to create a new branch (cannot use main branch)
+2. Step 2: Perform create/edit/delete operations on the new branch (this tool)
+3. Step 3: Use repo_${rpid}_commit to commit all changes
+4. Step 4: Use repo_${rpid}_push to push to remote
+
+❌ Forbidden: Directly modify on main branch (main branch is read-only)
+✅ Allowed: Query operations (query/search/ask) on main branch`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        bid: { type: 'number', description: 'Document ID' },
+                        branch: { type: 'string', description: 'Branch name (must be non-main branch, main is read-only. Use create_branch first if branch not exists)' },
+                        commitMessage: { type: 'string', description: 'Commit message (optional, AI will auto-add prefix)' },
+                    },
+                    required: ['bid', 'branch'],
+                },
+            },
+            {
+                name: `repo_${rpid}_query_structure`,
+                description: `Query complete structure of repo ${rpid} (including hierarchical relationships of all folders doc and documents block). Returns tree structure for AI to understand repo organization. doc is folder/category, block is actual content/document.`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        branch: { type: 'string', description: 'Branch name (default: main)', default: 'main' },
+                    },
+                },
+            },
+            {
+                name: `repo_${rpid}_update_structure`,
+                description: `Update structure of repo ${rpid} (including hierarchical relationships of folders doc and ownership of documents block). Can batch modify parent-child relationships of folders and ownership of documents. doc is folder/category, block is actual content/document.
+
+⚠️ Required workflow (must follow strictly):
+1. Step 1: Use repo_${rpid}_create_branch to create a new branch (cannot use main branch)
+2. Step 2: Perform create/edit/delete operations on the new branch (this tool)
+3. Step 3: Use repo_${rpid}_commit to commit all changes
+4. Step 4: Use repo_${rpid}_push to push to remote
+
+❌ Forbidden: Directly modify on main branch (main branch is read-only)
+✅ Allowed: Query operations (query/search/ask) on main branch`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        structure: { 
+                            type: 'object', 
+                            description: 'Structure data containing docs (folders) and blocks (documents) arrays',
+                            properties: {
+                                docs: {
+                                    type: 'array',
+                                    description: 'Folder structure array, each element contains did, parentDid, order, etc.',
+                                    items: {
+                                        type: 'object',
+                                        properties: {
+                                            did: { type: 'number' },
+                                            parentDid: { type: ['number', 'null'] },
+                                            order: { type: 'number' },
+                                            level: { type: 'number' },
+                                        },
+                                    },
+                                },
+                                blocks: {
+                                    type: 'array',
+                                    description: 'Document structure array, each element contains bid, parentDid, order, etc.',
+                                    items: {
+                                        type: 'object',
+                                        properties: {
+                                            bid: { type: 'number' },
+                                            parentDid: { type: 'number' },
+                                            order: { type: 'number' },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        branch: { type: 'string', description: 'Branch name (must be non-main branch, main is read-only)' },
+                        commitMessage: { type: 'string', description: 'Commit message (optional, AI will auto-add prefix)' },
+                    },
+                    required: ['structure', 'branch'],
+                },
+            },
+            {
+                name: `repo_${rpid}_query_branches`,
+                description: `Query branch information of repo ${rpid} (including status of local and remote branches, commit counts, whether behind/ahead, etc.).`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        branch: { type: 'string', description: 'Branch name to query (optional, queries all branches if not provided)' },
+                    },
+                },
+            },
+            {
+                name: `repo_${rpid}_sync_branch`,
+                description: `Sync specified branch of repo ${rpid} with remote branch. If remote has updates (local behind), will auto-pull; if local has unpushed commits (local ahead), will prompt to push.
+
+⚠️ Note:
+- This tool first queries remote branch status, if local is behind remote, will auto-execute pull
+- If local is ahead of remote, returns prompt message, suggests using push tool
+- If local and remote have conflicts, returns error message
+- main branch can be queried and synced, but cannot be modified`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        branch: { type: 'string', description: 'Branch name (default: main)', default: 'main' },
+                        autoPull: { type: 'boolean', description: 'Auto-pull if local is behind remote (default: true)', default: true },
+                    },
+                },
+            },
+            {
+                name: `repo_${rpid}_pull`,
+                description: `Pull updates of repo ${rpid} from remote repository (git pull).`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        branch: { type: 'string', description: 'Branch name (default: main)', default: 'main' },
+                    },
+                },
+            },
+            {
+                name: `repo_${rpid}_push`,
+                description: `Push updates of repo ${rpid} to remote repository (git push).`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        branch: { type: 'string', description: 'Branch name (default: main)', default: 'main' },
+                    },
+                },
+            },
+            {
+                name: `repo_${rpid}_search`,
+                description: `Search in repo ${rpid} for folders (doc) and documents (block). Searches both folder names/descriptions and document titles/content. Returns results from both types. Note: doc is folder/category, block is actual content/document. Supports Chinese and English search.
+
+⚠️ Important: Only provide ONE keyword or phrase. Do NOT provide multiple keywords separated by spaces. Use a single, specific search term.`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        keyword: { type: 'string', description: 'Single search keyword or phrase (do NOT provide multiple keywords, use only one search term)' },
+                        branch: { type: 'string', description: 'Branch name (default: main)', default: 'main' },
+                        limit: { type: 'number', description: 'Result limit (default: 50)', default: 50 },
+                        skip: { type: 'number', description: 'Skip count for pagination (default: 0)', default: 0 },
+                    },
+                    required: ['keyword'],
+                },
+            },
+            {
+                name: `repo_${rpid}_ask`,
+                description: `Intelligent Q&A in repo ${rpid}. Accepts natural language questions, automatically retrieves relevant content, returns formatted answers (text + links). Similar to DeepWiki Q&A experience.`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        question: { type: 'string', description: 'User question (natural language)' },
+                        branch: { type: 'string', description: 'Branch name (default: main)', default: 'main' },
+                        limit: { type: 'number', description: 'Result limit (default: 10)', default: 10 },
+                    },
+                    required: ['question'],
+                },
+            },
+            {
+                name: `repo_${rpid}_create_branch`,
+                description: `Create new branch for repo ${rpid}. This is the **first step** for Agent to perform any modification operations, must be executed before all modification operations.
+
+📋 Complete workflow (must execute in order):
+1. **Step 1 (this tool)**: create_branch - Create new branch (copy data from main branch)
+2. **Step 2**: Perform create/edit/delete operations on new branch (create_doc, edit_doc, delete_doc, create_block, edit_block, delete_block, update_structure)
+3. **Step 3**: commit - Commit all changes to new branch
+4. **Step 4**: push - Push new branch to remote repository
+
+⚠️ Important rules:
+- main branch is read-only, can only query, cannot modify
+- All modification operations must be performed on non-main branches
+- Branch name format suggested: agent-{agentId}-{timestamp} or agent-{agentId}-{purpose}
+
+✅ Example: If user requests "add new document", you should:
+1. First call create_branch to create branch (e.g., agent-123-add-doc)
+2. Then call create_block on new branch to create document
+3. Then call commit to commit
+4. Finally call push to push`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        branchName: { type: 'string', description: 'New branch name (cannot be main, suggested format: agent-{agentId}-{timestamp} or agent-{agentId}-{purpose})' },
+                        purpose: { type: 'string', description: 'Operation purpose (userId + userName + userInstruction, for logging)' },
+                        userId: { type: 'number', description: 'User ID (optional)' },
+                        userName: { type: 'string', description: 'User name (optional)' },
+                        userInstruction: { type: 'string', description: 'User instruction (optional)' },
+                    },
+                    required: ['branchName', 'purpose'],
+                },
+            },
+            {
+                name: `repo_${rpid}_commit`,
+                description: `Commit changes of repo ${rpid} to current branch. This is the **third step** of Agent modification operations (after create_branch and all modification operations).
+
+📋 Complete workflow (must execute in order):
+1. Step 1: create_branch - Create new branch
+2. Step 2: Perform create/edit/delete operations on new branch
+3. **Step 3 (this tool)**: commit - Commit all changes
+4. Step 4: push - Push to remote
+
+⚠️ Note:
+- Must be called after all modification operations are completed
+- Commit message will automatically include agent info and operation purpose
+- Cannot commit to main branch`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        branch: { type: 'string', description: 'Branch name (must be non-main branch, main is read-only)' },
+                        message: { type: 'string', description: 'Commit message (optional, will auto-add agent info prefix)' },
+                        purpose: { type: 'string', description: 'Operation purpose (userId + userName + userInstruction, for logging)' },
+                    },
+                    required: ['branch'],
+                },
+            },
+            {
+                name: `repo_${rpid}_push`,
+                description: `Push changes of repo ${rpid} to remote repository. This is the **final step** of Agent modification operations (after create_branch, modification operations, commit).
+
+📋 Complete workflow (must execute in order):
+1. Step 1: create_branch - Create new branch
+2. Step 2: Perform create/edit/delete operations on new branch
+3. Step 3: commit - Commit all changes
+4. **Step 4 (this tool)**: push - Push to remote
+
+⚠️ Note:
+- Will automatically check and commit uncommitted changes before push
+- Cannot push to main branch
+- After successful push, remote repository will have your new branch`,
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        branch: { type: 'string', description: 'Branch name (must be non-main branch, main is read-only)' },
+                        purpose: { type: 'string', description: 'Operation purpose (userId + userName + userInstruction, for logging)' },
+                    },
+                    required: ['branch'],
+                },
+            },
+        ];
     }
 }
 
@@ -4603,6 +5045,7 @@ export async function apply(ctx: Context) {
     ctx.Route('repo_structure_update', '/base/repo/:rpid/update_structure', RepoStructureUpdateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_edit', '/base/repo/:rpid/edit', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_mcp', '/base/repo/:rpid/mcp', RepoMcpHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('repo_activate_mcp', '/base/repo/:rpid/activate-mcp', RepoActivateMcpHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('doc_create', '/base/repo/:rpid/doc/create', DocCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('doc_create_branch', '/base/repo/:rpid/branch/:branch/doc/create', DocCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('doc_create_subdoc', '/base/repo/:rpid/doc/:parentId/createsubdoc', DocCreateHandler, PRIV.PRIV_USER_PROFILE);

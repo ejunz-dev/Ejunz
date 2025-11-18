@@ -6,7 +6,7 @@ import { randomstring } from '../utils';
 export interface EdgeTokenDoc {
     _id: ObjectId;
     domainId: string;
-    type: 'provider' | 'node' | 'client';
+    type: 'provider' | 'node' | 'client' | 'repo';
     token: string;
     owner: number; // 创建 token 的用户 ID
     lastUsedAt: Date;
@@ -23,7 +23,7 @@ class EdgeTokenModel {
 
     static async add(
         domainId: string,
-        type: 'provider' | 'node' | 'client',
+        type: 'provider' | 'node' | 'client' | 'repo',
         token: string,
         owner: number,
     ): Promise<EdgeTokenDoc> {
@@ -90,7 +90,7 @@ class EdgeTokenModel {
         await EdgeTokenModel.coll.deleteOne({ token });
     }
 
-    static async deleteByDomain(domainId: string, type?: 'provider' | 'node' | 'client'): Promise<void> {
+    static async deleteByDomain(domainId: string, type?: 'provider' | 'node' | 'client' | 'repo'): Promise<void> {
         const filter: Filter<EdgeTokenDoc> = { domainId };
         if (type) {
             filter.type = type;
