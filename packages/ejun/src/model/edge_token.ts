@@ -11,7 +11,7 @@ export interface EdgeTokenDoc {
     owner: number; // 创建 token 的用户 ID
     lastUsedAt: Date;
     createdAt: Date;
-    expireAt: Date; // 30分钟后过期（如果未使用）
+    expireAt?: Date | null; // 30分钟后过期（如果未使用），连接后置空以永久有效
 }
 
 class EdgeTokenModel {
@@ -51,7 +51,7 @@ class EdgeTokenModel {
         
         // 检查是否过期（30分钟未使用）
         const now = new Date();
-        if (doc.expireAt < now) {
+        if (doc.expireAt && doc.expireAt < now) {
             // 已过期，删除
             await EdgeTokenModel.coll.deleteOne({ _id: doc._id });
             return null;
@@ -65,12 +65,23 @@ class EdgeTokenModel {
         const expireAt = new Date(now.getTime() + 30 * 60 * 1000); // 重置过期时间为30分钟后
         
         await EdgeTokenModel.coll.updateOne(
-            { token },
+            { token, expireAt: { $exists: true } },
             {
                 $set: {
                     lastUsedAt: now,
                     expireAt,
                 },
+            },
+        );
+    }
+
+    static async markPermanent(token: string): Promise<void> {
+        const now = new Date();
+        await EdgeTokenModel.coll.updateOne(
+            { token },
+            {
+                $set: { lastUsedAt: now },
+                $unset: { expireAt: '' },
             },
         );
     }

@@ -640,7 +640,6 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
     private currentTtsAudioBuffers: Buffer[] = [];
     private currentConversationId: number | null = null;
     private currentSessionId: ObjectId | null = null;
-    private sessionActive: boolean = false;
     private subscribedRecordIds: Set<string> = new Set();
     private pendingAgentDoneRecords: Map<string, { taskRecordId: string; message: string }> = new Map();
     // Promise resolver for waiting TTS playback completion before tool calls
@@ -698,6 +697,8 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         } catch (error) {
             logger.error('Failed to update edge status: %s', (error as Error).message);
         }
+
+        await EdgeTokenModel.markPermanent(token);
 
         let client: any = null;
         if (edge.clientId) {
@@ -901,17 +902,11 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 logger.error('Failed to update status: %s', error.message);
             }
             break;
-        case 'session.create':
-            await this.handleSessionCreate(msg);
-            break;
-        case 'session.over':
-            await this.handleSessionOver(msg);
-            break;
         case 'voice_chat':
             await this.handleVoiceChat(msg);
             break;
         default:
-            if (type && type !== 'ping' && type !== 'status' && type !== 'session.create' && type !== 'session.over' && type !== 'voice_chat') {
+            if (type && type !== 'ping' && type !== 'status' && type !== 'voice_chat') {
                 try {
                     if (type === 'asr/audio' && msg.audio) {
                         const args = [`client/${type}`, this.clientId, [{ audio: msg.audio }]];
@@ -1194,20 +1189,6 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                                                 this.clientId, agentId, text.substring(0, 50));
                                             addClientLog(this.clientId, 'info', `ASR final result, auto-triggering Agent chat: ${text.substring(0, 50)}...`);
                                             
-                                            if (!this.sessionActive || !this.currentSessionId) {
-                                                logger.info('ASR completion: No active session, creating session first: clientId=%d', this.clientId);
-                                                try {
-                                                    await this.handleSessionCreate({ 
-                                                        event_id: `auto-${Date.now()}`,
-                                                        type: 'session.create'
-                                                    });
-                                                } catch (error: any) {
-                                                    logger.error('ASR completion: Failed to auto-create session: %s', error.message);
-                                                    this.sendEvent('agent/error', [{ message: `Failed to create session: ${error.message}` }]);
-                                                    return;
-                                                }
-                                            }
-                                            
                                             try {
                                                 logger.info('ASR completion: calling handleAgentChat directly: clientId=%d', this.clientId);
                                                 await this.handleAgentChat({ message: text, history: [] });
@@ -1264,7 +1245,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
     private sendEvent(event: string, payload: any[]) {
         try {
             const message = { event, payload };
-            const importantEvents = ['agent/done', 'client/agent/done', 'agent/error', 'agent/content', 'session.created', 'session.ended', 'asr/result', 'tts/done'];
+            const importantEvents = ['agent/done', 'client/agent/done', 'agent/error', 'agent/content', 'asr/result', 'tts/done'];
             if (importantEvents.includes(event)) {
                 logger.info('Client event sent: clientId=%d, event=%s, payload length=%d', 
                     this.clientId, event, payload.length);
@@ -1634,8 +1615,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                                 this.sendEvent('tts/done', []);
                                 addClientLog(this.clientId, 'info', 'All TTS audio generation completed');
                                 
-                                // TTS 音频生成完成，发送所有等待的 agent/done 事件
-                                // 客户端会等待播放完成后发送 session.over
+                                // TTS generation finished, release all pending agent/done events
                                 for (const [recordId, recordInfo] of this.pendingAgentDoneRecords.entries()) {
                                     logger.info('Sending agent/done after TTS completion: clientId=%d, rid=%s', 
                                         this.clientId, recordId);
@@ -1752,64 +1732,6 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         this.sendEvent('tts/stopped', []);
     }
 
-    async handleSessionCreate(msg: any) {
-        if (this.sessionActive && this.currentSessionId) {
-            this.send({ type: 'session.created', event_id: msg.event_id });
-            return;
-        }
-        
-        if (!this.client || !this.client.settings?.agent) {
-            this.sendEvent('agent/error', [{ message: 'Agent config not set' }]);
-            return;
-        }
-        
-        const agentConfig = this.client.settings.agent;
-        if (!agentConfig.agentId) {
-            this.sendEvent('agent/error', [{ message: 'Agent ID not configured' }]);
-            return;
-        }
-        
-        try {
-            const currentClient = await ClientModel.getByClientId(this.domain._id, this.clientId);
-            const sessionUid = currentClient?.owner || this.client.owner;
-            const sessionId = await SessionModel.add(
-                this.domain._id,
-                agentConfig.agentId,
-                sessionUid,
-                'client',
-                undefined,
-                undefined,
-            );
-            
-            const createdSession = await SessionModel.get(this.domain._id, sessionId);
-            if (!createdSession) {
-                this.sendEvent('agent/error', [{ message: 'Failed to create session' }]);
-                return;
-            }
-            
-            this.currentSessionId = sessionId;
-            this.sessionActive = true;
-            
-            this.send({ type: 'session.created', event_id: msg.event_id, session_id: sessionId.toString() });
-        } catch (error: any) {
-            logger.error('Error creating session: clientId=%d, error=%s', this.clientId, error.message);
-            this.sendEvent('agent/error', [{ message: `Failed to create session: ${error.message}` }]);
-        }
-    }
-
-    async handleSessionOver(msg: any) {
-        if (!this.sessionActive || !this.currentSessionId) {
-            this.send({ type: 'session.ended', event_id: msg.event_id });
-            return;
-        }
-        
-        const sessionId = this.currentSessionId;
-        this.currentSessionId = null;
-        this.sessionActive = false;
-        
-        this.send({ type: 'session.ended', event_id: msg.event_id, session_id: sessionId.toString() });
-    }
-
     async handleVoiceChat(msg: any) {
         const isSystemMessage = msg.isSystemMessage === true;
         const message = msg.message || msg.text;
@@ -1867,16 +1789,18 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             const latestClient = await ClientModel.getByClientId(this.domain._id, this.clientId);
             const recordUid = latestClient?.owner || this.client.owner;
             
-            const sessionId = await SessionModel.add(
-                this.domain._id,
-                agentConfig.agentId,
-                recordUid,
-                'client',
-                undefined,
-                undefined,
-            );
-            this.currentSessionId = sessionId;
-            this.sessionActive = true;
+            let sessionId = this.currentSessionId;
+            if (!sessionId) {
+                sessionId = await SessionModel.add(
+                    this.domain._id,
+                    agentConfig.agentId,
+                    recordUid,
+                    'client',
+                    undefined,
+                    undefined,
+                );
+                this.currentSessionId = sessionId;
+            }
             
             const taskRecordId = await record.addTask(
                 this.domain._id,
@@ -2362,9 +2286,6 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             }
         }
         
-        this.currentSessionId = null;
-        this.sessionActive = false;
-
         if (this.accepted && this.clientId) {
             logger.info('Client WebSocket disconnected: clientId=%d from %s', this.clientId, this.request.ip);
             addClientLog(this.clientId, 'info', `Client disconnected: ${this.request.ip}`);
@@ -2663,23 +2584,6 @@ export async function apply(ctx: Context) {
         if (handler) {
             addClientLog(clientId, 'info', `Agent chat request: ${msg.message ? msg.message.substring(0, 50) + (msg.message.length > 50 ? '...' : '') : 'no message'}`);
             await handler.handleAgentChat(msg);
-        }
-    });
-
-    // Session management events (new protocol)
-    (ctx as any).on('client/session/create', async (clientId: number, msg: any) => {
-        const handler = ClientConnectionHandler.getConnection(clientId);
-        if (handler) {
-            addClientLog(clientId, 'info', 'Session create event received via Cordis');
-            await handler.handleSessionCreate(msg);
-        }
-    });
-
-    (ctx as any).on('client/session/over', async (clientId: number, msg: any) => {
-        const handler = ClientConnectionHandler.getConnection(clientId);
-        if (handler) {
-            addClientLog(clientId, 'info', 'Session over event received via Cordis');
-            await handler.handleSessionOver(msg);
         }
     });
 
