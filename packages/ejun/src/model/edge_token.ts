@@ -8,6 +8,7 @@ export interface EdgeTokenDoc {
     domainId: string;
     type: 'provider' | 'node' | 'client';
     token: string;
+    owner: number; // 创建 token 的用户 ID
     lastUsedAt: Date;
     createdAt: Date;
     expireAt: Date; // 30分钟后过期（如果未使用）
@@ -24,6 +25,7 @@ class EdgeTokenModel {
         domainId: string,
         type: 'provider' | 'node' | 'client',
         token: string,
+        owner: number,
     ): Promise<EdgeTokenDoc> {
         const now = new Date();
         const expireAt = new Date(now.getTime() + 30 * 60 * 1000); // 30分钟后过期
@@ -33,6 +35,7 @@ class EdgeTokenModel {
             domainId,
             type,
             token,
+            owner,
             lastUsedAt: now,
             createdAt: now,
             expireAt,

@@ -81,11 +81,12 @@ export class SessionDomainHandler extends Handler {
             if (udoc) {
                 query.uid = udoc._id;
             }
+            // 如果查询的不是当前用户，需要权限
+            if (query.uid !== this.user._id) {
+                this.checkPerm(PERM.PERM_VIEW_RECORD);
+            }
         } else {
-            query.uid = this.user._id;
-        }
-        
-        if (query.uid !== this.user._id) {
+            // 没有指定 uidOrName，显示所有 session，需要权限
             this.checkPerm(PERM.PERM_VIEW_RECORD);
         }
         
@@ -276,12 +277,15 @@ class SessionDomainConnectionHandler extends ConnectionHandler {
                     this.close(4000, `User not found: ${queryUidOrName}`);
                     return;
                 }
+                // 如果查询的不是当前用户，需要权限
+                if (this.uid !== this.user._id) {
+                    this.checkPerm(PERM.PERM_VIEW_RECORD);
+                }
             } else {
-                this.uid = this.user._id;
-            }
-            
-            if (this.uid !== this.user._id) {
+                // 没有指定 uidOrName，显示所有 session，需要权限
                 this.checkPerm(PERM.PERM_VIEW_RECORD);
+                // 不设置 this.uid，这样 onSessionChange 就不会按 uid 过滤
+                this.uid = undefined;
             }
             
             this.throttleQueueClear = throttle(this.queueClear, 100, { trailing: true });
@@ -320,7 +324,8 @@ class SessionDomainConnectionHandler extends ConnectionHandler {
         const r = rdoc as any;
         if (!r.agentId) return;
         if (r.domainId !== this.args.domainId) return;
-        if (this.uid && r.uid !== this.uid) return;
+        // 如果指定了 uid，只处理该用户的 record；否则处理所有 record
+        if (typeof this.uid === 'number' && r.uid !== this.uid) return;
         if (this.aid && r.agentId !== this.aid) return;
 
         const sdocs = await SessionModel.getMulti(this.args.domainId, {
@@ -328,7 +333,8 @@ class SessionDomainConnectionHandler extends ConnectionHandler {
         }).toArray();
 
         for (const sdoc of sdocs) {
-            if (this.uid && sdoc.uid !== this.uid) continue;
+            // 如果指定了 uid，只处理该用户的 session；否则处理所有 session
+            if (typeof this.uid === 'number' && sdoc.uid !== this.uid) continue;
             if (this.aid && sdoc.agentId !== this.aid) continue;
             await this.sendSessionUpdate(sdoc);
         }
