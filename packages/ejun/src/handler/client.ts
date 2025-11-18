@@ -10,6 +10,7 @@ import EdgeModel from '../model/edge';
 import EdgeTokenModel from '../model/edge_token';
 import { EdgeServerConnectionHandler } from './edge';
 import AgentModel, { McpClient } from '../model/agent';
+import type { EdgeBridgeEnvelope } from '../service/bus';
 import { processAgentChatInternal } from './agent';
 import SessionModel from '../model/session';
 import record from '../model/record';
@@ -644,6 +645,9 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
     private pendingAgentDoneRecords: Map<string, { taskRecordId: string; message: string }> = new Map();
     // Promise resolver for waiting TTS playback completion before tool calls
     private ttsPlaybackWaitPromise: { resolve: () => void; reject: (error: Error) => void } | null = null;
+    private outboundBridgeDisposer: (() => void) | null = null;
+    private pendingToolCalls: Map<string, { resolve: (value: any) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout }> = new Map();
+    private pendingToolCallNames: Map<string, string> = new Map(); // Map requestId to toolName
     
     static getConnection(clientId: number): ClientConnectionHandler | null {
         return ClientConnectionHandler.active.get(clientId) || null;
@@ -750,6 +754,9 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         // Register with EdgeServerConnectionHandler for unified status checking (same as node/provider)
         // Note: Use token as key to match EdgeServerConnectionHandler
         EdgeServerConnectionHandler.active.set(token, this as any);
+        
+        // Register outbound bridge listener for MCP protocol support
+        this.registerOutboundBridgeListener();
 
         logger.info('Client WebSocket connected: %s (clientId: %d, token: %s) from %s', 
             this.clientDocId, this.clientId, token, this.request.ip);
@@ -783,7 +790,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
     }
 
     async message(msg: any) {
-        if (!this.accepted || !this.clientId || !this.clientDocId) return;
+        if (!this.accepted || !this.clientId || !this.clientDocId || !this.token) return;
 
         if (typeof msg === 'string') {
             try {
@@ -795,6 +802,45 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         }
 
         if (!msg || typeof msg !== 'object') {
+            return;
+        }
+
+        // Support MCP Envelope protocol (same as node/provider)
+        if (EdgeServerConnectionHandler.isBridgeEnvelope(msg)) {
+            const envelope = EdgeServerConnectionHandler.normalizeEnvelope(
+                msg,
+                this.token,
+                'inbound',
+                this.domain._id,
+            );
+            // Auto-fill clientId from edge association if missing
+            await this.autoFillClientIdFromEdge(envelope);
+            if (envelope.protocol === 'mcp') {
+                const rpcPayload = EdgeServerConnectionHandler.extractJsonRpcPayload(envelope);
+                if (rpcPayload) {
+                    await this.handleMcpJsonRpcMessage(rpcPayload);
+                }
+            }
+            (this.ctx.emit as any)('edge/ws/inbound', this.token, envelope);
+            return;
+        }
+
+        // Support JSON-RPC messages (MCP protocol)
+        if (EdgeServerConnectionHandler.isJsonRpcMessage(msg)) {
+            await this.handleMcpJsonRpcMessage(msg);
+            const normalized = EdgeServerConnectionHandler.normalizeEnvelope(
+                {
+                    protocol: 'mcp',
+                    action: 'jsonrpc',
+                    payload: msg,
+                },
+                this.token,
+                'inbound',
+                this.domain._id,
+            );
+            // Auto-fill clientId from edge association if missing
+            await this.autoFillClientIdFromEdge(normalized);
+            (this.ctx.emit as any)('edge/ws/inbound', this.token, normalized);
             return;
         }
 
@@ -905,8 +951,31 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         case 'voice_chat':
             await this.handleVoiceChat(msg);
             break;
+        case 'tools/call':
+            // Handle tool call response in legacy format: { type: 'tools/call', result: ..., name: ..., requestId: ... }
+            // This is for backward compatibility with clients that return results in legacy format
+            if (msg.result !== undefined || msg.error !== undefined) {
+                const requestId = msg.requestId;
+                const toolName = msg.name || (requestId ? this.pendingToolCallNames.get(requestId) : null);
+                
+                if (toolName) {
+                    // Trigger the result event that handleMcpJsonRpcMessage is waiting for
+                    logger.debug('Received tool call result (legacy format): clientId=%d, tool=%s, requestId=%s', 
+                        this.clientId, toolName, requestId);
+                    (this.ctx.emit as any)(`client/tools/call/result/${toolName}`, msg.result);
+                    if (requestId) {
+                        this.pendingToolCallNames.delete(requestId);
+                    }
+                    return;
+                }
+            }
+            // If not a response, treat as regular event
+            logger.info('Client published event: clientId=%d, event=client/%s', this.clientId, type);
+            const args = [`client/${type}`, this.clientId, msg];
+            (this.ctx.parallel as any).apply(this.ctx, args);
+            break;
         default:
-            if (type && type !== 'ping' && type !== 'status' && type !== 'voice_chat') {
+            if (type && type !== 'ping' && type !== 'status' && type !== 'voice_chat' && type !== 'tools/call') {
                 try {
                     if (type === 'asr/audio' && msg.audio) {
                         const args = [`client/${type}`, this.clientId, [{ audio: msg.audio }]];
@@ -1749,6 +1818,319 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         });
     }
 
+    // MCP protocol support (same as node/provider)
+    private async handleMcpJsonRpcMessage(msg: any) {
+        if (!msg || typeof msg !== 'object') return;
+
+        if (msg.method) {
+            const requestId = msg.id;
+            const reply = (result: any) => {
+                if (requestId === undefined || requestId === null) return;
+                this.send({
+                    jsonrpc: '2.0',
+                    id: requestId,
+                    result,
+                });
+            };
+
+            if (msg.method === 'initialize') {
+                logger.info('Client sent initialize request: clientId=%d, token=%s', this.clientId, this.token);
+                reply({
+                    protocolVersion: '2024-11-05',
+                    capabilities: {
+                        tools: {},
+                    },
+                    serverInfo: {
+                        name: 'ejunz-mcp-receiver',
+                        version: '1.0.0',
+                    },
+                });
+                setTimeout(() => {
+                    if (this.accepted && this.token) {
+                        const requestId = Date.now();
+                        this.send({
+                            jsonrpc: '2.0',
+                            method: 'tools/list',
+                            id: requestId,
+                            params: {},
+                        });
+                    }
+                }, 100);
+                return;
+            }
+
+            if (msg.method === 'notifications/initialized') {
+                logger.info('Client initialized: clientId=%d, token=%s', this.clientId, this.token);
+                setTimeout(() => {
+                    if (this.accepted && this.token) {
+                        const requestId = Date.now();
+                        this.send({
+                            jsonrpc: '2.0',
+                            method: 'tools/list',
+                            id: requestId,
+                            params: {},
+                        });
+                    }
+                }, 100);
+                return;
+            }
+
+            if (msg.method === 'notifications/tools-update') {
+                // Handle tools update notification (no id, just notification)
+                logger.debug('Received tools update notification: clientId=%d, token=%s', this.clientId, this.token);
+                if (msg.params && msg.params.tools && Array.isArray(msg.params.tools)) {
+                    await this.handleToolsList(msg.params.tools);
+                }
+                return;
+            }
+
+            if (msg.method === 'tools/call') {
+                // Handle tool call request from server (same as node/provider)
+                const toolName = msg.params?.name;
+                const toolArgs = msg.params?.arguments || msg.params?.args || {};
+
+                if (!toolName) {
+                    if (requestId !== undefined && requestId !== null) {
+                        this.send({
+                            jsonrpc: '2.0',
+                            id: requestId,
+                            error: { code: -32602, message: 'Invalid params: tool name is required' },
+                        });
+                    }
+                    return;
+                }
+
+                logger.debug('Received tool call request: clientId=%d, token=%s, tool=%s, id=%s', 
+                    this.clientId, this.token, toolName, requestId);
+
+                try {
+                    // Call tool via event system (same as legacy client/tools/call event)
+                    const result = await new Promise<any>((resolve, reject) => {
+                        const timeout = setTimeout(() => {
+                            reject(new Error(`Tool call timeout: ${toolName}`));
+                        }, 8000);
+
+                        const handler = async (...args: any[]) => {
+                            clearTimeout(timeout);
+                            try {
+                                const [toolResult] = args;
+                                resolve(toolResult);
+                            } catch (error) {
+                                reject(error);
+                            }
+                        };
+
+                        // Subscribe to tool result event
+                        const dispose = this.ctx.once(`client/tools/call/result/${toolName}` as any, handler as any);
+                        
+                        // Store toolName for requestId to handle legacy response format
+                        if (requestId) {
+                            this.pendingToolCallNames.set(String(requestId), toolName);
+                        }
+                        
+                        // Emit tool call event
+                        (this.ctx.parallel as any)('client/tools/call', this.clientId, {
+                            name: toolName,
+                            arguments: toolArgs,
+                            requestId: requestId,
+                        });
+
+                        // Fallback: if no response in 8 seconds, reject
+                        setTimeout(() => {
+                            dispose();
+                            if (!timeout) return; // Already resolved
+                            clearTimeout(timeout);
+                            reject(new Error(`Tool call timeout: ${toolName}`));
+                        }, 8000);
+                    });
+
+                    // Send JSON-RPC response
+                    if (requestId !== undefined && requestId !== null) {
+                        // MCP protocol expects result in format: { content: [{ type: 'text', text: ... }] }
+                        const mcpResult = {
+                            content: [
+                                {
+                                    type: 'text',
+                                    text: typeof result === 'string' ? result : JSON.stringify(result),
+                                },
+                            ],
+                        };
+                        reply(mcpResult);
+                    }
+                } catch (error: any) {
+                    logger.error('Tool call failed: clientId=%d, tool=%s, error=%s', 
+                        this.clientId, toolName, error.message);
+                    if (requestId !== undefined && requestId !== null) {
+                        this.send({
+                            jsonrpc: '2.0',
+                            id: requestId,
+                            error: { code: -32000, message: error.message || 'Tool call failed' },
+                        });
+                    }
+                }
+                return;
+            }
+
+            logger.debug('Unknown JSON-RPC method from client: clientId=%d, method=%s', this.clientId, msg.method);
+            if (msg.id !== undefined && msg.id !== null) {
+                this.send({
+                    jsonrpc: '2.0',
+                    id: msg.id,
+                    error: { code: -32601, message: 'Method not found' },
+                });
+            }
+            return;
+        }
+
+        if (msg.result !== undefined) {
+            // Handle tool call responses
+            if (msg.id !== undefined) {
+                const rec = this.pendingToolCalls.get(String(msg.id));
+                if (rec) {
+                    this.pendingToolCalls.delete(String(msg.id));
+                    clearTimeout(rec.timeout);
+                    logger.debug('Tool call response received: clientId=%d, token=%s, id=%s, hasError=%s', 
+                        this.clientId, this.token, msg.id, !!msg.error);
+                    if ('error' in msg && msg.error) {
+                        rec.reject(new Error(msg.error.message || 'Tool call failed'));
+                    } else {
+                        rec.resolve(msg.result);
+                    }
+                    return;
+                }
+            }
+            
+            // Handle tools list responses
+            if (msg.result && typeof msg.result === 'object') {
+                if (msg.result.tools && Array.isArray(msg.result.tools)) {
+                    await this.handleToolsList(msg.result.tools);
+                    return;
+                } else if (Array.isArray(msg.result)) {
+                    await this.handleToolsList(msg.result);
+                    return;
+                }
+            }
+        }
+    }
+
+    private async handleToolsList(tools: any[]) {
+        if (!this.accepted || !this.token || !this.clientId) return;
+        
+        try {
+            if (!Array.isArray(tools)) {
+                logger.warn('Invalid tools format from client: clientId=%d, token=%s, tools=%j', this.clientId, this.token, tools);
+                return;
+            }
+
+            const edge = await EdgeModel.getByToken(this.domain._id, this.token);
+            if (!edge) {
+                logger.error('Edge not found: clientId=%d, token=%s', this.clientId, this.token);
+                return;
+            }
+
+            const validTools = tools.filter(tool => {
+                if (!tool || typeof tool !== 'object') return false;
+                if (!tool.name || typeof tool.name !== 'string') return false;
+                return true;
+            }).map(tool => ({
+                name: tool.name,
+                description: tool.description || '',
+                inputSchema: tool.inputSchema || tool.input_schema || null,
+            }));
+
+            logger.info('Syncing %d tools from client: clientId=%d, token=%s', validTools.length, this.clientId, this.token);
+            
+            await ToolModel.syncToolsFromEdge(
+                this.domain._id,
+                this.token,
+                edge.docId,
+                validTools,
+                edge.owner,
+            );
+            
+            this.send({ type: 'tools/synced', count: validTools.length });
+            
+            (this.ctx.emit as any)('mcp/server/status/update', this.token);
+            (this.ctx.emit as any)('mcp/tools/update', this.token);
+            
+            logger.info('Tools synced successfully: clientId=%d, token=%s, count=%d', this.clientId, this.token, validTools.length);
+        } catch (error: any) {
+            logger.error('Failed to sync tools from client: clientId=%d, token=%s, error=%s', 
+                this.clientId, this.token, error.message);
+        }
+    }
+
+    private async autoFillClientIdFromEdge(envelope: EdgeBridgeEnvelope) {
+        if (!this.token) return;
+        
+        try {
+            const edge = await EdgeModel.getByToken(this.domain._id, this.token);
+            if (edge && edge.clientId && !envelope.nodeId) {
+                // For client, we don't use nodeId, but we can use clientId if needed
+                // The envelope protocol uses nodeId for MQTT, but client uses different mechanism
+                logger.debug('Auto-filled clientId from edge association: token=%s, clientId=%d', this.token, edge.clientId);
+            }
+        } catch (error) {
+            logger.debug('Failed to auto-fill clientId from edge: token=%s, error=%s', this.token, (error as Error).message);
+        }
+    }
+
+    // MCP tool call support (same as EdgeServerConnectionHandler)
+    async callTool(name: string, args: any): Promise<any> {
+        if (!this.accepted || !this.token) {
+            throw new Error('Connection not ready');
+        }
+
+        // Use string ID (same as EdgeServerConnectionHandler)
+        const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const jsonRpcRequest = {
+            jsonrpc: '2.0',
+            id: requestId,
+            method: 'tools/call',
+            params: {
+                name,
+                arguments: args,
+            },
+        };
+
+        // Wrap in Edge Envelope format (same as node/provider)
+        const envelope: EdgeBridgeEnvelope = {
+            protocol: 'mcp',
+            action: 'jsonrpc',
+            payload: jsonRpcRequest,
+            token: this.token,
+            domainId: this.domain._id,
+            direction: 'outbound',
+        };
+
+        logger.debug('Sending tool call request (envelope): clientId=%d, token=%s, tool=%s, id=%s, args=%j', 
+            this.clientId, this.token, name, requestId, args);
+
+        return new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                if (this.pendingToolCalls.has(requestId)) {
+                    this.pendingToolCalls.delete(requestId);
+                    logger.warn('Tool call timeout: clientId=%d, token=%s, tool=%s, id=%s', 
+                        this.clientId, this.token, name, requestId);
+                    reject(new Error(`Tool call timeout: ${name}`));
+                }
+            }, 10000);
+
+            this.pendingToolCalls.set(requestId, { resolve, reject, timeout });
+            // Store toolName for requestId to handle legacy response format
+            this.pendingToolCallNames.set(requestId, name);
+            try {
+                // Send as Edge Envelope format (same as node/provider)
+                this.send(envelope);
+            } catch (e) {
+                clearTimeout(timeout);
+                this.pendingToolCalls.delete(requestId);
+                this.pendingToolCallNames.delete(requestId);
+                reject(e);
+            }
+        });
+    }
+
     async handleAgentChat(msg: any) {
         if (!this.client || !this.client.settings?.agent) {
             logger.warn('handleAgentChat: Agent config not set: clientId=%d', this.clientId);
@@ -2216,7 +2598,58 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             this.clientId, rid, agentId);
     }
 
+    private registerOutboundBridgeListener() {
+        if (!this.token) return;
+
+        if (this.outboundBridgeDisposer) {
+            try {
+                this.outboundBridgeDisposer();
+            } catch {
+                // ignore
+            }
+            this.outboundBridgeDisposer = null;
+        }
+
+        const token = this.token;
+        this.outboundBridgeDisposer = this.ctx.on('edge/ws/outbound' as any, ((targetToken: string, envelope: EdgeBridgeEnvelope) => {
+            if (!this.accepted || !token || targetToken !== token) return;
+
+            try {
+                const normalized = EdgeServerConnectionHandler.normalizeEnvelope(
+                    envelope,
+                    token,
+                    'outbound',
+                    this.domain._id,
+                );
+                const outboundPayload = normalized.protocol === 'mcp'
+                    ? EdgeServerConnectionHandler.extractJsonRpcPayload(normalized) ?? normalized.payload
+                    : normalized;
+                this.send(outboundPayload);
+            } catch (error) {
+                logger.error('Failed to forward outbound edge envelope: token=%s, error=%s', token, (error as Error).message);
+            }
+        }) as any);
+    }
+
     async cleanup() {
+        // Clear pending tool calls
+        for (const [id, pending] of this.pendingToolCalls.entries()) {
+            clearTimeout(pending.timeout);
+            pending.reject(new Error('Connection closed'));
+        }
+        this.pendingToolCalls.clear();
+        this.pendingToolCallNames.clear();
+        
+        // Unsubscribe from outbound bridge listener
+        if (this.outboundBridgeDisposer) {
+            try {
+                this.outboundBridgeDisposer();
+            } catch {
+                // ignore
+            }
+            this.outboundBridgeDisposer = null;
+        }
+        
         // Unsubscribe from all events
         for (const sub of this.eventSubscriptions) {
             try {
@@ -2280,6 +2713,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                         await EdgeModel.update(this.domain._id, edge.eid, { status: 'offline' });
                         (this.ctx.emit as any)('edge/status/update', this.token, 'offline');
                     }
+                    (this.ctx.emit as any)('mcp/server/connection/update', this.token, 'disconnected');
                 }
             } catch (error: any) {
                 logger.error('Failed to update client status on disconnect: %s', error.message);
