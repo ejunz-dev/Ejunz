@@ -191,7 +191,7 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
             logger.info('Created edge on connection: eid=%d, token=%s, type=%s', edge.eid, token, tokenDoc.type);
         }
 
-        // 更新 token 最后使用时间
+        // 更新 token 最后使用时间（仅在首次连接前有效）
         await EdgeTokenModel.updateLastUsed(token);
 
         // Singleton pattern: reject new connection if one already exists
@@ -289,6 +289,9 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
         // 不更新数据库状态，而是通过事件系统实时通知所有监听者
         (this.ctx.emit as any)('mcp/server/connection/update', token, 'connected');
         (this.ctx.emit as any)('mcp/server/status/update', token);
+
+        // 连接成功后将 token 标记为永久有效
+        await EdgeTokenModel.markPermanent(token);
 
         // Wait for Edge server to send initialize request
         logger.debug('Connection established, waiting for Edge server to initialize: token=%s', token);
