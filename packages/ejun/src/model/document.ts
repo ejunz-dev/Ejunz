@@ -6,7 +6,7 @@ import {
 import { Context } from '../context';
 import {
     Content, ContestClarificationDoc, DiscussionDoc,
-    DiscussionReplyDoc, AgentDoc, BSDoc, RPDoc, DCDoc, BKDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc,
+    DiscussionReplyDoc, AgentDoc, BaseDoc, RepoDoc, DocDoc, BlockDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc,
 } from '../interface';
 import bus from '../service/bus';
 import db from '../service/db';
@@ -18,28 +18,29 @@ type NormalArrayKeys<O, P = any> = Exclude<ArrayKeys<O, P>, Symbol>;
 
 export const coll = db.collection('document');
 export const collStatus = db.collection('document.status');
-export const TYPE_DISCUSSION_NODE: 20 = 20;
-export const TYPE_DISCUSSION: 21 = 21;
-export const TYPE_DISCUSSION_REPLY: 22 = 22;
+
 export const TYPE_AGENT: 10 = 10;
-export const TYPE_BS: 30 = 30;
-export const TYPE_RP: 31 = 31;
-export const TYPE_DC: 32 = 32;
-export const TYPE_BK: 33 = 33;
-export const TYPE_NODE: 40 = 40;
-export const TYPE_CLIENT: 60 = 60;
-export const TYPE_CLIENT_CHAT: 61 = 61;
-export const TYPE_EDGE: 70 = 70;
-export const TYPE_TOOL: 80 = 80;
+export const TYPE_EDGE: 20 = 20;
+export const TYPE_TOOL: 21 = 21;
+export const TYPE_NODE: 30 = 30;
+export const TYPE_CLIENT: 40 = 40;
+export const TYPE_CLIENT_CHAT: 41 = 41;
+export const TYPE_BASE: 50 = 50;
+export const TYPE_REPO: 51 = 51;
+export const TYPE_DOC: 52 = 52;
+export const TYPE_BLOCK: 53 = 53;
+export const TYPE_DISCUSSION_NODE: 60 = 60;
+export const TYPE_DISCUSSION: 61 = 61;
+export const TYPE_DISCUSSION_REPLY: 62 = 62;
 
 export interface DocType {
     [TYPE_AGENT]: AgentDoc;
     [TYPE_DISCUSSION]: DiscussionDoc;
     [TYPE_DISCUSSION_REPLY]: DiscussionReplyDoc;
-    [TYPE_BS]: BSDoc;
-    [TYPE_RP]: RPDoc;
-    [TYPE_DC]: DCDoc;
-    [TYPE_BK]: BKDoc;
+    [TYPE_BASE]: BaseDoc;
+    [TYPE_REPO]: RepoDoc;
+    [TYPE_DOC]: DocDoc;
+    [TYPE_BLOCK]: BlockDoc;
     [TYPE_NODE]: NodeDoc;
     [TYPE_CLIENT]: ClientDoc;
     [TYPE_CLIENT_CHAT]: ClientChatDoc;
@@ -531,10 +532,10 @@ global.Ejunz.model.document = {
     TYPE_DISCUSSION,
     TYPE_DISCUSSION_NODE,
     TYPE_DISCUSSION_REPLY,
-    TYPE_BS,
-    TYPE_RP,
-    TYPE_DC,
-    TYPE_BK,
+    TYPE_BASE,
+    TYPE_REPO,
+    TYPE_DOC,
+    TYPE_BLOCK,
     TYPE_NODE,
     TYPE_CLIENT,
     TYPE_CLIENT_CHAT,
