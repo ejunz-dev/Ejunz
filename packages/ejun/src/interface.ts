@@ -217,8 +217,8 @@ declare module './model/agent'{
 export type { AgentDoc } from './model/agent';
 
 // Repo/Base/Doc/Block documents
-export interface BSDoc {
-    docType: document['TYPE_BS']; // Base 
+export interface BaseDoc {
+    docType: document['TYPE_BASE']; // Base 
     docId: ObjectId;
     domainId: string;
     rpids: number[]; // 存储所有 Repo ID
@@ -229,8 +229,8 @@ export interface BSDoc {
     updateAt: Date;
 }
 
-export interface RPDoc {
-    docType: document['TYPE_RP'];  // 标识它是一个 Repo
+export interface RepoDoc {
+    docType: document['TYPE_REPO'];  // 标识它是一个 Repo
     docId: ObjectId;
     domainId: string;
     rpid: number;
@@ -248,8 +248,8 @@ export interface RPDoc {
     edgeId?: number; // 关联的Edge ID（当MCP激活时）
 }
 
-export interface DCDoc {
-    docType: document['TYPE_DC'];
+export interface DocDoc {
+    docType: document['TYPE_DOC'];
     docId: ObjectId;
     domainId: string;
     rpid: number;
@@ -269,8 +269,8 @@ export interface DCDoc {
     order?: number;
 }
 
-export interface BKDoc {
-    docType: document['TYPE_BK'];
+export interface BlockDoc {
+    docType: document['TYPE_BLOCK'];
     docId: ObjectId;
     domainId: string;
     rpid: number;
@@ -315,7 +315,7 @@ export type { NodeDoc } from './model/node';
 declare module './model/mcp' {
     interface McpServerDoc {
         _id: ObjectId; // document 系统自动添加
-        docType: document['TYPE_MCP_SERVER'];
+        docType: document['TYPE_EDGE'];
         docId: ObjectId; // 由 mongo 自动生成
         domainId: string;
         serverId: number; // MCP 服务器 ID，从 1 开始（业务 ID）
@@ -337,7 +337,7 @@ declare module './model/mcp' {
 
     interface McpToolDoc {
         _id: ObjectId; // document 系统自动添加
-        docType: document['TYPE_MCP_TOOL'];
+        docType: document['TYPE_TOOL'];
         docId: ObjectId; // 由 mongo 自动生成
         domainId: string;
         serverId: number; // 所属 MCP 服务器 ID
@@ -715,14 +715,12 @@ export interface Model {
     user: typeof import('./model/user').default,
     oauth: typeof import('./model/oauth').default,
     storage: typeof import('./model/storage').default,
-    bs: typeof import('./model/repo').BaseModel,
-    rp: typeof import('./model/repo').RepoModel,
-    dc: typeof import('./model/repo').DocModel,
-    bk: typeof import('./model/repo').BlockModel,
+    base: typeof import('./model/repo').BaseModel,
+    repo: typeof import('./model/repo').RepoModel,
+    doc: typeof import('./model/repo').DocModel,
+    block: typeof import('./model/repo').BlockModel,
     node: typeof import('./model/node').default,
     nodeDevice: typeof import('./model/node').NodeDeviceModel,
-    mcpServer: typeof import('./model/mcp').default,
-    mcpTool: typeof import('./model/mcp').McpToolModel,
     edge: typeof import('./model/edge').default,
     tool: typeof import('./model/tool').default,
 }
