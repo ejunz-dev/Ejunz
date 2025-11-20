@@ -72,6 +72,7 @@ inject('Nav', 'tool_domain', { prefix: 'tool' });
 inject('Nav', 'session_domain', { prefix: 'session' });
 inject('Nav', 'record_main', { prefix: 'record' });
 inject('Nav', 'discussion_main', { prefix: 'discussion' });
+inject('Nav', 'workflow_domain', { prefix: 'workflow' });
 
 
 
