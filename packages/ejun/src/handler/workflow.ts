@@ -1,10 +1,11 @@
 import { ObjectId } from 'mongodb';
-import { Handler, param, Types } from '@ejunz/framework';
+import { Handler, ConnectionHandler, param, subscribe, Types } from '@ejunz/framework';
 import { Context } from '../context';
 import { ValidationError, PermissionError, NotFoundError } from '../error';
 import { Logger } from '../logger';
 import WorkflowModel from '../model/workflow';
 import WorkflowNodeModel from '../model/workflow_node';
+import WorkflowTimerModel from '../model/workflow_timer';
 import WorkflowExecutor from '../model/workflow_executor';
 import { PRIV } from '../model/builtin';
 
@@ -22,7 +23,7 @@ export class WorkflowDomainHandler extends Handler<Context> {
     }
 }
 
-// 创建/编辑工作流
+// 创建/编辑工作流基本信息（只处理 name 和 description）
 export class WorkflowEditHandler extends Handler<Context> {
     async get() {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
@@ -37,111 +38,6 @@ export class WorkflowEditHandler extends Handler<Context> {
                     // 检查权限
                     if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
                         throw new PermissionError(PRIV.PRIV_USER_PROFILE);
-                    }
-                    // 获取节点
-                    const nodes = await WorkflowNodeModel.getByWorkflow(this.domain._id, workflow.docId);
-                    logger.debug(`Found ${nodes.length} nodes for workflow ${widNum}`);
-                    
-                    // 清理节点数据，将 ObjectId 转换为字符串，以便 JSON 序列化
-                    const cleanedNodes = nodes.map(node => {
-                        // 确保 position 是有效的对象
-                        let position = { x: 0, y: 0 };
-                        if (node.position && typeof node.position === 'object' && !Array.isArray(node.position)) {
-                            position = {
-                                x: typeof node.position.x === 'number' ? node.position.x : 0,
-                                y: typeof node.position.y === 'number' ? node.position.y : 0,
-                            };
-                        }
-                        
-                        // 清理 config，确保所有值都是可序列化的
-                        let config: Record<string, any> = {};
-                        if (node.config && typeof node.config === 'object' && !Array.isArray(node.config)) {
-                            try {
-                                // 深度清理 config，移除不可序列化的值
-                                config = JSON.parse(JSON.stringify(node.config, (key, value) => {
-                                    // 移除 ObjectId、Date 等不可序列化的对象
-                                    if (value && typeof value === 'object') {
-                                        if (value.constructor && value.constructor.name === 'ObjectId') {
-                                            return value.toString();
-                                        }
-                                        if (value instanceof Date) {
-                                            return value.toISOString();
-                                        }
-                                        // 如果是普通对象或数组，继续处理
-                                        if (Array.isArray(value) || value.constructor === Object) {
-                                            return value;
-                                        }
-                                        // 其他对象类型，尝试转换为字符串
-                                        return String(value);
-                                    }
-                                    return value;
-                                }));
-                            } catch (e) {
-                                logger.warn(`Failed to clean config for node ${node.nid}:`, e);
-                                config = {};
-                            }
-                        }
-                        
-                        // 清理 connections，确保所有值都是可序列化的
-                        let connections: Array<{ targetNodeId: number; condition?: string }> = [];
-                        if (Array.isArray(node.connections)) {
-                            connections = node.connections.map(conn => {
-                                if (conn && typeof conn === 'object') {
-                                    return {
-                                        targetNodeId: typeof conn.targetNodeId === 'number' ? conn.targetNodeId : 0,
-                                        condition: typeof conn.condition === 'string' ? conn.condition : undefined,
-                                    };
-                                }
-                                return { targetNodeId: 0 };
-                            }).filter(conn => conn.targetNodeId > 0);
-                        }
-                        
-                        const cleaned = {
-                            nid: Number(node.nid) || 0,
-                            name: String(node.name || ''),
-                            nodeType: String(node.nodeType || 'unknown'),
-                            type: String(node.type || 'action'),
-                            position,
-                            config,
-                            connections,
-                        };
-                        return cleaned;
-                    });
-                    
-                    // 测试序列化
-                    try {
-                        const testJson = JSON.stringify(cleanedNodes);
-                        logger.debug(`Successfully serialized ${cleanedNodes.length} nodes, JSON length: ${testJson.length}`);
-                        logger.debug(`First 500 chars of JSON: ${testJson.substring(0, 500)}`);
-                    } catch (serializeError: any) {
-                        logger.error(`Failed to serialize nodes: ${serializeError.message}`);
-                        logger.error(`Serialize error stack: ${serializeError.stack}`);
-                        // 如果序列化失败，使用空数组
-                        (workflow as any).nodes = [];
-                        return;
-                    }
-                    // 直接在 handler 中序列化为 JSON 字符串，避免模板 filter 的问题
-                    try {
-                        const nodesJson = JSON.stringify(cleanedNodes);
-                        (workflow as any).nodes = cleanedNodes;
-                        (workflow as any).nodesJson = nodesJson; // 预序列化的 JSON 字符串
-                        logger.debug(`Set workflow.nodes to ${cleanedNodes.length} nodes`);
-                        logger.debug(`Pre-serialized nodes JSON length: ${nodesJson.length}`);
-                        logger.debug(`Pre-serialized nodes JSON (first 500 chars): ${nodesJson.substring(0, 500)}`);
-                        
-                        // 验证 JSON 是否可以重新解析
-                        try {
-                            const testParse = JSON.parse(nodesJson);
-                            logger.debug(`Successfully verified JSON can be parsed, parsed ${testParse.length} nodes`);
-                        } catch (parseError: any) {
-                            logger.error(`Failed to verify JSON: ${parseError.message}`);
-                            (workflow as any).nodesJson = '[]';
-                        }
-                    } catch (e: any) {
-                        logger.error(`Failed to pre-serialize nodes: ${e.message}`);
-                        logger.error(`Serialize error stack: ${e.stack}`);
-                        (workflow as any).nodes = [];
-                        (workflow as any).nodesJson = '[]';
                     }
                 }
             }
@@ -197,7 +93,142 @@ export class WorkflowEditHandler extends Handler<Context> {
         if (status) update.status = status;
 
         await WorkflowModel.update(this.domain._id, widNum, update);
+        
+        // 如果启用了工作流，注册定时器
+        if (update.enabled === true) {
+            if (WorkflowModel.registerTimers) {
+                await WorkflowModel.registerTimers(this.domain._id, widNum);
+            }
+        }
+        
         this.response.redirect = `/workflow/${widNum}`;
+    }
+}
+
+// 编辑工作流节点流程图
+export class WorkflowEditFlowHandler extends Handler<Context> {
+    async get() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const { wid } = this.request.params;
+        
+        const widNum = parseInt(wid, 10);
+        if (isNaN(widNum) || widNum < 1) {
+            throw new ValidationError('wid');
+        }
+
+        const workflow = await WorkflowModel.getByWorkflowId(this.domain._id, widNum);
+        if (!workflow) {
+            throw new ValidationError('wid');
+        }
+
+        // 检查权限
+        if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        }
+
+        // 获取节点
+        const nodes = await WorkflowNodeModel.getByWorkflow(this.domain._id, workflow.docId);
+        logger.debug(`Found ${nodes.length} nodes for workflow ${widNum}`);
+        
+        // 清理节点数据，将 ObjectId 转换为字符串，以便 JSON 序列化
+        const cleanedNodes = nodes.map(node => {
+            // 确保 position 是有效的对象
+            let position = { x: 0, y: 0 };
+            if (node.position && typeof node.position === 'object' && !Array.isArray(node.position)) {
+                position = {
+                    x: typeof node.position.x === 'number' ? node.position.x : 0,
+                    y: typeof node.position.y === 'number' ? node.position.y : 0,
+                };
+            }
+            
+            // 清理 config，确保所有值都是可序列化的
+            let config: Record<string, any> = {};
+            if (node.config && typeof node.config === 'object' && !Array.isArray(node.config)) {
+                try {
+                    // 深度清理 config，移除不可序列化的值
+                    config = JSON.parse(JSON.stringify(node.config, (key, value) => {
+                        // 移除 ObjectId、Date 等不可序列化的对象
+                        if (value && typeof value === 'object') {
+                            if (value.constructor && value.constructor.name === 'ObjectId') {
+                                return value.toString();
+                            }
+                            if (value instanceof Date) {
+                                return value.toISOString();
+                            }
+                            // 如果是普通对象或数组，继续处理
+                            if (Array.isArray(value) || value.constructor === Object) {
+                                return value;
+                            }
+                            // 其他对象类型，尝试转换为字符串
+                            return String(value);
+                        }
+                        return value;
+                    }));
+                } catch (e) {
+                    logger.warn(`Failed to clean config for node ${node.nid}:`, e);
+                    config = {};
+                }
+            }
+            
+            // 清理 connections，确保所有值都是可序列化的
+            let connections: Array<{ targetNodeId: number; condition?: string }> = [];
+            if (Array.isArray(node.connections)) {
+                connections = node.connections.map(conn => {
+                    if (conn && typeof conn === 'object') {
+                        return {
+                            targetNodeId: typeof conn.targetNodeId === 'number' ? conn.targetNodeId : 0,
+                            condition: typeof conn.condition === 'string' ? conn.condition : undefined,
+                        };
+                    }
+                    return { targetNodeId: 0 };
+                }).filter(conn => conn.targetNodeId > 0);
+            }
+            
+            const cleaned = {
+                nid: Number(node.nid) || 0,
+                name: String(node.name || ''),
+                nodeType: String(node.nodeType || 'unknown'),
+                type: String(node.type || 'action'),
+                position,
+                config,
+                connections,
+            };
+            return cleaned;
+        });
+        
+        // 测试序列化
+        try {
+            const testJson = JSON.stringify(cleanedNodes);
+            logger.debug(`Successfully serialized ${cleanedNodes.length} nodes, JSON length: ${testJson.length}`);
+        } catch (serializeError: any) {
+            logger.error(`Failed to serialize nodes: ${serializeError.message}`);
+            (workflow as any).nodes = [];
+            (workflow as any).nodesJson = '[]';
+        }
+        
+        // 直接在 handler 中序列化为 JSON 字符串，避免模板 filter 的问题
+        try {
+            const nodesJson = JSON.stringify(cleanedNodes);
+            (workflow as any).nodes = cleanedNodes;
+            (workflow as any).nodesJson = nodesJson; // 预序列化的 JSON 字符串
+            logger.debug(`Set workflow.nodes to ${cleanedNodes.length} nodes`);
+            
+            // 验证 JSON 是否可以重新解析
+            try {
+                const testParse = JSON.parse(nodesJson);
+                logger.debug(`Successfully verified JSON can be parsed, parsed ${testParse.length} nodes`);
+            } catch (parseError: any) {
+                logger.error(`Failed to verify JSON: ${parseError.message}`);
+                (workflow as any).nodesJson = '[]';
+            }
+        } catch (e: any) {
+            logger.error(`Failed to pre-serialize nodes: ${e.message}`);
+            (workflow as any).nodes = [];
+            (workflow as any).nodesJson = '[]';
+        }
+
+        this.response.template = 'workflow_editFlow.html';
+        this.response.body = { workflow };
     }
 }
 
@@ -296,8 +327,83 @@ export class WorkflowDetailHandler extends Handler<Context> {
         // 过滤出按钮触发器节点
         const buttonNodes = cleanedNodes.filter(n => n.nodeType === 'button');
 
+        // 设置 WebSocket 连接 URL
+        // 框架会自动添加 domainId，所以只需要相对路径
+        const socketUrl = `/d/${this.domain._id}/workflow/${widNum}/ws`;
+
         this.response.template = 'workflow_detail.html';
-        this.response.body = { workflow, nodes: cleanedNodes, nodesJson, buttonNodes };
+        this.response.body = { workflow, nodes: cleanedNodes, nodesJson, buttonNodes, socketUrl };
+    }
+}
+
+// 工作流详情 WebSocket 连接处理器
+class WorkflowDetailConnectionHandler extends ConnectionHandler<Context> {
+    wid: number = 0;
+    domainId: string = '';
+    throttleSend: any;
+    private updateInterval: NodeJS.Timeout | null = null;
+
+    @param('wid', Types.PositiveInt)
+    async prepare(domainId: string, wid: number) {
+        this.wid = wid;
+        this.domainId = domainId;
+        
+        // 使用 throttle 限制发送频率（每秒最多一次）
+        const { throttle } = await import('lodash');
+        this.throttleSend = throttle(() => this.sendTimerStatus(), 1000, { trailing: true });
+        
+        // 立即发送一次定时器状态
+        await this.sendTimerStatus();
+        
+        // 定期发送定时器状态更新（每5秒）
+        this.updateInterval = setInterval(() => {
+            this.throttleSend();
+        }, 5000);
+    }
+
+    async sendTimerStatus() {
+        try {
+            // 获取该工作流的所有定时器
+            const timers = await WorkflowTimerModel.getByWorkflow(this.domainId, this.wid);
+            
+            // 构建定时器状态：nodeId -> { executeAfter, interval }
+            const timerStatus: Record<number, { executeAfter: string; interval?: [number, string] }> = {};
+            timers.forEach(timer => {
+                timerStatus[timer.nodeId] = {
+                    executeAfter: timer.executeAfter.toISOString(),
+                    interval: timer.interval,
+                };
+            });
+            
+            this.send({ type: 'timer_status', timers: timerStatus });
+        } catch (error) {
+            logger.error('Failed to send timer status:', error);
+        }
+    }
+
+    @subscribe('workflow/timer')
+    async onTimerTrigger(domainId: string, workflowId: number, nodeId: number, triggerData: any) {
+        // 只处理当前工作流的定时器触发
+        if (domainId === this.domainId && workflowId === this.wid) {
+            // 定时器触发后，立即更新状态
+            await this.sendTimerStatus();
+        }
+    }
+    
+    @subscribe('workflow/timer/registered' as any)
+    async onTimerRegistered(domainId: string, workflowId: number) {
+        // 定时器注册后，立即更新状态
+        if (domainId === this.domainId && workflowId === this.wid) {
+            logger.info(`Timer registered for workflow ${workflowId}, sending status update`);
+            await this.sendTimerStatus();
+        }
+    }
+
+    async cleanup() {
+        if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+            this.updateInterval = null;
+        }
     }
 }
 
@@ -396,6 +502,18 @@ export class WorkflowNodeHandler extends Handler<Context> {
         if (connections !== undefined) update.connections = connections;
 
         const updatedNode = await WorkflowNodeModel.update(domainId, nidNum, update);
+        
+        // 如果更新的是定时器节点，且工作流已启用，则注册定时器
+        if (updatedNode && updatedNode.nodeType === 'timer') {
+            const workflow = await WorkflowModel.getByWorkflowId(domainId, widNum);
+            if (workflow && workflow.enabled) {
+                logger.info(`Timer node updated, registering timers for workflow ${widNum}`);
+                if (WorkflowModel.registerTimers) {
+                    await WorkflowModel.registerTimers(domainId, widNum);
+                }
+            }
+        }
+        
         this.response.body = { node: updatedNode };
     }
 
@@ -491,46 +609,102 @@ export class WorkflowTriggerHandler extends Handler<Context> {
             throw new NotFoundError('workflow');
         }
 
-        // 检查工作流是否启用
-        if (!workflow.enabled) {
-            throw new ValidationError('Workflow is not enabled');
-        }
-        
-        if (workflow.status !== 'active') {
-            throw new ValidationError(`Workflow status is ${workflow.status}, must be active`);
-        }
+        // 编辑模式下允许测试，不检查工作流的启用状态和状态
+        // 注释掉启用状态检查，允许在编辑模式下随时测试工作流
+        // if (!workflow.enabled) {
+        //     throw new ValidationError('Workflow is not enabled');
+        // }
+        // 
+        // if (workflow.status !== 'active') {
+        //     throw new ValidationError(`Workflow status is ${workflow.status}, must be active`);
+        // }
 
-        // 获取请求体中的 nodeId 和 triggerData
-        const { nodeId, triggerData } = this.request.body || {};
+        // 获取请求体中的 nodeId、triggerType 和 triggerData
+        const { nodeId, triggerType, triggerData } = this.request.body || {};
         
-        // 检查是否有按钮触发器节点
+        // 检查是否有触发器节点
         const nodes = await WorkflowNodeModel.getByWorkflow(domainId, workflow.docId);
-        const buttonTriggerNodes = nodes.filter(n => n.nodeType === 'button');
+        const triggerNodes = nodes.filter(n => n.nodeType === 'button' || n.nodeType === 'timer');
 
-        if (buttonTriggerNodes.length === 0) {
-            throw new ValidationError('Workflow does not have a button trigger');
+        if (triggerNodes.length === 0) {
+            throw new ValidationError('Workflow does not have a trigger node (button or timer)');
         }
 
-        // 如果指定了 nodeId，验证该节点是否存在且是按钮类型
+        // 如果指定了 nodeId，验证该节点是否存在且是触发器类型
+        let targetNode = null;
         if (nodeId) {
-            const targetNode = buttonTriggerNodes.find(n => n.nid === nodeId);
+            targetNode = triggerNodes.find(n => n.nid === nodeId);
             if (!targetNode) {
-                logger.warn(`Button trigger node ${nodeId} not found in workflow ${widNum}`);
+                throw new ValidationError(`Trigger node ${nodeId} not found in workflow ${widNum}`);
             }
         }
 
-        logger.info(`Triggering workflow ${widNum} in domain ${domainId} via button trigger`);
-
-        // 使用事件系统触发工作流
-        this.ctx.emit('workflow/trigger', domainId, widNum, {
-            triggerType: 'button',
-            nodeId: nodeId,
-            triggeredBy: this.user._id,
-            triggeredAt: new Date(),
-            ...(triggerData || {}),
-        });
+        // 确定触发类型
+        const actualTriggerType = triggerType || (targetNode ? targetNode.nodeType : 'button');
+        
+        // 如果是定时器触发，使用定时器事件系统
+        if (actualTriggerType === 'timer' && nodeId) {
+            logger.info(`Triggering workflow ${widNum} in domain ${domainId} via timer trigger (node ${nodeId})`);
+            // 使用定时器事件系统触发工作流
+            this.ctx.emit('workflow/timer', domainId, widNum, nodeId, {
+                triggerType: 'timer',
+                nodeId: nodeId,
+                triggeredBy: this.user._id,
+                triggeredAt: new Date(),
+                ...(triggerData || {}),
+            });
+        } else {
+            // 按钮触发或其他触发
+            logger.info(`Triggering workflow ${widNum} in domain ${domainId} via ${actualTriggerType} trigger`);
+            // 使用事件系统触发工作流
+            this.ctx.emit('workflow/trigger', domainId, widNum, {
+                triggerType: actualTriggerType,
+                nodeId: nodeId,
+                triggeredBy: this.user._id,
+                triggeredAt: new Date(),
+                ...(triggerData || {}),
+            });
+        }
 
         this.response.body = { success: true, message: 'Workflow triggered successfully' };
+    }
+}
+
+// 切换工作流启用状态
+export class WorkflowToggleHandler extends Handler<Context> {
+    async postToggle() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const domainId = this.domain._id;
+        const { wid } = this.request.params;
+        const widNum = parseInt(wid, 10);
+        if (isNaN(widNum) || widNum < 1) {
+            throw new ValidationError('wid');
+        }
+        
+        const workflow = await WorkflowModel.getByWorkflowId(domainId, widNum);
+        if (!workflow) {
+            throw new NotFoundError('workflow');
+        }
+        
+        // 检查权限
+        if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        }
+        
+        // 切换 enabled 状态
+        const newEnabled = !workflow.enabled;
+        await WorkflowModel.update(domainId, widNum, { enabled: newEnabled });
+        
+        // 如果启用了工作流，注册定时器
+        if (newEnabled) {
+            logger.info(`Workflow toggled to enabled, registering timers for workflow ${widNum}`);
+            if (WorkflowModel.registerTimers) {
+                await WorkflowModel.registerTimers(domainId, widNum);
+            }
+        }
+        
+        this.response.body = { success: true, enabled: newEnabled };
     }
 }
 
@@ -545,11 +719,11 @@ export class WorkflowNodeTypesHandler extends Handler<Context> {
                     name: '定时器',
                     description: '在指定时间触发工作流，支持循环执行',
                     configSchema: {
-                        time: { type: 'string', description: '时间 (HH:mm格式，如 22:00，或 HH:mm:ss 格式)' },
+                        time: { type: 'string', description: '时间格式（可选）：按分钟循环时使用 :ss (如 :30 表示每分钟的第30秒)，不填写则从当前时间开始每N分钟执行；按小时循环时使用 mm:ss (如 30:00 表示每小时的30分0秒)；按天/周/月循环时使用 HH:mm (如 22:00)' },
                         interval: { 
                             type: 'string', 
-                            enum: ['hour', 'day', 'week', 'month'],
-                            description: '循环间隔：hour(每小时), day(每天), week(每周), month(每月)',
+                            enum: ['minute', 'hour', 'day', 'week', 'month'],
+                            description: '循环间隔：minute(每分钟), hour(每小时), day(每天), week(每周), month(每月)',
                             default: 'day'
                         },
                         intervalValue: { 
@@ -670,6 +844,40 @@ export class WorkflowAgentsListHandler extends Handler<Context> {
     }
 }
 
+// 获取工作流定时器状态
+export class WorkflowTimerStatusHandler extends Handler<Context> {
+    async get() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const domainId = this.domain._id;
+        const { wid } = this.request.params;
+        const widNum = parseInt(wid, 10);
+        if (isNaN(widNum) || widNum < 1) {
+            throw new ValidationError('wid');
+        }
+        
+        const workflow = await WorkflowModel.getByWorkflowId(domainId, widNum);
+        if (!workflow) {
+            throw new NotFoundError('workflow');
+        }
+        
+        // 获取该工作流的所有定时器
+        const timers = await WorkflowTimerModel.getByWorkflow(domainId, widNum);
+        
+        // 返回定时器状态：nodeId -> { executeAfter, interval }
+        const timerStatus: Record<number, { executeAfter: string; interval?: [number, string] }> = {};
+        timers.forEach(timer => {
+            timerStatus[timer.nodeId] = {
+                executeAfter: timer.executeAfter.toISOString(),
+                interval: timer.interval,
+            };
+        });
+        
+        
+        this.response.body = { timers: timerStatus };
+    }
+}
+
 export async function apply(ctx: Context) {
     // 先注册没有参数的路由，避免被 :wid 路由匹配
     ctx.Route('workflow_node_types', '/workflow/node-types', WorkflowNodeTypesHandler);
@@ -679,12 +887,19 @@ export async function apply(ctx: Context) {
     ctx.Route('workflow_domain', '/workflow', WorkflowDomainHandler);
     ctx.Route('workflow_create', '/workflow/create', WorkflowEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('workflow_edit', '/workflow/:wid/edit', WorkflowEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('workflow_editFlow', '/workflow/:wid/editFlow', WorkflowEditFlowHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('workflow_node', '/workflow/:wid/node', WorkflowNodeHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('workflow_node_update', '/workflow/:wid/node/:nid', WorkflowNodeHandler, PRIV.PRIV_USER_PROFILE);
+    // 先注册更具体的删除路由，避免被更新路由匹配
     ctx.Route('workflow_node_delete', '/workflow/:wid/node/:nid/delete', WorkflowNodeHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('workflow_node_update', '/workflow/:wid/node/:nid', WorkflowNodeHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('workflow_execute', '/workflow/:wid/execute', WorkflowExecuteHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('workflow_trigger', '/workflow/:wid/trigger', WorkflowTriggerHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('workflow_timer_status', '/workflow/:wid/timer-status', WorkflowTimerStatusHandler, PRIV.PRIV_USER_PROFILE);
+    // 先注册更具体的 toggle 路由，避免被 detail 路由匹配
+    ctx.Route('workflow_toggle', '/workflow/:wid/toggle', WorkflowToggleHandler, PRIV.PRIV_USER_PROFILE);
     // 最后注册 :wid 路由，作为兜底
     ctx.Route('workflow_detail', '/workflow/:wid', WorkflowDetailHandler);
+    // WebSocket 连接
+    ctx.Connection('workflow_detail_conn', '/workflow/:wid/ws', WorkflowDetailConnectionHandler);
 }
 

@@ -1,0 +1,28 @@
+{% set page_name = "workflow_editFlow" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+    <div class="columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">编辑工作流流程图 - {{ workflow.name|default('') }}</h1>
+                <div class="section__action">
+                    <a href="/workflow/{{ workflow.wid }}/edit" class="button">编辑基本信息</a>
+                    <a href="/workflow/{{ workflow.wid }}" class="button">查看详情</a>
+                    <button id="save-workflow-btn" class="button">保存工作流</button>
+                    <button id="test-workflow-btn" class="button">测试执行</button>
+                </div>
+            </div>
+            <div class="section__body">
+                <div id="workflow-editor" 
+                     data-workflow-id="{{ workflow.wid }}"
+                     data-workflow-nodes="{{ workflow.nodesJson|default('[]')|jsesc }}"
+                     data-nodes-count="{{ workflow.nodes|default([])|length }}">
+                    <!-- React 组件将在这里渲染 -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
