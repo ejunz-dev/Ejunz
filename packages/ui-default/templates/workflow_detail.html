@@ -28,6 +28,9 @@
 
                 <div class="workflow-actions">
                     <a href="/workflow/{{ workflow.wid }}/edit" class="button">编辑工作流</a>
+                    <button id="toggle-workflow-btn" class="button {{ 'danger' if workflow.enabled else 'success' }}" data-workflow-id="{{ workflow.wid }}" data-enabled="{{ 'true' if workflow.enabled else 'false' }}">
+                        {% if workflow.enabled %}关闭工作流{% else %}激活工作流{% endif %}
+                    </button>
                     <button id="execute-workflow-btn" class="button primary" data-workflow-id="{{ workflow.wid }}">执行工作流</button>
                 </div>
 
@@ -65,7 +68,9 @@
                 {% if nodes and nodes.length > 0 %}
                     <div id="workflow-viewer" 
                          data-workflow-id="{{ workflow.wid }}"
+                         data-workflow-enabled="{{ 'true' if workflow.enabled else 'false' }}"
                          data-workflow-nodes="{{ nodesJson|default('[]')|jsesc }}"
+                         data-socket-url="{{ socketUrl|default('') }}"
                          style="height: 600px; border: 1px solid #ddd; border-radius: 4px;">
                         <!-- React Flow 将在这里渲染 -->
                     </div>

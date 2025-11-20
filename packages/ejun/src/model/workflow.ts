@@ -11,6 +11,8 @@ import WorkflowExecutor from './workflow_executor';
 const logger = new Logger('model/workflow');
 
 class WorkflowModel {
+    static registerTimers: ((domainId: string, workflowId: number) => Promise<void>) | undefined;
+    
     static async generateNextWorkflowId(domainId: string): Promise<number> {
         const lastWorkflow = await document.getMulti(domainId, document.TYPE_WORKFLOW, {})
             .sort({ wid: -1 })
@@ -41,7 +43,7 @@ class WorkflowModel {
             workflow.name, // content
             workflow.owner,
             document.TYPE_WORKFLOW,
-            null, // 让系统自动生成 docId
+            null, // Let system auto-generate docId
             null,
             null,
             payload,
@@ -88,7 +90,7 @@ class WorkflowModel {
     static async del(domainId: string, wid: number) {
         const workflow = await this.getByWorkflowId(domainId, wid);
         if (!workflow) return;
-        // 删除工作流时同时删除所有节点
+        // Delete all nodes when deleting workflow
         const nodes = await WorkflowNodeModel.getByWorkflow(domainId, workflow.docId);
         for (const node of nodes) {
             await WorkflowNodeModel.del(domainId, node.nid);
@@ -106,18 +108,18 @@ export async function apply(ctx: Context) {
                 await WorkflowNodeModel.del(domainId, node.nid);
             }
         }
-        // 删除相关的定时任务
+        // Delete related timer tasks
         await WorkflowTimerModel.deleteMany({ domainId });
     });
 
     const executor = new WorkflowExecutor(ctx);
 
-    // 监听工作流触发事件（使用 Cordis 事件系统）
-    // 注意：事件处理函数会自动检查 domainId，因为事件参数中包含了 domainId
+    // Listen to workflow trigger events (using Cordis event system)
+    // Note: Event handlers automatically check domainId as it's included in event parameters
     ctx.on('workflow/trigger', async (domainId: string, workflowId: number, triggerData?: Record<string, any>) => {
         logger.info(`Workflow trigger event received: workflow ${workflowId} in domain ${domainId}`);
         try {
-            // 验证 domainId 和工作流是否存在且属于该 domain
+            // Verify domainId and check if workflow exists and belongs to the domain
             const workflow = await WorkflowModel.getByWorkflowId(domainId, workflowId);
             if (!workflow || workflow.domainId !== domainId) {
                 logger.warn(`Workflow ${workflowId} not found or domain mismatch in domain ${domainId}`);
@@ -129,37 +131,38 @@ export async function apply(ctx: Context) {
         }
     });
 
-    // 监听定时器触发事件
+    // Listen to timer trigger events
     ctx.on('workflow/timer', async (domainId: string, workflowId: number, nodeId: number, triggerData?: Record<string, any>) => {
         logger.info(`Workflow timer event received: workflow ${workflowId}, node ${nodeId} in domain ${domainId}`);
-        // 验证 domainId
+        // Verify domainId
         const workflow = await WorkflowModel.getByWorkflowId(domainId, workflowId);
         if (!workflow || workflow.domainId !== domainId) {
             logger.warn(`Workflow ${workflowId} not found or domain mismatch in domain ${domainId}`);
             return;
         }
-        // 触发工作流执行
-        ctx.emit('workflow/trigger', domainId, workflowId, triggerData);
+        // Trigger workflow execution, ensuring nodeId is passed
+        ctx.emit('workflow/trigger', domainId, workflowId, {
+            nodeId: nodeId,
+            triggerType: 'timer',
+            ...(triggerData || {}),
+        });
     });
 
-    // 监听设备状态更新事件，用于触发基于设备状态的工作流
-    // 注意：这个事件在 mqtt.ts 中发出，格式为 'node/device/update': (nodeId, deviceId, state)
-    // 使用类型断言绕过类型检查，因为这个事件不在 EventMap 中定义
+    // Listen to device state update events for triggering device-state-based workflows
+    // Note: This event is emitted in mqtt.ts with format 'node/device/update': (nodeId, deviceId, state)
+    // Use type assertion to bypass type checking as this event is not defined in EventMap
     (ctx.on as any)('node/device/update', async (nodeId: ObjectId, deviceId: string, state: Record<string, any>) => {
         try {
-            // 获取节点信息以获取 domainId
+            // Get node information to retrieve domainId
             const NodeModel = global.Ejunz.model.node;
             const node = await NodeModel.get(nodeId);
             if (!node) return;
 
             const domainId = node.domainId;
             
-            // 查找该 domain 下所有活跃的工作流，检查是否有基于设备状态的触发器
-            // 这里可以扩展为支持设备状态触发器节点
-            // 目前先记录日志，后续可以添加设备状态触发器
-            logger.debug(`Device ${deviceId} updated in node ${nodeId}, domain ${domainId}, state:`, state);
-            
-            // TODO: 查找匹配的设备状态触发器节点并触发工作流
+            // Find all active workflows in the domain and check for device-state-based triggers
+            // This can be extended to support device state trigger nodes
+            // TODO: Find matching device state trigger nodes and trigger workflows
             // const workflows = await WorkflowModel.getActive(domainId);
             // for (const workflow of workflows) {
             //     const deviceTriggerNodes = await document.getMulti(domainId, document.TYPE_WORKFLOW_NODE, {
@@ -180,28 +183,33 @@ export async function apply(ctx: Context) {
         }
     });
 
-    // 定时器轮询机制（仅在主进程，用于检查定时器并发出事件）
+    // Timer polling mechanism (only in main process, for checking timers and emitting events)
     ctx.inject(['worker'], async (c) => {
-        // 轮询工作流定时器任务，触发事件而不是直接执行
+        // Poll workflow timer tasks, emit events instead of executing directly
         const consumeWorkflowTimers = async () => {
+            let iterationCount = 0;
             while (true) {
                 try {
+                    iterationCount++;
                     const timer = await WorkflowTimerModel.getFirst({});
                     if (timer) {
-                        // 发出定时器事件，事件系统会处理 domainId 检查
-                        logger.info(`Timer triggered for workflow ${timer.workflowId} in domain ${timer.domainId}`);
-                        ctx.emit('workflow/timer', timer.domainId, timer.workflowId, timer.nodeId, timer.triggerData || {});
+                        // Emit timer event, event system will handle domainId check
+                        try {
+                            ctx.emit('workflow/timer', timer.domainId, timer.workflowId, timer.nodeId, timer.triggerData || {});
+                        } catch (emitError) {
+                            logger.error(`Error emitting workflow/timer event:`, emitError);
+                        }
                     } else {
-                        await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
                     }
                 } catch (error) {
                     logger.error('Error consuming workflow timers:', error);
-                    await new Promise(resolve => setTimeout(resolve, 5000)); // 出错后等待5秒
+                    await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds after error
                 }
             }
         };
 
-        // 启动定时器消费者（仅在主进程）
+        // Start timer consumer (only in main process)
         if (process.env.NODE_APP_INSTANCE === '0') {
             setTimeout(() => {
                 consumeWorkflowTimers().catch(err => {
@@ -210,103 +218,209 @@ export async function apply(ctx: Context) {
             }, 2000);
         }
 
-        // 检查并注册所有活跃工作流的定时器节点
+        // Register timer nodes for a single workflow
+        const registerWorkflowTimers = async (domainId: string, workflowId: number) => {
+            const workflow = await WorkflowModel.getByWorkflowId(domainId, workflowId);
+            
+            if (!workflow || !workflow.enabled) {
+                return; // Only register enabled workflows
+            }
+            
+            const timerNodes = await document.getMulti(domainId, document.TYPE_WORKFLOW_NODE, {
+                workflowDocId: workflow.docId,
+                nodeType: 'timer',
+            }).toArray();
+            
+            for (const timerNode of timerNodes) {
+                const config = timerNode.config || {};
+                
+                // Check if timer task already exists
+                const existing = await WorkflowTimerModel.getByNode(domainId, workflowId, timerNode.nid);
+                
+                // If timer exists, check if re-registration is needed
+                if (existing) {
+                    const now = new Date();
+                    const isExpired = existing.executeAfter < now;
+                    
+                    // Compare configuration: interval, intervalValue, triggerData
+                    const currentInterval = config.interval || 'day';
+                    const currentIntervalValue = config.intervalValue || 1;
+                    const currentTriggerData = JSON.stringify(config.triggerData || {});
+                    
+                    // Get interval from existing (stored in interval field as [value, unit])
+                    const existingInterval = existing.interval ? existing.interval[1] : 'day';
+                    const existingIntervalValue = existing.interval ? existing.interval[0] : 1;
+                    // Note: time is not stored in existing, so cannot compare time
+                    const existingTriggerData = JSON.stringify(existing.triggerData || {});
+                    
+                    // Skip re-registration if timer is not expired and configuration is unchanged
+                    if (!isExpired && 
+                        currentInterval === existingInterval && 
+                        currentIntervalValue === existingIntervalValue &&
+                        currentTriggerData === existingTriggerData) {
+                        continue;
+                    }
+                    
+                    // Need to re-register: delete old timer
+                    await WorkflowTimerModel.del(existing._id);
+                }
+                
+                // Get configuration
+                const interval = config.interval || 'day';
+                const intervalValue = config.intervalValue || 1;
+                const timeStr = (config.time || '').trim();
+                
+                // For minute interval, can register without time (execute every intervalValue minutes from now)
+                // For other intervals, time configuration is required
+                if (interval === 'minute' || timeStr) {
+                    const moment = (await import('moment-timezone')).default;
+                    
+                    // Use server local time (no timezone conversion, use server system time directly)
+                    let executeAfter: Date;
+                    
+                    if (interval === 'minute') {
+                        // Execute every minute: execute every intervalValue minutes from current time
+                        // If time is specified (e.g., :30), execute at that second of each minute
+                        // Otherwise execute every intervalValue minutes from current time
+                        if (timeStr && timeStr !== ':0' && timeStr !== ':00') {
+                            // Parse seconds
+                            // Support formats: :ss or :mm:ss or mm:ss
+                            let second = 0;
+                            const timeParts = timeStr.split(':');
+                            if (timeParts.length === 2 && timeParts[0] === '') {
+                                // Format: :ss
+                                second = parseInt(timeParts[1] || '0', 10);
+                            } else if (timeParts.length >= 2) {
+                                // Format mm:ss or HH:mm:ss, take last part as seconds
+                                second = parseInt(timeParts[timeParts.length - 1] || '0', 10);
+                            }
+                            
+                            // If seconds specified, execute at that second of each minute (using server local time)
+                            const serverNow = new Date();
+                            const now = moment(serverNow);
+                            const localExecuteAfter = now.clone().second(second).millisecond(0);
+                            executeAfter = localExecuteAfter.toDate();
+                            
+                            // If time has passed, set to next interval
+                            if (executeAfter < serverNow) {
+                                const nextExecuteAfter = now.clone().add(intervalValue, 'minute').second(second).millisecond(0);
+                                executeAfter = nextExecuteAfter.toDate();
+                            }
+                        } else {
+                            // No time specified or time is :0/:00, execute every intervalValue minutes from now
+                            const serverNow = new Date();
+                            const now = moment(serverNow);
+                            const localExecuteAfter = now.clone().add(intervalValue, 'minute').second(0).millisecond(0);
+                            executeAfter = localExecuteAfter.toDate();
+                        }
+                    } else if (interval === 'hour') {
+                        // Execute every hour: parse minute and second (using server local time)
+                        const timeParts = timeStr.split(':');
+                        const minute = parseInt(timeParts[1] || '0', 10);
+                        const second = parseInt(timeParts[2] || '0', 10);
+                        
+                        const serverNow = new Date();
+                        const now = moment(serverNow);
+                        const localExecuteAfter = now.clone().minute(minute).second(second).millisecond(0);
+                        executeAfter = localExecuteAfter.toDate();
+                        
+                        // If time has passed, set to next interval
+                        if (executeAfter < serverNow) {
+                            const nextExecuteAfter = now.clone().add(intervalValue, 'hour').minute(minute).second(second).millisecond(0);
+                            executeAfter = nextExecuteAfter.toDate();
+                        }
+                    } else {
+                        // Execute daily/weekly/monthly: parse hour and minute (using server local time)
+                        const [hour, minute] = timeStr.split(':').map(Number);
+                        const serverNow = new Date();
+                        const now = moment(serverNow);
+                        const localExecuteAfter = now.clone().hour(hour).minute(minute || 0).second(0).millisecond(0);
+                        executeAfter = localExecuteAfter.toDate();
+                        
+                        // If time has passed, set to next interval
+                        if (executeAfter < serverNow) {
+                            if (interval === 'day') {
+                                const nextExecuteAfter = now.clone().add(intervalValue, 'day').hour(hour).minute(minute || 0).second(0).millisecond(0);
+                                executeAfter = nextExecuteAfter.toDate();
+                            } else if (interval === 'week') {
+                                const nextExecuteAfter = now.clone().add(intervalValue, 'week').hour(hour).minute(minute || 0).second(0).millisecond(0);
+                                executeAfter = nextExecuteAfter.toDate();
+                            } else if (interval === 'month') {
+                                const nextExecuteAfter = now.clone().add(intervalValue, 'month').hour(hour).minute(minute || 0).second(0).millisecond(0);
+                                executeAfter = nextExecuteAfter.toDate();
+                            }
+                        }
+                    }
+                    
+                    // Build interval array
+                    let intervalArray: [number, string];
+                    if (interval === 'minute') {
+                        intervalArray = [intervalValue, 'minute'];
+                    } else if (interval === 'hour') {
+                        intervalArray = [intervalValue, 'hour'];
+                    } else if (interval === 'day') {
+                        intervalArray = [intervalValue, 'day'];
+                    } else if (interval === 'week') {
+                        intervalArray = [intervalValue, 'week'];
+                    } else if (interval === 'month') {
+                        intervalArray = [intervalValue, 'month'];
+                    } else {
+                        intervalArray = [1, 'day']; // Default: daily
+                    }
+                    
+                    try {
+                        await WorkflowTimerModel.add({
+                            domainId: domainId,
+                            workflowId: workflowId,
+                            nodeId: timerNode.nid,
+                            executeAfter,
+                            interval: intervalArray,
+                            triggerData: config.triggerData || {},
+                        });
+                    } catch (error: any) {
+                        logger.error(`Failed to add timer for workflow ${workflowId}, node ${timerNode.nid}:`, error);
+                        throw error;
+                    }
+                } else {
+                    // For non-minute intervals, time configuration is required
+                    if (interval !== 'minute') {
+                        logger.warn(`Timer node ${timerNode.nid} has no time configuration, skipping registration`);
+                    }
+                }
+            }
+            
+            // Notify WebSocket connections to update timer status
+            (ctx.emit as any)('workflow/timer/registered', domainId, workflowId);
+        };
+        
+        // Check and register timer nodes for all active workflows
         const checkAndRegisterTimers = async () => {
-            // 使用全局模型对象访问 domain
+            // Use global model object to access domain
             const DomainModel = global.Ejunz.model.domain;
             const domains = await DomainModel.getMulti({}).toArray();
             for (const domain of domains) {
                 const workflows = await WorkflowModel.getActive(domain._id);
                 for (const workflow of workflows) {
-                    const timerNodes = await document.getMulti(domain._id, document.TYPE_WORKFLOW_NODE, {
-                        workflowDocId: workflow.docId,
-                        nodeType: 'timer',
-                    }).toArray();
-                    
-                    for (const timerNode of timerNodes) {
-                        const config = timerNode.config || {};
-                        const scheduleId = `workflow_${workflow.wid}_timer_${timerNode.nid}`;
-                        
-                        // 检查是否已存在定时任务
-                        const existing = await WorkflowTimerModel.getByNode(domain._id, workflow.wid, timerNode.nid);
-                        
-                        if (!existing && config.time) {
-                            const moment = (await import('moment-timezone')).default;
-                            const interval = config.interval || 'day';
-                            const intervalValue = config.intervalValue || 1;
-                            
-                            let executeAfter: Date;
-                            
-                            if (interval === 'hour') {
-                                // 每小时执行：解析分钟和秒
-                                const timeParts = config.time.split(':');
-                                const minute = parseInt(timeParts[1] || '0', 10);
-                                const second = parseInt(timeParts[2] || '0', 10);
-                                
-                                executeAfter = moment().minute(minute).second(second).millisecond(0).toDate();
-                                
-                                // 如果时间已过，设置为下一个间隔
-                                if (executeAfter < new Date()) {
-                                    executeAfter = moment().add(intervalValue, 'hour').minute(minute).second(second).millisecond(0).toDate();
-                                }
-                            } else {
-                                // 每天/每周/每月执行：解析小时和分钟
-                                const [hour, minute] = config.time.split(':').map(Number);
-                                executeAfter = moment().hour(hour).minute(minute || 0).second(0).millisecond(0).toDate();
-                                
-                                // 如果时间已过，设置为下一个间隔
-                                if (executeAfter < new Date()) {
-                                    if (interval === 'day') {
-                                        executeAfter = moment().add(intervalValue, 'day').hour(hour).minute(minute || 0).second(0).millisecond(0).toDate();
-                                    } else if (interval === 'week') {
-                                        executeAfter = moment().add(intervalValue, 'week').hour(hour).minute(minute || 0).second(0).millisecond(0).toDate();
-                                    } else if (interval === 'month') {
-                                        executeAfter = moment().add(intervalValue, 'month').hour(hour).minute(minute || 0).second(0).millisecond(0).toDate();
-                                    }
-                                }
-                            }
-                            
-                            // 构建 interval 数组
-                            let intervalArray: [number, string];
-                            if (interval === 'hour') {
-                                intervalArray = [intervalValue, 'hour'];
-                            } else if (interval === 'day') {
-                                intervalArray = [intervalValue, 'day'];
-                            } else if (interval === 'week') {
-                                intervalArray = [intervalValue, 'week'];
-                            } else if (interval === 'month') {
-                                intervalArray = [intervalValue, 'month'];
-                            } else {
-                                intervalArray = [1, 'day']; // 默认每天
-                            }
-                            
-                            await WorkflowTimerModel.add({
-                                domainId: domain._id,
-                                workflowId: workflow.wid,
-                                nodeId: timerNode.nid,
-                                executeAfter,
-                                interval: intervalArray,
-                                triggerData: config.triggerData || {},
-                            });
-                            logger.info(`Registered timer for workflow ${workflow.wid}, node ${timerNode.nid} at ${config.time}, interval: ${intervalValue} ${interval}`);
-                        }
-                    }
+                    await registerWorkflowTimers(domain._id, workflow.wid);
                 }
             }
         };
+        
+        // Export registerWorkflowTimers for external calls
+        WorkflowModel.registerTimers = registerWorkflowTimers;
 
-        // 启动时检查一次
+        // Check once on startup
         if (process.env.NODE_APP_INSTANCE === '0') {
-            setTimeout(checkAndRegisterTimers, 5000); // 延迟5秒执行，确保其他模块已加载
+            setTimeout(checkAndRegisterTimers, 5000); // Delay 5 seconds to ensure other modules are loaded
         }
     });
 
     if (process.env.NODE_APP_INSTANCE !== '0') return;
-    // document 集合的索引由 document 模块管理
+    // Indexes for document collection are managed by document module
 }
 
 export default WorkflowModel;
 
-// 导出到全局类型系统
+// Export to global type system
 global.Ejunz.model.workflow = WorkflowModel;
 

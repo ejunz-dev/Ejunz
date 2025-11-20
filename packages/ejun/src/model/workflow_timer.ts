@@ -12,7 +12,7 @@ export interface WorkflowTimerDoc {
     workflowId: number;
     nodeId: number;
     executeAfter: Date;
-    interval?: [number, string]; // [1, 'day'] 格式
+    interval?: [number, string]; // Format: [1, 'day']
     triggerData?: Record<string, any>;
     createdAt: Date;
     updatedAt: Date;
@@ -22,15 +22,20 @@ const coll = db.collection('workflow_timer');
 
 async function getFirst(query: Filter<WorkflowTimerDoc>) {
     if (process.env.CI) return null;
-    const q = { ...query };
-    q.executeAfter ||= { $lt: new Date() };
+    const q: any = { ...query };
+    const now = new Date();
+    q.executeAfter ||= { $lt: now };
+    
     const res = await coll.findOneAndDelete(q) as any;
-    if (res?.value) {
-        const doc = res.value;
-        logger.debug('Workflow timer triggered: %o', doc);
+    // MongoDB findOneAndDelete may return { value: doc | null } or directly return doc | null
+    const doc = res?.value || res;
+    if (doc && doc.workflowId) {
+        logger.info('Workflow timer triggered: workflow=%d, node=%d, executeAfter=%s', 
+            doc.workflowId, doc.nodeId, doc.executeAfter.toISOString());
         if (doc.interval) {
             const executeAfter = moment(doc.executeAfter).add(...doc.interval).toDate();
             await coll.insertOne({ ...doc, executeAfter, updatedAt: new Date() });
+            logger.info('Re-registered timer with new executeAfter: %s', executeAfter.toISOString());
         }
         return doc;
     }
@@ -103,6 +108,6 @@ export async function apply(ctx: Context) {
 
 export default WorkflowTimerModel;
 
-// 导出到全局类型系统
+// Export to global type system
 global.Ejunz.model.workflowTimer = WorkflowTimerModel;
 
