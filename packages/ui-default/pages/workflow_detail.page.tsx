@@ -1,5 +1,5 @@
 import $ from 'jquery';
-import React, { useMemo, useEffect, useCallback } from 'react';
+import React, { useMemo, useEffect, useCallback, useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
@@ -30,7 +30,26 @@ interface WorkflowNode {
   connections: Array<{ targetNodeId: number; condition?: string }>;
 }
 
-// 自定义节点组件（只读模式）
+// 格式化时间显示（秒转换为可读格式）
+const formatTime = (seconds: number): string => {
+  if (seconds < 60) {
+    return `${seconds}秒`;
+  } else if (seconds < 3600) {
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return secs > 0 ? `${minutes}分${secs}秒` : `${minutes}分钟`;
+  } else if (seconds < 86400) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return minutes > 0 ? `${hours}小时${minutes}分钟` : `${hours}小时`;
+  } else {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    return hours > 0 ? `${days}天${hours}小时` : `${days}天`;
+  }
+};
+
+// 自定义节点组件（只读模式，支持实时状态显示）
 const CustomNode = ({ data }: { data: any }) => {
   const getNodeColor = (nodeType: string, type: string) => {
     if (type === 'trigger') {
@@ -47,12 +66,30 @@ const CustomNode = ({ data }: { data: any }) => {
 
   const color = getNodeColor(data.nodeType, data.type);
   const isButtonNode = data.nodeType === 'button';
+  const isTimerNode = data.nodeType === 'timer';
   const originalNode = data.originalNode as WorkflowNode;
   const config = originalNode?.config || {};
   const buttonText = config.buttonText || '触发工作流';
   const buttonStyle = config.buttonStyle || 'primary';
   const requireConfirmation = config.requireConfirmation || false;
   const confirmationMessage = config.confirmationMessage || '确定要触发此工作流吗？';
+  
+  // 获取实时状态
+  const timerCountdown = data.timerCountdown;
+  const workflowEnabled = data.workflowEnabled;
+  const formatTime = data.formatTime || ((seconds: number) => {
+    // 如果没有传递 formatTime，使用默认实现
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    if (hours > 0) {
+      return `${hours}时${minutes}分${secs}秒`;
+    } else if (minutes > 0) {
+      return `${minutes}分${secs}秒`;
+    } else {
+      return `${secs}秒`;
+    }
+  });
 
   const handleButtonClick = (e: React.MouseEvent) => {
     e.stopPropagation(); // 阻止事件冒泡到节点
@@ -109,9 +146,50 @@ const CustomNode = ({ data }: { data: any }) => {
       <div style={{ fontWeight: 'bold', marginBottom: '5px', fontSize: '14px', color: color }}>
         {data.label}
       </div>
-      <div style={{ fontSize: '12px', color: '#666', marginBottom: isButtonNode ? '10px' : '0' }}>
+      <div style={{ fontSize: '12px', color: '#666', marginBottom: (isButtonNode || isTimerNode) ? '10px' : '0' }}>
         {data.nodeType}
       </div>
+      
+      {/* 工作流状态指示器 */}
+      {workflowEnabled !== undefined && (
+        <div style={{ 
+          fontSize: '10px', 
+          padding: '2px 6px', 
+          borderRadius: '3px',
+          backgroundColor: workflowEnabled ? '#e8f5e9' : '#ffebee',
+          color: workflowEnabled ? '#2e7d32' : '#c62828',
+          marginBottom: '5px',
+          display: 'inline-block',
+        }}>
+          {workflowEnabled ? '✓ 已激活' : '✗ 已关闭'}
+        </div>
+      )}
+      
+      {/* 如果是定时器节点，显示倒计时 */}
+      {isTimerNode && (
+        <div style={{
+          width: '100%',
+          padding: '6px',
+          marginTop: '8px',
+          border: '1px solid #4caf50',
+          borderRadius: '4px',
+          backgroundColor: '#f1f8f4',
+          textAlign: 'center',
+        }}>
+          {workflowEnabled && timerCountdown !== undefined && timerCountdown > 0 ? (
+            <>
+              <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#2e7d32' }}>
+                {formatTime(timerCountdown)}
+              </div>
+              <div style={{ fontSize: '10px', color: '#666', marginTop: '2px' }}>下次触发</div>
+            </>
+          ) : (
+            <div style={{ fontSize: '12px', color: '#999' }}>
+              {workflowEnabled ? '等待定时器注册...' : '工作流已关闭'}
+            </div>
+          )}
+        </div>
+      )}
       
       {/* 如果是按钮节点，显示可点击的按钮 */}
       {isButtonNode && (
@@ -171,8 +249,185 @@ const customNodeTypes: NodeTypes = {
   custom: CustomNode,
 };
 
-// 工作流可视化组件（只读）
-function WorkflowViewer({ workflowId, initialNodes }: { workflowId: number; initialNodes: WorkflowNode[] }) {
+// 工作流可视化组件（只读，支持实时状态显示）
+function WorkflowViewer({ workflowId, initialNodes, enabled: initialEnabled }: { workflowId: number; initialNodes: WorkflowNode[]; enabled: boolean }) {
+  const [workflowEnabled, setWorkflowEnabled] = useState(initialEnabled);
+  const [timerCountdowns, setTimerCountdowns] = useState<Record<number, number>>({});
+  const timerIntervalsRef = useRef<Record<number, NodeJS.Timeout>>({});
+  // 存储定时器的 executeAfter 时间（从后端同步）
+  const timerExecuteAfterRef = useRef<Record<number, Date>>({});
+  
+  // 更新定时器状态（从 WebSocket 接收）
+  const updateTimerStatus = useCallback((timers: Record<number, { executeAfter: string; interval?: [number, string] }>) => {
+    console.log('updateTimerStatus called:', { workflowEnabled, timers, timerNodes: initialNodes.filter(n => n.nodeType === 'timer') });
+    
+    if (!workflowEnabled) {
+      // 如果工作流未启用，清除所有倒计时
+      console.log('Workflow not enabled, clearing timers');
+      setTimerCountdowns({});
+      Object.values(timerIntervalsRef.current).forEach(interval => clearInterval(interval));
+      timerIntervalsRef.current = {};
+      timerExecuteAfterRef.current = {};
+      return;
+    }
+    
+    // 获取工作流定时器节点
+    const timerNodes = initialNodes.filter(n => n.nodeType === 'timer');
+    console.log('Timer nodes found:', timerNodes.map(n => ({ nid: n.nid, name: n.name })));
+    
+    timerNodes.forEach(node => {
+      const timer = timers[node.nid];
+      console.log(`Processing timer node ${node.nid}:`, timer);
+      
+      if (timer && timer.executeAfter) {
+        // 更新 executeAfter 时间
+        const executeAfter = new Date(timer.executeAfter);
+        timerExecuteAfterRef.current[node.nid] = executeAfter;
+        
+        // 计算倒计时（秒）
+        const now = new Date();
+        const diffSeconds = Math.max(0, Math.floor((executeAfter.getTime() - now.getTime()) / 1000));
+        
+        console.log(`Timer ${node.nid}: executeAfter=${executeAfter.toISOString()}, now=${now.toISOString()}, diffSeconds=${diffSeconds}`);
+        
+        // 更新倒计时
+        setTimerCountdowns(prev => {
+          const newState = {
+            ...prev,
+            [node.nid]: diffSeconds,
+          };
+          console.log('Updated timer countdowns:', newState);
+          return newState;
+        });
+        
+        // 如果还没有为这个节点设置定时器，启动它
+        if (!timerIntervalsRef.current[node.nid]) {
+          console.log(`Starting countdown interval for node ${node.nid}`);
+          // 启动倒计时更新（每秒更新一次）
+          timerIntervalsRef.current[node.nid] = setInterval(() => {
+            const executeAfter = timerExecuteAfterRef.current[node.nid];
+            if (executeAfter) {
+              const now = new Date();
+              const diffSeconds = Math.max(0, Math.floor((executeAfter.getTime() - now.getTime()) / 1000));
+              
+              setTimerCountdowns(prev => ({
+                ...prev,
+                [node.nid]: diffSeconds,
+              }));
+            }
+          }, 1000);
+        }
+      } else {
+        console.log(`No timer found for node ${node.nid}, clearing countdown`);
+        // 如果没有定时器记录，清除倒计时
+        if (timerIntervalsRef.current[node.nid]) {
+          clearInterval(timerIntervalsRef.current[node.nid]);
+          delete timerIntervalsRef.current[node.nid];
+        }
+        delete timerExecuteAfterRef.current[node.nid];
+        setTimerCountdowns(prev => {
+          const newState = { ...prev };
+          delete newState[node.nid];
+          return newState;
+        });
+      }
+    });
+  }, [workflowEnabled, initialNodes]);
+  
+  // 监听工作流状态变化（通过页面上的按钮状态）
+  useEffect(() => {
+    const checkWorkflowStatus = () => {
+      const $btn = $('#toggle-workflow-btn');
+      if ($btn.length) {
+        const enabled = $btn.data('enabled') === true || $btn.data('enabled') === 'true';
+        setWorkflowEnabled(enabled);
+      }
+    };
+    
+    // 每2秒检查一次工作流状态（从按钮状态获取）
+    const statusInterval = setInterval(checkWorkflowStatus, 2000);
+    
+    // 监听按钮点击事件来更新状态
+    $(document).on('workflow:toggled', (event: any, enabled: boolean) => {
+      setWorkflowEnabled(enabled);
+    });
+    
+    return () => {
+      clearInterval(statusInterval);
+      $(document).off('workflow:toggled');
+    };
+  }, []);
+  
+  // WebSocket 连接（用于实时接收定时器状态）
+  useEffect(() => {
+    const $viewer = $('#workflow-viewer');
+    const socketUrl = $viewer.data('socket-url') as string;
+    
+    if (!socketUrl) {
+      console.warn('No socket URL provided, timer status updates will not be available');
+      return;
+    }
+    
+    let sock: any = null;
+    
+    // 动态导入 WebSocket
+    import('../components/socket').then(({ default: WebSocket }) => {
+      const UiContext = (window as any).UiContext;
+      // 构建完整的 WebSocket URL
+      // socketUrl 应该是相对路径，如 "workflow/3/ws"
+      // ws_prefix 通常是 "/d/{domainId}/" 或类似的格式
+      let wsUrl: string;
+      if (socketUrl.startsWith('http://') || socketUrl.startsWith('https://') || socketUrl.startsWith('ws://') || socketUrl.startsWith('wss://')) {
+        // 已经是完整 URL
+        wsUrl = socketUrl;
+      } else {
+        // 相对路径，需要添加 ws_prefix
+        const prefix = UiContext.ws_prefix || '';
+        const path = socketUrl.startsWith('/') ? socketUrl : '/' + socketUrl;
+        wsUrl = prefix + path;
+      }
+      console.log('Connecting to WebSocket:', wsUrl, 'socketUrl:', socketUrl, 'ws_prefix:', UiContext.ws_prefix);
+      sock = new WebSocket(wsUrl, false, true);
+      
+      sock.onopen = () => {
+        console.log('Workflow WebSocket connected');
+      };
+      
+      sock.onmessage = (_: any, data: string) => {
+        try {
+          const msg = JSON.parse(data);
+          console.log('WebSocket message received:', msg);
+          if (msg.type === 'timer_status' && msg.timers) {
+            console.log('Updating timer status:', msg.timers);
+            // 更新定时器状态
+            updateTimerStatus(msg.timers);
+          }
+        } catch (error) {
+          console.error('Failed to parse WebSocket message:', error);
+        }
+      };
+      
+      sock.onclose = () => {
+        console.log('Workflow WebSocket closed');
+      };
+    }).catch((error) => {
+      console.error('Failed to load WebSocket:', error);
+    });
+    
+    return () => {
+      // 清理所有定时器
+      Object.values(timerIntervalsRef.current).forEach(interval => clearInterval(interval));
+      timerIntervalsRef.current = {};
+      if (sock) {
+        try {
+          sock.close();
+        } catch (e) {
+          // ignore
+        }
+      }
+    };
+  }, [updateTimerStatus]);
+  
   // 处理按钮节点触发
   const handleTrigger = useCallback(async (node: WorkflowNode) => {
     const config = node.config || {};
@@ -221,10 +476,13 @@ function WorkflowViewer({ workflowId, initialNodes }: { workflowId: number; init
           type: node.type || 'action',
           originalNode: node,
           onTrigger: handleTrigger, // 传递触发函数
+          timerCountdown: timerCountdowns[node.nid], // 传递倒计时
+          workflowEnabled: workflowEnabled, // 传递工作流启用状态
+          formatTime: formatTime, // 传递格式化时间函数
         },
       } as Node;
     });
-  }, [initialNodes, handleTrigger]);
+  }, [initialNodes, handleTrigger, timerCountdowns, workflowEnabled]);
 
   // 将 connections 转换为 ReactFlow 的 Edge 格式
   const initialFlowEdges = useMemo(() => {
@@ -260,6 +518,24 @@ function WorkflowViewer({ workflowId, initialNodes }: { workflowId: number; init
   const [nodes, setNodes, onNodesChange] = useNodesState(initialFlowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialFlowEdges);
 
+  // 当状态变化时更新节点数据
+  useEffect(() => {
+    setNodes((nds) =>
+      nds.map((n) => {
+        const nodeId = parseInt(n.id.replace('node-', ''));
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            timerCountdown: timerCountdowns[nodeId],
+            workflowEnabled: workflowEnabled,
+            formatTime: formatTime, // 确保 formatTime 始终传递
+          },
+        };
+      })
+    );
+  }, [timerCountdowns, workflowEnabled, setNodes]);
+  
   // 当 initialNodes 变化时更新节点和边
   React.useEffect(() => {
     console.log('Updating nodes and edges:', {
@@ -392,14 +668,63 @@ const page = new NamedPage('workflow_detail', async () => {
         return;
       }
 
+      const workflowEnabled = $viewer.data('workflow-enabled') === true || $viewer.data('workflow-enabled') === 'true';
+      
       ReactDOM.render(
-        <WorkflowViewer workflowId={workflowId} initialNodes={nodes} />,
+        <WorkflowViewer workflowId={workflowId} initialNodes={nodes} enabled={workflowEnabled} />,
         $viewer[0]
       );
     }
   } catch (error: any) {
     console.error('Failed to initialize workflow viewer:', error);
   }
+
+  // 切换工作流启用状态
+  $('#toggle-workflow-btn').on('click', async function() {
+    const $btn = $(this);
+    const workflowId = $btn.data('workflow-id');
+    const currentEnabled = $btn.data('enabled') === true || $btn.data('enabled') === 'true';
+    
+    $btn.prop('disabled', true);
+    const originalText = $btn.text();
+    $btn.text('处理中...');
+    
+    try {
+      const response = await request.post(`/workflow/${workflowId}/toggle`, {
+        operation: 'toggle',
+      });
+      
+      if (response.success) {
+        const newEnabled = response.enabled;
+        $btn.data('enabled', newEnabled);
+        
+        if (newEnabled) {
+          $btn.removeClass('success').addClass('danger').text('关闭工作流');
+          Notification.success('工作流已激活');
+        } else {
+          $btn.removeClass('danger').addClass('success').text('激活工作流');
+          Notification.success('工作流已关闭');
+        }
+        
+        // 更新页面上的状态显示
+        $('.workflow-enabled-badge, .workflow-disabled-badge').remove();
+        if (newEnabled) {
+          $('.section__action').append('<span class="workflow-enabled-badge">已启用</span>');
+        } else {
+          $('.section__action').append('<span class="workflow-disabled-badge">已禁用</span>');
+        }
+        
+        // 触发自定义事件通知可视化组件
+        $(document).trigger('workflow:toggled', [newEnabled]);
+      } else {
+        Notification.error('切换失败: ' + (response.error || '未知错误'));
+      }
+    } catch (error: any) {
+      Notification.error('切换失败: ' + (error.message || '未知错误'));
+    } finally {
+      $btn.prop('disabled', false);
+    }
+  });
 
   // 执行工作流（手动执行）
   $('#execute-workflow-btn').on('click', async function() {

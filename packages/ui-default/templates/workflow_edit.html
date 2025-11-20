@@ -76,6 +76,7 @@
                             </button>
                             {% if workflow %}
                             <a href="/workflow/{{ workflow.wid }}" class="rounded button">查看详情</a>
+                            <a href="/workflow/{{ workflow.wid }}/editFlow" class="rounded button">编辑流程图</a>
                             {% endif %}
                         </div>
                     </div>
@@ -84,31 +85,5 @@
         </div>
     </div>
 </div>
-
-{% if workflow %}
-<div class="row">
-    <div class="columns">
-        <div class="section">
-            <div class="section__header">
-                <h2 class="section__title">工作流节点编辑器</h2>
-                <div class="section__action">
-                    <button id="add-node-btn" class="button primary">添加节点</button>
-                    <button id="save-workflow-btn" class="button">保存工作流</button>
-                    <button id="test-workflow-btn" class="button">测试执行</button>
-                </div>
-            </div>
-            <div class="section__body">
-                <div id="workflow-editor" 
-                     data-workflow-id="{{ workflow.wid }}"
-                     data-workflow-nodes="{{ workflow.nodesJson|default('[]')|jsesc }}"
-                     data-nodes-count="{{ workflow.nodes|default([])|length }}">
-                    <!-- React 组件将在这里渲染 -->
-                    <!-- Debug: nodes count = {{ workflow.nodes|default([])|length }}, nodesJson length = {{ workflow.nodesJson|default('[]')|length }} -->
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
 {% endblock %}
 

@@ -37,11 +37,6 @@ export class WorkflowExecutor {
             throw new Error(`Workflow ${workflowId} not found`);
         }
 
-        if (!workflow.enabled || workflow.status !== 'active') {
-            logger.warn(`Workflow ${workflowId} is not active or enabled`);
-            return;
-        }
-
         let startNode: WorkflowNodeDoc | null = null;
 
         // 如果 triggerData 中指定了 nodeId，从该节点开始执行（用于按钮触发器等）
