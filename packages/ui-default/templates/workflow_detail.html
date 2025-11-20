@@ -1,0 +1,80 @@
+{% set page_name = "workflow_detail" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+    <div class="medium-9 columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">{{ workflow.name }}</h1>
+                <div class="section__action">
+                    <span class="workflow-status-badge {{ workflow.status }}">{{ workflow.status }}</span>
+                    {% if workflow.enabled %}
+                        <span class="workflow-enabled-badge">已启用</span>
+                    {% else %}
+                        <span class="workflow-disabled-badge">已禁用</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="section__body">
+                {% if workflow.description %}
+                    <p>{{ workflow.description }}</p>
+                {% endif %}
+                
+                <div class="workflow-info">
+                    <div>工作流 ID: <code>{{ workflow.wid }}</code></div>
+                    <div>创建时间: {{ datetimeSpan(workflow.createdAt)|safe if workflow.createdAt else 'N/A' }}</div>
+                    <div>更新时间: {{ datetimeSpan(workflow.updatedAt)|safe if workflow.updatedAt else 'N/A' }}</div>
+                </div>
+
+                <div class="workflow-actions">
+                    <a href="/workflow/{{ workflow.wid }}/edit" class="button">编辑工作流</a>
+                    <button id="execute-workflow-btn" class="button primary" data-workflow-id="{{ workflow.wid }}">执行工作流</button>
+                </div>
+
+                {% if buttonNodes and buttonNodes.length > 0 %}
+                    <div class="workflow-button-triggers" style="margin-top: 20px;">
+                        <h3>按钮触发器</h3>
+                        {% for buttonNode in buttonNodes %}
+                            <div class="button-trigger-item" style="margin-bottom: 10px;">
+                                <button 
+                                    class="button workflow-trigger-btn {{ buttonNode.config.buttonStyle|default('primary') }}" 
+                                    data-workflow-id="{{ workflow.wid }}"
+                                    data-node-id="{{ buttonNode.nid }}"
+                                    data-require-confirmation="{{ buttonNode.config.requireConfirmation|default(false) }}"
+                                    data-confirmation-message="{{ buttonNode.config.confirmationMessage|default('确定要触发此工作流吗？') }}"
+                                >
+                                    {{ buttonNode.config.buttonText|default('触发工作流') }}
+                                </button>
+                                <span style="margin-left: 10px; color: #666;">{{ buttonNode.name }}</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="columns">
+        <div class="section">
+            <div class="section__header">
+                <h2 class="section__title">节点可视化</h2>
+            </div>
+            <div class="section__body">
+                {% if nodes and nodes.length > 0 %}
+                    <div id="workflow-viewer" 
+                         data-workflow-id="{{ workflow.wid }}"
+                         data-workflow-nodes="{{ nodesJson|default('[]')|jsesc }}"
+                         style="height: 600px; border: 1px solid #ddd; border-radius: 4px;">
+                        <!-- React Flow 将在这里渲染 -->
+                    </div>
+                {% else %}
+                    <p>暂无节点，<a href="/workflow/{{ workflow.wid }}/edit">编辑工作流</a>来添加节点</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

@@ -1,0 +1,114 @@
+{% set page_name = "workflow_edit" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+    <div class="medium-9 columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">{{ _('Edit Workflow') if workflow else _('Create Workflow') }}</h1>
+            </div>
+            <div class="section__body">
+                <form method="post" id="workflow-form">
+                    <div class="row">
+                        <div class="medium-12 columns">
+                            <label>
+                                {{ _('Workflow Name') }}
+                                <input 
+                                    name="name" 
+                                    placeholder="{{ _('Enter workflow name') }}"
+                                    value="{{ workflow.name|default('') if workflow else '' }}" 
+                                    class="textbox" 
+                                    required 
+                                    autofocus>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="medium-12 columns">
+                            <label>
+                                {{ _('Description') }}
+                                <textarea 
+                                    name="description" 
+                                    class="textbox" 
+                                    rows="3"
+                                    placeholder="{{ _('Enter workflow description') }}">{{ workflow.description|default('') if workflow else '' }}</textarea>
+                            </label>
+                        </div>
+                    </div>
+
+                    {% if workflow %}
+                    <div class="row">
+                        <div class="medium-6 columns">
+                            <label>
+                                {{ _('Status') }}
+                                <select name="status" class="textbox">
+                                    <option value="active" {% if workflow.status == 'active' %}selected{% endif %}>活跃</option>
+                                    <option value="inactive" {% if workflow.status == 'inactive' %}selected{% endif %}>非活跃</option>
+                                    <option value="paused" {% if workflow.status == 'paused' %}selected{% endif %}>暂停</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div class="medium-6 columns">
+                            <label>
+                                {{ _('Enabled') }}
+                                <select name="enabled" class="textbox">
+                                    <option value="true" {% if workflow.enabled %}selected{% endif %}>是</option>
+                                    <option value="false" {% if not workflow.enabled %}selected{% endif %}>否</option>
+                                </select>
+                            </label>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="row">
+                        <div class="columns">
+                            <button 
+                                name="operation" 
+                                value="{{ 'update' if workflow else 'create' }}" 
+                                data-default-submit 
+                                type="submit" 
+                                class="rounded primary button">
+                                {{ _('Update') if workflow else _('Create') }} (Ctrl+Enter)
+                            </button>
+                            <button type="button" class="rounded button" onclick="window.history.go(-1)">
+                                {{ _('Cancel') }}
+                            </button>
+                            {% if workflow %}
+                            <a href="/workflow/{{ workflow.wid }}" class="rounded button">查看详情</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if workflow %}
+<div class="row">
+    <div class="columns">
+        <div class="section">
+            <div class="section__header">
+                <h2 class="section__title">工作流节点编辑器</h2>
+                <div class="section__action">
+                    <button id="add-node-btn" class="button primary">添加节点</button>
+                    <button id="save-workflow-btn" class="button">保存工作流</button>
+                    <button id="test-workflow-btn" class="button">测试执行</button>
+                </div>
+            </div>
+            <div class="section__body">
+                <div id="workflow-editor" 
+                     data-workflow-id="{{ workflow.wid }}"
+                     data-workflow-nodes="{{ workflow.nodesJson|default('[]')|jsesc }}"
+                     data-nodes-count="{{ workflow.nodes|default([])|length }}">
+                    <!-- React 组件将在这里渲染 -->
+                    <!-- Debug: nodes count = {{ workflow.nodes|default([])|length }}, nodesJson length = {{ workflow.nodesJson|default('[]')|length }} -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+

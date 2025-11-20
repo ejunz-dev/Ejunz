@@ -6,7 +6,7 @@ import {
 import { Context } from '../context';
 import {
     Content, ContestClarificationDoc, DiscussionDoc,
-    DiscussionReplyDoc, AgentDoc, BaseDoc, RepoDoc, DocDoc, BlockDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc,
+    DiscussionReplyDoc, AgentDoc, BaseDoc, RepoDoc, DocDoc, BlockDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc, WorkflowDoc, WorkflowNodeDoc,
 } from '../interface';
 import bus from '../service/bus';
 import db from '../service/db';
@@ -29,9 +29,11 @@ export const TYPE_BASE: 50 = 50;
 export const TYPE_REPO: 51 = 51;
 export const TYPE_DOC: 52 = 52;
 export const TYPE_BLOCK: 53 = 53;
-export const TYPE_DISCUSSION_NODE: 60 = 60;
-export const TYPE_DISCUSSION: 61 = 61;
-export const TYPE_DISCUSSION_REPLY: 62 = 62;
+export const TYPE_WORKFLOW: 60 = 60;
+export const TYPE_WORKFLOW_NODE: 61 = 61;
+export const TYPE_DISCUSSION_NODE: 90 = 90;
+export const TYPE_DISCUSSION: 91 = 91;
+export const TYPE_DISCUSSION_REPLY: 92 = 92;
 
 export interface DocType {
     [TYPE_AGENT]: AgentDoc;
@@ -46,6 +48,8 @@ export interface DocType {
     [TYPE_CLIENT_CHAT]: ClientChatDoc;
     [TYPE_EDGE]: EdgeDoc;
     [TYPE_TOOL]: ToolDoc;
+    [TYPE_WORKFLOW]: WorkflowDoc;
+    [TYPE_WORKFLOW_NODE]: WorkflowNodeDoc;
 }
 
 export interface DocStatusType {
@@ -541,4 +545,6 @@ global.Ejunz.model.document = {
     TYPE_CLIENT_CHAT,
     TYPE_EDGE,
     TYPE_TOOL,
+    TYPE_WORKFLOW,
+    TYPE_WORKFLOW_NODE,
 };
