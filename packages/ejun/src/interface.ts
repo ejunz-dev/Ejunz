@@ -460,6 +460,53 @@ declare module './model/edge' {
 }
 export type { EdgeDoc } from './model/edge';
 
+// Workflow document
+declare module './model/workflow' {
+    interface WorkflowDoc {
+        _id: ObjectId;
+        docType: document['TYPE_WORKFLOW'];
+        docId: ObjectId;
+        domainId: string;
+        wid: number; // Workflow ID，从 1 开始（业务 ID）
+        name: string;
+        description?: string;
+        status: 'active' | 'inactive' | 'paused';
+        enabled: boolean;
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number;
+        content?: string; // document 系统要求
+    }
+}
+
+// Workflow Node document
+declare module './model/workflow_node' {
+    interface WorkflowNodeDoc {
+        _id: ObjectId;
+        docType: document['TYPE_WORKFLOW_NODE'];
+        docId: ObjectId;
+        domainId: string;
+        workflowId: number; // 所属工作流 ID
+        workflowDocId: ObjectId; // 所属工作流的 docId
+        nid: number; // Node ID，在工作流内从 1 开始
+        type: 'trigger' | 'action' | 'condition' | 'delay';
+        nodeType: 'timer' | 'button' | 'device_control' | 'agent_message' | 'object_action' | 'agent_action' | 'condition' | 'delay' | 'start' | 'end';
+        name: string;
+        position: { x: number; y: number }; // UI 位置
+        config: Record<string, any>; // 节点配置，根据 nodeType 不同而不同
+        connections: Array<{
+            targetNodeId: number; // 目标节点 ID
+            condition?: string; // 条件（用于 condition 节点）
+        }>;
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number;
+        content?: string; // document 系统要求
+    }
+}
+export type { WorkflowDoc } from './model/workflow';
+export type { WorkflowNodeDoc } from './model/workflow_node';
+
 declare module './model/tool' {
     interface ToolDoc {
         _id: ObjectId;
@@ -694,6 +741,7 @@ declare module './service/db' {
         'schedule': Schedule;
         'node': import('./model/node').NodeDoc;
         'node.device': import('./model/node').NodeDeviceDoc;
+        'workflow_timer': import('./model/workflow_timer').WorkflowTimerDoc;
     }
 }
 
@@ -723,6 +771,9 @@ export interface Model {
     nodeDevice: typeof import('./model/node').NodeDeviceModel,
     edge: typeof import('./model/edge').default,
     tool: typeof import('./model/tool').default,
+    workflow: typeof import('./model/workflow').default,
+    workflowNode: typeof import('./model/workflow_node').default,
+    workflowTimer: typeof import('./model/workflow_timer').default,
 }
 
 export interface GeoIP {

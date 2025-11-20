@@ -1,0 +1,52 @@
+{% set page_name = "workflow_domain" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+    <div class="columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">工作流管理</h1>
+                <div class="section__action">
+                    <a href="{{ url('workflow_create', domainId=domainId) }}" class="button primary">{{ _('Create Workflow') }}</a>
+                </div>
+            </div>
+            <div class="section__body">
+                {% if workflows and workflows.length > 0 %}
+                    <div class="workflow-list">
+                        {% for workflow in workflows %}
+                            <div class="workflow-item">
+                                <div class="workflow-header">
+                                    <h3><a href="/workflow/{{ workflow.wid }}">{{ workflow.name }}</a></h3>
+                                    <div class="workflow-status">
+                                        <span class="workflow-status-badge {{ workflow.status }}">{{ workflow.status }}</span>
+                                        {% if workflow.enabled %}
+                                            <span class="workflow-enabled-badge">已启用</span>
+                                        {% else %}
+                                            <span class="workflow-disabled-badge">已禁用</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% if workflow.description %}
+                                    <p class="workflow-description">{{ workflow.description }}</p>
+                                {% endif %}
+                                <div class="workflow-info">
+                                    <div>工作流 ID: <code>{{ workflow.wid }}</code></div>
+                                    <div>创建时间: {{ datetimeSpan(workflow.createdAt)|safe if workflow.createdAt else 'N/A' }}</div>
+                                    <div>更新时间: {{ datetimeSpan(workflow.updatedAt)|safe if workflow.updatedAt else 'N/A' }}</div>
+                                </div>
+                                <div class="workflow-actions">
+                                    <a href="/workflow/{{ workflow.wid }}" class="button">查看详情</a>
+                                    <a href="/workflow/{{ workflow.wid }}/edit" class="button">编辑</a>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="workflow-empty-message">暂无工作流，<a href="{{ url('workflow_create', domainId=domainId) }}">{{ _('Create Workflow') }}</a></p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

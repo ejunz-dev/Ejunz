@@ -87,6 +87,10 @@ export interface EventMap {
 
     // Edge bridge events (single WebSocket for MCP + MQTT)
     'edge/ws/inbound': (token: string, envelope: EdgeBridgeEnvelope) => VoidReturn;
+
+    // Workflow events
+    'workflow/trigger': (domainId: string, workflowId: number, triggerData?: Record<string, any>) => VoidReturn;
+    'workflow/timer': (domainId: string, workflowId: number, nodeId: number, triggerData?: Record<string, any>) => VoidReturn;
     'edge/ws/outbound': (token: string, envelope: EdgeBridgeEnvelope) => VoidReturn;
 }
 
