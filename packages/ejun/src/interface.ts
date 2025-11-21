@@ -835,6 +835,8 @@ export interface SessionDoc {
     context?: any; // 共享的上下文信息，用于 session 内的所有 task
     createdAt: Date;
     updatedAt: Date;
+    lastActivityAt?: Date;
+    clientId?: number; 
 }
 
 // Extend RecordDoc to support agent tasks
