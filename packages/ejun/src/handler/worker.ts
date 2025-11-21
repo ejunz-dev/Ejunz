@@ -312,7 +312,7 @@ export async function callToolViaWorker(
     // 等待 worker 处理并返回结果
     return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
-            (bus as any).off('toolcall/complete', handler);
+            dispose();
             reject(new Error(`Tool call timeout: ${toolName}`));
         }, 30000);
         
@@ -320,7 +320,7 @@ export async function callToolViaWorker(
         const handler = (completedTaskId: ObjectId, result: any) => {
             if (completedTaskId.toString() === taskId.toString()) {
                 clearTimeout(timeout);
-                (bus as any).off('toolcall/complete', handler);
+                dispose();
                 if (result?.error) {
                     reject(new Error(result.message || 'Tool call failed'));
                 } else {
@@ -328,7 +328,7 @@ export async function callToolViaWorker(
                 }
             }
         };
-        (bus as any).on('toolcall/complete', handler);
+        const dispose = (bus as any).on('toolcall/complete', handler);
     });
 }
 
