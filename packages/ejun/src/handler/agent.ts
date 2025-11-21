@@ -1555,6 +1555,8 @@ export class AgentChatHandler extends Handler {
                     name: tool.name,
                     description: tool.description,
                     inputSchema: tool.inputSchema,
+                    token: tool.token, // 保存token以便直接调用工具
+                    edgeId: tool.edgeId, // 保存edgeId以便查找edge信息
                 })),
                 // 系统消息（已构建完整）
                 systemMessage,

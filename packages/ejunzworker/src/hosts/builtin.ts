@@ -532,12 +532,21 @@ export async function apply(ctx: EjunzContext) {
                             toolArgs = {};
                         }
                         
+                        // 优先从context中获取工具的token信息，以便直接调用
+                        let toolToken: string | undefined = undefined;
                         let toolServerId: number | undefined = undefined;
                         if (context.tools && Array.isArray(context.tools)) {
                             const toolInfo = context.tools.find((t: any) => t.name === toolName);
-                            if (toolInfo && toolInfo.serverId) {
-                                toolServerId = toolInfo.serverId;
-                                logger.debug('Found serverId=%d for tool=%s from context', toolServerId, toolName);
+                            if (toolInfo) {
+                                if (toolInfo.token) {
+                                    toolToken = toolInfo.token;
+                                    logger.debug('Found token for tool=%s from context', toolName);
+                                }
+                                // 兼容旧的serverId方式
+                                if (toolInfo.serverId) {
+                                    toolServerId = toolInfo.serverId;
+                                    logger.debug('Found serverId=%d for tool=%s from context', toolServerId, toolName);
+                                }
                             }
                         }
                         
@@ -546,7 +555,7 @@ export async function apply(ctx: EjunzContext) {
                         let toolResult: any;
                         const STATUS = require('ejun/src/model/builtin').STATUS;
                         try {
-                            toolResult = await mcpClient.callTool(toolName, toolArgs, domainId, toolServerId);
+                            toolResult = await mcpClient.callTool(toolName, toolArgs, domainId, toolServerId, toolToken);
                             
                             if (toolResult === false || (typeof toolResult === 'object' && toolResult !== null && toolResult.success === false)) {
                                 score = Math.max(0, score - 20);
