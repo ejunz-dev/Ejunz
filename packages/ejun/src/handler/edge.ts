@@ -233,15 +233,21 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
                         logger.info('Node already exists, updated status to active: nid=%d, edgeId=%d', node.nid, edge.eid);
                     }
                 } else {
-                    // 自动创建 node 并建立双向关联（系统自动处理，下游无需发送 nodeId）
-                    const node = await NodeModel.add({
-                        domainId: this.domain._id,
-                        name: `Node-${edge.eid}`,
-                        owner: edge.owner,
-                        edgeId: edge.eid,
-                    });
-                    await EdgeModel.update(this.domain._id, edge.eid, { nodeId: node.nid });
-                    logger.info('Auto-created node for edge on connection: nid=%d, edgeId=%d (downstream does not need to send nodeId)', node.nid, edge.eid);
+                    let node = await NodeModel.getByEdgeId(this.domain._id, edge.eid);
+                    if (node) {
+                        await EdgeModel.update(this.domain._id, edge.eid, { nodeId: node.nid });
+                        await NodeModel.update(this.domain._id, node.nid, { status: 'active' });
+                        logger.info('Node already exists by edgeId, established bidirectional link: nid=%d, edgeId=%d', node.nid, edge.eid);
+                    } else {
+                        node = await NodeModel.add({
+                            domainId: this.domain._id,
+                            name: `Node-${edge.eid}`,
+                            owner: edge.owner,
+                            edgeId: edge.eid,
+                        });
+                        await EdgeModel.update(this.domain._id, edge.eid, { nodeId: node.nid });
+                        logger.info('Auto-created node for edge on connection: nid=%d, edgeId=%d (downstream does not need to send nodeId)', node.nid, edge.eid);
+                    }
                     
                     // 发送 node/connected 事件，让前端显示这个 node
                     (this.ctx.emit as any)('node/connected', node);
@@ -258,15 +264,24 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
                         logger.info('Client already exists, updated status to connected: clientId=%d, edgeId=%d', client.clientId, edge.eid);
                     }
                 } else {
-                    // 自动创建 client 并建立双向关联（系统自动处理，下游无需发送 clientId）
-                    const client = await ClientModel.add({
-                        domainId: this.domain._id,
-                        name: `Client-${edge.eid}`,
-                        owner: edge.owner,
-                        edgeId: edge.eid,
-                    });
-                    await EdgeModel.update(this.domain._id, edge.eid, { clientId: client.clientId });
-                    logger.info('Auto-created client for edge on connection: clientId=%d, edgeId=%d (downstream does not need to send clientId)', client.clientId, edge.eid);
+                    // 检查是否已存在通过 edgeId 关联的 client（建立双向链接）
+                    let client = await ClientModel.getByEdgeId(this.domain._id, edge.eid);
+                    if (client) {
+                        // 已存在 client，建立双向关联
+                        await EdgeModel.update(this.domain._id, edge.eid, { clientId: client.clientId });
+                        await ClientModel.updateStatus(this.domain._id, client.clientId, 'connected');
+                        logger.info('Client already exists by edgeId, established bidirectional link: clientId=%d, edgeId=%d', client.clientId, edge.eid);
+                    } else {
+                        // 自动创建 client 并建立双向关联（系统自动处理，下游无需发送 clientId）
+                        client = await ClientModel.add({
+                            domainId: this.domain._id,
+                            name: `Client-${edge.eid}`,
+                            owner: edge.owner,
+                            edgeId: edge.eid,
+                        });
+                        await EdgeModel.update(this.domain._id, edge.eid, { clientId: client.clientId });
+                        logger.info('Auto-created client for edge on connection: clientId=%d, edgeId=%d (downstream does not need to send clientId)', client.clientId, edge.eid);
+                    }
                     
                     // 发送 client/connected 事件，让前端显示这个 client
                     (this.ctx.emit as any)('client/connected', client);
@@ -863,6 +878,12 @@ export class EdgeDetailHandler extends Handler<Context> {
             node = await NodeModel.getByNodeId(this.domain._id, edge.nodeId);
         }
 
+        // 如果是 client 类型，获取关联的 client 信息
+        let client = null;
+        if (edge.type === 'client' && edge.clientId) {
+            client = await ClientModel.getByClientId(this.domain._id, edge.clientId);
+        }
+
         this.response.template = 'edge_detail.html';
         this.response.body = {
             edge: {
@@ -876,6 +897,7 @@ export class EdgeDetailHandler extends Handler<Context> {
                 edgeStatus: status,
             })),
             node, // 关联的 node 信息（如果是 node 类型）
+            client, // 关联的 client 信息（如果是 client 类型）
             domainId: this.domain._id,
         };
     }

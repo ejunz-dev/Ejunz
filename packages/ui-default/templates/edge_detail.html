@@ -85,6 +85,16 @@
                 </td>
               </tr>
               {% endif %}
+              {% if edge.type == 'client' and client %}
+              <tr>
+                <td class="col--key">关联 Client</td>
+                <td>
+                  <a href="{{ url('client_detail', { domainId: domainId, clientId: client.clientId }) }}">
+                    {{ client.name }} (Client ID: {{ client.clientId }})
+                  </a>
+                </td>
+              </tr>
+              {% endif %}
             </tbody>
           </table>
         </div>

@@ -143,12 +143,20 @@ class ClientModel {
         return (clients[0] as ClientDoc) || null;
     }
 
+    static async getByEdgeId(domainId: string, edgeId: number): Promise<ClientDoc | null> {
+        const clients = await document.getMulti(domainId, document.TYPE_CLIENT, { edgeId })
+            .limit(1)
+            .toArray();
+        return (clients[0] as ClientDoc) || null;
+    }
+
     static async getByWsEndpoint(domainId: string, wsEndpoint: string): Promise<ClientDoc | null> {
         const clients = await document.getMulti(domainId, document.TYPE_CLIENT, { wsEndpoint })
             .limit(1)
             .toArray();
         return (clients[0] as ClientDoc) || null;
     }
+
 }
 
 export async function apply(ctx: Context) {
