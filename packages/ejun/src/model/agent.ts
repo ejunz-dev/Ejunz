@@ -417,7 +417,7 @@ export class McpClient {
         }
     }
 
-    async callTool(name: string, args: any, domainId?: string, serverId?: number): Promise<any> {
+    async callTool(name: string, args: any, domainId?: string, serverId?: number, token?: string): Promise<any> {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
             if (!ctx) {
@@ -450,6 +450,40 @@ export class McpClient {
                 } catch (e) {
                     ClientLogger.error('Repo internal MCP tool call failed: %s', (e as Error).message);
                     throw e;
+                }
+            }
+
+            // If token is provided, try to call tool directly using that token
+            // This is more efficient and reliable than searching through all edges
+            if (token) {
+                try {
+                    ClientLogger.debug('Calling tool %s using provided token: %s', name, token);
+                    const connection = EdgeServerConnectionHandler.getConnection(token);
+                    
+                    if (connection) {
+                        ClientLogger.info('Found connection for token %s, calling tool %s', token, name);
+                        const result = await connection.callTool(name, args);
+                        
+                        // MCP protocol return format: { content: [{ type: 'text', text: ... }] }
+                        if (result?.content && Array.isArray(result.content)) {
+                            const textContent = result.content.find((c: any) => c.type === 'text');
+                            if (textContent?.text) {
+                                try {
+                                    return JSON.parse(textContent.text);
+                                } catch {
+                                    return textContent.text;
+                                }
+                            } else {
+                                return result;
+                            }
+                        } else {
+                            return result;
+                        }
+                    } else {
+                        ClientLogger.warn('Token %s provided but no active connection found, will search for tool', token);
+                    }
+                } catch (e) {
+                    ClientLogger.warn('Tool call via token failed: %s, will try other methods', (e as Error).message);
                 }
             }
 
