@@ -708,7 +708,21 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         if (edge.clientId) {
             client = await ClientModel.getByClientId(this.domain._id, edge.clientId);
             if (client) {
+                if (client.edgeId !== edge.eid) {
+                    await ClientModel.update(this.domain._id, client.clientId, { edgeId: edge.eid });
+                    logger.info('Updated client edgeId to establish bidirectional link: clientId=%d, edgeId=%d', client.clientId, edge.eid);
+                }
                 logger.info('Client already exists, using existing client: clientId=%d, edgeId=%d', client.clientId, edge.eid);
+            }
+        } else {
+            client = await ClientModel.getByEdgeId(this.domain._id, edge.eid);
+            if (client) {
+                await EdgeModel.update(this.domain._id, edge.eid, { clientId: client.clientId });
+                await ClientModel.updateStatus(this.domain._id, client.clientId, 'connected');
+                logger.info('Client already exists by edgeId, established bidirectional link: clientId=%d, edgeId=%d', client.clientId, edge.eid);
+                
+                logger.info('Client connected event published: clientId=%d', client.clientId);
+                (this.ctx.emit as any)('client/connected', client);
             }
         }
         
