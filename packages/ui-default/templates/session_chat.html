@@ -1,0 +1,48 @@
+{% set page_name = "session_chat" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<script>
+  {{ set(UiContext, 'domainId', handler.args.domainId) }}
+  {{ set(UiContext, 'socketUrl', "session-conn?domainId=" + handler.args.domainId + "&sid=" + session._id.toString()) }}
+  {{ set(UiContext, 'sids', [session._id.toString()]) }}
+  {{ set(UiContext, 'STATUS', model.builtin.STATUS) }}
+</script>
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">
+          {% if session.title %}
+            {{ session.title }}
+          {% else %}
+            {{ _('Client Session Chat') }} - {{ session._id.toString().substring(0, 8) }}
+          {% endif %}
+        </h1>
+        <div class="section__tools">
+          <a href="{{ url('session_detail', domainId=session.domainId, sid=session._id) }}" class="button">
+            <span class="icon icon-back"></span> {{ _('Back to Session') }}
+          </a>
+          <a href="{{ url('session_domain', domainId=session.domainId) }}" class="button">
+            <span class="icon icon-list"></span> {{ _('Back to Sessions') }}
+          </a>
+        </div>
+      </div>
+      <div class="section__body">
+        {% if not apiKey or apiKey == '' %}
+        <div class="api-key-warning">
+          <p>⚠️ {{ _('API Key not configured. Please configure AI settings in system settings') }}</p>
+        </div>
+        {% endif %}
+
+        <div id="chatContainer" class="chat-container">
+          <div class="chat-messages" id="chatMessages"></div>
+          <div class="chat-input-container">
+            <textarea id="chatInput" placeholder="{{ _('Type your message...') }}" rows="3"></textarea>
+            <button id="sendButton" class="button send-button">{{ _('Send') }}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
