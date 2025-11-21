@@ -55,7 +55,9 @@ export default class SessionModel {
         type: 'client' | 'chat',
         title?: string,
         context?: any,
+        clientId?: number,
     ): Promise<ObjectId> {
+        const now = new Date();
         const data: SessionDoc = {
             _id: new ObjectId(),
             domainId,
@@ -65,8 +67,10 @@ export default class SessionModel {
             type,
             title: title || `Session ${new Date().toLocaleString()}`,
             context: context || {},
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            createdAt: now,
+            updatedAt: now,
+            lastActivityAt: now,
+            ...(clientId !== undefined ? { clientId } : {}),
         };
         const res = await SessionModel.coll.insertOne(data);
         (bus as any).broadcast('session/change', data);
@@ -164,7 +168,30 @@ export async function apply(ctx: Context) {
         { key: { domainId: 1, _id: -1 }, name: 'basic' },
         { key: { domainId: 1, uid: 1, _id: -1 }, name: 'withUser' },
         { key: { domainId: 1, agentId: 1, _id: -1 }, name: 'withAgent' },
+        { key: { domainId: 1, clientId: 1, lastActivityAt: -1 }, name: 'withClient' },
+        { key: { lastActivityAt: 1 }, name: 'lastActivityAt' },
     );
+    
+    // 定期检查超时的session（每30秒检查一次）
+    const TIMEOUT_MS = 5 * 60 * 1000; // 5分钟超时
+    setInterval(async () => {
+        try {
+            const timeoutThreshold = new Date(Date.now() - TIMEOUT_MS);
+            // 查找超时的client类型session（断开连接超过5分钟）
+            const timeoutSessions = await SessionModel.coll.find({
+                type: 'client',
+                lastActivityAt: { $lt: timeoutThreshold },
+            }).toArray();
+            
+            // 对于超时的session，我们不需要做特殊处理，因为getSessionStatus会自动判断为detached
+            // 这里只是记录日志
+            if (timeoutSessions.length > 0) {
+                logger.debug('Found %d timeout sessions (detached)', timeoutSessions.length);
+            }
+        } catch (e) {
+            logger.error('Error in session timeout check:', e);
+        }
+    }, 30000); // 每30秒检查一次
 }
 
 (global.Ejunz.model as any).session = SessionModel;
