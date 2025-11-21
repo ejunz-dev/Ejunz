@@ -803,6 +803,82 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
 
         logger.info('Client status update event published: clientId=%d', this.clientId);
         (this.ctx.emit as any)('client/status/update', this.clientId);
+        
+        // 创建或获取client的session
+        await this.ensureClientSession();
+    }
+    
+    // 确保client有session，如果不存在则创建
+    private async ensureClientSession(): Promise<void> {
+        if (!this.clientId || !this.client) {
+            return;
+        }
+        
+        // 如果已经有session，检查是否有效
+        if (this.currentSessionId) {
+            try {
+                const sdoc = await SessionModel.get(this.domain._id, this.currentSessionId);
+                if (sdoc && sdoc.type === 'client' && sdoc.clientId === this.clientId) {
+                    // 更新最后活动时间
+                    await SessionModel.update(this.domain._id, this.currentSessionId, {
+                        lastActivityAt: new Date(),
+                    });
+                    logger.info('Client session already exists, updated lastActivityAt: clientId=%d, sessionId=%s', 
+                        this.clientId, this.currentSessionId.toString());
+                    return;
+                }
+            } catch (error: any) {
+                logger.warn('Failed to get existing session: %s', error.message);
+            }
+        }
+        
+        // 查找是否有未超时的session（5分钟内）
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+        try {
+            const existingSessions = await SessionModel.getMulti(this.domain._id, {
+                type: 'client',
+                clientId: this.clientId,
+                lastActivityAt: { $gte: fiveMinutesAgo },
+            }, {
+                sort: { lastActivityAt: -1 },
+                limit: 1,
+            }).toArray();
+            
+            if (existingSessions.length > 0) {
+                const sdoc = existingSessions[0];
+                this.currentSessionId = sdoc._id;
+                // 更新最后活动时间
+                await SessionModel.update(this.domain._id, sdoc._id, {
+                    lastActivityAt: new Date(),
+                });
+                logger.info('Reused existing client session: clientId=%d, sessionId=%s', 
+                    this.clientId, sdoc._id.toString());
+                return;
+            }
+        } catch (error: any) {
+            logger.warn('Failed to find existing session: %s', error.message);
+        }
+        
+        // 创建新session
+        const agentId = this.client.settings?.agent?.agentId;
+        if (!agentId) {
+            logger.warn('Cannot create session: agentId not configured: clientId=%d', this.clientId);
+            return;
+        }
+        
+        const recordUid = this.client.owner;
+        const sessionId = await SessionModel.add(
+            this.domain._id,
+            agentId,
+            recordUid,
+            'client',
+            `Client ${this.clientId} Session`,
+            undefined,
+            this.clientId,
+        );
+        this.currentSessionId = sessionId;
+        logger.info('Created new client session: clientId=%d, sessionId=%s', 
+            this.clientId, sessionId.toString());
     }
 
     async message(msg: any) {
@@ -2187,18 +2263,28 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             const latestClient = await ClientModel.getByClientId(this.domain._id, this.clientId);
             const recordUid = latestClient?.owner || this.client.owner;
             
+            // 确保有session
+            await this.ensureClientSession();
             let sessionId = this.currentSessionId;
+            
             if (!sessionId) {
+                // 如果还是没有session，创建新的
                 sessionId = await SessionModel.add(
                     this.domain._id,
                     agentConfig.agentId,
                     recordUid,
                     'client',
+                    `Client ${this.clientId} Session`,
                     undefined,
-                    undefined,
+                    this.clientId,
                 );
                 this.currentSessionId = sessionId;
             }
+            
+            // 更新session的最后活动时间
+            await SessionModel.update(this.domain._id, sessionId, {
+                lastActivityAt: new Date(),
+            });
             
             const taskRecordId = await record.addTask(
                 this.domain._id,
@@ -2733,6 +2819,19 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 }
             } catch (error: any) {
                 logger.error('Failed to update client status on disconnect: %s', error.message);
+            }
+        }
+        
+        // 更新session的最后活动时间（断开连接时）
+        if (this.currentSessionId && this.clientId) {
+            try {
+                await SessionModel.update(this.domain._id, this.currentSessionId, {
+                    lastActivityAt: new Date(),
+                });
+                logger.info('Updated session lastActivityAt on disconnect: clientId=%d, sessionId=%s', 
+                    this.clientId, this.currentSessionId.toString());
+            } catch (error: any) {
+                logger.warn('Failed to update session lastActivityAt on disconnect: %s', error.message);
             }
         }
         

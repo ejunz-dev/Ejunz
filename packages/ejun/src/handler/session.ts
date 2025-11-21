@@ -57,8 +57,37 @@ async function getSessionStatus(
         }
     }
 
+    if (sdoc.type === 'client' && sdoc.clientId) {
+        const ClientConnectionHandler = require('./client').ClientConnectionHandler;
+        const handler = ClientConnectionHandler.getConnection(sdoc.clientId);
+        
+        if (handler) {
+            const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+            const lastActivityAt = sdoc.lastActivityAt || sdoc.updatedAt;
+            if (lastActivityAt && new Date(lastActivityAt) >= fiveMinutesAgo) {
+                return 'active';
+            } else {
+                return 'detached';
+            }
+        } else {
+            const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+            const lastActivityAt = sdoc.lastActivityAt || sdoc.updatedAt;
+            if (lastActivityAt && new Date(lastActivityAt) >= fiveMinutesAgo) {
+                return 'active';
+            } else {
+                return 'detached';
+            }
+        }
+    }
+
     const sessionId = sdoc._id.toString();
     if (SessionConnectionTracker.isActive(sessionId)) {
+        return 'active';
+    }
+
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const lastActivityAt = sdoc.lastActivityAt || sdoc.updatedAt;
+    if (lastActivityAt && new Date(lastActivityAt) >= fiveMinutesAgo) {
         return 'active';
     }
 
