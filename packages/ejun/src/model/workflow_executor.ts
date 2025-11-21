@@ -9,6 +9,7 @@ import { NodeDeviceModel } from './node';
 import AgentModel from './agent';
 import message from './message';
 import ClientModel from './client';
+import { processAgentChatInternal } from '../handler/agent';
 
 const logger = new Logger('model/workflow_executor');
 
@@ -279,60 +280,128 @@ export class WorkflowExecutor {
 
         logger.info(`Using agent ${agentId} to generate content from prompt: ${prompt}`);
 
-        const generatedContent = await this.generateContentWithAgent(agent, prompt, context);
+        const clientId = await this.findReceiverClientId(node, context);
+        let accumulatedContent = '';
+        let finalMessage = '';
+        let ttsStreamed = false;
 
+        const ClientConnectionHandler = require('../handler/client').ClientConnectionHandler;
+        const clientHandler = clientId ? ClientConnectionHandler.getConnection(clientId) : null;
+
+        await processAgentChatInternal(agent, prompt, [], {
+            onContent: (content: string) => {
+                accumulatedContent += content;
+                if (clientHandler) {
+                    ttsStreamed = true;
+                    clientHandler.addTtsText(content).catch((error: any) => {
+                        logger.warn('addTtsText failed: %s', error.message);
+                    });
+                }
+            },
+            onToolCall: async (tools: any[]) => {
+                if (clientHandler && clientHandler.client?.settings?.tts && clientHandler.pendingCommits > 0) {
+                    logger.info('Waiting for TTS playback before tool call: clientId=%d, pendingCommits=%d', clientId, clientHandler.pendingCommits);
+                    
+                    await new Promise<void>((resolve) => {
+                        const checkInterval = setInterval(() => {
+                            if (clientHandler.pendingCommits === 0) {
+                                clearInterval(checkInterval);
+                                resolve();
+                            }
+                        }, 100);
+                        
+                        setTimeout(() => {
+                            clearInterval(checkInterval);
+                            logger.warn('TTS generation timeout, continuing: clientId=%d', clientId);
+                            resolve();
+                        }, 10000);
+                    });
+                    
+                    logger.info('Waiting for client-side TTS playback: clientId=%d', clientId);
+                    clientHandler.sendEvent('agent/wait_tts_playback', []);
+                    
+                    await new Promise<void>((resolve) => {
+                        const timeoutId = setTimeout(() => {
+                            if (clientHandler.ttsPlaybackWaitPromise) {
+                                logger.warn('TTS playback wait timeout, continuing: clientId=%d', clientId);
+                                clientHandler.ttsPlaybackWaitPromise = null;
+                                resolve();
+                            }
+                        }, 30000);
+                        
+                        const originalResolve = resolve;
+                        clientHandler.ttsPlaybackWaitPromise = { 
+                            resolve: () => {
+                                clearTimeout(timeoutId);
+                                clientHandler.ttsPlaybackWaitPromise = null;
+                                originalResolve();
+                            }, 
+                            reject: () => {
+                                clearTimeout(timeoutId);
+                                clientHandler.ttsPlaybackWaitPromise = null;
+                                originalResolve();
+                            }
+                        };
+                    });
+                    
+                    logger.info('TTS playback completed, proceeding with tool call: clientId=%d', clientId);
+                }
+            },
+            onToolResult: async (tool: string, result: any) => {
+                logger.info(`Tool ${tool} completed with result`);
+                if (clientHandler) {
+                    try {
+                        await clientHandler.ensureTtsConnection();
+                    } catch (error: any) {
+                        logger.warn(`Failed to ensure TTS connection after tool call: ${error.message}`);
+                    }
+                }
+            },
+            onDone: async (message: string, history: string) => {
+                finalMessage = message;
+                if (clientHandler && clientHandler.ttsTextBuffer && clientHandler.ttsTextBuffer.trim()) {
+                    await clientHandler.flushTtsSentence(clientHandler.ttsTextBuffer);
+                    clientHandler.ttsTextBuffer = '';
+                }
+            },
+            onError: (error: string) => {
+                logger.error(`Agent chat error: ${error}`);
+                throw new Error(error);
+            },
+        });
+
+        const generatedContent = finalMessage || accumulatedContent;
         context.variables[`agent_${node.nid}_content`] = generatedContent;
+        context.variables[`agent_${node.nid}_tts_streamed`] = ttsStreamed;
 
         return {
             success: true,
             agentId,
             content: generatedContent,
+            ttsStreamed,
         };
     }
 
-    private async generateContentWithAgent(agent: any, prompt: string, context: WorkflowExecutionContext): Promise<string> {
-        const domainModel = global.Ejunz.model.domain;
-        const domainInfo = await domainModel.get(context.domainId);
-        if (!domainInfo) {
-            throw new Error('Domain not found');
+    private async findReceiverClientId(agentNode: WorkflowNodeDoc, context: WorkflowExecutionContext): Promise<number | null> {
+        if (!agentNode.connections || agentNode.connections.length === 0) {
+            return null;
         }
 
-        const apiKey = (domainInfo as any)['apiKey'] || '';
-        const model = (domainInfo as any)['model'] || 'deepseek-chat';
-        const apiUrl = (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
-
-        if (!apiKey) {
-            throw new Error('AI API Key not configured');
+        for (const connection of agentNode.connections) {
+            const targetNode = await WorkflowNodeModel.getByNodeId(context.domainId, connection.targetNodeId);
+            if (targetNode && targetNode.nodeType === 'receiver') {
+                const config = targetNode.config || {};
+                const clientId = config.clientId ? parseInt(String(this.resolveVariable(config.clientId, context)), 10) : null;
+                if (clientId) {
+                    logger.info(`Found receiver node ${targetNode.nid} with clientId ${clientId} for agent node ${agentNode.nid}`);
+                    return clientId;
+                }
+            }
         }
 
-        let systemMessage = agent.content || '';
-        if (agent.memory) {
-            systemMessage += `\n\nMemory:\n${agent.memory}`;
-        }
-
-        const superagent = require('superagent');
-        const response = await superagent
-            .post(apiUrl)
-            .set('Authorization', `Bearer ${apiKey}`)
-            .set('Content-Type', 'application/json')
-            .send({
-                model,
-                messages: [
-                    { role: 'system', content: systemMessage },
-                    { role: 'user', content: prompt },
-                ],
-                temperature: 0.7,
-            });
-
-        if (!response.body || !response.body.choices || !response.body.choices[0]) {
-            throw new Error('Failed to generate content from agent');
-        }
-
-        const generatedContent = response.body.choices[0].message?.content || '';
-        logger.info(`Agent generated content: ${generatedContent.substring(0, 100)}...`);
-
-        return generatedContent;
+        return null;
     }
+
 
     private async executeAgentMessageNode(node: WorkflowNodeDoc, context: WorkflowExecutionContext): Promise<any> {
         const config = node.config || {};
@@ -397,14 +466,19 @@ export class WorkflowExecutor {
         }
 
         let content = '';
-        
         let latestAgentNodeId = 0;
+        let ttsStreamed = false;
+        
         for (const key in context.variables) {
             if (key.startsWith('agent_') && key.endsWith('_content')) {
                 const nodeId = parseInt(key.replace('agent_', '').replace('_content', ''), 10);
                 if (nodeId > latestAgentNodeId) {
                     latestAgentNodeId = nodeId;
                     content = context.variables[key];
+                    const ttsStreamedKey = `agent_${nodeId}_tts_streamed`;
+                    if (context.variables[ttsStreamedKey] === true) {
+                        ttsStreamed = true;
+                    }
                 }
             }
         }
@@ -415,14 +489,13 @@ export class WorkflowExecutor {
                     const result = context.variables[key];
                     if (result && result.content) {
                         content = result.content;
+                        if (result.ttsStreamed === true) {
+                            ttsStreamed = true;
+                        }
                         break;
                     }
                 }
             }
-        }
-
-        if (!content) {
-            throw new Error('No content found to send. Please ensure an agent action node is executed before the receiver node.');
         }
 
         const client = await ClientModel.getByClientId(context.domainId, clientId);
@@ -430,14 +503,20 @@ export class WorkflowExecutor {
             throw new Error(`Client ${clientId} not found`);
         }
 
-        logger.info(`Sending TTS text to client ${clientId} via event system: ${content.substring(0, 50)}...`);
-        
-        (this.ctx.emit as any)('client/tts/text', clientId, { text: content });
+        if (ttsStreamed) {
+            logger.info(`Receiver node: TTS was already streamed by agent node ${latestAgentNodeId}, skipping duplicate send`);
+        } else if (content) {
+            logger.info(`Sending TTS text to client ${clientId} via event system: ${content.substring(0, 50)}...`);
+            (this.ctx.emit as any)('client/tts/text', clientId, { text: content });
+        } else {
+            throw new Error('No content found to send. Please ensure an agent action node is executed before the receiver node.');
+        }
 
         return {
             success: true,
             clientId,
-            content,
+            content: content || 'TTS was streamed during agent execution',
+            ttsStreamed,
         };
     }
 }
