@@ -139,10 +139,10 @@ const CustomNode = ({ data, selected }: { data: any; selected: boolean }) => {
       >
         ×
       </button>
-      {/* 输入连接点（顶部） */}
+      {/* 输入连接点（左侧） */}
       <Handle
         type="target"
-        position={Position.Top}
+        position={Position.Left}
         style={{
           background: '#555',
           width: '12px',
@@ -275,10 +275,10 @@ const CustomNode = ({ data, selected }: { data: any; selected: boolean }) => {
         </button>
       )}
       
-      {/* 输出连接点（底部） */}
+      {/* 输出连接点（右侧） */}
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={Position.Right}
         style={{
           background: '#555',
           width: '12px',
@@ -849,6 +849,7 @@ function WorkflowEditor({ workflowId, initialNodes }: { workflowId: number; init
         </div>
       `);
     } else if (nodeType.nodeType === 'agent_action') {
+      // Agent执行器节点：选择Agent和配置提示词
       const agentsResponse = await request.get('/workflow/agents');
       const agentsList = agentsResponse.agents || [];
       
@@ -864,40 +865,33 @@ function WorkflowEditor({ workflowId, initialNodes }: { workflowId: number; init
         </div>
         <div style="margin-bottom: 15px;">
           <label>
-            操作类型:
-            <select name="action" class="textbox" style="width: 100%;" required>
-              <option value="message" ${currentConfig.action === 'message' ? 'selected' : ''}>发送私信</option>
-              <option value="generate" ${currentConfig.action === 'generate' ? 'selected' : ''}>生成内容</option>
-            </select>
-          </label>
-        </div>
-        <div style="margin-bottom: 15px;">
-          <label>
             提示词（支持 \${variable} 变量）:
             <textarea name="prompt" class="textbox" rows="4" style="width: 100%;" placeholder="输入提示词..." required>${currentConfig.prompt || ''}</textarea>
           </label>
-        </div>
-        <div style="margin-bottom: 15px;" id="agent-user-select-container">
-          <label>
-            目标用户ID（当操作类型为"发送私信"时）:
-            <input type="number" name="userId" class="textbox" placeholder="用户ID" value="${currentConfig.userId || ''}" />
-          </label>
+          <div style="font-size: 12px; color: #666; margin-top: 4px;">
+            提示：Agent将根据此提示词生成内容，生成的内容会自动传递给后续的接收器节点。
+          </div>
         </div>
       `);
-
-      $container.find('select[name="action"]').on('change', function() {
-        const action = $(this).val();
-        const $userContainer = $container.find('#agent-user-select-container');
-        if (action === 'message') {
-          $userContainer.show();
-        } else {
-          $userContainer.hide();
-        }
-      });
-
-      if (currentConfig.action !== 'message') {
-        $container.find('#agent-user-select-container').hide();
-      }
+    } else if (nodeType.nodeType === 'receiver') {
+      // 接收器节点：选择Client
+      const clientsResponse = await request.get('/workflow/clients');
+      const clientsList = clientsResponse.clients || [];
+      
+      $container.append(`
+        <div style="margin-bottom: 15px;">
+          <label>
+            选择Client:
+            <select name="clientId" class="textbox" style="width: 100%;" required>
+              <option value="">请选择Client</option>
+              ${clientsList.map((c: any) => `<option value="${c.clientId}" ${currentConfig.clientId === c.clientId ? 'selected' : ''}>${c.name} (ID: ${c.clientId})</option>`).join('')}
+            </select>
+          </label>
+          <div style="font-size: 12px; color: #666; margin-top: 4px;">
+            提示：选择要接收消息的Client，消息将通过TTS发送给该Client。
+          </div>
+        </div>
+      `);
     } else {
       for (const [key, field] of Object.entries(schema)) {
         const fieldConfig = field as any;
@@ -1013,7 +1007,7 @@ function WorkflowEditor({ workflowId, initialNodes }: { workflowId: number; init
               }
             });
             
-            // 处理特殊逻辑：对于 timer 节点的 time 字段
+            // 处理特殊逻辑：对于 timer 节点的 time 字段和 receiver 节点的 clientId 字段
             for (const [inputName, value] of Object.entries(fieldValues)) {
               if (inputName === 'time' && originalNode.nodeType === 'timer') {
                 const interval = fieldValues.interval || 'day';
@@ -1023,6 +1017,14 @@ function WorkflowEditor({ workflowId, initialNodes }: { workflowId: number; init
                   // 不设置 time，让后端从当前时间开始每60秒执行
                   continue;
                 }
+              }
+              // 对于 receiver 节点的 clientId，转换为数字
+              if (inputName === 'clientId' && originalNode.nodeType === 'receiver') {
+                const clientIdNum = parseInt(String(value), 10);
+                if (!isNaN(clientIdNum)) {
+                  config[inputName] = clientIdNum;
+                }
+                continue;
               }
               if (value !== '' && value !== null && value !== undefined) {
                 config[inputName] = value;
