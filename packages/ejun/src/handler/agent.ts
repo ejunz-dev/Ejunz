@@ -946,7 +946,7 @@ export async function processAgentChatInternal(
 // Enhanced to also fetch from real-time MCP connections to ensure all tools are available
 // If mcpToolIds is empty, returns all available tools from database (since tools are synced from MCP servers to DB)
 // Also includes tools from repos specified in repoIds
-async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[], repoIds?: number[]): Promise<any[]> {
+export async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[], repoIds?: number[]): Promise<any[]> {
     const allToolIds = new Set<string>();
     
     if (mcpToolIds) {

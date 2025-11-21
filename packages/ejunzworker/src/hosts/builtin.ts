@@ -13,7 +13,7 @@ import superagent from 'superagent';
 export async function apply(ctx: EjunzContext) {
     ctx.effect(() => {
         const handleTask = async (t: any) => {
-            const { recordId, domainId, agentId, uid, message, history, context, _id: taskId } = t;
+            const { recordId, domainId, agentId, uid, message, history, context, workflowConfig, _id: taskId } = t;
             logger.info('Processing task: agentId=%s, message=%s (taskId: %s)', agentId, message?.substring(0, 50), taskId?.toString());
             
             const startTime = Date.now();
@@ -389,6 +389,23 @@ export async function apply(ctx: EjunzContext) {
                                             if (delta?.content) {
                                                 accumulatedContent += delta.content;
                                                 updateRecordContent(accumulatedContent, toolCalls.length > 0 ? toolCalls : undefined).catch(() => {});
+                                                
+                                                // 如果是 workflow task 且需要 TTS，流式发送 TTS
+                                                if (workflowConfig && workflowConfig.returnType === 'tts' && workflowConfig.clientId) {
+                                                    (async () => {
+                                                        try {
+                                                            const { ClientConnectionHandler } = require('ejun/src/handler/client');
+                                                            const clientHandler = ClientConnectionHandler.getConnection(workflowConfig.clientId);
+                                                            if (clientHandler) {
+                                                                await clientHandler.addTtsText(delta.content).catch((error: any) => {
+                                                                    logger.warn('addTtsText failed in workflow: %s', error.message);
+                                                                });
+                                                            }
+                                                        } catch (e) {
+                                                            logger.warn('Failed to send TTS in workflow: %s', (e as Error).message);
+                                                        }
+                                                    })();
+                                                }
                                             }
                                             
                                             if (choice?.finish_reason) {
