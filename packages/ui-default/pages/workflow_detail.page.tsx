@@ -131,10 +131,10 @@ const CustomNode = ({ data }: { data: any }) => {
         position: 'relative',
       }}
     >
-      {/* 输入连接点（顶部） */}
+      {/* 输入连接点（左侧） */}
       <Handle
         type="target"
-        position={Position.Top}
+        position={Position.Left}
         style={{
           background: '#555',
           width: '12px',
@@ -230,10 +230,10 @@ const CustomNode = ({ data }: { data: any }) => {
         </button>
       )}
       
-      {/* 输出连接点（底部） */}
+      {/* 输出连接点（右侧） */}
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={Position.Right}
         style={{
           background: '#555',
           width: '12px',
@@ -464,7 +464,7 @@ function WorkflowViewer({ workflowId, initialNodes, enabled: initialEnabled }: {
       // 如果节点没有位置，使用默认位置
       const position = node.position && typeof node.position === 'object' && node.position.x !== undefined && node.position.y !== undefined
         ? node.position
-        : { x: 100 + index * 200, y: 100 + Math.floor(index / 3) * 150 };
+        : { x: 100 + index * 250, y: 200 };
       
       return {
         id: `node-${node.nid}`,

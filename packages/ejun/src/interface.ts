@@ -490,7 +490,7 @@ declare module './model/workflow_node' {
         workflowDocId: ObjectId; // 所属工作流的 docId
         nid: number; // Node ID，在工作流内从 1 开始
         type: 'trigger' | 'action' | 'condition' | 'delay';
-        nodeType: 'timer' | 'button' | 'device_control' | 'agent_message' | 'object_action' | 'agent_action' | 'condition' | 'delay' | 'start' | 'end';
+        nodeType: 'timer' | 'button' | 'device_control' | 'agent_message' | 'object_action' | 'agent_action' | 'condition' | 'delay' | 'start' | 'end' | 'receiver';
         name: string;
         position: { x: number; y: number }; // UI 位置
         config: Record<string, any>; // 节点配置，根据 nodeType 不同而不同
