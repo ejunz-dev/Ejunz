@@ -433,7 +433,7 @@ export class WorkflowNodeHandler extends Handler<Context> {
             throw new ValidationError('nodeType');
         }
 
-        const validNodeTypes = ['timer', 'button', 'device_control', 'agent_message', 'object_action', 'agent_action', 'condition', 'delay', 'start', 'end'];
+        const validNodeTypes = ['timer', 'button', 'device_control', 'agent_message', 'object_action', 'agent_action', 'condition', 'delay', 'start', 'end', 'receiver'];
         if (!validNodeTypes.includes(nodeType)) {
             throw new ValidationError(`Invalid nodeType: ${nodeType}`);
         }
@@ -765,18 +765,19 @@ export class WorkflowNodeTypesHandler extends Handler<Context> {
                 },
                 {
                     nodeType: 'agent_action',
-                    name: 'Agent 操作',
-                    description: '使用 Agent 执行操作（生成消息、发送私信等）',
+                    name: 'Agent 执行器',
+                    description: '使用 Agent 生成内容（选择 Agent 并配置提示词）',
                     configSchema: {
                         agentId: { type: 'string', description: 'Agent ID' },
                         prompt: { type: 'string', description: '提示词（支持 ${variable} 变量）' },
-                        action: { 
-                            type: 'string', 
-                            enum: ['message', 'generate'],
-                            description: '操作类型：message(发送私信), generate(生成内容)',
-                            default: 'message'
-                        },
-                        userId: { type: 'number', description: '目标用户ID（当 action=message 时）' },
+                    },
+                },
+                {
+                    nodeType: 'receiver',
+                    name: '接收器',
+                    description: '接收内容并发送给 Client（支持 TTS）',
+                    configSchema: {
+                        clientId: { type: 'number', description: 'Client ID（接收消息的客户端）' },
                     },
                 },
                 {
@@ -837,6 +838,16 @@ export class WorkflowAgentsListHandler extends Handler<Context> {
     }
 }
 
+// 获取Client列表（用于接收器节点选择）
+export class WorkflowClientsListHandler extends Handler<Context> {
+    async get() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const ClientModel = require('../model/client').default;
+        const clients = await ClientModel.getByDomain(this.domain._id);
+        this.response.body = { clients: clients.map(c => ({ clientId: c.clientId, name: c.name })) };
+    }
+}
+
 // 获取工作流定时器状态
 export class WorkflowTimerStatusHandler extends Handler<Context> {
     async get() {
@@ -877,6 +888,7 @@ export async function apply(ctx: Context) {
     ctx.Route('workflow_nodes_list', '/workflow/nodes', WorkflowNodesListHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('workflow_devices_list', '/workflow/devices', WorkflowDevicesListHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('workflow_agents_list', '/workflow/agents', WorkflowAgentsListHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('workflow_clients_list', '/workflow/clients', WorkflowClientsListHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('workflow_domain', '/workflow', WorkflowDomainHandler);
     ctx.Route('workflow_create', '/workflow/create', WorkflowEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('workflow_edit', '/workflow/:wid/edit', WorkflowEditHandler, PRIV.PRIV_USER_PROFILE);
