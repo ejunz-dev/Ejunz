@@ -37,30 +37,6 @@
                         </div>
                     </div>
 
-                    {% if workflow %}
-                    <div class="row">
-                        <div class="medium-6 columns">
-                            <label>
-                                {{ _('Status') }}
-                                <select name="status" class="textbox">
-                                    <option value="active" {% if workflow.status == 'active' %}selected{% endif %}>活跃</option>
-                                    <option value="inactive" {% if workflow.status == 'inactive' %}selected{% endif %}>非活跃</option>
-                                    <option value="paused" {% if workflow.status == 'paused' %}selected{% endif %}>暂停</option>
-                                </select>
-                            </label>
-                        </div>
-                        <div class="medium-6 columns">
-                            <label>
-                                {{ _('Enabled') }}
-                                <select name="enabled" class="textbox">
-                                    <option value="true" {% if workflow.enabled %}selected{% endif %}>是</option>
-                                    <option value="false" {% if not workflow.enabled %}selected{% endif %}>否</option>
-                                </select>
-                            </label>
-                        </div>
-                    </div>
-                    {% endif %}
-
                     <div class="row">
                         <div class="columns">
                             <button 

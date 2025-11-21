@@ -18,7 +18,6 @@
                                 <div class="workflow-header">
                                     <h3><a href="/workflow/{{ workflow.wid }}">{{ workflow.name }}</a></h3>
                                     <div class="workflow-status">
-                                        <span class="workflow-status-badge {{ workflow.status }}">{{ workflow.status }}</span>
                                         {% if workflow.enabled %}
                                             <span class="workflow-enabled-badge">已启用</span>
                                         {% else %}
