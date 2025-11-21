@@ -443,7 +443,7 @@ export class WorkflowNodeHandler extends Handler<Context> {
             workflowId: widNum,
             workflowDocId: workflow.docId,
             name,
-            nodeType: nodeType as 'timer' | 'button' | 'device_control' | 'agent_message' | 'object_action' | 'agent_action' | 'condition' | 'delay' | 'start' | 'end',
+            nodeType: nodeType as 'timer' | 'button' | 'device_control' | 'agent_message' | 'object_action' | 'agent_action' | 'condition' | 'delay' | 'start' | 'end' | 'receiver',
             type: type || 'action',
             position: position || { x: 0, y: 0 },
             config: config || {},
@@ -770,14 +770,8 @@ export class WorkflowNodeTypesHandler extends Handler<Context> {
                     configSchema: {
                         agentId: { type: 'string', description: 'Agent ID' },
                         prompt: { type: 'string', description: '提示词（支持 ${variable} 变量）' },
-                    },
-                },
-                {
-                    nodeType: 'receiver',
-                    name: '接收器',
-                    description: '接收内容并发送给 Client（支持 TTS）',
-                    configSchema: {
-                        clientId: { type: 'number', description: 'Client ID（接收消息的客户端）' },
+                        returnType: { type: 'string', enum: ['text', 'tts'], description: '返回类型：text（文字）或 tts（语音）', default: 'text' },
+                        clientId: { type: 'number', description: 'Client ID（接收消息的客户端，可选）' },
                     },
                 },
                 {
@@ -786,6 +780,14 @@ export class WorkflowNodeTypesHandler extends Handler<Context> {
                     description: '延迟执行',
                     configSchema: {
                         delayMs: { type: 'number', description: '延迟时间（毫秒）' },
+                    },
+                },
+                {
+                    nodeType: 'receiver',
+                    name: '接收器',
+                    description: '接收 Agent 执行器的内容并发送 TTS 给指定 Client',
+                    configSchema: {
+                        clientId: { type: 'number', description: 'Client ID（接收 TTS 的客户端）' },
                     },
                 },
             ],
