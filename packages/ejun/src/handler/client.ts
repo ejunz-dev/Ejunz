@@ -696,8 +696,6 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                     (this.ctx.emit as any)('edge/connected', updatedEdge);
                 }
             }
-            
-            (this.ctx.emit as any)('edge/status/update', token, 'online');
         } catch (error) {
             logger.error('Failed to update edge status: %s', (error as Error).message);
         }
@@ -778,6 +776,10 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         addClientLog(this.clientId, 'info', `Client connected: ${this.request.ip}`);
 
         await ClientModel.updateStatus(this.domain._id, this.clientId, 'connected');
+        
+        (this.ctx.emit as any)('edge/status/update', token, 'online');
+        (this.ctx.emit as any)('mcp/server/connection/update', token, 'connected');
+        (this.ctx.emit as any)('mcp/server/status/update', token);
         
         // Send initial config to client via status/update event
         this.send({ 
