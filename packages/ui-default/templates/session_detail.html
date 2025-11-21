@@ -138,6 +138,18 @@
         </dl>
       </div>
     </div>
+    {% if session.type == 'client' and session.status == 'active' %}
+      <div class="section side">
+        <div class="section__header">
+          <h1 class="section__title">{{ _('Actions') }}</h1>
+        </div>
+        <div class="section__body">
+          <a href="{{ url('session_chat', domainId=session.domainId, sid=session._id) }}" class="button primary" style="width: 100%; text-align: center;">
+            <span class="icon icon-comment"></span> {{ _('Enter Chat') }}
+          </a>
+        </div>
+      </div>
+    {% endif %}
     {% if session.uid == handler.user._id %}
       <div class="section side">
         <div class="section__header">

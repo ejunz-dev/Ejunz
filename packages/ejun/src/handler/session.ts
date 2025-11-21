@@ -14,6 +14,7 @@ import { SessionDoc, RecordDoc } from '../interface';
 import record from '../model/record';
 import user from '../model/user';
 import Agent from '../model/agent';
+import domain from '../model/domain';
 import { buildProjection } from '../utils';
 
 export class SessionConnectionTracker {
@@ -221,9 +222,15 @@ export class SessionDetailHandler extends Handler {
             a._id.getTimestamp().getTime() - b._id.getTimestamp().getTime()
         );
         
+        // 获取session状态
+        const sessionStatus = await getSessionStatus(domainId, sdoc);
+        
         this.response.template = 'session_detail.html';
         this.response.body = {
-            session: sdoc,
+            session: {
+                ...sdoc,
+                status: sessionStatus,
+            },
             records: recordsList,
         };
     }
@@ -269,16 +276,19 @@ export class SessionDetailHandler extends Handler {
 class SessionDomainConnectionHandler extends ConnectionHandler {
     aid?: string;
     uid?: number;
+    sid?: ObjectId;
     queue: Map<string, () => Promise<any>> = new Map();
     throttleQueueClear: () => void;
 
     @param('aid', Types.String, true)
     @param('uidOrName', Types.UidOrName, true)
     @param('domainId', Types.String, true)
+    @param('sid', Types.ObjectId, true)
     async prepare(
         domainId?: string,
         aid?: string,
         uidOrName?: string,
+        sid?: ObjectId,
     ) {
         try {
             const queryDomainId = this.request.query.domainId as string || domainId || this.args.domainId;
@@ -318,6 +328,48 @@ class SessionDomainConnectionHandler extends ConnectionHandler {
             }
             
             this.throttleQueueClear = throttle(this.queueClear, 100, { trailing: true });
+            
+            // 如果指定了sid（从query参数或参数中获取），保存并订阅该session的record更新
+            const querySid = this.request.query.sid as string || (sid ? sid.toString() : null);
+            if (querySid) {
+                try {
+                    this.sid = new ObjectId(querySid);
+                    const sdoc = await SessionModel.get(finalDomainId, this.sid);
+                    if (sdoc) {
+                        // 发送初始的record更新
+                        const recordIds = sdoc.recordIds || [];
+                        for (const recordId of recordIds) {
+                            try {
+                                const rdoc = await record.get(finalDomainId, recordId);
+                                if (rdoc) {
+                                    await this.sendRecordUpdate(sdoc, rdoc);
+                                }
+                            } catch (e) {
+                                // ignore
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // ignore invalid sid
+                }
+            } else if (sid) {
+                this.sid = sid;
+                const sdoc = await SessionModel.get(finalDomainId, sid);
+                if (sdoc) {
+                    // 发送初始的record更新
+                    const recordIds = sdoc.recordIds || [];
+                    for (const recordId of recordIds) {
+                        try {
+                            const rdoc = await record.get(finalDomainId, recordId);
+                            if (rdoc) {
+                                await this.sendRecordUpdate(sdoc, rdoc);
+                            }
+                        } catch (e) {
+                            // ignore
+                        }
+                    }
+                }
+            }
         } catch (error: any) {
             try {
                 this.close(4000, error.message || String(error));
@@ -365,8 +417,30 @@ class SessionDomainConnectionHandler extends ConnectionHandler {
             // 如果指定了 uid，只处理该用户的 session；否则处理所有 session
             if (typeof this.uid === 'number' && sdoc.uid !== this.uid) continue;
             if (this.aid && sdoc.agentId !== this.aid) continue;
-            await this.sendSessionUpdate(sdoc);
+            
+            // 检查是否有sid参数（用于聊天页面）
+            if (this.sid) {
+                // 如果指定了sid，只发送该session的record更新
+                if (sdoc._id.equals(this.sid)) {
+                    await this.sendRecordUpdate(sdoc, r);
+                }
+            } else {
+                // 否则发送session更新（用于列表页面）
+                await this.sendSessionUpdate(sdoc);
+            }
         }
+    }
+    
+    async sendRecordUpdate(sdoc: SessionDoc, rdoc: RecordDoc) {
+        const r = rdoc as any;
+        // 获取完整的record信息（包括agentMessages）
+        const fullRecord = await record.get(this.args.domainId, r._id);
+        
+        this.send({
+            type: 'record_update',
+            rid: r._id.toString(),
+            record: fullRecord,
+        });
     }
 
     async sendSessionUpdate(sdoc: SessionDoc) {
@@ -432,9 +506,223 @@ class SessionDomainConnectionHandler extends ConnectionHandler {
     }
 }
 
+export class SessionChatHandler extends Handler {
+    @param('sid', Types.ObjectId)
+    async get(domainId: string, sid: ObjectId) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const sdoc = await SessionModel.get(domainId, sid);
+        if (!sdoc) {
+            throw new NotFoundError('Session not found');
+        }
+        if (sdoc.uid !== this.user._id) {
+            this.checkPerm(PERM.PERM_VIEW_RECORD);
+        }
+        
+        // 只允许client类型的session进入聊天
+        if (sdoc.type !== 'client') {
+            throw new PermissionError('Only client sessions can be accessed via chat interface');
+        }
+        
+        // 获取session的所有records
+        const records = sdoc.recordIds && sdoc.recordIds.length > 0
+            ? await record.getList(domainId, sdoc.recordIds)
+            : {};
+        
+        const recordsList = Object.values(records).sort((a: any, b: any) => 
+            a._id.getTimestamp().getTime() - b._id.getTimestamp().getTime()
+        );
+        
+        // 获取agent信息
+        let adoc = null;
+        if (sdoc.agentId) {
+            try {
+                adoc = await Agent.get(domainId, sdoc.agentId);
+            } catch (e) {
+                // agent可能不存在，忽略错误
+            }
+        }
+        
+        // 获取domain信息以获取apiKey
+        const domainInfo = await domain.get(domainId);
+        const apiKey = (domainInfo as any)?.['apiKey'] || '';
+        
+        this.response.template = 'session_chat.html';
+        this.response.body = {
+            session: sdoc,
+            records: recordsList,
+            adoc,
+            apiKey,
+        };
+    }
+    
+    @param('sid', Types.ObjectId)
+    async post(domainId: string, sid: ObjectId) {
+        this.response.template = null;
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const sdoc = await SessionModel.get(domainId, sid);
+        if (!sdoc) {
+            throw new NotFoundError('Session not found');
+        }
+        if (sdoc.uid !== this.user._id) {
+            this.checkPerm(PERM.PERM_VIEW_RECORD);
+        }
+        
+        // 只允许client类型的session
+        if (sdoc.type !== 'client') {
+            throw new PermissionError('Only client sessions can send messages via chat interface');
+        }
+        
+        const message = this.request.body?.message;
+        if (!message || typeof message !== 'string' || !message.trim()) {
+            this.response.body = { error: 'Message cannot be empty' };
+            return;
+        }
+        
+        // 获取agent信息
+        if (!sdoc.agentId) {
+            this.response.body = { error: 'Session has no agent' };
+            return;
+        }
+        
+        const normalizedId: number | string = /^\d+$/.test(sdoc.agentId) ? Number(sdoc.agentId) : sdoc.agentId;
+        const adoc = await Agent.get(domainId, normalizedId);
+        if (!adoc) {
+            this.response.body = { error: 'Agent not found' };
+            return;
+        }
+        
+        // 构建history（从session的records中提取）
+        const records = sdoc.recordIds && sdoc.recordIds.length > 0
+            ? await record.getList(domainId, sdoc.recordIds)
+            : {};
+        
+        const recordsList = Object.values(records).sort((a: any, b: any) => 
+            a._id.getTimestamp().getTime() - b._id.getTimestamp().getTime()
+        );
+        
+        // 从records中提取历史消息（与AgentChatHandler保持一致）
+        const history: any[] = [];
+        for (const r of recordsList) {
+            if ((r as any).agentMessages && Array.isArray((r as any).agentMessages)) {
+                for (const msg of (r as any).agentMessages) {
+                    if (msg.role === 'user' || msg.role === 'assistant') {
+                        history.push({
+                            role: msg.role,
+                            content: msg.content,
+                        });
+                    }
+                }
+            }
+        }
+        
+        // 检查API Key配置
+        const apiKey = (this.domain as any)['apiKey'] || '';
+        if (!apiKey) {
+            this.response.body = { error: 'API Key not configured' };
+            return;
+        }
+        
+        // 创建任务记录（走task/record流程）
+        const taskRecordId = await record.addTask(
+            domainId,
+            adoc.aid || adoc.docId.toString(),
+            this.user._id,
+            message,
+            sid, // 使用现有的session
+        );
+        
+        // 将record添加到session
+        await SessionModel.addRecord(domainId, sid, taskRecordId);
+        
+        // 更新session的最后活动时间
+        await SessionModel.update(domainId, sid, {
+            lastActivityAt: new Date(),
+        });
+        
+        // 创建task任务（类似AgentChatHandler的逻辑）
+        const domainInfo = await domain.get(domainId);
+        if (!domainInfo) {
+            throw new Error('Domain not found');
+        }
+        
+        const { getAssignedTools } = require('./agent');
+        const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds);
+        
+        const agentPrompt = adoc.content || '';
+        let systemMessage = agentPrompt;
+        
+        const truncateMemory = (memory: string, maxLength: number = 2000): string => {
+            if (!memory || memory.length <= maxLength) {
+                return memory;
+            }
+            return memory.substring(0, maxLength) + '\n\n[... Memory truncated, keeping most important rules ...]';
+        };
+        if (adoc.memory) {
+            const truncatedMemory = truncateMemory(adoc.memory);
+            systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
+        }
+        
+        if (systemMessage && !systemMessage.includes('do not use emoji')) {
+            systemMessage += '\n\nNote: Do not use any emoji in your responses.';
+        } else if (!systemMessage) {
+            systemMessage = 'Note: Do not use any emoji in your responses.';
+        }
+        
+        if (tools.length > 0) {
+            const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
+              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
+              `\n\n【CRITICAL - YOU MUST READ THIS FIRST】\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "Find the switch"\n2. You MUST first output: "Let me help you find the switch device..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n【TOOL USAGE STRATEGY - CRITICAL】\n1. **Proactive Multi-Tool Problem Solving**: When a user's question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "Do I have classes tomorrow?" → You should: (1) FIRST say "Let me check tomorrow's schedule..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there's schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "View files in repo" → You should: (1) FIRST say "Let me search for files in the knowledge base..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   Examples: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool's result.\n5. After the last tool call completes, you should only reply with the last tool's result. Do NOT provide a comprehensive summary of all tools' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool's result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool's result → explain what you will do next → call the second tool → reply with the second tool's result, and so on. Each reply should be independent and focused on the current tool.`;
+            systemMessage = systemMessage + toolsInfo;
+        }
+        
+        const context = {
+            ...(sdoc.context || {}),
+            apiKey: (domainInfo as any)['apiKey'] || '',
+            model: (domainInfo as any)['model'] || 'deepseek-chat',
+            apiUrl: (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions',
+            agentContent: adoc.content || '',
+            agentMemory: adoc.memory || '',
+            tools: tools.map(tool => ({
+                name: tool.name,
+                description: tool.description,
+                inputSchema: tool.inputSchema,
+                token: tool.token,
+                edgeId: tool.edgeId,
+            })),
+            systemMessage,
+        };
+        
+        await SessionModel.update(domainId, sid, {
+            context,
+        });
+        
+        const taskModel = require('../model/task').default;
+        await taskModel.add({
+            type: 'task',
+            recordId: taskRecordId,
+            sessionId: sid,
+            domainId,
+            agentId: adoc.aid || adoc.docId.toString(),
+            uid: this.user._id,
+            message,
+            history: JSON.stringify(history),
+            context,
+            priority: 0,
+        });
+        
+        this.response.body = {
+            taskRecordId: taskRecordId.toString(),
+            sessionId: sid.toString(),
+            message: 'Task created, processing by worker',
+        };
+    }
+}
+
 export async function apply(ctx: Context) {
     ctx.Route('session_domain', '/session', SessionDomainHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('session_detail', '/session/:sid', SessionDetailHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('session_chat', '/session/:sid/chat', SessionChatHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Connection('session_domain_conn', '/session-conn', SessionDomainConnectionHandler, PRIV.PRIV_USER_PROFILE);
 }
 
