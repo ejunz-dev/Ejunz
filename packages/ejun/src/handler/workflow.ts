@@ -67,7 +67,7 @@ export class WorkflowEditHandler extends Handler<Context> {
     async postUpdate() {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         const { wid } = this.request.params;
-        const { name, description, enabled, status } = this.request.body;
+        const { name, description } = this.request.body;
         
         const widNum = parseInt(wid, 10);
         if (isNaN(widNum) || widNum < 1) {
@@ -83,23 +83,14 @@ export class WorkflowEditHandler extends Handler<Context> {
             throw new ValidationError('wid');
         }
 
-        // 检查权限
+        // Check permissions
         if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
             throw new PermissionError(PRIV.PRIV_USER_PROFILE);
         }
 
         const update: any = { name, description };
-        if (enabled !== undefined) update.enabled = enabled === true || enabled === 'true';
-        if (status) update.status = status;
 
         await WorkflowModel.update(this.domain._id, widNum, update);
-        
-        // 如果启用了工作流，注册定时器
-        if (update.enabled === true) {
-            if (WorkflowModel.registerTimers) {
-                await WorkflowModel.registerTimers(this.domain._id, widNum);
-            }
-        }
         
         this.response.redirect = `/workflow/${widNum}`;
     }
@@ -696,12 +687,14 @@ export class WorkflowToggleHandler extends Handler<Context> {
         const newEnabled = !workflow.enabled;
         await WorkflowModel.update(domainId, widNum, { enabled: newEnabled });
         
-        // 如果启用了工作流，注册定时器
         if (newEnabled) {
-            logger.info(`Workflow toggled to enabled, registering timers for workflow ${widNum}`);
+            // If workflow is enabled, register timers
             if (WorkflowModel.registerTimers) {
                 await WorkflowModel.registerTimers(domainId, widNum);
             }
+        } else {
+            // If workflow is disabled, delete all timers for this workflow
+            await WorkflowTimerModel.deleteMany({ domainId, workflowId: widNum });
         }
         
         this.response.body = { success: true, enabled: newEnabled };
