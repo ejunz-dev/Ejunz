@@ -46,14 +46,37 @@ async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[]): Prom
     logger.info('getAssignedTools: Processing %d toolIds: %o', finalToolIds.length, finalToolIds.map(id => id.toString()));
     
     // First, get tools from database and build a map by tool name
+    // Use batch query instead of individual queries for better performance
     const dbToolsMap = new Map<string, any>();
     const assignedToolNames = new Set<string>();
     
-    for (const toolId of finalToolIds) {
-        try {
-            const tool = await ToolModel.get(toolId);
+    try {
+        // Batch query all tools at once
+        const tools = await document.getMulti(domainId, document.TYPE_TOOL, { _id: { $in: finalToolIds } }).toArray() as any[];
+        
+        // Get unique edgeDocIds to batch query edges
+        const edgeDocIds = new Set<ObjectId>();
+        for (const tool of tools) {
+            if (tool && tool.domainId === domainId && tool.edgeDocId) {
+                edgeDocIds.add(tool.edgeDocId);
+            }
+        }
+        
+        // Batch query all edges at once
+        const edgesMap = new Map<ObjectId, any>();
+        if (edgeDocIds.size > 0) {
+            const edges = await document.getMulti(domainId, document.TYPE_EDGE, { _id: { $in: Array.from(edgeDocIds) } }).toArray() as any[];
+            for (const edge of edges) {
+                if (edge) {
+                    edgesMap.set(edge._id, edge);
+                }
+            }
+        }
+        
+        // Build tools map
+        for (const tool of tools) {
             if (tool && tool.domainId === domainId) {
-                const edge = await EdgeModel.get(tool.edgeDocId);
+                const edge = edgesMap.get(tool.edgeDocId);
                 if (edge) {
                     dbToolsMap.set(tool.name, {
                         name: tool.name,
@@ -65,59 +88,79 @@ async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[]): Prom
                     assignedToolNames.add(tool.name);
                 }
             }
-        } catch (error) {
-            logger.warn('Invalid tool ID: %s', toolId.toString());
+        }
+    } catch (error) {
+        logger.warn('Failed to batch query tools, falling back to individual queries: %s', (error as Error).message);
+        // Fallback to individual queries if batch query fails
+        for (const toolId of finalToolIds) {
+            try {
+                const tool = await ToolModel.get(toolId);
+                if (tool && tool.domainId === domainId) {
+                    const edge = await EdgeModel.get(tool.edgeDocId);
+                    if (edge) {
+                        dbToolsMap.set(tool.name, {
+                            name: tool.name,
+                            description: tool.description,
+                            inputSchema: tool.inputSchema,
+                            token: edge.token,
+                            edgeId: edge._id,
+                        });
+                        assignedToolNames.add(tool.name);
+                    }
+                }
+            } catch (err) {
+                logger.warn('Invalid tool ID: %s', toolId.toString());
+            }
         }
     }
     
     // Also fetch from real-time MCP connections to get tools that might not be in DB yet
     // or to get more up-to-date tool definitions
+    // Use timeout to prevent blocking if MCP is slow or unavailable
+    let realtimeTools: any[] = [];
     try {
         const mcpClient = new McpClient();
-        const realtimeTools = await mcpClient.getTools();
-        
-        // Merge realtime tools with database tools
-        // Priority: realtime tools (more up-to-date) > database tools
-        const finalTools: any[] = [];
-        const processedNames = new Set<string>();
-        
-        // First, add realtime tools that match assigned tool names
-        // Note: realtime tools don't have token, so we prefer database tools when available
-        for (const realtimeTool of realtimeTools) {
-            if (assignedToolNames.has(realtimeTool.name) && !dbToolsMap.has(realtimeTool.name)) {
-                // Only add realtime tool if not in database (database tools have token)
-                finalTools.push({
-                    name: realtimeTool.name,
-                    description: realtimeTool.description || '',
-                    inputSchema: realtimeTool.inputSchema || null,
-                });
-                processedNames.add(realtimeTool.name);
-            }
-        }
-        
-        // Then, add database tools (they have token, so prefer them)
-        for (const [toolName, dbTool] of dbToolsMap) {
-            if (!processedNames.has(toolName)) {
-                finalTools.push(dbTool);
-                processedNames.add(toolName);
-            }
-        }
-        
-        logger.info('getAssignedTools: dbTools=%d, realtimeTools=%d, matchedTools=%d, finalTools=%d', 
-            dbToolsMap.size, realtimeTools.length, processedNames.size, finalTools.length);
-        logger.info('getAssignedTools: details', {
-            dbToolNames: Array.from(dbToolsMap.keys()),
-            realtimeToolNames: realtimeTools.map(t => t.name),
-            assignedToolNames: Array.from(assignedToolNames),
-            finalToolNames: finalTools.map(t => t.name)
+        // Add timeout to prevent blocking - if MCP is slow, fallback to DB tools
+        const timeoutPromise = new Promise<any[]>((_, reject) => {
+            setTimeout(() => reject(new Error('MCP tools fetch timeout')), 1000); // 1 second timeout
         });
-        
-        return finalTools;
+        realtimeTools = await Promise.race([mcpClient.getTools(), timeoutPromise]);
     } catch (error: any) {
-        logger.warn('Failed to fetch realtime tools, using DB tools only: %s', error.message);
-        // Fallback to database tools only
-        return Array.from(dbToolsMap.values());
+        // Silently fallback to database tools - MCP is optional
+        logger.debug('MCP tools fetch failed or timeout, using DB tools only: %s', error.message);
     }
+    
+    // Merge realtime tools with database tools
+    // Priority: realtime tools (more up-to-date) > database tools
+    const finalTools: any[] = [];
+    const processedNames = new Set<string>();
+    
+    // First, add realtime tools that match assigned tool names
+    // Note: realtime tools don't have token, so we prefer database tools when available
+    for (const realtimeTool of realtimeTools) {
+        if (assignedToolNames.has(realtimeTool.name) && !dbToolsMap.has(realtimeTool.name)) {
+            // Only add realtime tool if not in database (database tools have token)
+            finalTools.push({
+                name: realtimeTool.name,
+                description: realtimeTool.description || '',
+                inputSchema: realtimeTool.inputSchema || null,
+            });
+            processedNames.add(realtimeTool.name);
+        }
+    }
+    
+    // Then, add database tools (they have token, so prefer them)
+    for (const [toolName, dbTool] of dbToolsMap) {
+        if (!processedNames.has(toolName)) {
+            finalTools.push(dbTool);
+            processedNames.add(toolName);
+        }
+    }
+    
+    logger.info('getAssignedTools: dbTools=%d, realtimeTools=%d, matchedTools=%d, finalTools=%d', 
+        dbToolsMap.size, realtimeTools.length, processedNames.size, finalTools.length);
+    
+    return finalTools;
 }
 
 const logBuffer: Map<number, Array<{ time: string; level: string; message: string; clientId: number }>> = new Map();
@@ -643,6 +686,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
     private currentSessionId: ObjectId | null = null;
     private subscribedRecordIds: Set<string> = new Set();
     private pendingAgentDoneRecords: Map<string, { taskRecordId: string; message: string }> = new Map();
+    private sentContentRecordIds: Set<string> = new Set(); // 跟踪已经发送过内容的记录ID，防止重复发送
     // Promise resolver for waiting TTS playback completion before tool calls
     private ttsPlaybackWaitPromise: { resolve: () => void; reject: (error: Error) => void } | null = null;
     private outboundBridgeDisposer: (() => void) | null = null;
@@ -2250,25 +2294,15 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             return;
         }
 
-        const agents = await AgentModel.getMulti(this.domain._id, { aid: agentConfig.agentId }, AgentModel.PROJECTION_DETAIL).toArray();
-        if (agents.length === 0) {
-            logger.error('handleAgentChat: Agent not found: clientId=%d, agentId=%s', this.clientId, agentConfig.agentId);
-            this.sendEvent('agent/error', [{ message: 'Agent not found' }]);
-            addClientLog(this.clientId, 'error', `Agent not found: ${agentConfig.agentId}`);
-            return;
-        }
-        const agent = agents[0];
-
         if (createTaskRecord) {
-            const latestClient = await ClientModel.getByClientId(this.domain._id, this.clientId);
-            const recordUid = latestClient?.owner || this.client.owner;
+            // Fast path: Start streaming immediately, load agent info asynchronously
+            // This ensures immediate response without waiting for database queries
+            const recordUid = this.client.owner; // Use cached owner, don't query
             
-            // 确保有session
-            await this.ensureClientSession();
+            // Get or create session (use cached if available)
             let sessionId = this.currentSessionId;
-            
             if (!sessionId) {
-                // 如果还是没有session，创建新的
+                // Only create session if we don't have one cached
                 sessionId = await SessionModel.add(
                     this.domain._id,
                     agentConfig.agentId,
@@ -2281,11 +2315,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 this.currentSessionId = sessionId;
             }
             
-            // 更新session的最后活动时间
-            await SessionModel.update(this.domain._id, sessionId, {
-                lastActivityAt: new Date(),
-            });
-            
+            // Create task record immediately (minimal blocking operation)
             const taskRecordId = await record.addTask(
                 this.domain._id,
                 agentConfig.agentId,
@@ -2294,92 +2324,216 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 sessionId,
             );
             
-            await SessionModel.addRecord(this.domain._id, sessionId, taskRecordId);
-            
-            const domainInfo = await domain.get(this.domain._id);
-            if (!domainInfo) {
-                this.sendEvent('agent/error', [{ message: 'Domain not found' }]);
-                return;
-            }
-            
-            const tools = await getAssignedTools(this.domain._id, agent.mcpToolIds);
-            
-            const agentPrompt = agent.content || '';
-            let systemMessage = agentPrompt;
-            
-            const truncateMemory = (memory: string, maxLength: number = 2000): string => {
-                if (!memory || memory.length <= maxLength) {
-                    return memory;
-                }
-                return memory.substring(0, maxLength) + '\n\n[... Memory truncated, keeping most important rules ...]';
-            };
-            if (agent.memory) {
-                const truncatedMemory = truncateMemory(agent.memory);
-                systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
-            }
-            
-            if (systemMessage && !systemMessage.includes('do not use emoji')) {
-                systemMessage += '\n\nNote: Do not use any emoji in your responses.';
-            } else if (!systemMessage) {
-                systemMessage = 'Note: Do not use any emoji in your responses.';
-            }
-            
-            if (tools.length > 0) {
-                const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
-                  tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
-                  `\n\n【CRITICAL - YOU MUST READ THIS FIRST】\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "Find the switch"\n2. You MUST first output: "Let me help you find the switch device..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n【TOOL USAGE STRATEGY - CRITICAL】\n1. **Proactive Multi-Tool Problem Solving**: When a user's question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "Do I have classes tomorrow?" → You should: (1) FIRST say "Let me check tomorrow's schedule..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there's schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "View files in repo" → You should: (1) FIRST say "Let me search for files in the knowledge base..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   Examples: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool's result.\n5. After the last tool call completes, you should only reply with the last tool's result. Do NOT provide a comprehensive summary of all tools' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool's result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool's result → explain what you will do next → call the second tool → reply with the second tool's result, and so on. Each reply should be independent and focused on the current tool.`;
-                systemMessage = systemMessage + toolsInfo;
-            }
-            
-            const sdoc = await SessionModel.get(this.domain._id, sessionId);
-            let sessionContext = sdoc?.context || {};
-            
-            const context = {
-                ...sessionContext,
-                apiKey: (domainInfo as any)['apiKey'] || '',
-                model: (domainInfo as any)['model'] || 'deepseek-chat',
-                apiUrl: (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions',
-                agentContent: agent.content || '',
-                agentMemory: agent.memory || '',
-                tools: tools.map(tool => ({
-                    name: tool.name,
-                    description: tool.description,
-                    inputSchema: tool.inputSchema,
-                })),
-                systemMessage,
-            };
-            
-            await SessionModel.update(this.domain._id, sessionId, {
-                context,
+            // Mark task as processing immediately to prevent worker from handling it
+            // We'll handle streaming in main server for immediate response
+            const STATUS = require('../model/builtin').STATUS;
+            await record.updateTask(this.domain._id, taskRecordId, {
+                status: STATUS.STATUS_TASK_PROCESSING,
             });
             
-            const latestClientForTask = await ClientModel.getByClientId(this.domain._id, this.clientId);
-            const taskUid = latestClientForTask?.owner || this.client.owner;
-            
-            const taskModel = require('../model/task').default;
-            await taskModel.add({
-                type: 'task',
-                recordId: taskRecordId,
-                sessionId,
-                domainId: this.domain._id,
-                agentId: agentConfig.agentId,
-                uid: taskUid,
-                message,
-                history: JSON.stringify(history),
-                context,
-                priority: 0,
-            });
-            
+            // Subscribe to record immediately
             this.subscribeRecord(taskRecordId.toString(), agentConfig.agentId);
             
+            // Send task_created event immediately (stage 1 response)
             this.sendEvent('agent/task_created', [{
                 taskRecordId: taskRecordId.toString(),
                 sessionId: sessionId.toString(),
                 message: 'Task created, processing by worker',
             }]);
             
-            logger.info('Task created for client, processing by worker: clientId=%d, taskRecordId=%s', 
+            logger.info('Task created for client, starting immediate streaming: clientId=%d, taskRecordId=%s', 
                 this.clientId, taskRecordId.toString());
+            
+            // Load agent info asynchronously and start streaming
+            (async () => {
+                try {
+                    // Load agent info (this was blocking before)
+                    const agents = await AgentModel.getMulti(this.domain._id, { aid: agentConfig.agentId }, AgentModel.PROJECTION_DETAIL).toArray();
+                    if (agents.length === 0) {
+                        logger.error('handleAgentChat: Agent not found: clientId=%d, agentId=%s', this.clientId, agentConfig.agentId);
+                        this.sendEvent('agent/error', [{ message: 'Agent not found' }]);
+                        addClientLog(this.clientId, 'error', `Agent not found: ${agentConfig.agentId}`);
+                        return;
+                    }
+                    const agent = agents[0];
+                    
+                    // Get domain info for API
+                    const domainInfo = await domain.get(this.domain._id);
+                    if (!domainInfo) {
+                        logger.error('Domain not found: %s', this.domain._id);
+                        return;
+                    }
+                    
+                    // Start streaming immediately using processAgentChatInternal
+                    await processAgentChatInternal(agent, message, history, {
+                        taskRecordId,
+                        onContent: (content: string) => {
+                            // Stream content immediately to client (non-blocking)
+                            const startTime = Date.now();
+                            logger.info('Forwarding content to client: clientId=%d, content=%s', this.clientId, content);
+                            this.sendEvent('agent/content', [content]);
+                            const sendDuration = Date.now() - startTime;
+                            if (sendDuration > 10) {
+                                logger.warn('sendEvent took %dms (may block streaming): clientId=%d', sendDuration, this.clientId);
+                            }
+                            
+                            // Add to TTS queue (async, non-blocking)
+                            this.addTtsText(content).catch((error: any) => {
+                                logger.warn('addTtsText failed: %s', error.message);
+                            });
+                        },
+                        onToolCall: async (tools: any[]) => {
+                            // Tool calls will be handled in the same stream
+                            logger.info('Tool call detected: clientId=%d', this.clientId);
+                        },
+                        onDone: (finalContent: string, finalHistory: string) => {
+                            logger.info('Agent reply completed: clientId=%d, content length=%d', 
+                                this.clientId, finalContent.length);
+                        },
+                        onError: (error: string) => {
+                            logger.error('Agent chat error: clientId=%d, error=%s', this.clientId, error);
+                            this.sendEvent('agent/error', [{ message: error }]);
+                        },
+                    });
+                } catch (error: any) {
+                    logger.error('Failed to start streaming: %s', error.message);
+                    this.sendEvent('agent/error', [{ message: error.message }]);
+                }
+            })();
+            
+            // Handle remaining operations asynchronously (don't block response)
+            (async () => {
+                try {
+                    // Update session last activity
+                    await SessionModel.update(this.domain._id, sessionId, {
+                        lastActivityAt: new Date(),
+                    });
+                    
+                    // Add record to session
+                    await SessionModel.addRecord(this.domain._id, sessionId, taskRecordId);
+                } catch (error: any) {
+                    logger.error('Failed to update session: %s', error.message);
+                }
+            })();
+            
+            return;
+        }
+
+        // For non-createTaskRecord path, still need agent info synchronously
+        const agents = await AgentModel.getMulti(this.domain._id, { aid: agentConfig.agentId }, AgentModel.PROJECTION_DETAIL).toArray();
+        if (agents.length === 0) {
+            logger.error('handleAgentChat: Agent not found: clientId=%d, agentId=%s', this.clientId, agentConfig.agentId);
+            this.sendEvent('agent/error', [{ message: 'Agent not found' }]);
+            addClientLog(this.clientId, 'error', `Agent not found: ${agentConfig.agentId}`);
+            return;
+        }
+        const agent = agents[0];
+
+        // Old path for non-createTaskRecord (kept for compatibility)
+        {
+            // Fast path: Create task record immediately, then handle other operations asynchronously
+            // This ensures immediate response for stage 1 (speak before tool calls)
+            const recordUid = this.client.owner; // Use cached owner, don't query
+            
+            // Get or create session (use cached if available)
+            let sessionId = this.currentSessionId;
+            if (!sessionId) {
+                // Only create session if we don't have one cached
+                sessionId = await SessionModel.add(
+                    this.domain._id,
+                    agentConfig.agentId,
+                    recordUid,
+                    'client',
+                    `Client ${this.clientId} Session`,
+                    undefined,
+                    this.clientId,
+                );
+                this.currentSessionId = sessionId;
+            }
+            
+            // Create task record immediately (minimal blocking operation)
+            const taskRecordId = await record.addTask(
+                this.domain._id,
+                agentConfig.agentId,
+                recordUid,
+                message,
+                sessionId,
+            );
+            
+            // Mark task as processing immediately to prevent worker from handling it
+            // We'll handle streaming in main server for immediate response
+            const STATUS = require('../model/builtin').STATUS;
+            await record.updateTask(this.domain._id, taskRecordId, {
+                status: STATUS.STATUS_TASK_PROCESSING,
+            });
+            
+            // Subscribe to record immediately
+            this.subscribeRecord(taskRecordId.toString(), agentConfig.agentId);
+            
+            // Send task_created event immediately (stage 1 response)
+            this.sendEvent('agent/task_created', [{
+                taskRecordId: taskRecordId.toString(),
+                sessionId: sessionId.toString(),
+                message: 'Task created, processing by worker',
+            }]);
+            
+            logger.info('Task created for client, starting immediate streaming: clientId=%d, taskRecordId=%s', 
+                this.clientId, taskRecordId.toString());
+            
+            // Start streaming immediately (stage 1: speak before tool calls)
+            // Don't wait for worker - start streaming response right away
+            (async () => {
+                try {
+                    // Get domain info for API
+                    const domainInfo = await domain.get(this.domain._id);
+                    if (!domainInfo) {
+                        logger.error('Domain not found: %s', this.domain._id);
+                        return;
+                    }
+                    
+                    // Start streaming immediately using processAgentChatInternal
+                    await processAgentChatInternal(agent, message, history, {
+                        taskRecordId,
+                        onContent: (content: string) => {
+                            // Stream content immediately to client
+                            this.sendEvent('agent/content', [content]);
+                            this.addTtsText(content).catch((error: any) => {
+                                logger.warn('addTtsText failed: %s', error.message);
+                            });
+                        },
+                        onToolCall: async (tools: any[]) => {
+                            // Tool calls will be handled in the same stream
+                            logger.info('Tool call detected: clientId=%d', this.clientId);
+                        },
+                        onDone: (finalContent: string, finalHistory: string) => {
+                            logger.info('Agent reply completed: clientId=%d, content length=%d', 
+                                this.clientId, finalContent.length);
+                        },
+                        onError: (error: string) => {
+                            logger.error('Agent chat error: clientId=%d, error=%s', this.clientId, error);
+                            this.sendEvent('agent/error', [{ message: error }]);
+                        },
+                    });
+                } catch (error: any) {
+                    logger.error('Failed to start streaming: %s', error.message);
+                }
+            })();
+            
+            // Handle remaining operations asynchronously (don't block response)
+            (async () => {
+                try {
+                    // Update session last activity
+                    await SessionModel.update(this.domain._id, sessionId, {
+                        lastActivityAt: new Date(),
+                    });
+                    
+                    // Add record to session
+                    await SessionModel.addRecord(this.domain._id, sessionId, taskRecordId);
+                } catch (error: any) {
+                    logger.error('Failed to update session: %s', error.message);
+                }
+            })();
+            
             return;
         }
 
@@ -2644,10 +2798,19 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 const assistantMessages = agentMessages.filter((msg: any) => msg.role === 'assistant');
                 
                 if (recordData.status === STATUS.STATUS_TASK_DELIVERED && assistantMessages.length > 0) {
+                    // 检查是否已经发送过内容，防止重复发送
+                    if (this.sentContentRecordIds.has(rid)) {
+                        logger.debug('Content already sent for record, skipping: clientId=%d, rid=%s', this.clientId, rid);
+                        return;
+                    }
+                    
                     const lastAssistantMessage = assistantMessages[assistantMessages.length - 1];
                     const content = lastAssistantMessage.content || '';
                     
                     if (content) {
+                        // 标记为已发送，防止重复
+                        this.sentContentRecordIds.add(rid);
+                        
                         logger.info('Sending agent reply to client: clientId=%d, rid=%s, content length=%d', 
                             this.clientId, rid, content.length);
                         
@@ -2796,6 +2959,11 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             }
         }
         this.subscriptions = [];
+        
+        // Clear record tracking sets
+        this.subscribedRecordIds.clear();
+        this.sentContentRecordIds.clear();
+        this.pendingAgentDoneRecords.clear();
         
         if (this.clientId && this.accepted) {
             ClientConnectionHandler.active.delete(this.clientId);
