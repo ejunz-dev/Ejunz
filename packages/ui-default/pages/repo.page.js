@@ -271,9 +271,10 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
 
     const treeData = UiContext.docHierarchy;
     const repo = UiContext.repo;
-    const currentDid = UiContext.ddoc?.did;
-    const currentBid = UiContext.block?.bid;
-    const currentBranch = (repo && (repo.currentBranch || 'main')) || 'main';
+    const currentDocId = UiContext.ddoc?.docId ? (typeof UiContext.ddoc.docId === 'string' ? UiContext.ddoc.docId : UiContext.ddoc.docId.toString()) : '';
+    const currentBlockDocId = UiContext.block?.docId ? (typeof UiContext.block.docId === 'string' ? UiContext.block.docId : UiContext.block.docId.toString()) : '';
+    // 从UiContext获取currentBranch，如果没有则从repo对象获取
+    const currentBranch = (UiContext && UiContext.currentBranch) || (repo && (repo.currentBranch || 'main')) || 'main';
     
     if (!treeData || !repo) {
       return;
@@ -289,8 +290,8 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
     let draggedElement = null;
     let draggedData = null;
     let pendingCreates = []; // 待创建的项目列表
-    let pendingDeletes = []; // 待删除的项目列表 { type: 'doc'|'block', did?: number, bid?: number }
-    let pendingUpdates = []; // 待更新的标题列表 { type: 'doc'|'block', did?: number, bid?: number, title: string }
+    let pendingDeletes = []; // 待删除的项目列表 { type: 'doc'|'block', docId: string }
+    let pendingUpdates = []; // 待更新的标题列表 { type: 'doc'|'block', docId: string, title: string }
 
     // 添加编辑控制按钮
     function renderEditControls() {
@@ -429,19 +430,35 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
             // 添加到删除列表
             const deleteItem = {
               type: draggedData.type,
-              did: draggedData.did ? parseInt(draggedData.did) : undefined,
-              bid: draggedData.bid ? parseInt(draggedData.bid) : undefined
+              docId: draggedData.docId || ''
             };
             
             // 检查是否已存在
             const exists = pendingDeletes.some(d => 
-              d.type === deleteItem.type && 
-              d.did === deleteItem.did && 
-              d.bid === deleteItem.bid
+              d.type === deleteItem.type && d.docId === deleteItem.docId
             );
             
             if (!exists) {
               pendingDeletes.push(deleteItem);
+              
+              // 如果删除的是doc，自动收集其下的所有blocks并添加到删除列表
+              if (deleteItem.type === 'doc') {
+                const docBlocks = allDocsWithBlocks[deleteItem.docId] || [];
+                docBlocks.forEach(block => {
+                  const blockDocId = block.docId ? (typeof block.docId === 'string' ? block.docId : block.docId.toString()) : '';
+                  // 检查block是否已经在删除列表中
+                  const blockExists = pendingDeletes.some(d => 
+                    d.type === 'block' && d.docId === blockDocId
+                  );
+                  if (!blockExists && blockDocId) {
+                    pendingDeletes.push({
+                      type: 'block',
+                      docId: blockDocId
+                    });
+                  }
+                });
+              }
+              
               updateDeleteZone();
               
               // 从树中移除（但不删除 DOM，因为可能取消）
@@ -470,10 +487,12 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
         deleteItemsDiv.innerHTML = '';
       } else {
         deleteItemsDiv.innerHTML = pendingDeletes.map(item => {
-          const label = item.type === 'doc' 
-            ? `📁 Doc (did: ${item.did})`
-            : `📝 Block (bid: ${item.bid})`;
-          return `<span class="delete-item">${label}</span>`;
+          if (item.type === 'doc') {
+            const blockCount = allDocsWithBlocks[item.docId]?.length || 0;
+            return `<span class="delete-item">📁 Doc (docId: ${item.docId})${blockCount > 0 ? ` + ${blockCount} blocks` : ''}</span>`;
+          } else {
+            return `<span class="delete-item">📝 Block (docId: ${item.docId})</span>`;
+          }
         }).join('');
       }
     }
@@ -485,7 +504,7 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
         id: placeholderId,
         type: type,
         title: '',
-        parentDid: null,
+        parentDocId: null,
         order: 0
       };
 
@@ -517,16 +536,16 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
         if (!placeholder) return;
         
         // 确定父节点信息
-        let parentDid = null;
+        let parentDocId = null;
         if (placeholder.parentPlaceholderId) {
-          parentDid = placeholder.parentPlaceholderId;
+          parentDocId = placeholder.parentPlaceholderId;
         } else {
-          parentDid = placeholder.parentDid;
+          parentDocId = placeholder.parentDocId;
         }
         
         const type = placeholderDiv.dataset.type.replace('new-', '');
         const li = placeholderDiv.closest('li');
-        showTitleInputDialog(placeholderId, type, parentDid, li, null);
+        showTitleInputDialog(placeholderId, type, parentDocId, li, null);
       };
 
       // 拖拽事件
@@ -563,16 +582,27 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
       const creates = collectPendingCreates(structure);
       
       try {
-        const response = await fetch(`/d/${repo.domainId}/base/repo/${repo.rpid}/update_structure`, {
+        // 使用带branch的URL，确保branch参数正确传递到handler
+        const updateUrl = `/d/${repo.domainId}/base/repo/${repo.rpid}/branch/${currentBranch}/update_structure`;
+        const response = await fetch(updateUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ structure, creates, deletes: pendingDeletes, updates: pendingUpdates, branch: currentBranch, commitMessage: customPart }),
+          body: JSON.stringify({ structure, creates, deletes: pendingDeletes, updates: pendingUpdates, commitMessage: customPart }),
         });
 
         if (response.ok) {
-          alert('保存成功！');
+          const result = await response.json();
+          if (result.commitSuccess === false) {
+            if (result.commitError) {
+              alert('保存成功，但提交失败：' + result.commitError + '\n\n数据库已更新，但本地文件可能未同步。');
+            } else {
+              alert('保存成功，但未检测到文件变化，因此未创建新的 commit。\n\n如果确实有变化，请使用"同步本地文件"按钮。');
+            }
+          } else {
+            alert('保存成功并已提交！');
+          }
           location.reload();
         } else {
           const error = await response.json();
@@ -631,9 +661,9 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
 
       docItems.forEach((li, index) => {
         const itemDiv = li.querySelector('.doc-tree-item');
-        const did = parseInt(itemDiv.dataset.did);
+        const docId = itemDiv.dataset.docId || '';
         const docStructure = {
-          did: did,
+          docId: docId,
           order: index,
           subDocs: []
         };
@@ -661,7 +691,7 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
           const placeholderDoc = {
             type: placeholder.type,
             title: placeholder.title,
-            parentDid: null, // 根层级
+            parentDocId: null, // 根层级
             parentPlaceholderId: null,
             placeholderId: placeholder.id, // 添加 placeholderId 用于后端映射
             order: index
@@ -701,17 +731,17 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
                 const exists = structure.pendingCreates.some(p => p.placeholderId === subDoc.placeholderId);
                 if (!exists) {
                   // 确定父节点 ID
-                  let actualParentDid = null;
+                  let actualParentDocId = null;
                   let actualParentPlaceholderId = null;
                   
                   if (placeholder.parentPlaceholderId) {
                     actualParentPlaceholderId = placeholder.parentPlaceholderId;
-                  } else if (placeholder.parentDid) {
-                    actualParentDid = placeholder.parentDid;
+                  } else if (placeholder.parentDocId) {
+                    actualParentDocId = placeholder.parentDocId;
                   } else {
                     // 从当前结构获取
-                    if (structure.did) {
-                      actualParentDid = structure.did;
+                    if (structure.docId) {
+                      actualParentDocId = structure.docId;
                     } else if (structure.placeholderId) {
                       actualParentPlaceholderId = structure.placeholderId;
                     }
@@ -720,7 +750,7 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
                   structure.pendingCreates.push({
                     type: placeholder.type,
                     title: placeholder.title,
-                    parentDid: actualParentDid,
+                    parentDocId: actualParentDocId,
                     parentPlaceholderId: actualParentPlaceholderId,
                     placeholderId: placeholder.id,
                     order: subDoc.order
@@ -768,21 +798,21 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
         const type = itemDiv.dataset.type;
 
         if (type === 'doc') {
-          const did = parseInt(itemDiv.dataset.did);
+          const docId = itemDiv.dataset.docId || '';
           const subDoc = {
-            did: did,
+            docId: docId,
             order: index,
             subDocs: []
           };
           collectChildren(childLi, subDoc);
           parentStructure.subDocs.push(subDoc);
         } else if (type === 'block') {
-          const bid = parseInt(itemDiv.dataset.bid);
+          const blockDocId = itemDiv.dataset.docId || '';
           if (!parentStructure.blocks) {
             parentStructure.blocks = [];
           }
           const blockData = {
-            bid: bid,  // bid 在整个 repo 内唯一，不需要 did
+            docId: blockDocId,
             order: index
           };
           parentStructure.blocks.push(blockData);
@@ -802,8 +832,8 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
               actualParentDid = placeholder.parentDid;
             } else {
               // 从 parentStructure 获取
-              if (parentStructure.did) {
-                actualParentDid = parentStructure.did;
+              if (parentStructure.docId) {
+                actualParentDocId = parentStructure.docId;
               } else if (parentStructure.placeholderId) {
                 actualParentPlaceholderId = parentStructure.placeholderId;
               }
@@ -925,23 +955,24 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
 
     // 渲染树节点
     function renderTreeNode(doc, isRoot = false) {
+      const docId = doc.docId ? (typeof doc.docId === 'string' ? doc.docId : doc.docId.toString()) : '';
       const hasChildren = doc.subDocs && doc.subDocs.length > 0;
-      const hasBlocks = allDocsWithBlocks[doc.did] && allDocsWithBlocks[doc.did].length > 0;
-      const isActiveDoc = doc.did === currentDid;
+      const hasBlocks = docId && allDocsWithBlocks[docId] && allDocsWithBlocks[docId].length > 0;
+      const isActiveDoc = docId === currentDocId;
       
       const li = document.createElement('li');
       li.dataset.type = 'doc';
-      li.dataset.did = doc.did;
+      li.dataset.docId = docId;
       
       // 文档节点
       const itemDiv = document.createElement('div');
       itemDiv.className = `doc-tree-item${isActiveDoc ? ' active' : ''}`;
       itemDiv.dataset.type = 'doc';
-      itemDiv.dataset.did = doc.did;
+      itemDiv.dataset.docId = docId;
       itemDiv.dataset.rpid = repo.rpid;
       
       // 检查是否在删除列表中
-      const isDeleted = pendingDeletes.some(d => d.type === 'doc' && d.did === doc.did);
+      const isDeleted = pendingDeletes.some(d => d.type === 'doc' && d.docId === docId);
       if (isDeleted) {
         itemDiv.style.opacity = '0.3';
         itemDiv.style.textDecoration = 'line-through';
@@ -960,7 +991,7 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
         itemDiv.ondblclick = (e) => {
           e.stopPropagation();
           const currentTitle = doc.title;
-          showRenameDialog('doc', doc.did, undefined, currentTitle);
+          showRenameDialog('doc', docId, undefined, currentTitle);
         };
       }
       
@@ -989,7 +1020,7 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
       const link = document.createElement('a');
       link.href = doc.url;
       // 检查是否有待更新的标题
-      const pendingUpdate = pendingUpdates.find(u => u.type === 'doc' && u.did === doc.did);
+      const pendingUpdate = pendingUpdates.find(u => u.type === 'doc' && u.docId === docId);
       link.textContent = pendingUpdate ? pendingUpdate.title : doc.title;
       if (!isEditMode) {
         link.onclick = (e) => {
@@ -1009,26 +1040,28 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
         childrenDiv.className = 'doc-tree-children expanded';
         const childrenUl = document.createElement('ul');
         
-        // 渲染子文档
+        // 渲染子文档（现在所有doc都是根doc，不应该有子文档）
         if (hasChildren) {
           // 过滤掉已删除的子文档
-          const visibleSubDocs = doc.subDocs.filter(subDoc => 
-            !pendingDeletes.some(d => d.type === 'doc' && d.did === subDoc.did)
-          );
+          const visibleSubDocs = doc.subDocs.filter(subDoc => {
+            const subDocId = subDoc.docId ? (typeof subDoc.docId === 'string' ? subDoc.docId : subDoc.docId.toString()) : '';
+            return !pendingDeletes.some(d => d.type === 'doc' && d.docId === subDocId);
+          });
           visibleSubDocs.forEach(subDoc => {
             childrenUl.appendChild(renderTreeNode(subDoc));
           });
         }
         
         // 渲染 blocks
-        if (hasBlocks) {
-          const blocks = allDocsWithBlocks[doc.did];
+        if (hasBlocks && docId) {
+          const blocks = allDocsWithBlocks[docId];
           // 过滤掉已删除的 blocks
-          const visibleBlocks = blocks.filter(block => 
-            !pendingDeletes.some(d => d.type === 'block' && d.bid === block.bid)
-          );
+          const visibleBlocks = blocks.filter(block => {
+            const blockDocId = block.docId ? (typeof block.docId === 'string' ? block.docId : block.docId.toString()) : '';
+            return !pendingDeletes.some(d => d.type === 'block' && d.docId === blockDocId);
+          });
           visibleBlocks.forEach(block => {
-            childrenUl.appendChild(renderBlockNode(block, doc.did));
+            childrenUl.appendChild(renderBlockNode(block, docId));
           });
         }
         
@@ -1040,23 +1073,24 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
     }
 
     // 渲染 block 节点
-    function renderBlockNode(block, parentDid) {
+    function renderBlockNode(block, parentDocId) {
+      const blockDocId = block.docId ? (typeof block.docId === 'string' ? block.docId : block.docId.toString()) : '';
       const blockLi = document.createElement('li');
       blockLi.dataset.type = 'block';
-      blockLi.dataset.bid = block.bid;
-      blockLi.dataset.did = parentDid;
+      blockLi.dataset.docId = blockDocId;
+      blockLi.dataset.parentDocId = parentDocId;
 
       const blockDiv = document.createElement('div');
       // 高亮当前 block
-      const isActiveBlock = (parentDid === currentDid && block.bid === currentBid);
+      const isActiveBlock = (parentDocId === currentDocId && blockDocId === currentBlockDocId);
       blockDiv.className = `doc-tree-item doc-tree-block${isActiveBlock ? ' active' : ''}`;
       blockDiv.dataset.type = 'block';
-      blockDiv.dataset.bid = block.bid;
-      blockDiv.dataset.did = parentDid;
+      blockDiv.dataset.docId = blockDocId;
+      blockDiv.dataset.parentDocId = parentDocId;
       blockDiv.dataset.rpid = repo.rpid;
       
       // 检查是否在删除列表中
-      const isDeleted = pendingDeletes.some(d => d.type === 'block' && d.bid === block.bid);
+      const isDeleted = pendingDeletes.some(d => d.type === 'block' && d.docId === blockDocId);
       if (isDeleted) {
         blockDiv.style.opacity = '0.3';
         blockDiv.style.textDecoration = 'line-through';
@@ -1075,7 +1109,7 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
         blockDiv.ondblclick = (e) => {
           e.stopPropagation();
           const currentTitle = block.title;
-          showRenameDialog('block', undefined, block.bid, currentTitle);
+          showRenameDialog('block', undefined, blockDocId, currentTitle);
         };
       }
       
@@ -1096,7 +1130,7 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
       const blockLink = document.createElement('a');
       blockLink.href = block.url;
       // 检查是否有待更新的标题
-      const pendingUpdate = pendingUpdates.find(u => u.type === 'block' && u.bid === block.bid);
+      const pendingUpdate = pendingUpdates.find(u => u.type === 'block' && u.docId === blockDocId);
       blockLink.textContent = pendingUpdate ? pendingUpdate.title : block.title;
       blockLabel.appendChild(blockLink);
       blockDiv.appendChild(blockLabel);
@@ -1169,8 +1203,7 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
       draggedElement = e.currentTarget;
       draggedData = {
         type: e.currentTarget.dataset.type,
-        did: e.currentTarget.dataset.did,
-        bid: e.currentTarget.dataset.bid,
+        docId: e.currentTarget.dataset.docId || '',
         rpid: e.currentTarget.dataset.rpid,
         placeholderId: e.currentTarget.dataset.placeholderId
       };
@@ -1251,29 +1284,29 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
 
         const resolveParentFromLi = (li) => {
           const parentLi = li.parentElement?.closest('li');
-          if (!parentLi) return { parentDid: null, parentPlaceholderId: null };
+          if (!parentLi) return { parentDocId: null, parentPlaceholderId: null };
           const info = parentLi.querySelector(':scope > .doc-tree-item');
-          if (info?.dataset?.did) {
-            return { parentDid: parseInt(info.dataset.did, 10), parentPlaceholderId: null };
+          if (info?.dataset?.docId) {
+            return { parentDocId: info.dataset.docId, parentPlaceholderId: null };
           }
           if (info?.dataset?.placeholderId) {
-            return { parentDid: null, parentPlaceholderId: info.dataset.placeholderId };
+            return { parentDocId: null, parentPlaceholderId: info.dataset.placeholderId };
           }
-          return { parentDid: null, parentPlaceholderId: null };
+          return { parentDocId: null, parentPlaceholderId: null };
         };
 
         if (dropPosition === 'inside' && isTargetDocLike) {
           const targetPlaceholderId = target.dataset.placeholderId;
-          const targetDid = target.dataset.did;
+          const targetDocId = target.dataset.docId;
 
           if (targetPlaceholderId) {
             placeholder.parentPlaceholderId = targetPlaceholderId;
-            placeholder.parentDid = null;
-          } else if (targetDid) {
-            placeholder.parentDid = parseInt(targetDid, 10);
+            placeholder.parentDocId = null;
+          } else if (targetDocId) {
+            placeholder.parentDocId = targetDocId;
             placeholder.parentPlaceholderId = null;
           } else {
-            placeholder.parentDid = null;
+            placeholder.parentDocId = null;
             placeholder.parentPlaceholderId = null;
           }
 
@@ -1426,7 +1459,7 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
     }
 
     // 显示重命名对话框（用于现有文档和块）
-    function showRenameDialog(type, did, bid, currentTitle) {
+    function showRenameDialog(type, docId, blockDocId, currentTitle) {
       const dialog = document.createElement('div');
       dialog.className = 'title-input-dialog';
       dialog.innerHTML = `
@@ -1460,18 +1493,13 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
         // 添加到待更新列表
         const updateItem = {
           type: type,
-          title: newTitle
+          title: newTitle,
+          docId: type === 'doc' ? docId : blockDocId
         };
-        if (type === 'doc' && did) {
-          updateItem.did = did;
-        } else if (type === 'block' && bid) {
-          updateItem.bid = bid;
-        }
 
         // 检查是否已存在，如果存在则更新，否则添加
         const existingIndex = pendingUpdates.findIndex(u => 
-          u.type === type && 
-          ((type === 'doc' && u.did === did) || (type === 'block' && u.bid === bid))
+          u.type === type && u.docId === updateItem.docId
         );
         
         if (existingIndex >= 0) {
@@ -1481,10 +1509,9 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
         }
 
         // 立即更新显示
+        const targetDocId = type === 'doc' ? docId : blockDocId;
         const itemDiv = document.querySelector(
-          type === 'doc' 
-            ? `.doc-tree-item[data-type="doc"][data-did="${did}"]`
-            : `.doc-tree-item[data-type="block"][data-bid="${bid}"]`
+          `.doc-tree-item[data-type="${type}"][data-doc-id="${targetDocId}"]`
         );
         if (itemDiv) {
           const label = itemDiv.querySelector('.doc-tree-label');
@@ -1516,7 +1543,7 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
     }
 
     // 显示标题输入对话框
-    function showTitleInputDialog(placeholderId, type, parentDid, draggedLi, targetLi) {
+    function showTitleInputDialog(placeholderId, type, parentDocId, draggedLi, targetLi) {
       const dialog = document.createElement('div');
       dialog.className = 'title-input-dialog';
       dialog.innerHTML = `
@@ -1543,9 +1570,9 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
         const placeholder = pendingCreates.find(p => p.id === placeholderId);
         if (placeholder) {
           placeholder.title = title;
-          // 如果 parentDid 是字符串（placeholderId），保留它，否则使用数字
-          placeholder.parentDid = typeof parentDid === 'string' ? parentDid : parentDid;
-          placeholder.parentPlaceholderId = typeof parentDid === 'string' ? parentDid : null;
+          // 如果 parentDocId 是字符串（placeholderId），保留它，否则使用 docId
+          placeholder.parentDocId = typeof parentDocId === 'string' ? parentDocId : parentDocId;
+          placeholder.parentPlaceholderId = typeof parentDocId === 'string' ? parentDocId : null;
         }
 
         // 重新渲染树，更新显示
@@ -1599,16 +1626,16 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
         if (!placeholder) return;
         
         // 确定父节点信息
-        let parentDid = null;
+        let parentDocId = null;
         if (placeholder.parentPlaceholderId) {
-          parentDid = placeholder.parentPlaceholderId;
+          parentDocId = placeholder.parentPlaceholderId;
         } else {
-          parentDid = placeholder.parentDid;
+          parentDocId = placeholder.parentDocId;
         }
         
         const type = placeholderDiv.dataset.type.replace('new-', '');
         const li = placeholderDiv.closest('li');
-        showTitleInputDialog(placeholderId, type, parentDid, li, null);
+        showTitleInputDialog(placeholderId, type, parentDocId, li, null);
       };
 
       // 拖拽事件
@@ -1666,7 +1693,11 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
       
       // 渲染已存在的 docs（过滤掉已删除的）
       docs.forEach(doc => {
-        const isDeleted = pendingDeletes.some(d => d.type === 'doc' && d.did === doc.did);
+        const docId = doc.docId ? (typeof doc.docId === 'string' ? doc.docId : doc.docId.toString()) : (doc.did ? doc.did.toString() : '');
+        const isDeleted = pendingDeletes.some(d => 
+          d.type === 'doc' && 
+          (d.docId === docId || (d.did && d.did.toString() === docId) || (doc.did && d.did === doc.did))
+        );
         if (!isDeleted) {
           rootUl.appendChild(renderTreeNode(doc, true));
         }
@@ -1687,12 +1718,12 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
       treeContainer.appendChild(rootUl);
 
       // 在所有 doc 节点下插入占位符
-      function insertPlaceholdersRecursive(liElement, parentDid, parentPlaceholderId) {
+      function insertPlaceholdersRecursive(liElement, parentDocId, parentPlaceholderId) {
         const placeholders = pendingCreates.filter(p => {
           if (parentPlaceholderId) {
             return p.parentPlaceholderId === parentPlaceholderId;
-          } else if (parentDid) {
-            return p.parentDid === parentDid && !p.parentPlaceholderId;
+          } else if (parentDocId) {
+            return p.parentDocId === parentDocId && !p.parentPlaceholderId;
           } else {
             return false;
           }
@@ -1711,8 +1742,8 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
             const itemDiv = childLi.querySelector('.doc-tree-item');
             if (itemDiv) {
               if (itemDiv.dataset.type === 'doc') {
-                const did = parseInt(itemDiv.dataset.did);
-                insertPlaceholdersRecursive(childLi, did, null);
+                const docId = itemDiv.dataset.docId || '';
+                insertPlaceholdersRecursive(childLi, docId, null);
               } else if (itemDiv.dataset.type === 'new-doc') {
                 const placeholderId = itemDiv.dataset.placeholderId;
                 insertPlaceholdersRecursive(childLi, null, placeholderId);
@@ -1727,8 +1758,8 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
         const itemDiv = li.querySelector('.doc-tree-item');
         if (itemDiv) {
           if (itemDiv.dataset.type === 'doc') {
-            const did = parseInt(itemDiv.dataset.did);
-            insertPlaceholdersRecursive(li, did, null);
+            const docId = itemDiv.dataset.docId || '';
+            insertPlaceholdersRecursive(li, docId, null);
           } else if (itemDiv.dataset.type === 'new-doc') {
             const placeholderId = itemDiv.dataset.placeholderId;
             insertPlaceholdersRecursive(li, null, placeholderId);
@@ -1737,7 +1768,7 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
       });
 
       // 自动展开包含当前 doc/block 的节点
-      if (currentDid || currentBid) {
+      if (currentDocId || currentBlockDocId) {
         expandToActive(treeContainer);
       }
     }
@@ -1917,4 +1948,116 @@ export default new AutoloadPage('repo_detail,repo_map,doc_detail,block_detail', 
       ev.preventDefault();
       pjax.request(ev.currentTarget.getAttribute('href')).then(() => window.scrollTo(0, 0));
     });
+    
+    // 同步本地文件功能
+    if (typeof window.syncLocalFiles !== 'function') {
+      window.syncLocalFiles = async function() {
+        const btn = document.getElementById('sync-local-btn');
+        const progressDiv = document.getElementById('sync-progress');
+        const statusDiv = document.getElementById('sync-status');
+        const progressBar = document.getElementById('sync-progress-bar');
+        const messageDiv = document.getElementById('sync-message');
+        
+        if (!btn || !progressDiv || !statusDiv || !progressBar || !messageDiv) {
+          return;
+        }
+        
+        // 禁用按钮
+        btn.disabled = true;
+        btn.textContent = '同步中...';
+        
+        // 显示进度条
+        progressDiv.style.display = 'block';
+        statusDiv.textContent = '正在启动同步...';
+        progressBar.style.width = '0%';
+        messageDiv.textContent = '';
+        
+        try {
+          // 获取当前分支
+          const branchSelect = document.getElementById('branch-select');
+          const currentBranch = branchSelect ? branchSelect.value : 'main';
+          
+          // 启动同步任务
+          const syncUrl = `/d/${repo.domainId}/base/repo/${repo.rpid}/branch/${currentBranch}/sync-local`;
+          const response = await fetch(syncUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          });
+          
+          if (!response.ok) {
+            throw new Error('启动同步失败');
+          }
+          
+          const { taskId } = await response.json();
+          
+          // 轮询获取进度
+          const pollInterval = setInterval(async () => {
+            try {
+              const statusResponse = await fetch(syncUrl);
+              if (!statusResponse.ok) {
+                throw new Error('获取进度失败');
+              }
+              
+              const status = await statusResponse.json();
+              
+              if (status.status === 'not_started') {
+                return; // 任务还未开始
+              }
+              
+              // 更新进度
+              const progress = status.progress || 0;
+              const total = status.total || 100;
+              const percent = Math.round((progress / total) * 100);
+              
+              progressBar.style.width = `${percent}%`;
+              statusDiv.textContent = status.current || '处理中...';
+              messageDiv.textContent = status.current || '';
+              
+              // 检查是否完成
+              if (status.status === 'completed') {
+                clearInterval(pollInterval);
+                statusDiv.textContent = '✓ 同步完成';
+                // 使用后端返回的实际消息
+                messageDiv.textContent = status.current || '同步完成';
+                progressBar.style.backgroundColor = '#28a745';
+                
+                // 3秒后刷新页面
+                setTimeout(() => {
+                  window.location.reload();
+                }, 3000);
+              } else if (status.status === 'error') {
+                clearInterval(pollInterval);
+                statusDiv.textContent = '✗ 同步失败';
+                messageDiv.textContent = status.error || '未知错误';
+                progressBar.style.backgroundColor = '#dc3545';
+                btn.disabled = false;
+                btn.textContent = '同步本地文件';
+              }
+            } catch (err) {
+              console.error('获取进度失败:', err);
+            }
+          }, 500); // 每500ms轮询一次
+          
+          // 30秒后超时
+          setTimeout(() => {
+            clearInterval(pollInterval);
+            if (progressBar.style.width !== '100%') {
+              statusDiv.textContent = '⚠ 同步超时';
+              messageDiv.textContent = '同步操作可能仍在进行中，请稍后刷新页面查看结果';
+              btn.disabled = false;
+              btn.textContent = '同步本地文件';
+            }
+          }, 30000);
+          
+        } catch (error) {
+          statusDiv.textContent = '✗ 启动失败';
+          messageDiv.textContent = error.message || '未知错误';
+          progressBar.style.backgroundColor = '#dc3545';
+          btn.disabled = false;
+          btn.textContent = '同步本地文件';
+        }
+      };
+    }
 });
