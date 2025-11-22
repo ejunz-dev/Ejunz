@@ -100,7 +100,7 @@ async function searchRepoContent(
     if (searchTypes === 'block' || searchTypes === 'both') {
         for (const doc of repoDocs) {
             try {
-                const blocks = await BlockModel.getByDid(domainId, doc.did, rpid, branch);
+                const blocks = await BlockModel.getByDocId(domainId, doc.docId, branch);
                 if (blocks && blocks.length > 0) {
                     for (const block of blocks) {
                         const titleMatch = block.title && (block.title.includes(searchTermTrimmed) || block.title.toLowerCase().includes(searchTermTrimmed.toLowerCase()));
@@ -1025,7 +1025,7 @@ export class RepoActivateMcpHandler extends Handler {
             );
             
             // 5. 将edge的eid关联到repo
-            await document.set(domainId, TYPE_RP, repo.docId, { edgeId: edge.eid });
+            await document.set(domainId, document.TYPE_REPO, repo.docId, { edgeId: edge.eid });
             
             this.response.body = { success: true, edgeId: edge.eid, token: token, toolsCount: tools.length };
         } catch (error: any) {
@@ -1449,7 +1449,7 @@ export class RepoDetailHandler extends Handler {
       
       const currentRepoBranch = (repo as any).currentBranch || 'main';
       if (requestedBranch !== currentRepoBranch) {
-        await document.set(domainId, TYPE_RP, repo.docId, { currentBranch: requestedBranch });
+        await document.set(domainId, document.TYPE_REPO, repo.docId, { currentBranch: requestedBranch });
         (repo as any).currentBranch = requestedBranch;
       }
       
@@ -1457,40 +1457,37 @@ export class RepoDetailHandler extends Handler {
       const repoDocs = repoDocsAll.filter(d => (d.branch || 'main') === requestedBranch);
       const rootDocs = repoDocs.filter(doc => doc.parentId === null);
   
-      const allDocsWithBlocks = {};
+      const allDocsWithBlocks: { [docId: string]: any[] } = {};
       for (const doc of repoDocs) {
-        const blocks = await BlockModel.getByDid(domainId, doc.did, rpid, requestedBranch);
+        const blocks = await BlockModel.getByDocId(domainId, doc.docId, requestedBranch);
         if (blocks && blocks.length > 0) {
-          allDocsWithBlocks[doc.did] = blocks.map(block => ({
+          allDocsWithBlocks[doc.docId.toString()] = blocks.map(block => ({
             ...block,
             url: this.url('block_detail_branch', {
               domainId,
               rpid: repo.rpid,
               branch: requestedBranch,
-              did: doc.did,
-              bid: block.bid
+              docId: block.docId.toString()
             })
           }));
         }
       }
 
-      const buildHierarchy = (parentId: number | null, docs: any[]) => {
-        return docs
-          .filter(doc => doc.parentId === parentId)
-          .map(doc => ({
-            ...doc,
-            url: this.url('doc_detail_branch', {
-              domainId,
-              rpid: repo.rpid,
-              branch: requestedBranch,
-              did: doc.did
-            }),
-            subDocs: buildHierarchy(doc.did, docs)
-          }));
-      };
+      // 现在所有doc都是repo的直接子项（parentId都是null），不再有层级结构
+      // 但为了兼容前端可能需要的结构，我们仍然返回一个扁平列表
+      const docsList = repoDocs.map(doc => ({
+        ...doc,
+        url: this.url('doc_detail_branch', {
+          domainId,
+          rpid: repo.rpid,
+          branch: requestedBranch,
+          docId: doc.docId ? doc.docId.toString() : ''
+        })
+      }));
   
-      const docHierarchy = {};
-      docHierarchy[rpid] = buildHierarchy(null, repoDocs);
+      // 为了兼容，仍然构建一个docHierarchy结构（但所有doc都在根层级）
+      const docHierarchy: any = {};
+      docHierarchy[rpid] = docsList;
   
       let branches: string[] = Array.isArray((repo as any).branches)
         ? ((repo as any).branches as string[])
@@ -1533,8 +1530,30 @@ export class RepoDetailHandler extends Handler {
           gitStatus = null;
         }
       } else {
+        // 即使数据库中没有githubRepo，也尝试从本地git仓库获取remote信息
         try {
           gitStatus = await getGitStatus(domainId, repo.rpid, requestedBranch);
+          // 如果从本地git仓库检测到remote，更新数据库中的githubRepo字段
+          if (gitStatus && gitStatus.hasRemote) {
+            try {
+              const repoGitPath = getRepoGitPath(domainId, repo.rpid);
+              const { stdout: remoteUrl } = await exec('git remote get-url origin', { cwd: repoGitPath });
+              if (remoteUrl && remoteUrl.trim()) {
+                // 清理URL，移除token部分（如果存在）
+                let cleanUrl = remoteUrl.trim();
+                if (cleanUrl.includes('@github.com')) {
+                  cleanUrl = cleanUrl.replace(/https:\/\/[^@]+@github\.com\//, 'https://github.com/');
+                }
+                await document.set(domainId, document.TYPE_REPO, repo.docId, {
+                  githubRepo: cleanUrl,
+                });
+                // 更新内存中的repo对象
+                (repo as any).githubRepo = cleanUrl;
+              }
+            } catch (updateErr) {
+              console.error('Failed to update githubRepo from local git:', updateErr);
+            }
+          }
         } catch (err) {
           console.error('Failed to get local git status:', err);
           gitStatus = null;
@@ -1570,22 +1589,29 @@ export class RepoDetailHandler extends Handler {
           searchResult.results.map(async (result) => {
             let url = '';
             if (result.type === 'doc') {
+              // 使用targetDocId（ObjectId）来生成URL
               url = this.url('doc_detail_branch', {
                 domainId,
                 rpid,
                 branch: requestedBranch,
-                did: result.targetId
+                docId: result.targetDocId ? result.targetDocId.toString() : ''
               });
             } else {
-              const block = await BlockModel.get(domainId, { rpid, bid: result.targetId, branch: requestedBranch });
-              if (block) {
-                url = this.url('block_detail_branch', {
-                  domainId,
-                  rpid,
-                  branch: requestedBranch,
-                  did: block.did,
-                  bid: result.targetId
-                });
+              // block使用targetDocId（ObjectId）来查询
+              if (result.targetDocId) {
+                try {
+                  const block = await BlockModel.get(domainId, result.targetDocId);
+                  if (block && (block.branch || 'main') === requestedBranch) {
+                    url = this.url('block_detail_branch', {
+                      domainId,
+                      rpid,
+                      branch: requestedBranch,
+                      docId: block.docId.toString()
+                    });
+                  }
+                } catch (e) {
+                  console.error(`Error getting block: ${e}`);
+                }
               }
             }
             return {
@@ -1718,11 +1744,11 @@ export class RepoDetailHandler extends Handler {
         return result;
       };
 
-      const allBlocksMap: { [did: number]: BKDoc[] } = {};
+      const allBlocksMap: { [docId: string]: BKDoc[] } = {};
       for (const doc of repoDocs) {
-        const blocks = await BlockModel.getByDid(domainId, doc.did, rpid, branch);
+        const blocks = await BlockModel.getByDocId(domainId, doc.docId, branch);
         if (blocks && blocks.length > 0) {
-          allBlocksMap[doc.did] = blocks.sort((a, b) => (a.bid || 0) - (b.bid || 0));
+          allBlocksMap[doc.docId.toString()] = blocks;
         }
       }
 
@@ -1847,13 +1873,12 @@ export class RepoStudyHandler extends Handler {
         // 构建单元列表，每个doc为一个单元，包含其下的所有blocks
         const units: any[] = [];
         for (const doc of repoDocs) {
-            const blocks = await BlockModel.getByDid(domainId, doc.did, rpid, requestedBranch);
+            const blocks = await BlockModel.getByDocId(domainId, doc.docId, requestedBranch);
             if (blocks && blocks.length > 0) {
                 units.push({
-                    did: doc.did,
+                    docId: doc.docId.toString(),
                     docTitle: doc.title,
                     blocks: blocks
-                        .sort((a, b) => (a.bid || 0) - (b.bid || 0))
                         .map(block => ({
                             bid: block.bid,
                             title: block.title,
@@ -1922,22 +1947,22 @@ export class RepoDocHandler extends Handler {
 export class DocDetailHandler extends DocHandler {
     @param('rpid', Types.Int)
     @param('branch', Types.String, true)
-    @param('did', Types.Int)
-    async get(domainId: string, rpid: number, branch: string | undefined, did: number) {
-        if (!rpid || !did) {
-            throw new NotFoundError(`Invalid request: rpid or did is missing`);
+    @param('docId', Types.ObjectId)
+    async get(domainId: string, rpid: number, branch: string | undefined, docId: ObjectId) {
+        if (!rpid || !docId) {
+            throw new NotFoundError(`Invalid request: rpid or docId is missing`);
         }
 
         const repo = await RepoModel.getRepoByRpid(domainId, rpid);
         if (!repo) throw new NotFoundError(`Repo not found`);
         if (!branch || !String(branch).trim()) {
-            this.response.redirect = this.url('doc_detail_branch', { domainId, rpid, branch: repo.currentBranch || 'main', did });
+            this.response.redirect = this.url('doc_detail_branch', { domainId, rpid, branch: repo.currentBranch || 'main', docId });
             return;
         }
 
-        const ddoc = await DocModel.get(domainId, { rpid, did } as any);
+        const ddoc = await DocModel.get(domainId, docId);
         if (!ddoc) {
-            throw new NotFoundError(`Doc with rpid ${rpid} and did ${did} not found.`);
+            throw new NotFoundError(`Doc with docId ${docId} not found.`);
         }
         if (Array.isArray(ddoc.rpid)) {
             ddoc.rpid = ddoc.rpid[0]; 
@@ -1949,45 +1974,39 @@ export class DocDetailHandler extends DocHandler {
         const repoDocsAll = await RepoModel.getDocsByRepo(domainId, ddoc.rpid);
         const repoDocs = repoDocsAll.filter(doc => (doc.branch || 'main') === currentBranch);
 
-        const allDocsWithBlocks = {};
+        // 构建所有doc和block的关系，通过UiContext传递
+        const allDocsWithBlocks: { [docId: string]: any[] } = {};
         for (const doc of repoDocs) {
-          const docBlocks = await BlockModel.getByDid(domainId, doc.did, ddoc.rpid, currentBranch);
+          const docBlocks = await BlockModel.getByDocId(domainId, doc.docId, currentBranch);
           if (docBlocks && docBlocks.length > 0) {
-            allDocsWithBlocks[doc.did] = docBlocks.map(block => ({
+            allDocsWithBlocks[doc.docId.toString()] = docBlocks.map(block => ({
               ...block,
               url: this.url('block_detail_branch', {
                 domainId,
                 rpid: ddoc.rpid,
                 branch: currentBranch,
-                did: doc.did,
-                bid: block.bid
+                docId: block.docId.toString()
               })
             }));
           }
         }
 
-        const buildHierarchy = (parentId: number | null, docs: any[]) => {
-          return docs
-            .filter(doc => doc.parentId === parentId)
-            .map(doc => ({
-              ...doc,
-              url: this.url('doc_detail_branch', {
-                domainId,
-                rpid: ddoc.rpid,
-                branch: currentBranch,
-                did: doc.did
-              }),
-              subDocs: buildHierarchy(doc.did, docs)
-            }));
-        };
-    
-        const docHierarchy = {};
-        docHierarchy[ddoc.rpid] = buildHierarchy(null, repoDocs);
+        // 获取当前doc的blocks
+        const blocks = await BlockModel.getByDocId(domainId, docId, currentBranch);
 
-        const blocks = await BlockModel.getByDid(domainId, ddoc.did, ddoc.rpid, currentBranch);
+        // 构建doc列表（扁平结构，所有doc都是repo的直接子项）
+        const docsList = repoDocs.map(doc => ({
+          ...doc,
+          url: this.url('doc_detail_branch', {
+            domainId,
+            rpid: ddoc.rpid,
+            branch: currentBranch,
+            docId: doc.docId.toString()
+          })
+        }));
 
-        this.UiContext.docHierarchy = docHierarchy;
-        this.UiContext.allDocsWithBlocks = allDocsWithBlocks;
+        this.UiContext.docsList = docsList; // 所有doc的列表
+        this.UiContext.allDocsWithBlocks = allDocsWithBlocks; // docId -> blocks的映射
         this.UiContext.repo = {
           domainId,
           rpid: ddoc.rpid,
@@ -2003,7 +2022,6 @@ export class DocDetailHandler extends DocHandler {
             udoc,
             blocks,
             repoDocs,
-            docHierarchy,
             currentBranch,
         };
     }
@@ -2071,34 +2089,18 @@ export class DocCreateHandler extends DocHandler {
         const parsedRpid = rpidArray[0];
         const repo = await RepoModel.getRepoByRpid(domainId, parsedRpid);
         const effectiveBranch = (branch || repo?.currentBranch || 'main');
-        const did = await DocModel.generateNextDid(domainId, parsedRpid, effectiveBranch);
-        let docId;
-        if (parentId) {
-            docId = await DocModel.addSubdocNode(
-                domainId,
-                [parsedRpid],
-                did,
-                parentId,
-                this.user._id,
-                title,
-                '',
-                this.request.ip,
-                effectiveBranch
-            );
-        } else {
-            docId = await DocModel.addRootNode(
-                domainId,
-                parsedRpid,
-                did,
-                this.user._id,
-                title,
-                '',
-                this.request.ip,
-                effectiveBranch
-            );
-        }
-        this.response.body = { docId, did };
-        this.response.redirect = this.url('doc_detail_branch', { uid: this.user._id, rpid: parsedRpid, branch: effectiveBranch, did });
+        // 现在所有doc都是根doc（parentId: null），不再有子doc
+        const docId = await DocModel.addRootNode(
+            domainId,
+            parsedRpid,
+            this.user._id,
+            title,
+            '',
+            this.request.ip,
+            effectiveBranch
+        );
+        this.response.body = { docId };
+        this.response.redirect = this.url('doc_detail_branch', { uid: this.user._id, rpid: parsedRpid, branch: effectiveBranch, docId: docId.toString() });
     }
 
 }
@@ -2110,11 +2112,15 @@ export class DocCreateHandler extends DocHandler {
 export class RepoStructureUpdateHandler extends Handler {
     @param('rpid', Types.Int)
     @param('branch', Types.String, true)
-    async post(domainId: string, rpid: number) {
-        const { structure, creates, deletes, updates, branch, commitMessage } = this.request.body;
-        const effectiveBranch = (branch || this.args?.branch || 'main');
+    async post(domainId: string, rpid: number, branch?: string) {
+        const { structure, creates, deletes, updates, commitMessage } = this.request.body;
+        // 优先使用URL参数中的branch，然后是request body中的branch，最后是main
+        const effectiveBranch = (this.args?.branch || this.request.body?.branch || branch || 'main');
+        
+        console.log(`[RepoStructureUpdate] Received request: structure=${JSON.stringify(structure ? { docsCount: structure.docs?.length || 0, hasDocs: !!structure.docs } : null)}, creates=${creates?.length || 0}, deletes=${deletes?.length || 0}, updates=${updates?.length || 0}`);
         
         if (!structure || !structure.docs) {
+            console.error(`[RepoStructureUpdate] Invalid structure:`, { structure, hasDocs: structure?.docs });
             throw new Error('Invalid structure');
         }
 
@@ -2124,6 +2130,8 @@ export class RepoStructureUpdateHandler extends Handler {
             : defaultPrefix;
 
         try {
+            console.log(`[RepoStructureUpdate] Starting update: deletes=${deletes?.length || 0}, creates=${creates?.length || 0}, updates=${updates?.length || 0}, structure.docs=${structure?.docs?.length || 0}`);
+            
             if (deletes && Array.isArray(deletes) && deletes.length > 0) {
                 await this.deleteItems(domainId, rpid, deletes, effectiveBranch);
             }
@@ -2133,14 +2141,55 @@ export class RepoStructureUpdateHandler extends Handler {
             if (updates && Array.isArray(updates) && updates.length > 0) {
                 await this.updateItems(domainId, rpid, updates, effectiveBranch);
             }
-            await this.updateDocStructure(domainId, rpid, structure.docs, effectiveBranch);
-            try {
-                await commitRepoChanges(domainId, rpid, effectiveBranch, finalCommitMessage, this.user._id, this.user.uname || '');
-            } catch (err) {
-                console.error('Failed to commit changes:', err);
+            
+            if (structure && structure.docs && Array.isArray(structure.docs)) {
+                console.log(`[RepoStructureUpdate] Calling updateDocStructure with ${structure.docs.length} docs`);
+                await this.updateDocStructure(domainId, rpid, structure.docs, effectiveBranch);
+            } else {
+                console.warn(`[RepoStructureUpdate] structure.docs is missing or invalid:`, structure);
             }
             
-            this.response.body = { success: true, branch: effectiveBranch };
+            // 提交更改，并验证是否成功
+            let commitSuccess = false;
+            let commitError: any = null;
+            try {
+                await commitRepoChanges(domainId, rpid, effectiveBranch, finalCommitMessage, this.user._id, this.user.uname || '');
+                
+                // 验证commit是否成功
+                const repoGitPath = getRepoGitPath(domainId, rpid);
+                try {
+                    const { stdout: logOutput } = await exec(`git log -1 --oneline ${effectiveBranch}`, { cwd: repoGitPath });
+                    if (logOutput.trim()) {
+                        commitSuccess = true;
+                        console.log(`[RepoStructureUpdate] Commit successful: ${logOutput.trim()}`);
+                    }
+                } catch (verifyErr) {
+                    console.warn(`[RepoStructureUpdate] Could not verify commit:`, verifyErr);
+                    // 检查是否有未提交的更改
+                    try {
+                        const { stdout: statusOutput } = await exec('git status --porcelain', { cwd: repoGitPath });
+                        if (statusOutput.trim()) {
+                            console.warn(`[RepoStructureUpdate] There are uncommitted changes after commit attempt`);
+                        } else {
+                            // 没有未提交的更改，可能确实没有变化需要提交
+                            commitSuccess = true;
+                            console.log(`[RepoStructureUpdate] No changes to commit (structure update may not have changed files)`);
+                        }
+                    } catch (statusErr) {
+                        console.error(`[RepoStructureUpdate] Could not check git status:`, statusErr);
+                    }
+                }
+            } catch (err: any) {
+                commitError = err;
+                console.error('[RepoStructureUpdate] Failed to commit changes:', err);
+            }
+            
+            this.response.body = { 
+                success: true, 
+                branch: effectiveBranch,
+                commitSuccess,
+                commitError: commitError ? commitError.message : null
+            };
         } catch (error: any) {
             console.error(`Failed to update structure: ${error.message}`);
             throw error;
@@ -2149,56 +2198,87 @@ export class RepoStructureUpdateHandler extends Handler {
 
     async updateItems(domainId: string, rpid: number, updates: any[], branch: string) {
         for (const updateItem of updates) {
-            const { type, did, bid, title } = updateItem;
+            const { type, did, docId, title } = updateItem; // 改为使用docId而不是bid
             
             if (type === 'doc' && did && title) {
-                const docs = await document.getMulti(domainId, TYPE_DC, { rpid, did, branch }).limit(1).toArray();
+                const docs = await document.getMulti(domainId, document.TYPE_DOC, { rpid, did, branch }).limit(1).toArray();
                 const doc = docs[0] || null;
                 if (doc) {
-                    await document.set(domainId, TYPE_DC, doc.docId, {
+                    await document.set(domainId, document.TYPE_DOC, doc.docId, {
                         title,
                         content: doc.content,
                         branch: branch,
                         updateAt: new Date()
                     });
                 }
-            } else if (type === 'block' && bid && title) {
-                const blocks = await document.getMulti(domainId, TYPE_BK, { rpid, bid, branch }).limit(1).toArray();
-                const block = blocks[0] || null;
+            } else if (type === 'block' && docId && title) {
+                // block现在使用docId（ObjectId）作为标识
+                const block = await BlockModel.get(domainId, new ObjectId(docId));
                 if (block) {
-                    await document.set(domainId, TYPE_BK, block.docId, {
-                        title,
-                        content: block.content,
-                        branch: branch,
-                        updateAt: new Date()
-                    });
+                    const blockBranch = (block as any).branch || 'main';
+                    if (blockBranch === branch || (branch === 'main' && !(block as any).branch)) {
+                        await document.set(domainId, document.TYPE_BLOCK, block.docId, {
+                            title,
+                            content: block.content,
+                            branch: branch,
+                            updateAt: new Date()
+                        });
+                    }
                 }
             }
         }
     }
 
     async deleteItems(domainId: string, rpid: number, deletes: any[], branch: string) {
+        console.log(`[deleteItems] Deleting ${deletes.length} items, branch=${branch}`);
         for (const deleteItem of deletes) {
-            const { type, did, bid } = deleteItem;
+            const { type, did, docId } = deleteItem; // 改为使用docId而不是bid
+            console.log(`[deleteItems] Processing delete: type=${type}, did=${did}, docId=${docId}`);
             
             if (type === 'doc' && did) {
-                const docs = await document.getMulti(domainId, TYPE_DC, { rpid, did, branch }).limit(1).toArray();
-                const doc = docs[0] || null;
+                // 使用DocModel.get查询，它会处理rpid和did
+                const doc = await DocModel.get(domainId, { rpid, did });
+                
                 if (doc) {
-                    await DocModel.deleteNode(domainId, doc.docId);
+                    // 验证branch是否匹配（如果doc有branch字段，则必须匹配；如果没有，则认为是main分支）
+                    const docBranch = (doc as any).branch || 'main';
+                    if (docBranch === branch || (branch === 'main' && (!(doc as any).branch || (doc as any).branch === ''))) {
+                        console.log(`[deleteItems] Deleting doc did=${did}, docId=${doc.docId}, branch=${docBranch}`);
+                        await DocModel.deleteNode(domainId, doc.docId);
+                        console.log(`[deleteItems] Successfully deleted doc did=${did}`);
+                    } else {
+                        console.warn(`[deleteItems] Doc branch mismatch: did=${did}, expected=${branch}, actual=${docBranch}, skipping delete`);
+                    }
+                } else {
+                    console.warn(`[deleteItems] Doc not found: did=${did}, rpid=${rpid}, branch=${branch}`);
                 }
-            } else if (type === 'block' && bid) {
-                const blocks = await document.getMulti(domainId, TYPE_BK, { rpid, bid, branch }).limit(1).toArray();
-                const block = blocks[0] || null;
+            } else if (type === 'block' && docId) {
+                // block现在使用docId（ObjectId）作为标识
+                const block = await BlockModel.get(domainId, new ObjectId(docId));
+                
                 if (block) {
-                    await BlockModel.delete(domainId, block.docId);
+                    // 验证branch是否匹配
+                    const blockBranch = (block as any).branch || 'main';
+                    if (blockBranch === branch || (branch === 'main' && (!(block as any).branch || (block as any).branch === ''))) {
+                        console.log(`[deleteItems] Deleting block docId=${docId}, branch=${blockBranch}`);
+                        await BlockModel.delete(domainId, block.docId);
+                        console.log(`[deleteItems] Successfully deleted block docId=${docId}`);
+                    } else {
+                        console.warn(`[deleteItems] Block branch mismatch: docId=${docId}, expected=${branch}, actual=${blockBranch}, skipping delete`);
+                    }
+                } else {
+                    console.warn(`[deleteItems] Block not found: docId=${docId}, branch=${branch}`);
                 }
+            } else {
+                console.warn(`[deleteItems] Invalid delete item: type=${type}, did=${did}, docId=${docId}`);
             }
         }
+        console.log(`[deleteItems] Finished deleting items`);
     }
 
     async createItems(domainId: string, rpid: number, creates: any[], branch: string) {
-        const placeholderMap: { [key: string]: number } = {};
+        // placeholderMap现在存储docId的字符串形式
+        const placeholderMap: { [key: string]: string } = {};
         const docCreates = creates.filter(c => c.type === 'doc');
         let hasNewDocs = true;
         let round = 0;
@@ -2227,31 +2307,19 @@ export class RepoStructureUpdateHandler extends Handler {
                     canCreate = true;
                 }
                 if (!canCreate) continue;
-                const did = await DocModel.generateNextDid(domainId, rpid, branch);
-                const docId = actualParentDid 
-                    ? await DocModel.addSubdocNode(
-                        domainId,
-                        [rpid],
-                        did,
-                        actualParentDid,
-                        this.user._id,
-                        title.trim(),
-                        '',
-                        this.request.ip,
-                        branch
-                    )
-                    : await DocModel.addRootNode(
-                        domainId,
-                        rpid,
-                        did,
-                        this.user._id,
-                        title.trim(),
-                        '',
-                        this.request.ip,
-                        branch
-                    );
+                // 所有doc都是repo的直接子项，parentId都是null
+                const docId = await DocModel.addRootNode(
+                    domainId,
+                    rpid,
+                    this.user._id,
+                    title.trim(),
+                    '',
+                    this.request.ip,
+                    branch
+                );
                 if (placeholderId) {
-                    placeholderMap[placeholderId] = did;
+                    // placeholderMap现在存储docId（ObjectId的字符串形式）
+                    placeholderMap[placeholderId] = docId.toString();
                 }
                 hasNewDocs = true;
             }
@@ -2260,17 +2328,48 @@ export class RepoStructureUpdateHandler extends Handler {
         for (const create of blockCreates) {
             const { title, parentDid, parentPlaceholderId } = create;
             if (!title || !title.trim()) continue;
-            let actualParentDid: number | null = null;
+            let actualParentDocId: ObjectId | null = null;
             if (parentPlaceholderId) {
-                actualParentDid = placeholderMap[parentPlaceholderId];
+                const parentIdStr = placeholderMap[parentPlaceholderId];
+                if (parentIdStr) {
+                    try {
+                        actualParentDocId = new ObjectId(parentIdStr);
+                    } catch (e) {
+                        console.error(`Invalid parentPlaceholderId: ${parentPlaceholderId}, value: ${parentIdStr}`);
+                        continue;
+                    }
+                }
             } else if (parentDid !== null && parentDid !== undefined) {
-                actualParentDid = typeof parentDid === 'string' ? placeholderMap[parentDid] : parentDid;
+                // parentDid可能是字符串（docId）或数字（旧的did，需要查找对应的docId）
+                if (typeof parentDid === 'string') {
+                    try {
+                        actualParentDocId = new ObjectId(parentDid);
+                    } catch (e) {
+                        // 如果不是有效的ObjectId，可能是placeholderId
+                        const parentIdStr = placeholderMap[parentDid];
+                        if (parentIdStr) {
+                            try {
+                                actualParentDocId = new ObjectId(parentIdStr);
+                            } catch (e2) {
+                                console.error(`Invalid parentDid: ${parentDid}`);
+                                continue;
+                            }
+                        } else {
+                            console.error(`Parent placeholder not found: ${parentDid}`);
+                            continue;
+                        }
+                    }
+                } else {
+                    // 如果是数字，需要查找对应的doc（这种情况应该很少，因为现在都用docId了）
+                    console.warn(`Numeric parentDid not supported: ${parentDid}, please use docId string`);
+                    continue;
+                }
             }
-            if (!actualParentDid) continue;
+            if (!actualParentDocId) continue;
             await BlockModel.create(
                 domainId,
                 rpid,
-                actualParentDid,
+                actualParentDocId, // 传入doc的docId（ObjectId）
                 this.user._id,
                 title.trim(),
                 '',
@@ -2280,56 +2379,97 @@ export class RepoStructureUpdateHandler extends Handler {
         }
     }
 
-    async updateDocStructure(domainId: string, rpid: number, docs: any[], branch: string, parentDid: number | null = null) {
+    async updateDocStructure(domainId: string, rpid: number, docs: any[], branch: string) {
+        if (!docs || !Array.isArray(docs) || docs.length === 0) {
+            console.log(`[updateDocStructure] No docs to update (docs=${docs}, isArray=${Array.isArray(docs)}, length=${docs?.length || 0})`);
+            return;
+        }
+        console.log(`[updateDocStructure] Updating ${docs.length} docs, branch=${branch}`);
         for (const docData of docs) {
-            const { did, order, subDocs, blocks } = docData;
+            const { did, order, blocks } = docData; // 移除subDocs，所有doc都是扁平结构
 
-            const docResults = await document.getMulti(domainId, TYPE_DC, { rpid, did, branch }).limit(1).toArray();
-            const doc = docResults[0] || null;
+            // 使用DocModel.get查询，它会处理rpid和did
+            const doc = await DocModel.get(domainId, { rpid, did });
+            
             if (!doc) {
+                console.warn(`[updateDocStructure] Doc not found: did=${did}, rpid=${rpid}, branch=${branch}`);
+                continue;
+            }
+            
+            // 验证branch是否匹配
+            const docBranch = (doc as any).branch || 'main';
+            if (docBranch !== branch && !(branch === 'main' && !(doc as any).branch)) {
+                console.warn(`[updateDocStructure] Doc branch mismatch: did=${did}, expected=${branch}, actual=${docBranch}, skipping`);
                 continue;
             }
 
             const docIdentifier = (doc as any).docId ?? (doc as any)._id;
             if (!docIdentifier) {
+                console.warn(`[updateDocStructure] Doc has no identifier: did=${did}`);
                 continue;
             }
 
-            await document.set(domainId, TYPE_DC, docIdentifier, {
-                parentId: parentDid,
-                order: order || 0,
-                branch: branch,
-                updateAt: new Date()
-            });
+            const oldParentId = (doc as any).parentId;
+            const oldOrder = (doc as any).order || 0;
+            const newParentId = null; // 所有doc都是扁平结构，parentId都是null
+            const newOrder = order || 0;
+
+            if (oldParentId !== newParentId || oldOrder !== newOrder) {
+                console.log(`[updateDocStructure] Updating doc did=${did}: parentId ${oldParentId} -> ${newParentId}, order ${oldOrder} -> ${newOrder}`);
+                await document.set(domainId, document.TYPE_DOC, docIdentifier, {
+                    parentId: null, // 所有doc都是扁平结构
+                    order: order || 0,
+                    branch: branch,
+                    updateAt: new Date()
+                });
+            } else {
+                console.log(`[updateDocStructure] Doc did=${did} unchanged (parentId=${newParentId}, order=${newOrder})`);
+            }
 
             if (blocks && blocks.length > 0) {
                 for (const blockData of blocks) {
-                    const bid = blockData.bid;
+                    const blockDocId = blockData.docId; // 改为使用docId而不是bid
                     const blockOrder = blockData.order;
                     
-                    const blockResults = await document.getMulti(domainId, TYPE_BK, { rpid, bid, branch }).limit(1).toArray();
-                    const block = blockResults[0] || null;
+                    if (!blockDocId) {
+                        console.warn(`[updateDocStructure] Block data missing docId:`, blockData);
+                        continue;
+                    }
+                    
+                    // block现在使用docId（ObjectId）作为标识
+                    const block = await BlockModel.get(domainId, new ObjectId(blockDocId));
                     
                     if (block) {
-                        
-                        const blockIdentifier = (block as any).docId ?? (block as any)._id;
-                        if (!blockIdentifier) {
+                        // 验证branch是否匹配
+                        const blockBranch = (block as any).branch || 'main';
+                        if (blockBranch !== branch && !(branch === 'main' && !(block as any).branch)) {
+                            console.warn(`[updateDocStructure] Block branch mismatch: docId=${blockDocId}, expected=${branch}, actual=${blockBranch}, skipping`);
                             continue;
                         }
 
-                        await document.set(domainId, TYPE_BK, blockIdentifier, {
-                            did: did,
-                            order: blockOrder || 0,
-                            branch: branch,
-                            updateAt: new Date()
-                        });
+                        const oldBlockDid = (block as any).did;
+                        const oldBlockOrder = (block as any).order || 0;
+                        const newBlockDid = did;
+                        const newBlockOrder = blockOrder || 0;
+
+                        if (oldBlockDid !== newBlockDid || oldBlockOrder !== newBlockOrder) {
+                            console.log(`[updateDocStructure] Updating block docId=${blockDocId}: did ${oldBlockDid} -> ${newBlockDid}, order ${oldBlockOrder} -> ${newBlockOrder}`);
+                            await document.set(domainId, document.TYPE_BLOCK, block.docId, {
+                                did: did,
+                                order: blockOrder || 0,
+                                branch: branch,
+                                updateAt: new Date()
+                            });
+                        } else {
+                            console.log(`[updateDocStructure] Block docId=${blockDocId} unchanged (did=${did}, order=${newBlockOrder})`);
+                        }
+                    } else {
+                        console.warn(`[updateDocStructure] Block not found: docId=${blockDocId}`);
                     }
                 }
             }
 
-            if (subDocs && subDocs.length > 0) {
-                await this.updateDocStructure(domainId, rpid, subDocs, branch, did);
-            }
+            // 不再有subDocs，所有doc都是扁平结构
         }
     }
 }
@@ -2391,7 +2531,7 @@ export class DocEditHandler extends DocHandler {
         }
 
         const finalBranch = effectiveBranch || 'main';
-        await document.set(domainId, TYPE_DC, docId, {
+        await document.set(domainId, document.TYPE_DOC, docId, {
             title,
             content,
             branch: finalBranch,
@@ -2423,15 +2563,15 @@ export class DocEditHandler extends DocHandler {
 export class BlockCreateHandler extends Handler {
     @param('rpid', Types.Int)
     @param('branch', Types.String, true)
-    @param('did', Types.Int)
-    async get(domainId: string, rpid: number, branch: string | undefined, did: number) {
+    @param('docId', Types.ObjectId) // doc的docId
+    async get(domainId: string, rpid: number, branch: string | undefined, docId: ObjectId) {
         if (!branch) {
             const repo = await RepoModel.getRepoByRpid(domainId, rpid);
             const b = repo?.currentBranch || 'main';
-            this.response.redirect = this.url('block_create_branch', { domainId, rpid, branch: b, did });
+            this.response.redirect = this.url('block_create_branch', { domainId, rpid, branch: b, docId });
             return;
         }
-        const ddoc = await DocModel.get(domainId, { rpid, did } as any);
+        const ddoc = await DocModel.get(domainId, docId);
         if (!ddoc) {
             throw new NotFoundError(`Doc not found`);
         }
@@ -2440,24 +2580,24 @@ export class BlockCreateHandler extends Handler {
         this.response.body = {
             ddoc,
             rpid: ddoc.rpid,
-            did: ddoc.did,
+            docId: ddoc.docId.toString(),
             branch: branch || (ddoc as any).branch || 'main',
         };
     }
 
     @param('rpid', Types.Int)
     @param('branch', Types.String, true)
-    @param('did', Types.Int)
+    @param('docId', Types.ObjectId) // doc的docId
     @param('title', Types.Title)
     @param('content', Types.Content)
-    async postCreate(domainId: string, rpid: number, did: number, title: string, content: string, branch?: string) {
+    async postCreate(domainId: string, rpid: number, docId: ObjectId, title: string, content: string, branch?: string) {
         await this.limitRate('create_block', 3600, 100);
         const repo = await RepoModel.getRepoByRpid(domainId, rpid);
         const effectiveBranch = branch || repo?.currentBranch || 'main';
-        const docId = await BlockModel.create(
+        const blockDocId = await BlockModel.create(
             domainId,
             rpid,
-            did,
+            docId, // 传入doc的docId
             this.user._id,
             title,
             content,
@@ -2465,66 +2605,74 @@ export class BlockCreateHandler extends Handler {
             effectiveBranch
         );
 
-        const block = await BlockModel.get(domainId, docId);
-        this.response.body = { docId, bid: block?.bid };
-        this.response.redirect = this.url('block_detail_branch', { rpid, branch: effectiveBranch, did, bid: block?.bid });
+        this.response.body = { docId: blockDocId };
+        this.response.redirect = this.url('block_detail_branch', { rpid, branch: effectiveBranch, docId: blockDocId.toString() });
     }
 }
 
 export class BlockDetailHandler extends Handler {
     @param('rpid', Types.Int)
     @param('branch', Types.String, true)
-    @param('did', Types.Int)
-    @param('bid', Types.Int)
-    async get(domainId: string, rpid: number, branch: string | undefined, did: number, bid: number) {
+    @param('docId', Types.ObjectId) // block的docId
+    async get(domainId: string, rpid: number, branch: string | undefined, docId: ObjectId) {
         const repo = await RepoModel.getRepoByRpid(domainId, rpid);
         if (!repo) throw new NotFoundError('Repo not found');
         if (!branch || !String(branch).trim()) {
-            this.response.redirect = this.url('block_detail_branch', { domainId, rpid, branch: repo.currentBranch || 'main', did, bid });
+            this.response.redirect = this.url('block_detail_branch', { domainId, rpid, branch: repo.currentBranch || 'main', docId });
             return;
         }
         const currentBranch = branch || 'main';
-        const block = await BlockModel.get(domainId, { rpid, bid, branch: currentBranch });
+        
+        const block = await BlockModel.get(domainId, docId);
         if (!block) {
             throw new NotFoundError(`Block not found`);
         }
+        
+        // 验证block的branch
+        if ((block.branch || 'main') !== currentBranch) {
+            throw new NotFoundError(`Block not found in branch ${currentBranch}`);
+        }
+        
         await BlockModel.incrementViews(domainId, block.docId);
-        const ddoc = await DocModel.get(domainId, { rpid, did } as any);
+        
+        // 获取block所属的doc
+        const ddoc = await DocModel.get(domainId, block.did as ObjectId);
+        if (!ddoc) {
+            throw new NotFoundError(`Doc not found for block`);
+        }
+        
         const udoc = await user.getById(domainId, block.owner);
         const repoDocs = (await RepoModel.getDocsByRepo(domainId, rpid)).filter(d => (d.branch || 'main') === currentBranch);
-        const allDocsWithBlocks = {};
+
+        // 构建所有doc和block的关系，通过UiContext传递
+        const allDocsWithBlocks: { [docId: string]: any[] } = {};
         for (const doc of repoDocs) {
-          const docBlocks = await BlockModel.getByDid(domainId, doc.did, rpid, currentBranch);
+          const docBlocks = await BlockModel.getByDocId(domainId, doc.docId, currentBranch);
           if (docBlocks && docBlocks.length > 0) {
-            allDocsWithBlocks[doc.did] = docBlocks.map(b => ({
+            allDocsWithBlocks[doc.docId.toString()] = docBlocks.map(b => ({
               ...b,
               url: this.url('block_detail_branch', {
                 domainId,
                 rpid: rpid,
                 branch: currentBranch,
-                did: doc.did,
-                bid: b.bid
+                docId: b.docId.toString()
               })
             }));
           }
         }
-        const buildHierarchy = (parentId: number | null, docs: any[]) => {
-          return docs
-            .filter(doc => doc.parentId === parentId)
-            .map(doc => ({
-              ...doc,
-              url: this.url('doc_detail_branch', {
-                domainId,
-                rpid: rpid,
-                branch: currentBranch,
-                did: doc.did
-              }),
-              subDocs: buildHierarchy(doc.did, docs)
-            }));
-        };
-        const docHierarchy = {};
-        docHierarchy[rpid] = buildHierarchy(null, repoDocs);
-        this.UiContext.docHierarchy = docHierarchy;
+
+        // 构建doc列表（扁平结构）
+        const docsList = repoDocs.map(doc => ({
+          ...doc,
+          url: this.url('doc_detail_branch', {
+            domainId,
+            rpid: rpid,
+            branch: currentBranch,
+            docId: doc.docId.toString()
+          })
+        }));
+
+        this.UiContext.docsList = docsList;
         this.UiContext.allDocsWithBlocks = allDocsWithBlocks;
         this.UiContext.repo = { domainId, rpid, currentBranch };
         this.UiContext.ddoc = ddoc;
@@ -2537,52 +2685,53 @@ export class BlockDetailHandler extends Handler {
 
 export class BlockEditHandler extends Handler {
     @param('rpid', Types.Int)
-    @param('did', Types.Int)
-    @param('bid', Types.Int)
+    @param('docId', Types.ObjectId) // block的docId
     @param('branch', Types.String, true)
-    async get(domainId: string, rpid: number, did: number, bid: number, branch?: string) {
+    async get(domainId: string, rpid: number, docId: ObjectId, branch?: string) {
         let currentBranch = branch;
         if (!currentBranch) {
             const repo = await RepoModel.getRepoByRpid(domainId, rpid);
             currentBranch = (repo as any)?.currentBranch || 'main';
         }
         
-        const block = await BlockModel.get(domainId, { rpid, bid, branch: currentBranch });
+        const block = await BlockModel.get(domainId, docId);
         if (!block) {
             throw new NotFoundError(`Block not found`);
+        }
+        if ((block.branch || 'main') !== currentBranch) {
+            throw new NotFoundError(`Block not found in branch ${currentBranch}`);
         }
 
         this.response.template = 'block_edit.html';
         this.response.body = {
             block,
             rpid: block.rpid,
-            did: block.did,
+            docId: block.docId.toString(),
             currentBranch,
         };
     }
 
     @param('rpid', Types.Int)
-    @param('did', Types.Int)
-    @param('bid', Types.Int)
+    @param('docId', Types.ObjectId) // block的docId
     @param('title', Types.Title)
     @param('content', Types.Content)
     @param('commitMessage', Types.String, true)
     @param('branch', Types.String, true)
-    async postUpdate(domainId: string, rpid: number, did: number, bid: number, title: string, content: string, commitMessage?: string, branch?: string) {
+    async postUpdate(domainId: string, rpid: number, docId: ObjectId, title: string, content: string, commitMessage?: string, branch?: string) {
         let effectiveBranch = branch;
         if (!effectiveBranch) {
             const repo = await RepoModel.getRepoByRpid(domainId, rpid);
             effectiveBranch = (repo as any)?.currentBranch || 'main';
         }
         
-        const block = await BlockModel.get(domainId, { rpid, bid, branch: effectiveBranch });
+        const block = await BlockModel.get(domainId, docId);
         if (!block) {
             throw new NotFoundError(`Block not found`);
         }
 
         const finalBranch = effectiveBranch || 'main';
         
-        await document.set(domainId, TYPE_BK, block.docId, {
+        await document.set(domainId, document.TYPE_BLOCK, block.docId, {
             title,
             content,
             branch: finalBranch,
@@ -2599,22 +2748,23 @@ export class BlockEditHandler extends Handler {
             console.error('Failed to commit changes:', err);
         }
 
-        this.response.body = { bid };
-        this.response.redirect = this.url('block_detail_branch', { domainId, rpid, branch: finalBranch, did, bid });
+        this.response.body = { docId: docId.toString() };
+        this.response.redirect = this.url('block_detail_branch', { domainId, rpid, branch: finalBranch, docId: docId.toString() });
     }
 
     @param('rpid', Types.Int)
-    @param('did', Types.Int)
-    @param('bid', Types.Int)
-    async postDelete(domainId: string, rpid: number, did: number, bid: number) {
-        const block = await BlockModel.get(domainId, { rpid, bid });
+    @param('docId', Types.ObjectId) // block的docId
+    async postDelete(domainId: string, rpid: number, docId: ObjectId) {
+        const block = await BlockModel.get(domainId, docId);
         if (!block) {
             throw new NotFoundError(`Block not found`);
         }
 
+        // 获取block所属的doc的docId
+        const docDocId = block.did as ObjectId;
         await BlockModel.delete(domainId, block.docId);
         
-        this.response.redirect = this.url('doc_detail', { rpid, did });
+        this.response.redirect = this.url('doc_detail_branch', { domainId, rpid, branch: block.branch || 'main', docId: docDocId.toString() });
     }
 }
 
@@ -2847,7 +2997,7 @@ async function createAndPushToGitHubOrg(
 
         const repo = await RepoModel.getRepoByRpid(domainId, rpid);
         if (repo) {
-            await document.set(domainId, TYPE_RP, repo.docId, {
+            await document.set(domainId, document.TYPE_REPO, repo.docId, {
                 githubRepo: REPO_URL,
             });
         }
@@ -2908,14 +3058,39 @@ async function commitRepoChanges(
         
         try {
             const { stdout } = await exec('git status --porcelain', { cwd: repoGitPath });
+            console.log(`[commitRepoChanges] Git status after add: "${stdout.trim()}"`);
             if (stdout.trim()) {
                 const finalMessage = commitMessage && commitMessage.trim() 
                     ? commitMessage.trim()
                     : `${domainId}/${userId}/${userName || 'unknown'}`;
                 const escapedMessage = finalMessage.replace(/'/g, "'\\''");
+                console.log(`[commitRepoChanges] Committing changes with message: ${finalMessage}`);
                 await exec(`git commit -m '${escapedMessage}'`, { cwd: repoGitPath });
+                
+                // 验证commit是否成功
+                try {
+                    const { stdout: logOutput } = await exec(`git log -1 --oneline ${branch}`, { cwd: repoGitPath });
+                    console.log(`[commitRepoChanges] Commit verified: ${logOutput.trim()}`);
+                } catch (verifyErr) {
+                    console.error(`[commitRepoChanges] Failed to verify commit:`, verifyErr);
+                    throw verifyErr;
+                }
+            } else {
+                console.log(`[commitRepoChanges] No changes to commit (git status --porcelain returned empty)`);
+                // 检查一下文件是否真的没有变化
+                try {
+                    const { stdout: diffOutput } = await exec('git diff --stat', { cwd: repoGitPath });
+                    if (diffOutput.trim()) {
+                        console.warn(`[commitRepoChanges] WARNING: git diff shows changes but git status does not!`);
+                        console.warn(`[commitRepoChanges] Diff output: ${diffOutput.trim()}`);
+                    }
+                } catch (diffErr) {
+                    // ignore
+                }
             }
-        } catch {
+        } catch (err: any) {
+            console.error(`[commitRepoChanges] Error during commit:`, err);
+            throw err;
         }
     } finally {
         try {
@@ -3027,17 +3202,30 @@ async function getGitStatus(
             status.uncommittedChanges = false;
         }
         
-        if (remoteUrl) {
-            try {
-                try {
-                    await exec(`git remote set-url origin ${remoteUrl}`, { cwd: repoGitPath });
-                } catch {
+        // 首先检查本地git仓库是否已经配置了remote
+        try {
+            const { stdout: existingRemote } = await exec('git remote get-url origin', { cwd: repoGitPath });
+            if (existingRemote && existingRemote.trim()) {
+                status.hasRemote = true;
+                // 如果传入了remoteUrl，更新remote URL
+                if (remoteUrl && remoteUrl.trim() && existingRemote.trim() !== remoteUrl.trim()) {
                     try {
-                        await exec(`git remote add origin ${remoteUrl}`, { cwd: repoGitPath });
+                        await exec(`git remote set-url origin ${remoteUrl}`, { cwd: repoGitPath });
                     } catch {}
                 }
-                
-                status.hasRemote = true;
+            }
+        } catch {
+            // 如果没有配置remote，且传入了remoteUrl，则添加remote
+            if (remoteUrl) {
+                try {
+                    await exec(`git remote add origin ${remoteUrl}`, { cwd: repoGitPath });
+                    status.hasRemote = true;
+                } catch {}
+            }
+        }
+        
+        // 如果已经检测到有remote，继续检查remote branch
+        if (status.hasRemote) {
                 
                 try {
                     try {
@@ -3107,9 +3295,6 @@ async function getGitStatus(
                 } catch {
                     status.hasRemoteBranch = false;
                 }
-            } catch {
-                status.hasRemote = false;
-            }
         }
         
         return status;
@@ -3180,8 +3365,8 @@ async function buildLocalRepoFromEjunz(domainId: string, rpid: number, targetDir
         childrenMap.get(key)!.push(d);
     }
 
-    const docOrderValue = (doc: DCDoc) => doc.order ?? doc.did ?? 0;
-    const blockOrderValue = (block: BKDoc) => block.order ?? block.bid ?? 0;
+    const docOrderValue = (doc: DCDoc) => doc.order ?? 0;
+    const blockOrderValue = (block: BKDoc) => block.order ?? 0;
 
     const sortDocs = (list: DCDoc[]) =>
         list
@@ -3190,7 +3375,8 @@ async function buildLocalRepoFromEjunz(domainId: string, rpid: number, targetDir
                 const orderA = docOrderValue(a);
                 const orderB = docOrderValue(b);
                 if (orderA !== orderB) return orderA - orderB;
-                return (a.did || 0) - (b.did || 0);
+                // 使用docId的字符串形式进行排序
+                return a.docId.toString().localeCompare(b.docId.toString());
             });
 
     const sortBlocks = (list: BKDoc[]) =>
@@ -3200,7 +3386,8 @@ async function buildLocalRepoFromEjunz(domainId: string, rpid: number, targetDir
                 const orderA = blockOrderValue(a);
                 const orderB = blockOrderValue(b);
                 if (orderA !== orderB) return orderA - orderB;
-                return (a.bid || 0) - (b.bid || 0);
+                // 使用docId的字符串形式进行排序
+                return a.docId.toString().localeCompare(b.docId.toString());
             });
 
     async function writeDocTree(parentId: number|null, parentPath: string) {
@@ -3215,21 +3402,87 @@ async function buildLocalRepoFromEjunz(domainId: string, rpid: number, targetDir
                 await fs.promises.writeFile(readmePath, d.content, 'utf8');
             }
 
-            const blocksRaw = await BlockModel.getByDid(domainId, d.did, rpid, branch);
+            const blocksRaw = await BlockModel.getByDocId(domainId, d.docId, branch);
             const blocks = sortBlocks(blocksRaw || []);
+            
+            // 调试日志：检查是否获取到blocks
+            if (blocks.length > 0) {
+                console.log(`[buildLocalRepo] Doc ${d.docId} (${d.title}) has ${blocks.length} blocks, writing to ${curDir}`);
+            }
+            
             for (const b of blocks) {
-                const fileName = `${sanitize(b.title)}.md`;
+                // 使用docId作为文件名的一部分，确保唯一性
+                const fileName = `${sanitize(b.title)}-${b.docId.toString()}.md`;
                 const filePath = path.join(curDir, fileName);
-                await fs.promises.writeFile(filePath, b.content ?? '', 'utf8');
+                
+                // 直接使用document.get从数据库获取完整的block，确保content字段完整
+                // block现在使用docId作为标识
+                let content = '';
+                try {
+                    // 直接使用block的docId获取完整的block文档
+                    const rawBlock = await document.get(domainId, document.TYPE_BLOCK, b.docId);
+                    if (rawBlock && rawBlock.content !== undefined && rawBlock.content !== null) {
+                        // 确保content是字符串类型
+                        content = String(rawBlock.content);
+                        console.log(`[buildLocalRepo] Block ${b.docId} (${b.title}): Got full content from DB via document.get, length: ${content.length}`);
+                    } else {
+                        console.warn(`[buildLocalRepo] Block ${b.docId}: document.get returned null or no content`);
+                        // 回退到使用原始block的content
+                        if (b.content !== undefined && b.content !== null) {
+                            content = String(b.content);
+                        }
+                    }
+                } catch (err: any) {
+                    console.error(`[buildLocalRepo] Error fetching block ${b.docId} from DB:`, err);
+                    // 回退到使用原始block的content
+                    if (b.content !== undefined && b.content !== null) {
+                        content = String(b.content);
+                    }
+                }
+                
+                const contentLength = content.length;
+                
+                // 如果content为空但block存在，记录警告
+                if (contentLength === 0) {
+                    console.warn(`[buildLocalRepo] Warning: block ${b.docId} (${b.title}) has empty content`);
+                } else {
+                    // 记录content的前100个字符用于调试
+                    const preview = content.length > 100 ? content.substring(0, 100) + '...' : content;
+                    console.log(`[buildLocalRepo] Block ${b.docId} (${b.title}): content length=${contentLength}, preview: ${preview.replace(/\n/g, '\\n').replace(/\r/g, '\\r')}`);
+                }
+                
+                // 使用utf8编码写入，确保所有字符都能正确保存
+                // 直接写入，不做任何处理
+                await fs.promises.writeFile(filePath, content, { encoding: 'utf8', flag: 'w' });
+                
+                // 立即验证写入的内容是否完整
+                try {
+                    const writtenContent = await fs.promises.readFile(filePath, { encoding: 'utf8' });
+                    if (writtenContent !== content) {
+                        console.error(`[buildLocalRepo] ERROR: Content mismatch for block ${b.docId}!`);
+                        console.error(`[buildLocalRepo] Expected length: ${content.length}, Written length: ${writtenContent.length}`);
+                        // 重新写入
+                        await fs.promises.writeFile(filePath, content, { encoding: 'utf8', flag: 'w' });
+                        // 再次验证
+                        const reWrittenContent = await fs.promises.readFile(filePath, { encoding: 'utf8' });
+                        if (reWrittenContent !== content) {
+                            console.error(`[buildLocalRepo] CRITICAL: Content still mismatched after rewrite for block ${b.docId}!`);
+                        } else {
+                            console.log(`[buildLocalRepo] Fixed content for block ${b.docId} after rewrite`);
+                        }
+                    } else {
+                        console.log(`[buildLocalRepo] ✓ Block ${b.docId} written successfully, verified: ${contentLength} chars`);
+                    }
+                } catch (verifyErr: any) {
+                    console.error(`[buildLocalRepo] Error verifying written content for block ${b.docId}:`, verifyErr);
+                }
             }
 
-            const children = childrenMap.get(d.did) || [];
-            if (blocks.length === 0 && children.length === 0) {
+            // 不再有children，所有doc都是扁平结构
+            if (blocks.length === 0) {
                 const keepPath = path.join(curDir, '.keep');
                 await fs.promises.writeFile(keepPath, '', 'utf8');
             }
-
-            await writeDocTree(d.did, curDir);
         }
     }
 
@@ -3244,14 +3497,52 @@ async function buildLocalRepoFromEjunz(domainId: string, rpid: number, targetDir
 
 /**
  * Copy source directory contents to target directory (overwrite), excluding .git directory
+ * Also removes files/directories in dest that don't exist in src
  */
 async function copyDir(src: string, dest: string) {
-    const entries = await fs.promises.readdir(src, { withFileTypes: true });
-    for (const entry of entries) {
+    // Ensure dest directory exists
+    await fs.promises.mkdir(dest, { recursive: true });
+    
+    // Get all entries from source
+    const srcEntries = await fs.promises.readdir(src, { withFileTypes: true });
+    const srcNames = new Set(srcEntries.map(e => e.name).filter(name => name !== '.git'));
+    
+    // Get all entries from destination (excluding .git)
+    let destEntries: fs.Dirent[] = [];
+    try {
+        destEntries = await fs.promises.readdir(dest, { withFileTypes: true });
+    } catch (err: any) {
+        // dest might not exist, that's ok
+        if (err.code !== 'ENOENT') throw err;
+    }
+    const destNames = new Set(destEntries.map(e => e.name).filter(name => name !== '.git'));
+    
+    // Remove files/directories in dest that don't exist in src
+    for (const destName of destNames) {
+        if (!srcNames.has(destName)) {
+            const destPath = path.join(dest, destName);
+            try {
+                const stat = await fs.promises.stat(destPath);
+                if (stat.isDirectory()) {
+                    await fs.promises.rm(destPath, { recursive: true, force: true });
+                    console.log(`[copyDir] Removed directory: ${destPath}`);
+                } else {
+                    await fs.promises.unlink(destPath);
+                    console.log(`[copyDir] Removed file: ${destPath}`);
+                }
+            } catch (err: any) {
+                console.warn(`[copyDir] Failed to remove ${destPath}:`, err.message);
+            }
+        }
+    }
+    
+    // Copy files and directories from src to dest
+    for (const entry of srcEntries) {
         if (entry.name === '.git') continue;
         
         const srcPath = path.join(src, entry.name);
         const destPath = path.join(dest, entry.name);
+        
         if (entry.isDirectory()) {
             await fs.promises.mkdir(destPath, { recursive: true });
             await copyDir(srcPath, destPath);
@@ -3417,7 +3708,7 @@ async function importGitStructureToEjunz(domainId: string, rpid: number, localDi
         const repoContent = await fs.promises.readFile(repoReadmePath, 'utf8');
         const repo = await RepoModel.getRepoByRpid(domainId, rpid);
         if (repo) {
-            await document.set(domainId, TYPE_RP, repo.docId, {
+            await document.set(domainId, document.TYPE_REPO, repo.docId, {
                 content: repoContent
             });
         }
@@ -3435,16 +3726,9 @@ async function importGitStructureToEjunz(domainId: string, rpid: number, localDi
         } catch (err) {
         }
         
-        if (parentDid == null) {
-            const newDid = await DocModel.generateNextDid(domainId, rpid, branch);
-            const docId = await DocModel.addRootNode(domainId, rpid, newDid, userId, title, docContent, ip, branch);
-            did = newDid;
-        } else {
-            const newDid = await DocModel.generateNextDid(domainId, rpid, branch);
-            const docId = await DocModel.addSubdocNode(domainId, [rpid], newDid, parentDid, userId, title, docContent, ip, branch);
-            did = newDid;
-        }
-        return did;
+        // 现在所有doc都是根doc（parentId: null），不再有子doc
+        const docId = await DocModel.addRootNode(domainId, rpid, userId, title, docContent, ip, branch);
+        return docId.toString(); // 返回docId的字符串形式作为did（兼容旧代码）
     }
 
     async function walk(parentDid: number|null, currentDir: string) {
@@ -3483,46 +3767,18 @@ async function cloneBranchData(domainId: string, rpid: number, sourceBranch: str
     const sourceDocs = allDocs.filter(d => (d.branch || 'main') === sourceBranch);
     if (sourceDocs.length === 0) return;
 
-    const didMap = new Map<number, number>();
+    const docIdMap = new Map<string, ObjectId>(); // 旧docId -> 新docId的映射
 
-    const getDepth = (doc: DCDoc, allDocs: DCDoc[]): number => {
-        if (doc.parentId == null) return 0;
-        const parent = allDocs.find(d => d.did === doc.parentId);
-        if (!parent) return 0;
-        return 1 + getDepth(parent, allDocs);
-    };
+    // 现在所有doc都是根doc（parentId: null），不再有子doc
+    for (const d of sourceDocs) {
+        // 创建新的doc
+        const newDocId = await DocModel.addRootNode(domainId, rpid, d.owner || userId, d.title, d.content || '', ip, targetBranch);
+        docIdMap.set(d.docId.toString(), newDocId);
 
-    const sortedDocs = sourceDocs.slice().sort((a, b) => {
-        const depthA = getDepth(a, sourceDocs);
-        const depthB = getDepth(b, sourceDocs);
-        if (depthA !== depthB) return depthA - depthB;
-        const orderA = a.order ?? a.did ?? 0;
-        const orderB = b.order ?? b.did ?? 0;
-        if (orderA !== orderB) return orderA - orderB;
-        return (a.did || 0) - (b.did || 0);
-    });
-
-    for (const d of sortedDocs) {
-        const isRoot = d.parentId == null;
-        if (isRoot) {
-            const newDid = await DocModel.generateNextDid(domainId, rpid, targetBranch);
-            await DocModel.addRootNode(domainId, rpid, newDid, d.owner || userId, d.title, d.content || '', ip, targetBranch);
-            didMap.set(d.did, newDid);
-        } else {
-            const parentNewDid = didMap.get(d.parentId!);
-            if (parentNewDid == null) {
-                console.error(`Parent document ${d.parentId} not found in didMap for doc ${d.did}`);
-                continue;
-            }
-            const newDid = await DocModel.generateNextDid(domainId, rpid, targetBranch);
-            await DocModel.addSubdocNode(domainId, [rpid], newDid, parentNewDid, d.owner || userId, d.title, d.content || '', ip, targetBranch);
-            didMap.set(d.did, newDid);
-        }
-
-        const blocks = await BlockModel.getByDid(domainId, d.did, rpid, sourceBranch);
-        const newDid = didMap.get(d.did)!;
+        // 复制该doc下的所有blocks
+        const blocks = await BlockModel.getByDocId(domainId, d.docId, sourceBranch);
         for (const b of blocks) {
-            await BlockModel.create(domainId, rpid, newDid, b.owner || userId, b.title, b.content || '', ip, targetBranch);
+            await BlockModel.create(domainId, rpid, newDocId, b.owner || userId, b.title, b.content || '', ip, targetBranch);
         }
     }
 }
@@ -3530,13 +3786,13 @@ async function cloneBranchData(domainId: string, rpid: number, sourceBranch: str
  * Clear local data for specified repo+branch (docs and blocks)
  */
 async function clearRepoBranchData(domainId: string, rpid: number, branch: string) {
-    const blocks = await document.getMulti(domainId, TYPE_BK, { rpid, branch }).toArray();
+    const blocks = await document.getMulti(domainId, document.TYPE_BLOCK, { rpid, branch }).toArray();
     for (const b of blocks) {
-        await document.deleteOne(domainId, TYPE_BK, b.docId);
+        await document.deleteOne(domainId, document.TYPE_BLOCK, b.docId);
     }
-    const docs = await document.getMulti(domainId, TYPE_DC, { rpid, branch }).toArray();
+    const docs = await document.getMulti(domainId, document.TYPE_DOC, { rpid, branch }).toArray();
     for (const d of docs) {
-        await document.deleteOne(domainId, TYPE_DC, d.docId);
+        await document.deleteOne(domainId, document.TYPE_DOC, d.docId);
     }
 }
 // (deprecated old RepoGithubPushHandler removed)
@@ -3745,7 +4001,7 @@ export class RepoBranchCreateHandler extends Handler {
         const branches = Array.isArray(repo.branches) ? repo.branches.slice() : [];
         const newBranch = (branch || '').trim() || 'main';
         if (!branches.includes(newBranch)) branches.push(newBranch);
-        await document.set(domainId, TYPE_RP, repo.docId, { branches, currentBranch: newBranch });
+        await document.set(domainId, document.TYPE_REPO, repo.docId, { branches, currentBranch: newBranch });
 
         try {
             await clearRepoBranchData(domainId, rpid, newBranch);
@@ -3822,7 +4078,7 @@ export class RepoBranchSwitchHandler extends Handler {
     async post(domainId: string, rpid: number, branch: string) {
         const repo = await RepoModel.getRepoByRpid(domainId, rpid);
         if (!repo) throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
-        await document.set(domainId, TYPE_RP, repo.docId, { currentBranch: branch });
+        await document.set(domainId, document.TYPE_REPO, repo.docId, { currentBranch: branch });
         this.response.redirect = this.url('repo_detail_branch', { domainId, rpid, branch });
     }
 
@@ -3841,7 +4097,7 @@ export class RepoModeSwitchHandler extends Handler {
         if (!repo) throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
         
         const validMode = (mode === 'file' || mode === 'manuscript') ? mode : 'file';
-        await document.set(domainId, TYPE_RP, repo.docId, { mode: validMode });
+        await document.set(domainId, document.TYPE_REPO, repo.docId, { mode: validMode });
         
         const targetBranch = branch || repo.currentBranch || 'main';
         this.response.redirect = this.url('repo_detail_branch', { domainId, rpid, branch: targetBranch });
@@ -3913,31 +4169,16 @@ export class RepoManuscriptBatchUpdateHandler extends Handler {
                     const { type, parentDid, title, content, position } = create;
                     
                     if (type === 'doc') {
-                        const did = await DocModel.generateNextDid(domainId, rpid, effectiveBranch);
-                        if (parentDid) {
-                            await DocModel.addSubdocNode(
-                                domainId,
-                                [rpid],
-                                did,
-                                parentDid,
-                                this.user._id,
-                                title || 'Untitled',
-                                content || '',
-                                this.request.ip,
-                                effectiveBranch
-                            );
-                        } else {
-                            await DocModel.addRootNode(
-                                domainId,
-                                rpid,
-                                did,
-                                this.user._id,
-                                title || 'Untitled',
-                                content || '',
-                                this.request.ip,
-                                effectiveBranch
-                            );
-                        }
+                        // 现在所有doc都是根doc（parentId: null），不再有子doc
+                        await DocModel.addRootNode(
+                            domainId,
+                            rpid,
+                            this.user._id,
+                            title || 'Untitled',
+                            content || '',
+                            this.request.ip,
+                            effectiveBranch
+                        );
                     } else if (type === 'block' && parentDid) {
                         await BlockModel.create(
                             domainId,
@@ -4021,7 +4262,7 @@ export class RepoManuscriptBatchUpdateHandler extends Handler {
                 path: newPath,
             };
 
-            await document.set(domainId, TYPE_DC, doc.docId, updatePayload);
+            await document.set(domainId, document.TYPE_DOC, doc.docId, updatePayload);
             docCache.set(did, newPath);
         }
 
@@ -4033,11 +4274,371 @@ export class RepoManuscriptBatchUpdateHandler extends Handler {
             const parentDid = typeof entry.parentDid === 'number' ? entry.parentDid : null;
             if (parentDid === null) continue;
 
-            await document.set(domainId, TYPE_BK, block.docId, {
+            await document.set(domainId, document.TYPE_BLOCK, block.docId, {
                 did: parentDid,
                 order: typeof entry.order === 'number' ? entry.order : Number(entry.order) || 0,
             });
         }
+    }
+}
+
+// 用于存储同步任务的状态
+const syncTaskStatus = new Map<string, {
+    status: 'checking' | 'generating' | 'committing' | 'completed' | 'error';
+    progress: number;
+    total: number;
+    current: string;
+    error?: string;
+}>();
+
+/**
+ * 比较本地文件和数据库中的doc/block，检查是否有差异
+ */
+async function compareLocalWithDatabase(
+    domainId: string,
+    rpid: number,
+    branch: string,
+    repoGitPath: string
+): Promise<{ hasDiff: boolean; details: string[] }> {
+    const details: string[] = [];
+    let hasDiff = false;
+
+    try {
+        // 获取数据库中的所有doc和block
+        const repoDocsAll = await RepoModel.getDocsByRepo(domainId, rpid);
+        const repoDocs = repoDocsAll.filter(d => (d.branch || 'main') === branch);
+        
+        const sanitize = (name: string) => (name || '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'untitled';
+        
+        // 构建期望的文件结构
+        const expectedFiles = new Map<string, string>(); // path -> content
+        
+        // 添加README.md
+        const repo = await RepoModel.getRepoByRpid(domainId, rpid);
+        if (repo) {
+            expectedFiles.set('README.md', repo.content || `# ${repo.title}\n\nThis repo is generated by ejunzrepo.`);
+        }
+        
+        // 递归构建期望的文件结构
+        const childrenMap = new Map<number|null, DCDoc[]>();
+        for (const d of repoDocs) {
+            const key = (d.parentId ?? null) as number|null;
+            if (!childrenMap.has(key)) childrenMap.set(key, []);
+            childrenMap.get(key)!.push(d);
+        }
+        
+        const docOrderValue = (doc: DCDoc) => doc.order ?? doc.did ?? 0;
+        const blockOrderValue = (block: BKDoc) => block.order ?? block.bid ?? 0;
+        
+        const sortDocs = (list: DCDoc[]) =>
+            list.slice().sort((a, b) => {
+                const orderA = docOrderValue(a);
+                const orderB = docOrderValue(b);
+                if (orderA !== orderB) return orderA - orderB;
+                return (a.did || 0) - (b.did || 0);
+            });
+        
+        const sortBlocks = (list: BKDoc[]) =>
+            list.slice().sort((a, b) => {
+                const orderA = blockOrderValue(a);
+                const orderB = blockOrderValue(b);
+                if (orderA !== orderB) return orderA - orderB;
+                return (a.bid || 0) - (b.bid || 0);
+            });
+        
+        const buildExpectedFiles = async (parentId: number|null, parentPath: string) => {
+            const list = sortDocs(childrenMap.get(parentId) || []);
+            for (const d of list) {
+                const dirName = sanitize(d.title);
+                const curDir = path.join(parentPath, dirName);
+                
+                if (d.content && d.content.trim()) {
+                    const readmePath = path.join(curDir, 'README.md');
+                    // 使用 path.relative 获取相对路径，并标准化为使用 / 分隔符（git标准）
+                    const relativePath = path.relative(repoGitPath, readmePath).replace(/\\/g, '/');
+                    expectedFiles.set(relativePath, d.content);
+                }
+                
+                const blocksRaw = await BlockModel.getByDocId(domainId, d.docId, branch);
+                const blocks = sortBlocks(blocksRaw || []);
+                
+                // 调试日志：检查是否获取到blocks
+                if (blocks.length > 0) {
+                    console.log(`[Sync] Doc ${d.docId} (${d.title}) has ${blocks.length} blocks`);
+                }
+                
+                for (const b of blocks) {
+                    // 使用docId作为文件名的一部分，确保唯一性
+                    const fileName = `${sanitize(b.title)}-${b.docId.toString()}.md`;
+                    const filePath = path.join(curDir, fileName);
+                    // 使用 path.relative 获取相对路径，并标准化为使用 / 分隔符（git标准）
+                    const relativePath = path.relative(repoGitPath, filePath).replace(/\\/g, '/');
+                    expectedFiles.set(relativePath, b.content ?? '');
+                }
+                
+                // 不再有children，所有doc都是扁平结构
+                if (blocks.length === 0) {
+                    const keepPath = path.join(curDir, '.keep');
+                    const relativePath = path.relative(repoGitPath, keepPath).replace(/\\/g, '/');
+                    expectedFiles.set(relativePath, '');
+                }
+            }
+        };
+        
+        await buildExpectedFiles(null, repoGitPath);
+        
+        // 调试日志：输出期望的文件列表
+        console.log(`[Sync] Expected files count: ${expectedFiles.size}`);
+        const expectedFileList = Array.from(expectedFiles.keys());
+        console.log(`[Sync] Expected files:`, expectedFileList.slice(0, 20)); // 只显示前20个
+        
+        // 检查本地文件是否存在且内容匹配
+        for (const [filePath, expectedContent] of expectedFiles.entries()) {
+            // filePath 已经是相对路径（使用 / 分隔符），需要转换为系统路径
+            const fullPath = path.join(repoGitPath, filePath.replace(/\//g, path.sep));
+            try {
+                const exists = await fs.promises.access(fullPath).then(() => true).catch(() => false);
+                if (!exists) {
+                    hasDiff = true;
+                    details.push(`文件不存在: ${filePath}`);
+                } else {
+                    const actualContent = await fs.promises.readFile(fullPath, 'utf8');
+                    if (actualContent !== expectedContent) {
+                        hasDiff = true;
+                        details.push(`文件内容不同: ${filePath}`);
+                    }
+                }
+            } catch (err: any) {
+                hasDiff = true;
+                details.push(`检查文件失败 ${filePath}: ${err.message}`);
+            }
+        }
+        
+        // 检查是否有额外的本地文件（不在数据库中的）
+        const checkExtraFiles = async (dir: string, basePath: string) => {
+            try {
+                const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+                for (const entry of entries) {
+                    if (entry.name === '.git') continue;
+                    const fullPath = path.join(dir, entry.name);
+                    // 使用 path.relative 获取相对路径，并标准化为使用 / 分隔符
+                    const relativePath = path.relative(basePath, fullPath).replace(/\\/g, '/');
+                    
+                    if (entry.isDirectory()) {
+                        await checkExtraFiles(fullPath, basePath);
+                    } else {
+                        if (!expectedFiles.has(relativePath) && relativePath !== 'README.md') {
+                            // 允许README.md在根目录存在
+                            if (relativePath !== 'README.md' || dir !== basePath) {
+                                hasDiff = true;
+                                details.push(`额外文件: ${relativePath}`);
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                // 忽略错误
+            }
+        };
+        
+        await checkExtraFiles(repoGitPath, repoGitPath);
+        
+    } catch (err: any) {
+        details.push(`比较过程出错: ${err.message}`);
+        hasDiff = true;
+    }
+    
+    return { hasDiff, details };
+}
+
+export class RepoSyncLocalHandler extends Handler {
+    @param('rpid', Types.Int)
+    @param('branch', Types.String, true)
+    async post(domainId: string, rpid: number, branch?: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const repo = await RepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) {
+            throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
+        }
+        
+        const effectiveBranch = branch || (repo as any).currentBranch || 'main';
+        const taskId = `${domainId}_${rpid}_${effectiveBranch}`;
+        
+        // 启动异步任务
+        (async () => {
+            try {
+                syncTaskStatus.set(taskId, {
+                    status: 'checking',
+                    progress: 0,
+                    total: 100,
+                    current: '正在检查差异...'
+                });
+                
+                const repoGitPath = getRepoGitPath(domainId, rpid);
+                
+                // 确保git仓库存在
+                try {
+                    await exec('git rev-parse --git-dir', { cwd: repoGitPath });
+                } catch {
+                    await ensureRepoGitRepo(domainId, rpid);
+                }
+                
+                // 切换到正确的分支
+                try {
+                    await exec(`git checkout ${effectiveBranch}`, { cwd: repoGitPath });
+                } catch {
+                    await exec(`git checkout -b ${effectiveBranch}`, { cwd: repoGitPath });
+                }
+                
+                syncTaskStatus.set(taskId, {
+                    status: 'checking',
+                    progress: 20,
+                    total: 100,
+                    current: '正在比较本地文件和数据库...'
+                });
+                
+                // 检查差异（用于显示信息，但不阻止生成）
+                const { hasDiff, details } = await compareLocalWithDatabase(domainId, rpid, effectiveBranch, repoGitPath);
+                
+                // 即使检测到"无变化"，也强制重新生成文件，确保所有block文件都被正确生成
+                // 这对于从mongo迁移过来的数据特别重要
+                if (hasDiff) {
+                    syncTaskStatus.set(taskId, {
+                        status: 'generating',
+                        progress: 40,
+                        total: 100,
+                        current: `发现差异，正在生成文件... (${details.length}处)`
+                    });
+                } else {
+                    syncTaskStatus.set(taskId, {
+                        status: 'generating',
+                        progress: 40,
+                        total: 100,
+                        current: '强制重新生成所有文件以确保完整性...'
+                    });
+                }
+                
+                // 生成文件
+                const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-sync-'));
+                try {
+                    await buildLocalRepoFromEjunz(domainId, rpid, tmpDir, effectiveBranch);
+                    
+                    syncTaskStatus.set(taskId, {
+                        status: 'generating',
+                        progress: 70,
+                        total: 100,
+                        current: '正在复制文件到git仓库...'
+                    });
+                    
+                    await copyDir(tmpDir, repoGitPath);
+                    
+                    syncTaskStatus.set(taskId, {
+                        status: 'committing',
+                        progress: 85,
+                        total: 100,
+                        current: '正在提交更改...'
+                    });
+                    
+                    // 提交更改
+                    const defaultPrefix = `${domainId}/${this.user._id}/${this.user.uname || 'unknown'}`;
+                    const commitMessage = `${defaultPrefix}: 同步本地文件`;
+                    
+                    // 配置git用户信息
+                    const botName = system.get('ejunzrepo.github_bot_name') || 'ejunz-bot';
+                    const botEmail = system.get('ejunzrepo.github_bot_email') || 'bot@ejunz.local';
+                    await exec(`git config user.name "${botName}"`, { cwd: repoGitPath });
+                    await exec(`git config user.email "${botEmail}"`, { cwd: repoGitPath });
+                    
+                    await exec('git add -A', { cwd: repoGitPath });
+                    
+                    // 检查是否有变化需要提交
+                    let hasChanges = false;
+                    let commitSuccess = false;
+                    try {
+                        const { stdout } = await exec('git status --porcelain', { cwd: repoGitPath });
+                        hasChanges = stdout.trim().length > 0;
+                        
+                        if (hasChanges) {
+                            const escapedMessage = commitMessage.replace(/'/g, "'\\''");
+                            await exec(`git commit -m '${escapedMessage}'`, { cwd: repoGitPath });
+                            commitSuccess = true;
+                            
+                            // 验证commit是否成功
+                            try {
+                                const { stdout: logOutput } = await exec('git log -1 --oneline', { cwd: repoGitPath });
+                                if (logOutput.trim()) {
+                                    commitSuccess = true;
+                                }
+                            } catch {
+                                commitSuccess = false;
+                            }
+                        }
+                    } catch (err: any) {
+                        throw new Error(`提交失败: ${err.message}`);
+                    }
+                    
+                    if (!hasChanges) {
+                        syncTaskStatus.set(taskId, {
+                            status: 'completed',
+                            progress: 100,
+                            total: 100,
+                            current: '文件已同步，但无需提交（无变化）'
+                        });
+                    } else if (commitSuccess) {
+                        syncTaskStatus.set(taskId, {
+                            status: 'completed',
+                            progress: 100,
+                            total: 100,
+                            current: '同步完成并已提交'
+                        });
+                    } else {
+                        throw new Error('提交失败：无法验证commit是否成功');
+                    }
+                } finally {
+                    try {
+                        await fs.promises.rm(tmpDir, { recursive: true, force: true });
+                    } catch {}
+                }
+            } catch (error: any) {
+                syncTaskStatus.set(taskId, {
+                    status: 'error',
+                    progress: 0,
+                    total: 100,
+                    current: '同步失败',
+                    error: error.message
+                });
+            }
+        })();
+        
+        this.response.body = { success: true, taskId };
+    }
+    
+    @param('rpid', Types.Int)
+    @param('branch', Types.String, true)
+    async get(domainId: string, rpid: number, branch?: string) {
+        const repo = await RepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) {
+            throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
+        }
+        
+        const effectiveBranch = branch || (repo as any).currentBranch || 'main';
+        const taskId = `${domainId}_${rpid}_${effectiveBranch}`;
+        
+        const status = syncTaskStatus.get(taskId);
+        if (!status) {
+            this.response.body = { status: 'not_started' };
+            return;
+        }
+        
+        // 如果已完成或出错，5秒后清除状态
+        if (status.status === 'completed' || status.status === 'error') {
+            setTimeout(() => {
+                syncTaskStatus.delete(taskId);
+            }, 5000);
+        }
+        
+        this.response.body = status;
     }
 }
 
@@ -4147,7 +4748,7 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
                 path: newPath,
             };
 
-            await document.set(domainId, TYPE_DC, doc.docId, updatePayload);
+            await document.set(domainId, document.TYPE_DOC, doc.docId, updatePayload);
             docCache.set(did, newPath);
         }
 
@@ -4159,7 +4760,7 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
             const parentDid = typeof entry.parentDid === 'number' ? entry.parentDid : null;
             if (parentDid === null) continue;
 
-            await document.set(domainId, TYPE_BK, block.docId, {
+            await document.set(domainId, document.TYPE_BLOCK, block.docId, {
                 did: parentDid,
                 order: typeof entry.order === 'number' ? entry.order : Number(entry.order) || 0,
             });
@@ -4196,9 +4797,9 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
             }
             
             for (const docNode of docMap.values()) {
-                const blocks = await BlockModel.getByDid(domainId, docNode.did, rpid, branch);
+                const blocks = await BlockModel.getByDocId(domainId, docNode.docId, branch);
                 docNode.blocks = blocks.map(block => ({
-                    bid: block.bid,
+                    docId: block.docId.toString(),
                     title: block.title,
                     content: block.content,
                     order: (block as any).order || 0,
@@ -4797,7 +5398,7 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
                 const branches = Array.isArray(repo.branches) ? repo.branches.slice() : [];
                 if (!branches.includes(branchName)) {
                     branches.push(branchName);
-                    await document.set(domainId, TYPE_RP, repo.docId, { branches });
+                    await document.set(domainId, document.TYPE_REPO, repo.docId, { branches });
                 }
                 
                 try {
@@ -4955,32 +5556,16 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
                 if (effectiveBranch === 'main' || effectiveBranch.toLowerCase() === 'main') {
                     return { success: false, message: '❌ FORBIDDEN: Cannot create doc on main branch. Main branch is read-only. You MUST use create_branch to create a new branch first.' };
                 }
-                const did = await DocModel.generateNextDid(domainId, rpid, effectiveBranch);
-                let docId: ObjectId;
-                if (args.parentId) {
-                    docId = await DocModel.addSubdocNode(
-                        domainId,
-                        [rpid],
-                        did,
-                        args.parentId,
-                        0,
-                        args.title,
-                        args.content,
-                        undefined,
-                        effectiveBranch
-                    );
-                } else {
-                    docId = await DocModel.addRootNode(
-                        domainId,
-                        rpid,
-                        did,
-                        0,
-                        args.title,
-                        args.content,
-                        undefined,
-                        effectiveBranch
-                    );
-                }
+                // 现在所有doc都是根doc（parentId: null），不再有子doc
+                const docId = await DocModel.addRootNode(
+                    domainId,
+                    rpid,
+                    0,
+                    args.title,
+                    args.content,
+                    undefined,
+                    effectiveBranch
+                );
                 const doc = await DocModel.get(domainId, docId);
                 return { success: true, data: doc };
             } else if (op === 'edit') {
@@ -5023,10 +5608,13 @@ async function handleRepoMcpToolCall(domainId: string, toolName: string, args: a
                     }
                     return { success: true, data: block };
                 } else {
-                    const query: any = {};
-                    if (args.did) query.did = args.did;
-                    const blocks = await BlockModel.getByDid(domainId, args.did || 0, rpid, branch);
-                    return { success: true, data: blocks };
+                    // 如果提供了docId，查询该doc下的所有blocks
+                    if (args.docId) {
+                        const docId = new ObjectId(args.docId);
+                        const blocks = await BlockModel.getByDocId(domainId, docId, branch);
+                        return { success: true, data: blocks };
+                    }
+                    return { success: false, message: 'docId is required' };
                 }
             } else if (op === 'create') {
                 requireNonMainBranch('create_block');
@@ -5104,16 +5692,16 @@ export async function apply(ctx: Context) {
     ctx.Route('repo_study', '/base/repo/:rpid/study', RepoStudyHandler);
     ctx.Route('repo_study_branch', '/base/repo/:rpid/branch/:branch/study', RepoStudyHandler);
     ctx.Route('repo_structure_update', '/base/repo/:rpid/update_structure', RepoStructureUpdateHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('repo_structure_update_branch', '/base/repo/:rpid/branch/:branch/update_structure', RepoStructureUpdateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_edit', '/base/repo/:rpid/edit', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_mcp', '/base/repo/:rpid/mcp', RepoMcpHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_activate_mcp', '/base/repo/:rpid/activate-mcp', RepoActivateMcpHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('doc_create', '/base/repo/:rpid/doc/create', DocCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('doc_create_branch', '/base/repo/:rpid/branch/:branch/doc/create', DocCreateHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('doc_create_subdoc', '/base/repo/:rpid/doc/:parentId/createsubdoc', DocCreateHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('doc_create_subdoc_branch', '/base/repo/:rpid/branch/:branch/doc/:parentId/createsubdoc', DocCreateHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('doc_detail', '/base/repo/:rpid/doc/:did', DocDetailHandler);
-    ctx.Route('doc_detail_branch', '/base/repo/:rpid/branch/:branch/doc/:did', DocDetailHandler);
-    ctx.Route('doc_edit', '/base/repo/:rpid/doc/:docId/editdoc', DocEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('doc_detail', '/base/repo/:rpid/doc/:docId', DocDetailHandler);
+    ctx.Route('doc_detail_branch', '/base/repo/:rpid/branch/:branch/doc/:docId', DocDetailHandler);
+    ctx.Route('doc_edit', '/base/repo/:rpid/doc/:docId/edit', DocEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('doc_edit_branch', '/base/repo/:rpid/branch/:branch/doc/:docId/edit', DocEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_github_push', '/base/repo/:rpid/github/push', RepoGithubPushHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_github_push_branch', '/base/repo/:rpid/branch/:branch/github/push', RepoGithubPushHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_github_pull', '/base/repo/:rpid/github/pull', RepoGithubPullHandler, PRIV.PRIV_USER_PROFILE);
@@ -5124,12 +5712,13 @@ export async function apply(ctx: Context) {
     ctx.Route('repo_mode_switch', '/base/repo/:rpid/mode/:mode', RepoModeSwitchHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_mode_switch_branch', '/base/repo/:rpid/branch/:branch/mode/:mode', RepoModeSwitchHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_manuscript_batch_update', '/base/repo/:rpid/branch/:branch/manuscript/batch-update', RepoManuscriptBatchUpdateHandler, PRIV.PRIV_USER_PROFILE);
-    // Block routes
-    ctx.Route('block_create', '/base/repo/:rpid/doc/:did/block/create', BlockCreateHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('block_create_branch', '/base/repo/:rpid/branch/:branch/doc/:did/block/create', BlockCreateHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('block_detail', '/base/repo/:rpid/doc/:did/block/:bid', BlockDetailHandler);
-    ctx.Route('block_detail_branch', '/base/repo/:rpid/branch/:branch/doc/:did/block/:bid', BlockDetailHandler);
-    ctx.Route('block_edit', '/base/repo/:rpid/doc/:did/block/:bid/edit', BlockEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('block_edit_branch', '/base/repo/:rpid/branch/:branch/doc/:did/block/:bid/edit', BlockEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('repo_sync_local', '/base/repo/:rpid/branch/:branch/sync-local', RepoSyncLocalHandler, PRIV.PRIV_USER_PROFILE);
+    // Block routes - 现在使用docId，不再需要rpid和did
+    ctx.Route('block_create', '/base/repo/:rpid/doc/:docId/block/create', BlockCreateHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('block_create_branch', '/base/repo/:rpid/branch/:branch/doc/:docId/block/create', BlockCreateHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('block_detail', '/base/repo/:rpid/block/:docId', BlockDetailHandler);
+    ctx.Route('block_detail_branch', '/base/repo/:rpid/branch/:branch/block/:docId', BlockDetailHandler);
+    ctx.Route('block_edit', '/base/repo/:rpid/block/:docId/edit', BlockEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('block_edit_branch', '/base/repo/:rpid/branch/:branch/block/:docId/edit', BlockEditHandler, PRIV.PRIV_USER_PROFILE);
 }
 
