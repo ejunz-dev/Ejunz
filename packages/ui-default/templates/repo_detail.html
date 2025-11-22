@@ -207,6 +207,10 @@
             {% endif %}
           </div>
 
+          <a href="{{ url('repo_study_branch', domainId=repo.domainId, rpid=repo.rpid, branch=currentBranch) }}" class="button success expanded" style="margin-bottom: 8px;">
+            {{ _('学习模式') }}
+          </a>
+
           <a href="{{ url('repo_edit', domainId=repo.domainId, rpid=repo.rpid) }}" class="button primary expanded" style="margin-bottom: 8px;">
             {{ _('Edit Repo info') }}
           </a>

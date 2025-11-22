@@ -1821,6 +1821,65 @@ export class RepoDetailHandler extends Handler {
     }
   }
 
+export class RepoStudyHandler extends Handler {
+    @param('rpid', Types.Int)
+    @param('branch', Types.String, true)
+    async get(domainId: string, rpid: number, branch?: string) {
+        if (!rpid) {
+            throw new NotFoundError(`Invalid request: rpid is missing`);
+        }
+
+        const repo = await RepoModel.getRepoByRpid(domainId, rpid);
+        if (!repo) {
+            throw new NotFoundError(`Repo with rpid ${rpid} not found.`);
+        }
+
+        if (!branch || !String(branch).trim()) {
+            const target = this.url('repo_study_branch', { domainId, rpid, branch: 'main' });
+            this.response.redirect = target;
+            return;
+        }
+
+        const requestedBranch = branch;
+        const repoDocsAll = await RepoModel.getDocsByRepo(domainId, repo.rpid);
+        const repoDocs = repoDocsAll.filter(d => (d.branch || 'main') === requestedBranch);
+
+        // 构建单元列表，每个doc为一个单元，包含其下的所有blocks
+        const units: any[] = [];
+        for (const doc of repoDocs) {
+            const blocks = await BlockModel.getByDid(domainId, doc.did, rpid, requestedBranch);
+            if (blocks && blocks.length > 0) {
+                units.push({
+                    did: doc.did,
+                    docTitle: doc.title,
+                    blocks: blocks
+                        .sort((a, b) => (a.bid || 0) - (b.bid || 0))
+                        .map(block => ({
+                            bid: block.bid,
+                            title: block.title,
+                            content: block.content || '',
+                        })),
+                });
+            }
+        }
+
+        this.response.template = 'repo_study.html';
+        this.response.pjax = 'repo_study.html';
+        this.response.body = {
+            repo,
+            currentBranch: requestedBranch,
+            units,
+        };
+
+        this.UiContext.repo = {
+            domainId: repo.domainId,
+            rpid: repo.rpid,
+            currentBranch: requestedBranch,
+        };
+        this.UiContext.studyUnits = units;
+    }
+}
+
 export class RepoDocHandler extends Handler {
     async get() {
         const domainId = this.args?.domainId || this.context?.domainId || 'system';
@@ -5042,6 +5101,8 @@ export async function apply(ctx: Context) {
     ctx.Route('repo_create', '/base/repo/create', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_detail', '/base/repo/:rpid', RepoDetailHandler);
     ctx.Route('repo_detail_branch', '/base/repo/:rpid/branch/:branch', RepoDetailHandler);
+    ctx.Route('repo_study', '/base/repo/:rpid/study', RepoStudyHandler);
+    ctx.Route('repo_study_branch', '/base/repo/:rpid/branch/:branch/study', RepoStudyHandler);
     ctx.Route('repo_structure_update', '/base/repo/:rpid/update_structure', RepoStructureUpdateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_edit', '/base/repo/:rpid/edit', RepoEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('repo_mcp', '/base/repo/:rpid/mcp', RepoMcpHandler, PRIV.PRIV_USER_PROFILE);
