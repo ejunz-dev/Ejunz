@@ -197,19 +197,10 @@ export class RepoModel {
 }
 
 export class DocModel {
-    static async generateNextDid(domainId: string, rpid: number, branch: string = 'main'): Promise<number> {
-        const lastDoc = await document.getMulti(domainId, TYPE_DC, { rpid, branch })
-            .sort({ did: -1 })
-            .limit(1)
-            .project({ did: 1 })
-            .toArray();
-        return (lastDoc[0]?.did || 0) + 1;
-    }
-
+    // 不再使用did，直接使用docId（ObjectId）作为标识
     static async addRootNode(
         domainId: string,
         rpid: number | string,
-        did: number,
         owner: number,
         title: string,
         content: string,
@@ -220,19 +211,16 @@ export class DocModel {
         if (isNaN(parsedRpid)) {
             throw new Error(`Invalid rpid: ${rpid}`);
         }
-        const newDid = did || await this.generateNextDid(domainId, parsedRpid, branch);
 
         const payload: Partial<DCDoc> = {
             domainId,
             rpid: parsedRpid,
-            did: newDid,
             title,
             content,
             owner,
             ip,
             updateAt: new Date(),
             views: 0,
-            path: `/${newDid}`,
             doc: false,
             parentId: null,
             branch,
@@ -254,7 +242,7 @@ export class DocModel {
             parsedRpid,
             branch,
             'doc',
-            newDid,
+            docId.toString(), // 使用docId作为标识
             docId,
             title,
             content
@@ -263,86 +251,26 @@ export class DocModel {
         return docId;
     }
 
-    static async addSubdocNode(
-        domainId: string,
-        rpid: number[],
-        did: number | null,
-        parentDcid: number,
-        owner: number,
-        title: string,
-        content: string,
-        ip?: string,
-        branch: string = 'main'
-    ): Promise<ObjectId> {
-        const parentNode = await document.getMulti(domainId, TYPE_DC, { did: parentDcid })
-            .limit(1)
-            .toArray();
-
-        if (!parentNode.length) {
-            throw new Error('Parent node does not exist.');
+    static async get(domainId: string, query: ObjectId): Promise<DCDoc | null> {
+        // 现在只支持通过docId（ObjectId）查询
+        const doc = await document.get(domainId, TYPE_DC, query);
+        if (doc && Array.isArray(doc.rpid)) {
+            doc.rpid = doc.rpid[0];
         }
-
-        const firstRpid = Array.isArray(rpid) ? rpid[0] : rpid;
-        const newDid = did ?? await this.generateNextDid(domainId, firstRpid, branch);
-        const path = `${parentNode[0].path}/${newDid}`;
-
-        const payload: Partial<DCDoc> = {
-            domainId,
-            rpid: rpid as any,
-            did: newDid,
-            parentId: parentDcid,
-            title,
-            content,
-            owner,
-            ip,
-            updateAt: new Date(),
-            views: 0,
-            path,
-            doc: true,
-            branch,
-        };
-
-        const docId = await document.add(
-            domainId,
-            payload.content!,
-            payload.owner!,
-            TYPE_DC,
-            null,
-            null,
-            null,
-            _.omit(payload, ['domainId', 'content', 'owner'])
-        );
-
-        await RepoKeywordIndexModel.indexContent(
-            domainId,
-            firstRpid,
-            branch,
-            'doc',
-            newDid,
-            docId,
-            title,
-            content
-        ).catch(err => console.error('Failed to update keyword index:', err));
-
-        return docId;
+        return doc;
     }
 
-    static async get(domainId: string, query: ObjectId | { did: number } | { rpid: number, did: number }): Promise<DCDoc | null> {
-        if (typeof query === 'object' && 'did' in query) {
-            const docs = await document.getMulti(domainId, TYPE_DC, query).limit(1).toArray();
-            const doc = docs[0] || null;
-            if (doc && Array.isArray(doc.rpid)) {
+    static async getByRepo(domainId: string, rpid: number, branch?: string): Promise<DCDoc[]> {
+        // 获取repo下的所有doc
+        const query: any = { rpid };
+        if (branch) query.branch = branch;
+        const docs = await document.getMulti(domainId, TYPE_DC, query).toArray();
+        return docs.map(doc => {
+            if (Array.isArray(doc.rpid)) {
                 doc.rpid = doc.rpid[0];
             }
             return doc;
-        }
-        return await document.get(domainId, TYPE_DC, query as ObjectId);
-    }
-
-    static async getChildren(domainId: string, parentId: number, branch?: string): Promise<DCDoc[]> {
-        const query: any = { parentId };
-        if (branch) query.branch = branch;
-        return await document.getMulti(domainId, TYPE_DC, query).toArray();
+        });
     }
 
     static async getDoc(domainId: string, query: Partial<DCDoc>) {
@@ -353,12 +281,16 @@ export class DocModel {
         const node = await this.get(domainId, docId);
         if (!node) throw new Error('Node not found.');
 
-        const descendants = await document.getMulti(domainId, TYPE_DC, {
-            path: { $regex: `^${node.path}` },
-        }).toArray();
+        // 删除该doc下的所有block（block的did字段指向doc的docId）
+        const blocks = await BlockModel.getByDocId(domainId, docId, node.branch);
+        
+        // 删除所有block
+        for (const block of blocks) {
+            await BlockModel.delete(domainId, block.docId);
+        }
 
-        const docIds = descendants.map((n) => n.docId);
-        await Promise.all(docIds.map((id) => document.deleteOne(domainId, TYPE_DC, id)));
+        // 删除doc本身
+        await document.deleteOne(domainId, document.TYPE_DOC, docId);
         
         const rpidNum = Array.isArray(node.rpid) ? node.rpid[0] : node.rpid;
         await RepoKeywordIndexModel.removeIndex(
@@ -366,19 +298,8 @@ export class DocModel {
             rpidNum,
             node.branch || 'main',
             'doc',
-            node.did
+            docId.toString() // 使用docId作为标识
         ).catch(err => console.error('Failed to remove keyword index:', err));
-        
-        for (const desc of descendants) {
-            const descRpidNum = Array.isArray(desc.rpid) ? desc.rpid[0] : desc.rpid;
-            await RepoKeywordIndexModel.removeIndex(
-                domainId,
-                descRpidNum,
-                desc.branch || 'main',
-                'doc',
-                desc.did
-            ).catch(err => console.error('Failed to remove keyword index:', err));
-        }
     }
 
     static async incrementViews(domainId: string, docId: ObjectId): Promise<void> {
@@ -659,32 +580,21 @@ export class RepoKeywordIndexModel {
 }
 
 export class BlockModel {
-    static async generateNextBid(domainId: string, rpid: number, branch: string = 'main'): Promise<number> {
-        const lastBlock = await document.getMulti(domainId, TYPE_BK, { rpid })
-            .sort({ bid: -1 })
-            .limit(1)
-            .project({ bid: 1 })
-            .toArray();
-        return (lastBlock[0]?.bid || 0) + 1;
-    }
-
     static async create(
         domainId: string,
         rpid: number,
-        did: number,
+        docDocId: ObjectId, // 指向doc的docId（ObjectId）
         owner: number,
         title: string,
         content: string,
         ip?: string,
         branch: string = 'main'
     ): Promise<ObjectId> {
-        const bid = await this.generateNextBid(domainId, rpid, branch);
-        
+        // 不再使用bid，直接使用返回的docId作为标识
         const payload: Partial<BKDoc> = {
             domainId,
             rpid,
-            did,
-            bid,
+            did: docDocId, // did字段现在指向doc的docId（ObjectId）
             title,
             content,
             owner,
@@ -710,7 +620,7 @@ export class BlockModel {
             rpid,
             branch,
             'block',
-            bid,
+            docId.toString(), // 使用docId作为标识
             docId,
             title,
             content
@@ -719,34 +629,18 @@ export class BlockModel {
         return docId;
     }
 
-    static async get(domainId: string, query: ObjectId | { rpid: number, bid: number, branch?: string }): Promise<BKDoc | null> {
-        if (typeof query === 'object' && 'bid' in query) {
-            const queryObj: any = { rpid: query.rpid, bid: query.bid };
-            if (query.branch !== undefined) {
-                queryObj.branch = query.branch;
-            } else {
-                queryObj.branch = 'main';
-            }
-            const blocks = await document.getMulti(domainId, TYPE_BK, queryObj).limit(1).toArray();
-            const block = blocks[0] || null;
-            if (block) {
-                const branchFilter = query.branch || 'main';
-                const blockBranch = block.branch || 'main';
-                if (blockBranch !== branchFilter) {
-                    return null;
-                }
-            }
-            if (block && Array.isArray(block.rpid)) {
-                block.rpid = block.rpid[0];
-            }
-            return block;
+    static async get(domainId: string, query: ObjectId): Promise<BKDoc | null> {
+        // 现在只支持通过docId（ObjectId）查询
+        const block = await document.get(domainId, TYPE_BK, query);
+        if (block && Array.isArray(block.rpid)) {
+            block.rpid = block.rpid[0];
         }
-        return await document.get(domainId, TYPE_BK, query as ObjectId);
+        return block;
     }
 
-    static async getByDid(domainId: string, did: number, rpid?: number, branch?: string): Promise<BKDoc[]> {
-        const query: any = { did };
-        if (rpid !== undefined) query.rpid = rpid;
+    static async getByDocId(domainId: string, docDocId: ObjectId, branch?: string): Promise<BKDoc[]> {
+        // 通过doc的docId查询该doc下的所有blocks
+        const query: any = { did: docDocId };
         if (branch !== undefined) {
             query.branch = branch;
         } else {
@@ -783,7 +677,7 @@ export class BlockModel {
             rpidNum,
             block.branch || 'main',
             'block',
-            block.bid,
+            docId.toString(), // 使用docId作为标识
             docId,
             title,
             content
@@ -794,7 +688,7 @@ export class BlockModel {
         const block = await this.get(domainId, docId);
         if (!block) throw new Error('Block not found');
         
-        await document.deleteOne(domainId, TYPE_BK, docId);
+        await document.deleteOne(domainId, document.TYPE_BLOCK, docId);
         
         const rpidNum = Array.isArray(block.rpid) ? block.rpid[0] : block.rpid;
         await RepoKeywordIndexModel.removeIndex(
@@ -802,7 +696,7 @@ export class BlockModel {
             rpidNum,
             block.branch || 'main',
             'block',
-            block.bid
+            docId.toString() // 使用docId作为标识
         ).catch(err => console.error('Failed to remove keyword index:', err));
     }
 

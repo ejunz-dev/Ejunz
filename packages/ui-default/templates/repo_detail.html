@@ -1,5 +1,13 @@
 {% extends "layout/basic.html" %}
 {% block content %}
+<script>
+  {{ set(UiContext, 'currentBranch', currentBranch) }}
+  {{ set(UiContext, 'repo', {
+    domainId: repo.domainId,
+    rpid: repo.rpid,
+    currentBranch: currentBranch
+  }) }}
+</script>
 <div class="row">
   <div class="medium-9 columns">
     <div class="section">
@@ -210,6 +218,17 @@
           <a href="{{ url('repo_study_branch', domainId=repo.domainId, rpid=repo.rpid, branch=currentBranch) }}" class="button success expanded" style="margin-bottom: 8px;">
             {{ _('学习模式') }}
           </a>
+
+          <button type="button" id="sync-local-btn" class="button primary expanded" style="margin-bottom: 8px;" onclick="syncLocalFiles()">
+            {{ _('同步本地文件') }}
+          </button>
+          <div id="sync-progress" style="display: none; margin-bottom: 8px; padding: 12px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; font-size: 12px;">
+            <div id="sync-status" style="font-weight: 600; margin-bottom: 8px;"></div>
+            <div style="background-color: #e9ecef; border-radius: 4px; height: 20px; overflow: hidden;">
+              <div id="sync-progress-bar" style="background-color: #007bff; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+            </div>
+            <div id="sync-message" style="margin-top: 8px; color: #666;"></div>
+          </div>
 
           <a href="{{ url('repo_edit', domainId=repo.domainId, rpid=repo.rpid) }}" class="button primary expanded" style="margin-bottom: 8px;">
             {{ _('Edit Repo info') }}
