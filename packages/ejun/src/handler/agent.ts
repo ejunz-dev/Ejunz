@@ -485,27 +485,40 @@ export async function processAgentChatInternal(
             chatHistory = history;
         }
 
-        AgentLogger.info('processAgentChatInternal: Getting assigned tools', { 
-            domainId: adoc.domainId, 
-            mcpToolIds: adoc.mcpToolIds?.length || 0,
-            mcpToolIdsArray: adoc.mcpToolIds?.map(id => id.toString()) || [],
-            repoIds: adoc.repoIds?.length || 0,
-            repoIdsArray: adoc.repoIds || []
-        });
-        const tools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds);
-        AgentLogger.info('processAgentChatInternal: Got tools', { 
-            toolCount: tools.length, 
-            toolNames: tools.map(t => t.name),
-            tools: tools.map(t => ({ name: t.name, hasSchema: !!t.inputSchema }))
-        });
-        
-        if (tools.length === 0) {
-            AgentLogger.warn('processAgentChatInternal: No tools found!', {
-                domainId: adoc.domainId,
-                mcpToolIds: adoc.mcpToolIds?.length || 0,
-                agentId: adoc.aid
-            });
-        }
+        // Start loading tools asynchronously - don't block streaming at all
+        // First stage reply is "naked" (no tool info needed)
+        // Tools will be loaded in background and available for subsequent tool calls
+        let tools: any[] = [];
+        let toolsLoaded = false;
+        const toolsPromise = (async () => {
+            try {
+                AgentLogger.info('processAgentChatInternal: Getting assigned tools (async, non-blocking)', { 
+                    domainId: adoc.domainId, 
+                    mcpToolIds: adoc.mcpToolIds?.length || 0,
+                    mcpToolIdsArray: adoc.mcpToolIds?.map(id => id.toString()) || [],
+                    repoIds: adoc.repoIds?.length || 0,
+                    repoIdsArray: adoc.repoIds || []
+                });
+                const loadedTools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds);
+                tools = loadedTools;
+                toolsLoaded = true;
+                AgentLogger.info('processAgentChatInternal: Got tools (async)', { 
+                    toolCount: tools.length, 
+                    toolNames: tools.map(t => t.name),
+                    tools: tools.map(t => ({ name: t.name, hasSchema: !!t.inputSchema }))
+                });
+                
+                if (tools.length === 0) {
+                    AgentLogger.warn('processAgentChatInternal: No tools found!', {
+                        domainId: adoc.domainId,
+                        mcpToolIds: adoc.mcpToolIds?.length || 0,
+                        agentId: adoc.aid
+                    });
+                }
+            } catch (error: any) {
+                AgentLogger.error('Failed to load tools asynchronously: %s', error.message);
+            }
+        })();
         
         const mcpClient = new McpClient();
 
@@ -530,12 +543,10 @@ export async function processAgentChatInternal(
             systemMessage = 'Note: Do not use any emoji in your responses.';
         }
 
-        if (tools.length > 0) {
-            const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
-              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
-              `\n\n【CRITICAL - YOU MUST READ THIS FIRST】\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "Find the switch"\n2. You MUST first output: "Let me help you find the switch device..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n【TOOL USAGE STRATEGY - CRITICAL】\n1. **Proactive Multi-Tool Problem Solving**: When a user's question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "Do I have classes tomorrow?" → You should: (1) FIRST say "Let me check tomorrow's schedule..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there's schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "View files in repo" → You should: (1) FIRST say "Let me search for files in the knowledge base..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   Examples: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool's result.\n5. After the last tool call completes, you should only reply with the last tool's result. Do NOT provide a comprehensive summary of all tools' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool's result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool's result → explain what you will do next → call the second tool → reply with the second tool's result, and so on. Each reply should be independent and focused on the current tool.`;
-            systemMessage = systemMessage + toolsInfo;
-        }
+        // Don't wait for tools - start streaming immediately with "naked" reply
+        // Tools will be loaded in background and available for tool calls later
+        // First stage reply doesn't need tool information
+        // Tools info will be added to system message when tools are loaded (for subsequent requests)
 
         const truncateMessages = (messages: any[], maxMessages: number = 20, maxChars: number = 8000): any[] => {
             if (messages.length <= maxMessages) {
@@ -614,19 +625,13 @@ export async function processAgentChatInternal(
             stream: true,
         };
 
-        if (tools.length > 0) {
-            requestBody.tools = tools.map(tool => ({
-                type: 'function',
-                function: {
-                    name: tool.name,
-                    description: tool.description,
-                    parameters: tool.inputSchema,
-                },
-            }));
-            AgentLogger.info('processAgentChatInternal: Added tools to request', { toolCount: requestBody.tools.length });
-        } else {
-            AgentLogger.warn('processAgentChatInternal: No tools available', { domainId: adoc.domainId, mcpToolIds: adoc.mcpToolIds?.length || 0 });
-        }
+        // Don't add tools to first request - start streaming immediately with "naked" reply
+        // Tools will be loaded in background and added to subsequent requests if needed
+        AgentLogger.info('processAgentChatInternal: Starting stream immediately (tools loading in background)', { 
+            domainId: adoc.domainId, 
+            mcpToolIds: adoc.mcpToolIds?.length || 0,
+            toolsLoaded: false // Tools still loading
+        });
 
         let messagesForTurn: any[] = [
             { role: 'system', content: systemMessage },
@@ -644,12 +649,14 @@ export async function processAgentChatInternal(
 
         const processStream = async () => {
             try {
+                const requestStartTime = Date.now();
                 AgentLogger.info('Starting stream request (internal)', { 
                     apiUrl, 
                     model, 
                     toolCount: tools.length,
                     hasTools: tools.length > 0,
-                    requestBodyHasTools: !!requestBody.tools
+                    requestBodyHasTools: !!requestBody.tools,
+                    message: message.substring(0, 100) // Log first 100 chars of user message
                 });
                 streamFinished = false;
                 waitingForToolCall = false;
@@ -661,12 +668,24 @@ export async function processAgentChatInternal(
                         .set('content-type', 'application/json')
                         .buffer(false)
                         .timeout(60000)
+                        .on('response', (res) => {
+                            const responseTime = Date.now() - requestStartTime;
+                            AgentLogger.info('API response received, status: %d, time since request: %dms', res.statusCode, responseTime);
+                        })
                         .parse((res, callback) => {
                             res.setEncoding('utf8');
                             let buffer = '';
+                            let firstChunkTime: number | null = null;
 
                             res.on('data', (chunk: string) => {
                                 if (streamFinished) return;
+                                
+                                // Log first chunk arrival time
+                                if (firstChunkTime === null) {
+                                    firstChunkTime = Date.now();
+                                    const timeSinceRequest = firstChunkTime - requestStartTime;
+                                    AgentLogger.info('API first chunk received, time since request: %dms, chunk size: %d bytes', timeSinceRequest, chunk.length);
+                                }
 
                                 buffer += chunk;
                                 const lines = buffer.split('\n');
@@ -709,7 +728,17 @@ export async function processAgentChatInternal(
 
                                         if (delta?.content) {
                                             accumulatedContent += delta.content;
+                                            // Print API generated text (incremental)
+                                            const contentTime = Date.now();
+                                            AgentLogger.info('API content (incremental): %s', delta.content);
+                                            
+                                            // Forward to client immediately (non-blocking)
+                                            const callbackStartTime = Date.now();
                                             callbacks.onContent?.(delta.content);
+                                            const callbackDuration = Date.now() - callbackStartTime;
+                                            if (callbackDuration > 10) {
+                                                AgentLogger.warn('onContent callback took %dms (may block streaming)', callbackDuration);
+                                            }
                                         }
 
                                         if (choice?.finish_reason) {
@@ -739,6 +768,10 @@ export async function processAgentChatInternal(
                             });
 
                             res.on('end', async () => {
+                                // Print complete API response
+                                if (accumulatedContent) {
+                                    AgentLogger.info('API complete response: %s', accumulatedContent);
+                                }
                                 AgentLogger.info('Stream ended (internal)', { finishReason, iterations, accumulatedLength: accumulatedContent.length, streamFinished, waitingForToolCall });
                                 callback(null, undefined);
 
@@ -873,6 +906,38 @@ export async function processAgentChatInternal(
                                                 waitingForToolCall = false;
                                                 requestBody.messages = messagesForTurn;
                                                 requestBody.stream = true;
+                                                
+                                                // Check if tools are now loaded and add them to request
+                                                // Also update system message with tools info if available
+                                                if (toolsLoaded && tools.length > 0) {
+                                                    // Add tools to request body
+                                                    requestBody.tools = tools.map(tool => ({
+                                                        type: 'function',
+                                                        function: {
+                                                            name: tool.name,
+                                                            description: tool.description,
+                                                            parameters: tool.inputSchema,
+                                                        },
+                                                    }));
+                                                    
+                                                    // Update system message with tools info if not already added
+                                                    let updatedSystemMessage = systemMessage;
+                                                    if (!updatedSystemMessage.includes('You can use the following tools')) {
+                                                        const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
+                                                          tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
+                                                          `\n\n【CRITICAL - YOU MUST READ THIS FIRST】\n**MANDATORY: SPEAK BEFORE TOOL CALLS**\nBefore calling ANY tool, you MUST first output a message explaining what you are about to do. This is MANDATORY and NON-NEGOTIABLE.\n\nExample workflow:\n1. User asks: "Find the switch"\n2. You MUST first output: "Let me help you find the switch device..." (or similar)\n3. THEN call the tool (e.g., zigbee_list_devices)\n4. After tool returns, output the results\n\nIf you call a tool WITHOUT first explaining what you are doing, you are violating the rules. The conversation should feel natural - you speak first, then act, then speak about the results.\n\n【TOOL USAGE STRATEGY - CRITICAL】\n1. **Proactive Multi-Tool Problem Solving**: When a user's question requires multiple tools or steps to fully answer, you MUST actively call tools in sequence until you have enough information. Do not stop after the first tool if the problem clearly needs more.\n2. **Knowledge Base Search Priority**: When users ask questions about information, documentation, stored knowledge, or specific topics, ALWAYS use the search_repo tool first to check if the information exists in the knowledge base. Even if you think you might know the answer, search the knowledge base to ensure accuracy and completeness.\n3. **Sequential Tool Execution**: The system executes one tool at a time. After each tool completes, you receive the result and can immediately call the next tool if needed.\n4. **Complete Before Responding**: When solving complex problems, gather ALL necessary information through tool calls BEFORE giving your final answer to the user. Only reply after you have completed the tool chain needed to answer the question.\n5. **Tool Chaining Examples**:\n   - User: "Do I have classes tomorrow?" → You should: (1) FIRST say "Let me check tomorrow's schedule..." (2) call get_current_time to know what day tomorrow is, (3) call search_repo to check if there's schedule/calendar info in knowledge base, (4) then provide complete answer\n   - User: "View files in repo" → You should: (1) FIRST say "Let me search for files in the knowledge base..." (2) call search_repo to find relevant repo entries, (3) if found, analyze content, (4) present comprehensive results\n   - User asks about any topic → You should: (1) FIRST say what you will do, (2) THEN search knowledge base using search_repo, (3) analyze results, (4) if needed, call other tools, (5) provide answer based on all information gathered\n6. **When to Stop Tool Chain**: Only stop calling tools when: (a) you have enough information to fully answer the question, (b) you need user clarification, or (c) no more relevant tools are available.\n7. **System Behavior**: The system processes tools one-by-one automatically. After each tool result, you decide whether to call another tool or provide the answer.\n\n**KEY PRINCIPLE**: Be proactive and thorough. Always search the knowledge base first when users ask about information. If a question needs multiple tools, call them all before responding. Do not make the user ask multiple times or give incomplete answers.\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools (MANDATORY)**: When you need to call a tool, you MUST first output and stream a message to the user explaining what you are about to do. Examples:\n   Examples: "Let me search the knowledge base..." / "Let me find the switch devices..." / "Let me check the relevant information..."\n   This message MUST be streamed BEFORE you call the tool. This gives the user immediate feedback and makes the conversation feel natural and responsive. ONLY AFTER you have explained what you are doing should you call the tool. Calling a tool without first speaking is STRICTLY FORBIDDEN.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool's result.\n5. After the last tool call completes, you should only reply with the last tool's result. Do NOT provide a comprehensive summary of all tools' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool's result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool's result → explain what you will do next → call the second tool → reply with the second tool's result, and so on. Each reply should be independent and focused on the current tool.`;
+                                                        updatedSystemMessage = systemMessage + toolsInfo;
+                                                        systemMessage = updatedSystemMessage;
+                                                        // Update system message in request body
+                                                        const systemMsgIndex = requestBody.messages.findIndex((m: any) => m.role === 'system');
+                                                        if (systemMsgIndex >= 0) {
+                                                            requestBody.messages[systemMsgIndex].content = updatedSystemMessage;
+                                                        }
+                                                    }
+                                                    
+                                                    AgentLogger.info('Tools loaded during stream, added to request', { toolCount: tools.length });
+                                                }
+                                                
                                                 AgentLogger.info('Continuing stream after first tool call (internal)', {
                                                     toolName: firstToolName,
                                                     remainingTools: assistantForTools.tool_calls.length - 1
@@ -985,15 +1050,37 @@ export async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[]
     }
     
     // First, get tools from database and build a map by tool name
+    // Use batch query instead of individual queries for better performance
     const dbToolsMap = new Map<string, any>();
     const assignedToolNames = new Set<string>();
     
-    for (const toolId of finalToolIds) {
-        try {
-            const tool = await ToolModel.get(toolId);
+    try {
+        // Batch query all tools at once
+        const tools = await document.getMulti(domainId, document.TYPE_TOOL, { _id: { $in: finalToolIds } }).toArray() as any[];
+        
+        // Get unique edgeDocIds to batch query edges
+        const edgeDocIds = new Set<ObjectId>();
+        for (const tool of tools) {
+            if (tool && tool.domainId === domainId && tool.edgeDocId) {
+                edgeDocIds.add(tool.edgeDocId);
+            }
+        }
+        
+        // Batch query all edges at once
+        const edgesMap = new Map<ObjectId, any>();
+        if (edgeDocIds.size > 0) {
+            const edges = await document.getMulti(domainId, document.TYPE_EDGE, { _id: { $in: Array.from(edgeDocIds) } }).toArray() as any[];
+            for (const edge of edges) {
+                if (edge) {
+                    edgesMap.set(edge._id, edge);
+                }
+            }
+        }
+        
+        // Build tools map
+        for (const tool of tools) {
             if (tool && tool.domainId === domainId) {
-                // 获取 edge 信息以获取 token
-                const edge = await EdgeModel.get(tool.edgeDocId);
+                const edge = edgesMap.get(tool.edgeDocId);
                 if (edge) {
                     dbToolsMap.set(tool.name, {
                         name: tool.name,
@@ -1005,59 +1092,79 @@ export async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[]
                     assignedToolNames.add(tool.name);
                 }
             }
-        } catch (error) {
-            AgentLogger.warn('Invalid tool ID: %s', toolId.toString());
+        }
+    } catch (error) {
+        AgentLogger.warn('Failed to batch query tools, falling back to individual queries: %s', (error as Error).message);
+        // Fallback to individual queries if batch query fails
+        for (const toolId of finalToolIds) {
+            try {
+                const tool = await ToolModel.get(toolId);
+                if (tool && tool.domainId === domainId) {
+                    const edge = await EdgeModel.get(tool.edgeDocId);
+                    if (edge) {
+                        dbToolsMap.set(tool.name, {
+                            name: tool.name,
+                            description: tool.description,
+                            inputSchema: tool.inputSchema,
+                            token: edge.token,
+                            edgeId: edge._id,
+                        });
+                        assignedToolNames.add(tool.name);
+                    }
+                }
+            } catch (err) {
+                AgentLogger.warn('Invalid tool ID: %s', toolId.toString());
+            }
         }
     }
     
     // Also fetch from real-time MCP connections to get tools that might not be in DB yet
     // or to get more up-to-date tool definitions
+    // Use timeout to prevent blocking if MCP is slow or unavailable
+    let realtimeTools: any[] = [];
     try {
         const mcpClient = new McpClient();
-        const realtimeTools = await mcpClient.getTools();
-        
-        // Merge realtime tools with database tools
-        // Priority: realtime tools (more up-to-date) > database tools
-        const finalTools: any[] = [];
-        const processedNames = new Set<string>();
-        
-        // First, add realtime tools that match assigned tool names
-        // Note: realtime tools don't have token, so we prefer database tools when available
-        for (const realtimeTool of realtimeTools) {
-            if (assignedToolNames.has(realtimeTool.name) && !dbToolsMap.has(realtimeTool.name)) {
-                // Only add realtime tool if not in database (database tools have token)
-                finalTools.push({
-                    name: realtimeTool.name,
-                    description: realtimeTool.description || '',
-                    inputSchema: realtimeTool.inputSchema || null,
-                });
-                processedNames.add(realtimeTool.name);
-            }
-        }
-        
-        // Then, add database tools (they have token, so prefer them)
-        for (const [toolName, dbTool] of dbToolsMap) {
-            if (!processedNames.has(toolName)) {
-                finalTools.push(dbTool);
-                processedNames.add(toolName);
-            }
-        }
-        
-        AgentLogger.info('getAssignedTools: dbTools=%d, realtimeTools=%d, matchedTools=%d, finalTools=%d', 
-            dbToolsMap.size, realtimeTools.length, processedNames.size, finalTools.length);
-        AgentLogger.info('getAssignedTools: details', {
-            dbToolNames: Array.from(dbToolsMap.keys()),
-            realtimeToolNames: realtimeTools.map(t => t.name),
-            assignedToolNames: Array.from(assignedToolNames),
-            finalToolNames: finalTools.map(t => t.name)
+        // Add timeout to prevent blocking - if MCP is slow, fallback to DB tools
+        const timeoutPromise = new Promise<any[]>((_, reject) => {
+            setTimeout(() => reject(new Error('MCP tools fetch timeout')), 1000); // 1 second timeout
         });
-        
-        return finalTools;
+        realtimeTools = await Promise.race([mcpClient.getTools(), timeoutPromise]);
     } catch (error: any) {
-        AgentLogger.warn('Failed to fetch realtime tools, using DB tools only: %s', error.message);
-        // Fallback to database tools only
-        return Array.from(dbToolsMap.values());
+        // Silently fallback to database tools - MCP is optional
+        AgentLogger.debug('MCP tools fetch failed or timeout, using DB tools only: %s', error.message);
     }
+    
+    // Merge realtime tools with database tools
+    // Priority: realtime tools (more up-to-date) > database tools
+    const finalTools: any[] = [];
+    const processedNames = new Set<string>();
+    
+    // First, add realtime tools that match assigned tool names
+    // Note: realtime tools don't have token, so we prefer database tools when available
+    for (const realtimeTool of realtimeTools) {
+        if (assignedToolNames.has(realtimeTool.name) && !dbToolsMap.has(realtimeTool.name)) {
+            // Only add realtime tool if not in database (database tools have token)
+            finalTools.push({
+                name: realtimeTool.name,
+                description: realtimeTool.description || '',
+                inputSchema: realtimeTool.inputSchema || null,
+            });
+            processedNames.add(realtimeTool.name);
+        }
+    }
+    
+    // Then, add database tools (they have token, so prefer them)
+    for (const [toolName, dbTool] of dbToolsMap) {
+        if (!processedNames.has(toolName)) {
+            finalTools.push(dbTool);
+            processedNames.add(toolName);
+        }
+    }
+    
+    AgentLogger.info('getAssignedTools: dbTools=%d, realtimeTools=%d, matchedTools=%d, finalTools=%d', 
+        dbToolsMap.size, realtimeTools.length, processedNames.size, finalTools.length);
+    
+    return finalTools;
 }
 
 class AgentMcpStatusHandler extends Handler {
