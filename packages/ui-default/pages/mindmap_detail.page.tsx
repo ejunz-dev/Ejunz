@@ -874,7 +874,10 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
   const layoutTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [autoLayout, setAutoLayout] = useState(true);
   const autoLayoutEnabledRef = useRef(true);
-  const [viewMode, setViewMode] = useState<'mindmap' | 'outline'>('mindmap');
+  const [viewMode, setViewMode] = useState<'mindmap' | 'outline' | 'study'>('mindmap');
+  const [studyLayer, setStudyLayer] = useState<number>(0); // 当前刷题的层数
+  const [studyCardIndex, setStudyCardIndex] = useState<number>(0); // 当前卡片索引
+  const [isCardFlipped, setIsCardFlipped] = useState<boolean>(false); // 卡片是否翻转
 
   // 使用 ref 存储回调函数，避免在依赖数组中引起无限循环
   const callbacksRef = useRef<{
@@ -2309,6 +2312,106 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     };
   }, [nodes, edges]);
 
+  // 按层组织节点（广度优先，跳过根节点，从根节点的子节点开始作为第0层）
+  const nodesByLayer = useMemo(() => {
+    const layers: { layer: number; nodes: Node[] }[] = [];
+    const visited = new Set<string>();
+    const nodeMap = new Map<string, Node>();
+    
+    nodes.forEach(node => {
+      nodeMap.set(node.id, node);
+    });
+
+    // 找到根节点（没有父边的节点）
+    const rootNodes = nodes.filter(node => 
+      !edges.some(edge => edge.target === node.id)
+    );
+
+    if (rootNodes.length === 0) return layers;
+
+    // 从根节点的子节点开始，作为第0层
+    const queue: { nodeId: string; layer: number }[] = [];
+    rootNodes.forEach(root => {
+      // 不添加根节点，直接添加根节点的子节点
+      const childEdges = edges.filter(e => e.source === root.id);
+      for (const edge of childEdges) {
+        if (!visited.has(edge.target)) {
+          visited.add(edge.target);
+          queue.push({ nodeId: edge.target, layer: 0 });
+        }
+      }
+    });
+
+    while (queue.length > 0) {
+      const { nodeId, layer } = queue.shift()!;
+      const node = nodeMap.get(nodeId);
+      if (!node) continue;
+
+      // 确保层数组有足够的空间
+      while (layers.length <= layer) {
+        layers.push({ layer: layers.length, nodes: [] });
+      }
+      layers[layer].nodes.push(node);
+
+      // 添加子节点到队列
+      const childEdges = edges.filter(e => e.source === nodeId);
+      for (const edge of childEdges) {
+        if (!visited.has(edge.target)) {
+          visited.add(edge.target);
+          queue.push({ nodeId: edge.target, layer: layer + 1 });
+        }
+      }
+    }
+
+    return layers;
+  }, [nodes, edges]);
+
+  // 获取当前层的卡片列表
+  const currentLayerCards = useMemo(() => {
+    if (studyLayer >= nodesByLayer.length) return [];
+    const layerNodes = nodesByLayer[studyLayer].nodes;
+    return layerNodes.map(node => {
+      const originalNode = node.data.originalNode as MindMapNode;
+      const childEdges = edges.filter(e => e.source === node.id);
+      const children = childEdges.map(e => {
+        const childNode = nodes.find(n => n.id === e.target);
+        return childNode ? (childNode.data.originalNode as MindMapNode) : null;
+      }).filter(Boolean) as MindMapNode[];
+
+      return {
+        parent: originalNode,
+        children,
+      };
+    });
+  }, [studyLayer, nodesByLayer, nodes, edges]);
+
+  // 翻转卡片
+  const handleFlipCard = useCallback(() => {
+    setIsCardFlipped(!isCardFlipped);
+  }, [isCardFlipped]);
+
+  // 下一个卡片
+  const handleNextCard = useCallback(() => {
+    if (studyCardIndex < currentLayerCards.length - 1) {
+      setStudyCardIndex(studyCardIndex + 1);
+      setIsCardFlipped(false);
+    }
+  }, [studyCardIndex, currentLayerCards.length]);
+
+  // 上一个卡片
+  const handlePrevCard = useCallback(() => {
+    if (studyCardIndex > 0) {
+      setStudyCardIndex(studyCardIndex - 1);
+      setIsCardFlipped(false);
+    }
+  }, [studyCardIndex]);
+
+  // 切换层时重置卡片索引
+  useEffect(() => {
+    setStudyCardIndex(0);
+    setIsCardFlipped(false);
+  }, [studyLayer]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
       {/* 工具栏 */}
@@ -2322,18 +2425,22 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       }}>
         {/* 模式切换按钮 */}
         <button
-          onClick={() => setViewMode(viewMode === 'mindmap' ? 'outline' : 'mindmap')}
+          onClick={() => {
+            if (viewMode === 'mindmap') setViewMode('outline');
+            else if (viewMode === 'outline') setViewMode('study');
+            else setViewMode('mindmap');
+          }}
           style={{
             padding: '6px 12px',
             border: '1px solid #ddd',
             borderRadius: '4px',
-            background: viewMode === 'mindmap' ? '#2196f3' : '#fff',
-            color: viewMode === 'mindmap' ? '#fff' : '#333',
+            background: viewMode === 'mindmap' ? '#2196f3' : viewMode === 'outline' ? '#4caf50' : '#ff9800',
+            color: '#fff',
             cursor: 'pointer',
             fontWeight: 'bold',
           }}
         >
-          {viewMode === 'mindmap' ? '思维导图' : '大纲视图'}
+          {viewMode === 'mindmap' ? '思维导图' : viewMode === 'outline' ? '大纲视图' : '刷题模式'}
         </button>
         {viewMode === 'mindmap' && (
           <button
@@ -2381,6 +2488,24 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
               <div>Enter - 创建兄弟节点</div>
             </div>
           )}
+          <a
+            href={(() => {
+              const domainId = (window as any).UiContext?.domainId || '';
+              return domainId ? `/d/${domainId}/mindmap/${docId}/study` : `/mindmap/${docId}/study`;
+            })()}
+            style={{
+              padding: '6px 12px',
+              border: '1px solid #2196f3',
+              borderRadius: '4px',
+              background: '#2196f3',
+              color: '#fff',
+              textDecoration: 'none',
+              cursor: 'pointer',
+              fontSize: '14px',
+            }}
+          >
+            刷题模式
+          </a>
           <div>{mindMap.title}</div>
         </div>
       </div>
@@ -2435,7 +2560,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
               );
             })()}
           </>
-        ) : (
+        ) : viewMode === 'outline' ? (
           <OutlineView
             nodes={nodes}
             edges={edges}
@@ -2443,11 +2568,272 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             onNodeClick={setSelectedNodeId}
             selectedNodeId={selectedNodeId}
           />
+        ) : (
+          <StudyView
+            nodesByLayer={nodesByLayer}
+            currentLayer={studyLayer}
+            onLayerChange={setStudyLayer}
+            currentCardIndex={studyCardIndex}
+            currentLayerCards={currentLayerCards}
+            isCardFlipped={isCardFlipped}
+            onFlipCard={handleFlipCard}
+            onNextCard={handleNextCard}
+            onPrevCard={handlePrevCard}
+          />
         )}
       </div>
     </div>
   );
 }
+
+// 刷题模式视图组件
+const StudyView = ({
+  nodesByLayer,
+  currentLayer,
+  onLayerChange,
+  currentCardIndex,
+  currentLayerCards,
+  isCardFlipped,
+  onFlipCard,
+  onNextCard,
+  onPrevCard,
+}: {
+  nodesByLayer: { layer: number; nodes: Node[] }[];
+  currentLayer: number;
+  onLayerChange: (layer: number) => void;
+  currentCardIndex: number;
+  currentLayerCards: { parent: MindMapNode; children: MindMapNode[] }[];
+  isCardFlipped: boolean;
+  onFlipCard: () => void;
+  onNextCard: () => void;
+  onPrevCard: () => void;
+}) => {
+  const currentCard = currentLayerCards[currentCardIndex];
+
+  return (
+    <div
+      style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        padding: '20px',
+        backgroundColor: '#f5f5f5',
+      }}
+    >
+      {/* 层选择器 */}
+      <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <span style={{ fontSize: '14px', fontWeight: '600', color: '#333' }}>选择层：</span>
+        {nodesByLayer.map((layer, index) => (
+          <button
+            key={index}
+            onClick={() => onLayerChange(index)}
+            style={{
+              padding: '6px 12px',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              background: currentLayer === index ? '#2196f3' : '#fff',
+              color: currentLayer === index ? '#fff' : '#333',
+              cursor: 'pointer',
+              fontSize: '14px',
+            }}
+          >
+            第 {index + 1} 层 ({layer.nodes.length} 个节点)
+          </button>
+        ))}
+      </div>
+
+      {/* 卡片容器 */}
+      {currentCard ? (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          {/* 卡片进度 */}
+          <div style={{ marginBottom: '20px', fontSize: '14px', color: '#666' }}>
+            {currentCardIndex + 1} / {currentLayerCards.length}
+          </div>
+
+          {/* 卡片 */}
+          <div
+            onClick={(e) => {
+              if ((e.target as HTMLElement).tagName !== 'BUTTON') {
+                onFlipCard();
+              }
+            }}
+            style={{
+              width: '100%',
+              maxWidth: '800px',
+              minHeight: '400px',
+              perspective: '1000px',
+              cursor: 'pointer',
+            }}
+          >
+            <div
+              style={{
+                width: '100%',
+                height: '100%',
+                position: 'relative',
+                transformStyle: 'preserve-3d',
+                transition: 'transform 0.6s',
+                transform: isCardFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+              }}
+            >
+              {/* 卡片正面 */}
+              <div
+                style={{
+                  position: 'absolute',
+                  width: '100%',
+                  height: '100%',
+                  backfaceVisibility: 'hidden',
+                  WebkitBackfaceVisibility: 'hidden',
+                  border: '2px solid #2196F3',
+                  borderRadius: '12px',
+                  padding: '30px',
+                  background: '#fff',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  display: isCardFlipped ? 'none' : 'block',
+                }}
+              >
+                <div style={{ fontSize: '20px', fontWeight: '600', color: '#333', marginBottom: '20px' }}>
+                  父节点
+                </div>
+                <div
+                  style={{
+                    fontSize: '24px',
+                    fontWeight: '600',
+                    color: currentCard.parent.color || '#333',
+                    marginBottom: '30px',
+                    padding: '15px',
+                    backgroundColor: '#f5f5f5',
+                    borderRadius: '8px',
+                  }}
+                >
+                  {currentCard.parent.text || '未命名节点'}
+                </div>
+                <div style={{ fontSize: '20px', fontWeight: '600', color: '#333', marginBottom: '20px' }}>
+                  子节点分支（{currentCard.children.length} 个）
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                  {currentCard.children.map((child, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        padding: '10px 15px',
+                        backgroundColor: '#e3f2fd',
+                        borderRadius: '6px',
+                        fontSize: '16px',
+                        color: '#666',
+                        border: '1px dashed #90caf9',
+                      }}
+                    >
+                      {child.text || '未命名节点'}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: '30px', fontSize: '14px', color: '#999', textAlign: 'center' }}>
+                  点击卡片查看答案
+                </div>
+              </div>
+
+              {/* 卡片反面 */}
+              <div
+                style={{
+                  position: 'absolute',
+                  width: '100%',
+                  height: '100%',
+                  backfaceVisibility: 'hidden',
+                  WebkitBackfaceVisibility: 'hidden',
+                  transform: 'rotateY(180deg)',
+                  border: '2px solid #2196F3',
+                  borderRadius: '12px',
+                  padding: '30px',
+                  background: '#fff',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  display: isCardFlipped ? 'block' : 'none',
+                }}
+              >
+                <div style={{ fontSize: '20px', fontWeight: '600', color: '#333', marginBottom: '20px' }}>
+                  完整内容
+                </div>
+                <div
+                  style={{
+                    fontSize: '24px',
+                    fontWeight: '600',
+                    color: currentCard.parent.color || '#333',
+                    marginBottom: '30px',
+                    padding: '15px',
+                    backgroundColor: '#f5f5f5',
+                    borderRadius: '8px',
+                  }}
+                >
+                  {currentCard.parent.text || '未命名节点'}
+                </div>
+                <div style={{ fontSize: '20px', fontWeight: '600', color: '#333', marginBottom: '20px' }}>
+                  子节点
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                  {currentCard.children.map((child, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        padding: '15px',
+                        backgroundColor: '#e3f2fd',
+                        borderRadius: '8px',
+                        fontSize: '18px',
+                        color: child.color || '#333',
+                        border: '1px solid #90caf9',
+                      }}
+                    >
+                      {child.text || '未命名节点'}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: '30px', fontSize: '14px', color: '#999', textAlign: 'center' }}>
+                  点击卡片返回题目
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 控制按钮 */}
+          <div style={{ marginTop: '30px', display: 'flex', gap: '10px', justifyContent: 'center' }}>
+            <button
+              onClick={onPrevCard}
+              disabled={currentCardIndex === 0}
+              style={{
+                padding: '12px 24px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                background: currentCardIndex === 0 ? '#f5f5f5' : '#fff',
+                color: currentCardIndex === 0 ? '#999' : '#333',
+                cursor: currentCardIndex === 0 ? 'not-allowed' : 'pointer',
+                fontSize: '16px',
+              }}
+            >
+              上一个
+            </button>
+            <button
+              onClick={onNextCard}
+              disabled={currentCardIndex >= currentLayerCards.length - 1}
+              style={{
+                padding: '12px 24px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                background: currentCardIndex >= currentLayerCards.length - 1 ? '#f5f5f5' : '#4caf50',
+                color: currentCardIndex >= currentLayerCards.length - 1 ? '#999' : '#fff',
+                cursor: currentCardIndex >= currentLayerCards.length - 1 ? 'not-allowed' : 'pointer',
+                fontSize: '16px',
+              }}
+            >
+              下一个
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', color: '#999' }}>
+          该层没有节点
+        </div>
+      )}
+    </div>
+  );
+};
 
 const page = new NamedPage('mindmap_detail', async () => {
   try {
