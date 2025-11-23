@@ -2,11 +2,12 @@ import { _, ObjectId, Filter } from '../libs';
 import * as document from './document';
 import { buildProjection } from '../utils';
 import type { Context } from '../context';
-import type { MindMapDoc, MindMapNode, MindMapEdge } from '../interface';
+import type { MindMapDoc, MindMapNode, MindMapEdge, CardDoc } from '../interface';
 import db from '../service/db';
 import { Collection } from 'mongodb';
 
 export const TYPE_MM: 70 = 70;
+export const TYPE_CARD: 71 = 71;
 
 /**
  * MindMap Model
@@ -406,7 +407,115 @@ export function apply(ctx: Context) {
     });
 }
 
+/**
+ * Card Model
+ * 提供 Card 的 CRUD 操作（类似 Block）
+ */
+export class CardModel {
+    /**
+     * 生成下一个 Card ID（在 node 内唯一）
+     */
+    static async generateNextCid(domainId: string, mmid: number, nodeId: string): Promise<number> {
+        const lastCard = await document.getMulti(domainId, TYPE_CARD, { mmid, nodeId })
+            .sort({ cid: -1 })
+            .limit(1)
+            .project({ cid: 1 })
+            .toArray();
+        return (lastCard[0]?.cid || 0) + 1;
+    }
+
+    /**
+     * 创建 Card
+     */
+    static async create(
+        domainId: string,
+        mmid: number,
+        nodeId: string,
+        owner: number,
+        title: string,
+        content: string = '',
+        ip?: string
+    ): Promise<ObjectId> {
+        const newCid = await this.generateNextCid(domainId, mmid, nodeId);
+
+        const payload: Partial<CardDoc> = {
+            docType: TYPE_CARD,
+            domainId,
+            mmid,
+            nodeId,
+            cid: newCid,
+            title: title || '未命名卡片',
+            content: content || '',
+            owner,
+            ip,
+            updateAt: new Date(),
+            views: 0,
+            createdAt: new Date(),
+        };
+
+        const docId = await document.add(
+            domainId,
+            payload.content!,
+            payload.owner!,
+            TYPE_CARD,
+            null,
+            null,
+            null,
+            _.omit(payload, ['domainId', 'content', 'owner'])
+        );
+
+        return docId;
+    }
+
+    /**
+     * 获取 Card
+     */
+    static async get(domainId: string, docId: ObjectId): Promise<CardDoc | null> {
+        return await document.get(domainId, TYPE_CARD, docId);
+    }
+
+    /**
+     * 获取 node 下的所有 cards
+     */
+    static async getByNodeId(domainId: string, mmid: number, nodeId: string): Promise<CardDoc[]> {
+        const cards = await document.getMulti(domainId, TYPE_CARD, { mmid, nodeId })
+            .sort({ order: 1, cid: 1 })
+            .toArray();
+        return cards;
+    }
+
+    /**
+     * 更新 Card
+     */
+    static async update(
+        domainId: string,
+        docId: ObjectId,
+        updates: Partial<Pick<CardDoc, 'title' | 'content' | 'order'>>
+    ): Promise<void> {
+        await document.set(domainId, TYPE_CARD, docId, {
+            ...updates,
+            updateAt: new Date(),
+        });
+    }
+
+    /**
+     * 删除 Card
+     */
+    static async delete(domainId: string, docId: ObjectId): Promise<void> {
+        await document.deleteOne(domainId, TYPE_CARD, docId);
+    }
+
+    /**
+     * 增加访问量
+     */
+    static async incrementViews(domainId: string, docId: ObjectId): Promise<void> {
+        await document.inc(domainId, TYPE_CARD, docId, 'views', 1);
+    }
+}
+
 // @ts-ignore
 global.Ejunz.model.mindmap = MindMapModel;
-export default { MindMapModel };
+// @ts-ignore
+global.Ejunz.model.card = CardModel;
+export default { MindMapModel, CardModel };
 
