@@ -98,6 +98,7 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
   // 检查是否有子节点（通过 edges 检查）
   const edges = data.edges || [];
   const hasChildren = edges.some((edge: Edge) => edge.source === id);
+  const expanded = node.expanded !== false; // 默认为 true（展开）
   
   // 用于编辑的 ref
   const textRef = React.useRef<HTMLDivElement>(null);
@@ -222,6 +223,43 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
           border: '2px solid #fff',
         }}
       />
+
+      {/* 展开/折叠按钮 - 有子节点时显示 */}
+      {hasChildren && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (data.onToggleExpand) {
+              data.onToggleExpand(id);
+            }
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{
+            position: 'absolute',
+            right: '-15px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: '20px',
+            height: '20px',
+            borderRadius: '50%',
+            border: `2px solid ${expanded ? '#4caf50' : '#999'}`,
+            background: expanded ? '#4caf50' : '#fff',
+            color: expanded ? '#fff' : '#999',
+            cursor: 'pointer',
+            fontSize: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            lineHeight: '1',
+            zIndex: 10,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            padding: 0,
+          }}
+          title={expanded ? '折叠子节点' : '展开子节点'}
+        >
+          {expanded ? '−' : '+'}
+        </button>
+      )}
 
       {/* 加号按钮 - 只在节点被选中时显示 */}
       {selected && (
@@ -587,6 +625,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     onAddChild: (nodeId: string) => void;
     onAddSibling: (nodeId: string) => void;
     onDelete: (nodeId: string) => void;
+    onToggleExpand: (nodeId: string) => void;
   } | null>(null);
 
   // 先定义状态，因为 handleDeleteNode 需要用到它们
@@ -633,6 +672,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           ...originalNode,
           x,
           y,
+          expanded: originalNode.expanded, // 保存 expanded 状态
         };
         
         // 调试信息
@@ -956,6 +996,41 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       Notification.error('更新字体颜色失败: ' + (error.message || '未知错误'));
     }
   }, [docId, nodes, setNodes, triggerAutoSave]);
+
+  // 切换节点展开/折叠状态（前端立即更新，后端通过自动保存）
+  const handleToggleExpand = useCallback((nodeId: string) => {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+    
+    const originalNode = node.data.originalNode as MindMapNode;
+    if (!originalNode) return;
+
+    const newExpanded = !(originalNode.expanded !== false); // 切换状态，默认为 true
+
+    // 立即更新本地状态，实现即时 UI 响应
+    setNodes((nds) => {
+      const updatedNodes = nds.map((n) =>
+        n.id === nodeId
+          ? {
+              ...n,
+              data: {
+                ...n.data,
+                originalNode: {
+                  ...originalNode,
+                  expanded: newExpanded,
+                },
+              },
+            }
+          : n
+      );
+      // 同时更新 nodesRef，确保自动保存时能获取最新状态
+      nodesRef.current = updatedNodes;
+      return updatedNodes;
+    });
+
+    // 触发自动保存（1.5秒后保存到后端）
+    triggerAutoSave();
+  }, [nodes, setNodes, triggerAutoSave]);
 
   // 复制节点内容
   const handleCopyNodeContent = useCallback((text: string) => {
@@ -1430,6 +1505,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         onEdit: (node: Node) => callbacksRef.current?.onEdit(node),
         onAddChild: (nodeId: string) => callbacksRef.current?.onAddChild(nodeId),
         onAddSibling: (nodeId: string) => callbacksRef.current?.onAddSibling(nodeId),
+        onToggleExpand: (nodeId: string) => callbacksRef.current?.onToggleExpand(nodeId),
         onTextChange: (nodeId: string, newText: string) => {
           handleNodeTextChangeRef.current(nodeId, newText);
         },
@@ -1565,8 +1641,9 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       onAddChild: handleAddChild,
       onAddSibling: handleAddSibling,
       onDelete: handleDeleteNode,
+      onToggleExpand: handleToggleExpand,
     };
-  }, [handleEditNode, handleAddChild, handleAddSibling, handleDeleteNode]);
+  }, [handleEditNode, handleAddChild, handleAddSibling, handleDeleteNode, handleToggleExpand]);
 
   // 将 MindMapNode 转换为 ReactFlow Node
   const initialFlowNodes = useMemo(() => {
@@ -1711,6 +1788,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             onTextChange: (nodeId: string, newText: string) => {
               handleNodeTextChangeRef.current(nodeId, newText);
             },
+            onToggleExpand: (nodeId: string) => callbacksRef.current?.onToggleExpand(nodeId),
           },
         };
       })
@@ -1915,6 +1993,65 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedNodeId, nodes, edges, handleAddNode, handleDeleteNode]);
 
+  // 递归获取所有子节点ID（包括子节点的子节点）
+  const getAllDescendantIds = useCallback((nodeId: string, allNodes: Node[], allEdges: Edge[]): Set<string> => {
+    const descendantIds = new Set<string>();
+    const queue = [nodeId];
+    
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      const childEdges = allEdges.filter(e => e.source === currentId);
+      for (const edge of childEdges) {
+        if (!descendantIds.has(edge.target)) {
+          descendantIds.add(edge.target);
+          queue.push(edge.target);
+        }
+      }
+    }
+    
+    return descendantIds;
+  }, []);
+
+  // 根据 expanded 状态过滤节点和边
+  const filteredNodesAndEdges = useMemo(() => {
+    const visibleNodeIds = new Set<string>();
+    const visibleEdgeIds = new Set<string>();
+    
+    // 从根节点开始，递归遍历
+    const traverse = (nodeId: string) => {
+      visibleNodeIds.add(nodeId);
+      const node = nodes.find(n => n.id === nodeId);
+      if (!node) return;
+      
+      const originalNode = node.data.originalNode as MindMapNode;
+      const expanded = originalNode?.expanded !== false; // 默认为 true
+      
+      if (expanded) {
+        // 如果节点展开，添加所有子节点
+        const childEdges = edges.filter(e => e.source === nodeId);
+        for (const edge of childEdges) {
+          visibleEdgeIds.add(edge.id);
+          traverse(edge.target);
+        }
+      }
+    };
+    
+    // 找到所有根节点（没有父边的节点）
+    const rootNodes = nodes.filter(node => 
+      !edges.some(edge => edge.target === node.id)
+    );
+    
+    // 从每个根节点开始遍历
+    for (const rootNode of rootNodes) {
+      traverse(rootNode.id);
+    }
+    
+    return {
+      filteredNodes: nodes.filter(n => visibleNodeIds.has(n.id)),
+      filteredEdges: edges.filter(e => visibleEdgeIds.has(e.id)),
+    };
+  }, [nodes, edges]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
       {/* 工具栏 */}
@@ -1973,8 +2110,8 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       {/* 思维导图画布 */}
       <div ref={reactFlowWrapper} style={{ flex: 1, width: '100%', position: 'relative' }}>
         <ReactFlow
-          nodes={nodes}
-          edges={edges}
+          nodes={filteredNodesAndEdges.filteredNodes}
+          edges={filteredNodesAndEdges.filteredEdges}
           onNodesChange={onNodesChange}
           onEdgesChange={handleEdgesChange}
           onConnect={onConnect}
