@@ -4,7 +4,7 @@ import { Handler, param, Types } from '../service/server';
 import { NotFoundError, ForbiddenError } from '../error';
 import { PRIV, PERM } from '../model/builtin';
 import { MindMapModel, CardModel } from '../model/mindmap';
-import type { MindMapDoc, MindMapNode, MindMapEdge, CardDoc } from '../interface';
+import type { MindMapDoc, MindMapNode, MindMapEdge, CardDoc, MindMapHistoryEntry } from '../interface';
 import * as document from '../model/document';
 import { exec as execCb } from 'child_process';
 import fs from 'fs';
@@ -450,7 +450,32 @@ class MindMapSaveHandler extends Handler {
         }
 
         const data = this.request.body || {};
-        const { nodes, edges, layout, viewport, theme } = data;
+        const { nodes, edges, layout, viewport, theme, operationDescription } = data;
+
+        // 检测是否有非位置改变（用于commit检测）
+        const hasNonPositionChanges = this.detectNonPositionChanges(mindMap, nodes, edges);
+
+        // 记录操作历史
+        const historyEntry: MindMapHistoryEntry = {
+            id: `hist_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            type: 'save',
+            timestamp: new Date(),
+            userId: this.user._id,
+            username: this.user.uname || 'unknown',
+            description: operationDescription || '自动保存',
+            snapshot: {
+                nodes: JSON.parse(JSON.stringify(nodes || mindMap.nodes)),
+                edges: JSON.parse(JSON.stringify(edges || mindMap.edges)),
+                viewport: viewport || mindMap.viewport,
+            },
+        };
+
+        // 更新历史记录（最多保留50条）
+        const history = mindMap.history || [];
+        history.unshift(historyEntry);
+        if (history.length > 50) {
+            history.splice(50);
+        }
 
         await MindMapModel.updateFull(domainId, docId, {
             nodes,
@@ -458,8 +483,77 @@ class MindMapSaveHandler extends Handler {
             layout,
             viewport,
             theme,
+            history,
         });
-        this.response.body = { success: true };
+        
+        // 如果有非位置改变，立即同步到git（这样git status可以立即检测到）
+        if (hasNonPositionChanges) {
+            try {
+                const updatedMindMap = await MindMapModel.get(domainId, docId);
+                if (updatedMindMap) {
+                    const branch = updatedMindMap.currentBranch || 'main';
+                    await syncMindMapToGit(domainId, updatedMindMap.mmid, branch);
+                }
+            } catch (err) {
+                console.error('Failed to sync to git after save:', err);
+                // 不抛出错误，保存仍然成功
+            }
+        }
+        
+        this.response.body = { success: true, hasNonPositionChanges };
+    }
+
+    /**
+     * 检测是否有非位置改变
+     */
+    private detectNonPositionChanges(
+        oldMindMap: MindMapDoc,
+        newNodes?: MindMapNode[],
+        newEdges?: MindMapEdge[]
+    ): boolean {
+        if (!newNodes && !newEdges) return false;
+
+        // 检查节点数量变化
+        if (newNodes && newNodes.length !== oldMindMap.nodes.length) {
+            return true;
+        }
+
+        // 检查边数量变化
+        if (newEdges && newEdges.length !== oldMindMap.edges.length) {
+            return true;
+        }
+
+        // 检查节点内容变化（除了位置）
+        if (newNodes) {
+            for (const newNode of newNodes) {
+                const oldNode = oldMindMap.nodes.find(n => n.id === newNode.id);
+                if (!oldNode) return true; // 新节点
+
+                // 比较非位置属性
+                if (
+                    oldNode.text !== newNode.text ||
+                    oldNode.color !== newNode.color ||
+                    oldNode.backgroundColor !== newNode.backgroundColor ||
+                    oldNode.fontSize !== newNode.fontSize ||
+                    oldNode.expanded !== newNode.expanded ||
+                    oldNode.shape !== newNode.shape
+                ) {
+                    return true;
+                }
+            }
+        }
+
+        // 检查边的变化
+        if (newEdges) {
+            const oldEdgeSet = new Set(oldMindMap.edges.map(e => `${e.source}-${e.target}`));
+            const newEdgeSet = new Set(newEdges.map(e => `${e.source}-${e.target}`));
+            if (oldEdgeSet.size !== newEdgeSet.size) return true;
+            for (const edgeKey of newEdgeSet) {
+                if (!oldEdgeSet.has(edgeKey)) return true;
+            }
+        }
+
+        return false;
     }
 }
 
@@ -596,21 +690,10 @@ async function exportMindMapToFile(mindMap: MindMapDoc, outputDir: string): Prom
     
     const sanitize = (name: string) => (name || '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'untitled';
     
-    // Create README.md for mindmap root
+    // Create README.md for mindmap root (only contains the content, no metadata)
     const readmePath = path.join(outputDir, 'README.md');
-    const readmeContent = `# ${mindMap.title}
-
-${mindMap.content || 'No description'}
-
-## Metadata
-
-- MindMap ID: ${mindMap.mmid}
-- Created: ${mindMap.createdAt}
-- Last Updated: ${mindMap.updateAt}
-- Nodes: ${mindMap.nodes?.length || 0}
-- Edges: ${mindMap.edges?.length || 0}
-`;
-    await fs.promises.writeFile(readmePath, readmeContent, 'utf-8');
+    const contentText = mindMap.content || '';
+    await fs.promises.writeFile(readmePath, contentText, 'utf-8');
     
     // Build node tree structure
     const nodeMap = new Map<string, MindMapNode>();
@@ -1150,21 +1233,55 @@ async function syncMindMapToGit(domainId: string, mmid: number, branch: string):
     try {
         await exportMindMapToFile(mindMap, tmpDir);
         
-        // Copy files to git repository
-        const copyDir = async (src: string, dest: string) => {
+        // Copy files to git repository and remove extra files
+        const copyDirAndCleanup = async (src: string, dest: string) => {
             await fs.promises.mkdir(dest, { recursive: true });
-            const entries = await fs.promises.readdir(src, { withFileTypes: true });
-            for (const entry of entries) {
+            
+            // Get all entries from source
+            const srcEntries = await fs.promises.readdir(src, { withFileTypes: true });
+            const srcNames = new Set(srcEntries.map(e => e.name).filter(name => name !== '.git'));
+            
+            // Get all entries from destination (excluding .git)
+            let destEntries: fs.Dirent[] = [];
+            try {
+                destEntries = await fs.promises.readdir(dest, { withFileTypes: true });
+            } catch (err: any) {
+                // dest might not exist, that's ok
+                if (err.code !== 'ENOENT') throw err;
+            }
+            const destNames = new Set(destEntries.map(e => e.name).filter(name => name !== '.git'));
+            
+            // Remove files/directories in dest that don't exist in src
+            for (const destName of destNames) {
+                if (!srcNames.has(destName)) {
+                    const destPath = path.join(dest, destName);
+                    try {
+                        const stat = await fs.promises.stat(destPath);
+                        if (stat.isDirectory()) {
+                            await fs.promises.rm(destPath, { recursive: true, force: true });
+                            console.log(`[syncMindMapToGit] Removed directory: ${destPath}`);
+                        } else {
+                            await fs.promises.unlink(destPath);
+                            console.log(`[syncMindMapToGit] Removed file: ${destPath}`);
+                        }
+                    } catch (err: any) {
+                        console.warn(`[syncMindMapToGit] Failed to remove ${destPath}:`, err.message);
+                    }
+                }
+            }
+            
+            // Copy files and directories from src to dest
+            for (const entry of srcEntries) {
                 const srcPath = path.join(src, entry.name);
                 const destPath = path.join(dest, entry.name);
                 if (entry.isDirectory()) {
-                    await copyDir(srcPath, destPath);
+                    await copyDirAndCleanup(srcPath, destPath);
                 } else {
                     await fs.promises.copyFile(srcPath, destPath);
                 }
             }
         };
-        await copyDir(tmpDir, repoGitPath);
+        await copyDirAndCleanup(tmpDir, repoGitPath);
     } finally {
         try {
             await fs.promises.rm(tmpDir, { recursive: true, force: true });
@@ -1258,6 +1375,31 @@ async function getMindMapGitStatus(
                 const fullCommit = lastCommit.trim();
                 status.lastCommit = fullCommit;
                 status.lastCommitShort = fullCommit.substring(0, 8);
+                
+                // Get commit message
+                try {
+                    const { stdout: commitMessage } = await exec(`git log -1 --pretty=format:'%s' ${branch}`, { cwd: repoGitPath });
+                    const fullMessage = commitMessage.trim();
+                    if (fullMessage) {
+                        status.lastCommitMessage = fullMessage;
+                        status.lastCommitMessageShort = fullMessage.length > 50 ? fullMessage.substring(0, 50) : fullMessage;
+                    }
+                } catch (err) {
+                    try {
+                        const { stdout: commitMessage } = await exec(`git log -1 --format=%s ${branch}`, { cwd: repoGitPath });
+                        const fullMessage = commitMessage.trim();
+                        if (fullMessage) {
+                            status.lastCommitMessage = fullMessage;
+                            status.lastCommitMessageShort = fullMessage.length > 50 ? fullMessage.substring(0, 50) : fullMessage;
+                        }
+                    } catch {}
+                }
+                
+                // Get commit time
+                try {
+                    const { stdout: commitTime } = await exec(`git log -1 --pretty=format:"%ci" ${branch}`, { cwd: repoGitPath });
+                    status.lastCommitTime = commitTime.trim();
+                } catch {}
             } catch {}
         } catch {
             status.hasLocalBranch = false;
@@ -1384,30 +1526,65 @@ async function commitMindMapChanges(
     try {
         await exportMindMapToFile(mindMap, tmpDir);
         
-        // 复制文件到 git 仓库
-        const copyDir = async (src: string, dest: string) => {
+        // 复制文件到 git 仓库，并删除多余的文件
+        const copyDirAndCleanup = async (src: string, dest: string) => {
             await fs.promises.mkdir(dest, { recursive: true });
-            const entries = await fs.promises.readdir(src, { withFileTypes: true });
-            for (const entry of entries) {
+            
+            // Get all entries from source
+            const srcEntries = await fs.promises.readdir(src, { withFileTypes: true });
+            const srcNames = new Set(srcEntries.map(e => e.name).filter(name => name !== '.git'));
+            
+            // Get all entries from destination (excluding .git)
+            let destEntries: fs.Dirent[] = [];
+            try {
+                destEntries = await fs.promises.readdir(dest, { withFileTypes: true });
+            } catch (err: any) {
+                // dest might not exist, that's ok
+                if (err.code !== 'ENOENT') throw err;
+            }
+            const destNames = new Set(destEntries.map(e => e.name).filter(name => name !== '.git'));
+            
+            // Remove files/directories in dest that don't exist in src
+            for (const destName of destNames) {
+                if (!srcNames.has(destName)) {
+                    const destPath = path.join(dest, destName);
+                    try {
+                        const stat = await fs.promises.stat(destPath);
+                        if (stat.isDirectory()) {
+                            await fs.promises.rm(destPath, { recursive: true, force: true });
+                            console.log(`[copyDirAndCleanup] Removed directory: ${destPath}`);
+                        } else {
+                            await fs.promises.unlink(destPath);
+                            console.log(`[copyDirAndCleanup] Removed file: ${destPath}`);
+                        }
+                    } catch (err: any) {
+                        console.warn(`[copyDirAndCleanup] Failed to remove ${destPath}:`, err.message);
+                    }
+                }
+            }
+            
+            // Copy files and directories from src to dest
+            for (const entry of srcEntries) {
                 const srcPath = path.join(src, entry.name);
                 const destPath = path.join(dest, entry.name);
                 if (entry.isDirectory()) {
-                    await copyDir(srcPath, destPath);
+                    await copyDirAndCleanup(srcPath, destPath);
                 } else {
                     await fs.promises.copyFile(srcPath, destPath);
                 }
             }
         };
-        await copyDir(tmpDir, repoGitPath);
+        await copyDirAndCleanup(tmpDir, repoGitPath);
         
         await exec('git add -A', { cwd: repoGitPath });
         
         try {
             const { stdout } = await exec('git status --porcelain', { cwd: repoGitPath });
             if (stdout.trim()) {
+                const defaultPrefix = `${domainId}/${userId}/${userName || 'unknown'}`;
                 const finalMessage = commitMessage && commitMessage.trim() 
-                    ? commitMessage.trim()
-                    : `${domainId}/${userId}/${userName || 'unknown'}: Update mindmap ${mmid}`;
+                    ? `${defaultPrefix}: ${commitMessage.trim()}`
+                    : defaultPrefix;
                 const escapedMessage = finalMessage.replace(/'/g, "'\\''");
                 await exec(`git commit -m '${escapedMessage}'`, { cwd: repoGitPath });
             }
@@ -1533,8 +1710,10 @@ class MindMapCommitHandler extends Handler {
     @param('commitMessage', Types.String, true)
     @param('note', Types.String, true)
     async post(domainId: string, docId: ObjectId, mmid: number, commitMessage?: string, note?: string) {
-        // Support both 'commitMessage' and 'note' parameters (for form compatibility)
-        const message = commitMessage || note || '';
+        // Get commit message from request body if not provided as parameter
+        const body = this.request.body || {};
+        const customMessage = commitMessage || note || body.commitMessage || body.note || '';
+        
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
             : await MindMapModel.getByMmid(domainId, mmid);
@@ -1546,21 +1725,109 @@ class MindMapCommitHandler extends Handler {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
         
+        // Generate final commit message with prefix (same format as repo)
+        const defaultPrefix = `${domainId}/${this.user._id}/${this.user.uname || 'unknown'}`;
+        const finalCommitMessage = customMessage && customMessage.trim() 
+            ? `${defaultPrefix}: ${customMessage.trim()}`
+            : defaultPrefix;
+        
         try {
             await commitMindMapChanges(
                 domainId,
                 mindMap.mmid,
                 mindMap,
-                message,
+                customMessage,
                 this.user._id,
                 this.user.uname || 'unknown'
             );
+
+            // 记录commit历史（保存完整的commit消息，包括prefix）
+            const historyEntry: MindMapHistoryEntry = {
+                id: `hist_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                type: 'commit',
+                timestamp: new Date(),
+                userId: this.user._id,
+                username: this.user.uname || 'unknown',
+                description: finalCommitMessage,
+                snapshot: {
+                    nodes: JSON.parse(JSON.stringify(mindMap.nodes || [])),
+                    edges: JSON.parse(JSON.stringify(mindMap.edges || [])),
+                    viewport: mindMap.viewport,
+                },
+            };
+
+            // 更新历史记录（最多保留50条）
+            const history = mindMap.history || [];
+            history.unshift(historyEntry);
+            if (history.length > 50) {
+                history.splice(50);
+            }
+
+            await MindMapModel.updateFull(domainId, mindMap.docId, {
+                history,
+            });
+
             this.response.body = { ok: true, message: 'Changes committed successfully' };
         } catch (err: any) {
             console.error('Commit failed:', err?.message || err);
             this.response.status = 500;
             this.response.body = { ok: false, error: err?.message || String(err) };
         }
+    }
+}
+
+/**
+ * MindMap History Handler
+ * 获取历史记录和恢复
+ */
+class MindMapHistoryHandler extends Handler {
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    async get(domainId: string, docId: ObjectId, mmid: number) {
+        const mindMap = docId 
+            ? await MindMapModel.get(domainId, docId)
+            : await MindMapModel.getByMmid(domainId, mmid);
+        if (!mindMap) {
+            throw new NotFoundError('MindMap not found');
+        }
+        
+        if (!this.user.own(mindMap)) {
+            this.checkPerm(PERM.PERM_VIEW_DISCUSSION);
+        }
+
+        const history = mindMap.history || [];
+        this.response.body = { history };
+    }
+
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('historyId', Types.String)
+    async postRestore(domainId: string, docId: ObjectId, mmid: number, historyId: string) {
+        const mindMap = docId 
+            ? await MindMapModel.get(domainId, docId)
+            : await MindMapModel.getByMmid(domainId, mmid);
+        if (!mindMap) {
+            throw new NotFoundError('MindMap not found');
+        }
+        
+        if (!this.user.own(mindMap)) {
+            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        }
+
+        const history = mindMap.history || [];
+        const historyEntry = history.find(h => h.id === historyId);
+        if (!historyEntry) {
+            throw new NotFoundError('History entry not found');
+        }
+
+        // 恢复快照数据
+        await MindMapModel.updateFull(domainId, mindMap.docId, {
+            nodes: historyEntry.snapshot.nodes,
+            edges: historyEntry.snapshot.edges,
+            viewport: historyEntry.snapshot.viewport,
+        });
+
+        this.response.body = { success: true };
     }
 }
 
@@ -1719,6 +1986,10 @@ export async function apply(ctx: Context) {
     ctx.Route('mindmap_github_push_mmid', '/mindmap/mmid/:mmid/github/push', MindMapGithubPushHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_github_pull', '/mindmap/:docId/github/pull', MindMapGithubPullHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_github_pull_mmid', '/mindmap/mmid/:mmid/github/pull', MindMapGithubPullHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_history', '/mindmap/:docId/history', MindMapHistoryHandler);
+    ctx.Route('mindmap_history_mmid', '/mindmap/mmid/:mmid/history', MindMapHistoryHandler);
+    ctx.Route('mindmap_history_restore', '/mindmap/:docId/history/:historyId/restore', MindMapHistoryHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_history_restore_mmid', '/mindmap/mmid/:mmid/history/:historyId/restore', MindMapHistoryHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_card', '/mindmap/:docId/card', MindMapCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_card_mmid', '/mindmap/mmid/:mmid/card', MindMapCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_card_update', '/mindmap/card/:cardId', MindMapCardHandler, PRIV.PRIV_USER_PROFILE);
