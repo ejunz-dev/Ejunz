@@ -238,6 +238,8 @@ const StudyCard = ({
   totalCards,
   onNext,
   onPrev,
+  currentLayer,
+  totalLayers,
 }: {
   parent: MindMapNode;
   children: MindMapNode[];
@@ -247,6 +249,8 @@ const StudyCard = ({
   totalCards: number;
   onNext: () => void;
   onPrev: () => void;
+  currentLayer?: number;
+  totalLayers?: number;
 }) => {
   // 构建节点和边
   const { nodes: layoutedNodes, edges: layoutedEdges } = useMemo(() => {
@@ -306,8 +310,13 @@ const StudyCard = ({
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
       {/* 卡片进度 */}
-      <div style={{ marginBottom: '20px', fontSize: '14px', color: '#666' }}>
+      <div style={{ marginBottom: '20px', fontSize: '14px', color: '#666', textAlign: 'center' }}>
         {cardIndex + 1} / {totalCards}
+        {currentLayer !== undefined && totalLayers !== undefined && (
+          <span style={{ marginLeft: '20px' }}>
+            第 {currentLayer} 层，还有 {totalLayers - currentLayer} 层
+          </span>
+        )}
       </div>
 
       {/* 思维导图卡片 */}
@@ -403,6 +412,8 @@ function MindMapStudy() {
   const [selectedLayer, setSelectedLayer] = useState<number | null>(null);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [showChildren, setShowChildren] = useState(false);
+  // 深度模式：选中的顶层子节点
+  const [selectedTopLevelNode, setSelectedTopLevelNode] = useState<MindMapNode | null>(null);
 
   // 从 URL 获取 docId
   const docId = useMemo(() => {
@@ -517,18 +528,122 @@ function MindMapStudy() {
     });
   }, [selectedLayer, nodesByLayer, mindMap]);
 
+  // 获取根节点的顶层子节点（用于深度模式）
+  const topLevelNodes = useMemo(() => {
+    if (!mindMap) return [];
+    const rootNodes = mindMap.nodes.filter(node => 
+      !mindMap.edges.some(edge => edge.target === node.id)
+    );
+    if (rootNodes.length === 0) return [];
+    
+    // 获取根节点的所有直接子节点
+    const topLevelNodes: MindMapNode[] = [];
+    rootNodes.forEach(root => {
+      const childEdges = mindMap.edges.filter(e => e.source === root.id);
+      childEdges.forEach(edge => {
+        const childNode = mindMap.nodes.find(n => n.id === edge.target);
+        if (childNode) {
+          topLevelNodes.push(childNode);
+        }
+      });
+    });
+    
+    return topLevelNodes;
+  }, [mindMap]);
+
+  // 深度模式：按层组织选中节点的子树（广度优先）
+  const depthNodesByLayer = useMemo(() => {
+    if (!selectedTopLevelNode || !mindMap) return [];
+    
+    const layers: { layer: number; nodes: MindMapNode[] }[] = [];
+    const visited = new Set<string>();
+    const nodeMap = new Map<string, MindMapNode>();
+    
+    mindMap.nodes.forEach(node => {
+      nodeMap.set(node.id, node);
+    });
+
+    // 从选中的顶层节点开始，作为第0层
+    const queue: { nodeId: string; layer: number }[] = [];
+    queue.push({ nodeId: selectedTopLevelNode.id, layer: 0 });
+    visited.add(selectedTopLevelNode.id);
+
+    while (queue.length > 0) {
+      const { nodeId, layer } = queue.shift()!;
+      const node = nodeMap.get(nodeId);
+      if (!node) continue;
+
+      // 检查该节点是否有子节点
+      const childEdges = mindMap.edges.filter(e => e.source === nodeId);
+      const hasChildren = childEdges.length > 0;
+
+      // 只有有子节点的节点才添加到层中（用于刷题）
+      if (hasChildren) {
+        // 确保层数组有足够的空间
+        while (layers.length <= layer) {
+          layers.push({ layer: layers.length, nodes: [] });
+        }
+        layers[layer].nodes.push(node);
+      }
+
+      // 添加子节点到队列
+      for (const edge of childEdges) {
+        if (!visited.has(edge.target)) {
+          visited.add(edge.target);
+          queue.push({ nodeId: edge.target, layer: layer + 1 });
+        }
+      }
+    }
+
+    return layers;
+  }, [selectedTopLevelNode, mindMap]);
+
+  // 深度模式：获取所有层的卡片列表（按层顺序合并）
+  const depthAllCards = useMemo(() => {
+    if (!selectedTopLevelNode || depthNodesByLayer.length === 0) return [];
+    
+    const allCards: Array<{
+      parent: MindMapNode;
+      children: MindMapNode[];
+      layer: number;
+      layerIndex: number;
+    }> = [];
+    
+    depthNodesByLayer.forEach((layerData, layerIndex) => {
+      layerData.nodes.forEach(node => {
+        const childEdges = mindMap?.edges.filter(e => e.source === node.id) || [];
+        const children = childEdges.map(e => {
+          const childNode = mindMap?.nodes.find(n => n.id === e.target);
+          return childNode || null;
+        }).filter(Boolean) as MindMapNode[];
+
+        allCards.push({
+          parent: node,
+          children,
+          layer: layerData.layer,
+          layerIndex,
+        });
+      });
+    });
+    
+    return allCards;
+  }, [selectedTopLevelNode, depthNodesByLayer, mindMap]);
+
   // 切换显示/隐藏子节点
   const handleToggleShow = useCallback(() => {
     setShowChildren(!showChildren);
   }, [showChildren]);
 
-  // 下一个卡片
+  // 下一个卡片（支持广度模式和深度模式）
   const handleNextCard = useCallback(() => {
-    if (currentCardIndex < currentLayerCards.length - 1) {
+    const totalCards = studyMode === 'breadth' 
+      ? currentLayerCards.length 
+      : depthAllCards.length;
+    if (currentCardIndex < totalCards - 1) {
       setCurrentCardIndex(currentCardIndex + 1);
       setShowChildren(false);
     }
-  }, [currentCardIndex, currentLayerCards.length]);
+  }, [currentCardIndex, studyMode, currentLayerCards.length, depthAllCards.length]);
 
   // 上一个卡片
   const handlePrevCard = useCallback(() => {
@@ -543,6 +658,22 @@ function MindMapStudy() {
     setCurrentCardIndex(0);
     setShowChildren(false);
   }, [selectedLayer]);
+
+  // 切换顶层节点时重置深度模式状态
+  useEffect(() => {
+    if (studyMode === 'depth' && selectedTopLevelNode) {
+      setCurrentCardIndex(0);
+      setShowChildren(false);
+    }
+  }, [selectedTopLevelNode, studyMode]);
+
+  // 切换模式时重置状态
+  useEffect(() => {
+    setSelectedLayer(null);
+    setSelectedTopLevelNode(null);
+    setCurrentCardIndex(0);
+    setShowChildren(false);
+  }, [studyMode]);
 
   if (loading) {
     return (
@@ -560,8 +691,66 @@ function MindMapStudy() {
     );
   }
 
-  // 如果选择了层，显示卡片刷题界面
-  if (selectedLayer !== null) {
+  // 深度模式：如果选择了顶层子节点，显示卡片刷题界面
+  if (studyMode === 'depth' && selectedTopLevelNode) {
+    const currentCard = depthAllCards[currentCardIndex];
+    const totalLayers = depthNodesByLayer.length;
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
+        {/* 顶部工具栏 */}
+        <div style={{
+          padding: '10px 20px',
+          background: '#f5f5f5',
+          borderBottom: '1px solid #ddd',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+        }}>
+          <button
+            onClick={() => setSelectedTopLevelNode(null)}
+            style={{
+              padding: '6px 12px',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              background: '#fff',
+              color: '#333',
+              cursor: 'pointer',
+            }}
+          >
+            返回顶层选择
+          </button>
+          <div style={{ marginLeft: 'auto', fontSize: '14px', color: '#666' }}>
+            {mindMap.title} - {selectedTopLevelNode.text}
+          </div>
+        </div>
+
+        {/* 卡片刷题区域 */}
+        <div style={{ flex: 1, padding: '20px', backgroundColor: '#f5f5f5' }}>
+          {currentCard ? (
+            <StudyCard
+              parent={currentCard.parent}
+              children={currentCard.children}
+              showChildren={showChildren}
+              onToggleShow={handleToggleShow}
+              cardIndex={currentCardIndex}
+              totalCards={depthAllCards.length}
+              onNext={handleNextCard}
+              onPrev={handlePrevCard}
+              currentLayer={currentCard.layerIndex + 1}
+              totalLayers={totalLayers}
+            />
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '16px', color: '#999' }}>
+              没有节点
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // 广度模式：如果选择了层，显示卡片刷题界面
+  if (studyMode === 'breadth' && selectedLayer !== null) {
     const currentCard = currentLayerCards[currentCardIndex];
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
@@ -669,18 +858,17 @@ function MindMapStudy() {
           </button>
           <button
             onClick={() => setStudyMode('depth')}
-            disabled
             style={{
               padding: '8px 16px',
               border: '1px solid #ddd',
               borderRadius: '4px',
-              background: '#f5f5f5',
-              color: '#999',
-              cursor: 'not-allowed',
+              background: studyMode === 'depth' ? '#2196f3' : '#fff',
+              color: studyMode === 'depth' ? '#fff' : '#333',
+              cursor: 'pointer',
               fontSize: '14px',
             }}
           >
-            深度模式（开发中）
+            深度模式
           </button>
         </div>
       </div>
@@ -735,6 +923,70 @@ function MindMapStudy() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {studyMode === 'depth' && selectedTopLevelNode === null && (
+          <>
+            <h2 style={{ marginBottom: '30px', fontSize: '24px', fontWeight: '600', color: '#333' }}>
+              选择顶层子节点开始深度刷题
+            </h2>
+            {topLevelNodes.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '16px' }}>
+                暂无顶层子节点
+              </div>
+            ) : (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                gap: '20px',
+              }}>
+                {topLevelNodes.map((node) => {
+                  const childEdges = mindMap.edges.filter(e => e.source === node.id);
+                  const hasChildren = childEdges.length > 0;
+                  return (
+                    <div
+                      key={node.id}
+                      onClick={() => hasChildren && setSelectedTopLevelNode(node)}
+                      style={{
+                        padding: '24px',
+                        border: '2px solid #2196F3',
+                        borderRadius: '12px',
+                        background: hasChildren ? '#fff' : '#f5f5f5',
+                        cursor: hasChildren ? 'pointer' : 'not-allowed',
+                        transition: 'all 0.3s',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                        opacity: hasChildren ? 1 : 0.6,
+                      }}
+                      onMouseEnter={(e) => {
+                        if (hasChildren) {
+                          e.currentTarget.style.transform = 'translateY(-4px)';
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (hasChildren) {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+                        }
+                      }}
+                    >
+                      <div style={{ fontSize: '20px', fontWeight: '600', color: '#2196F3', marginBottom: '12px' }}>
+                        {node.text || '未命名节点'}
+                      </div>
+                      <div style={{ fontSize: '16px', color: '#666', marginBottom: '8px' }}>
+                        {hasChildren ? `${childEdges.length} 个子节点` : '无子节点'}
+                      </div>
+                      {hasChildren && (
+                        <div style={{ fontSize: '14px', color: '#999', marginTop: '12px' }}>
+                          点击开始刷题 →
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </>
