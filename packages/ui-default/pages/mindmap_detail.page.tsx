@@ -1242,6 +1242,9 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
   const [cardManageNodeId, setCardManageNodeId] = useState<string | null>(null); // 正在管理卡片的节点ID
   const [gitStatus, setGitStatus] = useState<any>(null); // Git 状态
   const [gitStatusLoading, setGitStatusLoading] = useState(false); // Git 状态加载中
+  const [history, setHistory] = useState<any[]>([]); // 操作历史记录
+  const [historyLoading, setHistoryLoading] = useState(false); // 历史记录加载中
+  const lastOperationRef = useRef<string>(''); // 记录最后一次操作类型
 
   // 使用 ref 存储回调函数，避免在依赖数组中引起无限循环
   const callbacksRef = useRef<{
@@ -1330,7 +1333,10 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         yValid: typeof n.y === 'number' && !isNaN(n.y)
       })));
 
-      await request.post(`/mindmap/${docId}/save`, {
+      // 生成操作描述
+      const operationDescription = lastOperationRef.current || '自动保存';
+      
+      const response = await request.post(`/mindmap/${docId}/save`, {
         nodes: updatedNodes,
         edges: updatedEdges,
         viewport: viewport ? {
@@ -1338,7 +1344,42 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           y: viewport.y,
           zoom: viewport.zoom,
         } : undefined,
+        operationDescription,
       });
+      
+      // 保存后刷新历史记录和 Git 状态
+      if (response.hasNonPositionChanges) {
+        loadHistory();
+        // 如果有非位置改变，立即刷新 Git 状态（因为后端已经同步到 git）
+        if (mindMap.githubRepo) {
+          // 延迟一点时间，确保后端同步完成，然后刷新 Git 状态
+          // 使用多次重试，确保能获取到最新的状态
+          const retryLoadGitStatus = async (retries = 3) => {
+            for (let i = 0; i < retries; i++) {
+              await new Promise(resolve => setTimeout(resolve, 500 + i * 300));
+              try {
+                const branch = mindMap.currentBranch || 'main';
+                const statusResponse = await request.get(`/mindmap/${docId}/git/status?branch=${branch}`);
+                const newGitStatus = statusResponse.gitStatus;
+                setGitStatus(newGitStatus);
+                // 如果检测到有未提交的更改，说明同步成功，可以停止重试
+                if (newGitStatus?.uncommittedChanges) {
+                  break;
+                }
+              } catch (err) {
+                console.error('Failed to load git status:', err);
+              }
+            }
+          };
+          retryLoadGitStatus();
+        }
+      } else if (mindMap.githubRepo) {
+        // 即使只有位置改变，也刷新一下 Git 状态（虽然可能没有变化）
+        loadGitStatus();
+      }
+      
+      // 重置操作描述
+      lastOperationRef.current = '';
 
       // 只有手动保存时才显示成功提示
       if (!isAutoSave) {
@@ -1369,6 +1410,33 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     }
   }, [docId, mindMap.githubRepo, mindMap.currentBranch]);
 
+  // 加载历史记录
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const response = await request.get(`/mindmap/${docId}/history`);
+      setHistory(response.history || []);
+    } catch (error: any) {
+      console.error('Failed to load history:', error);
+      setHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [docId]);
+
+  // 恢复到历史节点
+  const restoreHistory = useCallback(async (historyId: string) => {
+    if (!confirm('确定要恢复到该历史节点吗？当前未保存的更改将丢失。')) return;
+    
+    try {
+      await request.post(`/mindmap/${docId}/history/${historyId}/restore`);
+      Notification.success('恢复成功，页面将刷新');
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (error: any) {
+      Notification.error('恢复失败: ' + (error.message || '未知错误'));
+    }
+  }, [docId]);
+
   // 触发自动保存（带防抖）
   // 每次调用都会清除之前的定时器并重新开始计时
   // 只有在1秒内完全没有操作时才会真正保存
@@ -1383,22 +1451,23 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       console.log('1.5秒内无操作，触发自动保存');
       handleSave(true); // 传入 true 表示自动保存，不显示成功提示
       saveTimerRef.current = null;
-      // 保存后刷新 git 状态
-      if (mindMap.githubRepo) {
-        loadGitStatus();
-      }
+      // 注意：Git 状态和历史记录的刷新已经在 handleSave 中处理了
     }, 1500);
-  }, [handleSave, mindMap.githubRepo, loadGitStatus]);
+  }, [handleSave, mindMap.githubRepo, loadGitStatus, loadHistory]);
 
-  // 初始化时加载 git 状态
+  // 初始化时加载 git 状态和历史记录
   useEffect(() => {
+    loadHistory();
     if (mindMap.githubRepo) {
       loadGitStatus();
-      // 定期刷新 git 状态
-      const interval = setInterval(loadGitStatus, 10000); // 每10秒刷新一次
+      // 定期刷新 git 状态和历史记录
+      const interval = setInterval(() => {
+        loadGitStatus();
+        loadHistory();
+      }, 10000); // 每10秒刷新一次
       return () => clearInterval(interval);
     }
-  }, [mindMap.githubRepo, loadGitStatus]);
+  }, [mindMap.githubRepo, loadGitStatus, loadHistory]);
 
   // 包装 onEdgesChange 以在边变化时触发自动保存（特别是删除边）
   const handleEdgesChange = useCallback((changes: any) => {
@@ -1467,6 +1536,10 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     }
 
     try {
+      const node = nodes.find(n => n.id === nodeId);
+      const nodeText = node?.data?.originalNode?.text || '节点';
+      lastOperationRef.current = `删除节点: ${nodeText}`;
+
       await request.post(`/mindmap/${docId}/node/${nodeId}`, {
         operation: 'delete',
       });
@@ -1486,10 +1559,17 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       
       // 触发自动保存
       triggerAutoSave();
+      
+      // 立即刷新Git状态
+      if (mindMap.githubRepo) {
+        setTimeout(() => {
+          loadGitStatus();
+        }, 1000);
+      }
     } catch (error: any) {
       Notification.error('删除节点失败: ' + (error.message || '未知错误'));
     }
-  }, [docId, setNodes, setEdges, autoLayout, applyLayout, triggerAutoSave]);
+  }, [docId, nodes, setNodes, setEdges, autoLayout, applyLayout, triggerAutoSave]);
 
   // 编辑节点 - 必须在 useMemo 之前定义
   const handleEditNode = useCallback(async (node: Node) => {
@@ -1546,6 +1626,8 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       });
 
       if (result) {
+        lastOperationRef.current = `编辑节点: ${result.text}`;
+        
         await request.post(`/mindmap/${docId}/node/${originalNode.id}`, {
           operation: 'update',
           ...result,
@@ -1572,11 +1654,18 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         Notification.success('节点已更新');
         // 触发自动保存
         triggerAutoSave();
+        
+        // 立即刷新Git状态
+        if (mindMap.githubRepo) {
+          setTimeout(() => {
+            loadGitStatus();
+          }, 1000);
+        }
       }
     } catch (error: any) {
       Notification.error('更新节点失败: ' + (error.message || '未知错误'));
     }
-  }, [docId, setNodes, triggerAutoSave]);
+  }, [docId, setNodes, triggerAutoSave, mindMap.githubRepo, loadGitStatus]);
 
   // 更新节点字体大小
   const handleUpdateFontSize = useCallback(async (nodeId: string, fontSize: number) => {
@@ -1587,6 +1676,8 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     if (!originalNode) return;
 
     try {
+      lastOperationRef.current = `修改字体大小: ${originalNode.text}`;
+      
       await request.post(`/mindmap/${docId}/node/${originalNode.id}`, {
         operation: 'update',
         fontSize,
@@ -1610,10 +1701,17 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       );
 
       triggerAutoSave();
+      
+      // 立即刷新Git状态
+      if (mindMap.githubRepo) {
+        setTimeout(() => {
+          loadGitStatus();
+        }, 1000);
+      }
     } catch (error: any) {
       Notification.error('更新字体大小失败: ' + (error.message || '未知错误'));
     }
-  }, [docId, nodes, setNodes, triggerAutoSave]);
+  }, [docId, nodes, setNodes, triggerAutoSave, mindMap.githubRepo, loadGitStatus]);
 
   // 更新节点字体颜色
   const handleUpdateColor = useCallback(async (nodeId: string, color: string) => {
@@ -1624,6 +1722,8 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     if (!originalNode) return;
 
     try {
+      lastOperationRef.current = `修改颜色: ${originalNode.text}`;
+      
       await request.post(`/mindmap/${docId}/node/${originalNode.id}`, {
         operation: 'update',
         color,
@@ -1647,6 +1747,13 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       );
 
       triggerAutoSave();
+      
+      // 立即刷新Git状态
+      if (mindMap.githubRepo) {
+        setTimeout(() => {
+          loadGitStatus();
+        }, 1000);
+      }
     } catch (error: any) {
       Notification.error('更新字体颜色失败: ' + (error.message || '未知错误'));
     }
@@ -1913,6 +2020,13 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         
         // 触发自动保存
         triggerAutoSave();
+        
+        // 立即刷新Git状态（新建节点）
+        if (mindMap.githubRepo) {
+          setTimeout(() => {
+            loadGitStatus();
+          }, 1000);
+        }
       } catch (error: any) {
         Notification.error('保存节点失败: ' + (error.message || '未知错误'));
       }
@@ -1944,6 +2058,13 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         );
         
         triggerAutoSave();
+        
+        // 立即刷新Git状态（更新节点文本）
+        if (mindMap.githubRepo) {
+          setTimeout(() => {
+            loadGitStatus();
+          }, 1000);
+        }
       } catch (error: any) {
         Notification.error('更新节点失败: ' + (error.message || '未知错误'));
       }
@@ -2918,10 +3039,11 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
                   try {
                     Notification.info('正在提交更改...');
                     await request.post(`/mindmap/${docId}/commit`, {
-                      commitMessage: commitMessage || undefined,
+                      commitMessage: commitMessage || '', // 发送空字符串而不是undefined
                     });
                     Notification.success('提交成功');
                     loadGitStatus(); // 刷新状态
+                    loadHistory(); // 刷新历史记录
                   } catch (error: any) {
                     Notification.error('提交失败: ' + (error.message || '未知错误'));
                   }
