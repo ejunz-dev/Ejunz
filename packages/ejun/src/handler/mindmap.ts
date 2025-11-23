@@ -42,12 +42,85 @@ class MindMapDetailHandler extends Handler {
 
     @param('docId', Types.ObjectId, true)
     @param('mmid', Types.PositiveInt, true)
-    async get(domainId: string, docId: ObjectId, mmid: number) {
+    @param('branch', Types.String, true)
+    async get(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
+        // If no branch parameter, redirect to branch URL
+        if (!branch || !String(branch).trim()) {
+            const target = this.url('mindmap_detail_branch', { 
+                domainId, 
+                docId: docId || this.mindMap!.docId, 
+                branch: 'main' 
+            });
+            this.response.redirect = target;
+            return;
+        }
+        
         this.response.template = 'mindmap_detail.html';
+        
+        // Handle branch parameter
+        const requestedBranch = branch;
+        const currentMindMapBranch = (this.mindMap as any)?.currentBranch || 'main';
+        
+        // Update currentBranch if different and checkout git branch
+        if (requestedBranch !== currentMindMapBranch) {
+            await document.set(domainId, document.TYPE_MINDMAP, this.mindMap!.docId, { 
+                currentBranch: requestedBranch 
+            });
+            (this.mindMap as any).currentBranch = requestedBranch;
+            
+            // Checkout to the requested branch in git
+            try {
+                const repoGitPath = getMindMapGitPath(domainId, this.mindMap!.mmid);
+                try {
+                    await exec('git rev-parse --git-dir', { cwd: repoGitPath });
+                    // Git repo exists, checkout to the branch
+                    try {
+                        await exec(`git checkout ${requestedBranch}`, { cwd: repoGitPath });
+                    } catch {
+                        // Branch doesn't exist, ensure main exists first, then create it from main
+                        try {
+                            // Ensure main branch exists
+                            try {
+                                await exec(`git checkout main`, { cwd: repoGitPath });
+                            } catch {
+                                try {
+                                    await exec(`git checkout -b main`, { cwd: repoGitPath });
+                                } catch {
+                                    try {
+                                        const { stdout: currentBranch } = await exec('git rev-parse --abbrev-ref HEAD', { cwd: repoGitPath });
+                                        const baseBranch = currentBranch.trim() || 'main';
+                                        if (baseBranch !== 'main') {
+                                            await exec(`git checkout -b main`, { cwd: repoGitPath });
+                                        }
+                                    } catch {
+                                        // If all else fails, just try to create main branch
+                                        await exec(`git checkout -b main`, { cwd: repoGitPath });
+                                    }
+                                }
+                            }
+                            // Now create the requested branch from main
+                            await exec(`git checkout main`, { cwd: repoGitPath });
+                            await exec(`git checkout -b ${requestedBranch}`, { cwd: repoGitPath });
+                        } catch {}
+                    }
+                } catch {
+                    // Git repo not initialized, skip
+                }
+            } catch (err) {
+                console.error('Failed to checkout branch:', err);
+            }
+        }
+        
+        // Get branches list
+        const branches = Array.isArray((this.mindMap as any)?.branches) 
+            ? (this.mindMap as any).branches 
+            : ['main'];
+        if (!branches.includes('main')) {
+            branches.unshift('main');
+        }
         
         // Get git status
         let gitStatus: any = null;
-        const currentBranch = (this.mindMap as any)?.currentBranch || 'main';
         const githubRepo = (this.mindMap?.githubRepo || '') as string;
         
         if (githubRepo && githubRepo.trim()) {
@@ -73,27 +146,77 @@ class MindMapDetailHandler extends Handler {
                     }
                 }
                 
-                gitStatus = await getMindMapGitStatus(domainId, this.mindMap!.mmid, currentBranch, REPO_URL);
+                gitStatus = await getMindMapGitStatus(domainId, this.mindMap!.mmid, requestedBranch, REPO_URL);
             } catch (err) {
                 console.error('Failed to get git status:', err);
                 gitStatus = null;
             }
         } else {
             try {
-                gitStatus = await getMindMapGitStatus(domainId, this.mindMap!.mmid, currentBranch);
+                gitStatus = await getMindMapGitStatus(domainId, this.mindMap!.mmid, requestedBranch);
             } catch (err) {
                 console.error('Failed to get local git status:', err);
                 gitStatus = null;
             }
         }
         
+        // 获取当前分支的数据
+        const branchData = getBranchData(this.mindMap!, requestedBranch);
+        
         this.response.body = {
-            mindMap: this.mindMap,
+            mindMap: {
+                ...this.mindMap,
+                nodes: branchData.nodes,
+                edges: branchData.edges,
+            },
             gitStatus,
-            currentBranch,
+            currentBranch: requestedBranch,
+            branches,
         };
     }
 
+}
+
+/**
+ * Helper functions for branch data management
+ */
+function getBranchData(mindMap: MindMapDoc, branch: string): { nodes: MindMapNode[]; edges: MindMapEdge[] } {
+    const branchName = branch || 'main';
+    
+    // 如果存在 branchData，优先使用
+    if (mindMap.branchData && mindMap.branchData[branchName]) {
+        return {
+            nodes: mindMap.branchData[branchName].nodes || [],
+            edges: mindMap.branchData[branchName].edges || [],
+        };
+    }
+    
+    // 向后兼容：如果 branchData 不存在，使用根节点的 nodes/edges（仅对 main 分支）
+    if (branchName === 'main') {
+        return {
+            nodes: mindMap.nodes || [],
+            edges: mindMap.edges || [],
+        };
+    }
+    
+    // 其他分支如果没有数据，返回空数组
+    return { nodes: [], edges: [] };
+}
+
+function setBranchData(mindMap: MindMapDoc, branch: string, nodes: MindMapNode[], edges: MindMapEdge[]): void {
+    const branchName = branch || 'main';
+    
+    if (!mindMap.branchData) {
+        mindMap.branchData = {};
+    }
+    
+    mindMap.branchData[branchName] = { nodes, edges };
+    
+    // 向后兼容：main 分支的数据也保存到根节点
+    if (branchName === 'main') {
+        mindMap.nodes = nodes;
+        mindMap.edges = edges;
+    }
 }
 
 /**
@@ -451,9 +574,19 @@ class MindMapSaveHandler extends Handler {
 
         const data = this.request.body || {};
         const { nodes, edges, layout, viewport, theme, operationDescription } = data;
+        
+        // 获取当前分支
+        const currentBranch = (mindMap as any).currentBranch || 'main';
+        
+        // 获取当前分支的数据用于比较
+        const currentBranchData = getBranchData(mindMap, currentBranch);
 
         // 检测是否有非位置改变（用于commit检测）
-        const hasNonPositionChanges = this.detectNonPositionChanges(mindMap, nodes, edges);
+        const hasNonPositionChanges = this.detectNonPositionChanges(
+            { ...mindMap, nodes: currentBranchData.nodes, edges: currentBranchData.edges },
+            nodes,
+            edges
+        );
 
         // 记录操作历史
         const historyEntry: MindMapHistoryEntry = {
@@ -464,8 +597,8 @@ class MindMapSaveHandler extends Handler {
             username: this.user.uname || 'unknown',
             description: operationDescription || '自动保存',
             snapshot: {
-                nodes: JSON.parse(JSON.stringify(nodes || mindMap.nodes)),
-                edges: JSON.parse(JSON.stringify(edges || mindMap.edges)),
+                nodes: JSON.parse(JSON.stringify(nodes || currentBranchData.nodes)),
+                edges: JSON.parse(JSON.stringify(edges || currentBranchData.edges)),
                 viewport: viewport || mindMap.viewport,
             },
         };
@@ -477,9 +610,13 @@ class MindMapSaveHandler extends Handler {
             history.splice(50);
         }
 
+        // 更新当前分支的数据
+        setBranchData(mindMap, currentBranch, nodes || [], edges || []);
+
         await MindMapModel.updateFull(domainId, docId, {
-            nodes,
-            edges,
+            branchData: mindMap.branchData,
+            nodes: mindMap.nodes, // 向后兼容
+            edges: mindMap.edges, // 向后兼容
             layout,
             viewport,
             theme,
@@ -620,6 +757,7 @@ class MindMapDataHandler extends Handler {
 
     @param('docId', Types.ObjectId, true)
     @param('mmid', Types.PositiveInt, true)
+    @param('branch', Types.String, true)
     async _prepare(domainId: string, docId: ObjectId, mmid: number) {
         if (docId) {
             this.mindMap = await MindMapModel.get(domainId, docId);
@@ -631,8 +769,18 @@ class MindMapDataHandler extends Handler {
 
     @param('docId', Types.ObjectId, true)
     @param('mmid', Types.PositiveInt, true)
-    async get(domainId: string, docId: ObjectId, mmid: number) {
-        this.response.body = this.mindMap;
+    @param('branch', Types.String, true)
+    async get(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
+        const currentBranch = branch || (this.mindMap as any)?.currentBranch || 'main';
+        const branchData = getBranchData(this.mindMap!, currentBranch);
+        
+        // 返回当前分支的数据
+        this.response.body = {
+            ...this.mindMap,
+            nodes: branchData.nodes,
+            edges: branchData.edges,
+            currentBranch,
+        };
     }
 }
 
@@ -685,10 +833,16 @@ async function ensureMindMapGitRepo(domainId: string, mmid: number, remoteUrl?: 
  * Export mindmap to file structure (node as folder, card as md file)
  * Root node is NOT exported as folder, only its children are exported
  */
-async function exportMindMapToFile(mindMap: MindMapDoc, outputDir: string): Promise<void> {
+async function exportMindMapToFile(mindMap: MindMapDoc, outputDir: string, branch?: string): Promise<void> {
     await fs.promises.mkdir(outputDir, { recursive: true });
     
     const sanitize = (name: string) => (name || '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'untitled';
+    
+    // Get branch-specific data
+    const currentBranch = branch || (mindMap as any).currentBranch || 'main';
+    const branchData = getBranchData(mindMap, currentBranch);
+    const nodes = branchData.nodes;
+    const edges = branchData.edges;
     
     // Create README.md for mindmap root (only contains the content, no metadata)
     const readmePath = path.join(outputDir, 'README.md');
@@ -698,13 +852,13 @@ async function exportMindMapToFile(mindMap: MindMapDoc, outputDir: string): Prom
     // Build node tree structure
     const nodeMap = new Map<string, MindMapNode>();
     
-    for (const node of mindMap.nodes || []) {
+    for (const node of nodes || []) {
         nodeMap.set(node.id, node);
     }
     
     // Find root node (node with no incoming edges)
-    const rootNode = (mindMap.nodes || []).find(node => 
-        !(mindMap.edges || []).some(edge => edge.target === node.id)
+    const rootNode = (nodes || []).find(node => 
+        !(edges || []).some(edge => edge.target === node.id)
     );
     
     // Recursively export nodes as folders
@@ -730,7 +884,7 @@ async function exportMindMapToFile(mindMap: MindMapDoc, outputDir: string): Prom
         }
         
         // Recursively export child nodes (find children through edges)
-        const childEdges = (mindMap.edges || []).filter(edge => edge.source === node.id);
+        const childEdges = (edges || []).filter(edge => edge.source === node.id);
         for (const edge of childEdges) {
             const childNode = nodeMap.get(edge.target);
             if (childNode) {
@@ -741,7 +895,7 @@ async function exportMindMapToFile(mindMap: MindMapDoc, outputDir: string): Prom
     
     // Export only root node's children (not the root node itself)
     if (rootNode) {
-        const rootChildEdges = (mindMap.edges || []).filter(edge => edge.source === rootNode.id);
+        const rootChildEdges = (edges || []).filter(edge => edge.source === rootNode.id);
         for (const edge of rootChildEdges) {
             const childNode = nodeMap.get(edge.target);
             if (childNode) {
@@ -904,7 +1058,7 @@ async function createAndPushToGitHubOrgForMindMap(
         try {
             const mindMapForExport = await MindMapModel.getByMmid(domainId, mmid);
             if (mindMapForExport) {
-                await exportMindMapToFile(mindMapForExport, tmpDir);
+                await exportMindMapToFile(mindMapForExport, tmpDir, 'main');
                 const commitMessage = `${domainId}/${user._id}/${user.uname || 'unknown'}: Initial commit`;
                 await gitInitAndPushMindMap(domainId, mmid, mindMapForExport, REPO_URL, 'main', commitMessage);
             }
@@ -990,8 +1144,8 @@ async function gitInitAndPushMindMap(
             }
         }
         
-        // Export mindmap to files
-        await exportMindMapToFile(mindMap, repoGitPath);
+        // Export mindmap to files (use the branch parameter from function signature)
+        await exportMindMapToFile(mindMap, repoGitPath, branch);
         
         await exec('git add -A', { cwd: repoGitPath });
         
@@ -1231,7 +1385,8 @@ async function syncMindMapToGit(domainId: string, mmid: number, branch: string):
     // Export to temp directory first
     const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-mindmap-sync-'));
     try {
-        await exportMindMapToFile(mindMap, tmpDir);
+        const branch = (mindMap as any).currentBranch || 'main';
+        await exportMindMapToFile(mindMap, tmpDir, branch);
         
         // Copy files to git repository and remove extra files
         const copyDirAndCleanup = async (src: string, dest: string) => {
@@ -1344,6 +1499,28 @@ async function getMindMapGitStatus(
         }
         
         // Sync latest mindmap data to git repository before checking status
+        // First checkout to the correct branch
+        try {
+            const repoGitPath = getMindMapGitPath(domainId, mmid);
+            try {
+                await exec('git rev-parse --git-dir', { cwd: repoGitPath });
+                // Git repo exists, checkout to the branch
+                try {
+                    await exec(`git checkout ${branch}`, { cwd: repoGitPath });
+                } catch {
+                    // Branch doesn't exist, create it from main
+                    try {
+                        await exec(`git checkout main`, { cwd: repoGitPath });
+                        await exec(`git checkout -b ${branch}`, { cwd: repoGitPath });
+                    } catch {}
+                }
+            } catch {
+                // Git repo not initialized, skip
+            }
+        } catch (err) {
+            console.error('Failed to checkout branch:', err);
+        }
+        
         try {
             await syncMindMapToGit(domainId, mmid, branch);
         } catch (err) {
@@ -1515,16 +1692,24 @@ async function commitMindMapChanges(
     await exec(`git config user.name "${botName}"`, { cwd: repoGitPath });
     await exec(`git config user.email "${botEmail}"`, { cwd: repoGitPath });
     
-    const branch = mindMap.branch || 'main';
+    const branch = (mindMap as any).currentBranch || mindMap.branch || 'main';
     try {
         await exec(`git checkout ${branch}`, { cwd: repoGitPath });
     } catch {
-        await exec(`git checkout -b ${branch}`, { cwd: repoGitPath });
+        // Branch doesn't exist, create it from main
+        try {
+            await exec(`git checkout main`, { cwd: repoGitPath });
+            await exec(`git checkout -b ${branch}`, { cwd: repoGitPath });
+        } catch {
+            // If main doesn't exist either, just create the branch
+            await exec(`git checkout -b ${branch}`, { cwd: repoGitPath });
+        }
     }
     
     const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-mindmap-commit-'));
     try {
-        await exportMindMapToFile(mindMap, tmpDir);
+        const branch = (mindMap as any).currentBranch || 'main';
+        await exportMindMapToFile(mindMap, tmpDir, branch);
         
         // 复制文件到 git 仓库，并删除多余的文件
         const copyDirAndCleanup = async (src: string, dest: string) => {
@@ -1605,8 +1790,19 @@ async function commitMindMapChanges(
 class MindMapBranchCreateHandler extends Handler {
     @param('docId', Types.ObjectId, true)
     @param('mmid', Types.PositiveInt, true)
-    @param('branch', Types.String)
-    async post(domainId: string, docId: ObjectId, mmid: number, branch: string) {
+    @param('branch', Types.String, true)
+    async post(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
+        // Support both POST body and URL parameter
+        const newBranch = branch || this.request.body?.branch || '';
+        if (!newBranch || !newBranch.trim()) {
+            throw new Error('Branch name is required');
+        }
+        
+        const branchName = newBranch.trim();
+        if (branchName === 'main') {
+            throw new ForbiddenError('Cannot create branch named main');
+        }
+        
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
             : await MindMapModel.getByMmid(domainId, mmid);
@@ -1624,25 +1820,68 @@ class MindMapBranchCreateHandler extends Handler {
         }
         
         const branches = Array.isArray((mindMap as any).branches) ? [...(mindMap as any).branches] : ['main'];
-        const newBranch = (branch || '').trim() || 'main';
-        if (!branches.includes(newBranch)) {
-            branches.push(newBranch);
+        if (!branches.includes(branchName)) {
+            branches.push(branchName);
         }
+        
+        // 复制 main 分支的数据到新分支
+        const mainBranchData = getBranchData(mindMap, 'main');
+        setBranchData(mindMap, branchName, 
+            JSON.parse(JSON.stringify(mainBranchData.nodes)), 
+            JSON.parse(JSON.stringify(mainBranchData.edges))
+        );
         
         await document.set(domainId, document.TYPE_MINDMAP, mindMap.docId, { 
             branches, 
-            currentBranch: newBranch 
+            currentBranch: branchName,
+            branchData: mindMap.branchData,
         });
         
         try {
             const repoGitPath = await ensureMindMapGitRepo(domainId, mmid);
+            
+            // Ensure main branch exists first
+            try {
+                await exec(`git checkout main`, { cwd: repoGitPath });
+            } catch {
+                try {
+                    await exec(`git checkout -b main`, { cwd: repoGitPath });
+                } catch {
+                    try {
+                        const { stdout: currentBranch } = await exec('git rev-parse --abbrev-ref HEAD', { cwd: repoGitPath });
+                        const baseBranch = currentBranch.trim() || 'main';
+                        if (baseBranch !== 'main') {
+                            await exec(`git checkout -b main`, { cwd: repoGitPath });
+                        }
+                    } catch {
+                        // If all else fails, just try to create main branch
+                        await exec(`git checkout -b main`, { cwd: repoGitPath });
+                    }
+                }
+            }
+            
+            // Now create the new branch from main
             await exec(`git checkout main`, { cwd: repoGitPath });
-            await exec(`git checkout -b ${newBranch}`, { cwd: repoGitPath });
+            await exec(`git checkout -b ${branchName}`, { cwd: repoGitPath });
         } catch (err) {
             console.error('Failed to create git branch:', err);
+            throw err;
         }
         
-        this.response.body = { ok: true, branch: newBranch };
+        // Redirect to branch detail page
+        const redirectDocId = docId || mindMap.docId;
+        this.response.redirect = this.url('mindmap_detail_branch', { 
+            docId: redirectDocId.toString(), 
+            branch: branchName 
+        });
+    }
+    
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('branch', Types.String, true)
+    async get(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
+        // Support GET request for URL-based branch creation
+        return this.post(domainId, docId, mmid, branch);
     }
 }
 
@@ -1783,7 +2022,8 @@ class MindMapCommitHandler extends Handler {
 class MindMapHistoryHandler extends Handler {
     @param('docId', Types.ObjectId, true)
     @param('mmid', Types.PositiveInt, true)
-    async get(domainId: string, docId: ObjectId, mmid: number) {
+    @param('branch', Types.String, true)
+    async get(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
             : await MindMapModel.getByMmid(domainId, mmid);
@@ -1801,8 +2041,9 @@ class MindMapHistoryHandler extends Handler {
 
     @param('docId', Types.ObjectId, true)
     @param('mmid', Types.PositiveInt, true)
+    @param('branch', Types.String, true)
     @param('historyId', Types.String)
-    async postRestore(domainId: string, docId: ObjectId, mmid: number, historyId: string) {
+    async post(domainId: string, docId: ObjectId, mmid: number, branch: string, historyId: string) {
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
             : await MindMapModel.getByMmid(domainId, mmid);
@@ -1814,21 +2055,155 @@ class MindMapHistoryHandler extends Handler {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
 
+        const currentBranch = branch || (mindMap as any).currentBranch || 'main';
         const history = mindMap.history || [];
         const historyEntry = history.find(h => h.id === historyId);
         if (!historyEntry) {
             throw new NotFoundError('History entry not found');
         }
 
-        // 恢复快照数据
+        // 恢复快照数据到当前分支
+        setBranchData(mindMap, currentBranch, 
+            historyEntry.snapshot.nodes || [],
+            historyEntry.snapshot.edges || []
+        );
+
         await MindMapModel.updateFull(domainId, mindMap.docId, {
-            nodes: historyEntry.snapshot.nodes,
-            edges: historyEntry.snapshot.edges,
+            branchData: mindMap.branchData,
+            nodes: mindMap.nodes, // 向后兼容
+            edges: mindMap.edges, // 向后兼容
             viewport: historyEntry.snapshot.viewport,
         });
 
         this.response.body = { success: true };
     }
+}
+
+/**
+ * Import mindmap data from git file structure to database
+ */
+async function importMindMapFromFileStructure(
+    domainId: string,
+    mmid: number,
+    localDir: string,
+    branch: string
+): Promise<{ nodes: MindMapNode[]; edges: MindMapEdge[] }> {
+    const nodes: MindMapNode[] = [];
+    const edges: MindMapEdge[] = [];
+    const nodeIdMap = new Map<string, string>(); // dirPath -> nodeId
+    
+    const sanitize = (name: string) => (name || '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'untitled';
+    
+    // Read README.md as mindmap content (but we don't update it here, just for reference)
+    const readmePath = path.join(localDir, 'README.md');
+    try {
+        await fs.promises.readFile(readmePath, 'utf-8');
+    } catch {}
+    
+    // Create root node (invisible, just for structure)
+    const rootNodeId = `root_${mmid}`;
+    nodes.push({
+        id: rootNodeId,
+        text: 'Root',
+        x: 0,
+        y: 0,
+        data: {},
+        style: { display: 'none' },
+    });
+    nodeIdMap.set(localDir, rootNodeId);
+    
+    let nodeCounter = 0;
+    
+    // Recursively import nodes from directory structure
+    async function importNode(parentNodeId: string, dirPath: string, dirName: string, level: number = 0): Promise<void> {
+        const nodeId = `node_${mmid}_${++nodeCounter}`;
+        const nodeText = sanitize(dirName);
+        
+        // Create node
+        const node: MindMapNode = {
+            id: nodeId,
+            text: nodeText,
+            x: level * 200,
+            y: 0,
+            data: {},
+        };
+        nodes.push(node);
+        nodeIdMap.set(dirPath, nodeId);
+        
+        // Create edge from parent to this node
+        if (parentNodeId) {
+            edges.push({
+                id: `edge_${parentNodeId}_${nodeId}`,
+                source: parentNodeId,
+                target: nodeId,
+                type: 'bezier',
+            });
+        }
+        
+        // Read cards (Markdown files) in this directory
+        try {
+            const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+            for (const entry of entries) {
+                if (entry.isFile() && entry.name.toLowerCase().endsWith('.md') && entry.name.toLowerCase() !== 'readme.md') {
+                    const cardPath = path.join(dirPath, entry.name);
+                    const cardContent = await fs.promises.readFile(cardPath, 'utf-8');
+                    const cardTitle = sanitize(entry.name.replace(/\.md$/i, ''));
+                    
+                    // Create or update card in database
+                    try {
+                        // Check if card already exists
+                        const existingCards = await CardModel.getByNodeId(domainId, mmid, nodeId);
+                        const existingCard = existingCards.find(c => c.title === cardTitle);
+                        
+                        if (existingCard) {
+                            // Update existing card
+                            await CardModel.update(domainId, existingCard.docId, {
+                                content: cardContent,
+                            });
+                        } else {
+                            // Create new card
+                            await CardModel.create(
+                                domainId,
+                                mmid,
+                                nodeId,
+                                0, // owner (system)
+                                cardTitle,
+                                cardContent,
+                                '127.0.0.1'
+                            );
+                        }
+                    } catch (err) {
+                        console.error(`Failed to create/update card ${cardTitle} for node ${nodeId}:`, err);
+                    }
+                }
+            }
+            
+            // Recursively import child directories
+            for (const entry of entries) {
+                if (entry.isDirectory() && entry.name !== '.git') {
+                    const childDirPath = path.join(dirPath, entry.name);
+                    await importNode(nodeId, childDirPath, entry.name, level + 1);
+                }
+            }
+        } catch (err) {
+            console.error(`Failed to read directory ${dirPath}:`, err);
+        }
+    }
+    
+    // Import top-level directories (children of root)
+    try {
+        const topEntries = await fs.promises.readdir(localDir, { withFileTypes: true });
+        for (const entry of topEntries) {
+            if (entry.isDirectory() && entry.name !== '.git') {
+                const childDirPath = path.join(localDir, entry.name);
+                await importNode(rootNodeId, childDirPath, entry.name, 1);
+            }
+        }
+    } catch (err) {
+        console.error(`Failed to read top-level directories:`, err);
+    }
+    
+    return { nodes, edges };
 }
 
 /**
@@ -1899,24 +2274,32 @@ class MindMapGithubPullHandler extends Handler {
             }
             
             await exec('git fetch origin', { cwd: repoGitPath });
-            await exec(`git pull origin ${effectiveBranch}`, { cwd: repoGitPath });
+            await exec(`git reset --hard origin/${effectiveBranch}`, { cwd: repoGitPath });
             
-            // Read the JSON file and update mindmap
-            const fileName = `mindmap-${mindMap.mmid}.json`;
-            const filePath = path.join(repoGitPath, fileName);
+            // Import mindmap structure from git file system
+            const { nodes, edges } = await importMindMapFromFileStructure(
+                domainId,
+                mindMap.mmid,
+                repoGitPath,
+                effectiveBranch
+            );
             
-            if (await fs.promises.access(filePath).then(() => true).catch(() => false)) {
-                const fileContent = await fs.promises.readFile(filePath, 'utf-8');
-                const importedData = JSON.parse(fileContent);
-                
-                await MindMapModel.updateFull(domainId, mindMap.docId, {
-                    nodes: importedData.nodes,
-                    edges: importedData.edges,
-                    layout: importedData.layout,
-                    viewport: importedData.viewport,
-                    theme: importedData.theme,
-                });
-            }
+            // Update branch data
+            setBranchData(mindMap, effectiveBranch, nodes, edges);
+            
+            // Read README.md for content
+            const readmePath = path.join(repoGitPath, 'README.md');
+            let content = mindMap.content || '';
+            try {
+                content = await fs.promises.readFile(readmePath, 'utf-8');
+            } catch {}
+            
+            await MindMapModel.updateFull(domainId, mindMap.docId, {
+                branchData: mindMap.branchData,
+                nodes: mindMap.nodes, // 向后兼容
+                edges: mindMap.edges, // 向后兼容
+                content,
+            });
             
             this.response.body = { ok: true, branch: effectiveBranch };
         } catch (err: any) {
@@ -1967,8 +2350,12 @@ export async function apply(ctx: Context) {
     ctx.Route('mindmap_create', '/mindmap/create', MindMapCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_detail', '/mindmap/:docId', MindMapDetailHandler);
     ctx.Route('mindmap_detail_mmid', '/mindmap/mmid/:mmid', MindMapDetailHandler);
+    ctx.Route('mindmap_detail_branch', '/mindmap/:docId/branch/:branch', MindMapDetailHandler);
+    ctx.Route('mindmap_detail_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch', MindMapDetailHandler);
     ctx.Route('mindmap_study', '/mindmap/:docId/study', MindMapStudyHandler);
     ctx.Route('mindmap_study_mmid', '/mindmap/mmid/:mmid/study', MindMapStudyHandler);
+    ctx.Route('mindmap_study_branch', '/mindmap/:docId/branch/:branch/study', MindMapStudyHandler);
+    ctx.Route('mindmap_study_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/study', MindMapStudyHandler);
     ctx.Route('mindmap_data', '/mindmap/:docId/data', MindMapDataHandler);
     ctx.Route('mindmap_data_mmid', '/mindmap/mmid/:mmid/data', MindMapDataHandler);
     ctx.Route('mindmap_edit', '/mindmap/:docId/edit', MindMapEditHandler, PRIV.PRIV_USER_PROFILE);
@@ -1978,18 +2365,30 @@ export async function apply(ctx: Context) {
     ctx.Route('mindmap_save', '/mindmap/:docId/save', MindMapSaveHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_branch_create', '/mindmap/:docId/branch', MindMapBranchCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_branch_create_mmid', '/mindmap/mmid/:mmid/branch', MindMapBranchCreateHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_branch_create_with_param', '/mindmap/:docId/branch/:branch/create', MindMapBranchCreateHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_branch_create_with_param_mmid', '/mindmap/mmid/:mmid/branch/:branch/create', MindMapBranchCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_git_status', '/mindmap/:docId/git/status', MindMapGitStatusHandler);
     ctx.Route('mindmap_git_status_mmid', '/mindmap/mmid/:mmid/git/status', MindMapGitStatusHandler);
     ctx.Route('mindmap_commit', '/mindmap/:docId/commit', MindMapCommitHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_commit_mmid', '/mindmap/mmid/:mmid/commit', MindMapCommitHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_commit_branch', '/mindmap/:docId/branch/:branch/commit', MindMapCommitHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_commit_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/commit', MindMapCommitHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_github_push', '/mindmap/:docId/github/push', MindMapGithubPushHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_github_push_mmid', '/mindmap/mmid/:mmid/github/push', MindMapGithubPushHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_github_push_branch', '/mindmap/:docId/branch/:branch/github/push', MindMapGithubPushHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_github_push_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/github/push', MindMapGithubPushHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_github_pull', '/mindmap/:docId/github/pull', MindMapGithubPullHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_github_pull_mmid', '/mindmap/mmid/:mmid/github/pull', MindMapGithubPullHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_github_pull_branch', '/mindmap/:docId/branch/:branch/github/pull', MindMapGithubPullHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_github_pull_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/github/pull', MindMapGithubPullHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_history', '/mindmap/:docId/history', MindMapHistoryHandler);
     ctx.Route('mindmap_history_mmid', '/mindmap/mmid/:mmid/history', MindMapHistoryHandler);
+    ctx.Route('mindmap_history_branch', '/mindmap/:docId/branch/:branch/history', MindMapHistoryHandler);
+    ctx.Route('mindmap_history_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/history', MindMapHistoryHandler);
     ctx.Route('mindmap_history_restore', '/mindmap/:docId/history/:historyId/restore', MindMapHistoryHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_history_restore_mmid', '/mindmap/mmid/:mmid/history/:historyId/restore', MindMapHistoryHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_history_restore_branch', '/mindmap/:docId/branch/:branch/history/:historyId/restore', MindMapHistoryHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_history_restore_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/history/:historyId/restore', MindMapHistoryHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_card', '/mindmap/:docId/card', MindMapCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_card_mmid', '/mindmap/mmid/:mmid/card', MindMapCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_card_update', '/mindmap/card/:cardId', MindMapCardHandler, PRIV.PRIV_USER_PROFILE);

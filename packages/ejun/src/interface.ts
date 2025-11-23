@@ -326,8 +326,9 @@ export interface MindMapDoc {
     owner: number;
     title: string;
     content: string; // 描述性内容（可选）
-    nodes: MindMapNode[]; // 节点列表
-    edges: MindMapEdge[]; // 连接列表
+    nodes: MindMapNode[]; // 节点列表（向后兼容，新数据存储在 branchData 中）
+    edges: MindMapEdge[]; // 连接列表（向后兼容，新数据存储在 branchData 中）
+    branchData?: { [branch: string]: { nodes: MindMapNode[]; edges: MindMapEdge[] } }; // 按分支存储的数据
     layout?: {
         type: 'hierarchical' | 'force' | 'manual'; // 布局类型
         direction?: 'LR' | 'RL' | 'TB' | 'BT'; // 布局方向（用于层级布局）
