@@ -303,6 +303,233 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
   );
 };
 
+// 悬浮工具栏组件
+const FloatingToolbar = ({ 
+  node, 
+  reactFlowInstance, 
+  onDelete, 
+  onUpdateFontSize, 
+  onUpdateColor, 
+  onCopy 
+}: { 
+  node: Node; 
+  reactFlowInstance: ReactFlowInstance | null;
+  onDelete: (nodeId: string) => void;
+  onUpdateFontSize: (nodeId: string, fontSize: number) => void;
+  onUpdateColor: (nodeId: string, color: string) => void;
+  onCopy: (text: string) => void;
+}) => {
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const animationFrameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!reactFlowInstance || !node) return;
+
+    const updatePosition = () => {
+      if (!reactFlowInstance || !node) return;
+
+      // 获取节点元素的实际尺寸和位置
+      const nodeElement = document.querySelector(`[data-id="${node.id}"]`) as HTMLElement;
+      if (!nodeElement) return;
+
+      const rect = nodeElement.getBoundingClientRect();
+      const toolbarWidth = toolbarRef.current?.offsetWidth || 0;
+
+      // 工具栏居中显示在节点上方
+      const x = rect.left + rect.width / 2 - toolbarWidth / 2;
+      const y = rect.top - 50;
+
+      setPosition({ x, y });
+    };
+
+    // 使用 requestAnimationFrame 确保平滑更新，特别是在拖动时
+    const animate = () => {
+      updatePosition();
+      animationFrameRef.current = requestAnimationFrame(animate);
+    };
+
+    // 立即更新一次
+    updatePosition();
+    
+    // 开始动画循环
+    animationFrameRef.current = requestAnimationFrame(animate);
+
+    // 监听窗口大小变化
+    window.addEventListener('resize', updatePosition);
+    
+    // 监听节点元素的 transform 变化（拖动时会改变）
+    const nodePositionObserver = new MutationObserver(() => {
+      updatePosition();
+    });
+    
+    const nodeElement = document.querySelector(`[data-id="${node.id}"]`);
+    if (nodeElement) {
+      // 监听节点的 style 属性变化（包括 transform）
+      nodePositionObserver.observe(nodeElement, {
+        attributes: true,
+        attributeFilter: ['style', 'transform', 'class'],
+        childList: false,
+        subtree: false,
+      });
+      
+      // 也监听父容器（ReactFlow 的 viewport 变化会影响所有节点）
+      const reactFlowPane = nodeElement.closest('.react-flow');
+      if (reactFlowPane) {
+        nodePositionObserver.observe(reactFlowPane, {
+          attributes: true,
+          attributeFilter: ['style', 'transform'],
+          childList: false,
+          subtree: false,
+        });
+      }
+    }
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      window.removeEventListener('resize', updatePosition);
+      nodePositionObserver.disconnect();
+    };
+  }, [node, reactFlowInstance]);
+
+  if (!node) return null;
+
+  const originalNode = node.data.originalNode as MindMapNode;
+  const currentFontSize = originalNode?.fontSize || 14;
+  const currentColor = originalNode?.color || '#333';
+
+  return (
+    <div
+      ref={toolbarRef}
+      style={{
+        position: 'fixed',
+        left: `${position.x}px`,
+        top: `${position.y}px`,
+        background: '#fff',
+        border: '1px solid #ddd',
+        borderRadius: '8px',
+        padding: '8px',
+        display: 'flex',
+        gap: '8px',
+        alignItems: 'center',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+        zIndex: 1000,
+        pointerEvents: 'auto',
+      }}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {/* 删除按钮 */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete(node.id);
+        }}
+        style={{
+          padding: '6px 10px',
+          border: '1px solid #f44336',
+          borderRadius: '4px',
+          background: '#fff',
+          color: '#f44336',
+          cursor: 'pointer',
+          fontSize: '12px',
+        }}
+        title="删除节点"
+      >
+        删除
+      </button>
+
+      {/* 字体大小 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (currentFontSize > 10) {
+              onUpdateFontSize(node.id, currentFontSize - 1);
+            }
+          }}
+          style={{
+            padding: '4px 8px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            background: '#fff',
+            cursor: currentFontSize > 10 ? 'pointer' : 'not-allowed',
+            fontSize: '12px',
+            opacity: currentFontSize > 10 ? 1 : 0.5,
+          }}
+          disabled={currentFontSize <= 10}
+        >
+          A-
+        </button>
+        <span style={{ fontSize: '12px', minWidth: '30px', textAlign: 'center' }}>
+          {currentFontSize}
+        </span>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (currentFontSize < 24) {
+              onUpdateFontSize(node.id, currentFontSize + 1);
+            }
+          }}
+          style={{
+            padding: '4px 8px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            background: '#fff',
+            cursor: currentFontSize < 24 ? 'pointer' : 'not-allowed',
+            fontSize: '12px',
+            opacity: currentFontSize < 24 ? 1 : 0.5,
+          }}
+          disabled={currentFontSize >= 24}
+        >
+          A+
+        </button>
+      </div>
+
+      {/* 字体颜色 */}
+      <input
+        type="color"
+        value={currentColor}
+        onChange={(e) => {
+          e.stopPropagation();
+          onUpdateColor(node.id, e.target.value);
+        }}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '32px',
+          height: '32px',
+          border: '1px solid #ddd',
+          borderRadius: '4px',
+          cursor: 'pointer',
+        }}
+        title="字体颜色"
+      />
+
+      {/* 复制按钮 */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onCopy(originalNode?.text || '');
+        }}
+        style={{
+          padding: '6px 10px',
+          border: '1px solid #2196f3',
+          borderRadius: '4px',
+          background: '#fff',
+          color: '#2196f3',
+          cursor: 'pointer',
+          fontSize: '12px',
+        }}
+        title="复制节点内容"
+      >
+        复制
+      </button>
+    </div>
+  );
+};
+
 const customNodeTypes: NodeTypes = {
   mindmap: MindMapNodeComponent,
 };
@@ -655,6 +882,119 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       Notification.error('更新节点失败: ' + (error.message || '未知错误'));
     }
   }, [docId, setNodes, triggerAutoSave]);
+
+  // 更新节点字体大小
+  const handleUpdateFontSize = useCallback(async (nodeId: string, fontSize: number) => {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+    
+    const originalNode = node.data.originalNode as MindMapNode;
+    if (!originalNode) return;
+
+    try {
+      await request.post(`/mindmap/${docId}/node/${originalNode.id}`, {
+        operation: 'update',
+        fontSize,
+      });
+
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === nodeId
+            ? {
+                ...n,
+                data: {
+                  ...n.data,
+                  originalNode: {
+                    ...originalNode,
+                    fontSize,
+                  },
+                },
+              }
+            : n
+        )
+      );
+
+      triggerAutoSave();
+    } catch (error: any) {
+      Notification.error('更新字体大小失败: ' + (error.message || '未知错误'));
+    }
+  }, [docId, nodes, setNodes, triggerAutoSave]);
+
+  // 更新节点字体颜色
+  const handleUpdateColor = useCallback(async (nodeId: string, color: string) => {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+    
+    const originalNode = node.data.originalNode as MindMapNode;
+    if (!originalNode) return;
+
+    try {
+      await request.post(`/mindmap/${docId}/node/${originalNode.id}`, {
+        operation: 'update',
+        color,
+      });
+
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === nodeId
+            ? {
+                ...n,
+                data: {
+                  ...n.data,
+                  originalNode: {
+                    ...originalNode,
+                    color,
+                  },
+                },
+              }
+            : n
+        )
+      );
+
+      triggerAutoSave();
+    } catch (error: any) {
+      Notification.error('更新字体颜色失败: ' + (error.message || '未知错误'));
+    }
+  }, [docId, nodes, setNodes, triggerAutoSave]);
+
+  // 复制节点内容
+  const handleCopyNodeContent = useCallback((text: string) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        Notification.success('已复制到剪贴板');
+      }).catch(() => {
+        // 降级方案
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          Notification.success('已复制到剪贴板');
+        } catch (err) {
+          Notification.error('复制失败');
+        }
+        document.body.removeChild(textArea);
+      });
+    } else {
+      // 降级方案
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        Notification.success('已复制到剪贴板');
+      } catch (err) {
+        Notification.error('复制失败');
+      }
+      document.body.removeChild(textArea);
+    }
+  }, []);
 
   // 处理节点文本变化（失去焦点时调用）
   const handleNodeTextChange = useCallback(async (nodeId: string, newText: string) => {
@@ -1661,6 +2001,22 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
           <Controls />
         </ReactFlow>
+        
+        {/* 悬浮工具栏 */}
+        {selectedNodeId && reactFlowInstance && (() => {
+          const selectedNode = nodes.find(n => n.id === selectedNodeId);
+          if (!selectedNode) return null;
+          return (
+            <FloatingToolbar
+              node={selectedNode}
+              reactFlowInstance={reactFlowInstance}
+              onDelete={handleDeleteNode}
+              onUpdateFontSize={handleUpdateFontSize}
+              onUpdateColor={handleUpdateColor}
+              onCopy={handleCopyNodeContent}
+            />
+          );
+        })()}
       </div>
     </div>
   );
