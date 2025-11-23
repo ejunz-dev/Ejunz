@@ -388,6 +388,8 @@ export class MindMapModel {
         updates: {
             nodes?: MindMapNode[];
             edges?: MindMapEdge[];
+            branchData?: { [branch: string]: { nodes: MindMapNode[]; edges: MindMapEdge[] } };
+            content?: string;
             layout?: MindMapDoc['layout'];
             viewport?: MindMapDoc['viewport'];
             theme?: MindMapDoc['theme'];

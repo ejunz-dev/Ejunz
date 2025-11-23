@@ -1,6 +1,13 @@
 {% extends "layout/basic.html" %}
 {% block content %}
 <script>
+  {{ set(UiContext, 'currentBranch', currentBranch) }}
+  {{ set(UiContext, 'mindMap', {
+    domainId: mindMap.domainId,
+    docId: mindMap.docId,
+    mmid: mindMap.mmid,
+    currentBranch: currentBranch
+  }) }}
   // Helper function to get Notification
   async function getNotification() {
     if (window.Ejunz?.components?.Notification) {
@@ -37,6 +44,31 @@
         <h1 class="section__title">{{ _('Info') }}</h1>
       </div>
       <div class="section__body">
+        {% if branches %}
+          <div style="margin-bottom: 10px;">
+            <div style="font-size: 12px; color: #888; margin-bottom: 4px;">{{ _('Branch') }}</div>
+            <select id="branch-select" style="width: 100%; margin-bottom: 6px;" onchange="(function(){
+              var sel = document.getElementById('branch-select');
+              var b = sel && sel.value ? sel.value : '{{ currentBranch }}';
+              var url = '{{ url('mindmap_detail_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch='__BR__') }}'.replace('__BR__', encodeURIComponent(b));
+              window.location.href = url;
+            })()">
+              {% for b in branches %}
+                <option value="{{ b }}" {% if b == currentBranch %}selected{% endif %}>{{ b }}</option>
+              {% endfor %}
+            </select>
+
+            {% if currentBranch == 'main' %}
+            <button type="button" class="button success expanded" style="margin-bottom: 8px;" onclick="(function(){
+              var name = window.prompt('{{ _('Enter new branch name') }}');
+              if (!name) return;
+              var url = '{{ url('mindmap_branch_create_with_param', domainId=mindMap.domainId, docId=mindMap.docId, branch='__BR__') }}'.replace('__BR__', encodeURIComponent(name));
+              window.location.href = url;
+            })()">{{ _('Create Branch') }}</button>
+            {% endif %}
+          </div>
+        {% endif %}
+        
         {% if gitStatus %}
           <div class="typo" style="margin-top: 10px; padding: 12px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; font-size: 12px;">
             <div style="font-weight: 600; margin-bottom: 8px; font-size: 13px;">📊 {{ _('Git Status') }}</div>
@@ -144,7 +176,7 @@
               btn.disabled = true;
               btn.textContent = '{{ _('Committing...') }}';
               
-              fetch('{{ url('mindmap_commit', domainId=mindMap.domainId, docId=mindMap.docId) }}', {
+              fetch('{{ url('mindmap_commit_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=currentBranch) }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -181,7 +213,7 @@
               btn.disabled = true;
               btn.textContent = '{{ _('Pushing...') }}';
               
-              fetch('{{ url('mindmap_github_push', domainId=mindMap.domainId, docId=mindMap.docId) }}', {
+              fetch('{{ url('mindmap_github_push_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=currentBranch) }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -215,7 +247,7 @@
               btn.disabled = true;
               btn.textContent = '{{ _('Pulling...') }}';
               
-              fetch('{{ url('mindmap_github_pull', domainId=mindMap.domainId, docId=mindMap.docId) }}', {
+              fetch('{{ url('mindmap_github_pull_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=currentBranch) }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -249,7 +281,7 @@
               btn.disabled = true;
               btn.textContent = '{{ _('Pushing...') }}';
               
-              fetch('{{ url('mindmap_github_push', domainId=mindMap.domainId, docId=mindMap.docId) }}', {
+              fetch('{{ url('mindmap_github_push_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=currentBranch) }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -296,7 +328,7 @@
     if (!historyListEl) return;
     
     try {
-      const response = await fetch('{{ url('mindmap_history', domainId=mindMap.domainId, docId=mindMap.docId) }}');
+      const response = await fetch('{{ url('mindmap_history_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=currentBranch) }}');
       const data = await response.json();
       const history = data.history || [];
       
@@ -343,7 +375,10 @@
     if (!confirm('确定要恢复到该历史节点吗？当前未保存的更改将丢失。')) return;
     
     try {
-      const response = await fetch('{{ url('mindmap_history_restore', domainId=mindMap.domainId, docId=mindMap.docId, historyId='') }}' + historyId, {
+      // 构建正确的URL，将historyId作为路径参数
+      const baseUrl = '{{ url('mindmap_history_restore_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=currentBranch, historyId='__HISTORY_ID__') }}';
+      const url = baseUrl.replace('__HISTORY_ID__', encodeURIComponent(historyId));
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
