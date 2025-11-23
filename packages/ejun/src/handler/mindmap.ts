@@ -43,6 +43,33 @@ class MindMapDetailHandler extends Handler {
 }
 
 /**
+ * MindMap Study Handler
+ */
+class MindMapStudyHandler extends Handler {
+    mindMap?: MindMapDoc;
+
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    async _prepare(domainId: string, docId: ObjectId, mmid: number) {
+        if (docId) {
+            this.mindMap = await MindMapModel.get(domainId, docId);
+        } else if (mmid) {
+            this.mindMap = await MindMapModel.getByMmid(domainId, mmid);
+        }
+        if (!this.mindMap) throw new NotFoundError('MindMap not found');
+    }
+
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    async get(domainId: string, docId: ObjectId, mmid: number) {
+        this.response.template = 'mindmap_study.html';
+        this.response.body = {
+            mindMap: this.mindMap,
+        };
+    }
+}
+
+/**
  * MindMap Create Handler
  */
 class MindMapCreateHandler extends Handler {
@@ -455,6 +482,8 @@ export async function apply(ctx: Context) {
     ctx.Route('mindmap_create', '/mindmap/create', MindMapCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_detail', '/mindmap/:docId', MindMapDetailHandler);
     ctx.Route('mindmap_detail_mmid', '/mindmap/mmid/:mmid', MindMapDetailHandler);
+    ctx.Route('mindmap_study', '/mindmap/:docId/study', MindMapStudyHandler);
+    ctx.Route('mindmap_study_mmid', '/mindmap/mmid/:mmid/study', MindMapStudyHandler);
     ctx.Route('mindmap_data', '/mindmap/:docId/data', MindMapDataHandler);
     ctx.Route('mindmap_data_mmid', '/mindmap/mmid/:mmid/data', MindMapDataHandler);
     ctx.Route('mindmap_edit', '/mindmap/:docId/edit', MindMapEditHandler, PRIV.PRIV_USER_PROFILE);
