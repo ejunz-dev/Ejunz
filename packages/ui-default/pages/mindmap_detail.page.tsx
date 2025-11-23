@@ -2941,229 +2941,47 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       }}>
         {/* 模式切换按钮 */}
         <button
-          onClick={() => {
-            if (viewMode === 'mindmap') setViewMode('outline');
-            else if (viewMode === 'outline') setViewMode('study');
-            else setViewMode('mindmap');
-          }}
+          onClick={() => setViewMode('mindmap')}
           style={{
             padding: '6px 12px',
             border: '1px solid #ddd',
             borderRadius: '4px',
-            background: viewMode === 'mindmap' ? '#2196f3' : viewMode === 'outline' ? '#4caf50' : '#ff9800',
-            color: '#fff',
+            background: viewMode === 'mindmap' ? '#2196f3' : '#fff',
+            color: viewMode === 'mindmap' ? '#fff' : '#333',
             cursor: 'pointer',
             fontWeight: 'bold',
           }}
         >
-          {viewMode === 'mindmap' ? '思维导图' : viewMode === 'outline' ? '大纲视图' : '刷题模式'}
+          导图模式
         </button>
-        {viewMode === 'mindmap' && (
-          <button
-            onClick={() => setAutoLayout(!autoLayout)}
-            style={{
-              padding: '6px 12px',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              background: autoLayout ? '#4caf50' : '#fff',
-              color: autoLayout ? '#fff' : '#333',
-              cursor: 'pointer',
-            }}
-          >
-            {autoLayout ? '自动布局: 开' : '自动布局: 关'}
-          </button>
-        )}
-        {viewMode === 'mindmap' && (
-          <button
-            onClick={() => handleAddNode()}
-            style={{
-              padding: '6px 12px',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              background: '#4caf50',
-              color: '#fff',
-              cursor: 'pointer',
-            }}
-          >
-            添加根节点
-          </button>
-        )}
-        {isSaving && (
-          <div style={{
+        <button
+          onClick={() => setViewMode('outline')}
+          style={{
             padding: '6px 12px',
-            fontSize: '12px',
-            color: '#666',
-          }}>
-            保存中...
-          </div>
-        )}
-        <div style={{ marginLeft: 'auto', fontSize: '14px', color: '#666', display: 'flex', alignItems: 'center', gap: '20px' }}>
-          {viewMode === 'mindmap' && (
-            <div style={{ fontSize: '12px', color: '#999' }}>
-              <div>Tab - 创建子节点</div>
-              <div>Enter - 创建兄弟节点</div>
-            </div>
-          )}
-          <a
-            href={(() => {
-              const domainId = (window as any).UiContext?.domainId || '';
-              return domainId ? `/d/${domainId}/mindmap/${docId}/study` : `/mindmap/${docId}/study`;
-            })()}
-            style={{
-              padding: '6px 12px',
-              border: '1px solid #2196f3',
-              borderRadius: '4px',
-              background: '#2196f3',
-              color: '#fff',
-              textDecoration: 'none',
-              cursor: 'pointer',
-              fontSize: '14px',
-            }}
-          >
-            刷题模式
-          </a>
-          
-          {/* Git 操作按钮 */}
-          {mindMap.githubRepo && (
-            <>
-              {/* Commit 按钮 */}
-              <button
-                onClick={async () => {
-                  if (!gitStatus?.uncommittedChanges) {
-                    return; // 不可执行时直接返回
-                  }
-                  
-                  const commitMessage = window.prompt('请输入提交信息（可选）:', '');
-                  if (commitMessage === null) return; // 用户取消
-                  
-                  try {
-                    Notification.info('正在提交更改...');
-                    await request.post(`/mindmap/${docId}/commit`, {
-                      commitMessage: commitMessage || '', // 发送空字符串而不是undefined
-                    });
-                    Notification.success('提交成功');
-                    loadGitStatus(); // 刷新状态
-                    loadHistory(); // 刷新历史记录
-                  } catch (error: any) {
-                    Notification.error('提交失败: ' + (error.message || '未知错误'));
-                  }
-                }}
-                style={{
-                  padding: '6px 12px',
-                  border: gitStatus?.uncommittedChanges ? '1px solid #4caf50' : '1px dashed #999',
-                  borderRadius: '4px',
-                  background: gitStatus?.uncommittedChanges ? '#4caf50' : '#e0e0e0',
-                  color: gitStatus?.uncommittedChanges ? '#fff' : '#999',
-                  cursor: gitStatus?.uncommittedChanges ? 'pointer' : 'not-allowed',
-                  fontSize: '14px',
-                  position: 'relative',
-                }}
-                title={(() => {
-                  if (!gitStatus?.uncommittedChanges) {
-                    return '没有未提交的更改';
-                  }
-                  const changes = gitStatus?.changes || { added: [], modified: [], deleted: [] };
-                  const parts: string[] = [];
-                  if (changes.added.length > 0) {
-                    parts.push(`新增: ${changes.added.length} 个文件`);
-                    if (changes.added.length <= 5) {
-                      parts.push(changes.added.join(', '));
-                    }
-                  }
-                  if (changes.modified.length > 0) {
-                    parts.push(`修改: ${changes.modified.length} 个文件`);
-                    if (changes.modified.length <= 5) {
-                      parts.push(changes.modified.join(', '));
-                    }
-                  }
-                  if (changes.deleted.length > 0) {
-                    parts.push(`删除: ${changes.deleted.length} 个文件`);
-                    if (changes.deleted.length <= 5) {
-                      parts.push(changes.deleted.join(', '));
-                    }
-                  }
-                  return parts.length > 0 ? parts.join('\n') : '有未提交的更改';
-                })()}
-              >
-                Commit
-              </button>
-              
-              {/* Pull 按钮 */}
-              <button
-                onClick={async () => {
-                  if (!gitStatus?.behind || gitStatus.behind <= 0) {
-                    return; // 不可执行时直接返回
-                  }
-                  
-                  if (!confirm('确定要从 GitHub 拉取吗？这可能会覆盖本地更改。')) return;
-                  
-                  try {
-                    Notification.info('正在从 GitHub 拉取...');
-                    await request.post(`/mindmap/${docId}/github/pull`);
-                    Notification.success('拉取成功');
-                    setTimeout(() => window.location.reload(), 1000);
-                  } catch (error: any) {
-                    Notification.error('拉取失败: ' + (error.message || '未知错误'));
-                  }
-                }}
-                style={{
-                  padding: '6px 12px',
-                  border: (gitStatus?.behind || 0) > 0 ? '1px solid #f44336' : '1px dashed #999',
-                  borderRadius: '4px',
-                  background: (gitStatus?.behind || 0) > 0 ? '#f44336' : '#e0e0e0',
-                  color: (gitStatus?.behind || 0) > 0 ? '#fff' : '#999',
-                  cursor: (gitStatus?.behind || 0) > 0 ? 'pointer' : 'not-allowed',
-                  fontSize: '14px',
-                }}
-                title={
-                  (gitStatus?.behind || 0) > 0
-                    ? `远程领先 ${gitStatus.behind} 个提交`
-                    : '远程没有新的提交'
-                }
-              >
-                Pull {gitStatus?.behind ? `(${gitStatus.behind})` : ''}
-              </button>
-              
-              {/* Push 按钮 */}
-              <button
-                onClick={async () => {
-                  if (!gitStatus?.ahead || gitStatus.ahead <= 0) {
-                    return; // 不可执行时直接返回
-                  }
-                  
-                  if (!confirm('确定要推送到 GitHub 吗？')) return;
-                  
-                  try {
-                    Notification.info('正在推送到 GitHub...');
-                    await request.post(`/mindmap/${docId}/github/push`);
-                    Notification.success('推送成功');
-                    setTimeout(() => window.location.reload(), 1000);
-                  } catch (error: any) {
-                    Notification.error('推送失败: ' + (error.message || '未知错误'));
-                  }
-                }}
-                style={{
-                  padding: '6px 12px',
-                  border: (gitStatus?.ahead || 0) > 0 ? '1px solid #ff9800' : '1px dashed #999',
-                  borderRadius: '4px',
-                  background: (gitStatus?.ahead || 0) > 0 ? '#ff9800' : '#e0e0e0',
-                  color: (gitStatus?.ahead || 0) > 0 ? '#fff' : '#999',
-                  cursor: (gitStatus?.ahead || 0) > 0 ? 'pointer' : 'not-allowed',
-                  fontSize: '14px',
-                }}
-                title={
-                  (gitStatus?.ahead || 0) > 0
-                    ? `本地领先 ${gitStatus.ahead} 个提交`
-                    : '本地没有未推送的提交'
-                }
-              >
-                Push {gitStatus?.ahead ? `(${gitStatus.ahead})` : ''}
-              </button>
-            </>
-          )}
-          
-          <div>{mindMap.title}</div>
-        </div>
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            background: viewMode === 'outline' ? '#4caf50' : '#fff',
+            color: viewMode === 'outline' ? '#fff' : '#333',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+          }}
+        >
+          文件模式
+        </button>
+        <button
+          onClick={() => setViewMode('study')}
+          style={{
+            padding: '6px 12px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            background: viewMode === 'study' ? '#ff9800' : '#fff',
+            color: viewMode === 'study' ? '#fff' : '#333',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+          }}
+        >
+          刷题模式
+        </button>
       </div>
 
       {/* 思维导图画布或大纲视图 */}
