@@ -608,6 +608,262 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], direction: 'TB' | 'LR
   return { nodes: layoutedNodes, edges };
 };
 
+// 大纲视图组件
+const OutlineView = ({
+  nodes,
+  edges,
+  onToggleExpand,
+  onNodeClick,
+  selectedNodeId,
+}: {
+  nodes: Node[];
+  edges: Edge[];
+  onToggleExpand: (nodeId: string) => void;
+  onNodeClick: (nodeId: string) => void;
+  selectedNodeId: string | null;
+}) => {
+  // 构建节点树结构
+  const buildTree = useMemo(() => {
+    const nodeMap = new Map<string, { node: Node; children: string[] }>();
+    const rootNodes: string[] = [];
+
+    // 初始化节点映射
+    nodes.forEach((node) => {
+      nodeMap.set(node.id, { node, children: [] });
+    });
+
+    // 构建父子关系
+    edges.forEach((edge) => {
+      const parent = nodeMap.get(edge.source);
+      if (parent) {
+        parent.children.push(edge.target);
+      }
+    });
+
+    // 找到根节点（没有父节点的节点）
+    nodes.forEach((node) => {
+      const hasParent = edges.some((edge) => edge.target === node.id);
+      if (!hasParent) {
+        rootNodes.push(node.id);
+      }
+    });
+
+    return { nodeMap, rootNodes };
+  }, [nodes, edges]);
+
+  // 获取根节点信息（用于显示标题）
+  const rootNodeInfo = useMemo(() => {
+    if (buildTree.rootNodes.length === 0) return null;
+    const rootNodeId = buildTree.rootNodes[0]; // 通常只有一个根节点
+    const rootNodeData = buildTree.nodeMap.get(rootNodeId);
+    if (!rootNodeData) return null;
+    const originalNode = rootNodeData.node.data.originalNode as MindMapNode;
+    return {
+      id: rootNodeId,
+      text: originalNode?.text || '未命名节点',
+      children: rootNodeData.children,
+    };
+  }, [buildTree]);
+
+  // 获取节点的所有可见子节点（递归）
+  const getAllVisibleChildren = useCallback((nodeId: string): string[] => {
+    const nodeData = buildTree.nodeMap.get(nodeId);
+    if (!nodeData) return [];
+    
+    const { node, children } = nodeData;
+    const originalNode = node.data.originalNode as MindMapNode;
+    const expanded = originalNode?.expanded !== false;
+    
+    if (!expanded || children.length === 0) return [];
+    
+    const visibleChildren: string[] = [];
+    children.forEach((childId) => {
+      visibleChildren.push(childId);
+      visibleChildren.push(...getAllVisibleChildren(childId));
+    });
+    
+    return visibleChildren;
+  }, [buildTree]);
+
+  // 递归渲染节点树
+  const renderNodeTree = useCallback(
+    (nodeId: string, level: number = 0, isLast: boolean = false, hasSiblings: boolean = false): JSX.Element | null => {
+      const nodeData = buildTree.nodeMap.get(nodeId);
+      if (!nodeData) return null;
+
+      const { node, children } = nodeData;
+      const originalNode = node.data.originalNode as MindMapNode;
+      const expanded = originalNode?.expanded !== false; // 默认为 true
+      const hasChildren = children.length > 0;
+      const isSelected = selectedNodeId === nodeId;
+
+      return (
+        <div key={nodeId} style={{ position: 'relative' }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginLeft: `${level * 24}px`, position: 'relative' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                padding: '4px 0',
+                cursor: 'pointer',
+                position: 'relative',
+                zIndex: 1,
+                width: '100%',
+              }}
+              onClick={() => onNodeClick(nodeId)}
+              onMouseEnter={(e) => {
+                if (!isSelected) {
+                  e.currentTarget.style.backgroundColor = '#f5f5f5';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isSelected) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }
+              }}
+            >
+              {/* 展开/折叠箭头按钮 */}
+              {hasChildren ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleExpand(nodeId);
+                  }}
+                  style={{
+                    width: '18px',
+                    height: '18px',
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: '4px',
+                    padding: 0,
+                    flexShrink: 0,
+                    position: 'relative',
+                    zIndex: 2,
+                    color: '#666',
+                  }}
+                  title={expanded ? '折叠' : '展开'}
+                >
+                  <span style={{ 
+                    fontSize: '10px',
+                    transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                    transition: 'transform 0.15s ease',
+                    display: 'inline-block',
+                    lineHeight: '1',
+                  }}>
+                    ▼
+                  </span>
+                </button>
+              ) : (
+                <div style={{ width: '22px', marginRight: '0px', flexShrink: 0 }} />
+              )}
+              
+              {/* 项目符号（点） */}
+              <span style={{ 
+                marginRight: '8px',
+                color: '#666',
+                fontSize: '12px',
+                flexShrink: 0,
+                lineHeight: '1',
+              }}>
+                •
+              </span>
+              
+              {/* 节点文本 */}
+              <div
+                style={{
+                  flex: 1,
+                  color: isSelected ? '#1976d2' : (originalNode?.color || '#333'),
+                  fontSize: `${originalNode?.fontSize || 14}px`,
+                  fontWeight: isSelected ? '600' : 'normal',
+                  lineHeight: '1.5',
+                }}
+              >
+                {originalNode?.text || '未命名节点'}
+              </div>
+            </div>
+          </div>
+          {/* 子节点 */}
+          {hasChildren && expanded && (
+            <div style={{ position: 'relative', marginLeft: `${level * 24}px` }}>
+              {/* 侧边垂直范围线 - 从父节点延伸到所有子节点 */}
+              <div
+                style={{
+                  position: 'absolute',
+                  left: '8px',
+                  top: '0px',
+                  bottom: '0px',
+                  width: '1px',
+                  backgroundColor: '#e0e0e0',
+                  zIndex: 0,
+                }}
+              />
+              <div>
+                {children.map((childId, index) => {
+                  const isLastChild = index === children.length - 1;
+                  const childHasSiblings = children.length > 1;
+                  return renderNodeTree(childId, level + 1, isLastChild, childHasSiblings);
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    },
+    [buildTree, selectedNodeId, onToggleExpand, onNodeClick]
+  );
+
+  return (
+    <div
+      style={{
+        height: '100%',
+        overflow: 'auto',
+        padding: '24px 32px',
+        backgroundColor: '#fff',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+      }}
+    >
+      {!rootNodeInfo ? (
+        <div style={{ textAlign: 'center', color: '#999', marginTop: '40px', fontSize: '14px' }}>
+          暂无节点
+        </div>
+      ) : (
+        <>
+          {/* 根节点作为标题 */}
+          <div
+            style={{
+              fontSize: '20px',
+              fontWeight: '600',
+              color: '#333',
+              marginBottom: '24px',
+              paddingBottom: '16px',
+              borderBottom: '1px solid #e0e0e0',
+            }}
+          >
+            {rootNodeInfo.text}
+          </div>
+          {/* 从根节点的子节点开始展示，level 从 0 开始 */}
+          {rootNodeInfo.children.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#999', marginTop: '40px', fontSize: '14px' }}>
+              暂无子节点
+            </div>
+          ) : (
+            <div style={{ paddingLeft: '4px' }}>
+              {rootNodeInfo.children.map((childId, index) => {
+                const isLastChild = index === rootNodeInfo.children.length - 1;
+                return renderNodeTree(childId, 0, isLastChild, rootNodeInfo.children.length > 1);
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
 function MindMapEditor({ docId, initialData }: { docId: string; initialData: MindMapDoc }) {
   const [mindMap, setMindMap] = useState<MindMapDoc>(initialData);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
@@ -618,6 +874,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
   const layoutTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [autoLayout, setAutoLayout] = useState(true);
   const autoLayoutEnabledRef = useRef(true);
+  const [viewMode, setViewMode] = useState<'mindmap' | 'outline'>('mindmap');
 
   // 使用 ref 存储回调函数，避免在依赖数组中引起无限循环
   const callbacksRef = useRef<{
@@ -2063,32 +2320,51 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         alignItems: 'center',
         gap: '10px',
       }}>
+        {/* 模式切换按钮 */}
         <button
-          onClick={() => setAutoLayout(!autoLayout)}
+          onClick={() => setViewMode(viewMode === 'mindmap' ? 'outline' : 'mindmap')}
           style={{
             padding: '6px 12px',
             border: '1px solid #ddd',
             borderRadius: '4px',
-            background: autoLayout ? '#4caf50' : '#fff',
-            color: autoLayout ? '#fff' : '#333',
+            background: viewMode === 'mindmap' ? '#2196f3' : '#fff',
+            color: viewMode === 'mindmap' ? '#fff' : '#333',
             cursor: 'pointer',
+            fontWeight: 'bold',
           }}
         >
-          {autoLayout ? '自动布局: 开' : '自动布局: 关'}
+          {viewMode === 'mindmap' ? '思维导图' : '大纲视图'}
         </button>
-        <button
-          onClick={() => handleAddNode()}
-          style={{
-            padding: '6px 12px',
-            border: '1px solid #ddd',
-            borderRadius: '4px',
-            background: '#4caf50',
-            color: '#fff',
-            cursor: 'pointer',
-          }}
-        >
-          添加根节点
-        </button>
+        {viewMode === 'mindmap' && (
+          <button
+            onClick={() => setAutoLayout(!autoLayout)}
+            style={{
+              padding: '6px 12px',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              background: autoLayout ? '#4caf50' : '#fff',
+              color: autoLayout ? '#fff' : '#333',
+              cursor: 'pointer',
+            }}
+          >
+            {autoLayout ? '自动布局: 开' : '自动布局: 关'}
+          </button>
+        )}
+        {viewMode === 'mindmap' && (
+          <button
+            onClick={() => handleAddNode()}
+            style={{
+              padding: '6px 12px',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              background: '#4caf50',
+              color: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            添加根节点
+          </button>
+        )}
         {isSaving && (
           <div style={{
             padding: '6px 12px',
@@ -2099,61 +2375,75 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           </div>
         )}
         <div style={{ marginLeft: 'auto', fontSize: '14px', color: '#666', display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <div style={{ fontSize: '12px', color: '#999' }}>
-            <div>Tab - 创建子节点</div>
-            <div>Enter - 创建兄弟节点</div>
-          </div>
+          {viewMode === 'mindmap' && (
+            <div style={{ fontSize: '12px', color: '#999' }}>
+              <div>Tab - 创建子节点</div>
+              <div>Enter - 创建兄弟节点</div>
+            </div>
+          )}
           <div>{mindMap.title}</div>
         </div>
       </div>
 
-      {/* 思维导图画布 */}
+      {/* 思维导图画布或大纲视图 */}
       <div ref={reactFlowWrapper} style={{ flex: 1, width: '100%', position: 'relative' }}>
-        <ReactFlow
-          nodes={filteredNodesAndEdges.filteredNodes}
-          edges={filteredNodesAndEdges.filteredEdges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={handleEdgesChange}
-          onConnect={onConnect}
-          onNodeClick={onNodeClick}
-          onPaneClick={onPaneClick}
-          onNodeDragStart={onNodeDragStart}
-          onNodeDrag={onNodeDrag}
-          onNodeDragStop={onNodeDragStop}
-          onInit={setReactFlowInstance}
-          nodeTypes={customNodeTypes}
-          fitView
-          nodesConnectable={true}
-          edgesUpdatable={true}
-          edgesFocusable={true}
-          deleteKeyCode="Delete"
-          multiSelectionKeyCode="Shift"
-          connectionLineStyle={{ stroke: '#2196f3', strokeWidth: 2 }}
-          defaultViewport={mindMap.viewport ? {
-            x: mindMap.viewport.x,
-            y: mindMap.viewport.y,
-            zoom: mindMap.viewport.zoom,
-          } : undefined}
-        >
-          <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
-          <Controls />
-        </ReactFlow>
-        
-        {/* 悬浮工具栏 */}
-        {selectedNodeId && reactFlowInstance && (() => {
-          const selectedNode = nodes.find(n => n.id === selectedNodeId);
-          if (!selectedNode) return null;
-          return (
-            <FloatingToolbar
-              node={selectedNode}
-              reactFlowInstance={reactFlowInstance}
-              onDelete={handleDeleteNode}
-              onUpdateFontSize={handleUpdateFontSize}
-              onUpdateColor={handleUpdateColor}
-              onCopy={handleCopyNodeContent}
-            />
-          );
-        })()}
+        {viewMode === 'mindmap' ? (
+          <>
+            <ReactFlow
+              nodes={filteredNodesAndEdges.filteredNodes}
+              edges={filteredNodesAndEdges.filteredEdges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={handleEdgesChange}
+              onConnect={onConnect}
+              onNodeClick={onNodeClick}
+              onPaneClick={onPaneClick}
+              onNodeDragStart={onNodeDragStart}
+              onNodeDrag={onNodeDrag}
+              onNodeDragStop={onNodeDragStop}
+              onInit={setReactFlowInstance}
+              nodeTypes={customNodeTypes}
+              fitView
+              nodesConnectable={true}
+              edgesUpdatable={true}
+              edgesFocusable={true}
+              deleteKeyCode="Delete"
+              multiSelectionKeyCode="Shift"
+              connectionLineStyle={{ stroke: '#2196f3', strokeWidth: 2 }}
+              defaultViewport={mindMap.viewport ? {
+                x: mindMap.viewport.x,
+                y: mindMap.viewport.y,
+                zoom: mindMap.viewport.zoom,
+              } : undefined}
+            >
+              <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+              <Controls />
+            </ReactFlow>
+            
+            {/* 悬浮工具栏 */}
+            {selectedNodeId && reactFlowInstance && (() => {
+              const selectedNode = nodes.find(n => n.id === selectedNodeId);
+              if (!selectedNode) return null;
+              return (
+                <FloatingToolbar
+                  node={selectedNode}
+                  reactFlowInstance={reactFlowInstance}
+                  onDelete={handleDeleteNode}
+                  onUpdateFontSize={handleUpdateFontSize}
+                  onUpdateColor={handleUpdateColor}
+                  onCopy={handleCopyNodeContent}
+                />
+              );
+            })()}
+          </>
+        ) : (
+          <OutlineView
+            nodes={nodes}
+            edges={edges}
+            onToggleExpand={handleToggleExpand}
+            onNodeClick={setSelectedNodeId}
+            selectedNodeId={selectedNodeId}
+          />
+        )}
       </div>
     </div>
   );
