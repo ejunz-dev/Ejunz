@@ -1,0 +1,16 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="large-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ mindMap.title if mindMap else '思维导图' }}</h1>
+      </div>
+      <div class="section__body no-padding">
+        <div id="mindmap-editor" data-doc-id="{{ mindMap.docId if mindMap else '' }}"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

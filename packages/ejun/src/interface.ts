@@ -287,6 +287,72 @@ export interface BlockDoc {
     order?: number;
 }
 
+// MindMap document
+export interface MindMapNode {
+    id: string; // 节点唯一标识
+    text: string; // 节点文本内容
+    x?: number; // X坐标（可选，用于布局）
+    y?: number; // Y坐标（可选，用于布局）
+    width?: number; // 节点宽度
+    height?: number; // 节点高度
+    color?: string; // 节点颜色
+    backgroundColor?: string; // 节点背景色
+    fontSize?: number; // 字体大小
+    shape?: 'rectangle' | 'circle' | 'ellipse' | 'diamond'; // 节点形状
+    parentId?: string; // 父节点ID（用于树形结构）
+    children?: string[]; // 子节点ID列表
+    expanded?: boolean; // 是否展开（用于折叠/展开功能）
+    level?: number; // 节点层级（从根节点开始，0为根节点）
+    style?: Record<string, any>; // 自定义样式
+    data?: Record<string, any>; // 自定义数据
+}
+
+export interface MindMapEdge {
+    id: string; // 连接唯一标识
+    source: string; // 源节点ID
+    target: string; // 目标节点ID
+    label?: string; // 连接标签
+    style?: Record<string, any>; // 连接样式
+    type?: 'straight' | 'curved' | 'bezier'; // 连接类型
+    color?: string; // 连接颜色
+    width?: number; // 连接宽度
+}
+
+export interface MindMapDoc {
+    docType: document['TYPE_MINDMAP'];
+    docId: ObjectId;
+    domainId: string;
+    mmid: number; // MindMap ID，从1开始（业务ID，用于路由显示）
+    owner: number;
+    title: string;
+    content: string; // 描述性内容（可选）
+    nodes: MindMapNode[]; // 节点列表
+    edges: MindMapEdge[]; // 连接列表
+    layout?: {
+        type: 'hierarchical' | 'force' | 'manual'; // 布局类型
+        direction?: 'LR' | 'RL' | 'TB' | 'BT'; // 布局方向（用于层级布局）
+        spacing?: { x: number; y: number }; // 节点间距
+        config?: Record<string, any>; // 布局配置
+    };
+    viewport?: {
+        x: number; // 视口X坐标
+        y: number; // 视口Y坐标
+        zoom: number; // 缩放级别
+    };
+    theme?: {
+        primaryColor?: string;
+        backgroundColor?: string;
+        nodeStyle?: Record<string, any>;
+        edgeStyle?: Record<string, any>;
+    };
+    createdAt: Date;
+    updateAt: Date;
+    views: number;
+    ip?: string;
+    rpid?: number; // 可选的关联仓库ID
+    branch?: string; // 可选的关联分支
+}
+
 // Node document
 declare module './model/node' {
     interface NodeDoc {

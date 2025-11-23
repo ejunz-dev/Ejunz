@@ -65,6 +65,7 @@ export const AgentAdd = (name, args, icon = 'add', text = 'Create Agent') => {
 
 
 inject('Nav', 'homepage', { prefix: 'homepage' });
+inject('Nav', 'mindmap_domain', { prefix: 'mindmap' });
 inject('Nav', 'base_domain', { prefix: 'base' });
 inject('Nav', 'agent_domain', { prefix: 'agent' });
 inject('Nav', 'edge_domain', { prefix: 'edge' });
