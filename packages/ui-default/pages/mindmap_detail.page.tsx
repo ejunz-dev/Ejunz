@@ -83,6 +83,9 @@ interface MindMapDoc {
   createdAt: string;
   updateAt: string;
   views: number;
+  githubRepo?: string;
+  branches?: string[];
+  currentBranch?: string;
 }
 
 // 自定义思维导图节点组件
@@ -341,6 +344,342 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
   );
 };
 
+// Card 接口
+interface Card {
+  docId: string;
+  cid: number;
+  title: string;
+  content: string;
+  updateAt: string;
+  createdAt?: string;
+}
+
+// Card 管理对话框组件
+const CardManageDialog = ({ 
+  nodeId, 
+  docId, 
+  mmid,
+  onClose 
+}: { 
+  nodeId: string; 
+  docId: string;
+  mmid: number;
+  onClose: () => void;
+}) => {
+  const [cards, setCards] = useState<Card[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingCard, setEditingCard] = useState<Card | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newCardTitle, setNewCardTitle] = useState('');
+  const [newCardContent, setNewCardContent] = useState('');
+
+  useEffect(() => {
+    loadCards();
+  }, [nodeId, docId, mmid]);
+
+  const loadCards = async () => {
+    setLoading(true);
+    try {
+      const url = docId 
+        ? `/mindmap/${docId}/card?nodeId=${nodeId}`
+        : `/mindmap/mmid/${mmid}/card?nodeId=${nodeId}`;
+      const res = await request.get(url);
+      setCards(res.cards || []);
+    } catch (error: any) {
+      Notification.error('加载卡片失败: ' + (error.message || '未知错误'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddCard = async () => {
+    if (!newCardTitle.trim()) {
+      Notification.error('请输入卡片标题');
+      return;
+    }
+
+    try {
+      const url = docId 
+        ? `/mindmap/${docId}/card`
+        : `/mindmap/mmid/${mmid}/card`;
+      await request.post(url, {
+        nodeId,
+        title: newCardTitle,
+        content: newCardContent,
+      });
+      Notification.success('卡片已添加');
+      setNewCardTitle('');
+      setNewCardContent('');
+      setShowAddForm(false);
+      loadCards();
+    } catch (error: any) {
+      Notification.error('添加卡片失败: ' + (error.message || '未知错误'));
+    }
+  };
+
+  const handleUpdateCard = async (card: Card) => {
+    try {
+      await request.post(`/mindmap/card/${card.docId}`, {
+        title: card.title,
+        content: card.content,
+      });
+      Notification.success('卡片已更新');
+      setEditingCard(null);
+      loadCards();
+    } catch (error: any) {
+      Notification.error('更新卡片失败: ' + (error.message || '未知错误'));
+    }
+  };
+
+  const handleDeleteCard = async (cardId: string) => {
+    if (!confirm('确定要删除这个卡片吗？')) {
+      return;
+    }
+
+    try {
+      // 使用 operation: 'delete' 来区分删除和更新操作
+      await request.post(`/mindmap/card/${cardId}`, {
+        operation: 'delete',
+      });
+      Notification.success('卡片已删除');
+      loadCards();
+    } catch (error: any) {
+      Notification.error('删除卡片失败: ' + (error.message || '未知错误'));
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        background: '#fff',
+        border: '1px solid #ddd',
+        borderRadius: '8px',
+        padding: '20px',
+        width: '600px',
+        maxHeight: '80vh',
+        overflow: 'auto',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+        zIndex: 2000,
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h3 style={{ margin: 0 }}>管理卡片</h3>
+        <button
+          onClick={onClose}
+          style={{
+            padding: '4px 12px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            background: '#fff',
+            cursor: 'pointer',
+          }}
+        >
+          关闭
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '20px' }}>加载中...</div>
+      ) : (
+        <>
+          <div style={{ marginBottom: '20px' }}>
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              style={{
+                padding: '8px 16px',
+                border: '1px solid #2196f3',
+                borderRadius: '4px',
+                background: '#2196f3',
+                color: '#fff',
+                cursor: 'pointer',
+              }}
+            >
+              {showAddForm ? '取消' : '+ 添加卡片'}
+            </button>
+          </div>
+
+          {showAddForm && (
+            <div style={{ marginBottom: '20px', padding: '15px', background: '#f5f5f5', borderRadius: '4px' }}>
+              <input
+                type="text"
+                placeholder="卡片标题"
+                value={newCardTitle}
+                onChange={(e) => setNewCardTitle(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  marginBottom: '10px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                }}
+              />
+              <textarea
+                placeholder="卡片内容（Markdown）"
+                value={newCardContent}
+                onChange={(e) => setNewCardContent(e.target.value)}
+                style={{
+                  width: '100%',
+                  minHeight: '150px',
+                  padding: '8px',
+                  marginBottom: '10px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontFamily: 'monospace',
+                }}
+              />
+              <button
+                onClick={handleAddCard}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid #4caf50',
+                  borderRadius: '4px',
+                  background: '#4caf50',
+                  color: '#fff',
+                  cursor: 'pointer',
+                }}
+              >
+                保存
+              </button>
+            </div>
+          )}
+
+          <div>
+            {cards.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
+                暂无卡片
+              </div>
+            ) : (
+              cards.map((card) => (
+                <div
+                  key={card.docId}
+                  style={{
+                    marginBottom: '15px',
+                    padding: '15px',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                  }}
+                >
+                  {editingCard?.docId === card.docId ? (
+                    <div>
+                      <input
+                        type="text"
+                        value={editingCard.title}
+                        onChange={(e) => setEditingCard({ ...editingCard, title: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          marginBottom: '10px',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                        }}
+                      />
+                      <textarea
+                        value={editingCard.content}
+                        onChange={(e) => setEditingCard({ ...editingCard, content: e.target.value })}
+                        style={{
+                          width: '100%',
+                          minHeight: '150px',
+                          padding: '8px',
+                          marginBottom: '10px',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          fontFamily: 'monospace',
+                        }}
+                      />
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <button
+                          onClick={() => handleUpdateCard(editingCard)}
+                          style={{
+                            padding: '6px 12px',
+                            border: '1px solid #4caf50',
+                            borderRadius: '4px',
+                            background: '#4caf50',
+                            color: '#fff',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          保存
+                        </button>
+                        <button
+                          onClick={() => setEditingCard(null)}
+                          style={{
+                            padding: '6px 12px',
+                            border: '1px solid #ddd',
+                            borderRadius: '4px',
+                            background: '#fff',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <h4 style={{ margin: 0 }}>{card.title}</h4>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            onClick={() => setEditingCard(card)}
+                            style={{
+                              padding: '4px 8px',
+                              border: '1px solid #2196f3',
+                              borderRadius: '4px',
+                              background: '#fff',
+                              color: '#2196f3',
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                            }}
+                          >
+                            编辑
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCard(card.docId)}
+                            style={{
+                              padding: '4px 8px',
+                              border: '1px solid #f44336',
+                              borderRadius: '4px',
+                              background: '#fff',
+                              color: '#f44336',
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                            }}
+                          >
+                            删除
+                          </button>
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          padding: '10px',
+                          background: '#f9f9f9',
+                          borderRadius: '4px',
+                          whiteSpace: 'pre-wrap',
+                          fontFamily: 'monospace',
+                          fontSize: '12px',
+                          maxHeight: '200px',
+                          overflow: 'auto',
+                        }}
+                      >
+                        {card.content || '(空内容)'}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 // 悬浮工具栏组件
 const FloatingToolbar = ({ 
   node, 
@@ -348,7 +687,8 @@ const FloatingToolbar = ({
   onDelete, 
   onUpdateFontSize, 
   onUpdateColor, 
-  onCopy 
+  onCopy,
+  onManageCards
 }: { 
   node: Node; 
   reactFlowInstance: ReactFlowInstance | null;
@@ -356,6 +696,7 @@ const FloatingToolbar = ({
   onUpdateFontSize: (nodeId: string, fontSize: number) => void;
   onUpdateColor: (nodeId: string, color: string) => void;
   onCopy: (text: string) => void;
+  onManageCards: (nodeId: string) => void;
 }) => {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -563,6 +904,26 @@ const FloatingToolbar = ({
         title="复制节点内容"
       >
         复制
+      </button>
+
+      {/* 管理卡片按钮 */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onManageCards(node.id);
+        }}
+        style={{
+          padding: '6px 10px',
+          border: '1px solid #4caf50',
+          borderRadius: '4px',
+          background: '#fff',
+          color: '#4caf50',
+          cursor: 'pointer',
+          fontSize: '12px',
+        }}
+        title="管理卡片"
+      >
+        卡片
       </button>
     </div>
   );
@@ -878,6 +1239,9 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
   const [studyLayer, setStudyLayer] = useState<number>(0); // 当前刷题的层数
   const [studyCardIndex, setStudyCardIndex] = useState<number>(0); // 当前卡片索引
   const [isCardFlipped, setIsCardFlipped] = useState<boolean>(false); // 卡片是否翻转
+  const [cardManageNodeId, setCardManageNodeId] = useState<string | null>(null); // 正在管理卡片的节点ID
+  const [gitStatus, setGitStatus] = useState<any>(null); // Git 状态
+  const [gitStatusLoading, setGitStatusLoading] = useState(false); // Git 状态加载中
 
   // 使用 ref 存储回调函数，避免在依赖数组中引起无限循环
   const callbacksRef = useRef<{
@@ -988,6 +1352,23 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     }
   }, [docId, reactFlowInstance]);
 
+  // 加载 Git 状态
+  const loadGitStatus = useCallback(async () => {
+    if (!mindMap.githubRepo) return;
+    
+    setGitStatusLoading(true);
+    try {
+      const branch = mindMap.currentBranch || 'main';
+      const response = await request.get(`/mindmap/${docId}/git/status?branch=${branch}`);
+      setGitStatus(response.gitStatus);
+    } catch (error: any) {
+      console.error('Failed to load git status:', error);
+      setGitStatus(null);
+    } finally {
+      setGitStatusLoading(false);
+    }
+  }, [docId, mindMap.githubRepo, mindMap.currentBranch]);
+
   // 触发自动保存（带防抖）
   // 每次调用都会清除之前的定时器并重新开始计时
   // 只有在1秒内完全没有操作时才会真正保存
@@ -998,12 +1379,26 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       saveTimerRef.current = null;
     }
 
-      saveTimerRef.current = setTimeout(() => {
-        console.log('1.5秒内无操作，触发自动保存');
-        handleSave(true); // 传入 true 表示自动保存，不显示成功提示
-        saveTimerRef.current = null;
-      }, 1500);
-  }, [handleSave]);
+    saveTimerRef.current = setTimeout(() => {
+      console.log('1.5秒内无操作，触发自动保存');
+      handleSave(true); // 传入 true 表示自动保存，不显示成功提示
+      saveTimerRef.current = null;
+      // 保存后刷新 git 状态
+      if (mindMap.githubRepo) {
+        loadGitStatus();
+      }
+    }, 1500);
+  }, [handleSave, mindMap.githubRepo, loadGitStatus]);
+
+  // 初始化时加载 git 状态
+  useEffect(() => {
+    if (mindMap.githubRepo) {
+      loadGitStatus();
+      // 定期刷新 git 状态
+      const interval = setInterval(loadGitStatus, 10000); // 每10秒刷新一次
+      return () => clearInterval(interval);
+    }
+  }, [mindMap.githubRepo, loadGitStatus]);
 
   // 包装 onEdgesChange 以在边变化时触发自动保存（特别是删除边）
   const handleEdgesChange = useCallback((changes: any) => {
@@ -2506,6 +2901,145 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           >
             刷题模式
           </a>
+          
+          {/* Git 操作按钮 */}
+          {mindMap.githubRepo && (
+            <>
+              {/* Commit 按钮 */}
+              <button
+                onClick={async () => {
+                  if (!gitStatus?.uncommittedChanges) {
+                    return; // 不可执行时直接返回
+                  }
+                  
+                  const commitMessage = window.prompt('请输入提交信息（可选）:', '');
+                  if (commitMessage === null) return; // 用户取消
+                  
+                  try {
+                    Notification.info('正在提交更改...');
+                    await request.post(`/mindmap/${docId}/commit`, {
+                      commitMessage: commitMessage || undefined,
+                    });
+                    Notification.success('提交成功');
+                    loadGitStatus(); // 刷新状态
+                  } catch (error: any) {
+                    Notification.error('提交失败: ' + (error.message || '未知错误'));
+                  }
+                }}
+                style={{
+                  padding: '6px 12px',
+                  border: gitStatus?.uncommittedChanges ? '1px solid #4caf50' : '1px dashed #999',
+                  borderRadius: '4px',
+                  background: gitStatus?.uncommittedChanges ? '#4caf50' : '#e0e0e0',
+                  color: gitStatus?.uncommittedChanges ? '#fff' : '#999',
+                  cursor: gitStatus?.uncommittedChanges ? 'pointer' : 'not-allowed',
+                  fontSize: '14px',
+                  position: 'relative',
+                }}
+                title={(() => {
+                  if (!gitStatus?.uncommittedChanges) {
+                    return '没有未提交的更改';
+                  }
+                  const changes = gitStatus?.changes || { added: [], modified: [], deleted: [] };
+                  const parts: string[] = [];
+                  if (changes.added.length > 0) {
+                    parts.push(`新增: ${changes.added.length} 个文件`);
+                    if (changes.added.length <= 5) {
+                      parts.push(changes.added.join(', '));
+                    }
+                  }
+                  if (changes.modified.length > 0) {
+                    parts.push(`修改: ${changes.modified.length} 个文件`);
+                    if (changes.modified.length <= 5) {
+                      parts.push(changes.modified.join(', '));
+                    }
+                  }
+                  if (changes.deleted.length > 0) {
+                    parts.push(`删除: ${changes.deleted.length} 个文件`);
+                    if (changes.deleted.length <= 5) {
+                      parts.push(changes.deleted.join(', '));
+                    }
+                  }
+                  return parts.length > 0 ? parts.join('\n') : '有未提交的更改';
+                })()}
+              >
+                Commit
+              </button>
+              
+              {/* Pull 按钮 */}
+              <button
+                onClick={async () => {
+                  if (!gitStatus?.behind || gitStatus.behind <= 0) {
+                    return; // 不可执行时直接返回
+                  }
+                  
+                  if (!confirm('确定要从 GitHub 拉取吗？这可能会覆盖本地更改。')) return;
+                  
+                  try {
+                    Notification.info('正在从 GitHub 拉取...');
+                    await request.post(`/mindmap/${docId}/github/pull`);
+                    Notification.success('拉取成功');
+                    setTimeout(() => window.location.reload(), 1000);
+                  } catch (error: any) {
+                    Notification.error('拉取失败: ' + (error.message || '未知错误'));
+                  }
+                }}
+                style={{
+                  padding: '6px 12px',
+                  border: (gitStatus?.behind || 0) > 0 ? '1px solid #f44336' : '1px dashed #999',
+                  borderRadius: '4px',
+                  background: (gitStatus?.behind || 0) > 0 ? '#f44336' : '#e0e0e0',
+                  color: (gitStatus?.behind || 0) > 0 ? '#fff' : '#999',
+                  cursor: (gitStatus?.behind || 0) > 0 ? 'pointer' : 'not-allowed',
+                  fontSize: '14px',
+                }}
+                title={
+                  (gitStatus?.behind || 0) > 0
+                    ? `远程领先 ${gitStatus.behind} 个提交`
+                    : '远程没有新的提交'
+                }
+              >
+                Pull {gitStatus?.behind ? `(${gitStatus.behind})` : ''}
+              </button>
+              
+              {/* Push 按钮 */}
+              <button
+                onClick={async () => {
+                  if (!gitStatus?.ahead || gitStatus.ahead <= 0) {
+                    return; // 不可执行时直接返回
+                  }
+                  
+                  if (!confirm('确定要推送到 GitHub 吗？')) return;
+                  
+                  try {
+                    Notification.info('正在推送到 GitHub...');
+                    await request.post(`/mindmap/${docId}/github/push`);
+                    Notification.success('推送成功');
+                    setTimeout(() => window.location.reload(), 1000);
+                  } catch (error: any) {
+                    Notification.error('推送失败: ' + (error.message || '未知错误'));
+                  }
+                }}
+                style={{
+                  padding: '6px 12px',
+                  border: (gitStatus?.ahead || 0) > 0 ? '1px solid #ff9800' : '1px dashed #999',
+                  borderRadius: '4px',
+                  background: (gitStatus?.ahead || 0) > 0 ? '#ff9800' : '#e0e0e0',
+                  color: (gitStatus?.ahead || 0) > 0 ? '#fff' : '#999',
+                  cursor: (gitStatus?.ahead || 0) > 0 ? 'pointer' : 'not-allowed',
+                  fontSize: '14px',
+                }}
+                title={
+                  (gitStatus?.ahead || 0) > 0
+                    ? `本地领先 ${gitStatus.ahead} 个提交`
+                    : '本地没有未推送的提交'
+                }
+              >
+                Push {gitStatus?.ahead ? `(${gitStatus.ahead})` : ''}
+              </button>
+            </>
+          )}
+          
           <div>{mindMap.title}</div>
         </div>
       </div>
@@ -2556,9 +3090,20 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
                   onUpdateFontSize={handleUpdateFontSize}
                   onUpdateColor={handleUpdateColor}
                   onCopy={handleCopyNodeContent}
+                  onManageCards={setCardManageNodeId}
                 />
               );
             })()}
+            
+            {/* Card 管理对话框 */}
+            {cardManageNodeId && (
+              <CardManageDialog
+                nodeId={cardManageNodeId}
+                docId={docId}
+                mmid={mindMap.mmid}
+                onClose={() => setCardManageNodeId(null)}
+              />
+            )}
           </>
         ) : viewMode === 'outline' ? (
           <OutlineView
