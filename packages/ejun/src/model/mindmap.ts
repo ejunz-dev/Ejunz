@@ -2,7 +2,7 @@ import { _, ObjectId, Filter } from '../libs';
 import * as document from './document';
 import { buildProjection } from '../utils';
 import type { Context } from '../context';
-import type { MindMapDoc, MindMapNode, MindMapEdge, CardDoc } from '../interface';
+import type { MindMapDoc, MindMapNode, MindMapEdge, CardDoc, MindMapHistoryEntry } from '../interface';
 import db from '../service/db';
 import { Collection } from 'mongodb';
 
@@ -391,6 +391,7 @@ export class MindMapModel {
             layout?: MindMapDoc['layout'];
             viewport?: MindMapDoc['viewport'];
             theme?: MindMapDoc['theme'];
+            history?: MindMapDoc['history'];
         }
     ): Promise<void> {
         await document.set(domainId, TYPE_MM, docId, {

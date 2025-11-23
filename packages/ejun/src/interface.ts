@@ -354,6 +354,25 @@ export interface MindMapDoc {
     githubRepo?: string; // GitHub 仓库地址，如 git@github.com:user/repo.git
     branches?: string[]; // 分支列表
     currentBranch?: string; // 当前分支
+    history?: MindMapHistoryEntry[]; // 操作历史记录（最多50条）
+}
+
+export interface MindMapHistoryEntry {
+    id: string; // 历史记录ID
+    type: 'save' | 'commit'; // 操作类型
+    timestamp: Date; // 操作时间
+    userId: number; // 操作用户ID
+    username: string; // 操作用户名
+    description: string; // 操作描述
+    snapshot: { // 数据快照
+        nodes: MindMapNode[];
+        edges: MindMapEdge[];
+        viewport?: {
+            x: number;
+            y: number;
+            zoom: number;
+        };
+    };
 }
 
 export interface CardDoc {
