@@ -237,6 +237,7 @@ class MindMapNodeHandler extends Handler {
     @param('fontSize', Types.Int, true)
     @param('x', Types.Float, true)
     @param('y', Types.Float, true)
+    @param('expanded', Types.Boolean, true)
     async postUpdate(
         domainId: string,
         docId: ObjectId,
@@ -246,7 +247,8 @@ class MindMapNodeHandler extends Handler {
         backgroundColor?: string,
         fontSize?: number,
         x?: number,
-        y?: number
+        y?: number,
+        expanded?: boolean
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
@@ -263,6 +265,7 @@ class MindMapNodeHandler extends Handler {
         if (fontSize !== undefined) updates.fontSize = fontSize;
         if (x !== undefined) updates.x = x;
         if (y !== undefined) updates.y = y;
+        if (expanded !== undefined) updates.expanded = expanded;
 
         await MindMapModel.updateNode(domainId, docId, nodeId, updates);
         this.response.body = { success: true };
