@@ -22,6 +22,7 @@ import ReactFlow, {
   ReactFlowInstance,
   NodeMouseHandler,
 } from 'reactflow';
+import dagre from 'dagre';
 import 'reactflow/dist/style.css';
 
 interface MindMapNode {
@@ -156,7 +157,7 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
         border: `2px solid ${selected ? '#1976d2' : color}`,
         minWidth: shape === 'circle' || shape === 'diamond' ? '80px' : '120px',
         boxShadow: selected ? '0 4px 8px rgba(0,0,0,0.2)' : '0 2px 4px rgba(0,0,0,0.1)',
-        cursor: 'move',
+        cursor: data.isRootNode ? 'move' : 'default',
         position: 'relative',
         color: color,
         fontSize: `${fontSize}px`,
@@ -261,39 +262,41 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
             </button>
           )}
 
-          {/* 加号按钮 - 节点下方：创建兄弟节点 */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (data.onAddSibling) {
-                data.onAddSibling(id);
-              }
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-            style={{
-              position: 'absolute',
-              bottom: '-20px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              width: '24px',
-              height: '24px',
-              borderRadius: '50%',
-              border: '2px solid #ff9800',
-              background: '#fff',
-              color: '#ff9800',
-              cursor: 'pointer',
-              fontSize: '16px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              lineHeight: '1',
-              zIndex: 10,
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-            }}
-            title="添加兄弟节点"
-          >
-            +
-          </button>
+          {/* 加号按钮 - 节点下方：创建兄弟节点（根节点不显示） */}
+          {!data.isRootNode && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (data.onAddSibling) {
+                  data.onAddSibling(id);
+                }
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              style={{
+                position: 'absolute',
+                bottom: '-20px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: '24px',
+                height: '24px',
+                borderRadius: '50%',
+                border: '2px solid #ff9800',
+                background: '#fff',
+                color: '#ff9800',
+                cursor: 'pointer',
+                fontSize: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: '1',
+                zIndex: 10,
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              }}
+              title="添加兄弟节点"
+            >
+              +
+            </button>
+          )}
         </>
       )}
     </div>
@@ -304,13 +307,52 @@ const customNodeTypes: NodeTypes = {
   mindmap: MindMapNodeComponent,
 };
 
+// 使用 dagre 自动布局
+const getLayoutedElements = (nodes: Node[], edges: Edge[], direction: 'TB' | 'LR' = 'LR') => {
+  const dagreGraph = new dagre.graphlib.Graph();
+  dagreGraph.setDefaultEdgeLabel(() => ({}));
+  dagreGraph.setGraph({ 
+    rankdir: direction,
+    nodesep: 100,
+    ranksep: 150,
+    marginx: 50,
+    marginy: 50,
+  });
+
+  nodes.forEach((node) => {
+    dagreGraph.setNode(node.id, { width: 150, height: 80 });
+  });
+
+  edges.forEach((edge) => {
+    dagreGraph.setEdge(edge.source, edge.target);
+  });
+
+  dagre.layout(dagreGraph);
+
+  const layoutedNodes = nodes.map((node) => {
+    const nodeWithPosition = dagreGraph.node(node.id);
+    return {
+      ...node,
+      position: {
+        x: nodeWithPosition.x - 75,
+        y: nodeWithPosition.y - 40,
+      },
+    };
+  });
+
+  return { nodes: layoutedNodes, edges };
+};
+
 function MindMapEditor({ docId, initialData }: { docId: string; initialData: MindMapDoc }) {
   const [mindMap, setMindMap] = useState<MindMapDoc>(initialData);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const isDraggingRef = useRef(false); // 跟踪是否正在拖拽
+  const isDraggingRef = useRef(false);
+  const layoutTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [autoLayout, setAutoLayout] = useState(true);
+  const autoLayoutEnabledRef = useRef(true);
 
   // 使用 ref 存储回调函数，避免在依赖数组中引起无限循环
   const callbacksRef = useRef<{
@@ -446,6 +488,56 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     }
   }, [onEdgesChange, triggerAutoSave]);
 
+  // 手动触发布局函数
+  const applyLayout = useCallback(() => {
+    if (!autoLayout || !autoLayoutEnabledRef.current || isDraggingRef.current) {
+      return;
+    }
+    
+    if (layoutTimeoutRef.current) {
+      clearTimeout(layoutTimeoutRef.current);
+    }
+    
+    layoutTimeoutRef.current = setTimeout(() => {
+      if (!isDraggingRef.current && autoLayoutEnabledRef.current) {
+        // 使用 ref 获取最新的节点和边数据，确保布局计算时数据完整
+        const currentNodes = nodesRef.current || [];
+        const currentEdges = edgesRef.current || [];
+        
+        if (currentNodes.length === 0 || currentEdges.length === 0) {
+          return;
+        }
+        
+        const { nodes: layoutedNodes } = getLayoutedElements(currentNodes, currentEdges);
+        
+        // 计算新的节点数组，同时更新 originalNode 位置
+        const updatedNodes = currentNodes.map((n) => {
+          const layoutedNode = layoutedNodes.find(ln => ln.id === n.id);
+          if (layoutedNode) {
+            const originalNode = n.data.originalNode as MindMapNode;
+            return {
+              ...n,
+              position: layoutedNode.position,
+              data: {
+                ...n.data,
+                originalNode: originalNode ? {
+                  ...originalNode,
+                  x: layoutedNode.position.x,
+                  y: layoutedNode.position.y,
+                } : originalNode,
+              },
+            };
+          }
+          return n;
+        });
+        
+        // 更新状态和 ref
+        setNodes(updatedNodes);
+        nodesRef.current = updatedNodes;
+      }
+    }, 300);
+  }, [autoLayout, setNodes]);
+
   // 删除节点 - 必须在 useMemo 之前定义
   const handleDeleteNode = useCallback(async (nodeId: string) => {
     if (!confirm('确定要删除这个节点吗？')) {
@@ -462,12 +554,20 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
 
       Notification.success('节点已删除');
+      
+      // 删除节点后，如果自动布局开启，触发布局
+      if (autoLayout) {
+        setTimeout(() => {
+          applyLayout();
+        }, 100);
+      }
+      
       // 触发自动保存
       triggerAutoSave();
     } catch (error: any) {
       Notification.error('删除节点失败: ' + (error.message || '未知错误'));
     }
-  }, [docId, setNodes, setEdges]);
+  }, [docId, setNodes, setEdges, autoLayout, applyLayout, triggerAutoSave]);
 
   // 编辑节点 - 必须在 useMemo 之前定义
   const handleEditNode = useCallback(async (node: Node) => {
@@ -734,6 +834,13 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           })
         );
         
+        // 节点保存成功后，如果自动布局开启，触发布局
+        if (autoLayout) {
+          setTimeout(() => {
+            applyLayout();
+          }, 100);
+        }
+        
         // 触发自动保存
         triggerAutoSave();
       } catch (error: any) {
@@ -778,40 +885,193 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         setEdges((eds) => eds.filter((e) => e.id !== tempEdgeId));
       }
     }
-  }, [docId, setNodes, setEdges, triggerAutoSave]); // 移除 nodes 依赖，使用 nodesRef 代替
+  }, [docId, setNodes, setEdges, triggerAutoSave, autoLayout, applyLayout]); // 移除 nodes 依赖，使用 nodesRef 代替
+
+  // 检查位置是否与现有节点重叠
+  const checkOverlap = useCallback((pos: { x: number; y: number }, excludeId?: string): boolean => {
+    const nodeWidth = 150;
+    const nodeHeight = 80;
+    const padding = 40;
+    
+    return nodes.some(node => {
+      if (excludeId && node.id === excludeId) return false;
+      const nodeX = node.position.x;
+      const nodeY = node.position.y;
+      
+      return !(
+        pos.x + nodeWidth + padding < nodeX ||
+        pos.x > nodeX + nodeWidth + padding ||
+        pos.y + nodeHeight + padding < nodeY ||
+        pos.y > nodeY + nodeHeight + padding
+      );
+    });
+  }, [nodes]);
+
+  // 检查边的路径是否可能重叠（简化版：检查同一父节点的子节点间距）
+  const checkEdgeOverlap = useCallback((
+    parentId: string,
+    newPos: { x: number; y: number },
+    excludeId?: string
+  ): boolean => {
+    const minVerticalSpacing = 120;
+    
+    const siblings = edges
+      .filter(e => e.source === parentId && e.target !== excludeId)
+      .map(e => nodes.find(n => n.id === e.target))
+      .filter(Boolean) as Node[];
+    
+    return siblings.some(sibling => {
+      const verticalDistance = Math.abs(newPos.y - sibling.position.y);
+      return verticalDistance < minVerticalSpacing;
+    });
+  }, [nodes, edges]);
+
+  // 找到一个不重叠的位置
+  const findNonOverlappingPosition = useCallback((
+    startPos: { x: number; y: number },
+    direction: 'right' | 'down' | 'diagonal',
+    excludeId?: string
+  ): { x: number; y: number } => {
+    const nodeWidth = 150;
+    const nodeHeight = 80;
+    const padding = 20;
+    const step = 30;
+    
+    let currentPos = { ...startPos };
+    let attempts = 0;
+    const maxAttempts = 50;
+    
+    while (checkOverlap(currentPos, excludeId) && attempts < maxAttempts) {
+      attempts++;
+      if (direction === 'right') {
+        currentPos.x += step;
+      } else if (direction === 'down') {
+        currentPos.y += step;
+      } else {
+        currentPos.x += step;
+        currentPos.y += step;
+      }
+    }
+    
+    return currentPos;
+  }, [checkOverlap]);
 
   // 添加节点 - 必须在 useMemo 之前定义
   const handleAddNode = useCallback((parentId?: string, mode: 'child' | 'sibling' = 'child', siblingId?: string) => {
-    // 生成临时ID
     const tempNodeId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    // 计算新节点位置
     let position = { x: 300, y: 200 };
+    
     if (mode === 'child' && parentId) {
-      // 子节点：在父节点右侧
       const parentNode = nodes.find(n => n.id === parentId);
       if (parentNode) {
-        position = {
-          x: parentNode.position.x + 250,
-          y: parentNode.position.y,
-        };
+        // 找到父节点的所有子节点
+        const childNodes = edges
+          .filter(e => e.source === parentId)
+          .map(e => nodes.find(n => n.id === e.target))
+          .filter(Boolean) as Node[];
+        
+        if (childNodes.length === 0) {
+          // 第一个子节点：在父节点右侧，与父节点同一水平线
+          position = findNonOverlappingPosition(
+            { x: parentNode.position.x + 250, y: parentNode.position.y },
+            'right',
+            tempNodeId
+          );
+        } else {
+          // 有子节点：垂直排列，确保有足够间距避免边重叠
+          childNodes.sort((a, b) => a.position.y - b.position.y);
+          const lastChild = childNodes[childNodes.length - 1];
+          const minSpacing = 120;
+          
+          // 计算新位置：在最后一个子节点下方，保持最小间距
+          let newY = lastChild.position.y + minSpacing;
+          
+          // 检查是否与边重叠
+          let attempts = 0;
+          while (checkEdgeOverlap(parentId, { x: lastChild.position.x, y: newY }, tempNodeId) && attempts < 10) {
+            newY += 20;
+            attempts++;
+          }
+          
+          position = findNonOverlappingPosition(
+            { x: lastChild.position.x, y: newY },
+            'down',
+            tempNodeId
+          );
+        }
       }
     } else if (mode === 'sibling' && siblingId) {
-      // 兄弟节点：在兄弟节点下方
       const siblingNode = nodes.find(n => n.id === siblingId);
       if (siblingNode) {
-        position = {
-          x: siblingNode.position.x,
-          y: siblingNode.position.y + 100,
-        };
+        // 找到兄弟节点的父节点
+        const parentEdge = edges.find(e => e.target === siblingId);
+        if (parentEdge) {
+          // 找到所有兄弟节点（同一个父节点的子节点）
+          const siblingNodes = edges
+            .filter(e => e.source === parentEdge.source && e.target !== siblingId)
+            .map(e => nodes.find(n => n.id === e.target))
+            .filter(Boolean) as Node[];
+          
+          // 找到当前兄弟节点在兄弟列表中的位置
+          const allSiblings = edges
+            .filter(e => e.source === parentEdge.source)
+            .map(e => nodes.find(n => n.id === e.target))
+            .filter(Boolean) as Node[];
+          
+          // 按 y 坐标排序
+          allSiblings.sort((a, b) => a.position.y - b.position.y);
+          const siblingIndex = allSiblings.findIndex(n => n.id === siblingId);
+          
+          if (siblingIndex >= 0 && siblingIndex < allSiblings.length - 1) {
+            // 在当前兄弟节点和下一个兄弟节点之间插入
+            const nextSibling = allSiblings[siblingIndex + 1];
+            const minSpacing = 120;
+            const gap = nextSibling.position.y - siblingNode.position.y;
+            
+            if (gap >= minSpacing * 2) {
+              // 有足够空间，插入中间
+              position = {
+                x: siblingNode.position.x,
+                y: (siblingNode.position.y + nextSibling.position.y) / 2,
+              };
+            } else {
+              // 空间不足，放在下一个兄弟节点下方
+              position = findNonOverlappingPosition(
+                { x: siblingNode.position.x, y: nextSibling.position.y + minSpacing },
+                'down',
+                tempNodeId
+              );
+            }
+          } else {
+            // 在最后一个兄弟节点下方，确保有足够间距
+            const minSpacing = 120;
+            position = findNonOverlappingPosition(
+              { x: siblingNode.position.x, y: siblingNode.position.y + minSpacing },
+              'down',
+              tempNodeId
+            );
+          }
+        } else {
+          // 根节点的兄弟节点
+          position = findNonOverlappingPosition(
+            { x: siblingNode.position.x, y: siblingNode.position.y + 100 },
+            'down',
+            tempNodeId
+          );
+        }
       }
+    } else {
+      // 根节点：找一个不重叠的位置
+      position = findNonOverlappingPosition({ x: 300, y: 200 }, 'diagonal', tempNodeId);
     }
 
-    // 创建新节点（还未保存）
+    const isRootNode = !parentId && !siblingId;
     const newFlowNode: Node = {
       id: tempNodeId,
       type: 'mindmap',
       position,
+      draggable: isRootNode,
       data: {
         originalNode: {
           id: tempNodeId,
@@ -822,16 +1082,15 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           parentId,
           siblingId,
         } as any,
-        isNewNode: true, // 标记为新节点
-        isEditing: true, // 自动进入编辑模式
-        edges: edges, // 传递 edges
-        // 使用函数来获取最新的回调，避免依赖变化
+        isNewNode: true,
+        isEditing: true,
+        isRootNode,
+        edges: edges,
         onDelete: (nodeId: string) => callbacksRef.current?.onDelete(nodeId),
         onEdit: (node: Node) => callbacksRef.current?.onEdit(node),
         onAddChild: (nodeId: string) => callbacksRef.current?.onAddChild(nodeId),
         onAddSibling: (nodeId: string) => callbacksRef.current?.onAddSibling(nodeId),
         onTextChange: (nodeId: string, newText: string) => {
-          // 使用 ref 调用最新的函数，避免依赖变化
           handleNodeTextChangeRef.current(nodeId, newText);
         },
       },
@@ -919,9 +1178,15 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       );
     }
     
-    // 选中新节点
     setSelectedNodeId(tempNodeId);
-  }, [nodes, edges, setNodes, setEdges, setSelectedNodeId]); // 移除 handleNodeTextChange 依赖，使用 ref 代替
+    
+    // 新建节点后，如果自动布局开启，触发布局
+    if (autoLayout) {
+      setTimeout(() => {
+        applyLayout();
+      }, 100);
+    }
+  }, [nodes, edges, setNodes, setEdges, setSelectedNodeId, findNonOverlappingPosition, checkEdgeOverlap, autoLayout, applyLayout]);
 
   // 添加子节点
   const handleAddChild = useCallback(async (parentId: string) => {
@@ -965,31 +1230,32 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
 
   // 将 MindMapNode 转换为 ReactFlow Node
   const initialFlowNodes = useMemo(() => {
-    console.log('初始化节点，节点数据:', mindMap.nodes.map(n => ({ id: n.id, x: n.x, y: n.y })));
-    // 将 edges 转换为 Edge 数组，以便节点组件检查是否有子节点
     const flowEdges = mindMap.edges.map((edge) => ({
       id: edge.id,
       source: edge.source,
       target: edge.target,
     })) as Edge[];
     
+    const rootNodeIds = new Set(
+      mindMap.nodes
+        .filter(node => !mindMap.edges.some(edge => edge.target === node.id))
+        .map(node => node.id)
+    );
+    
     return mindMap.nodes.map((node) => {
-      // 确保位置是有效的数字
       const x = typeof node.x === 'number' && !isNaN(node.x) ? node.x : 0;
       const y = typeof node.y === 'number' && !isNaN(node.y) ? node.y : 0;
-      
-      if (x === 0 && y === 0 && node.x !== undefined && node.y !== undefined) {
-        console.warn('节点位置为 (0,0)，可能是未保存:', node.id, '原始位置:', node.x, node.y);
-      }
+      const isRootNode = rootNodeIds.has(node.id);
       
       return {
         id: node.id,
         type: 'mindmap',
         position: { x, y },
+        draggable: isRootNode,
         data: {
           originalNode: node,
-          edges: flowEdges, // 传递 edges 以便检查是否有子节点
-          // 使用函数来获取最新的回调，避免依赖变化
+          edges: flowEdges,
+          isRootNode,
           onDelete: (nodeId: string) => callbacksRef.current?.onDelete(nodeId),
           onEdit: (node: Node) => callbacksRef.current?.onEdit(node),
           onAddChild: (nodeId: string) => callbacksRef.current?.onAddChild(nodeId),
@@ -1020,13 +1286,46 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
 
   // 初始化节点和边
   useEffect(() => {
-    console.log('初始化节点和边，节点数量:', initialFlowNodes.length, '节点位置:', initialFlowNodes.map(n => ({ id: n.id, x: n.position.x, y: n.position.y })));
-    setNodes(initialFlowNodes);
-    setEdges(initialFlowEdges);
-    // 同步到 ref
-    nodesRef.current = initialFlowNodes;
-    edgesRef.current = initialFlowEdges;
-  }, [initialFlowNodes, initialFlowEdges, setNodes, setEdges]);
+    if (autoLayout && initialFlowNodes.length > 0 && initialFlowEdges.length > 0) {
+      const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(initialFlowNodes, initialFlowEdges);
+      
+      // 更新 originalNode 的位置
+      const nodesWithUpdatedOriginal = layoutedNodes.map((n) => {
+        const originalNode = n.data.originalNode as MindMapNode;
+        if (originalNode) {
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              originalNode: {
+                ...originalNode,
+                x: n.position.x,
+                y: n.position.y,
+              },
+            },
+          };
+        }
+        return n;
+      });
+      
+      setNodes(nodesWithUpdatedOriginal);
+      setEdges(layoutedEdges);
+      nodesRef.current = nodesWithUpdatedOriginal;
+      edgesRef.current = layoutedEdges;
+    } else {
+      setNodes(initialFlowNodes);
+      setEdges(initialFlowEdges);
+      nodesRef.current = initialFlowNodes;
+      edgesRef.current = initialFlowEdges;
+    }
+  }, [initialFlowNodes, initialFlowEdges, setNodes, setEdges, autoLayout]);
+  
+  // 当自动布局开关变化时，重新应用布局
+  useEffect(() => {
+    if (autoLayout && nodes.length > 0 && edges.length > 0 && !isDraggingRef.current) {
+      applyLayout();
+    }
+  }, [autoLayout, applyLayout]);
 
   // 使用 ref 存储 handleNodeTextChange，避免在 useEffect 依赖中引起循环
   const handleNodeTextChangeRef = useRef(handleNodeTextChange);
@@ -1040,24 +1339,43 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     edgesRefForNodes.current = edges;
   }, [edges]);
 
-  // 更新节点选中状态和 edges（以便检查是否有子节点）
+
   useEffect(() => {
-    setNodes((nds) =>
-      nds.map((n) => ({
-        ...n,
-        selected: n.id === selectedNodeId,
-        data: {
-          ...n.data,
-          selected: n.id === selectedNodeId,
-          edges: edgesRefForNodes.current, // 使用 ref 获取最新的 edges
-          onTextChange: (nodeId: string, newText: string) => {
-            // 使用 ref 调用最新的函数
-            handleNodeTextChangeRef.current(nodeId, newText);
-          },
-        },
-      }))
+    const currentNodes = nodesRef.current;
+    const currentEdges = edgesRef.current;
+    
+    const flowEdges = currentEdges.map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+    })) as Edge[];
+    
+    const rootNodeIds = new Set(
+      currentNodes
+        .filter(node => !currentEdges.some(edge => edge.target === node.id))
+        .map(node => node.id)
     );
-  }, [selectedNodeId, setNodes]); // 只依赖 selectedNodeId，避免循环
+
+    setNodes((nds) =>
+      nds.map((n) => {
+        const isRootNode = rootNodeIds.has(n.id);
+        return {
+          ...n,
+          selected: n.id === selectedNodeId,
+          draggable: isRootNode,
+          data: {
+            ...n.data,
+            selected: n.id === selectedNodeId,
+            isRootNode,
+            edges: edgesRefForNodes.current,
+            onTextChange: (nodeId: string, newText: string) => {
+              handleNodeTextChangeRef.current(nodeId, newText);
+            },
+          },
+        };
+      })
+    );
+  }, [selectedNodeId, setNodes]);
 
   // 组件卸载时清理定时器
   useEffect(() => {
@@ -1121,32 +1439,107 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     [docId, setEdges, triggerAutoSave]
   );
 
-  // 节点拖拽开始
-  const onNodeDragStart = useCallback((event: any, node: Node) => {
-    console.log('onNodeDragStart 被调用，节点ID:', node.id);
-    isDraggingRef.current = true;
-  }, []);
+  const rootNodeDragStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const rootNodeIdRef = useRef<string | null>(null);
+  const allNodesStartPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
-  // 节点拖拽结束 - 自动保存位置
-  const onNodeDragStop = useCallback((event: any, node: Node) => {
-    console.log('onNodeDragStop 被调用，节点ID:', node.id, '位置:', node.position, 'isDragging:', isDraggingRef.current);
-    // 只有在真正拖拽后才保存（不是点击）
-    if (isDraggingRef.current) {
-      console.log('节点拖拽结束，触发自动保存');
-      // 使用双重延迟确保节点位置已更新到状态
-      // 先等待 React 状态更新
-      requestAnimationFrame(() => {
-        // 再等待一个 tick，确保 onNodesChange 已经处理完
-        setTimeout(() => {
-          // 触发自动保存（1秒后）
-          console.log('准备触发自动保存');
-          triggerAutoSave();
-        }, 100);
-      });
-    } else {
-      console.log('不是拖拽操作，跳过保存');
+  const onNodeDragStart = useCallback((event: any, node: Node) => {
+    const isRootNode = node.data?.isRootNode;
+    if (!isRootNode) {
+      return;
     }
-    isDraggingRef.current = false; // 重置拖拽状态
+    isDraggingRef.current = true;
+    autoLayoutEnabledRef.current = false;
+    rootNodeIdRef.current = node.id;
+    rootNodeDragStartPosRef.current = { x: node.position.x, y: node.position.y };
+    
+    // 记录所有节点在拖动开始时的位置，保持相对位置关系
+    allNodesStartPositionsRef.current.clear();
+    nodes.forEach((n) => {
+      allNodesStartPositionsRef.current.set(n.id, {
+        x: n.position.x,
+        y: n.position.y,
+      });
+    });
+  }, [nodes]);
+
+  const onNodeDrag = useCallback((event: any, node: Node) => {
+    const isRootNode = node.data?.isRootNode;
+    if (!isRootNode || !rootNodeDragStartPosRef.current || !rootNodeIdRef.current) {
+      return;
+    }
+
+    // 清除自动布局的定时器，避免在拖动时触发
+    if (layoutTimeoutRef.current) {
+      clearTimeout(layoutTimeoutRef.current);
+      layoutTimeoutRef.current = null;
+    }
+
+    // 计算根节点的位移
+    const deltaX = node.position.x - rootNodeDragStartPosRef.current.x;
+    const deltaY = node.position.y - rootNodeDragStartPosRef.current.y;
+
+    // 所有节点都基于拖动开始时的位置加上相同的位移，保持相对位置关系不变
+    setNodes((nds) =>
+      nds.map((n) => {
+        const startPos = allNodesStartPositionsRef.current.get(n.id);
+        if (!startPos) {
+          return n;
+        }
+        return {
+          ...n,
+          position: {
+            x: startPos.x + deltaX,
+            y: startPos.y + deltaY,
+          },
+        };
+      })
+    );
+  }, [setNodes]);
+
+  const onNodeDragStop = useCallback((event: any, node: Node) => {
+    const isRootNode = node.data?.isRootNode;
+    if (!isRootNode || !isDraggingRef.current) {
+      isDraggingRef.current = false;
+      rootNodeDragStartPosRef.current = null;
+      rootNodeIdRef.current = null;
+      return;
+    }
+
+    // 更新所有节点的 originalNode 位置，以便下次拖动时使用新位置
+    setNodes((nds) =>
+      nds.map((n) => {
+        const originalNode = n.data.originalNode as MindMapNode;
+        if (originalNode) {
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              originalNode: {
+                ...originalNode,
+                x: n.position.x,
+                y: n.position.y,
+              },
+            },
+          };
+        }
+        return n;
+      })
+    );
+
+    // 延迟重置拖动状态，确保自动布局不会立即触发
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        triggerAutoSave();
+        // 再延迟一点重置，确保自动布局不会在拖动刚结束时触发
+        setTimeout(() => {
+          isDraggingRef.current = false;
+          autoLayoutEnabledRef.current = true;
+          rootNodeDragStartPosRef.current = null;
+          rootNodeIdRef.current = null;
+        }, 500);
+      }, 100);
+    });
   }, [triggerAutoSave]);
 
   // 键盘快捷键支持
@@ -1194,6 +1587,19 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         gap: '10px',
       }}>
         <button
+          onClick={() => setAutoLayout(!autoLayout)}
+          style={{
+            padding: '6px 12px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            background: autoLayout ? '#4caf50' : '#fff',
+            color: autoLayout ? '#fff' : '#333',
+            cursor: 'pointer',
+          }}
+        >
+          {autoLayout ? '自动布局: 开' : '自动布局: 关'}
+        </button>
+        <button
           onClick={() => handleAddNode()}
           style={{
             padding: '6px 12px',
@@ -1235,6 +1641,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
           onNodeDragStart={onNodeDragStart}
+          onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
           onInit={setReactFlowInstance}
           nodeTypes={customNodeTypes}

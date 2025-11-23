@@ -123,9 +123,11 @@
     "dependencies": {
         "@ejunz/common": "workspace:^",
         "@ejunz/components": "workspace:^",
+        "@types/dagre": "^0.7.53",
         "ansi_up": "^6.0.6",
         "cssfilter": "^0.0.11",
         "d3": "^7.7.0",
+        "dagre": "^0.8.5",
         "esbuild": "0.25.2",
         "fs-extra": "^11.3.2",
         "html-to-text": "^9.0.5",
