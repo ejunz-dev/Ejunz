@@ -351,6 +351,26 @@ export interface MindMapDoc {
     ip?: string;
     rpid?: number; // 可选的关联仓库ID
     branch?: string; // 可选的关联分支
+    githubRepo?: string; // GitHub 仓库地址，如 git@github.com:user/repo.git
+    branches?: string[]; // 分支列表
+    currentBranch?: string; // 当前分支
+}
+
+export interface CardDoc {
+    docType: document['TYPE_CARD'];
+    docId: ObjectId;
+    domainId: string;
+    mmid: number; // 关联的 mindmap ID
+    nodeId: string; // 关联的 node ID
+    cid: number; // Card ID，从1开始（在 node 内唯一）
+    owner: number;
+    title: string;
+    content: string;
+    ip?: string;
+    updateAt: Date;
+    views: number;
+    createdAt?: Date;
+    order?: number;
 }
 
 // Node document
