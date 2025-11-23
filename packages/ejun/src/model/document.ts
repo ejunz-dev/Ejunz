@@ -6,7 +6,7 @@ import {
 import { Context } from '../context';
 import {
     Content, ContestClarificationDoc, DiscussionDoc,
-    DiscussionReplyDoc, AgentDoc, BaseDoc, RepoDoc, DocDoc, BlockDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc, WorkflowDoc, WorkflowNodeDoc,
+    DiscussionReplyDoc, AgentDoc, BaseDoc, RepoDoc, DocDoc, BlockDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc, WorkflowDoc, WorkflowNodeDoc, MindMapDoc,
 } from '../interface';
 import bus from '../service/bus';
 import db from '../service/db';
@@ -31,6 +31,7 @@ export const TYPE_DOC: 52 = 52;
 export const TYPE_BLOCK: 53 = 53;
 export const TYPE_WORKFLOW: 60 = 60;
 export const TYPE_WORKFLOW_NODE: 61 = 61;
+export const TYPE_MINDMAP: 70 = 70;
 export const TYPE_DISCUSSION_NODE: 90 = 90;
 export const TYPE_DISCUSSION: 91 = 91;
 export const TYPE_DISCUSSION_REPLY: 92 = 92;
@@ -50,6 +51,7 @@ export interface DocType {
     [TYPE_TOOL]: ToolDoc;
     [TYPE_WORKFLOW]: WorkflowDoc;
     [TYPE_WORKFLOW_NODE]: WorkflowNodeDoc;
+    [TYPE_MINDMAP]: MindMapDoc;
 }
 
 export interface DocStatusType {
@@ -547,4 +549,5 @@ global.Ejunz.model.document = {
     TYPE_TOOL,
     TYPE_WORKFLOW,
     TYPE_WORKFLOW_NODE,
+    TYPE_MINDMAP,
 };
