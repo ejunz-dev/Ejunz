@@ -1,0 +1,75 @@
+{% import "components/form.html" as form with context %}
+{% extends "layout/basic.html" %}
+
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__header">
+        <h2 class="section__title">
+          {% if card %}
+            {{ _("编辑卡片") }}
+          {% else %}
+            {{ _("新建卡片") }}
+          {% endif %}
+        </h2>
+      </div>
+      <div class="section__body">
+        <form method="post" action="{% if card %}{{ url('mindmap_card_edit_branch_with_card', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId, cardId=card.docId) }}{% else %}{{ url('mindmap_card_edit_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId) }}{% endif %}">
+          {% if card %}
+            <input type="hidden" name="cardId" value="{{ card.docId }}">
+            <input type="hidden" name="operation" value="update">
+          {% else %}
+            <input type="hidden" name="nodeId" value="{{ nodeId }}">
+          {% endif %}
+          <input type="hidden" name="branch" value="{{ branch }}">
+
+          {{ form.form_text({
+              columns: 12,
+              label: _('卡片标题'),
+              name: 'title',
+              placeholder: _('请输入卡片标题'),
+              value: card.title|default(''),
+              autofocus: true
+          }) }}
+
+          {{ form.form_textarea({
+              columns: 12,
+              label: _('卡片内容'),
+              name: 'content',
+              value: card.content|default(''),
+              markdown: true
+          }) }}
+
+          <div class="row">
+            <div class="columns">
+              <button 
+                type="submit" 
+                class="rounded primary button">
+                {% if card %}
+                  {{ _('更新卡片') }}
+                {% else %}
+                  {{ _('创建卡片') }}
+                {% endif %}
+              </button>
+              {% if card %}
+                <button name="operation" value="delete" type="submit" class="rounded button">
+                  {{ _('删除卡片') }}
+                </button>
+              {% endif %}
+              <button type="button" class="rounded button" onclick="window.history.go(-1)">
+                {{ _('取消') }}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  
+  <div class="medium-3 columns">
+    {% include 'components/md_hint.html' %}
+  </div>
+</div>
+{% endblock %}
+
