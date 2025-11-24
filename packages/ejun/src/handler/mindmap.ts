@@ -1321,6 +1321,56 @@ class MindMapCardHandler extends Handler {
         const cards = await CardModel.getByNodeId(domainId, mindMap.mmid, nodeId);
         this.response.body = { cards };
     }
+    
+    @route('cardId', Types.ObjectId)
+    @param('nodeId', Types.String, true)
+    @param('title', Types.String, true)
+    @param('content', Types.String, true)
+    @param('order', Types.PositiveInt, true)
+    @param('operation', Types.String, true)
+    async postUpdate(
+        domainId: string,
+        cardId: ObjectId,
+        nodeId?: string,
+        title?: string,
+        content?: string,
+        order?: number,
+        operation?: string
+    ) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        if (operation === 'delete') {
+            const card = await CardModel.get(domainId, cardId);
+            if (!card) throw new NotFoundError('Card not found');
+            
+            const mindMap = await MindMapModel.getByMmid(domainId, card.mmid);
+            if (!mindMap) throw new NotFoundError('MindMap not found');
+            if (!this.user.own(mindMap)) {
+                this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
+            }
+            
+            await CardModel.delete(domainId, cardId);
+            this.response.body = { success: true };
+            return;
+        }
+        
+        const card = await CardModel.get(domainId, cardId);
+        if (!card) throw new NotFoundError('Card not found');
+        
+        const mindMap = await MindMapModel.getByMmid(domainId, card.mmid);
+        if (!mindMap) throw new NotFoundError('MindMap not found');
+        if (!this.user.own(mindMap)) {
+            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        }
+        
+        const updates: any = {};
+        if (title !== undefined) updates.title = title;
+        if (content !== undefined) updates.content = content;
+        if (order !== undefined) updates.order = order;
+        
+        await CardModel.update(domainId, cardId, updates);
+        this.response.body = { success: true };
+    }
 }
 
 /**
