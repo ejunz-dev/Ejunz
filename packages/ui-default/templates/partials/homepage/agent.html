@@ -1,0 +1,61 @@
+{% set agents = payload %}
+{% import "components/user.html" as user with context %}
+{% import "components/agent.html" as agent with context %}
+{% if agents and agents.length %}
+  <div class="section page--agent_main">
+    <div class="section__header">
+      <h1 class="section__title">{{ _('Agent') }}</h1>
+    </div>
+    <ol class="section__list">
+      {%- for adoc in agents -%}
+        {% if adoc and adoc.aid %}
+          {% set agentAid = adoc.aid|default('') %}
+          {% if agentAid %}
+            <li class="section__list__item">
+              <div class="media">
+                <div class="media__body medium">
+                  <h1 class="section__item-title">
+                    {% set currentDomainId = domain._id|default(handler.args.domainId|default('system')) %}
+                    <a href="{{ url('agent_detail', domainId=currentDomainId, aid=agentAid) }}" data-emoji-enabled>
+                      {{ adoc.title|default('Untitled') }}
+                    </a>
+                  </h1>
+                <ul class="supplementary list">
+                  {% if adoc.content %}
+                    <li>{{ adoc.content|truncate(100)|markdownInline|safe }}</li>
+                  {% endif %}
+                  {% if adoc.files and adoc.files.length %}
+                    <li>
+                      <span class="icon icon-file"></span>
+                      {{ _('Files') }}: {{ adoc.files.length }}
+                    </li>
+                  {% endif %}
+                  <li>
+                    {% if adoc.owner and udict[adoc.owner] %}
+                      {{ user.render_inline(udict[adoc.owner]) }}
+                    {% elif adoc.owner %}
+                      {{ _('User') }} #{{ adoc.owner }}
+                    {% else %}
+                      {{ _('Unknown User') }}
+                    {% endif %}
+                    @
+                    {% if adoc.updateAt %}
+                      {{ datetimeSpan(adoc.updateAt)|safe }}
+                    {% else %}
+                      N/A
+                    {% endif %}
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </li>
+          {% endif %}
+        {% endif %}
+      {%- endfor -%}
+    </ol>
+    <ul class="pager pager-bottom"><li>
+      <a class="pager__item next link" href="{{ url('agent_domain') }}">{{ _('More') }} ></a>
+    </li></ul>
+  </div>
+{% endif %}
+
