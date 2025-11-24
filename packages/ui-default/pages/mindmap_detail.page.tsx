@@ -1272,7 +1272,26 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
   const isDraggingRef = useRef(false);
   const layoutTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [autoLayout, setAutoLayout] = useState(true);
+  const [isImmersive, setIsImmersive] = useState(false); // 沉浸模式状态
   const autoLayoutEnabledRef = useRef(true);
+
+  // 监听 ESC 键退出沉浸模式
+  useEffect(() => {
+    if (!isImmersive) return;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsImmersive(false);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isImmersive]);
   const [viewMode, setViewMode] = useState<'mindmap' | 'outline' | 'study'>('mindmap');
   const [studyLayer, setStudyLayer] = useState<number>(0); // 当前刷题的层数
   const [studyCardIndex, setStudyCardIndex] = useState<number>(0); // 当前卡片索引
@@ -3024,6 +3043,133 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     setIsCardFlipped(false);
   }, [studyLayer]);
 
+  // 沉浸模式视图
+  if (isImmersive) {
+    return (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100vw',
+        height: '100vh',
+        background: '#f5f5f5',
+        zIndex: 9999,
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
+        {/* 沉浸模式工具栏 */}
+        <div style={{
+          padding: '10px 20px',
+          background: '#fff',
+          borderBottom: '1px solid #ddd',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          zIndex: 10000, // 确保工具栏在最上层
+          position: 'relative',
+        }}>
+          <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#333' }}>
+            {mindMap.title} - 沉浸模式
+          </div>
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsImmersive(false);
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            style={{
+              padding: '8px 16px',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              background: '#f44336',
+              color: '#fff',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              zIndex: 10001, // 确保按钮在最上层
+              position: 'relative',
+            }}
+            title="退出沉浸模式（或按 ESC 键）"
+          >
+            <span>✕</span>
+            <span>退出沉浸模式</span>
+          </button>
+        </div>
+        
+        {/* 沉浸模式思维导图 */}
+        <div style={{ flex: 1, width: '100%', position: 'relative' }}>
+          <ReactFlow
+            nodes={filteredNodesAndEdges.filteredNodes}
+            edges={filteredNodesAndEdges.filteredEdges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={handleEdgesChange}
+            onConnect={onConnect}
+            onNodeClick={onNodeClick}
+            onPaneClick={onPaneClick}
+            onNodeDragStart={onNodeDragStart}
+            onNodeDrag={onNodeDrag}
+            onNodeDragStop={onNodeDragStop}
+            onInit={setReactFlowInstance}
+            nodeTypes={customNodeTypes}
+            fitView
+            nodesConnectable={true}
+            edgesUpdatable={true}
+            edgesFocusable={true}
+            deleteKeyCode="Delete"
+            multiSelectionKeyCode="Shift"
+            connectionLineStyle={{ stroke: '#2196f3', strokeWidth: 2 }}
+            defaultViewport={mindMap.viewport ? {
+              x: mindMap.viewport.x,
+              y: mindMap.viewport.y,
+              zoom: (mindMap.viewport.zoom || 1) * 1.5, // 沉浸模式下放大1.5倍
+            } : { x: 0, y: 0, zoom: 1.5 }}
+            style={{
+              background: '#f5f5f5',
+            }}
+          >
+            <Controls />
+          </ReactFlow>
+          
+          {/* 悬浮工具栏 */}
+          {selectedNodeId && reactFlowInstance && (() => {
+            const selectedNode = nodes.find(n => n.id === selectedNodeId);
+            if (!selectedNode) return null;
+            return (
+              <FloatingToolbar
+                node={selectedNode}
+                reactFlowInstance={reactFlowInstance}
+                onDelete={handleDeleteNode}
+                onUpdateFontSize={handleUpdateFontSize}
+                onUpdateColor={handleUpdateColor}
+                onCopy={handleCopyNodeContent}
+                onManageCards={setCardManageNodeId}
+              />
+            );
+          })()}
+          
+          {/* Card 管理对话框 */}
+          {cardManageNodeId && (
+            <CardManageDialog
+              nodeId={cardManageNodeId}
+              docId={docId}
+              mmid={mindMap.mmid}
+              onClose={() => setCardManageNodeId(null)}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
       {/* 工具栏 */}
@@ -3078,6 +3224,27 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         >
           刷题模式
         </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            onClick={() => setIsImmersive(true)}
+            style={{
+              padding: '6px 12px',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              background: '#fff',
+              color: '#333',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+            title="进入沉浸模式（全屏）"
+          >
+            <span>🔍</span>
+            <span>沉浸模式</span>
+          </button>
+        </div>
       </div>
 
       {/* 思维导图画布或大纲视图 */}
