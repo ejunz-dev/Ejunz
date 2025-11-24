@@ -20,6 +20,14 @@ import { PERM, PRIV } from '../model/builtin';
 import * as discussion from '../model/discussion';
 import domain from '../model/domain';
 import message from '../model/message';
+import { MindMapModel } from '../model/mindmap';
+import AgentModel from '../model/agent';
+import WorkflowModel from '../model/workflow';
+import { RepoModel } from '../model/repo';
+import EdgeModel from '../model/edge';
+import ToolModel from '../model/tool';
+import ClientModel from '../model/client';
+import NodeModel from '../model/node';
 import * as setting from '../model/setting';
 import storage from '../model/storage';
 import system from '../model/system';
@@ -47,6 +55,65 @@ export class HomeHandler extends Handler {
 
     getDiscussionNodes(domainId: string) {
         return discussion.getNodes(domainId);
+    }
+
+    async getMindmap(domainId: string, limit = 10) {
+        const mindMaps = await MindMapModel.getAll(domainId);
+        const sorted = mindMaps.sort((a, b) => (b.updateAt?.getTime() || 0) - (a.updateAt?.getTime() || 0));
+        const limited = sorted.slice(0, limit);
+        this.collectUser(limited.map((mm) => mm.owner));
+        return limited;
+    }
+
+    async getAgent(domainId: string, limit = 10) {
+        const [agents] = await AgentModel.list(domainId, {}, 1, limit);
+        this.collectUser(agents.map((agent) => agent.owner));
+        return agents;
+    }
+
+    async getWorkflow(domainId: string, limit = 10) {
+        const workflows = await WorkflowModel.getByDomain(domainId);
+        const sorted = workflows.sort((a, b) => (b.updatedAt?.getTime() || 0) - (a.updatedAt?.getTime() || 0));
+        const limited = sorted.slice(0, limit);
+        this.collectUser(limited.map((wf) => wf.owner));
+        return limited;
+    }
+
+    async getEdge(domainId: string, limit = 10) {
+        const edges = await EdgeModel.getByDomain(domainId);
+        const sorted = edges.sort((a, b) => (b.updatedAt?.getTime() || 0) - (a.updatedAt?.getTime() || 0));
+        const limited = sorted.slice(0, limit);
+        this.collectUser(limited.map((edge) => edge.owner));
+        return limited;
+    }
+
+    async getTool(domainId: string, limit = 10) {
+        const edges = await EdgeModel.getByDomain(domainId);
+        const allTools: any[] = [];
+        for (const edge of edges) {
+            const tools = await ToolModel.getByToken(domainId, edge.token);
+            allTools.push(...tools);
+        }
+        const sorted = allTools.sort((a, b) => (b.updatedAt?.getTime() || 0) - (a.updatedAt?.getTime() || 0));
+        const limited = sorted.slice(0, limit);
+        this.collectUser(limited.map((tool) => tool.owner));
+        return limited;
+    }
+
+    async getClient(domainId: string, limit = 10) {
+        const clients = await ClientModel.getByDomain(domainId);
+        const sorted = clients.sort((a, b) => (b.updatedAt?.getTime() || 0) - (a.updatedAt?.getTime() || 0));
+        const limited = sorted.slice(0, limit);
+        this.collectUser(limited.map((client) => client.owner));
+        return limited;
+    }
+
+    async getNode(domainId: string, limit = 10) {
+        const nodes = await NodeModel.getByDomain(domainId);
+        const sorted = nodes.sort((a, b) => (b.updatedAt?.getTime() || 0) - (a.updatedAt?.getTime() || 0));
+        const limited = sorted.slice(0, limit);
+        this.collectUser(limited.map((node) => node.owner));
+        return limited;
     }
 
     async get({ domainId }) {

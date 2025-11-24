@@ -1,0 +1,62 @@
+{% set workflows = payload %}
+{% import "components/user.html" as user with context %}
+{% if workflows and workflows.length %}
+  <div class="section page--workflow_main">
+    <div class="section__header">
+      <h1 class="section__title">{{ _('Workflow') }}</h1>
+    </div>
+    <ol class="section__list">
+      {%- for workflow in workflows -%}
+        {% if workflow and workflow.wid %}
+          {% set currentDomainId = domain._id|default(handler.args.domainId|default('system')) %}
+          <li class="section__list__item">
+            <div class="media">
+              <div class="media__body medium">
+                <h1 class="section__item-title">
+                  <a href="{{ url('workflow_detail', domainId=currentDomainId, wid=workflow.wid) }}" data-emoji-enabled>
+                    {{ workflow.name|default('Untitled') }}
+                  </a>
+                {% if workflow.enabled %}
+                  <span class="badge badge-success">{{ _('Enabled') }}</span>
+                {% else %}
+                  <span class="badge badge-secondary">{{ _('Disabled') }}</span>
+                {% endif %}
+              </h1>
+              <ul class="supplementary list">
+                {% if workflow.description %}
+                  <li>{{ workflow.description|truncate(100) }}</li>
+                {% endif %}
+                <li>
+                  <span class="icon icon-flag"></span>
+                  {{ _('Status') }}: {{ _(workflow.status) }}
+                </li>
+                <li>
+                  {% if workflow.owner and udict[workflow.owner] %}
+                    {{ user.render_inline(udict[workflow.owner]) }}
+                  {% elif workflow.owner %}
+                    {{ _('User') }} #{{ workflow.owner }}
+                  {% else %}
+                    {{ _('Unknown User') }}
+                  {% endif %}
+                  @
+                  {% if workflow.updatedAt %}
+                    {{ datetimeSpan(workflow.updatedAt)|safe }}
+                  {% elif workflow.createdAt %}
+                    {{ datetimeSpan(workflow.createdAt)|safe }}
+                  {% else %}
+                    N/A
+                  {% endif %}
+                </li>
+              </ul>
+            </div>
+          </div>
+        </li>
+        {% endif %}
+      {%- endfor -%}
+    </ol>
+    <ul class="pager pager-bottom"><li>
+      <a class="pager__item next link" href="{{ url('workflow_domain') }}">{{ _('More') }} ></a>
+    </li></ul>
+  </div>
+{% endif %}
+
