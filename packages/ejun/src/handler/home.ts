@@ -282,7 +282,7 @@ class HomeSecurityHandler extends Handler {
             userName: `${this.user.uname}(${this.user.mail})`,
             attestationType: 'direct',
             excludeCredentials: this.user._authenticators.map((c) => ({
-                id: isoBase64URL.fromBuffer(c.credentialID.buffer),
+                id: isoBase64URL.fromBuffer(new Uint8Array(c.credentialID.buffer)),
                 type: 'public-key',
             })),
             authenticatorSelection: {
@@ -540,19 +540,22 @@ class HomeMessagesHandler extends Handler {
         const messages = await message.getByUser(this.user._id);
         const uids = new Set<number>([
             ...messages.map((mdoc) => mdoc.from),
-            ...messages.map((mdoc) => mdoc.to),
+            ...messages.flatMap((mdoc) => mdoc.to),
         ]);
         const udict = await user.getList('system', Array.from(uids));
         // TODO(twd2): improve here:
         const parsed = {};
         for (const m of messages) {
-            const target = m.from === this.user._id ? m.to : m.from;
-            parsed[target] ||= {
-                _id: target,
-                udoc: { ...udict[target], avatarUrl: avatar(udict[target].avatar) },
-                messages: [],
-            };
-            parsed[target].messages.push(m);
+            const raw = m.from === this.user._id ? m.to : m.from;
+            const targetArr = Array.isArray(raw) ? raw : [raw];
+            for (const target of targetArr) {
+                parsed[target] ||= {
+                    _id: target,
+                    udoc: { ...udict[target], avatarUrl: avatar(udict[target].avatar) },
+                    messages: [],
+                };
+                parsed[target].messages.push(m);
+            }
         }
         await user.setById(this.user._id, { unreadMsg: 0 });
         this.response.body = { messages: parsed };
@@ -573,17 +576,8 @@ class HomeMessagesHandler extends Handler {
     @param('messageId', Types.ObjectId)
     async postDeleteMessage({ }, messageId: ObjectId) {
         const msg = await message.get(messageId);
-        if ([msg.from, msg.to].includes(this.user._id)) await message.del(messageId);
+        if (msg.from === this.user._id) await message.del(messageId);
         else throw new PermissionError();
-        this.back();
-    }
-
-    @param('messageId', Types.ObjectId)
-    async postRead({ }, messageId: ObjectId) {
-        const msg = await message.get(messageId);
-        if ([msg.from, msg.to].includes(this.user._id)) {
-            await message.setFlag(messageId, message.FLAG_UNREAD);
-        } else throw new PermissionError();
         this.back();
     }
 }

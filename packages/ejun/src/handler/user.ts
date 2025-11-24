@@ -389,42 +389,11 @@ class UserDetailHandler extends Handler {
             token.getMostRecentSessionByUid(uid, ['createAt', 'updateAt']),
         ]);
         if (!udoc) throw new UserNotFoundError(uid);
-        const pdocs: ProblemDoc[] = [];
-        const acInfo: Record<string, number> = {};
-        const canViewHidden = this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN) || this.user._id;
-        if (this.user.hasPerm(PERM.PERM_VIEW_PROBLEM)) {
-            const psdocs = await problem.getMultiStatus(domainId, { uid, status: STATUS.STATUS_ACCEPTED }).toArray();
-            pdocs.push(...Object.values(
-                await problem.getList(
-                    domainId, psdocs.map((i) => i.docId), canViewHidden,
-                    false, problem.PROJECTION_LIST, true,
-                ),
-            ));
-        }
-        for (const pdoc of pdocs) {
-            for (const tag of pdoc.tag) {
-                if (acInfo[tag]) acInfo[tag]++;
-                else acInfo[tag] = 1;
-            }
-        }
-        const tags = Object.entries(acInfo).sort((a, b) => b[1] - a[1]).slice(0, 20);
-        const tsdocs = await ContestModel.getMultiStatus(domainId, { uid, attend: { $exists: true } }).project({ docId: 1 }).toArray();
-        const tdocs = await ContestModel.getMulti(domainId, { docId: { $in: tsdocs.map((i) => i.docId) } })
-            .project({ docId: 1, title: 1, rule: 1 }).sort({ _id: -1 }).toArray();
         this.response.template = 'user_detail.html';
         this.response.body = {
-            isSelfProfile, udoc, sdoc, pdocs, tags, tdocs,
+            isSelfProfile, udoc, sdoc,
         };
-        if (this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_SOLUTION)) {
-            const psdocs = await SolutionModel.getByUser(domainId, uid).limit(10).toArray();
-            this.response.body.psdocs = psdocs;
-            if (this.user.hasPerm(PERM.PERM_VIEW_PROBLEM)) {
-                this.response.body.pdict = await problem.getList(
-                    domainId, psdocs.map((i) => i.parentId), canViewHidden,
-                    false, problem.PROJECTION_LIST,
-                );
-            }
-        }
+
         this.UiContext.extraTitleContent = udoc.uname;
     }
 }
