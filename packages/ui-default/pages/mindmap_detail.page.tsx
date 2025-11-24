@@ -9,14 +9,12 @@ import ReactFlow, {
   Node,
   Edge,
   Controls,
-  Background,
   Connection,
   addEdge,
   useNodesState,
   useEdgesState,
   MarkerType,
   NodeTypes,
-  BackgroundVariant,
   Handle,
   Position,
   ReactFlowInstance,
@@ -92,7 +90,9 @@ interface MindMapDoc {
 const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boolean; id: string }) => {
   const node = data.originalNode as MindMapNode;
   const shape = node.shape || 'rectangle';
-  const backgroundColor = node.backgroundColor || (selected ? '#e3f2fd' : '#fff');
+  // 未选中时背景和边框都透明，选中时显示
+  const backgroundColor = selected ? (node.backgroundColor || '#e3f2fd') : 'transparent';
+  const borderColor = selected ? '#1976d2' : 'transparent';
   const color = node.color || '#333';
   const fontSize = node.fontSize || 14;
   const isNewNode = data.isNewNode || false; // 是否是新创建的节点（还未保存）
@@ -100,7 +100,8 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
   
   // 检查是否有子节点（通过 edges 检查）
   const edges = data.edges || [];
-  const hasChildren = edges.some((edge: Edge) => edge.source === id);
+  const childEdges = edges.filter((edge: Edge) => edge.source === id);
+  const hasChildren = childEdges.length > 0;
   const expanded = node.expanded !== false; // 默认为 true（展开）
   
   // 用于编辑的 ref
@@ -122,26 +123,34 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
   const shapeStyles: Record<string, React.CSSProperties> = {
     rectangle: {
       borderRadius: '8px',
-      padding: '10px 15px',
+      padding: '6px 10px', // 减少 padding，让框更紧凑
+      display: 'inline-block', // 让宽度根据内容自适应
+      width: 'fit-content', // 根据内容调整宽度
     },
     circle: {
       borderRadius: '50%',
-      padding: '10px',
-      width: '80px',
-      height: '80px',
+      padding: '8px',
+      minWidth: '40px', // 圆形保持最小尺寸
+      minHeight: '40px',
+      width: 'fit-content',
+      height: 'fit-content',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
     },
     ellipse: {
       borderRadius: '50%',
-      padding: '10px 20px',
+      padding: '6px 12px', // 减少 padding
+      display: 'inline-block',
+      width: 'fit-content', // 根据内容调整宽度
     },
     diamond: {
       transform: 'rotate(45deg)',
-      padding: '10px',
-      width: '80px',
-      height: '80px',
+      padding: '8px',
+      minWidth: '40px', // 菱形保持最小尺寸
+      minHeight: '40px',
+      width: 'fit-content',
+      height: 'fit-content',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -158,24 +167,25 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
       style={{
         ...shapeStyles[shape],
         background: backgroundColor,
-        border: `2px solid ${selected ? '#1976d2' : color}`,
-        minWidth: shape === 'circle' || shape === 'diamond' ? '80px' : '120px',
-        boxShadow: selected ? '0 4px 8px rgba(0,0,0,0.2)' : '0 2px 4px rgba(0,0,0,0.1)',
+        border: `2px solid ${borderColor}`, // 始终有边框，但未选中时透明
+        boxShadow: selected ? '0 4px 8px rgba(0,0,0,0.2)' : 'none', // 未选中时不显示阴影
         cursor: data.isRootNode ? 'move' : 'default',
         position: 'relative',
         color: color,
         fontSize: `${fontSize}px`,
+        whiteSpace: 'nowrap', // 防止文字换行
       }}
     >
-      {/* 连接点 */}
+      {/* 连接点 - 隐藏显示但保留功能 */}
       <Handle
         type="target"
         position={Position.Left}
         style={{
-          background: color,
-          width: '10px',
-          height: '10px',
-          border: '2px solid #fff',
+          background: 'transparent',
+          width: '0px',
+          height: '0px',
+          border: 'none',
+          opacity: 0,
         }}
       />
 
@@ -216,52 +226,80 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
         </div>
       )}
 
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={{
-          background: color,
-          width: '10px',
-          height: '10px',
-          border: '2px solid #fff',
-        }}
-      />
+      {/* 为每个子节点创建独立的连接点，避免合并 */}
+      {childEdges.length > 0 ? (
+        childEdges.map((edge: Edge, index: number) => {
+          const childCount = childEdges.length;
+          // 根据子节点数量和索引，计算连接点的垂直位置
+          // 增加间距，确保连接点足够分散，避免路径合并
+          const spacing = 40; // 增加间距到40px
+          const offsetY = childCount > 1 
+            ? ((index - (childCount - 1) / 2) * spacing) // 多个子节点时分散，使用更大的间距
+            : 0; // 单个子节点时居中
+          
+          return (
+            <Handle
+              key={`source-${edge.target}-${index}`}
+              id={`source-${edge.target}`} // 使用目标节点ID作为handle ID
+              type="source"
+              position={Position.Right}
+              style={{
+                background: 'transparent',
+                width: '0px',
+                height: '0px',
+                border: 'none',
+                opacity: 0,
+                top: offsetY ? `${50 + (offsetY / 10)}%` : '50%', // 设置垂直位置，使用百分比
+              }}
+            />
+          );
+        })
+      ) : (
+        // 如果没有子节点，创建一个默认的连接点（用于新连接）
+        <Handle
+          type="source"
+          position={Position.Right}
+          style={{
+            background: 'transparent',
+            width: '0px',
+            height: '0px',
+            border: 'none',
+            opacity: 0,
+          }}
+        />
+      )}
 
-      {/* 展开/折叠按钮 - 有子节点时显示 */}
+      {/* 展开/折叠小点 - 只在有子节点时显示 */}
       {hasChildren && (
-        <button
+        <div
           onClick={(e) => {
-            e.stopPropagation();
+            e.stopPropagation(); // 阻止事件冒泡，避免触发节点选择
             if (data.onToggleExpand) {
               data.onToggleExpand(id);
             }
           }}
-          onMouseDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => {
+            e.stopPropagation(); // 阻止事件冒泡
+          }}
           style={{
             position: 'absolute',
-            right: '-15px',
+            right: '-10px',
             top: '50%',
             transform: 'translateY(-50%)',
-            width: '20px',
-            height: '20px',
+            width: '12px',
+            height: '12px',
             borderRadius: '50%',
-            border: `2px solid ${expanded ? '#4caf50' : '#999'}`,
-            background: expanded ? '#4caf50' : '#fff',
-            color: expanded ? '#fff' : '#999',
-            cursor: 'pointer',
-            fontSize: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            lineHeight: '1',
+            background: expanded ? '#4caf50' : '#999', // 展开时绿色，折叠时灰色
+            border: expanded ? '1px solid #2e7d32' : 'none', // 展开时添加深绿色边框
+            cursor: 'pointer', // 始终显示为可点击
             zIndex: 10,
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-            padding: 0,
+            transition: 'all 0.2s ease', // 添加过渡效果
+            boxShadow: expanded 
+              ? '0 0 4px rgba(76, 175, 80, 0.5)' // 展开时添加绿色阴影
+              : 'none',
           }}
           title={expanded ? '折叠子节点' : '展开子节点'}
-        >
-          {expanded ? '−' : '+'}
-        </button>
+        />
       )}
 
       {/* 加号按钮 - 只在节点被选中时显示 */}
@@ -2458,24 +2496,82 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     });
   }, [mindMap.nodes, mindMap.edges]);
 
+  // 计算每个节点的最大子分支数量（递归计算）
+  const maxChildBranches = useMemo(() => {
+    const maxBranches = new Map<string, number>();
+    
+    // 递归计算节点的最大子分支数
+    const calculateMaxBranches = (nodeId: string): number => {
+      if (maxBranches.has(nodeId)) {
+        return maxBranches.get(nodeId)!;
+      }
+      
+      const childEdges = mindMap.edges.filter(e => e.source === nodeId);
+      if (childEdges.length === 0) {
+        maxBranches.set(nodeId, 0);
+        return 0;
+      }
+      
+      // 计算直接子节点数
+      const directChildren = childEdges.length;
+      // 递归计算所有子节点的最大分支数
+      const maxChildBranches = Math.max(...childEdges.map(e => calculateMaxBranches(e.target)));
+      
+      // 当前节点的最大分支数 = max(直接子节点数, 子节点的最大分支数)
+      const maxBranchesForNode = Math.max(directChildren, maxChildBranches);
+      maxBranches.set(nodeId, maxBranchesForNode);
+      
+      return maxBranchesForNode;
+    };
+    
+    // 为所有节点计算最大分支数
+    mindMap.nodes.forEach(node => {
+      calculateMaxBranches(node.id);
+    });
+    
+    return maxBranches;
+  }, [mindMap.nodes, mindMap.edges]);
+
+  // 根据最大分支数获取颜色
+  const getColorByMaxBranches = (maxBranches: number): string => {
+    // 定义颜色数组，根据最大分支数分配
+    const colors = [
+      '#2196f3', // 蓝色 - 0-2个分支
+      '#4caf50', // 绿色 - 3-5个分支
+      '#ff9800', // 橙色 - 6-8个分支
+      '#f44336', // 红色 - 9-11个分支
+      '#9c27b0', // 紫色 - 12-14个分支
+      '#00bcd4', // 青色 - 15-17个分支
+      '#ff5722', // 深橙色 - 18-20个分支
+      '#607d8b', // 蓝灰色 - 21+个分支
+    ];
+    
+    const index = Math.min(Math.floor(maxBranches / 3), colors.length - 1);
+    return colors[index];
+  };
+
   // 将 MindMapEdge 转换为 ReactFlow Edge
   const initialFlowEdges = useMemo(() => {
-    return mindMap.edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      type: 'smoothstep',
-      animated: true,
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-      },
-      label: edge.label,
-      style: {
-        stroke: edge.color || '#2196f3',
-        strokeWidth: edge.width || 2,
-      },
-    })) as Edge[];
-  }, [mindMap.edges]);
+    return mindMap.edges.map((edge) => {
+      const sourceMaxBranches = maxChildBranches.get(edge.source) || 0;
+      const color = getColorByMaxBranches(sourceMaxBranches);
+      
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: `source-${edge.target}`, // 使用目标节点ID作为sourceHandle，确保每个子节点使用不同的连接点
+        type: 'bezier', // 使用 bezier 类型，避免路径合并，每条边都有独立的控制点
+        animated: false, // 移除动画
+        // 移除箭头
+        label: edge.label,
+        style: {
+          stroke: edge.color || color, // 使用动态分配的颜色
+          strokeWidth: edge.width || 2,
+        },
+      } as Edge;
+    });
+  }, [mindMap.edges, maxChildBranches]);
 
   // 初始化节点和边
   useEffect(() => {
@@ -3013,8 +3109,10 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
                 y: mindMap.viewport.y,
                 zoom: mindMap.viewport.zoom,
               } : undefined}
+              style={{
+                background: '#f5f5f5',
+              }}
             >
-              <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
               <Controls />
             </ReactFlow>
             
