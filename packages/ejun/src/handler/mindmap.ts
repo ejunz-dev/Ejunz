@@ -1,7 +1,7 @@
 import { ObjectId } from 'mongodb';
 import type { Context } from '../context';
-import { Handler, param, Types } from '../service/server';
-import { NotFoundError, ForbiddenError } from '../error';
+import { Handler, param, route, Types } from '../service/server';
+import { NotFoundError, ForbiddenError, BadRequestError, ValidationError } from '../error';
 import { PRIV, PERM } from '../model/builtin';
 import { MindMapModel, CardModel } from '../model/mindmap';
 import type { MindMapDoc, MindMapNode, MindMapEdge, CardDoc, MindMapHistoryEntry } from '../interface';
@@ -1262,22 +1262,35 @@ class MindMapGithubPushHandler extends Handler {
 class MindMapCardHandler extends Handler {
     @param('docId', Types.ObjectId, true)
     @param('mmid', Types.PositiveInt, true)
-    @param('nodeId', Types.String)
-    @param('title', Types.String)
+    @param('nodeId', Types.String, true)
+    @param('title', Types.String, true)
     @param('content', Types.String, true)
+    @param('operation', Types.String, true)
     async post(
         domainId: string,
-        docId: ObjectId,
-        mmid: number,
-        nodeId: string,
-        title: string,
-        content: string = ''
+        docId?: ObjectId,
+        mmid?: number,
+        nodeId?: string,
+        title?: string,
+        content: string = '',
+        operation?: string
     ) {
+        // 如果有 operation 参数，应该调用 postUpdate 方法，这里直接返回
+        // 参数验证已经通过（因为所有参数都是可选的），所以这里可以安全返回
+        if (operation) {
+            return;
+        }
+        
+        // 创建新卡片需要这些参数
+        if (!nodeId || !title) {
+            throw new ValidationError('nodeId and title are required for creating a card');
+        }
+        
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
-            : await MindMapModel.getByMmid(domainId, mmid);
+            : await MindMapModel.getByMmid(domainId, mmid!);
         if (!mindMap) throw new NotFoundError('MindMap not found');
         if (!this.user.own(mindMap)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
@@ -1308,16 +1321,99 @@ class MindMapCardHandler extends Handler {
         const cards = await CardModel.getByNodeId(domainId, mindMap.mmid, nodeId);
         this.response.body = { cards };
     }
-    
+}
+
+/**
+ * MindMap Card List Handler
+ * 卡片列表页面
+ */
+class MindMapCardListHandler extends Handler {
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('nodeId', Types.String)
+    @param('branch', Types.String, true)
+    @param('cardId', Types.ObjectId, true)
+    async get(domainId: string, docId: ObjectId, mmid: number, nodeId: string, branch?: string, cardId?: ObjectId) {
+        const mindMap = docId 
+            ? await MindMapModel.get(domainId, docId)
+            : await MindMapModel.getByMmid(domainId, mmid);
+        if (!mindMap) throw new NotFoundError('MindMap not found');
+        
+        // 获取节点的所有卡片
+        const cards = await CardModel.getByNodeId(domainId, mindMap.mmid, nodeId);
+        
+        // 获取节点信息（用于显示节点名称）
+        const node = mindMap.nodes?.find(n => n.id === nodeId);
+        
+        // 确定当前选中的卡片
+        let selectedCard = null;
+        if (cardId) {
+            selectedCard = cards.find(c => c.docId.toString() === cardId.toString());
+        }
+        if (!selectedCard && cards.length > 0) {
+            selectedCard = cards[0];
+        }
+        
+        this.response.template = 'mindmap_card_list.html';
+        this.response.body = {
+            mindMap,
+            cards,
+            nodeId,
+            nodeText: node?.text || '节点',
+            branch: branch || 'main',
+            selectedCard,
+        };
+    }
+}
+
+/**
+ * MindMap Card Detail Handler
+ * 卡片详情页面
+ */
+class MindMapCardDetailHandler extends Handler {
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('nodeId', Types.String)
     @param('cardId', Types.ObjectId)
+    @param('branch', Types.String, true)
+    async get(domainId: string, docId: ObjectId, mmid: number, nodeId: string, cardId: ObjectId, branch?: string) {
+        const mindMap = docId 
+            ? await MindMapModel.get(domainId, docId)
+            : await MindMapModel.getByMmid(domainId, mmid);
+        if (!mindMap) throw new NotFoundError('MindMap not found');
+        
+        const card = await CardModel.get(domainId, cardId);
+        if (!card) throw new NotFoundError('Card not found');
+        if (card.nodeId !== nodeId) throw new NotFoundError('Card does not belong to this node');
+        
+        // 获取同一节点的所有卡片
+        const cards = await CardModel.getByNodeId(domainId, mindMap.mmid, nodeId);
+        const currentIndex = cards.findIndex(c => c.docId.toString() === cardId.toString());
+        
+        this.response.template = 'mindmap_card_detail.html';
+        this.response.body = {
+            mindMap,
+            card,
+            cards,
+            currentIndex: currentIndex >= 0 ? currentIndex : 0,
+            nodeId,
+            branch: branch || 'main',
+        };
+    }
+    
+    @route('cardId', Types.ObjectId)
+    @param('nodeId', Types.String, true)
     @param('title', Types.String, true)
     @param('content', Types.String, true)
+    @param('order', Types.PositiveInt, true)
     @param('operation', Types.String, true)
     async postUpdate(
         domainId: string,
         cardId: ObjectId,
+        nodeId?: string,
         title?: string,
         content?: string,
+        order?: number,
         operation?: string
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
@@ -1351,6 +1447,7 @@ class MindMapCardHandler extends Handler {
         const updates: any = {};
         if (title !== undefined) updates.title = title;
         if (content !== undefined) updates.content = content;
+        if (order !== undefined) updates.order = order;
         
         await CardModel.update(domainId, cardId, updates);
         this.response.body = { success: true };
@@ -2392,5 +2489,13 @@ export async function apply(ctx: Context) {
     ctx.Route('mindmap_card', '/mindmap/:docId/card', MindMapCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_card_mmid', '/mindmap/mmid/:mmid/card', MindMapCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_card_update', '/mindmap/card/:cardId', MindMapCardHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_card_list', '/mindmap/:docId/node/:nodeId/cards', MindMapCardListHandler);
+    ctx.Route('mindmap_card_list_mmid', '/mindmap/mmid/:mmid/node/:nodeId/cards', MindMapCardListHandler);
+    ctx.Route('mindmap_card_list_branch', '/mindmap/:docId/branch/:branch/node/:nodeId/cards', MindMapCardListHandler);
+    ctx.Route('mindmap_card_list_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/node/:nodeId/cards', MindMapCardListHandler);
+    ctx.Route('mindmap_card_detail', '/mindmap/:docId/node/:nodeId/card/:cardId', MindMapCardDetailHandler);
+    ctx.Route('mindmap_card_detail_mmid', '/mindmap/mmid/:mmid/node/:nodeId/card/:cardId', MindMapCardDetailHandler);
+    ctx.Route('mindmap_card_detail_branch', '/mindmap/:docId/branch/:branch/node/:nodeId/card/:cardId', MindMapCardDetailHandler);
+    ctx.Route('mindmap_card_detail_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/node/:nodeId/card/:cardId', MindMapCardDetailHandler);
 }
 

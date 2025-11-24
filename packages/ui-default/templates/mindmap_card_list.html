@@ -1,0 +1,77 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<script>
+  {% set baseUrlValue = url("mindmap_card_list_branch", domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId) %}
+  {{ set(UiContext, 'currentBranch', branch) }}
+  {{ set(UiContext, 'mindMap', {
+    domainId: mindMap.domainId,
+    docId: mindMap.docId,
+    mmid: mindMap.mmid,
+    currentBranch: branch
+  }) }}
+  {{ set(UiContext, 'cards', cards) }}
+  {{ set(UiContext, 'baseUrl', baseUrlValue) }}
+  {{ set(UiContext, 'nodeId', nodeId) }}
+</script>
+<div class="row" style="display: flex; height: calc(100vh - 100px);">
+  <!-- 左侧：卡片列表侧边栏 -->
+  <div style="width: 280px; border-right: 1px solid #e0e0e0; overflow-y: auto; background: #f8f9fa;">
+    <div style="padding: 16px; border-bottom: 1px solid #e0e0e0; background: #fff;">
+      <h2 style="margin: 0; font-size: 16px; font-weight: 600; color: #333;">卡片列表</h2>
+    </div>
+    <div style="padding: 8px;">
+      {% if cards and cards|length > 0 %}
+        {% for card in cards %}
+          <div
+            class="card-item"
+            data-card-id="{{ card.docId }}"
+            style="
+              padding: 12px 16px;
+              margin-bottom: 4px;
+              border-radius: 6px;
+              cursor: pointer;
+              background: {% if selectedCard and card.docId.toString() == selectedCard.docId.toString() %}#e3f2fd{% else %}#fff{% endif %};
+              border: {% if selectedCard and card.docId.toString() == selectedCard.docId.toString() %}2px solid #2196f3{% else %}1px solid #e0e0e0{% endif %};
+              transition: all 0.2s ease;
+            "
+          >
+            <div style="font-size: 14px; font-weight: {% if selectedCard and card.docId.toString() == selectedCard.docId.toString() %}600{% else %}400{% endif %}; color: #333;">
+              {{ card.title or '未命名卡片' }}
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div style="text-align: center; padding: 40px 20px; color: #999;">
+          <p style="font-size: 14px;">暂无卡片</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+  
+  <!-- 右侧：卡片内容 -->
+  <div style="flex: 1; overflow-y: auto; background: #fff;">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">
+          <a href="{{ url('mindmap_detail_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch) }}">
+            {{ mindMap.title if mindMap else '思维导图' }}
+          </a>
+          <span style="margin: 0 10px;">/</span>
+          {{ nodeText }}
+          <span style="margin: 0 10px;">/</span>
+          <span id="card-title">{{ selectedCard.title if selectedCard else '请选择卡片' }}</span>
+        </h1>
+      </div>
+      <div class="section__body">
+        <div id="card-content" class="typo richmedia topic__content" data-emoji-enabled>
+          {% if selectedCard and selectedCard.content %}
+            {{ selectedCard.content|markdown|safe }}
+          {% else %}
+            <p style="color: #888;">{% if selectedCard %}暂无内容{% else %}请从左侧选择一个卡片{% endif %}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
