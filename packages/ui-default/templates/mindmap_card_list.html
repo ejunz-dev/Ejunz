@@ -13,55 +13,70 @@
   {{ set(UiContext, 'baseUrl', baseUrlValue) }}
   {{ set(UiContext, 'nodeId', nodeId) }}
 </script>
-<div class="row" style="display: flex; height: calc(100vh - 100px);">
+<div class="row mindmap-card-list">
   <!-- 左侧：卡片列表侧边栏 -->
-  <div style="width: 280px; border-right: 1px solid #e0e0e0; overflow-y: auto; background: #f8f9fa;">
-    <div style="padding: 16px; border-bottom: 1px solid #e0e0e0; background: #fff; display: flex; justify-content: space-between; align-items: center;">
-      <h2 style="margin: 0; font-size: 16px; font-weight: 600; color: #333;">卡片列表</h2>
-      <div style="display: flex; gap: 8px;">
+  <div class="mindmap-card-list__sidebar">
+    <div class="mindmap-card-list__header">
+      <h2 class="mindmap-card-list__title">卡片列表</h2>
+      <div class="mindmap-card-list__actions">
+        <button 
+          id="edit-mode-btn"
+          class="button primary mindmap-card-list__action-btn"
+        >
+          {{ _('编辑') }}
+        </button>
+        <button 
+          id="save-order-btn"
+          class="button success mindmap-card-list__action-btn"
+          style="display: none;"
+        >
+          {{ _('保存') }}
+        </button>
+        <button 
+          id="cancel-edit-btn"
+          class="button mindmap-card-list__action-btn"
+          style="display: none;"
+        >
+          {{ _('取消') }}
+        </button>
         <a 
           href="{{ url('mindmap_card_edit_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId) }}"
-          class="button primary"
-          style="padding: 6px 12px; font-size: 12px; text-decoration: none;"
+          class="button primary mindmap-card-list__action-btn"
+          style="text-decoration: none;"
         >
           {{ _('新建') }}
         </a>
       </div>
     </div>
-    <div style="padding: 8px;">
+    <div id="card-list-container" class="mindmap-card-list__container">
       {% if cards and cards|length > 0 %}
         {% for card in cards %}
           <div
-            class="card-item"
+            class="mindmap-card-list__item card-item {% if selectedCard and card.docId.toString() == selectedCard.docId.toString() %}selected{% endif %}"
             data-card-id="{{ card.docId }}"
-            style="
-              padding: 12px 16px;
-              margin-bottom: 4px;
-              border-radius: 6px;
-              cursor: pointer;
-              background: {% if selectedCard and card.docId.toString() == selectedCard.docId.toString() %}#e3f2fd{% else %}#fff{% endif %};
-              border: {% if selectedCard and card.docId.toString() == selectedCard.docId.toString() %}2px solid #2196f3{% else %}1px solid #e0e0e0{% endif %};
-              transition: all 0.2s ease;
-            "
+            data-order="{{ card.order or loop.index }}"
           >
-            <div style="font-size: 14px; font-weight: {% if selectedCard and card.docId.toString() == selectedCard.docId.toString() %}600{% else %}400{% endif %}; color: #333;">
-              {{ card.title or '未命名卡片' }}
+            <div class="mindmap-card-list__item-content">
+              <span class="mindmap-card-list__drag-handle drag-handle">⋮⋮</span>
+              <div class="mindmap-card-list__item-title">
+                {{ card.title or '未命名卡片' }}
+              </div>
             </div>
           </div>
         {% endfor %}
       {% else %}
-        <div style="text-align: center; padding: 40px 20px; color: #999;">
-          <p style="font-size: 14px;">暂无卡片</p>
+        <div class="mindmap-card-list__empty">
+          <p class="mindmap-card-list__empty-text">暂无卡片</p>
         </div>
       {% endif %}
     </div>
   </div>
   
   <!-- 右侧：卡片内容 -->
-  <div style="flex: 1; overflow-y: auto; background: #fff;">
+  <div class="mindmap-card-list__content">
     <div class="section">
-      <div class="section__header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h1 class="section__title" style="margin: 0;">
+      <div class="section__header mindmap-card-list__content-header">
+        <h1 class="section__title mindmap-card-list__content-title">
           <a href="{{ url('mindmap_detail_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch) }}">
             {{ mindMap.title if mindMap else '思维导图' }}
           </a>
@@ -73,8 +88,7 @@
         {% if selectedCard %}
           <a 
             href="{{ url('mindmap_card_edit_branch_with_card', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId, cardId=selectedCard.docId) }}"
-            class="button primary"
-            style="padding: 8px 16px; font-size: 14px; text-decoration: none;"
+            class="button primary mindmap-card-list__content-edit-btn"
           >
             {{ _('编辑') }}
           </a>
