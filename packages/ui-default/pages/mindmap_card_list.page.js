@@ -1,14 +1,23 @@
 import { NamedPage } from 'vj/misc/Page';
+import Notification from 'vj/components/notification';
+import { request } from 'vj/utils';
 
 const page = new NamedPage('mindmap_card_list', () => {
   // 从 UiContext 获取数据
   const cards = window.UiContext?.cards || [];
   const baseUrl = window.UiContext?.baseUrl || '';
+  const nodeId = window.UiContext?.nodeId || '';
+  const mindMap = window.UiContext?.mindMap || {};
   
-  if (!cards.length || !baseUrl) {
+  if (!baseUrl) {
     console.warn('Card list data not found');
     return;
   }
+  
+  let isEditMode = false;
+  let draggedElement = null;
+  let draggedIndex = null;
+  let dragOverIndex = null;
   
   // 定义 loadCard 函数
   function loadCard(cardId) {
@@ -68,48 +77,277 @@ const page = new NamedPage('mindmap_card_list', () => {
     // 更新侧边栏选中状态
     document.querySelectorAll('.card-item').forEach(item => {
       const itemCardId = item.getAttribute('data-card-id');
-      const cardTitleDiv = item.querySelector('div');
       if (itemCardId === String(cardId)) {
         item.classList.add('selected');
-        item.style.background = '#e3f2fd';
-        item.style.border = '2px solid #2196f3';
-        if (cardTitleDiv) {
-          cardTitleDiv.style.fontWeight = '600';
-        }
       } else {
         item.classList.remove('selected');
-        item.style.background = '#fff';
-        item.style.border = '1px solid #e0e0e0';
-        if (cardTitleDiv) {
-          cardTitleDiv.style.fontWeight = '400';
-        }
       }
+    });
+  }
+  
+  // 进入编辑模式
+  function enterEditMode() {
+    isEditMode = true;
+    const container = document.getElementById('card-list-container');
+    if (container) {
+      container.classList.add('edit-mode');
+    }
+    
+    // 显示/隐藏按钮
+    const editBtn = document.getElementById('edit-mode-btn');
+    const saveBtn = document.getElementById('save-order-btn');
+    const cancelBtn = document.getElementById('cancel-edit-btn');
+    if (editBtn) editBtn.style.display = 'none';
+    if (saveBtn) saveBtn.style.display = 'inline-block';
+    if (cancelBtn) cancelBtn.style.display = 'inline-block';
+    
+    // 显示拖动手柄（通过 CSS 类控制）
+    
+    // 启用拖动
+    setupDragAndDrop();
+  }
+  
+  // 退出编辑模式
+  function exitEditMode() {
+    isEditMode = false;
+    const container = document.getElementById('card-list-container');
+    if (container) {
+      container.classList.remove('edit-mode');
+    }
+    
+    // 显示/隐藏按钮
+    const editBtn = document.getElementById('edit-mode-btn');
+    const saveBtn = document.getElementById('save-order-btn');
+    const cancelBtn = document.getElementById('cancel-edit-btn');
+    if (editBtn) editBtn.style.display = 'inline-block';
+    if (saveBtn) saveBtn.style.display = 'none';
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    
+    // 隐藏拖动手柄（通过 CSS 类控制）
+    
+    // 恢复原始顺序
+    restoreOriginalOrder();
+  }
+  
+  // 保存排序
+  async function saveOrder() {
+    const cardItems = Array.from(document.querySelectorAll('.card-item'));
+    const updates = [];
+    
+    for (let i = 0; i < cardItems.length; i++) {
+      const item = cardItems[i];
+      const cardId = item.getAttribute('data-card-id');
+      if (cardId) {
+        updates.push({
+          cardId,
+          order: i + 1
+        });
+      }
+    }
+    
+    try {
+      // 批量更新卡片顺序
+      for (const update of updates) {
+        // 使用正确的路由格式，确保 operation 在请求体中
+        const url = `/mindmap/card/${update.cardId}`;
+        await request.post(url, {
+          nodeId: nodeId,
+          operation: 'update',
+          order: update.order
+        });
+      }
+      
+      Notification.success('排序已保存');
+      exitEditMode();
+      
+      // 重新加载页面以获取最新数据
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to save order:', error);
+      Notification.error('保存排序失败: ' + (error.message || '未知错误'));
+    }
+  }
+  
+  // 恢复原始顺序
+  function restoreOriginalOrder() {
+    const container = document.getElementById('card-list-container');
+    if (!container) return;
+    
+    // 按照 data-order 属性排序
+    const items = Array.from(container.querySelectorAll('.card-item'));
+    items.sort((a, b) => {
+      const orderA = parseInt(a.getAttribute('data-order') || '0');
+      const orderB = parseInt(b.getAttribute('data-order') || '0');
+      return orderA - orderB;
+    });
+    
+    items.forEach(item => container.appendChild(item));
+  }
+  
+  // 设置拖动功能
+  function setupDragAndDrop() {
+    const cardItems = document.querySelectorAll('.card-item');
+    
+    cardItems.forEach((item) => {
+      // 设置可拖动
+      item.draggable = true;
+      
+      const dragHandle = item.querySelector('.drag-handle');
+      if (dragHandle) {
+        dragHandle.addEventListener('mousedown', (e) => {
+          e.stopPropagation();
+        });
+      }
+      
+      // 移除旧的事件监听器（通过克隆节点）
+      const newItem = item.cloneNode(true);
+      item.parentNode.replaceChild(newItem, item);
+      
+      newItem.addEventListener('dragstart', (e) => {
+        draggedElement = newItem;
+        newItem.classList.add('dragging');
+        newItem.style.opacity = '0.5';
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', '');
+      });
+      
+      newItem.addEventListener('dragend', (e) => {
+        newItem.classList.remove('dragging');
+        newItem.style.opacity = '1';
+        draggedElement = null;
+        // 清除所有拖拽样式
+        document.querySelectorAll('.card-item').forEach(el => {
+          el.style.borderTop = '';
+          el.style.borderBottom = '';
+        });
+      });
+      
+      newItem.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+        
+        if (draggedElement && draggedElement !== newItem) {
+          const rect = newItem.getBoundingClientRect();
+          const mouseY = e.clientY;
+          const itemMiddle = rect.top + rect.height / 2;
+          
+          // 清除之前的样式
+          document.querySelectorAll('.card-item').forEach(el => {
+            if (el !== newItem) {
+              el.style.borderTop = '';
+              el.style.borderBottom = '';
+            }
+          });
+          
+          if (mouseY < itemMiddle) {
+            // 拖到上方
+            newItem.style.borderTop = '3px solid #2196f3';
+            newItem.style.borderBottom = '';
+          } else {
+            // 拖到下方
+            newItem.style.borderBottom = '3px solid #2196f3';
+            newItem.style.borderTop = '';
+          }
+        }
+      });
+      
+      newItem.addEventListener('dragleave', (e) => {
+        newItem.style.borderTop = '';
+        newItem.style.borderBottom = '';
+      });
+      
+      newItem.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        if (draggedElement && draggedElement !== newItem) {
+          const container = document.getElementById('card-list-container');
+          if (!container) return;
+          
+          const items = Array.from(container.querySelectorAll('.card-item'));
+          const draggedIdx = items.indexOf(draggedElement);
+          const targetIdx = items.indexOf(newItem);
+          
+          if (draggedIdx !== -1 && targetIdx !== -1 && draggedIdx !== targetIdx) {
+            const rect = newItem.getBoundingClientRect();
+            const mouseY = e.clientY;
+            const itemMiddle = rect.top + rect.height / 2;
+            
+            if (mouseY < itemMiddle) {
+              // 插入到目标元素之前
+              container.insertBefore(draggedElement, newItem);
+            } else {
+              // 插入到目标元素之后
+              if (newItem.nextSibling) {
+                container.insertBefore(draggedElement, newItem.nextSibling);
+              } else {
+                container.appendChild(draggedElement);
+              }
+            }
+            
+            // 重新设置拖动功能（因为 DOM 顺序改变了）
+            setupDragAndDrop();
+          }
+        }
+        
+        // 清除样式
+        document.querySelectorAll('.card-item').forEach(el => {
+          el.style.borderTop = '';
+          el.style.borderBottom = '';
+        });
+      });
+      
+      // 在编辑模式下禁用点击事件
+      newItem.addEventListener('click', function(e) {
+        if (isEditMode) {
+          e.preventDefault();
+          e.stopPropagation();
+        } else {
+          const cardId = this.getAttribute('data-card-id');
+          if (cardId) {
+            loadCard(cardId);
+          }
+        }
+      });
     });
   }
   
   // 页面加载时，初始化事件监听器和加载卡片
   function init() {
+    // 编辑模式按钮
+    const editBtn = document.getElementById('edit-mode-btn');
+    if (editBtn) {
+      editBtn.addEventListener('click', enterEditMode);
+    }
+    
+    // 保存按钮
+    const saveBtn = document.getElementById('save-order-btn');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', saveOrder);
+    }
+    
+    // 取消按钮
+    const cancelBtn = document.getElementById('cancel-edit-btn');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', exitEditMode);
+    }
+    
     // 为所有卡片项添加点击事件
     document.querySelectorAll('.card-item').forEach(item => {
-      item.addEventListener('click', function() {
+      item.addEventListener('click', function(e) {
+        if (isEditMode) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         const cardId = this.getAttribute('data-card-id');
         if (cardId) {
           loadCard(cardId);
         }
       });
       
-      // 添加悬停效果
-      item.addEventListener('mouseenter', function() {
-        if (!this.classList.contains('selected')) {
-          this.style.background = '#f5f5f5';
-        }
-      });
-      
-      item.addEventListener('mouseleave', function() {
-        if (!this.classList.contains('selected')) {
-          this.style.background = '#fff';
-        }
-      });
+      // 悬停效果由 CSS 处理
     });
     
     // 检查 URL 参数并加载对应卡片
