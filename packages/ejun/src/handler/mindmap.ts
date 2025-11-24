@@ -1367,6 +1367,116 @@ class MindMapCardListHandler extends Handler {
 }
 
 /**
+ * MindMap Card Edit Handler
+ * 卡片编辑页面
+ */
+class MindMapCardEditHandler extends Handler {
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('nodeId', Types.String)
+    @param('cardId', Types.ObjectId, true)
+    @param('branch', Types.String, true)
+    async get(domainId: string, docId: ObjectId, mmid: number, nodeId: string, cardId?: ObjectId, branch?: string) {
+        const mindMap = docId 
+            ? await MindMapModel.get(domainId, docId)
+            : await MindMapModel.getByMmid(domainId, mmid);
+        if (!mindMap) throw new NotFoundError('MindMap not found');
+        
+        let card = null;
+        if (cardId) {
+            card = await CardModel.get(domainId, cardId);
+            if (!card) throw new NotFoundError('Card not found');
+            if (card.nodeId !== nodeId) throw new NotFoundError('Card does not belong to this node');
+        }
+        
+        this.response.template = 'mindmap_card_edit.html';
+        this.response.body = {
+            mindMap,
+            card,
+            nodeId,
+            branch: branch || 'main',
+        };
+    }
+    
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('nodeId', Types.String)
+    @param('cardId', Types.ObjectId, true)
+    @param('title', Types.String, true)
+    @param('content', Types.String, true)
+    @param('operation', Types.String, true)
+    @param('branch', Types.String, true)
+    async post(
+        domainId: string,
+        docId: ObjectId,
+        mmid: number,
+        nodeId: string,
+        cardId?: ObjectId,
+        title?: string,
+        content?: string,
+        operation?: string,
+        branch?: string
+    ) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const mindMap = docId 
+            ? await MindMapModel.get(domainId, docId)
+            : await MindMapModel.getByMmid(domainId, mmid);
+        if (!mindMap) throw new NotFoundError('MindMap not found');
+        
+        if (!this.user.own(mindMap)) {
+            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        }
+        
+        const effectiveBranch = branch || 'main';
+        
+        if (cardId) {
+            // 更新现有卡片
+            if (operation === 'delete') {
+                const card = await CardModel.get(domainId, cardId);
+                if (!card) throw new NotFoundError('Card not found');
+                await CardModel.delete(domainId, cardId);
+                this.response.redirect = this.url('mindmap_card_list_branch', { 
+                    docId: docId.toString(), 
+                    branch: effectiveBranch, 
+                    nodeId 
+                });
+                return;
+            }
+            
+            const updates: any = {};
+            if (title !== undefined) updates.title = title;
+            if (content !== undefined) updates.content = content;
+            await CardModel.update(domainId, cardId, updates);
+            this.response.redirect = this.url('mindmap_card_list_branch', { 
+                docId: docId.toString(), 
+                branch: effectiveBranch, 
+                nodeId 
+            });
+        } else {
+            // 创建新卡片
+            if (!title) {
+                throw new ValidationError('title is required');
+            }
+            await CardModel.create(
+                domainId,
+                mindMap.mmid,
+                nodeId,
+                this.user._id,
+                title,
+                content || '',
+                this.request.ip
+            );
+            this.response.redirect = this.url('mindmap_card_list_branch', { 
+                docId: docId.toString(), 
+                branch: effectiveBranch, 
+                nodeId 
+            });
+        }
+    }
+}
+
+/**
  * MindMap Card Detail Handler
  * 卡片详情页面
  */
@@ -2493,6 +2603,14 @@ export async function apply(ctx: Context) {
     ctx.Route('mindmap_card_list_mmid', '/mindmap/mmid/:mmid/node/:nodeId/cards', MindMapCardListHandler);
     ctx.Route('mindmap_card_list_branch', '/mindmap/:docId/branch/:branch/node/:nodeId/cards', MindMapCardListHandler);
     ctx.Route('mindmap_card_list_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/node/:nodeId/cards', MindMapCardListHandler);
+    ctx.Route('mindmap_card_edit', '/mindmap/:docId/node/:nodeId/card/edit', MindMapCardEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_card_edit_mmid', '/mindmap/mmid/:mmid/node/:nodeId/card/edit', MindMapCardEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_card_edit_with_card', '/mindmap/:docId/node/:nodeId/card/:cardId/edit', MindMapCardEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_card_edit_with_card_mmid', '/mindmap/mmid/:mmid/node/:nodeId/card/:cardId/edit', MindMapCardEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_card_edit_branch', '/mindmap/:docId/branch/:branch/node/:nodeId/card/edit', MindMapCardEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_card_edit_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/node/:nodeId/card/edit', MindMapCardEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_card_edit_branch_with_card', '/mindmap/:docId/branch/:branch/node/:nodeId/card/:cardId/edit', MindMapCardEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_card_edit_branch_with_card_mmid', '/mindmap/mmid/:mmid/branch/:branch/node/:nodeId/card/:cardId/edit', MindMapCardEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_card_detail', '/mindmap/:docId/node/:nodeId/card/:cardId', MindMapCardDetailHandler);
     ctx.Route('mindmap_card_detail_mmid', '/mindmap/mmid/:mmid/node/:nodeId/card/:cardId', MindMapCardDetailHandler);
     ctx.Route('mindmap_card_detail_branch', '/mindmap/:docId/branch/:branch/node/:nodeId/card/:cardId', MindMapCardDetailHandler);

@@ -16,8 +16,17 @@
 <div class="row" style="display: flex; height: calc(100vh - 100px);">
   <!-- 左侧：卡片列表侧边栏 -->
   <div style="width: 280px; border-right: 1px solid #e0e0e0; overflow-y: auto; background: #f8f9fa;">
-    <div style="padding: 16px; border-bottom: 1px solid #e0e0e0; background: #fff;">
+    <div style="padding: 16px; border-bottom: 1px solid #e0e0e0; background: #fff; display: flex; justify-content: space-between; align-items: center;">
       <h2 style="margin: 0; font-size: 16px; font-weight: 600; color: #333;">卡片列表</h2>
+      <div style="display: flex; gap: 8px;">
+        <a 
+          href="{{ url('mindmap_card_edit_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId) }}"
+          class="button primary"
+          style="padding: 6px 12px; font-size: 12px; text-decoration: none;"
+        >
+          {{ _('新建') }}
+        </a>
+      </div>
     </div>
     <div style="padding: 8px;">
       {% if cards and cards|length > 0 %}
@@ -51,8 +60,8 @@
   <!-- 右侧：卡片内容 -->
   <div style="flex: 1; overflow-y: auto; background: #fff;">
     <div class="section">
-      <div class="section__header">
-        <h1 class="section__title">
+      <div class="section__header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h1 class="section__title" style="margin: 0;">
           <a href="{{ url('mindmap_detail_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch) }}">
             {{ mindMap.title if mindMap else '思维导图' }}
           </a>
@@ -61,6 +70,15 @@
           <span style="margin: 0 10px;">/</span>
           <span id="card-title">{{ selectedCard.title if selectedCard else '请选择卡片' }}</span>
         </h1>
+        {% if selectedCard %}
+          <a 
+            href="{{ url('mindmap_card_edit_branch_with_card', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId, cardId=selectedCard.docId) }}"
+            class="button primary"
+            style="padding: 8px 16px; font-size: 14px; text-decoration: none;"
+          >
+            {{ _('编辑') }}
+          </a>
+        {% endif %}
       </div>
       <div class="section__body">
         <div id="card-content" class="typo richmedia topic__content" data-emoji-enabled>
