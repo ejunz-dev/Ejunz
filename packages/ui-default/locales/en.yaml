@@ -251,6 +251,7 @@ mcp_detail: MCP Detail
 mcp_domain: MCP
 mcp_edit: Edit MCP
 mcp_logs: MCP Logs
+mindmap_domain: MindMap
 no_translation_warn: <blockquote class="warn">This part of content is under translation.</blockquote>
 node_create: Create Node
 node_detail: Node Detail
@@ -308,3 +309,4 @@ user_register: Register
 user_sudo: Entering Sudo Mode
 wiki_about: About
 wiki_help: Helpz
+workflow_domain: Workflow

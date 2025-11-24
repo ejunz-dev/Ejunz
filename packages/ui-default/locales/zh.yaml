@@ -521,6 +521,7 @@ Memory: 内存
 Message {0} not found.: 消息 {0} 不存在。
 Messages: 消息
 Method: 方法
+mindmap_domain: 知识库
 Month: 月
 My Domains: 我加入的域
 My Files: 我的文件
@@ -808,6 +809,7 @@ What's script?: 什么是脚本？
 What's this?: 这是什么？
 wiki_about: 关于
 Will be used as the domain icon.: 将被用作系统图标。
+workflow_domain: 工作流
 Write Your Comment: 发表您的评论
 WYSIWYG: 所见即所得
 Year: 年
