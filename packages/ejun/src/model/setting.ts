@@ -406,7 +406,6 @@ SystemSetting(
     Setting('setting_basic', 'pagination.training', 10, 'number', 'pagination.training', 'Trainings per page'),
     Setting('setting_basic', 'pagination.reply', 50, 'number', 'pagination.reply', 'Replies per page'),
     Setting('setting_basic', 'ejun.homepage', settingFile.homepage.default, 'yaml', 'ejun.homepage', 'Homepage config'),
-    Setting('setting_basic', 'ejun.langs', settingFile.langs.default, 'yaml', 'ejun.langs', 'Language config'),
     Setting('setting_session', 'session.keys', [randomstring(32)], 'text', 'session.keys', 'session.keys', FLAG_HIDDEN),
     Setting('setting_session', 'session.domain', '', 'text', 'session.domain', 'session.domain', FLAG_HIDDEN),
     Setting('setting_session', 'session.saved_expire_seconds', 3600 * 24 * 30,
