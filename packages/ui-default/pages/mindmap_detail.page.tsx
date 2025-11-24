@@ -392,310 +392,6 @@ interface Card {
   createdAt?: string;
 }
 
-// Card 管理对话框组件
-const CardManageDialog = ({ 
-  nodeId, 
-  docId, 
-  mmid,
-  onClose 
-}: { 
-  nodeId: string; 
-  docId: string;
-  mmid: number;
-  onClose: () => void;
-}) => {
-  const [cards, setCards] = useState<Card[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedCardIndex, setSelectedCardIndex] = useState<number>(0); // 选中的卡片索引
-  const [markdownHtml, setMarkdownHtml] = useState<string | null>(null); // 渲染后的 Markdown HTML
-  const markdownCache = useRef<Map<string, string>>(new Map()); // 缓存已渲染的 Markdown
-
-  const loadCards = useCallback(async () => {
-    setLoading(true);
-    try {
-      const url = docId 
-        ? `/mindmap/${docId}/card?nodeId=${nodeId}`
-        : `/mindmap/mmid/${mmid}/card?nodeId=${nodeId}`;
-      const res = await request.get(url);
-      setCards(res.cards || []);
-      // 默认选中第一个卡片
-      if (res.cards && res.cards.length > 0) {
-        setSelectedCardIndex(0);
-      }
-    } catch (error: any) {
-      Notification.error('加载卡片失败: ' + (error.message || '未知错误'));
-    } finally {
-      setLoading(false);
-    }
-  }, [nodeId, docId, mmid]);
-
-  useEffect(() => {
-    loadCards();
-  }, [loadCards]);
-
-  // 当卡片加载完成时，默认选中第一个
-  useEffect(() => {
-    if (cards.length > 0 && selectedCardIndex >= cards.length) {
-      setSelectedCardIndex(0);
-    }
-  }, [cards.length, selectedCardIndex]);
-
-  // 使用后端 API 渲染 Markdown 内容（类似 repo 的方式，带缓存）
-  useEffect(() => {
-    const selectedCard = cards.length > 0 && selectedCardIndex >= 0 && selectedCardIndex < cards.length 
-      ? cards[selectedCardIndex] 
-      : null;
-    
-    if (!selectedCard || !selectedCard.content) {
-      setMarkdownHtml(null);
-      return;
-    }
-
-    // 检查缓存
-    const cacheKey = `${selectedCard.docId}-${selectedCard.content.substring(0, 100)}`;
-    const cached = markdownCache.current.get(cacheKey);
-    if (cached) {
-      setMarkdownHtml(cached);
-      return;
-    }
-
-    // 使用后端 API 渲染 Markdown（类似 repo 的服务端渲染方式）
-    let cancelled = false;
-    const renderMarkdown = async () => {
-      try {
-        const html = await request.post('/markdown', {
-          text: selectedCard.content,
-          inline: false,
-        });
-        if (!cancelled) {
-          // 缓存渲染结果
-          markdownCache.current.set(cacheKey, html);
-          setMarkdownHtml(html);
-        }
-      } catch (error) {
-        console.error('Failed to render markdown:', error);
-        // 如果渲染失败，显示原始内容（转义 HTML）
-        if (!cancelled) {
-          const escaped = selectedCard.content
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-          const fallbackHtml = `<pre style="white-space: pre-wrap;">${escaped}</pre>`;
-          markdownCache.current.set(cacheKey, fallbackHtml);
-          setMarkdownHtml(fallbackHtml);
-        }
-      }
-    };
-
-    renderMarkdown();
-    
-    // 清理函数：如果组件卸载或卡片切换，取消请求
-    return () => {
-      cancelled = true;
-    };
-  }, [cards, selectedCardIndex]);
-
-  const selectedCard = cards.length > 0 && selectedCardIndex >= 0 && selectedCardIndex < cards.length 
-    ? cards[selectedCardIndex] 
-    : null;
-
-  return (
-    <>
-      {/* 背景遮罩层 - 点击可关闭 */}
-      <div
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.8)',
-          zIndex: 2000,
-        }}
-        onClick={onClose} // 点击背景关闭
-      />
-      
-      {/* 对话框内容 - 居中显示 */}
-      <div
-        style={{
-          position: 'fixed',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: `${Math.min(window.innerWidth - 200, 1200)}px`,
-          height: `${Math.min(window.innerHeight - 100, 800)}px`,
-          maxWidth: '90vw',
-          maxHeight: '90vh',
-          background: '#fff',
-          boxShadow: '0 0 30px rgba(0, 0, 0, 0.6)',
-          zIndex: 2001,
-          display: 'flex',
-          flexDirection: 'row',
-          overflow: 'hidden',
-        }}
-        onClick={(e) => e.stopPropagation()} // 阻止点击内容区域时关闭
-      >
-        {/* 左侧：卡片列表 */}
-        <div
-          style={{
-            width: '300px',
-            borderRight: '1px solid #e0e0e0',
-            display: 'flex',
-            flexDirection: 'column',
-            background: '#fafafa',
-          }}
-        >
-          {/* 标题栏 */}
-          <div
-            style={{
-              padding: '20px',
-              borderBottom: '1px solid #e0e0e0',
-              display: 'flex',
-              alignItems: 'center',
-              background: '#fff',
-            }}
-          >
-            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600' }}>卡片列表</h3>
-          </div>
-
-          {/* 卡片列表 */}
-          <div
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: '10px',
-            }}
-          >
-            {loading ? (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>加载中...</div>
-            ) : cards.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>暂无卡片</div>
-            ) : (
-              cards.map((card, index) => (
-                <div
-                  key={card.docId}
-                  onClick={() => setSelectedCardIndex(index)}
-                  style={{
-                    padding: '12px 16px',
-                    marginBottom: '8px',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    background: selectedCardIndex === index ? '#e3f2fd' : '#fff',
-                    border: selectedCardIndex === index ? '2px solid #2196f3' : '1px solid #e0e0e0',
-                    transition: 'all 0.2s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (selectedCardIndex !== index) {
-                      e.currentTarget.style.background = '#f5f5f5';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (selectedCardIndex !== index) {
-                      e.currentTarget.style.background = '#fff';
-                    }
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: '14px',
-                      fontWeight: selectedCardIndex === index ? '600' : '400',
-                      color: selectedCardIndex === index ? '#2196f3' : '#333',
-                      marginBottom: '4px',
-                    }}
-                  >
-                    {card.title || '未命名卡片'}
-                  </div>
-                  {card.content && (
-                    <div
-                      style={{
-                        fontSize: '12px',
-                        color: '#666',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {card.content.substring(0, 50)}
-                      {card.content.length > 50 ? '...' : ''}
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* 右侧：卡片内容 */}
-        <div
-          style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            background: '#fff',
-          }}
-        >
-          {selectedCard ? (
-            <>
-              {/* 内容标题栏 */}
-              <div
-                style={{
-                  padding: '20px',
-                  borderBottom: '1px solid #e0e0e0',
-                  background: '#fff',
-                }}
-              >
-                <h2 style={{ margin: 0, fontSize: '24px', fontWeight: '600', color: '#333' }}>
-                  {selectedCard.title || '未命名卡片'}
-                </h2>
-              </div>
-
-              {/* Markdown 内容 */}
-              <div
-                style={{
-                  flex: 1,
-                  overflowY: 'auto',
-                  padding: '30px',
-                  background: '#fff',
-                }}
-              >
-                {markdownHtml ? (
-                  <div
-                    dangerouslySetInnerHTML={{ __html: markdownHtml }}
-                    style={{
-                      lineHeight: '1.6',
-                      fontSize: '16px',
-                    }}
-                  />
-                ) : (
-                  <div style={{ color: '#999', textAlign: 'center', padding: '40px' }}>
-                    {loading ? '加载中...' : '暂无内容'}
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <div
-              style={{
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#999',
-                fontSize: '16px',
-              }}
-            >
-              {loading ? '加载中...' : '请选择一个卡片'}
-            </div>
-          )}
-        </div>
-      </div>
-    </>
-  );
-};
-
 // 悬浮工具栏组件
 const FloatingToolbar = ({ 
   node, 
@@ -937,7 +633,7 @@ const FloatingToolbar = ({
           cursor: 'pointer',
           fontSize: '12px',
         }}
-        title="管理卡片"
+        title="查看卡片列表"
       >
         卡片
       </button>
@@ -1274,7 +970,14 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
   const [studyLayer, setStudyLayer] = useState<number>(0); // 当前刷题的层数
   const [studyCardIndex, setStudyCardIndex] = useState<number>(0); // 当前卡片索引
   const [isCardFlipped, setIsCardFlipped] = useState<boolean>(false); // 卡片是否翻转
-  const [cardManageNodeId, setCardManageNodeId] = useState<string | null>(null); // 正在管理卡片的节点ID
+  // 处理卡片管理：跳转到卡片列表页面
+  const handleManageCards = useCallback((nodeId: string) => {
+    const branch = mindMap.currentBranch || 'main';
+    const url = docId 
+      ? `/mindmap/${docId}/branch/${branch}/node/${nodeId}/cards`
+      : `/mindmap/mmid/${mindMap.mmid}/branch/${branch}/node/${nodeId}/cards`;
+    window.open(url, '_blank');
+  }, [docId, mindMap.mmid, mindMap.currentBranch]);
   const [gitStatus, setGitStatus] = useState<any>(null); // Git 状态
   const [gitStatusLoading, setGitStatusLoading] = useState(false); // Git 状态加载中
   const [history, setHistory] = useState<any[]>([]); // 操作历史记录
@@ -3129,20 +2832,11 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
                 onUpdateFontSize={handleUpdateFontSize}
                 onUpdateColor={handleUpdateColor}
                 onCopy={handleCopyNodeContent}
-                onManageCards={setCardManageNodeId}
+                onManageCards={handleManageCards}
               />
             );
           })()}
           
-          {/* Card 管理对话框 */}
-          {cardManageNodeId && (
-            <CardManageDialog
-              nodeId={cardManageNodeId}
-              docId={docId}
-              mmid={mindMap.mmid}
-              onClose={() => setCardManageNodeId(null)}
-            />
-          )}
         </div>
       </div>
     );
@@ -3273,20 +2967,11 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
                   onUpdateFontSize={handleUpdateFontSize}
                   onUpdateColor={handleUpdateColor}
                   onCopy={handleCopyNodeContent}
-                  onManageCards={setCardManageNodeId}
+                  onManageCards={handleManageCards}
                 />
               );
             })()}
             
-            {/* Card 管理对话框 */}
-            {cardManageNodeId && (
-              <CardManageDialog
-                nodeId={cardManageNodeId}
-                docId={docId}
-                mmid={mindMap.mmid}
-                onClose={() => setCardManageNodeId(null)}
-              />
-            )}
           </>
         ) : viewMode === 'outline' ? (
           <OutlineView
