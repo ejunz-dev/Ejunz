@@ -13,6 +13,7 @@ import os from 'os';
 import { promisify } from 'util';
 import system from '../model/system';
 import https from 'https';
+import parser from '@ejunz/utils/lib/search';
 
 const exec = promisify(execCb);
 
@@ -720,35 +721,76 @@ class MindMapListHandler extends Handler {
 class MindMapDomainHandler extends Handler {
     @param('page', Types.PositiveInt, true)
     @param('q', Types.Content, true)
-    async get(domainId: string, page = 1, q = '') {
-        let mindMaps = await MindMapModel.getAll(domainId);
+    @param('pjax', Types.Boolean)
+    async get(domainId: string, page = 1, q = '', pjax = false) {
+        const limit = 20;
+        const skip = (page - 1) * limit;
+        
+        let allMindMaps = await MindMapModel.getAll(domainId);
+        
+        // 使用 SearchParser 解析搜索查询
+        const parsed = parser.parse(q || '', {
+            keywords: ['category'],
+            offsets: false,
+            alwaysArray: true,
+            tokenize: true,
+        });
+        
+        const category = parsed.category || [];
+        const text = (parsed.text || []).join(' ').trim();
         
         // 搜索过滤
-        if (q && q.trim()) {
-            const searchTerm = q.trim().toLowerCase();
-            mindMaps = mindMaps.filter(mindMap => 
-                mindMap.title.toLowerCase().includes(searchTerm) ||
-                (mindMap.content && mindMap.content.toLowerCase().includes(searchTerm)) ||
-                String(mindMap.mmid).includes(searchTerm)
-            );
+        if (text || category.length > 0) {
+            if (text) {
+                const searchTerm = text.toLowerCase();
+                allMindMaps = allMindMaps.filter(mindMap => 
+                    mindMap.title.toLowerCase().includes(searchTerm) ||
+                    (mindMap.content && mindMap.content.toLowerCase().includes(searchTerm)) ||
+                    String(mindMap.mmid).includes(searchTerm)
+                );
+            }
+            
+            // TODO: 如果将来需要支持 category 过滤，可以在这里添加
+            // if (category.length > 0) {
+            //     allMindMaps = allMindMaps.filter(mindMap => 
+            //         category.some(cat => mindMap.category === cat)
+            //     );
+            // }
         }
         
         // 按 mmid 排序
-        mindMaps.sort((a, b) => (a.mmid || 0) - (b.mmid || 0));
+        allMindMaps.sort((a, b) => (a.mmid || 0) - (b.mmid || 0));
+        
+        // 分页
+        const total = allMindMaps.length;
+        const totalPages = Math.ceil(total / limit);
+        const mindMaps = allMindMaps.slice(skip, skip + limit);
         
         // 计算统计信息
-        const totalNodes = mindMaps.reduce((sum, mm) => sum + (mm.nodes?.length || 0), 0);
-        const totalViews = mindMaps.reduce((sum, mm) => sum + (mm.views || 0), 0);
+        const totalNodes = allMindMaps.reduce((sum, mm) => sum + (mm.nodes?.length || 0), 0);
+        const totalViews = allMindMaps.reduce((sum, mm) => sum + (mm.views || 0), 0);
         
-        this.response.template = 'mindmap_domain.html';
-        this.response.body = { 
-            mindMaps, 
-            domainId,
-            page,
-            qs: q,
-            totalNodes,
-            totalViews,
-        };
+        if (pjax) {
+            const html = await this.renderHTML('partials/mindmap_list.html', {
+                page, totalPages, total, mindMaps, qs: q ? q.trim() : '', domainId,
+            });
+            this.response.body = {
+                title: this.renderTitle(this.translate('MindMap Domain')),
+                fragments: [{ html: html || '' }],
+            };
+        } else {
+            this.response.template = 'mindmap_domain.html';
+            this.response.body = { 
+                mindMaps, 
+                domainId,
+                page,
+                totalPages,
+                total,
+                qs: q ? q.trim() : '',
+                totalNodes,
+                totalViews,
+            };
+        }
     }
 }
 

@@ -1,113 +1,44 @@
-{% set page_name = "mindmap_domain" %}
+{% import "components/record.html" as record with context %}
 {% extends "layout/basic.html" %}
 {% block content %}
-<div class="row">
-  <div class="medium-9 columns">
-    <div class="section">
-      <div class="section__header">
-        <h1 class="section__title">{{ _("思维导图管理") }}</h1>
-        <div class="section__action">
-          <a href="{{ url('mindmap_create', domainId=domainId) }}" class="button primary">{{ _('Create MindMap') }}</a>
+  <div class="row">
+    <div class="medium-9 columns">
+      <div class="section display-mode">
+        <div class="section__body no-padding">
+          <form method="get" id="searchForm">
+            <div class="search">
+              <input name="q" type="text" value="{{ qs }}" placeholder="{{ _('Search mindmaps') }}">
+              <button type="submit">
+                <span class="icon icon-search"></span>
+              </button>
+            </div>
+          </form>
         </div>
-      </div>
-      <div class="section__body no-padding">
-        <form method="get" id="searchForm">
-          <div class="search">
-            <input name="q" type="text" value="{{ qs }}" placeholder="{{ _('Search mindmaps') }}" autocomplete="off">
-            <button type="submit">
-              <span class="icon icon-search"></span>
-            </button>
-          </div>
-        </form>
-      </div>
-      <div class="section__body">
-        {% if mindMaps and mindMaps.length > 0 %}
-          <div class="mindmap-list">
-            {% for mindMap in mindMaps %}
-              <div class="mindmap-item" style="border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 15px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <div class="mindmap-header" style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
-                  <h3 style="margin: 0;">
-                    <a href="{{ url('mindmap_detail', domainId=domainId, docId=mindMap.docId) }}">{{ mindMap.title }}</a>
-                  </h3>
-                  <div style="font-size: 12px; color: #666;">
-                    ID: <code>{{ mindMap.mmid }}</code>
-                  </div>
-                </div>
-                {% if mindMap.content %}
-                  <p style="color: #666; margin: 10px 0; font-size: 14px;">{{ mindMap.content|truncate(100) }}</p>
-                {% endif %}
-                <div class="mindmap-info" style="display: flex; gap: 20px; font-size: 12px; color: #888; margin-top: 15px;">
-                  <div>
-                    <span class="icon icon-eye"></span>
-                    {{ _("访问量") }}: {{ mindMap.views }}
-                  </div>
-                  <div>
-                    <span class="icon icon-nodes"></span>
-                    {{ _("节点数") }}: {{ mindMap.nodes|length if mindMap.nodes else 0 }}
-                  </div>
-                  <div>
-                    <span class="icon icon-time"></span>
-                    {{ _("创建时间") }}: {{ datetimeSpan(mindMap.createdAt)|safe if mindMap.createdAt else 'N/A' }}
-                  </div>
-                  <div>
-                    <span class="icon icon-time"></span>
-                    {{ _("更新时间") }}: {{ datetimeSpan(mindMap.updateAt)|safe if mindMap.updateAt else 'N/A' }}
-                  </div>
-                </div>
-                <div class="mindmap-actions" style="margin-top: 15px; display: flex; gap: 10px;">
-                  <a href="{{ url('mindmap_detail', domainId=domainId, docId=mindMap.docId) }}" class="button">{{ _("查看") }}</a>
-                  <a href="{{ url('mindmap_edit', domainId=domainId, docId=mindMap.docId) }}" class="button">{{ _("编辑") }}</a>
-                  {% if mindMap.rpid %}
-                    <a href="{{ url('repo_detail', domainId=domainId, rpid=mindMap.rpid) }}" class="button secondary" style="font-size: 12px;">
-                      {{ _("关联仓库") }} #{{ mindMap.rpid }}
-                    </a>
-                  {% endif %}
-                </div>
-              </div>
-            {% endfor %}
-          </div>
-        {% else %}
-          <p class="mindmap-empty-message" style="text-align: center; padding: 40px; color: #999;">
-            {% if qs %}
-              {{ _("没有找到匹配的思维导图") }}
-            {% else %}
-              {{ _("暂无思维导图") }}，<a href="{{ url('mindmap_create', domainId=domainId) }}">{{ _("创建第一个思维导图") }}</a>
-            {% endif %}
-          </p>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-  <div class="medium-3 columns">
-    <div class="section side">
-      <div class="section__header">
-        <h1 class="section__title">{{ _('Create MindMap') }}</h1>
-      </div>
-      <div class="section__body">
-        <a href="{{ url('mindmap_create', domainId=domainId) }}" class="button primary expanded">
-          <span class="icon icon-add"></span>
-          {{ _('Create MindMap') }}
-        </a>
-        <div class="typo supplementary" style="margin-top: 15px;">
-          <p>{{ _('创建新的思维导图来组织你的想法和知识。') }}</p>
+        <div class="section__body no-padding">
+          {% include "partials/mindmap_list.html" %}
         </div>
       </div>
     </div>
-        {% if mindMaps and mindMaps.length > 0 %}
-          <div class="section side">
-            <div class="section__header">
-              <h1 class="section__title">{{ _('Statistics') }}</h1>
-            </div>
-            <div class="section__body">
-              <div class="typo supplementary">
-                <p><strong>{{ _("总数") }}:</strong> {{ mindMaps|length }}</p>
-                <p><strong>{{ _("总节点数") }}:</strong> {{ totalNodes|default(0) }}</p>
-                <p><strong>{{ _("总访问量") }}:</strong> {{ totalViews|default(0) }}</p>
-              </div>
-            </div>
+    <div class="medium-3 columns">
+      <div class="section side">
+        <div class="section__header">
+          <h1 class="section__title">{{ _('Create MindMap') }}</h1>
+        </div>
+        <ol class="menu">
+          {%- for item in ui.getNodes('MindMapAdd') -%}
+            <a href="{{ url(item.name, item.args) }}" class="menu__link">
+              <span class="icon icon-{{ item.args.icon|default('add') }}"></span>
+              {{ _(item.args.text) }}
+            </a>
+          {%- endfor -%}
+        </ol>
+        <div class="section__body">
+          <div class="typo supplementary">
+            <p>{{ _('You have permission to create mindmaps for this domain.') }}</p>
           </div>
-        {% endif %}
+        </div>
+      </div>
+    </div>
   </div>
-</div>
 {% endblock %}
 
