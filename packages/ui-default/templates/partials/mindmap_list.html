@@ -1,0 +1,44 @@
+{% import "components/paginator.html" as paginator with context %}
+{% import "components/nothing.html" as nothing with context %}
+<div data-fragment-id="mindmap_list">
+{% if not mindMaps or mindMaps.length == 0 %}
+  {{ nothing.render('Sorry, there are no mindmaps in the base.') }}
+{% else %}
+  {{ paginator.render(page, totalPages, position='top', add_qs=('q=' + qs if qs else '')) }}
+  <table class="data-table">
+    <colgroup>
+      <col class="col--mmid">
+      <col class="col--title">
+      <col class="col--nodes">
+      <col class="col--views">
+      <col class="col--updated">
+    </colgroup>
+    <thead>
+      <tr>
+        <th class="col--mmid">{{ _('ID') }}</th>
+        <th class="col--title">{{ _('MindMap') }}</th>
+        <th class="col--nodes">{{ _('Nodes') }}</th>
+        <th class="col--views">{{ _('Views') }}</th>
+        <th class="col--updated">{{ _('Updated') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for mindMap in mindMaps -%}
+      <tr data-mmid="{{ mindMap.mmid }}" data-doc-id="{{ mindMap.docId }}">
+        <td class="col--mmid">{{ mindMap.mmid }}</td>
+        <td class="col--title">
+          <a href="{{ url('mindmap_detail', domainId=domainId, docId=mindMap.docId) }}">
+            {{ mindMap.title }}
+          </a>
+        </td>
+        <td class="col--nodes">{{ mindMap.nodes|length if mindMap.nodes else 0 }}</td>
+        <td class="col--views">{{ mindMap.views|default(0) }}</td>
+        <td class="col--updated">{{ datetimeSpan(mindMap.updateAt)|safe if mindMap.updateAt else 'N/A' }}</td>
+      </tr>
+      {%- endfor -%}
+    </tbody>
+  </table>
+  {{ paginator.render(page, totalPages, add_qs=('q=' + qs if qs else '')) }}
+{% endif %}
+</div>
+
