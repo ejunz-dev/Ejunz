@@ -99,7 +99,7 @@ export const Types = {
     Password: basicString(/^.{6,255}$/),
     ProblemId: saslprepString(/^(?:[a-z0-9]{1,10}-)?[a-z0-9]+$/i, () => true, (s) => (Number.isSafeInteger(+s) ? +s : s)),
     Email: saslprepString(/^[\w.+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i),
-    DomainId: saslprepString(/^[a-zA-Z]\w{3,31}$/),
+    DomainId: saslprepString(/^[a-zA-Z]\w{2,31}$/),
     Role: saslprepString(/^[\w\u4E00-\u9FA5]{1,31}$/),
     Title: basicString(/^.{1,64}$/, (i) => !!i.trim()),
     ShortString: basicString(/^.{1,255}$/),
