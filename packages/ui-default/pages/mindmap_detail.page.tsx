@@ -400,7 +400,8 @@ const FloatingToolbar = ({
   onUpdateFontSize, 
   onUpdateColor, 
   onCopy,
-  onManageCards
+  onManageCards,
+  onEdit
 }: { 
   node: Node; 
   reactFlowInstance: ReactFlowInstance | null;
@@ -409,6 +410,7 @@ const FloatingToolbar = ({
   onUpdateColor: (nodeId: string, color: string) => void;
   onCopy: (text: string) => void;
   onManageCards: (nodeId: string) => void;
+  onEdit: (node: Node) => void;
 }) => {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -512,6 +514,26 @@ const FloatingToolbar = ({
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
     >
+      {/* 编辑按钮 */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onEdit(node);
+        }}
+        style={{
+          padding: '6px 10px',
+          border: '1px solid #ff9800',
+          borderRadius: '4px',
+          background: '#fff',
+          color: '#ff9800',
+          cursor: 'pointer',
+          fontSize: '12px',
+        }}
+        title="编辑节点"
+      >
+        编辑
+      </button>
+
       {/* 删除按钮 */}
       <button
         onClick={(e) => {
@@ -1197,19 +1219,81 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     }, 1500);
   }, [handleSave, mindMap.githubRepo, loadGitStatus, loadHistory]);
 
-  // 初始化时加载 git 状态和历史记录
   useEffect(() => {
+    let ws: any = null;
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    const wsUrl = `/d/${domainId}/mindmap/${docId}/ws`;
+
+    // 初始加载
     loadHistory();
     if (mindMap.githubRepo) {
       loadGitStatus();
-      // 定期刷新 git 状态和历史记录
-      const interval = setInterval(() => {
-        loadGitStatus();
-        loadHistory();
-      }, 10000); // 每10秒刷新一次
-      return () => clearInterval(interval);
     }
-  }, [mindMap.githubRepo, loadGitStatus, loadHistory]);
+
+    // 连接 WebSocket 的函数
+    const connectWebSocket = () => {
+      import('../components/socket').then(({ default: WebSocket }) => {
+        ws = new WebSocket(wsUrl, false, true);
+
+        ws.onopen = () => {
+          console.log('[MindMap] WebSocket connected');
+        };
+
+        ws.onmessage = (_: any, data: string) => {
+          try {
+            const msg = JSON.parse(data);
+            console.log('[MindMap] WebSocket message:', msg);
+
+            if (msg.type === 'init' || msg.type === 'update') {
+              // 更新 git status 和 history
+              if (msg.gitStatus !== undefined) {
+                setGitStatus(msg.gitStatus);
+              }
+              if (msg.history !== undefined) {
+                setHistory(msg.history);
+              }
+            } else if (msg.type === 'git_status') {
+              // 只更新 git status
+              if (msg.gitStatus !== undefined) {
+                setGitStatus(msg.gitStatus);
+              }
+            } else if (msg.type === 'history') {
+              // 只更新 history
+              if (msg.history !== undefined) {
+                setHistory(msg.history);
+              }
+            }
+          } catch (error) {
+            console.error('[MindMap] Failed to parse WebSocket message:', error);
+          }
+        };
+
+        ws.onclose = () => {
+          console.log('[MindMap] WebSocket closed');
+          ws = null;
+        };
+
+        ws.onerror = (error: any) => {
+          console.error('[MindMap] WebSocket error:', error);
+        };
+      }).catch((error) => {
+        console.error('[MindMap] Failed to load WebSocket:', error);
+      });
+    };
+
+    // 初始连接
+    connectWebSocket();
+
+    return () => {
+      if (ws) {
+        try {
+          ws.close();
+        } catch (e) {
+          // ignore
+        }
+      }
+    };
+  }, [docId, mindMap.githubRepo, loadHistory, loadGitStatus]);
 
   // 包装 onEdgesChange 以在边变化时触发自动保存（特别是删除边）
   const handleEdgesChange = useCallback((changes: any) => {
@@ -2395,6 +2479,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     }, 50);
   }, []);
 
+
   // 点击画布空白处取消选中
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
@@ -2837,6 +2922,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
                 onUpdateColor={handleUpdateColor}
                 onCopy={handleCopyNodeContent}
                 onManageCards={handleManageCards}
+                onEdit={handleEditNode}
               />
             );
           })()}
@@ -2972,6 +3058,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
                   onUpdateColor={handleUpdateColor}
                   onCopy={handleCopyNodeContent}
                   onManageCards={handleManageCards}
+                  onEdit={handleEditNode}
                 />
               );
             })()}

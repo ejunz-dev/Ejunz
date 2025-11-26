@@ -1,6 +1,6 @@
 import { ObjectId } from 'mongodb';
 import type { Context } from '../context';
-import { Handler, param, route, Types } from '../service/server';
+import { Handler, param, route, Types, ConnectionHandler } from '../service/server';
 import { NotFoundError, ForbiddenError, BadRequestError, ValidationError } from '../error';
 import { PRIV, PERM } from '../model/builtin';
 import { MindMapModel, CardModel } from '../model/mindmap';
@@ -14,8 +14,10 @@ import { promisify } from 'util';
 import system from '../model/system';
 import https from 'https';
 import parser from '@ejunz/utils/lib/search';
+import { Logger } from '../utils';
 
 const exec = promisify(execCb);
+const logger = new Logger('mindmap');
 
 /**
  * MindMap Detail Handler
@@ -691,6 +693,11 @@ class MindMapSaveHandler extends Handler {
                 // 不抛出错误，保存仍然成功
             }
         }
+        
+        // 触发更新事件，通知所有连接的 WebSocket 客户端
+        (this.ctx.emit as any)('mindmap/update', docId, mindMap.mmid);
+        (this.ctx.emit as any)('mindmap/git/status/update', docId, mindMap.mmid);
+        (this.ctx.emit as any)('mindmap/history/update', docId, mindMap.mmid);
         
         this.response.body = { success: true, hasNonPositionChanges };
     }
@@ -2371,6 +2378,11 @@ class MindMapCommitHandler extends Handler {
                 history,
             });
 
+            // 触发更新事件，通知所有连接的 WebSocket 客户端
+            (this.ctx.emit as any)('mindmap/update', mindMap.docId, mindMap.mmid);
+            (this.ctx.emit as any)('mindmap/git/status/update', mindMap.docId, mindMap.mmid);
+            (this.ctx.emit as any)('mindmap/history/update', mindMap.docId, mindMap.mmid);
+
             this.response.body = { ok: true, message: 'Changes committed successfully' };
         } catch (err: any) {
             console.error('Commit failed:', err?.message || err);
@@ -2708,6 +2720,156 @@ class MindMapGithubConfigHandler extends Handler {
     }
 }
 
+/**
+ * MindMap WebSocket Connection Handler
+ * 用于实时推送 mindmap 的更新（git status, history 等）
+ */
+class MindMapConnectionHandler extends ConnectionHandler {
+    private docId?: ObjectId;
+    private mmid?: number;
+    private subscriptions: Array<{ dispose: () => void }> = [];
+
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    async prepare(domainId: string, docId?: ObjectId, mmid?: number) {
+        if (!docId && !mmid) {
+            this.close(1000, 'docId or mmid is required');
+            return;
+        }
+
+        const mindMap = docId 
+            ? await MindMapModel.get(domainId, docId)
+            : await MindMapModel.getByMmid(domainId, mmid!);
+        
+        if (!mindMap) {
+            this.close(1000, 'MindMap not found');
+            return;
+        }
+
+        this.docId = mindMap.docId;
+        this.mmid = mindMap.mmid;
+
+        // 检查权限
+        if (!this.user.own(mindMap)) {
+            this.checkPerm(PERM.PERM_VIEW_DISCUSSION);
+        }
+
+        logger.info('MindMap WebSocket connected: docId=%s, mmid=%d', this.docId, this.mmid);
+
+        // 发送初始数据
+        await this.sendInitialData(domainId, mindMap);
+
+        // 订阅 mindmap 更新事件
+        const dispose1 = (this.ctx.on as any)('mindmap/update', async (...args: any[]) => {
+            const [updateDocId, updateMmid] = args;
+            if (updateDocId && updateDocId.toString() === this.docId!.toString() || updateMmid === this.mmid) {
+                await this.sendUpdate(domainId);
+            }
+        });
+        this.subscriptions.push({ dispose: dispose1 });
+
+        // 订阅 git status 更新事件
+        const dispose2 = (this.ctx.on as any)('mindmap/git/status/update', async (...args: any[]) => {
+            const [updateDocId, updateMmid] = args;
+            if (updateDocId && updateDocId.toString() === this.docId!.toString() || updateMmid === this.mmid) {
+                await this.sendGitStatus(domainId);
+            }
+        });
+        this.subscriptions.push({ dispose: dispose2 });
+
+        // 订阅 history 更新事件
+        const dispose3 = (this.ctx.on as any)('mindmap/history/update', async (...args: any[]) => {
+            const [updateDocId, updateMmid] = args;
+            if (updateDocId && updateDocId.toString() === this.docId!.toString() || updateMmid === this.mmid) {
+                await this.sendHistory(domainId);
+            }
+        });
+        this.subscriptions.push({ dispose: dispose3 });
+    }
+
+    async cleanup() {
+        for (const sub of this.subscriptions) {
+            try {
+                sub.dispose();
+            } catch (e) {
+                // ignore
+            }
+        }
+        this.subscriptions = [];
+    }
+
+    private async sendInitialData(domainId: string, mindMap: MindMapDoc) {
+        try {
+            const branch = (mindMap as any).currentBranch || 'main';
+            const gitStatus = await getMindMapGitStatus(domainId, mindMap.mmid, branch).catch(() => null);
+            const history = mindMap.history || [];
+
+            this.send({
+                type: 'init',
+                gitStatus,
+                history,
+                branch,
+            });
+        } catch (err) {
+            logger.error('Failed to send initial data:', err);
+        }
+    }
+
+    private async sendUpdate(domainId: string) {
+        try {
+            const mindMap = await MindMapModel.get(domainId, this.docId!);
+            if (!mindMap) return;
+
+            const branch = (mindMap as any).currentBranch || 'main';
+            const gitStatus = await getMindMapGitStatus(domainId, mindMap.mmid, branch).catch(() => null);
+            const history = mindMap.history || [];
+
+            this.send({
+                type: 'update',
+                gitStatus,
+                history,
+                branch,
+            });
+        } catch (err) {
+            logger.error('Failed to send update:', err);
+        }
+    }
+
+    private async sendGitStatus(domainId: string) {
+        try {
+            const mindMap = await MindMapModel.get(domainId, this.docId!);
+            if (!mindMap) return;
+
+            const branch = (mindMap as any).currentBranch || 'main';
+            const gitStatus = await getMindMapGitStatus(domainId, mindMap.mmid, branch).catch(() => null);
+
+            this.send({
+                type: 'git_status',
+                gitStatus,
+                branch,
+            });
+        } catch (err) {
+            logger.error('Failed to send git status:', err);
+        }
+    }
+
+    private async sendHistory(domainId: string) {
+        try {
+            const mindMap = await MindMapModel.get(domainId, this.docId!);
+            if (!mindMap) return;
+
+            const history = mindMap.history || [];
+
+            this.send({
+                type: 'history',
+                history,
+            });
+        } catch (err) {
+            logger.error('Failed to send history:', err);
+        }
+    }
+}
+
 export async function apply(ctx: Context) {
     // 注册路由
     ctx.Route('mindmap_domain', '/mindmap', MindMapDomainHandler);
@@ -2773,5 +2935,9 @@ export async function apply(ctx: Context) {
     ctx.Route('mindmap_card_detail_mmid', '/mindmap/mmid/:mmid/node/:nodeId/card/:cardId', MindMapCardDetailHandler);
     ctx.Route('mindmap_card_detail_branch', '/mindmap/:docId/branch/:branch/node/:nodeId/card/:cardId', MindMapCardDetailHandler);
     ctx.Route('mindmap_card_detail_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/node/:nodeId/card/:cardId', MindMapCardDetailHandler);
+    
+    // WebSocket 连接路由
+    ctx.Connection('mindmap_connection', '/mindmap/:docId/ws', MindMapConnectionHandler);
+    ctx.Connection('mindmap_connection_mmid', '/mindmap/mmid/:mmid/ws', MindMapConnectionHandler);
 }
 
