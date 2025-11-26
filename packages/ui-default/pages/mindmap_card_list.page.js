@@ -147,9 +147,10 @@ const page = new NamedPage('mindmap_card_list', () => {
     
     try {
       // 批量更新卡片顺序
+      const domainId = window.UiContext?.domainId || 'system';
       for (const update of updates) {
         // 使用正确的路由格式，确保 operation 在请求体中
-        const url = `/mindmap/card/${update.cardId}`;
+        const url = `/d/${domainId}/mindmap/card/${update.cardId}`;
         await request.post(url, {
           nodeId: nodeId,
           operation: 'update',

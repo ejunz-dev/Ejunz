@@ -31,11 +31,12 @@ function MindMapList() {
   const loadMindMaps = async () => {
     try {
       setLoading(true);
+      const domainId = (window as any).UiContext?.domainId || 'system';
       const params: any = {};
       if (rpid) params.rpid = rpid;
       if (branch) params.branch = branch;
 
-      const response = await request.get('/mindmap', { params });
+      const response = await request.get(`/d/${domainId}/mindmap`, { params });
       setMindMaps(response.mindMaps || []);
     } catch (error: any) {
       Notification.error('加载思维导图列表失败: ' + (error.message || '未知错误'));
@@ -51,7 +52,8 @@ function MindMapList() {
 
     try {
       // 删除操作
-      await request.post(`/mindmap/${docId}/edit`, {
+      const domainId = (window as any).UiContext?.domainId || 'system';
+      await request.post(`/d/${domainId}/mindmap/${docId}/edit`, {
         operation: 'delete',
       });
       Notification.success('思维导图已删除');
@@ -66,7 +68,10 @@ function MindMapList() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h1 style={{ margin: 0 }}>思维导图列表</h1>
         <a
-          href="/mindmap/create"
+          href={(() => {
+            const domainId = (window as any).UiContext?.domainId || 'system';
+            return `/d/${domainId}/mindmap/create`;
+          })()}
           style={{
             padding: '8px 16px',
             background: '#2196f3',
@@ -88,7 +93,10 @@ function MindMapList() {
         <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
           <p>暂无思维导图</p>
           <a
-            href="/mindmap/create"
+            href={(() => {
+              const domainId = (window as any).UiContext?.domainId || 'system';
+              return `/d/${domainId}/mindmap/create`;
+            })()}
             style={{
               padding: '8px 16px',
               background: '#2196f3',
@@ -143,7 +151,10 @@ function MindMapList() {
               </div>
               <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
                 <a
-                  href={`/mindmap/${mindMap.docId}`}
+                  href={(() => {
+                    const domainId = (window as any).UiContext?.domainId || 'system';
+                    return `/d/${domainId}/mindmap/${mindMap.docId}`;
+                  })()}
                   onClick={(e) => e.stopPropagation()}
                   style={{
                     padding: '4px 12px',
@@ -157,7 +168,10 @@ function MindMapList() {
                   查看
                 </a>
                 <a
-                  href={`/mindmap/${mindMap.docId}/edit`}
+                  href={(() => {
+                    const domainId = (window as any).UiContext?.domainId || 'system';
+                    return `/d/${domainId}/mindmap/${mindMap.docId}/edit`;
+                  })()}
                   onClick={(e) => e.stopPropagation()}
                   style={{
                     padding: '4px 12px',

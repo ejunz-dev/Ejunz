@@ -33,10 +33,35 @@ class MindMapDetailHandler extends Handler {
         
         if (docId) {
             this.mindMap = await MindMapModel.get(domainId, docId);
+            if (!this.mindMap && mmid) {
+                // 如果通过 docId 找不到，尝试通过 mmid 查找
+                console.log(`[MindMap Detail] Not found by docId ${docId.toString()}, trying mmid ${mmid}`);
+                this.mindMap = await MindMapModel.getByMmid(domainId, mmid);
+            }
         } else if (mmid) {
             this.mindMap = await MindMapModel.getByMmid(domainId, mmid);
         }
-        if (!this.mindMap) throw new NotFoundError('MindMap not found');
+        
+        if (!this.mindMap) {
+            // 尝试在所有 domain 中查找（用于调试）
+            if (docId) {
+                console.log(`[MindMap Detail] Searching in all domains for docId: ${docId.toString()}`);
+                try {
+                    const allDomains = await document.getMulti('system', document.TYPE_MINDMAP, { docId }).limit(10).toArray();
+                    if (allDomains.length > 0) {
+                        console.log(`[MindMap Detail] Found mindmap in domains: ${allDomains.map((d: any) => d.domainId).join(', ')}`);
+                    }
+                } catch (err) {
+                    console.error(`[MindMap Detail] Error searching all domains:`, err);
+                }
+            }
+            
+            const errorMsg = docId 
+                ? `MindMap not found with docId: ${docId.toString()}${mmid ? ` or mmid: ${mmid}` : ''} in domain: ${domainId}`
+                : `MindMap not found with mmid: ${mmid} in domain: ${domainId}`;
+            console.error(errorMsg);
+            throw new NotFoundError('MindMap not found');
+        }
         
         await MindMapModel.incrementViews(domainId, this.mindMap.docId);
     }
@@ -269,8 +294,12 @@ class MindMapCreateHandler extends Handler {
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
+        // 确保使用正确的 domainId（优先使用 this.args.domainId，因为它来自 ctx.domainId，是最准确的）
+        const actualDomainId = this.args.domainId || domainId || 'system';
+        console.log(`[MindMap Create] domainId param: ${domainId}, this.args.domainId: ${this.args.domainId}, actualDomainId: ${actualDomainId}`);
+        
         const { docId, mmid } = await MindMapModel.create(
-            domainId,
+            actualDomainId,
             this.user._id,
             title,
             content,
@@ -279,21 +308,46 @@ class MindMapCreateHandler extends Handler {
             this.request.ip
         );
 
-        // 自动创建 GitHub 仓库
+        console.log(`[MindMap Create] Created mindmap with docId: ${docId.toString()}, mmid: ${mmid}, domainId: ${actualDomainId}`);
+
+        // 验证 mindmap 是否已成功创建
+        let createdMindMap = await MindMapModel.get(actualDomainId, docId);
+        if (!createdMindMap) {
+            // 如果通过 docId 找不到，尝试通过 mmid 查找
+            console.log(`[MindMap Create] Not found by docId, trying mmid: ${mmid}`);
+            createdMindMap = await MindMapModel.getByMmid(actualDomainId, mmid);
+        }
+        
+        if (!createdMindMap) {
+            // 再等待一下，可能是数据库同步延迟
+            await new Promise(resolve => setTimeout(resolve, 200));
+            createdMindMap = await MindMapModel.get(actualDomainId, docId) || await MindMapModel.getByMmid(actualDomainId, mmid);
+        }
+        
+        if (!createdMindMap) {
+            console.error(`[MindMap Create] Failed to find mindmap after creation: docId=${docId.toString()}, mmid=${mmid}, domainId=${actualDomainId}`);
+            throw new Error(`Failed to create mindmap: record not found after creation (docId: ${docId.toString()}, mmid: ${mmid}, domainId: ${actualDomainId})`);
+        }
+        
+        console.log(`[MindMap Create] Successfully verified mindmap: docId=${createdMindMap.docId.toString()}, mmid=${createdMindMap.mmid}`);
+
+        // 自动创建 GitHub 仓库（异步处理，不阻塞重定向）
         try {
-            await ensureMindMapGitRepo(domainId, mmid);
+            await ensureMindMapGitRepo(actualDomainId, mmid);
             
             try {
-                await createAndPushToGitHubOrgForMindMap(this, domainId, mmid, title, this.user);
+                await createAndPushToGitHubOrgForMindMap(this, actualDomainId, mmid, title, this.user);
             } catch (err) {
                 console.error('Failed to create remote GitHub repo:', err);
+                // 即使 GitHub 仓库创建失败，也不影响 mindmap 的使用
             }
         } catch (err) {
             console.error('Failed to create git repo:', err);
+            // 即使 git repo 创建失败，也不影响 mindmap 的使用
         }
 
         this.response.body = { docId, mmid };
-        this.response.redirect = this.url('mindmap_detail', { docId: docId.toString() });
+        this.response.redirect = this.url('mindmap_detail', { domainId: actualDomainId, docId: docId.toString() });
     }
 }
 
@@ -1089,11 +1143,21 @@ async function createAndPushToGitHubOrgForMindMap(
             }
         }
 
-        const mindMap = await MindMapModel.getByMmid(domainId, mmid);
+        // 重试获取 mindmap，因为可能刚创建，需要等待数据库同步
+        let mindMap = await MindMapModel.getByMmid(domainId, mmid);
+        if (!mindMap) {
+            // 如果第一次获取失败，等待一小段时间后重试
+            await new Promise(resolve => setTimeout(resolve, 100));
+            mindMap = await MindMapModel.getByMmid(domainId, mmid);
+        }
+        
         if (mindMap) {
             await document.set(domainId, document.TYPE_MINDMAP, mindMap.docId, {
                 githubRepo: REPO_URL,
             });
+        } else {
+            console.warn(`MindMap with mmid ${mmid} not found, skipping GitHub repo setup`);
+            return;
         }
 
         const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-mindmap-create-'));
@@ -1103,6 +1167,8 @@ async function createAndPushToGitHubOrgForMindMap(
                 await exportMindMapToFile(mindMapForExport, tmpDir, 'main');
                 const commitMessage = `${domainId}/${user._id}/${user.uname || 'unknown'}: Initial commit`;
                 await gitInitAndPushMindMap(domainId, mmid, mindMapForExport, REPO_URL, 'main', commitMessage);
+            } else {
+                console.warn(`MindMap with mmid ${mmid} not found for export, skipping`);
             }
         } finally {
             try {
