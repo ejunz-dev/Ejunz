@@ -22,6 +22,7 @@ function MindMapCreate() {
 
     setSubmitting(true);
     try {
+      const domainId = (window as any).UiContext?.domainId || 'system';
       const params: any = {
         title: title.trim(),
         content: content.trim(),
@@ -29,10 +30,10 @@ function MindMapCreate() {
       if (rpid) params.rpid = rpid;
       if (branch) params.branch = branch;
 
-      const response = await request.post('/mindmap/create', params);
+      // 使用正确的 domainId 构建请求 URL
+      const response = await request.post(`/d/${domainId}/mindmap/create`, params);
       
       Notification.success('思维导图创建成功');
-      const domainId = (window as any).UiContext?.domainId || '';
       window.location.href = `/d/${domainId}/mindmap/${response.docId}`;
     } catch (error: any) {
       Notification.error('创建失败: ' + (error.message || '未知错误'));
@@ -119,7 +120,10 @@ function MindMapCreate() {
             {submitting ? '创建中...' : '创建'}
           </button>
           <a
-            href="/mindmap"
+            href={(() => {
+              const domainId = (window as any).UiContext?.domainId || 'system';
+              return `/d/${domainId}/mindmap`;
+            })()}
             style={{
               padding: '10px 20px',
               background: '#757575',

@@ -18,11 +18,11 @@
           </div>
           <div class="form__row">
             <button type="submit" class="button primary">{{ _("保存") }}</button>
-            <a href="{{ url('mindmap_detail', docId=mindMap.docId if mindMap else '') }}" class="button secondary">{{ _("取消") }}</a>
+            <a href="{{ url('mindmap_detail', domainId=mindMap.domainId if mindMap else domainId, docId=mindMap.docId if mindMap else '') }}" class="button secondary">{{ _("取消") }}</a>
             <button type="button" class="button danger" onclick="if(confirm('{{ _('确定要删除这个思维导图吗？') }}')) { 
               var form = document.createElement('form');
               form.method = 'post';
-              form.action = '{{ url('mindmap_edit', docId=mindMap.docId if mindMap else '') }}';
+              form.action = '{{ url('mindmap_edit', domainId=mindMap.domainId if mindMap else domainId, docId=mindMap.docId if mindMap else '') }}';
               var input = document.createElement('input');
               input.type = 'hidden';
               input.name = 'operation';

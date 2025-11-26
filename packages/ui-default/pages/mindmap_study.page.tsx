@@ -435,7 +435,8 @@ function MindMapStudy() {
       }
 
       try {
-        const response = await request.get(`/mindmap/${docId}/data`);
+        const domainId = (window as any).UiContext?.domainId || 'system';
+        const response = await request.get(`/d/${domainId}/mindmap/${docId}/data`);
         setMindMap(response);
       } catch (error: any) {
         Notification.error('加载思维导图失败: ' + (error.message || '未知错误'));
@@ -818,8 +819,8 @@ function MindMapStudy() {
       }}>
         <a
           href={(() => {
-            const domainId = (window as any).UiContext?.domainId || '';
-            return domainId ? `/d/${domainId}/mindmap/${docId}` : `/mindmap/${docId}`;
+            const domainId = (window as any).UiContext?.domainId || 'system';
+            return `/d/${domainId}/mindmap/${docId}`;
           })()}
           style={{
             padding: '6px 12px',

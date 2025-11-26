@@ -972,10 +972,11 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
   const [isCardFlipped, setIsCardFlipped] = useState<boolean>(false); // 卡片是否翻转
   // 处理卡片管理：跳转到卡片列表页面
   const handleManageCards = useCallback((nodeId: string) => {
+    const domainId = (window as any).UiContext?.domainId || 'system';
     const branch = mindMap.currentBranch || 'main';
     const url = docId 
-      ? `/mindmap/${docId}/branch/${branch}/node/${nodeId}/cards`
-      : `/mindmap/mmid/${mindMap.mmid}/branch/${branch}/node/${nodeId}/cards`;
+      ? `/d/${domainId}/mindmap/${docId}/branch/${branch}/node/${nodeId}/cards`
+      : `/d/${domainId}/mindmap/mmid/${mindMap.mmid}/branch/${branch}/node/${nodeId}/cards`;
     window.open(url, '_blank');
   }, [docId, mindMap.mmid, mindMap.currentBranch]);
   const [gitStatus, setGitStatus] = useState<any>(null); // Git 状态
@@ -1074,7 +1075,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       // 生成操作描述
       const operationDescription = lastOperationRef.current || '自动保存';
       
-      const response = await request.post(`/mindmap/${docId}/save`, {
+      const response = await request.post(getMindMapUrl('/save', docId), {
         nodes: updatedNodes,
         edges: updatedEdges,
         viewport: viewport ? {
@@ -1097,7 +1098,8 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
               await new Promise(resolve => setTimeout(resolve, 500 + i * 300));
               try {
                 const branch = mindMap.currentBranch || 'main';
-                const statusResponse = await request.get(`/mindmap/${docId}/git/status?branch=${branch}`);
+                const domainId = (window as any).UiContext?.domainId || 'system';
+                const statusResponse = await request.get(`${getMindMapUrl('/git/status', docId)}?branch=${branch}`);
                 const newGitStatus = statusResponse.gitStatus;
                 setGitStatus(newGitStatus);
                 // 如果检测到有未提交的更改，说明同步成功，可以停止重试
@@ -1138,7 +1140,8 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     setGitStatusLoading(true);
     try {
       const branch = mindMap.currentBranch || 'main';
-      const response = await request.get(`/mindmap/${docId}/git/status?branch=${branch}`);
+      const domainId = (window as any).UiContext?.domainId || 'system';
+      const response = await request.get(`${getMindMapUrl('/git/status', docId)}?branch=${branch}`);
       setGitStatus(response.gitStatus);
     } catch (error: any) {
       console.error('Failed to load git status:', error);
@@ -1152,7 +1155,8 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
-      const response = await request.get(`/mindmap/${docId}/history`);
+      const domainId = (window as any).UiContext?.domainId || 'system';
+      const response = await request.get(getMindMapUrl('/history', docId));
       setHistory(response.history || []);
     } catch (error: any) {
       console.error('Failed to load history:', error);
@@ -1167,7 +1171,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     if (!confirm('确定要恢复到该历史节点吗？当前未保存的更改将丢失。')) return;
     
     try {
-      await request.post(`/mindmap/${docId}/history/${historyId}/restore`);
+      await request.post(getMindMapUrl(`/history/${historyId}/restore`, docId));
       Notification.success('恢复成功，页面将刷新');
       setTimeout(() => window.location.reload(), 1000);
     } catch (error: any) {
@@ -1278,7 +1282,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       const nodeText = node?.data?.originalNode?.text || '节点';
       lastOperationRef.current = `删除节点: ${nodeText}`;
 
-      await request.post(`/mindmap/${docId}/node/${nodeId}`, {
+      await request.post(getMindMapUrl(`/node/${nodeId}`, docId), {
         operation: 'delete',
       });
 
@@ -1366,7 +1370,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       if (result) {
         lastOperationRef.current = `编辑节点: ${result.text}`;
         
-        await request.post(`/mindmap/${docId}/node/${originalNode.id}`, {
+        await request.post(getMindMapUrl(`/node/${originalNode.id}`, docId), {
           operation: 'update',
           ...result,
         });
@@ -1416,7 +1420,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     try {
       lastOperationRef.current = `修改字体大小: ${originalNode.text}`;
       
-      await request.post(`/mindmap/${docId}/node/${originalNode.id}`, {
+      await request.post(getMindMapUrl(`/node/${originalNode.id}`, docId), {
         operation: 'update',
         fontSize,
       });
@@ -1462,7 +1466,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     try {
       lastOperationRef.current = `修改颜色: ${originalNode.text}`;
       
-      await request.post(`/mindmap/${docId}/node/${originalNode.id}`, {
+      await request.post(getMindMapUrl(`/node/${originalNode.id}`, docId), {
         operation: 'update',
         color,
       });
@@ -1630,7 +1634,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           // 确保不传递 siblingId
         }
 
-        const response = await request.post(`/mindmap/${docId}/node`, requestBody);
+        const response = await request.post(getMindMapUrl('/node', docId), requestBody);
         console.log('后端返回的完整响应:', response);
         const newNodeId = response.nodeId;
         
@@ -1771,7 +1775,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     } else if (!isNewNode && newText.trim() !== originalNode.text) {
       // 如果是已存在的节点，更新文本
       try {
-        await request.post(`/mindmap/${docId}/node/${nodeId}`, {
+        await request.post(getMindMapUrl(`/node/${nodeId}`, docId), {
           operation: 'update',
           text: newText.trim(),
         });
@@ -2402,7 +2406,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       if (!params.source || !params.target) return;
 
       try {
-        const response = await request.post(`/mindmap/${docId}/edge`, {
+        const response = await request.post(getMindMapUrl('/edge', docId), {
           operation: 'add',
           source: params.source,
           target: params.target,
@@ -3248,6 +3252,12 @@ const StudyView = ({
   );
 };
 
+// 辅助函数：获取带 domainId 的 mindmap URL
+const getMindMapUrl = (path: string, docId: string): string => {
+  const domainId = (window as any).UiContext?.domainId || 'system';
+  return `/d/${domainId}/mindmap/${docId}${path}`;
+};
+
 const page = new NamedPage('mindmap_detail', async () => {
   try {
     const $container = $('#mindmap-editor');
@@ -3264,7 +3274,7 @@ const page = new NamedPage('mindmap_detail', async () => {
     // 加载思维导图数据
     let initialData: MindMapDoc;
     try {
-      const response = await request.get(`/mindmap/${docId}/data`);
+      const response = await request.get(getMindMapUrl('/data', docId));
       initialData = response;
     } catch (error: any) {
       Notification.error('加载思维导图失败: ' + (error.message || '未知错误'));
