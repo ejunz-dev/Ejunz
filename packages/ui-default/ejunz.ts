@@ -5,6 +5,7 @@ import _ from 'lodash';
 import Notification from 'vj/components/notification';
 import PageLoader from 'vj/misc/PageLoader';
 import { delay } from 'vj/utils';
+import { initFloatingAiButton } from 'vj/components/ai';
 
 declare global {
   interface Window {
@@ -109,4 +110,10 @@ export async function initPageLoader() {
   await delay(500);
   $('.section').trigger('vjLayout');
   $(document).trigger('vjPageFullyInitialized');
+  
+  try {
+    initFloatingAiButton();
+  } catch (e) {
+    console.error('Failed to initialize floating AI button:', e);
+  }
 }
