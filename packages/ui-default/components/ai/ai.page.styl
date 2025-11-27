@@ -1,0 +1,201 @@
+.floating-ai-button
+  position: fixed
+  right: rem(20px)
+  bottom: rem(20px)
+  width: rem(56px)
+  height: rem(56px)
+  border-radius: 50%
+  background: $primary-color
+  color: white
+  display: flex
+  align-items: center
+  justify-content: center
+  cursor: pointer
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15)
+  z-index: 999
+  transition: all 0.3s ease
+  user-select: none
+
+  &:hover
+    transform: scale(1.1)
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2)
+
+  &:active
+    transform: scale(0.95)
+
+  .icon
+    font-size: rem(24px)
+
+.ai-dialog-overlay
+  position: fixed
+  left: 0
+  top: 0
+  width: 100%
+  height: 100%
+  background: rgba(0, 0, 0, 0.5)
+  z-index: 10000
+  display: flex
+  align-items: center
+  justify-content: center
+  animation: fadeIn 0.2s ease
+
+@keyframes fadeIn
+  from
+    opacity: 0
+  to
+    opacity: 1
+
+.ai-dialog
+  width: 90%
+  max-width: rem(800px)
+  height: 80%
+  max-height: rem(600px)
+  background: $dialog-bg-color
+  border: 1px solid $dialog-border-color
+  box-shadow: $dialog-shadow
+  border-radius: rem(8px)
+  display: flex
+  flex-direction: column
+  overflow: hidden
+  animation: slideUp 0.3s ease
+
+@keyframes slideUp
+  from
+    transform: translateY(20px)
+    opacity: 0
+  to
+    transform: translateY(0)
+    opacity: 1
+
+.ai-dialog__header
+  padding: rem(16px) rem(20px)
+  border-bottom: 1px solid $dialog-border-color
+  display: flex
+  justify-content: space-between
+  align-items: center
+  background: $dialog-bg-color
+
+  h3
+    margin: 0
+    font-size: rem(18px)
+    font-weight: 600
+    color: $dialog-title-color
+
+.ai-dialog__close
+  background: none
+  border: none
+  cursor: pointer
+  padding: rem(4px)
+  color: $text-color
+  opacity: 0.6
+  transition: opacity 0.2s
+
+  &:hover
+    opacity: 1
+
+  .icon
+    font-size: rem(20px)
+
+.ai-dialog__messages
+  flex: 1
+  overflow-y: auto
+  padding: rem(20px)
+  display: flex
+  flex-direction: column
+  gap: rem(16px)
+
+.ai-dialog__empty
+  text-align: center
+  color: $text-color-secondary
+  padding: rem(40px) 0
+
+  p
+    margin: 0
+    font-size: rem(14px)
+
+.ai-dialog__message
+  display: flex
+  flex-direction: column
+  max-width: 80%
+
+  &--user
+    align-self: flex-end
+    align-items: flex-end
+
+  &--assistant
+    align-self: flex-start
+    align-items: flex-start
+
+.ai-dialog__message-content
+  padding: rem(12px) rem(16px)
+  border-radius: rem(8px)
+  word-wrap: break-word
+  white-space: pre-wrap
+  line-height: 1.5
+
+  .ai-dialog__message--user &
+    background: $primary-color
+    color: white
+
+  .ai-dialog__message--assistant &
+    background: $bg-color-secondary
+    color: $text-color
+    border: 1px solid $border-color
+
+.ai-dialog__typing
+  display: inline-block
+  animation: typing 1.5s infinite
+
+@keyframes typing
+  0%, 60%, 100%
+    opacity: 1
+  30%
+    opacity: 0.3
+
+.ai-dialog__input
+  padding: rem(16px) rem(20px)
+  border-top: 1px solid $dialog-border-color
+  display: flex
+  gap: rem(12px)
+  align-items: flex-end
+  background: $dialog-bg-color
+
+.ai-dialog__textarea
+  flex: 1
+  padding: rem(10px) rem(12px)
+  border: 1px solid $border-color
+  border-radius: rem(4px)
+  font-size: rem(14px)
+  font-family: inherit
+  resize: none
+  outline: none
+  transition: border-color 0.2s
+
+  &:focus
+    border-color: $primary-color
+
+  &:disabled
+    background: $bg-color-secondary
+    cursor: not-allowed
+
+.ai-dialog__send
+  padding: rem(10px) rem(24px)
+  background: $primary-color
+  color: white
+  border: none
+  border-radius: rem(4px)
+  cursor: pointer
+  font-size: rem(14px)
+  font-weight: 500
+  transition: background 0.2s
+  white-space: nowrap
+
+  &:hover:not(:disabled)
+    background: darken($primary-color, 10%)
+
+  &:disabled
+    background: $bg-color-secondary
+    color: $text-color-secondary
+    cursor: not-allowed
+    opacity: 0.6
+
