@@ -29,8 +29,9 @@ import DomainSelectAutoComplete from './components/autocomplete/DomainSelectAuto
 import UserSelectAutoComplete from './components/autocomplete/UserSelectAutoComplete';
 
 export {
-  AssignSelectAutoComplete, AutoComplete, CustomSelectAutoComplete, DomainSelectAutoComplete, ProblemSelectAutoComplete, UserSelectAutoComplete,
+  AutoComplete, CustomSelectAutoComplete, DomainSelectAutoComplete, UserSelectAutoComplete,
 };
+export { initFloatingAiButton } from './components/ai';
 export function addPage(page: import('./misc/Page').Page | (() => Promise<void> | void)) {
   window.Ejunz.extraPages.push(page);
 }

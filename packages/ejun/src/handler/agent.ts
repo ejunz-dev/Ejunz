@@ -4064,6 +4064,257 @@ export class AgentEdgeConfigHandler extends Handler {
     }
 }
 
+export class DirectAiChatHandler extends Handler {
+    async post(domainId: string) {
+        this.response.template = null;
+        
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const message = this.request.body?.message;
+        const history = this.request.body?.history || '[]';
+        const stream = this.request.query?.stream === 'true' || this.request.body?.stream === true;
+        
+        if (!message) {
+            this.response.body = { error: 'Message cannot be empty' };
+            return;
+        }
+        
+        const apiKey = (this.domain as any)['apiKey'] || '';
+        const model = (this.domain as any)['model'] || 'deepseek-chat';
+        const apiUrl = (this.domain as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
+        
+        if (!apiKey) {
+            this.response.body = { error: 'AI API Key not configured' };
+            return;
+        }
+
+        let chatHistory: ChatMessage[] = [];
+        try {
+            if (typeof history === 'string') {
+                chatHistory = JSON.parse(history);
+            } else if (Array.isArray(history)) {
+                chatHistory = history;
+            }
+        } catch (e) {
+            chatHistory = [];
+        }
+
+        if (stream) {
+            // 流式传输模式
+            const res = this.context.res;
+            this.response.status = 200;
+            this.response.type = 'text/event-stream';
+            res.setHeader('Cache-Control', 'no-cache');
+            res.setHeader('Connection', 'keep-alive');
+            res.setHeader('X-Accel-Buffering', 'no');
+            
+            if (this.context.req.socket) {
+                this.context.req.socket.setNoDelay(true);
+                this.context.req.socket.setKeepAlive(true);
+            }
+            
+            const streamResponse = new PassThrough({
+                highWaterMark: 0,
+                objectMode: false,
+            });
+            
+            streamResponse.pipe(res);
+            
+            this.context.compress = false;
+            (this.context.EjunzContext as any).request.websocket = true;
+            this.response.body = null;
+            this.context.body = null;
+            
+            // 立即发送响应头
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'X-Accel-Buffering': 'no',
+            });
+            
+            let accumulatedContent = '';
+            let streamFinished = false;
+
+            try {
+                AgentLogger.info('Starting direct AI chat stream', { apiUrl, model, messageLength: message.length });
+                await new Promise<void>((resolve, reject) => {
+                    const req = request.post(apiUrl)
+                        .send({
+                            model,
+                            messages: [
+                                ...chatHistory,
+                                {
+                                    role: 'user',
+                                    content: message,
+                                },
+                            ],
+                            stream: true,
+                        })
+                        .set('Authorization', `Bearer ${apiKey}`)
+                        .set('content-type', 'application/json')
+                        .buffer(false)
+                        .timeout(60000)
+                        .on('response', (res) => {
+                            AgentLogger.info('AI API response received, status: %d', res.statusCode);
+                            if (res.statusCode !== 200) {
+                                AgentLogger.error('AI API returned non-200 status: %d', res.statusCode);
+                                // 读取错误响应
+                                let errorBody = '';
+                                res.on('data', (chunk: string) => {
+                                    errorBody += chunk;
+                                });
+                                res.on('end', () => {
+                                    AgentLogger.error('AI API error response: %s', errorBody);
+                                });
+                            }
+                        })
+                        .parse((res, callback) => {
+                            res.setEncoding('utf8');
+                            let buffer = '';
+                            
+                            let chunkCount = 0;
+                            res.on('data', (chunk: string) => {
+                                if (streamFinished) return;
+                                
+                                chunkCount++;
+                                if (chunkCount <= 3) {
+                                    AgentLogger.info('Received chunk %d, length: %d, preview: %s', chunkCount, chunk.length, chunk.substring(0, 100));
+                                }
+                                
+                                buffer += chunk;
+                                const lines = buffer.split('\n');
+                                buffer = lines.pop() || '';
+                                
+                                for (const line of lines) {
+                                    if (!line.trim()) continue;
+                                    
+                                    if (!line.startsWith('data: ')) {
+                                        if (chunkCount <= 3) {
+                                            AgentLogger.info('Non-data line: %s', line.substring(0, 50));
+                                        }
+                                        continue;
+                                    }
+                                    
+                                    const data = line.slice(6).trim();
+                                    if (data === '[DONE]') {
+                                        streamFinished = true;
+                                        AgentLogger.info('Stream finished with [DONE], content length: %d', accumulatedContent.length);
+                                        streamResponse.write(`data: ${JSON.stringify({ type: 'done', content: accumulatedContent })}\n\n`);
+                                        streamResponse.end();
+                                        callback(null, undefined);
+                                        resolve();
+                                        return;
+                                    }
+                                    
+                                    try {
+                                        const parsed = JSON.parse(data);
+                                        const choice = parsed.choices?.[0];
+                                        const delta = choice?.delta;
+                                        
+                                        if (delta?.content) {
+                                            accumulatedContent += delta.content;
+                                            AgentLogger.debug('Content chunk: %s (total: %d)', delta.content.substring(0, 20), accumulatedContent.length);
+                                            const contentData = `data: ${JSON.stringify({ type: 'content', content: delta.content })}\n\n`;
+                                            streamResponse.write(contentData, 'utf8', (err) => {
+                                                if (err) {
+                                                    AgentLogger.error('Failed to write to stream:', err);
+                                                } else {
+                                                    AgentLogger.debug('Content written to stream: %d bytes', contentData.length);
+                                                }
+                                            });
+                                        }
+                                        
+                                        if (choice?.finish_reason && choice.finish_reason !== null) {
+                                            streamFinished = true;
+                                            AgentLogger.info('Stream finished with finish_reason: %s, content length: %d', choice.finish_reason, accumulatedContent.length);
+                                            streamResponse.write(`data: ${JSON.stringify({ type: 'done', content: accumulatedContent })}\n\n`);
+                                            streamResponse.end();
+                                            callback(null, undefined);
+                                            resolve();
+                                            return;
+                                        }
+                                    } catch (e) {
+                                        AgentLogger.warn('Failed to parse stream data: %s, data: %s', e, data.substring(0, 100));
+                                        // ignore parse errors
+                                    }
+                                }
+                            });
+                            
+                            res.on('end', () => {
+                                AgentLogger.info('AI API stream ended, accumulated content length: %d', accumulatedContent.length);
+                                if (!streamFinished) {
+                                    streamFinished = true;
+                                    streamResponse.write(`data: ${JSON.stringify({ type: 'done', content: accumulatedContent })}\n\n`);
+                                    streamResponse.end();
+                                    resolve();
+                                }
+                            });
+                            
+                            res.on('error', (err: any) => {
+                                AgentLogger.error('AI API response error:', err);
+                                if (!streamFinished) {
+                                    streamFinished = true;
+                                    streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: err.message || '请求失败' })}\n\n`);
+                                    streamResponse.end();
+                                    reject(err);
+                                }
+                            });
+                        });
+                    
+                    req.on('error', (err: any) => {
+                        AgentLogger.error('Stream request error:', err);
+                        if (!streamFinished) {
+                            streamFinished = true;
+                            streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: err.message || '请求失败' })}\n\n`);
+                            streamResponse.end();
+                        }
+                        reject(err);
+                    });
+                    
+                    req.end();
+                });
+            } catch (error: any) {
+                AgentLogger.error('Direct AI chat stream error:', error);
+                if (!streamFinished) {
+                    streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: error.message || '请求失败' })}\n\n`);
+                    streamResponse.end();
+                }
+            }
+        } else {
+            // 非流式模式（兼容）
+            try {
+                const response = await request.post(apiUrl)
+                    .send({
+                        model,
+                        messages: [
+                            ...chatHistory,
+                            {
+                                role: 'user',
+                                content: message,
+                            },
+                        ],
+                        stream: false,
+                    })
+                    .set('Authorization', `Bearer ${apiKey}`)
+                    .set('content-type', 'application/json');
+
+                const assistantMessage = response.body.choices?.[0]?.message?.content || '无响应';
+                
+                this.response.body = {
+                    message: assistantMessage,
+                };
+            } catch (error: any) {
+                AgentLogger.error('Direct AI chat error:', error);
+                this.response.body = { 
+                    error: error.response?.body?.error?.message || error.message || '请求失败' 
+                };
+                this.response.status = 500;
+            }
+        }
+    }
+}
+
 export async function apply(ctx: Context) {
     ctx.Route('agent_domain', '/agent', AgentMainHandler);
     ctx.Route('agent_create', '/agent/create', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
@@ -4076,6 +4327,7 @@ export async function apply(ctx: Context) {
     ctx.Route('agent_api', '/api/agent', AgentApiHandler);
     ctx.Connection('agent_api_ws', '/api/agent/chat-ws', AgentApiConnectionHandler);
     ctx.Connection('agent_stream_ws', '/api/agent/:aid/stream', AgentStreamConnectionHandler);
+    ctx.Route('direct_ai_chat', '/ai/chat', DirectAiChatHandler, PRIV.PRIV_USER_PROFILE);
     
     // 注册 agent task record 路由
     // Agent task record routes are now in record.ts
