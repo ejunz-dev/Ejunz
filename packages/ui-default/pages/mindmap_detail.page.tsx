@@ -15,10 +15,14 @@ import ReactFlow, {
   useEdgesState,
   MarkerType,
   NodeTypes,
+  EdgeTypes,
   Handle,
   Position,
   ReactFlowInstance,
   NodeMouseHandler,
+  BaseEdge,
+  getBezierPath,
+  EdgeProps,
 } from 'reactflow';
 import dagre from 'dagre';
 import 'reactflow/dist/style.css';
@@ -86,19 +90,15 @@ interface MindMapDoc {
   currentBranch?: string;
 }
 
-// 自定义思维导图节点组件
 const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boolean; id: string }) => {
   const node = data.originalNode as MindMapNode;
   const shape = node.shape || 'rectangle';
-  // 未选中时背景和边框都透明，选中时显示
   const backgroundColor = selected ? (node.backgroundColor || '#e3f2fd') : 'transparent';
   const borderColor = selected ? '#1976d2' : 'transparent';
   const color = node.color || '#333';
   const fontSize = node.fontSize || 14;
   const isNewNode = data.isNewNode || false; // 是否是新创建的节点（还未保存）
   const isEditing = data.isEditing || false; // 是否处于编辑模式
-  
-  // 检查是否有子节点（通过 edges 检查）
   const edges = data.edges || [];
   const childEdges = edges.filter((edge: Edge) => edge.source === id);
   const hasChildren = childEdges.length > 0;
@@ -107,18 +107,58 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
   // 用于编辑的 ref
   const textRef = React.useRef<HTMLDivElement>(null);
   
-  // 如果是新节点，自动进入编辑模式
+  // 如果是新节点或编辑模式，自动进入编辑模式并 focus
   React.useEffect(() => {
-    if (isNewNode && textRef.current) {
-      textRef.current.focus();
-      // 选中所有文本
-      const range = document.createRange();
-      range.selectNodeContents(textRef.current);
-      const selection = window.getSelection();
-      selection?.removeAllRanges();
-      selection?.addRange(range);
+    if ((isNewNode || isEditing)) {
+      // 使用多重延迟确保 DOM 已完全渲染并可以 focus
+      const focusElement = () => {
+        if (textRef.current) {
+          // 确保元素可见且可交互
+          textRef.current.focus();
+          
+          // 如果是新节点，准备输入
+          if (isNewNode) {
+            // 新节点：确保光标在开始位置，可以输入
+            try {
+              const range = document.createRange();
+              range.selectNodeContents(textRef.current);
+              range.collapse(true); // 折叠到开始位置
+              const selection = window.getSelection();
+              if (selection) {
+                selection.removeAllRanges();
+                selection.addRange(range);
+              }
+            } catch (e) {
+              // 如果选择失败，至少确保 focus
+              console.warn('Failed to set selection:', e);
+            }
+          } else {
+            // 编辑模式：将光标移到文本末尾
+            try {
+              const range = document.createRange();
+              range.selectNodeContents(textRef.current);
+              range.collapse(false); // 折叠到末尾
+              const selection = window.getSelection();
+              if (selection) {
+                selection.removeAllRanges();
+                selection.addRange(range);
+              }
+            } catch (e) {
+              console.warn('Failed to set selection:', e);
+            }
+          }
+        }
+      };
+      
+      // 使用多重延迟确保 DOM 已渲染
+      // 先等待一个 tick，再等待下一个 frame，最后执行 focus
+      setTimeout(() => {
+        requestAnimationFrame(() => {
+          setTimeout(focusElement, 50);
+        });
+      }, 0);
     }
-  }, [isNewNode]);
+  }, [isNewNode, isEditing]);
 
   const shapeStyles: Record<string, React.CSSProperties> = {
     rectangle: {
@@ -196,10 +236,34 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
           contentEditable={true}
           suppressContentEditableWarning={true}
           onBlur={(e) => {
-            // 失去焦点时保存
             const newText = e.currentTarget.textContent || '';
-            if (data.onTextChange) {
-              data.onTextChange(id, newText);
+            // 如果是新建节点
+            if (isNewNode) {
+              // 新建节点失去焦点时：
+              // 1. 如果没有文本，直接删除节点（不保存）
+              // 2. 如果有文本，保存节点
+              if (!newText.trim()) {
+                // 新节点没有文本，直接删除节点和临时边
+                if (data.onDelete) {
+                  data.onDelete(id);
+                }
+              } else {
+                // 新节点有文本，保存节点
+                if (data.onTextChange) {
+                  data.onTextChange(id, newText);
+                }
+              }
+            } else if (isEditing) {
+              // 编辑模式（非新节点）失去焦点时：
+              // 1. 如果有文本变化，保存
+              // 2. 退出编辑模式
+              if (data.onTextChange) {
+                data.onTextChange(id, newText);
+              }
+              // 退出编辑模式
+              if (data.onExitEdit) {
+                data.onExitEdit(id);
+              }
             }
           }}
           onKeyDown={(e) => {
@@ -663,8 +727,49 @@ const FloatingToolbar = ({
   );
 };
 
+// 自定义边缘组件：根据节点是否为新建节点显示虚线或实线，虚线按照曲度生成
+const CustomMindMapEdge = ({ id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, data, markerEnd, markerStart }: EdgeProps) => {
+  // 从边缘的 data 中获取源节点和目标节点的 isNewNode 状态
+  const sourceIsNewNode = data?.sourceIsNewNode as boolean | undefined;
+  const targetIsNewNode = data?.targetIsNewNode as boolean | undefined;
+  
+  // 如果源节点或目标节点是新建节点（未保存），显示虚线；否则显示实线
+  const isNewNode = sourceIsNewNode || targetIsNewNode;
+  
+  // 生成贝塞尔曲线路径，使用与 ReactFlow 默认 'bezier' 类型完全相同的参数
+  // 确保虚线和实线使用完全相同的路径，只是样式不同
+  // getBezierPath 会自动计算曲度，确保与默认 'bezier' 类型一致
+  const [edgePath] = getBezierPath({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition: sourcePosition || Position.Right,
+    targetPosition: targetPosition || Position.Left,
+  });
+  
+  const edgeStyle = {
+    ...style,
+    strokeDasharray: isNewNode ? '5,5' : 'none',
+  };
+
+  return (
+    <BaseEdge
+      id={id}
+      path={edgePath}
+      style={edgeStyle}
+      markerEnd={markerEnd}
+      markerStart={markerStart}
+    />
+  );
+};
+
 const customNodeTypes: NodeTypes = {
   mindmap: MindMapNodeComponent,
+};
+
+const customEdgeTypes: EdgeTypes = {
+  custom: CustomMindMapEdge,
 };
 
 // 使用 dagre 自动布局
@@ -1357,12 +1462,52 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
 
   // 删除节点 - 必须在 useMemo 之前定义
   const handleDeleteNode = useCallback(async (nodeId: string) => {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+
+    const isNewNode = node.data.isNewNode || false;
+    
+    // 如果是新建节点（临时节点），直接从前端删除，不调用后端API
+    if (isNewNode) {
+      // 删除临时节点和临时边
+      const tempEdgeId = node.data.tempEdgeId;
+      
+      // 更新节点和边的状态
+      setNodes((nds) => {
+        const updatedNodes = nds.filter((n) => n.id !== nodeId);
+        // 更新 ref，确保自动布局使用最新数据
+        nodesRef.current = updatedNodes;
+        return updatedNodes;
+      });
+      
+      if (tempEdgeId) {
+        setEdges((eds) => {
+          const updatedEdges = eds.filter((e) => e.id !== tempEdgeId);
+          // 更新 ref，确保自动布局使用最新数据
+          edgesRef.current = updatedEdges;
+          return updatedEdges;
+        });
+      } else {
+        // 即使没有临时边，也要更新 edgesRef
+        edgesRef.current = edges.filter((e) => e.source !== nodeId && e.target !== nodeId);
+      }
+      
+      // 删除新建节点后，如果自动布局开启，触发布局以恢复到之前的间距
+      if (autoLayout) {
+        setTimeout(() => {
+          applyLayout();
+        }, 100);
+      }
+      
+      return;
+    }
+
+    // 如果是已保存的节点，需要确认并调用后端API删除
     if (!confirm('确定要删除这个节点吗？')) {
       return;
     }
 
     try {
-      const node = nodes.find(n => n.id === nodeId);
       const nodeText = node?.data?.originalNode?.text || '节点';
       lastOperationRef.current = `删除节点: ${nodeText}`;
 
@@ -1397,8 +1542,30 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     }
   }, [docId, nodes, setNodes, setEdges, autoLayout, applyLayout, triggerAutoSave]);
 
-  // 编辑节点 - 必须在 useMemo 之前定义
-  const handleEditNode = useCallback(async (node: Node) => {
+  // 编辑节点 - 直接进入编辑模式
+  const handleEditNode = useCallback((node: Node) => {
+    const originalNode = node.data.originalNode as MindMapNode;
+    if (!originalNode) return;
+
+    // 直接进入编辑模式，不弹出对话框
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.id === node.id) {
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              isEditing: true,
+            },
+          };
+        }
+        return n;
+      })
+    );
+  }, [setNodes]);
+
+  // 旧的编辑节点函数（保留但不再使用，以防需要）
+  const handleEditNodeOld = useCallback(async (node: Node) => {
     const originalNode = node.data.originalNode as MindMapNode;
     if (!originalNode) return;
 
@@ -1659,6 +1826,42 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     }
   }, []);
 
+  // 进入编辑模式（双击节点时调用）
+  const handleEnterEdit = useCallback((nodeId: string) => {
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.id === nodeId) {
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              isEditing: true,
+            },
+          };
+        }
+        return n;
+      })
+    );
+  }, [setNodes]);
+
+  // 退出编辑模式（双击进入编辑但未修改文本时调用）
+  const handleExitEdit = useCallback((nodeId: string) => {
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.id === nodeId) {
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              isEditing: false,
+            },
+          };
+        }
+        return n;
+      })
+    );
+  }, [setNodes]);
+
   // 处理节点文本变化（失去焦点时调用）
   const handleNodeTextChange = useCallback(async (nodeId: string, newText: string) => {
     // 使用 ref 获取最新的 nodes，避免依赖 nodes 导致循环
@@ -1769,14 +1972,14 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
               id: response.edgeId,
               source: response.edgeSource,
               target: response.edgeTarget === nodeId ? newNodeId : response.edgeTarget,
-              type: 'smoothstep',
-              animated: true,
-              markerEnd: {
-                type: MarkerType.ArrowClosed,
-              },
+              type: 'custom', // 使用自定义边缘类型
+              animated: false,
               style: {
                 stroke: '#2196f3', // 使用默认的蓝色
                 strokeWidth: 2,
+              },
+              data: {
+                // 节点状态会在 useEffect 中自动更新
               },
             };
             console.log('添加正式边:', newEdge);
@@ -1807,14 +2010,14 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             id: response.edgeId,
             source: response.edgeSource,
             target: response.edgeTarget === nodeId ? newNodeId : response.edgeTarget,
-            type: 'smoothstep',
-            animated: true,
-            markerEnd: {
-              type: MarkerType.ArrowClosed,
-            },
+            type: 'custom', // 使用自定义边缘类型
+            animated: false,
             style: {
               stroke: '#2196f3', // 使用默认的蓝色
               strokeWidth: 2,
+            },
+            data: {
+              // 节点状态会在 useEffect 中自动更新
             },
           };
           console.log('添加后端返回的边（无临时边）:', newEdge);
@@ -1894,6 +2097,22 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       } catch (error: any) {
         Notification.error('更新节点失败: ' + (error.message || '未知错误'));
       }
+    } else if (!isNewNode && newText.trim() === originalNode.text) {
+      // 如果是已存在的节点但文本没有变化，只退出编辑模式
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === nodeId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                isEditing: false,
+              },
+            };
+          }
+          return n;
+        })
+      );
     } else if (isNewNode && !newText.trim()) {
       // 如果是新节点但没有文本，删除节点和临时边
       const tempEdgeId = node.data.tempEdgeId;
@@ -2111,6 +2330,12 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         onTextChange: (nodeId: string, newText: string) => {
           handleNodeTextChangeRef.current(nodeId, newText);
         },
+        onEnterEdit: (nodeId: string) => {
+          handleEnterEditRef.current(nodeId);
+        },
+        onExitEdit: (nodeId: string) => {
+          handleExitEditRef.current(nodeId);
+        },
       },
     };
 
@@ -2128,15 +2353,17 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         id: tempEdgeId,
         source: parentId,
         target: tempNodeId,
-        type: 'smoothstep',
-        animated: true,
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-        },
+        type: 'custom', // 使用自定义边缘类型，确保与永久边缘使用相同的路径生成算法
+        animated: false,
         style: {
           stroke: '#999', // 临时边使用灰色，以便区分
           strokeWidth: 2,
           strokeDasharray: '5,5', // 临时边使用虚线
+        },
+        data: {
+          // 临时边缘连接到新建节点，所以 targetIsNewNode 为 true
+          sourceIsNewNode: false,
+          targetIsNewNode: true,
         },
       };
       setEdges((eds) => [...eds, tempEdge]);
@@ -2154,15 +2381,17 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             id: tempEdgeId,
             source: parentEdge.source,
             target: tempNodeId,
-            type: 'smoothstep',
-            animated: true,
-            markerEnd: {
-              type: MarkerType.ArrowClosed,
-            },
+            type: 'custom', // 使用自定义边缘类型，确保与永久边缘使用相同的路径生成算法
+            animated: false,
             style: {
               stroke: '#999', // 临时边使用灰色，以便区分
               strokeWidth: 2,
               strokeDasharray: '5,5', // 临时边使用虚线
+            },
+            data: {
+              // 临时边缘连接到新建节点，所以 targetIsNewNode 为 true
+              sourceIsNewNode: false,
+              targetIsNewNode: true,
             },
           };
           console.log('创建兄弟节点临时边:', tempEdge, '兄弟节点ID:', siblingId, '父边:', parentEdge);
@@ -2279,9 +2508,19 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           onEdit: (node: Node) => callbacksRef.current?.onEdit(node),
           onAddChild: (nodeId: string) => callbacksRef.current?.onAddChild(nodeId),
           onAddSibling: (nodeId: string) => callbacksRef.current?.onAddSibling(nodeId),
+          onTextChange: (nodeId: string, newText: string) => {
+            handleNodeTextChangeRef.current(nodeId, newText);
+          },
+          onEnterEdit: (nodeId: string) => {
+            handleEnterEditRef.current(nodeId);
+          },
+          onExitEdit: (nodeId: string) => {
+            handleExitEditRef.current(nodeId);
+          },
         },
       } as Node;
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mindMap.nodes, mindMap.edges]);
 
   // 计算每个节点的最大子分支数量（递归计算）
@@ -2349,13 +2588,16 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         source: edge.source,
         target: edge.target,
         sourceHandle: `source-${edge.target}`, // 使用目标节点ID作为sourceHandle，确保每个子节点使用不同的连接点
-        type: 'bezier', // 使用 bezier 类型，避免路径合并，每条边都有独立的控制点
+        type: 'custom', // 使用自定义边缘类型
         animated: false, // 移除动画
         // 移除箭头
         label: edge.label,
         style: {
           stroke: edge.color || color, // 使用动态分配的颜色
           strokeWidth: edge.width || 2,
+        },
+        data: {
+          // 节点状态会在 useEffect 中更新
         },
       } as Edge;
     });
@@ -2410,11 +2652,51 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     handleNodeTextChangeRef.current = handleNodeTextChange;
   }, [handleNodeTextChange]);
 
+  // 使用 ref 存储 handleEnterEdit，避免在 useEffect 依赖中引起循环
+  const handleEnterEditRef = useRef(handleEnterEdit);
+  useEffect(() => {
+    handleEnterEditRef.current = handleEnterEdit;
+  }, [handleEnterEdit]);
+
+  // 使用 ref 存储 handleExitEdit，避免在 useEffect 依赖中引起循环
+  const handleExitEditRef = useRef(handleExitEdit);
+  useEffect(() => {
+    handleExitEditRef.current = handleExitEdit;
+  }, [handleExitEdit]);
+
   // 使用 ref 存储 edges，避免在 useEffect 依赖中引起循环
   const edgesRefForNodes = useRef(edges);
   useEffect(() => {
     edgesRefForNodes.current = edges;
   }, [edges]);
+
+  // 当节点状态变化时，更新边缘的 data，以便边缘组件能够根据节点是否为新建节点显示虚线或实线
+  // 更新所有 'custom' 类型的边缘（包括临时边缘和永久边缘）
+  useEffect(() => {
+    setEdges((eds) =>
+      eds.map((edge) => {
+        // 只更新 'custom' 类型的边缘
+        if (edge.type === 'custom') {
+          // 查找源节点和目标节点，获取它们的 isNewNode 状态
+          const sourceNode = nodes.find(n => n.id === edge.source);
+          const targetNode = nodes.find(n => n.id === edge.target);
+          const sourceIsNewNode = sourceNode?.data?.isNewNode || false;
+          const targetIsNewNode = targetNode?.data?.isNewNode || false;
+          
+          return {
+            ...edge,
+            data: {
+              ...edge.data,
+              sourceIsNewNode,
+              targetIsNewNode,
+            },
+          };
+        }
+        // 其他类型的边缘保持原样（虽然现在应该都是 'custom' 类型了）
+        return edge;
+      })
+    );
+  }, [nodes, setEdges]);
 
 
   useEffect(() => {
@@ -2448,6 +2730,12 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             onTextChange: (nodeId: string, newText: string) => {
               handleNodeTextChangeRef.current(nodeId, newText);
             },
+            onEnterEdit: (nodeId: string) => {
+              handleEnterEditRef.current(nodeId);
+            },
+            onExitEdit: (nodeId: string) => {
+              handleExitEditRef.current(nodeId);
+            },
             onToggleExpand: (nodeId: string) => callbacksRef.current?.onToggleExpand(nodeId),
           },
         };
@@ -2479,6 +2767,37 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     }, 50);
   }, []);
 
+  // 节点双击事件 - 进入编辑模式
+  const onNodeDoubleClick: NodeMouseHandler = useCallback((event, node) => {
+    event.preventDefault();
+    event.stopPropagation();
+    // 如果节点不是新节点且不在编辑模式，则进入编辑模式
+    const isNewNode = node.data.isNewNode || false;
+    const isEditing = node.data.isEditing || false;
+    if (!isNewNode && !isEditing) {
+      // 使用回调函数进入编辑模式
+      if (node.data.onEnterEdit) {
+        node.data.onEnterEdit(node.id);
+      } else {
+        // 降级方案：直接设置状态
+        setNodes((nds) =>
+          nds.map((n) => {
+            if (n.id === node.id) {
+              return {
+                ...n,
+                data: {
+                  ...n.data,
+                  isEditing: true,
+                },
+              };
+            }
+            return n;
+          })
+        );
+      }
+    }
+  }, [setNodes]);
+
 
   // 点击画布空白处取消选中
   const onPaneClick = useCallback(() => {
@@ -2500,10 +2819,10 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         const newEdge: Edge = {
           ...params,
           id: response.edgeId,
-          type: 'smoothstep',
-          animated: true,
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
+          type: 'custom', // 使用自定义边缘类型
+          animated: false,
+          data: {
+            // 节点状态会在 useEffect 中自动更新
           },
         };
 
@@ -2884,12 +3203,14 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             onEdgesChange={handleEdgesChange}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
+            onNodeDoubleClick={onNodeDoubleClick}
             onPaneClick={onPaneClick}
             onNodeDragStart={onNodeDragStart}
             onNodeDrag={onNodeDrag}
             onNodeDragStop={onNodeDragStop}
             onInit={setReactFlowInstance}
             nodeTypes={customNodeTypes}
+            edgeTypes={customEdgeTypes}
             fitView
             nodesConnectable={true}
             edgesUpdatable={true}
@@ -3020,12 +3341,14 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
               onEdgesChange={handleEdgesChange}
               onConnect={onConnect}
               onNodeClick={onNodeClick}
+              onNodeDoubleClick={onNodeDoubleClick}
               onPaneClick={onPaneClick}
               onNodeDragStart={onNodeDragStart}
               onNodeDrag={onNodeDrag}
               onNodeDragStop={onNodeDragStop}
               onInit={setReactFlowInstance}
               nodeTypes={customNodeTypes}
+              edgeTypes={customEdgeTypes}
               fitView
               nodesConnectable={true}
               edgesUpdatable={true}
