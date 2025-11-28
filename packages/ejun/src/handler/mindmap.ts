@@ -191,6 +191,21 @@ class MindMapDetailHandler extends Handler {
         // 获取当前分支的数据
         const branchData = getBranchData(this.mindMap!, requestedBranch);
         
+        // 获取所有节点的卡片数据（按节点ID分组）
+        const nodeCardsMap: Record<string, CardDoc[]> = {};
+        if (branchData.nodes && branchData.nodes.length > 0) {
+            for (const node of branchData.nodes) {
+                try {
+                    const cards = await CardModel.getByNodeId(domainId, this.mindMap!.mmid, node.id);
+                    if (cards && cards.length > 0) {
+                        nodeCardsMap[node.id] = cards;
+                    }
+                } catch (err) {
+                    console.error(`Failed to get cards for node ${node.id}:`, err);
+                }
+            }
+        }
+        
         this.response.body = {
             mindMap: {
                 ...this.mindMap,
@@ -200,6 +215,7 @@ class MindMapDetailHandler extends Handler {
             gitStatus,
             currentBranch: requestedBranch,
             branches,
+            nodeCardsMap, // 添加节点卡片映射
         };
     }
 

@@ -8,6 +8,7 @@
     mmid: mindMap.mmid,
     currentBranch: currentBranch
   }) }}
+  {{ set(UiContext, 'nodeCardsMap', nodeCardsMap or {}) }}
   // Helper function to get Notification
   async function getNotification() {
     if (window.Ejunz?.components?.Notification) {
