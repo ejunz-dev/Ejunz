@@ -1420,6 +1420,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         source: edge.source,
         target: edge.target,
         label: edge.label,
+        // 使用当前边的颜色（已经通过 edgeColorMap 更新）
         color: (edge.style as any)?.stroke,
         width: (edge.style as any)?.strokeWidth,
       }));
@@ -1532,10 +1533,12 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           return {
             ...edge,
             label: edge.label || existingEdge.label,
-            color: edge.color || (existingEdge.style as any)?.stroke,
+            // 优先使用现有边的颜色（已经通过 edgeColorMap 更新），然后是已保存的颜色
+            color: (existingEdge.style as any)?.stroke || edge.color,
             width: edge.width || (existingEdge.style as any)?.strokeWidth,
           };
         }
+        // 如果是新边，使用已保存的颜色
         return edge;
       });
 
@@ -2411,6 +2414,30 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         const tempEdgeId = node.data.tempEdgeId;
         const edgeSource = node.data.edgeSource;
         
+        // 获取父节点的颜色（用于继承）
+        const getParentEdgeColor = (sourceId: string): string => {
+          // 优先从 edgesRef 中查找（最新的边状态）
+          const parentEdge = edgesRef.current.find(e => e.target === sourceId);
+          if (parentEdge && parentEdge.style?.stroke) {
+            return parentEdge.style.stroke as string;
+          }
+          // 如果找不到，尝试从 edgeColorMap 中获取（基于边的ID）
+          const parentEdgeFromMap = mindMap.edges.find(e => e.target === sourceId);
+          if (parentEdgeFromMap) {
+            const colorFromMap = edgeColorMap.get(parentEdgeFromMap.id);
+            if (colorFromMap) {
+              return colorFromMap;
+            }
+            if (parentEdgeFromMap.color) {
+              return parentEdgeFromMap.color;
+            }
+          }
+          // 默认返回绿色
+          return '#4caf50';
+        };
+        
+        const parentColor = edgeSource ? getParentEdgeColor(edgeSource) : '#4caf50';
+        
         console.log('保存节点后的边信息:', {
           tempEdgeId,
           edgeSource,
@@ -2419,6 +2446,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           responseEdgeTarget: response.edgeTarget,
           nodeId,
           newNodeId,
+          parentColor,
         });
         
         if (tempEdgeId && edgeSource) {
@@ -2434,7 +2462,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
               type: 'custom', // 使用自定义边缘类型
               animated: false,
               style: {
-                stroke: '#2196f3', // 使用默认的蓝色
+                stroke: parentColor, // 继承父节点的颜色
                 strokeWidth: 2,
               },
               data: {
@@ -2454,7 +2482,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
                     id: tempEdgeId, // 保持临时边ID，等待后续保存
                     target: newNodeId, // 更新target为新节点ID
                     style: {
-                      stroke: '#2196f3', // 确保有正确的颜色
+                      stroke: parentColor, // 继承父节点的颜色
                       strokeWidth: 2,
                     },
                   };
@@ -2465,6 +2493,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           }
         } else if (response.edgeId && response.edgeSource && response.edgeTarget) {
           // 如果没有临时边，直接使用后端返回的边
+          const parentColorForNewEdge = response.edgeSource ? getParentEdgeColor(response.edgeSource) : '#4caf50';
           const newEdge: Edge = {
             id: response.edgeId,
             source: response.edgeSource,
@@ -2472,7 +2501,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             type: 'custom', // 使用自定义边缘类型
             animated: false,
             style: {
-              stroke: '#2196f3', // 使用默认的蓝色
+              stroke: parentColorForNewEdge, // 继承父节点的颜色
               strokeWidth: 2,
             },
             data: {
@@ -2988,65 +3017,342 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mindMap.nodes, mindMap.edges]);
 
-  // 计算每个节点的最大子分支数量（递归计算）
-  const maxChildBranches = useMemo(() => {
-    const maxBranches = new Map<string, number>();
+  // 计算每个边应该使用的颜色
+  // 规则：如果边已经有保存的颜色，就使用保存的颜色；否则随机分配一个颜色
+  // 根节点的第一个子分支随机分配一个颜色，该分支下的所有子分支都继承这个颜色
+  const edgeColorMap = useMemo(() => {
+    const colorMap = new Map<string, string>();
     
-    // 递归计算节点的最大子分支数
-    const calculateMaxBranches = (nodeId: string): number => {
-      if (maxBranches.has(nodeId)) {
-        return maxBranches.get(nodeId)!;
-      }
-      
-      const childEdges = mindMap.edges.filter(e => e.source === nodeId);
-      if (childEdges.length === 0) {
-        maxBranches.set(nodeId, 0);
-        return 0;
-      }
-      
-      // 计算直接子节点数
-      const directChildren = childEdges.length;
-      // 递归计算所有子节点的最大分支数
-      const maxChildBranches = Math.max(...childEdges.map(e => calculateMaxBranches(e.target)));
-      
-      // 当前节点的最大分支数 = max(直接子节点数, 子节点的最大分支数)
-      const maxBranchesForNode = Math.max(directChildren, maxChildBranches);
-      maxBranches.set(nodeId, maxBranchesForNode);
-      
-      return maxBranchesForNode;
-    };
-    
-    // 为所有节点计算最大分支数
-    mindMap.nodes.forEach(node => {
-      calculateMaxBranches(node.id);
-    });
-    
-    return maxBranches;
-  }, [mindMap.nodes, mindMap.edges]);
-
-  // 根据最大分支数获取颜色
-  const getColorByMaxBranches = (maxBranches: number): string => {
-    // 定义颜色数组，根据最大分支数分配
+    // 定义颜色数组
     const colors = [
-      '#2196f3', // 蓝色 - 0-2个分支
-      '#4caf50', // 绿色 - 3-5个分支
-      '#ff9800', // 橙色 - 6-8个分支
-      '#f44336', // 红色 - 9-11个分支
-      '#9c27b0', // 紫色 - 12-14个分支
-      '#00bcd4', // 青色 - 15-17个分支
-      '#ff5722', // 深橙色 - 18-20个分支
-      '#607d8b', // 蓝灰色 - 21+个分支
+      '#2196f3', // 蓝色
+      '#4caf50', // 绿色
+      '#ff9800', // 橙色
+      '#f44336', // 红色
+      '#9c27b0', // 紫色
+      '#00bcd4', // 青色
+      '#ff5722', // 深橙色
+      '#607d8b', // 蓝灰色
+      '#795548', // 棕色
+      '#3f51b5', // 靛蓝色
+      '#009688', // 青绿色
+      '#e91e63', // 粉红色
     ];
     
-    const index = Math.min(Math.floor(maxBranches / 3), colors.length - 1);
-    return colors[index];
-  };
+    // 基于节点ID生成稳定的随机数（伪随机，但每次相同节点ID会得到相同结果）
+    const getStableRandom = (seed: string): number => {
+      let hash = 0;
+      for (let i = 0; i < seed.length; i++) {
+        const char = seed.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+      }
+      return Math.abs(hash);
+    };
+    
+    // 找到根节点（没有父节点的节点）
+    const rootNodes = mindMap.nodes.filter(node => {
+      return !mindMap.edges.some(edge => edge.target === node.id);
+    });
+    
+    if (rootNodes.length === 0) {
+      // 如果没有根节点，返回空映射
+      return colorMap;
+    }
+    
+    // 递归函数：为节点及其所有子节点分配颜色
+    // parentColor: 父分支的颜色（如果已保存）
+    const assignColorToBranch = (nodeId: string, parentColor: string | null) => {
+      // 获取该节点的所有子边（按顺序）
+      const childEdges = mindMap.edges
+        .filter(e => e.source === nodeId)
+        .sort((a, b) => {
+          // 尝试按目标节点的位置排序，保持一致性
+          const nodeA = mindMap.nodes.find(n => n.id === a.target);
+          const nodeB = mindMap.nodes.find(n => n.id === b.target);
+          if (nodeA && nodeB) {
+            // 优先按 y 坐标排序（从上到下），如果 y 相同则按 x 排序（从左到右）
+            if (nodeA.y !== undefined && nodeB.y !== undefined) {
+              const yDiff = nodeA.y - nodeB.y;
+              if (Math.abs(yDiff) > 10) { // 如果 y 坐标差异较大，按 y 排序
+                return yDiff;
+              }
+            }
+            // 如果 y 坐标相近或没有 y 坐标，按 x 坐标排序
+            if (nodeA.x !== undefined && nodeB.x !== undefined) {
+              return nodeA.x - nodeB.x;
+            }
+            // 如果都没有位置信息，按节点文本排序
+            if (nodeA.text && nodeB.text) {
+              return nodeA.text.localeCompare(nodeB.text);
+            }
+          }
+          // 最后按ID排序
+          return a.target.localeCompare(b.target);
+        });
+      
+      // 为每个子分支分配颜色
+      childEdges.forEach((edge) => {
+        let branchColor: string;
+        
+        // 如果父分支有颜色，强制继承父分支的颜色（无论子分支是否有保存的颜色）
+        if (parentColor) {
+          branchColor = parentColor;
+        } else if (edge.color && edge.color !== '#2196f3') {
+          // 如果没有父分支颜色，但有保存的颜色且不是蓝色（可能是默认值），使用保存的颜色
+          branchColor = edge.color;
+        } else {
+          // 如果没有父分支颜色，也没有保存的颜色，基于边的ID生成稳定的随机颜色
+          const randomIndex = getStableRandom(edge.id) % colors.length;
+          branchColor = colors[randomIndex];
+        }
+        
+        // 为这条边分配颜色（强制使用继承的颜色，覆盖任何已保存的颜色）
+        colorMap.set(edge.id, branchColor);
+        
+        // 递归为该分支下的所有子节点分配相同的颜色（继承父分支的颜色）
+        assignColorToBranch(edge.target, branchColor);
+      });
+    };
+    
+    // 为每个根节点分配颜色
+    rootNodes.forEach((rootNode) => {
+      // 获取根节点的所有直接子边，按顺序
+      const rootChildEdges = mindMap.edges
+        .filter(e => e.source === rootNode.id)
+        .sort((a, b) => {
+          const nodeA = mindMap.nodes.find(n => n.id === a.target);
+          const nodeB = mindMap.nodes.find(n => n.id === b.target);
+          if (nodeA && nodeB) {
+            // 优先按 y 坐标排序（从上到下），如果 y 相同则按 x 排序（从左到右）
+            if (nodeA.y !== undefined && nodeB.y !== undefined) {
+              const yDiff = nodeA.y - nodeB.y;
+              if (Math.abs(yDiff) > 10) { // 如果 y 坐标差异较大，按 y 排序
+                return yDiff;
+              }
+            }
+            // 如果 y 坐标相近或没有 y 坐标，按 x 坐标排序
+            if (nodeA.x !== undefined && nodeB.x !== undefined) {
+              return nodeA.x - nodeB.x;
+            }
+            // 如果都没有位置信息，按节点文本排序
+            if (nodeA.text && nodeB.text) {
+              return nodeA.text.localeCompare(nodeB.text);
+            }
+          }
+          // 最后按ID排序
+          return a.target.localeCompare(b.target);
+        });
+      
+      // 将十六进制颜色转换为RGB
+      const hexToRgb = (hex: string): [number, number, number] => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result
+          ? [
+              parseInt(result[1], 16),
+              parseInt(result[2], 16),
+              parseInt(result[3], 16),
+            ]
+          : [0, 0, 0];
+      };
+      
+      // 计算两个颜色的相似度（0-1，0表示完全不同，1表示完全相同）
+      const colorSimilarity = (color1: string, color2: string): number => {
+        const [r1, g1, b1] = hexToRgb(color1);
+        const [r2, g2, b2] = hexToRgb(color2);
+        
+        // 计算欧几里得距离
+        const distance = Math.sqrt(
+          Math.pow(r1 - r2, 2) + Math.pow(g1 - g2, 2) + Math.pow(b1 - b2, 2)
+        );
+        
+        // 最大可能距离是 sqrt(255^2 * 3) ≈ 441.67
+        // 将距离转换为相似度（0-1）
+        const maxDistance = Math.sqrt(255 * 255 * 3);
+        return 1 - (distance / maxDistance);
+      };
+      
+      // 检查颜色是否与已使用的颜色太相似
+      const isColorTooSimilar = (color: string, usedColors: string[], threshold: number = 0.3): boolean => {
+        return usedColors.some(usedColor => {
+          const similarity = colorSimilarity(color, usedColor);
+          return similarity > threshold; // 如果相似度超过阈值，认为太相似
+        });
+      };
+      
+      // 为根节点的每个直接子分支分配颜色
+      // 确保相邻分支的颜色差异很大，不会出现相同或相似颜色
+      const generateColorSequence = (count: number): number[] => {
+        const sequence: number[] = [];
+        const used = new Set<number>();
+        const usedColors: string[] = [];
+        const step = Math.max(1, Math.floor(colors.length / 2));
+        const similarityThreshold = 0.3; // 相似度阈值，超过这个值认为太相似
+        
+        for (let i = 0; i < count; i++) {
+          let colorIndex: number | undefined;
+          
+          if (i === 0) {
+            colorIndex = 0;
+          } else if (i === 1) {
+            // 第二个使用中间位置，确保与第一个差异大
+            colorIndex = step;
+          } else {
+            // 找到与已使用颜色差异大的颜色
+            const prevIndex = sequence[i - 1];
+            const minGap = Math.floor(colors.length / 4); // 最小间隔为1/4长度
+            
+            // 尝试找到一个与已使用颜色差异大的颜色
+            let found = false;
+            for (let offset = minGap; offset < colors.length && !found; offset++) {
+              const candidate1 = (prevIndex + offset) % colors.length;
+              const candidate2 = (prevIndex - offset + colors.length) % colors.length;
+              
+              // 检查候选颜色是否已使用或太相似
+              if (!used.has(candidate1)) {
+                const candidateColor = colors[candidate1];
+                if (!isColorTooSimilar(candidateColor, usedColors, similarityThreshold)) {
+                  colorIndex = candidate1;
+                  found = true;
+                }
+              }
+              
+              if (!found && !used.has(candidate2)) {
+                const candidateColor = colors[candidate2];
+                if (!isColorTooSimilar(candidateColor, usedColors, similarityThreshold)) {
+                  colorIndex = candidate2;
+                  found = true;
+                }
+              }
+            }
+            
+            // 如果找不到差异大的颜色，找一个未使用且不太相似的颜色
+            if (!found) {
+              for (let j = 0; j < colors.length; j++) {
+                if (!used.has(j)) {
+                  const candidateColor = colors[j];
+                  if (!isColorTooSimilar(candidateColor, usedColors, similarityThreshold)) {
+                    colorIndex = j;
+                    found = true;
+                    break;
+                  }
+                }
+              }
+            }
+            
+            // 如果还是找不到，使用下一个未使用的颜色（即使可能相似）
+            if (!found) {
+              for (let j = 0; j < colors.length; j++) {
+                if (!used.has(j)) {
+                  colorIndex = j;
+                  break;
+                }
+              }
+            }
+          }
+          
+          if (colorIndex !== undefined) {
+            sequence.push(colorIndex);
+            used.add(colorIndex);
+            usedColors.push(colors[colorIndex]);
+          }
+        }
+        
+        return sequence;
+      };
+      
+      const colorSequence = generateColorSequence(rootChildEdges.length);
+      const usedColors: string[] = [];
+      const similarityThreshold = 0.3;
+      
+      rootChildEdges.forEach((edge, index) => {
+        let branchColor: string;
+        
+        // 如果有保存的颜色且不是蓝色（可能是默认值），检查是否与已使用的颜色太相似
+        if (edge.color && edge.color !== '#2196f3') {
+          // 检查保存的颜色是否与已使用的颜色太相似
+          if (isColorTooSimilar(edge.color, usedColors, similarityThreshold)) {
+            // 如果太相似，使用生成的序列来分配颜色
+            const colorIndex = colorSequence[index] || (index % colors.length);
+            branchColor = colors[colorIndex];
+          } else {
+            branchColor = edge.color;
+          }
+        } else {
+          // 使用生成的序列来分配颜色，确保相邻分支颜色差异大
+          const colorIndex = colorSequence[index] || (index % colors.length);
+          branchColor = colors[colorIndex];
+        }
+        
+        // 确保不会出现相同的颜色
+        if (usedColors.includes(branchColor)) {
+          // 如果颜色已使用，从序列中选择下一个未使用的颜色
+          for (let i = 0; i < colors.length; i++) {
+            const candidateIndex = (colorSequence[index] + i) % colors.length;
+            const candidateColor = colors[candidateIndex];
+            if (!usedColors.includes(candidateColor) && 
+                !isColorTooSimilar(candidateColor, usedColors, similarityThreshold)) {
+              branchColor = candidateColor;
+              break;
+            }
+          }
+        }
+        
+        // 为这条边分配颜色
+        colorMap.set(edge.id, branchColor);
+        usedColors.push(branchColor);
+        
+        // 递归为该分支下的所有子节点分配相同的颜色
+        assignColorToBranch(edge.target, branchColor);
+      });
+    });
+    
+    return colorMap;
+  }, [mindMap.nodes, mindMap.edges]);
 
   // 将 MindMapEdge 转换为 ReactFlow Edge
   const initialFlowEdges = useMemo(() => {
+    // 定义颜色数组（与 edgeColorMap 中的一致）
+    const colors = [
+      '#2196f3', // 蓝色
+      '#4caf50', // 绿色
+      '#ff9800', // 橙色
+      '#f44336', // 红色
+      '#9c27b0', // 紫色
+      '#00bcd4', // 青色
+      '#ff5722', // 深橙色
+      '#607d8b', // 蓝灰色
+    ];
+    
+    // 找到根节点
+    const rootNodes = mindMap.nodes.filter(node => {
+      return !mindMap.edges.some(edge => edge.target === node.id);
+    });
+    
+    // 基于边的ID生成稳定的随机颜色
+    const getStableRandom = (seed: string): number => {
+      let hash = 0;
+      for (let i = 0; i < seed.length; i++) {
+        const char = seed.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+      }
+      return Math.abs(hash);
+    };
+    
+    // 如果 edgeColorMap 中没有颜色，动态计算
+    const getColorForEdge = (edge: MindMapEdge): string => {
+      // 优先使用 edgeColorMap 中的颜色
+      const mappedColor = edgeColorMap.get(edge.id);
+      if (mappedColor) return mappedColor;
+      
+      // 如果 edgeColorMap 中没有，基于边的ID生成稳定的随机颜色
+      const randomIndex = getStableRandom(edge.id) % colors.length;
+      return colors[randomIndex];
+    };
+    
     return mindMap.edges.map((edge) => {
-      const sourceMaxBranches = maxChildBranches.get(edge.source) || 0;
-      const color = getColorByMaxBranches(sourceMaxBranches);
+      const color = getColorForEdge(edge);
       
       return {
         id: edge.id,
@@ -3058,7 +3364,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         // 移除箭头
         label: edge.label,
         style: {
-          stroke: edge.color || color, // 使用动态分配的颜色
+          stroke: color, // 使用动态分配的颜色
           strokeWidth: edge.width || 2,
         },
         data: {
@@ -3066,7 +3372,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         },
       } as Edge;
     });
-  }, [mindMap.edges, maxChildBranches]);
+  }, [mindMap.edges, edgeColorMap, mindMap.nodes]);
 
   // 初始化节点和边
   useEffect(() => {
@@ -3135,6 +3441,57 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     edgesRefForNodes.current = edges;
   }, [edges]);
 
+  // 当 edgeColorMap 变化时，强制更新所有边的颜色
+  useEffect(() => {
+    if (edgeColorMap.size === 0) return; // 如果颜色映射为空，跳过更新
+    
+    setEdges((eds) =>
+      eds.map((edge) => {
+        // 获取该边应该使用的颜色
+        const edgeColor = edgeColorMap.get(edge.id);
+        
+        // 如果颜色映射中有该边的颜色，强制使用新颜色
+        if (edgeColor) {
+          return {
+            ...edge,
+            style: {
+              ...edge.style,
+              stroke: edgeColor, // 强制使用新计算的颜色
+            },
+          };
+        }
+        // 如果边不在颜色映射中，可能是临时边，保持原样
+        return edge;
+      })
+    );
+  }, [edgeColorMap, setEdges]);
+
+  // 当 mindMap 数据更新时，确保所有边都应用正确的颜色
+  useEffect(() => {
+    if (edgeColorMap.size === 0) return;
+    
+    // 延迟更新，确保 edgeColorMap 已经计算完成
+    const timer = setTimeout(() => {
+      setEdges((eds) =>
+        eds.map((edge) => {
+          const edgeColor = edgeColorMap.get(edge.id);
+          if (edgeColor) {
+            return {
+              ...edge,
+              style: {
+                ...edge.style,
+                stroke: edgeColor, // 强制使用新计算的颜色
+              },
+            };
+          }
+          return edge;
+        })
+      );
+    }, 0);
+    
+    return () => clearTimeout(timer);
+  }, [mindMap.nodes, mindMap.edges, edgeColorMap, setEdges]);
+
   // 当节点状态变化时，更新边缘的 data，以便边缘组件能够根据节点是否为新建节点显示虚线或实线
   // 更新所有 'custom' 类型的边缘（包括临时边缘和永久边缘）
   useEffect(() => {
@@ -3148,8 +3505,16 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           const sourceIsNewNode = sourceNode?.data?.isNewNode || false;
           const targetIsNewNode = targetNode?.data?.isNewNode || false;
           
+          // 获取该边应该使用的颜色（确保使用最新的颜色）
+          const edgeColor = edgeColorMap.get(edge.id);
+          
           return {
             ...edge,
+            style: {
+              ...edge.style,
+              // 如果颜色映射中有该边的颜色，使用映射中的颜色；否则保持原有颜色
+              ...(edgeColor ? { stroke: edgeColor } : {}),
+            },
             data: {
               ...edge.data,
               sourceIsNewNode,
@@ -3161,7 +3526,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         return edge;
       })
     );
-  }, [nodes, setEdges]);
+  }, [nodes, setEdges, edgeColorMap]);
 
 
   useEffect(() => {
@@ -3284,11 +3649,39 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           target: params.target,
         });
 
+        // 获取父节点的颜色（用于继承）
+        const getParentEdgeColor = (sourceId: string): string => {
+          // 优先从 edgesRef 中查找（最新的边状态）
+          const parentEdge = edgesRef.current.find(e => e.target === sourceId);
+          if (parentEdge && parentEdge.style?.stroke) {
+            return parentEdge.style.stroke as string;
+          }
+          // 如果找不到，尝试从 edgeColorMap 中获取（基于边的ID）
+          const parentEdgeFromMap = mindMap.edges.find(e => e.target === sourceId);
+          if (parentEdgeFromMap) {
+            const colorFromMap = edgeColorMap.get(parentEdgeFromMap.id);
+            if (colorFromMap) {
+              return colorFromMap;
+            }
+            if (parentEdgeFromMap.color) {
+              return parentEdgeFromMap.color;
+            }
+          }
+          // 默认返回绿色
+          return '#4caf50';
+        };
+        
+        const parentColor = params.source ? getParentEdgeColor(params.source) : '#4caf50';
+
         const newEdge: Edge = {
           ...params,
           id: response.edgeId,
           type: 'custom', // 使用自定义边缘类型
           animated: false,
+          style: {
+            stroke: parentColor, // 继承父节点的颜色
+            strokeWidth: 2,
+          },
           data: {
             // 节点状态会在 useEffect 中自动更新
           },
