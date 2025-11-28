@@ -488,6 +488,26 @@ export class CardModel {
     }
 
     /**
+     * 根据 cid 获取卡片
+     */
+    static async getByCid(
+        domainId: string,
+        nodeId: string,
+        cid: number,
+        mmid?: number
+    ): Promise<CardDoc | null> {
+        const filter: any = { nodeId, cid };
+        if (mmid !== undefined) {
+            filter.mmid = mmid;
+        }
+        const cards = await document
+            .getMulti(domainId, TYPE_CARD, filter)
+            .limit(1)
+            .toArray();
+        return cards[0] || null;
+    }
+
+    /**
      * 更新 Card
      */
     static async update(

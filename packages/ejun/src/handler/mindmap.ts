@@ -892,13 +892,26 @@ class MindMapDataHandler extends Handler {
     async get(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
         const currentBranch = branch || (this.mindMap as any)?.currentBranch || 'main';
         const branchData = getBranchData(this.mindMap!, currentBranch);
-        
+        const nodeCardsMap: Record<string, CardDoc[]> = {};
+        if (branchData.nodes && branchData.nodes.length > 0) {
+            for (const node of branchData.nodes) {
+                try {
+                    const cards = await CardModel.getByNodeId(domainId, this.mindMap!.mmid, node.id);
+                    if (cards && cards.length > 0) {
+                        nodeCardsMap[node.id] = cards;
+                    }
+                } catch (err) {
+                    console.error(`Failed to get cards for node ${node.id}:`, err);
+                }
+            }
+        }
         // 返回当前分支的数据
         this.response.body = {
             ...this.mindMap,
             nodes: branchData.nodes,
             edges: branchData.edges,
             currentBranch,
+            nodeCardsMap,
         };
     }
 }
@@ -1453,53 +1466,164 @@ class MindMapCardHandler extends Handler {
         this.response.body = { cards };
     }
     
-    @route('cardId', Types.ObjectId)
+    @route('cardId', Types.String)
     @param('nodeId', Types.String, true)
     @param('title', Types.String, true)
     @param('content', Types.String, true)
     @param('order', Types.PositiveInt, true)
     @param('operation', Types.String, true)
+    @param('cid', Types.PositiveInt, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('docId', Types.ObjectId, true)
     async postUpdate(
         domainId: string,
-        cardId: ObjectId,
+        cardIdParam?: string,
         nodeId?: string,
         title?: string,
         content?: string,
         order?: number,
-        operation?: string
+        _operation?: string,
+        cidParam?: number,
+        mmidParam?: number,
+        docIdParam?: ObjectId
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        
-        if (operation === 'delete') {
-            const card = await CardModel.get(domainId, cardId);
-            if (!card) throw new NotFoundError('Card not found');
-            
-            const mindMap = await MindMapModel.getByMmid(domainId, card.mmid);
-            if (!mindMap) throw new NotFoundError('MindMap not found');
-            if (!this.user.own(mindMap)) {
-                this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
+        await this.handleCardMutation('update', domainId, {
+            cardIdParam,
+            nodeId,
+            title,
+            content,
+            order,
+            cidParam,
+            mmidParam,
+            docIdParam,
+        });
+    }
+
+    @route('cardId', Types.String)
+    @param('nodeId', Types.String, true)
+    @param('title', Types.String, true)
+    @param('content', Types.String, true)
+    @param('order', Types.PositiveInt, true)
+    @param('operation', Types.String, true)
+    @param('cid', Types.PositiveInt, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('docId', Types.ObjectId, true)
+    async postDelete(
+        domainId: string,
+        cardIdParam?: string,
+        nodeId?: string,
+        title?: string,
+        content?: string,
+        order?: number,
+        _operation?: string,
+        cidParam?: number,
+        mmidParam?: number,
+        docIdParam?: ObjectId
+    ) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        await this.handleCardMutation('delete', domainId, {
+            cardIdParam,
+            nodeId,
+            title,
+            content,
+            order,
+            cidParam,
+            mmidParam,
+            docIdParam,
+        });
+    }
+
+    private async handleCardMutation(
+        action: 'update' | 'delete',
+        domainId: string,
+        params: {
+            cardIdParam?: string;
+            nodeId?: string;
+            title?: string;
+            content?: string;
+            order?: number;
+            cidParam?: number;
+            mmidParam?: number;
+            docIdParam?: ObjectId;
+        },
+    ) {
+        const { cardIdParam, nodeId, title, content, order, cidParam, mmidParam, docIdParam } = params;
+
+        const parseObjectId = (value?: string): ObjectId | null => {
+            if (value && ObjectId.isValid(value)) {
+                try {
+                    return new ObjectId(value);
+                } catch {
+                    return null;
+                }
             }
-            
-            await CardModel.delete(domainId, cardId);
+            return null;
+        };
+
+        const parseCid = (value?: string | number): number | undefined => {
+            if (typeof value === 'number' && value > 0) return value;
+            if (typeof value === 'string' && /^\d+$/.test(value)) {
+                const parsed = Number(value);
+                if (!Number.isNaN(parsed) && parsed > 0) {
+                    return parsed;
+                }
+            }
+            return undefined;
+        };
+
+        const resolvedDocId = parseObjectId(cardIdParam);
+        const cidFromPath = parseCid(cardIdParam);
+        const resolvedCid = cidParam ?? cidFromPath;
+
+        const getMindMapByArgs = async (): Promise<MindMapDoc | null> => {
+            if (docIdParam) {
+                return await MindMapModel.get(domainId, docIdParam);
+            }
+            if (mmidParam) {
+                return await MindMapModel.getByMmid(domainId, mmidParam);
+            }
+            return null;
+        };
+
+        let targetCard: CardDoc | null = null;
+        if (resolvedDocId) {
+            targetCard = await CardModel.get(domainId, resolvedDocId);
+        }
+
+        if (!targetCard && resolvedCid !== undefined) {
+            if (!nodeId) {
+                throw new ValidationError('nodeId is required when using cid to locate a card');
+            }
+            let effectiveMmid = mmidParam;
+            if (!effectiveMmid) {
+                const mindMap = await getMindMapByArgs();
+                effectiveMmid = mindMap?.mmid;
+            }
+            targetCard = await CardModel.getByCid(domainId, nodeId, resolvedCid, effectiveMmid);
+        }
+
+        if (!targetCard) throw new NotFoundError('Card not found');
+
+        const mindMap = await MindMapModel.getByMmid(domainId, targetCard.mmid);
+        if (!mindMap) throw new NotFoundError('MindMap not found');
+        if (!this.user.own(mindMap)) {
+            const perm = action === 'delete' ? PERM.PERM_DELETE_DISCUSSION : PERM.PERM_EDIT_DISCUSSION;
+            this.checkPerm(perm);
+        }
+
+        if (action === 'delete') {
+            await CardModel.delete(domainId, targetCard.docId);
             this.response.body = { success: true };
             return;
         }
-        
-        const card = await CardModel.get(domainId, cardId);
-        if (!card) throw new NotFoundError('Card not found');
-        
-        const mindMap = await MindMapModel.getByMmid(domainId, card.mmid);
-        if (!mindMap) throw new NotFoundError('MindMap not found');
-        if (!this.user.own(mindMap)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
-        }
-        
+
         const updates: any = {};
         if (title !== undefined) updates.title = title;
         if (content !== undefined) updates.content = content;
         if (order !== undefined) updates.order = order;
-        
-        await CardModel.update(domainId, cardId, updates);
+
+        await CardModel.update(domainId, targetCard.docId, updates);
         this.response.body = { success: true };
     }
 }
@@ -2935,6 +3059,7 @@ export async function apply(ctx: Context) {
     ctx.Route('mindmap_card', '/mindmap/:docId/card', MindMapCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_card_mmid', '/mindmap/mmid/:mmid/card', MindMapCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_card_update', '/mindmap/card/:cardId', MindMapCardHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_card_update_mmid', '/mindmap/mmid/:mmid/card/:cardId', MindMapCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_card_list', '/mindmap/:docId/node/:nodeId/cards', MindMapCardListHandler);
     ctx.Route('mindmap_card_list_mmid', '/mindmap/mmid/:mmid/node/:nodeId/cards', MindMapCardListHandler);
     ctx.Route('mindmap_card_list_branch', '/mindmap/:docId/branch/:branch/node/:nodeId/cards', MindMapCardListHandler);
