@@ -521,7 +521,17 @@ Memory: 内存
 Message {0} not found.: 消息 {0} 不存在。
 Messages: 消息
 Method: 方法
+mindmap_create: 创建知识库
+mindmap_data: 知识库数据
+mindmap_delete: 删除知识库
+mindmap_detail: 知识库详情
 mindmap_domain: 知识库
+mindmap_edge: 知识库边
+mindmap_edit: 编辑知识库
+mindmap_list: 知识库列表
+mindmap_node: 知识库节点
+mindmap_save: 保存知识库
+mindmap_study: 学习知识库
 Month: 月
 My Domains: 我加入的域
 My Files: 我的文件
