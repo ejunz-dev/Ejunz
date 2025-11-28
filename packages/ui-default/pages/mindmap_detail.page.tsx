@@ -107,6 +107,84 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
   // 用于编辑的 ref
   const textRef = React.useRef<HTMLDivElement>(null);
   
+  // 卡片相关状态
+  const [cardCount, setCardCount] = React.useState<number>(0);
+  const [showCardPopup, setShowCardPopup] = React.useState<boolean>(false);
+  const [cards, setCards] = React.useState<Card[]>([]);
+  const cardPopupRef = React.useRef<HTMLDivElement>(null);
+  const cardCountRef = React.useRef<HTMLDivElement>(null);
+  
+  // 从 UiContext 获取卡片数量
+  React.useEffect(() => {
+    if (isNewNode) {
+      setCardCount(0);
+      return;
+    }
+    
+    // 从 UiContext 获取节点卡片映射
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const nodeCards = nodeCardsMap[id] || [];
+    setCardCount(nodeCards.length || 0);
+  }, [id, isNewNode]);
+  
+  // 从 UiContext 获取卡片列表
+  const fetchCards = React.useCallback(() => {
+    if (isNewNode) {
+      setCards([]);
+      return;
+    }
+    
+    // 从 UiContext 获取节点卡片映射
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const nodeCards = nodeCardsMap[id] || [];
+    setCards(nodeCards);
+  }, [id, isNewNode]);
+  
+  // 点击卡片数量时显示悬浮窗
+  const handleCardCountClick = React.useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (cardCount > 0) {
+      setShowCardPopup(true);
+      // 从 UiContext 获取卡片列表
+      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+      const nodeCards = nodeCardsMap[id] || [];
+      setCards(nodeCards);
+    }
+  }, [cardCount, id]);
+  
+  // 点击卡片名称跳转
+  const handleCardClick = React.useCallback((card: Card) => {
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    const branch = data.branch || 'main';
+    const docId = data.docId as string;
+    const url = docId 
+      ? `/d/${domainId}/mindmap/${docId}/branch/${branch}/node/${id}/cards?cardId=${card.docId}`
+      : `/d/${domainId}/mindmap/mmid/${data.mmid}/branch/${branch}/node/${id}/cards?cardId=${card.docId}`;
+    window.open(url, '_blank');
+  }, [id, data.docId, data.mmid, data.branch]);
+  
+  // 点击外部关闭悬浮窗
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (
+        cardPopupRef.current && 
+        !cardPopupRef.current.contains(target) &&
+        cardCountRef.current &&
+        !cardCountRef.current.contains(target)
+      ) {
+        setShowCardPopup(false);
+      }
+    };
+    
+    if (showCardPopup) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showCardPopup]);
+  
   // 如果是新节点或编辑模式，自动进入编辑模式并 focus
   React.useEffect(() => {
     if ((isNewNode || isEditing)) {
@@ -442,6 +520,163 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
           )}
         </>
       )}
+      
+      {/* 卡片数量显示 - 只在有卡片时显示 */}
+      {cardCount > 0 && !isNewNode && (
+        <>
+          <div
+            ref={cardCountRef}
+            onClick={handleCardCountClick}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              position: 'absolute',
+              top: '-8px',
+              right: '-8px',
+              width: '24px',
+              height: '24px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: '#fff',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              zIndex: 20,
+              boxShadow: '0 2px 8px rgba(102, 126, 234, 0.4), 0 0 12px rgba(102, 126, 234, 0.6)',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'scale(1.1)';
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.6), 0 0 16px rgba(102, 126, 234, 0.8)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = '0 2px 8px rgba(102, 126, 234, 0.4), 0 0 12px rgba(102, 126, 234, 0.6)';
+            }}
+            title={`${cardCount} 张卡片，点击查看`}
+          >
+            {cardCount}
+          </div>
+          
+          {/* 卡片列表悬浮窗 */}
+          {showCardPopup && (
+            <div
+              ref={cardPopupRef}
+              style={{
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '400px',
+                maxHeight: '500px',
+                background: '#fff',
+                borderRadius: '12px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+                zIndex: 10000,
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+              }}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              {/* 悬浮窗标题 */}
+              <div
+                style={{
+                  padding: '16px 20px',
+                  borderBottom: '1px solid #e0e0e0',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  background: '#f5f5f5',
+                }}
+              >
+                <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#333' }}>
+                  卡片列表 ({cardCount})
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowCardPopup(false);
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    fontSize: '20px',
+                    cursor: 'pointer',
+                    color: '#999',
+                    padding: '0',
+                    width: '24px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  title="关闭"
+                >
+                  ×
+                </button>
+              </div>
+              
+              {/* 卡片列表 - 可滚动 */}
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  padding: '8px 0',
+                }}
+              >
+                {cards.length === 0 ? (
+                  <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
+                    暂无卡片
+                  </div>
+                ) : (
+                  cards.map((card, index) => (
+                    <div
+                      key={card.docId || index}
+                      onClick={() => handleCardClick(card)}
+                      style={{
+                        padding: '12px 20px',
+                        cursor: 'pointer',
+                        borderBottom: index < cards.length - 1 ? '1px solid #f0f0f0' : 'none',
+                        transition: 'background-color 0.2s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#f5f5f5';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                    >
+                      <div style={{ 
+                        fontSize: '14px', 
+                        color: '#333',
+                        fontWeight: '500',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {card.title || '未命名卡片'}
+                      </div>
+                      {card.updateAt && (
+                        <div style={{ 
+                          fontSize: '12px', 
+                          color: '#999',
+                          marginTop: '4px',
+                        }}>
+                          {new Date(card.updateAt).toLocaleDateString('zh-CN')}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 };
@@ -748,6 +983,8 @@ const CustomMindMapEdge = ({ id, source, target, sourceX, sourceY, targetX, targ
     targetPosition: targetPosition || Position.Left,
   });
   
+  // 如果连接的是新建节点，显示虚线；保存后显示实线
+  // strokeDasharray 会沿着路径（包括曲线）正确分布，确保虚线和实线具有相同的曲度
   const edgeStyle = {
     ...style,
     strokeDasharray: isNewNode ? '5,5' : 'none',
@@ -2322,6 +2559,9 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         isEditing: true,
         isRootNode,
         edges: edges,
+        docId: docId, // 传递 docId 用于获取卡片
+        mmid: mindMap.mmid, // 传递 mmid 用于获取卡片
+        branch: mindMap.currentBranch || 'main', // 传递 branch 用于跳转
         onDelete: (nodeId: string) => callbacksRef.current?.onDelete(nodeId),
         onEdit: (node: Node) => callbacksRef.current?.onEdit(node),
         onAddChild: (nodeId: string) => callbacksRef.current?.onAddChild(nodeId),
@@ -2504,6 +2744,9 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           originalNode: node,
           edges: flowEdges,
           isRootNode,
+          docId: docId, // 传递 docId 用于获取卡片
+          mmid: mindMap.mmid, // 传递 mmid 用于获取卡片
+          branch: mindMap.currentBranch || 'main', // 传递 branch 用于跳转
           onDelete: (nodeId: string) => callbacksRef.current?.onDelete(nodeId),
           onEdit: (node: Node) => callbacksRef.current?.onEdit(node),
           onAddChild: (nodeId: string) => callbacksRef.current?.onAddChild(nodeId),
@@ -2727,6 +2970,9 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             selected: n.id === selectedNodeId,
             isRootNode,
             edges: edgesRefForNodes.current,
+            docId: n.data.docId || docId, // 保留或设置 docId
+            mmid: n.data.mmid || mindMap.mmid, // 保留或设置 mmid
+            branch: n.data.branch || mindMap.currentBranch || 'main', // 保留或设置 branch
             onTextChange: (nodeId: string, newText: string) => {
               handleNodeTextChangeRef.current(nodeId, newText);
             },
