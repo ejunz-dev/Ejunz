@@ -5,6 +5,7 @@ import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
 import { request } from 'vj/utils';
 import { ActionDialog } from 'vj/components/dialog';
+import yaml from 'js-yaml';
 import ReactFlow, {
   Node,
   Edge,
@@ -1330,7 +1331,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isImmersive]);
-  const [viewMode, setViewMode] = useState<'mindmap' | 'outline' | 'study'>('mindmap');
+  const [viewMode, setViewMode] = useState<'mindmap' | 'outline' | 'study' | 'yaml'>('mindmap');
   const [studyLayer, setStudyLayer] = useState<number>(0); // 当前刷题的层数
   const [studyCardIndex, setStudyCardIndex] = useState<number>(0); // 当前卡片索引
   const [isCardFlipped, setIsCardFlipped] = useState<boolean>(false); // 卡片是否翻转
@@ -1496,6 +1497,124 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       setIsSaving(false);
     }
   }, [docId, reactFlowInstance]);
+
+  // 从 YAML 保存的函数
+  const handleSaveFromYaml = useCallback(async (newNodes: MindMapNode[], newEdges: MindMapEdge[]) => {
+    setIsSaving(true);
+    try {
+      // 合并新节点和现有节点
+      const existingNodeIds = new Set(nodesRef.current.map(n => n.id));
+      const updatedNodes = newNodes.map((node) => {
+        // 如果节点已存在，保留位置信息
+        if (existingNodeIds.has(node.id)) {
+          const existingNode = nodesRef.current.find(n => n.id === node.id);
+          if (existingNode) {
+            const originalNode = existingNode.data.originalNode as MindMapNode;
+            return {
+              ...node,
+              x: originalNode.x || node.x || 0,
+              y: originalNode.y || node.y || 0,
+            };
+          }
+        }
+        return {
+          ...node,
+          x: node.x || 0,
+          y: node.y || 0,
+        };
+      });
+
+      // 合并新边和现有边
+      const existingEdgeIds = new Set(edgesRef.current.map(e => e.id));
+      const updatedEdges = newEdges.map((edge) => {
+        const existingEdge = edgesRef.current.find(e => e.id === edge.id);
+        if (existingEdge) {
+          return {
+            ...edge,
+            label: edge.label || existingEdge.label,
+            color: edge.color || (existingEdge.style as any)?.stroke,
+            width: edge.width || (existingEdge.style as any)?.strokeWidth,
+          };
+        }
+        return edge;
+      });
+
+      // 获取当前视口状态
+      const viewport = reactFlowInstance?.getViewport();
+
+      // 生成操作描述
+      lastOperationRef.current = 'YAML 模式保存';
+      
+      const response = await request.post(getMindMapUrl('/save', docId), {
+        nodes: updatedNodes,
+        edges: updatedEdges,
+        viewport: viewport ? {
+          x: viewport.x,
+          y: viewport.y,
+          zoom: viewport.zoom,
+        } : undefined,
+        operationDescription: 'YAML 模式保存',
+      });
+      
+      // 保存后刷新历史记录和 Git 状态
+      if (response.hasNonPositionChanges) {
+        // 延迟加载历史记录，避免在函数定义之前调用
+        setTimeout(() => {
+          const domainId = (window as any).UiContext?.domainId || 'system';
+          request.get(getMindMapUrl('/history', docId)).then((response) => {
+            setHistory(response.history || []);
+          }).catch((error) => {
+            console.error('Failed to load history:', error);
+          });
+        }, 100);
+        
+        if (mindMap.githubRepo) {
+          const retryLoadGitStatus = async (retries = 3) => {
+            for (let i = 0; i < retries; i++) {
+              await new Promise(resolve => setTimeout(resolve, 500 + i * 300));
+              try {
+                const branch = mindMap.currentBranch || 'main';
+                const domainId = (window as any).UiContext?.domainId || 'system';
+                const statusResponse = await request.get(`${getMindMapUrl('/git/status', docId)}?branch=${branch}`);
+                const newGitStatus = statusResponse.gitStatus;
+                setGitStatus(newGitStatus);
+                if (newGitStatus?.uncommittedChanges) {
+                  break;
+                }
+              } catch (err) {
+                console.error('Failed to load git status:', err);
+              }
+            }
+          };
+          retryLoadGitStatus();
+        }
+      } else if (mindMap.githubRepo) {
+        setTimeout(() => {
+          const branch = mindMap.currentBranch || 'main';
+          const domainId = (window as any).UiContext?.domainId || 'system';
+          request.get(`${getMindMapUrl('/git/status', docId)}?branch=${branch}`).then((response) => {
+            setGitStatus(response.gitStatus);
+          }).catch((error) => {
+            console.error('Failed to load git status:', error);
+          });
+        }, 100);
+      }
+      
+      // 重置操作描述
+      lastOperationRef.current = '';
+
+      // 重新加载数据以更新节点和边
+      const domainId = (window as any).UiContext?.domainId || 'system';
+      const responseData = await request.get(getMindMapUrl('/data', docId));
+      setMindMap(responseData);
+      
+      Notification.success('YAML 保存成功');
+      setIsSaving(false);
+    } catch (error: any) {
+      Notification.error('保存失败: ' + (error.message || '未知错误'));
+      setIsSaving(false);
+    }
+  }, [docId, reactFlowInstance, mindMap.githubRepo, mindMap.currentBranch]);
 
   // 加载 Git 状态
   const loadGitStatus = useCallback(async () => {
@@ -3553,6 +3672,20 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         >
           刷题模式
         </button>
+        <button
+          onClick={() => setViewMode('yaml')}
+          style={{
+            padding: '6px 12px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            background: viewMode === 'yaml' ? '#9c27b0' : '#fff',
+            color: viewMode === 'yaml' ? '#fff' : '#333',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+          }}
+        >
+          YAML模式
+        </button>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <button
             onClick={() => setIsImmersive(true)}
@@ -3640,6 +3773,14 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             onToggleExpand={handleToggleExpand}
             onNodeClick={setSelectedNodeId}
             selectedNodeId={selectedNodeId}
+          />
+        ) : viewMode === 'yaml' ? (
+          <YamlView
+            nodes={nodes}
+            edges={edges}
+            onSave={handleSaveFromYaml}
+            docId={docId}
+            isSaving={isSaving}
           />
         ) : (
           <StudyView
@@ -3904,6 +4045,398 @@ const StudyView = ({
           该层没有节点
         </div>
       )}
+    </div>
+  );
+};
+
+// 节点到 YAML 的转换函数
+const convertNodesToYaml = (nodes: Node[], edges: Edge[]): string => {
+  // 构建节点树结构
+  const nodeMap = new Map<string, { node: Node; children: string[] }>();
+  const rootNodes: string[] = [];
+
+  // 初始化节点映射
+  nodes.forEach((node) => {
+    nodeMap.set(node.id, { node, children: [] });
+  });
+
+  // 构建父子关系
+  edges.forEach((edge) => {
+    const parent = nodeMap.get(edge.source);
+    if (parent) {
+      parent.children.push(edge.target);
+    }
+  });
+
+  // 找到根节点（没有父节点的节点）
+  nodes.forEach((node) => {
+    const hasParent = edges.some((edge) => edge.target === node.id);
+    if (!hasParent) {
+      rootNodes.push(node.id);
+    }
+  });
+
+  // 递归转换节点为 YAML 字符串（通过缩进表示层级）
+  const convertNodeToYamlString = (nodeId: string, indent: number = 0): string => {
+    const nodeData = nodeMap.get(nodeId);
+    if (!nodeData) return '';
+
+    const { node, children } = nodeData;
+    const originalNode = node.data.originalNode as MindMapNode;
+    const nodeText = originalNode?.text || '';
+    const indentStr = '  '.repeat(indent);
+    
+    let result = `${indentStr}- ${nodeText}`;
+
+    // 如果有子节点，递归处理
+    if (children.length > 0) {
+      children.forEach((childId) => {
+        result += '\n' + convertNodeToYamlString(childId, indent + 1);
+      });
+    }
+
+    return result;
+  };
+
+  // 转换所有根节点为 YAML 字符串
+  if (rootNodes.length === 0) {
+    return '';
+  }
+
+  const yamlLines: string[] = [];
+  rootNodes.forEach((rootId) => {
+    const rootYaml = convertNodeToYamlString(rootId, 0);
+    if (rootYaml) {
+      yamlLines.push(rootYaml);
+    }
+  });
+
+  return yamlLines.join('\n');
+};
+
+// YAML 到节点的解析函数（解析列表格式，通过缩进判断层级）
+const parseYamlToNodes = (yamlText: string, existingNodes: Node[], existingEdges: Edge[]): { nodes: MindMapNode[]; edges: MindMapEdge[] } => {
+  try {
+    const lines = yamlText.split('\n').filter(line => line.trim());
+    if (lines.length === 0) {
+      Notification.error('YAML 内容为空');
+      return { nodes: [], edges: [] };
+    }
+
+    // 解析每一行，提取缩进层级和节点文本
+    interface LineInfo {
+      indent: number;
+      text: string;
+      lineIndex: number;
+    }
+
+    const lineInfos: LineInfo[] = lines.map((line, index) => {
+      const match = line.match(/^(\s*)- (.+)$/);
+      if (!match) {
+        return null;
+      }
+      const indent = match[1].length;
+      const text = match[2].trim();
+      return { indent, text, lineIndex: index };
+    }).filter((info): info is LineInfo => info !== null);
+
+    if (lineInfos.length === 0) {
+      Notification.error('YAML 格式错误：未找到有效的节点');
+      return { nodes: [], edges: [] };
+    }
+
+    // 构建节点树结构
+    const newNodes: MindMapNode[] = [];
+    const newEdges: MindMapEdge[] = [];
+    let nodeIdCounter = 0;
+
+    // 使用栈来跟踪父节点
+    interface NodeStackItem {
+      nodeId: string;
+      indent: number;
+    }
+    const stack: NodeStackItem[] = [];
+
+    lineInfos.forEach((lineInfo) => {
+      // 弹出栈中所有缩进大于等于当前行的节点（找到父节点）
+      while (stack.length > 0 && stack[stack.length - 1].indent >= lineInfo.indent) {
+        stack.pop();
+      }
+
+      const parentId = stack.length > 0 ? stack[stack.length - 1].nodeId : null;
+      const nodeId = `node_${nodeIdCounter++}`;
+
+      // 查找现有节点（通过文本匹配，如果文本相同且在同一位置）
+      let existingNode: MindMapNode | undefined;
+      if (parentId) {
+        existingNode = existingNodes.find(n => {
+          const orig = n.data.originalNode as MindMapNode;
+          return orig.text === lineInfo.text && orig.parentId === parentId;
+        })?.data.originalNode as MindMapNode;
+      } else {
+        // 根节点
+        existingNode = existingNodes.find(n => {
+          const orig = n.data.originalNode as MindMapNode;
+          return orig.text === lineInfo.text && !orig.parentId;
+        })?.data.originalNode as MindMapNode;
+      }
+
+      const finalNodeId = existingNode?.id || nodeId;
+
+      const newNode: MindMapNode = {
+        id: finalNodeId,
+        text: lineInfo.text,
+        parentId: parentId || undefined,
+        expanded: true,
+        ...(existingNode ? {
+          x: existingNode.x,
+          y: existingNode.y,
+          color: existingNode.color,
+          backgroundColor: existingNode.backgroundColor,
+          fontSize: existingNode.fontSize,
+          shape: existingNode.shape,
+          expanded: existingNode.expanded,
+        } : {}),
+      };
+
+      newNodes.push(newNode);
+
+      // 如果有父节点，创建边
+      if (parentId) {
+        const existingEdge = existingEdges.find(e => e.source === parentId && e.target === finalNodeId);
+        if (existingEdge) {
+          newEdges.push({
+            id: existingEdge.id,
+            source: parentId,
+            target: finalNodeId,
+            label: typeof existingEdge.label === 'string' ? existingEdge.label : undefined,
+            color: (existingEdge.style as any)?.stroke,
+            width: (existingEdge.style as any)?.strokeWidth,
+          });
+        } else {
+          const edgeId = `edge_${parentId}_${finalNodeId}`;
+          newEdges.push({
+            id: edgeId,
+            source: parentId,
+            target: finalNodeId,
+          });
+        }
+      }
+
+      // 将当前节点压入栈
+      stack.push({ nodeId: finalNodeId, indent: lineInfo.indent });
+    });
+
+    return { nodes: newNodes, edges: newEdges };
+  } catch (error: any) {
+    Notification.error('YAML 解析失败: ' + (error.message || '未知错误'));
+    return { nodes: [], edges: [] };
+  }
+};
+
+// YAML 视图组件
+const YamlView = ({
+  nodes,
+  edges,
+  onSave,
+  docId,
+  isSaving,
+}: {
+  nodes: Node[];
+  edges: Edge[];
+  onSave: (nodes: MindMapNode[], edges: MindMapEdge[]) => Promise<void>;
+  docId: string;
+  isSaving: boolean;
+}) => {
+  const [yamlText, setYamlText] = useState<string>('');
+  const [isDirty, setIsDirty] = useState<boolean>(false);
+  const editorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isInitializedRef = useRef<boolean>(false);
+
+  // 初始化 YAML 文本（在组件挂载时立即计算）
+  const initialYaml = useMemo(() => {
+    return convertNodesToYaml(nodes, edges);
+  }, [nodes, edges]);
+
+  // 初始化 YAML 文本状态
+  useEffect(() => {
+    if (!isInitializedRef.current) {
+      setYamlText(initialYaml);
+      setIsDirty(false);
+    }
+  }, [initialYaml]);
+
+  // 初始化 Monaco Editor
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    let mounted = true;
+    let model: any = null;
+    
+    const initEditor = async () => {
+      try {
+        const { load } = await import('vj/components/monaco/loader');
+        const { monaco, registerAction } = await load(['yaml']);
+
+        if (!mounted || !containerRef.current) return;
+
+        monacoRef.current = monaco;
+
+        // 检查 model 是否已存在
+        const modelUri = monaco.Uri.parse(`yaml://mindmap-${docId}.yaml`);
+        model = monaco.editor.getModel(modelUri);
+        
+        // 使用初始 YAML 内容
+        const initialContent = initialYaml || convertNodesToYaml(nodes, edges);
+        
+        if (model) {
+          // 如果 model 已存在，更新内容
+          model.setValue(initialContent);
+        } else {
+          // 创建新的 model
+          model = monaco.editor.createModel(initialContent, 'yaml', modelUri);
+        }
+
+        // 如果编辑器已存在，只更新 model
+        if (editorRef.current) {
+          editorRef.current.setModel(model);
+          editorRef.current.setValue(initialContent);
+          return;
+        }
+
+        // 创建新的编辑器
+        const editor = monaco.editor.create(containerRef.current, {
+          model,
+          theme: 'vs',
+          language: 'yaml',
+          automaticLayout: true,
+          minimap: { enabled: false },
+          fontSize: 14,
+          lineNumbers: 'on',
+          wordWrap: 'on',
+        });
+
+        registerAction(editor, model);
+        editorRef.current = editor;
+        isInitializedRef.current = true;
+        setYamlText(initialContent);
+
+        // 监听内容变化
+        editor.onDidChangeModelContent(() => {
+          const value = editor.getValue();
+          setYamlText(value);
+          setIsDirty(true);
+        });
+
+        // 保存快捷键 (Ctrl+S / Cmd+S) - 在编辑器初始化时定义
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
+          const currentYaml = editor.getValue();
+          try {
+            const parsed = parseYamlToNodes(currentYaml, nodes, edges);
+            if (parsed.nodes.length === 0 && parsed.edges.length === 0) {
+              Notification.error('YAML 解析结果为空，请检查格式');
+              return;
+            }
+            await onSave(parsed.nodes, parsed.edges);
+            setIsDirty(false);
+            Notification.success('保存成功');
+          } catch (error: any) {
+            Notification.error('保存失败: ' + (error.message || '未知错误'));
+          }
+        });
+      } catch (error: any) {
+        console.error('Failed to initialize Monaco Editor:', error);
+        Notification.error('初始化编辑器失败: ' + (error.message || '未知错误'));
+      }
+    };
+
+    initEditor();
+
+    return () => {
+      mounted = false;
+      // 注意：不要在这里销毁 model，因为 model 可能被多个编辑器实例共享
+      // 只在组件完全卸载时清理编辑器
+      if (editorRef.current && !isInitializedRef.current) {
+        editorRef.current.dispose();
+        editorRef.current = null;
+      }
+    };
+  }, [docId]); // 只在 docId 变化时重新初始化
+
+  // 更新编辑器内容（当外部节点变化时，且用户未编辑）
+  useEffect(() => {
+    if (editorRef.current && !isDirty && isInitializedRef.current) {
+      const newYaml = convertNodesToYaml(nodes, edges);
+      const currentValue = editorRef.current.getValue();
+      if (currentValue !== newYaml) {
+        // 使用 pushEditOperations 来避免触发 change 事件
+        const model = editorRef.current.getModel();
+        if (model) {
+          model.pushEditOperations(
+            [],
+            [{
+              range: model.getFullModelRange(),
+              text: newYaml,
+            }],
+            () => null
+          );
+          setYamlText(newYaml);
+          setIsDirty(false);
+        }
+      }
+    }
+  }, [nodes, edges, isDirty]);
+
+  const handleSave = useCallback(async () => {
+    try {
+      const currentYaml = editorRef.current?.getValue() || yamlText;
+      const parsed = parseYamlToNodes(currentYaml, nodes, edges);
+      if (parsed.nodes.length === 0 && parsed.edges.length === 0) {
+        Notification.error('YAML 解析结果为空，请检查格式');
+        return;
+      }
+      await onSave(parsed.nodes, parsed.edges);
+      setIsDirty(false);
+      Notification.success('保存成功');
+    } catch (error: any) {
+      Notification.error('保存失败: ' + (error.message || '未知错误'));
+    }
+  }, [yamlText, nodes, edges, onSave]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
+      {/* 工具栏 */}
+      <div style={{
+        padding: '10px 20px',
+        background: '#f5f5f5',
+        borderBottom: '1px solid #ddd',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+      }}>
+        <button
+          onClick={handleSave}
+          disabled={isSaving || !isDirty}
+          style={{
+            padding: '8px 16px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            background: isSaving || !isDirty ? '#f5f5f5' : '#4caf50',
+            color: isSaving || !isDirty ? '#999' : '#fff',
+            cursor: isSaving || !isDirty ? 'not-allowed' : 'pointer',
+            fontWeight: 'bold',
+          }}
+        >
+          {isSaving ? '保存中...' : '保存 (Ctrl+S)'}
+        </button>
+        {isDirty && (
+          <span style={{ color: '#ff9800', fontSize: '14px' }}>● 未保存的更改</span>
+        )}
+      </div>
+      {/* 编辑器容器 */}
+      <div ref={containerRef} style={{ flex: 1, width: '100%' }} />
     </div>
   );
 };
