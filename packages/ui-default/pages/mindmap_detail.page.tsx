@@ -1498,8 +1498,8 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     }
   }, [docId, reactFlowInstance]);
 
-  // 从 YAML 保存的函数
-  const handleSaveFromYaml = useCallback(async (newNodes: MindMapNode[], newEdges: MindMapEdge[]) => {
+  // 从 YAML 保存的函数（支持卡片）
+  const handleSaveFromYaml = useCallback(async (newNodes: MindMapNode[], newEdges: MindMapEdge[], cardsData?: Array<{ nodeId: string; cards: Card[] }>) => {
     setIsSaving(true);
     try {
       // 合并新节点和现有节点
@@ -1600,13 +1600,116 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         }, 100);
       }
       
+      const cardOperationErrors: string[] = [];
+
+      // 处理卡片数据
+      if (cardsData && cardsData.length > 0) {
+        const domainId = (window as any).UiContext?.domainId || 'system';
+        const mmid = mindMap.mmid;
+        
+        for (const nodeCardData of cardsData) {
+          const { nodeId, cards } = nodeCardData;
+          const existingCards = ((window as any).UiContext?.nodeCardsMap?.[nodeId] || []).slice().sort(
+            (a, b) => (a.cid || 0) - (b.cid || 0)
+          );
+          const existingCardsByCid = new Map<number, Card>();
+          existingCards.forEach(card => {
+            if (typeof card.cid === 'number') {
+              existingCardsByCid.set(card.cid, card);
+            }
+          });
+          const desiredCards = cards.map((card, index) => ({
+            cid: index + 1,
+            title: card.title || '',
+            content: card.content || '',
+          }));
+
+          const processedCids = new Set<number>();
+
+          for (let index = 0; index < desiredCards.length; index++) {
+            const desiredCard = desiredCards[index];
+            processedCids.add(desiredCard.cid);
+
+            const matchedCard =
+              existingCardsByCid.get(desiredCard.cid) ||
+              existingCards[index];
+
+            if (matchedCard && matchedCard.docId) {
+              try {
+                await request.post(`/d/${domainId}/mindmap/card/${matchedCard.docId}`, {
+                  operation: 'update',
+                  nodeId,
+                  mmid,
+                  cid: desiredCard.cid,
+                  title: desiredCard.title,
+                  content: desiredCard.content,
+                  order: index + 1,
+                });
+              } catch (error: any) {
+                console.error(`Failed to update card ${matchedCard.docId}:`, error);
+                cardOperationErrors.push(`更新卡片「${desiredCard.title || matchedCard.docId}」失败: ${error?.message || '未知错误'}`);
+              }
+            } else {
+              try {
+                const createResponse = await request.post(`/d/${domainId}/mindmap/mmid/${mmid}/card`, {
+                  nodeId,
+                  title: desiredCard.title,
+                  content: desiredCard.content,
+                });
+                const newCardId = createResponse?.cardId;
+                if (newCardId) {
+                  await request.post(`/d/${domainId}/mindmap/card/${newCardId}`, {
+                    operation: 'update',
+                    order: index + 1,
+                  });
+                }
+              } catch (createErr: any) {
+                console.error(`Failed to sync card ${desiredCard.cid} for node ${nodeId}:`, createErr);
+                cardOperationErrors.push(`同步卡片「${desiredCard.title || ''}」失败: ${createErr?.message || '未知错误'}`);
+              }
+            }
+          }
+
+          for (const existingCard of existingCards) {
+            if (!processedCids.has(existingCard.cid) && (existingCard.docId || existingCard.cid)) {
+              const identifier = existingCard.docId || String(existingCard.cid);
+              try {
+                await request.post(`/d/${domainId}/mindmap/card/${identifier}`, {
+                  operation: 'delete',
+                  nodeId,
+                  mmid,
+                  cid: existingCard.cid,
+                });
+              } catch (error: any) {
+                console.error(`Failed to delete card ${identifier}:`, error);
+                cardOperationErrors.push(`删除卡片「${existingCard.title || identifier}」失败: ${error?.message || '未知错误'}`);
+              }
+            }
+          }
+        }
+      }
+
+      if (cardOperationErrors.length > 0) {
+        throw new Error(cardOperationErrors.join('\n'));
+      }
+      
       // 重置操作描述
       lastOperationRef.current = '';
 
       // 重新加载数据以更新节点和边
       const domainId = (window as any).UiContext?.domainId || 'system';
       const responseData = await request.get(getMindMapUrl('/data', docId));
-      setMindMap(responseData);
+      if (responseData?.mindMap) {
+        setMindMap(responseData.mindMap);
+      } else {
+        setMindMap(responseData);
+      }
+      if ((window as any).UiContext) {
+        const updatedMap = responseData?.nodeCardsMap
+          || responseData?.mindMap?.nodeCardsMap
+          || {};
+        (window as any).UiContext.nodeCardsMap = updatedMap;
+      }
       
       Notification.success('YAML 保存成功');
       setIsSaving(false);
@@ -4076,7 +4179,7 @@ const convertNodesToYaml = (nodes: Node[], edges: Edge[]): string => {
     }
   });
 
-  // 递归转换节点为 YAML 字符串（通过缩进表示层级）
+  // 递归转换节点为 YAML 字符串（通过缩进表示层级，支持卡片）
   const convertNodeToYamlString = (nodeId: string, indent: number = 0): string => {
     const nodeData = nodeMap.get(nodeId);
     if (!nodeData) return '';
@@ -4085,10 +4188,40 @@ const convertNodesToYaml = (nodes: Node[], edges: Edge[]): string => {
     const originalNode = node.data.originalNode as MindMapNode;
     const nodeText = originalNode?.text || '';
     const indentStr = '  '.repeat(indent);
-    
-    let result = `${indentStr}- ${nodeText}`;
 
-    // 如果有子节点，递归处理
+    // 获取节点的卡片信息
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const nodeCards = nodeCardsMap[nodeId] || [];
+
+    const hasNestedContent = nodeCards.length > 0 || children.length > 0;
+    const safeNodeText = yaml.dump(nodeText || '', { lineWidth: -1 }).trim();
+    let result = hasNestedContent ? `${indentStr}- ${safeNodeText}:` : `${indentStr}- ${safeNodeText}`;
+
+    const childIndentStr = '  '.repeat(indent + 1);
+
+    if (nodeCards.length > 0) {
+      result += '\n' + `${childIndentStr}- cards:`;
+      const cardEntryIndent = '  '.repeat(indent + 2);
+      nodeCards.forEach((card: Card) => {
+        const titleValue = yaml.dump(card.title || '', { lineWidth: -1 }).trim();
+        const cardContent = card.content || '';
+        result += '\n' + `${cardEntryIndent}- title: ${titleValue}`;
+        if (cardContent.trim()) {
+          const contentLines = cardContent.split('\n');
+          if (contentLines.length > 1) {
+            result += '\n' + `${cardEntryIndent}  content: |`;
+            const contentIndent = '  '.repeat(indent + 3);
+            contentLines.forEach((line: string) => {
+              result += '\n' + `${contentIndent}${line}`;
+            });
+          } else {
+            const contentValue = yaml.dump(cardContent, { lineWidth: -1 }).trim();
+            result += '\n' + `${cardEntryIndent}  content: ${contentValue}`;
+          }
+        }
+      });
+    }
+
     if (children.length > 0) {
       children.forEach((childId) => {
         result += '\n' + convertNodeToYamlString(childId, indent + 1);
@@ -4114,78 +4247,46 @@ const convertNodesToYaml = (nodes: Node[], edges: Edge[]): string => {
   return yamlLines.join('\n');
 };
 
-// YAML 到节点的解析函数（解析列表格式，通过缩进判断层级）
-const parseYamlToNodes = (yamlText: string, existingNodes: Node[], existingEdges: Edge[]): { nodes: MindMapNode[]; edges: MindMapEdge[] } => {
+// YAML 到节点的解析函数（合法 YAML 结构，支持 cards）
+const parseYamlToNodes = (yamlText: string, existingNodes: Node[], existingEdges: Edge[]): { nodes: MindMapNode[]; edges: MindMapEdge[]; cards: Array<{ nodeId: string; cards: Card[] }> } => {
   try {
-    const lines = yamlText.split('\n').filter(line => line.trim());
-    if (lines.length === 0) {
-      Notification.error('YAML 内容为空');
-      return { nodes: [], edges: [] };
+    const yamlData = yaml.load(yamlText) as any;
+    if (!yamlData || !Array.isArray(yamlData)) {
+      Notification.error('YAML 格式需要是以列表开头的结构');
+      return { nodes: [], edges: [], cards: [] };
     }
 
-    // 解析每一行，提取缩进层级和节点文本
-    interface LineInfo {
-      indent: number;
-      text: string;
-      lineIndex: number;
-    }
-
-    const lineInfos: LineInfo[] = lines.map((line, index) => {
-      const match = line.match(/^(\s*)- (.+)$/);
-      if (!match) {
-        return null;
-      }
-      const indent = match[1].length;
-      const text = match[2].trim();
-      return { indent, text, lineIndex: index };
-    }).filter((info): info is LineInfo => info !== null);
-
-    if (lineInfos.length === 0) {
-      Notification.error('YAML 格式错误：未找到有效的节点');
-      return { nodes: [], edges: [] };
-    }
-
-    // 构建节点树结构
     const newNodes: MindMapNode[] = [];
     const newEdges: MindMapEdge[] = [];
+    const cardsMap = new Map<string, Card[]>();
     let nodeIdCounter = 0;
 
-    // 使用栈来跟踪父节点
-    interface NodeStackItem {
-      nodeId: string;
-      indent: number;
-    }
-    const stack: NodeStackItem[] = [];
+    const normalizeString = (value: any): string => {
+      if (typeof value === 'string') return value;
+      if (value === null || value === undefined) return '';
+      return String(value);
+    };
 
-    lineInfos.forEach((lineInfo) => {
-      // 弹出栈中所有缩进大于等于当前行的节点（找到父节点）
-      while (stack.length > 0 && stack[stack.length - 1].indent >= lineInfo.indent) {
-        stack.pop();
-      }
-
-      const parentId = stack.length > 0 ? stack[stack.length - 1].nodeId : null;
-      const nodeId = `node_${nodeIdCounter++}`;
-
-      // 查找现有节点（通过文本匹配，如果文本相同且在同一位置）
-      let existingNode: MindMapNode | undefined;
+    const getExistingNode = (text: string, parentId: string | null) => {
       if (parentId) {
-        existingNode = existingNodes.find(n => {
+        return existingNodes.find(n => {
           const orig = n.data.originalNode as MindMapNode;
-          return orig.text === lineInfo.text && orig.parentId === parentId;
-        })?.data.originalNode as MindMapNode;
-      } else {
-        // 根节点
-        existingNode = existingNodes.find(n => {
-          const orig = n.data.originalNode as MindMapNode;
-          return orig.text === lineInfo.text && !orig.parentId;
-        })?.data.originalNode as MindMapNode;
+          return orig.text === text && orig.parentId === parentId;
+        })?.data.originalNode as MindMapNode | undefined;
       }
+      return existingNodes.find(n => {
+        const orig = n.data.originalNode as MindMapNode;
+        return orig.text === text && !orig.parentId;
+      })?.data.originalNode as MindMapNode | undefined;
+    };
 
-      const finalNodeId = existingNode?.id || nodeId;
+    const createNode = (text: string, parentId: string | null): string => {
+      const existingNode = getExistingNode(text, parentId);
+      const finalNodeId = existingNode?.id || `node_${nodeIdCounter++}`;
 
       const newNode: MindMapNode = {
         id: finalNodeId,
-        text: lineInfo.text,
+        text,
         parentId: parentId || undefined,
         expanded: true,
         ...(existingNode ? {
@@ -4201,7 +4302,6 @@ const parseYamlToNodes = (yamlText: string, existingNodes: Node[], existingEdges
 
       newNodes.push(newNode);
 
-      // 如果有父节点，创建边
       if (parentId) {
         const existingEdge = existingEdges.find(e => e.source === parentId && e.target === finalNodeId);
         if (existingEdge) {
@@ -4214,24 +4314,225 @@ const parseYamlToNodes = (yamlText: string, existingNodes: Node[], existingEdges
             width: (existingEdge.style as any)?.strokeWidth,
           });
         } else {
-          const edgeId = `edge_${parentId}_${finalNodeId}`;
           newEdges.push({
-            id: edgeId,
+            id: `edge_${parentId}_${finalNodeId}`,
             source: parentId,
             target: finalNodeId,
           });
         }
       }
 
-      // 将当前节点压入栈
-      stack.push({ nodeId: finalNodeId, indent: lineInfo.indent });
-    });
+      return finalNodeId;
+    };
 
-    return { nodes: newNodes, edges: newEdges };
+    const addCardsForNode = (nodeId: string, rawCards: any) => {
+      if (!Array.isArray(rawCards)) return;
+      const normalized = rawCards.map((card: any, index: number): Card | null => {
+        if (typeof card === 'string') {
+          return {
+            docId: '',
+            cid: index + 1,
+            title: card,
+            content: '',
+            updateAt: new Date().toISOString(),
+          };
+        }
+        if (card && typeof card === 'object') {
+          const cidValue = typeof card.cid === 'number'
+            ? card.cid
+            : (typeof card.cid === 'string' ? Number(card.cid) : NaN);
+          const normalizedCid = Number.isFinite(cidValue) && cidValue > 0 ? cidValue : (index + 1);
+          return {
+            docId: card.docId || card.id || '',
+            cid: normalizedCid,
+            title: normalizeString(card.title || ''),
+            content: normalizeString(card.content || ''),
+            updateAt: card.updateAt || new Date().toISOString(),
+            createdAt: card.createdAt,
+          };
+        }
+        return null;
+      }).filter((card): card is Card => card !== null);
+
+      if (normalized.length > 0) {
+        cardsMap.set(nodeId, normalized);
+      }
+    };
+
+    const isCardsEntry = (entry: any): entry is { cards: any } => {
+      return !!entry && typeof entry === 'object' && 'cards' in entry && Object.keys(entry).length === 1;
+    };
+
+    const processEntries = (entries: any[], parentId: string | null) => {
+      entries.forEach(entry => {
+        processEntry(entry, parentId);
+      });
+    };
+
+    const processEntry = (entry: any, parentId: string | null) => {
+      if (entry === null || entry === undefined) {
+        return;
+      }
+
+      if (typeof entry === 'string') {
+        createNode(entry, parentId);
+        return;
+      }
+
+      if (typeof entry === 'object') {
+        // 卡片块
+        if (isCardsEntry(entry) && parentId) {
+          addCardsForNode(parentId, entry.cards);
+          return;
+        }
+
+        const keys = Object.keys(entry);
+        if (keys.length === 0) return;
+
+        const nodeName = keys[0];
+        const nodeValue = entry[nodeName];
+        const nodeId = createNode(nodeName, parentId);
+
+        if (Array.isArray(nodeValue)) {
+          processEntries(nodeValue, nodeId);
+        } else if (nodeValue && typeof nodeValue === 'object') {
+          if (Array.isArray(nodeValue.cards)) {
+            addCardsForNode(nodeId, nodeValue.cards);
+          }
+          if (Array.isArray((nodeValue as any).children)) {
+            processEntries((nodeValue as any).children, nodeId);
+          }
+        }
+        return;
+      }
+
+      // 其他类型（数字、布尔等）转换为字符串节点
+      createNode(String(entry), parentId);
+    };
+
+    processEntries(yamlData, null);
+
+    const cardsData = Array.from(cardsMap.entries()).map(([nodeId, cards]) => ({
+      nodeId,
+      cards,
+    }));
+
+    return { nodes: newNodes, edges: newEdges, cards: cardsData };
   } catch (error: any) {
-    Notification.error('YAML 解析失败: ' + (error.message || '未知错误'));
-    return { nodes: [], edges: [] };
+    try {
+      return parseYamlLinesToNodes(yamlText, existingNodes, existingEdges);
+    } catch (e: any) {
+      Notification.error('YAML 解析失败: ' + (error.message || '未知错误'));
+      return { nodes: [], edges: [], cards: [] };
+    }
   }
+};
+
+// 行解析（兼容旧格式，主要用于回退，卡片不会被解析）
+const parseYamlLinesToNodes = (yamlText: string, existingNodes: Node[], existingEdges: Edge[]): { nodes: MindMapNode[]; edges: MindMapEdge[]; cards: Array<{ nodeId: string; cards: Card[] }> } => {
+  const lines = yamlText.split('\n').filter(line => line.trim());
+  if (lines.length === 0) {
+    Notification.error('YAML 内容为空');
+    return { nodes: [], edges: [], cards: [] };
+  }
+
+  // 解析每一行，提取缩进层级和文本
+  interface LineInfo {
+    indent: number;
+    text: string;
+  }
+
+  const lineInfos: LineInfo[] = lines.map((line) => {
+    const nodeMatch = line.match(/^(\s*)- (.+)$/);
+    if (nodeMatch) {
+      const indent = nodeMatch[1].length;
+      const text = nodeMatch[2].trim();
+      return { indent, text };
+    }
+    return null;
+  }).filter((info): info is LineInfo => info !== null);
+
+  if (lineInfos.length === 0) {
+    Notification.error('YAML 格式错误：未找到有效的节点');
+    return { nodes: [], edges: [], cards: [] };
+  }
+
+  const newNodes: MindMapNode[] = [];
+  const newEdges: MindMapEdge[] = [];
+  let nodeIdCounter = 0;
+
+  interface NodeStackItem {
+    nodeId: string;
+    indent: number;
+  }
+  const stack: NodeStackItem[] = [];
+
+  lineInfos.forEach((lineInfo) => {
+    while (stack.length > 0 && stack[stack.length - 1].indent >= lineInfo.indent) {
+      stack.pop();
+    }
+
+    const parentId = stack.length > 0 ? stack[stack.length - 1].nodeId : null;
+    const nodeId = `node_${nodeIdCounter++}`;
+
+    let existingNode: MindMapNode | undefined;
+    if (parentId) {
+      existingNode = existingNodes.find(n => {
+        const orig = n.data.originalNode as MindMapNode;
+        return orig.text === lineInfo.text && orig.parentId === parentId;
+      })?.data.originalNode as MindMapNode;
+    } else {
+      existingNode = existingNodes.find(n => {
+        const orig = n.data.originalNode as MindMapNode;
+        return orig.text === lineInfo.text && !orig.parentId;
+      })?.data.originalNode as MindMapNode;
+    }
+
+    const finalNodeId = existingNode?.id || nodeId;
+
+    const newNode: MindMapNode = {
+      id: finalNodeId,
+      text: lineInfo.text,
+      parentId: parentId || undefined,
+      expanded: true,
+      ...(existingNode ? {
+        x: existingNode.x,
+        y: existingNode.y,
+        color: existingNode.color,
+        backgroundColor: existingNode.backgroundColor,
+        fontSize: existingNode.fontSize,
+        shape: existingNode.shape,
+        expanded: existingNode.expanded,
+      } : {}),
+    };
+
+    newNodes.push(newNode);
+
+    if (parentId) {
+      const existingEdge = existingEdges.find(e => e.source === parentId && e.target === finalNodeId);
+      if (existingEdge) {
+        newEdges.push({
+          id: existingEdge.id,
+          source: parentId,
+          target: finalNodeId,
+          label: typeof existingEdge.label === 'string' ? existingEdge.label : undefined,
+          color: (existingEdge.style as any)?.stroke,
+          width: (existingEdge.style as any)?.strokeWidth,
+        });
+      } else {
+        const edgeId = `edge_${parentId}_${finalNodeId}`;
+        newEdges.push({
+          id: edgeId,
+          source: parentId,
+          target: finalNodeId,
+        });
+      }
+    }
+
+    stack.push({ nodeId: finalNodeId, indent: lineInfo.indent });
+  });
+
+  return { nodes: newNodes, edges: newEdges, cards: [] };
 };
 
 // YAML 视图组件
@@ -4244,7 +4545,7 @@ const YamlView = ({
 }: {
   nodes: Node[];
   edges: Edge[];
-  onSave: (nodes: MindMapNode[], edges: MindMapEdge[]) => Promise<void>;
+  onSave: (nodes: MindMapNode[], edges: MindMapEdge[], cardsData?: Array<{ nodeId: string; cards: Card[] }>) => Promise<void>;
   docId: string;
   isSaving: boolean;
 }) => {
@@ -4299,6 +4600,20 @@ const YamlView = ({
       try {
         const { load } = await import('vj/components/monaco/loader');
         const { monaco, registerAction } = await load(['yaml']);
+
+        // 关闭 Monaco 默认的 YAML 校验，避免对自定义结构误报
+        try {
+          const yamlLanguages = (monaco.languages as any);
+          yamlLanguages?.yaml?.yamlDefaults?.setDiagnosticsOptions?.({
+            validate: false,
+            enableSchemaRequest: false,
+            hover: false,
+            completion: false,
+            format: false,
+          });
+        } catch (err) {
+          console.warn('Failed to configure YAML diagnostics:', err);
+        }
 
         if (!mounted || !containerRef.current) return;
 
@@ -4388,7 +4703,7 @@ const YamlView = ({
               Notification.error('YAML 解析结果为空，请检查格式');
               return;
             }
-            await onSave(parsed.nodes, parsed.edges);
+            await onSave(parsed.nodes, parsed.edges, parsed.cards);
             setIsDirty(false);
             Notification.success('保存成功');
           } catch (error: any) {
@@ -4427,7 +4742,7 @@ const YamlView = ({
               Notification.error('YAML 解析结果为空，请检查格式');
               return;
             }
-            await onSave(parsed.nodes, parsed.edges);
+            await onSave(parsed.nodes, parsed.edges, parsed.cards);
             setIsDirty(false);
             Notification.success('保存成功');
           } catch (error: any) {
@@ -4485,7 +4800,7 @@ const YamlView = ({
         Notification.error('YAML 解析结果为空，请检查格式');
         return;
       }
-      await onSave(parsed.nodes, parsed.edges);
+      await onSave(parsed.nodes, parsed.edges, parsed.cards);
       setIsDirty(false);
       Notification.success('保存成功');
     } catch (error: any) {
@@ -4617,28 +4932,54 @@ const YamlView = ({
       }));
 
       // 构建系统提示，让 AI 理解 YAML 结构
-      const systemPrompt = `你是一个 YAML 编辑器助手。用户会给你一个 YAML 格式的思维导图数据，格式如下：
-- 每个节点用 "- 节点名" 表示
-- 子节点通过增加 2 个空格的缩进表示层级
-- 例如：
-  - Root
-    - Child1
-      - Grandchild1
-    - Child2
+      const systemPrompt = `你是一个思维导图架构生成助手，专门负责帮助用户生成和优化思维导图的整体架构。
+
+【你的核心职责】
+1. **架构生成**：根据用户的需求，设计清晰、层次合理的节点结构
+2. **结构优化**：帮助用户重构或整理现有节点，使其逻辑一致
+3. **节点组织**：指导如何安排父子节点的层级关系
+4. **卡片管理**：在合适的节点下添加、修改或删除卡片信息
+
+【YAML 格式说明】
+- 叶子节点：\`- 节点名称\`
+- 有子节点或卡片时：\`- 节点名称:\`，随后使用额外缩进的列表描述内容
+- 子节点使用额外的 \`- 子节点\` 表示
+
+示例：
+\`\`\`yaml
+- recipe:
+    - 咖喱:
+        - 泰式
+        - cards:
+            - title: 绿咖喱介绍
+              content: |
+                这是卡片内容
+                可以多行
+        - 日式
+    - 咖啡:
+        - cards:
+            - title: 基础配方
+- 独立主题
+\`\`\`
+
+说明：
+1. \`cards\` 以 \`- cards:\` 的形式作为节点内的特殊条目
+2. \`cards\` 列表中的元素可以是纯字符串（仅标题）或带有 \`title\`、\`content\` 的对象
+3. 子节点与 \`cards\` 条目同级，顺序任意
+4. 缩进统一使用 2 个空格，保持 YAML 合法
+
+【重要规则】
+1. 只输出 YAML 代码块（\`\`\`yaml ... \`\`\`）
+2. 不要添加多余说明文字
+3. 优先考虑整体架构的合理性，再补充细节
+4. 若需卡片，使用 \`- cards:\` 结构，并在内部列出卡片
 
 当前 YAML 内容：
 \`\`\`yaml
-${currentYaml}
+${yamlText}
 \`\`\`
 
-用户可能会要求你：
-1. 添加新节点
-2. 删除节点
-3. 修改节点名称
-4. 移动节点位置
-5. 其他编辑操作
-
-请根据用户的指令，返回修改后的完整 YAML 内容。只返回 YAML 代码，不要包含其他解释文字。如果用户的问题不是编辑 YAML，请正常回答。`;
+用户指令：`;
 
       const response = await fetch(`/d/${domainId}/ai/chat?stream=true`, {
         method: 'POST',
