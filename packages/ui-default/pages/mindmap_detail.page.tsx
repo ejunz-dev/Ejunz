@@ -4254,6 +4254,26 @@ const YamlView = ({
   const monacoRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const isInitializedRef = useRef<boolean>(false);
+  
+  // AI 聊天相关状态
+  const [showChat, setShowChat] = useState<boolean>(false);
+  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
+  const [chatInput, setChatInput] = useState<string>('');
+  const [isChatLoading, setIsChatLoading] = useState<boolean>(false);
+  const chatMessagesEndRef = useRef<HTMLDivElement>(null);
+  const chatMessagesContainerRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef<boolean>(true);
+  
+  // 打字机效果相关 ref
+  const typingQueueRef = useRef<string>('');
+  const typingTimerRef = useRef<number | null>(null);
+  const isTypingRef = useRef<boolean>(false);
+  
+  // 面板大小调整相关状态
+  const [chatPanelWidth, setChatPanelWidth] = useState<number>(30); // 百分比
+  const [isResizing, setIsResizing] = useState<boolean>(false);
+  const resizeStartXRef = useRef<number>(0);
+  const resizeStartWidthRef = useRef<number>(30);
 
   // 初始化 YAML 文本（在组件挂载时立即计算）
   const initialYaml = useMemo(() => {
@@ -4311,12 +4331,80 @@ const YamlView = ({
           model,
           theme: 'vs',
           language: 'yaml',
-          automaticLayout: true,
+          automaticLayout: false, // 禁用自动布局，手动处理以避免 ResizeObserver 循环
           minimap: { enabled: false },
           fontSize: 14,
           lineNumbers: 'on',
           wordWrap: 'on',
         });
+
+        registerAction(editor, model);
+        editorRef.current = editor;
+        isInitializedRef.current = true;
+        setYamlText(initialContent);
+
+        // 手动处理布局更新，使用防抖避免频繁触发
+        let layoutTimeout: NodeJS.Timeout | null = null;
+        const updateLayout = () => {
+          if (layoutTimeout) {
+            clearTimeout(layoutTimeout);
+          }
+          layoutTimeout = setTimeout(() => {
+            if (editor && editor.getDomNode() && editor.getDomNode().isConnected) {
+              try {
+                editor.layout();
+              } catch (e) {
+                // 忽略布局错误
+              }
+            }
+          }, 50);
+        };
+
+        // 使用 ResizeObserver 手动监听容器大小变化
+        let resizeObserver: ResizeObserver | null = null;
+        if (containerRef.current) {
+          resizeObserver = new ResizeObserver((entries) => {
+            // 使用 requestAnimationFrame 来避免 ResizeObserver 循环
+            requestAnimationFrame(() => {
+              updateLayout();
+            });
+          });
+          resizeObserver.observe(containerRef.current);
+        }
+
+        // 监听内容变化
+        editor.onDidChangeModelContent(() => {
+          const value = editor.getValue();
+          setYamlText(value);
+          setIsDirty(true);
+        });
+
+        // 保存快捷键 (Ctrl+S / Cmd+S) - 在编辑器初始化时定义
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
+          const currentYaml = editor.getValue();
+          try {
+            const parsed = parseYamlToNodes(currentYaml, nodes, edges);
+            if (parsed.nodes.length === 0 && parsed.edges.length === 0) {
+              Notification.error('YAML 解析结果为空，请检查格式');
+              return;
+            }
+            await onSave(parsed.nodes, parsed.edges);
+            setIsDirty(false);
+            Notification.success('保存成功');
+          } catch (error: any) {
+            Notification.error('保存失败: ' + (error.message || '未知错误'));
+          }
+        });
+
+        // 清理函数
+        return () => {
+          if (resizeObserver) {
+            resizeObserver.disconnect();
+          }
+          if (layoutTimeout) {
+            clearTimeout(layoutTimeout);
+          }
+        };
 
         registerAction(editor, model);
         editorRef.current = editor;
@@ -4405,38 +4493,594 @@ const YamlView = ({
     }
   }, [yamlText, nodes, edges, onSave]);
 
+  // 监听滚动事件，检测用户是否在底部
+  useEffect(() => {
+    const container = chatMessagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const threshold = 100; // 距离底部 100px 内认为在底部
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+      shouldAutoScrollRef.current = isNearBottom;
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+    };
+  }, [showChat]);
+
+  // AI 聊天相关功能
+  useEffect(() => {
+    // 检查是否应该自动滚动（用户是否在底部附近）
+    const checkShouldAutoScroll = () => {
+      if (!chatMessagesContainerRef.current) return true;
+      const container = chatMessagesContainerRef.current;
+      const threshold = 100; // 距离底部 100px 内认为在底部
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+      return isNearBottom;
+    };
+
+    shouldAutoScrollRef.current = checkShouldAutoScroll();
+
+    // 只在应该自动滚动时才滚动，并且只滚动容器内部，不滚动整个页面
+    if (shouldAutoScrollRef.current && chatMessagesContainerRef.current && chatMessagesEndRef.current) {
+      const container = chatMessagesContainerRef.current;
+      // 直接设置容器的 scrollTop，而不是使用 scrollIntoView（会滚动整个页面）
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+      });
+    }
+  }, [chatMessages, showChat]);
+
+  // 打字机效果：逐字显示内容
+  const processTypingQueue = useCallback((messageIndex: number) => {
+    if (!isTypingRef.current || typingQueueRef.current.length === 0) {
+      isTypingRef.current = false;
+      return;
+    }
+
+    const char = typingQueueRef.current[0];
+    typingQueueRef.current = typingQueueRef.current.slice(1);
+
+    setChatMessages(prev => {
+      const newMessages = [...prev];
+      if (newMessages[messageIndex]) {
+        newMessages[messageIndex] = {
+          ...newMessages[messageIndex],
+          content: newMessages[messageIndex].content + char,
+        };
+      }
+      return newMessages;
+    });
+
+    // 只在应该自动滚动时才滚动，并且只滚动容器内部，不滚动整个页面
+    if (shouldAutoScrollRef.current && chatMessagesContainerRef.current) {
+      const container = chatMessagesContainerRef.current;
+      // 直接设置容器的 scrollTop，而不是使用 scrollIntoView（会滚动整个页面）
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+      });
+    }
+
+    const delay = /[\u4e00-\u9fa5，。！？；：]/.test(char) ? 30 : 20;
+    typingTimerRef.current = window.setTimeout(() => {
+      processTypingQueue(messageIndex);
+    }, delay);
+  }, []);
+
+  const addToTypingQueue = useCallback((content: string, messageIndex: number) => {
+    typingQueueRef.current += content;
+    
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
+      processTypingQueue(messageIndex);
+    }
+  }, [processTypingQueue]);
+
+  const handleChatSend = useCallback(async () => {
+    if (!chatInput.trim() || isChatLoading) return;
+
+    const userMessage = chatInput.trim();
+    setChatInput('');
+    setIsChatLoading(true);
+
+    // 先添加用户消息和临时的assistant消息
+    let assistantMessageIndex: number;
+    setChatMessages(prev => {
+      const newMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [...prev, { role: 'user' as const, content: userMessage }];
+      // 添加一个临时的assistant消息用于流式更新
+      assistantMessageIndex = newMessages.length; // assistant消息的索引
+      newMessages.push({ role: 'assistant' as const, content: '' });
+      return newMessages;
+    });
+
+    // 用户发送新消息时，应该自动滚动到底部
+    shouldAutoScrollRef.current = true;
+
+    // 清空打字机队列
+    typingQueueRef.current = '';
+    isTypingRef.current = false;
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+
+    // 获取当前 YAML 内容
+    const currentYaml = editorRef.current?.getValue() || yamlText;
+
+    try {
+      const domainId = (window as any).UiContext?.domainId || 'system';
+      const history = chatMessages.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+      }));
+
+      // 构建系统提示，让 AI 理解 YAML 结构
+      const systemPrompt = `你是一个 YAML 编辑器助手。用户会给你一个 YAML 格式的思维导图数据，格式如下：
+- 每个节点用 "- 节点名" 表示
+- 子节点通过增加 2 个空格的缩进表示层级
+- 例如：
+  - Root
+    - Child1
+      - Grandchild1
+    - Child2
+
+当前 YAML 内容：
+\`\`\`yaml
+${currentYaml}
+\`\`\`
+
+用户可能会要求你：
+1. 添加新节点
+2. 删除节点
+3. 修改节点名称
+4. 移动节点位置
+5. 其他编辑操作
+
+请根据用户的指令，返回修改后的完整 YAML 内容。只返回 YAML 代码，不要包含其他解释文字。如果用户的问题不是编辑 YAML，请正常回答。`;
+
+      const response = await fetch(`/d/${domainId}/ai/chat?stream=true`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: `${systemPrompt}\n\n用户指令：${userMessage}`,
+          history,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: '请求失败' }));
+        throw new Error(errorData.error || '请求失败');
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let accumulatedContent = '';
+
+      if (!reader) {
+        throw new Error('无法读取响应流');
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+
+        if (value) {
+          const decoded = decoder.decode(value, { stream: true });
+          buffer += decoded;
+        }
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          if (!line.startsWith('data: ')) continue;
+          
+          try {
+            const jsonStr = line.slice(6).trim();
+            if (!jsonStr) continue;
+            
+            const data = JSON.parse(jsonStr);
+            
+            if (data.type === 'content') {
+              accumulatedContent += data.content;
+              addToTypingQueue(data.content, assistantMessageIndex);
+            } else if (data.type === 'done') {
+              // 确保所有内容都显示完毕
+              const checkAndFinalize = () => {
+                if (typingQueueRef.current.length === 0) {
+                  setChatMessages(prev => {
+                    const newMessages = [...prev];
+                    if (newMessages[assistantMessageIndex]) {
+                      const finalContent = data.content || accumulatedContent;
+                      const currentContent = newMessages[assistantMessageIndex].content;
+                      if (currentContent !== finalContent) {
+                        const missing = finalContent.slice(currentContent.length);
+                        if (missing) {
+                          newMessages[assistantMessageIndex] = {
+                            role: 'assistant',
+                            content: finalContent,
+                          };
+                        }
+                      }
+                    }
+                    return newMessages;
+                  });
+                  
+                  isTypingRef.current = false;
+                  if (typingTimerRef.current) {
+                    clearTimeout(typingTimerRef.current);
+                    typingTimerRef.current = null;
+                  }
+
+                  // 尝试从 AI 回复中提取 YAML 代码块
+                  const finalContent = data.content || accumulatedContent;
+                  const yamlMatch = finalContent.match(/```(?:yaml)?\n([\s\S]*?)\n```/);
+                  if (yamlMatch) {
+                    const newYaml = yamlMatch[1].trim();
+                    if (editorRef.current && newYaml) {
+                      editorRef.current.setValue(newYaml);
+                      setYamlText(newYaml);
+                      setIsDirty(true);
+                      Notification.success('AI 已更新 YAML 内容');
+                    }
+                  } else {
+                    // 如果没有代码块，检查是否整个回复都是 YAML 格式
+                    const lines = finalContent.split('\n');
+                    const firstLine = lines[0]?.trim();
+                    if (firstLine && firstLine.startsWith('-')) {
+                      // 可能是纯 YAML，尝试使用
+                      if (editorRef.current) {
+                        editorRef.current.setValue(finalContent.trim());
+                        setYamlText(finalContent.trim());
+                        setIsDirty(true);
+                        Notification.success('AI 已更新 YAML 内容');
+                      }
+                    }
+                  }
+                } else {
+                  setTimeout(checkAndFinalize, 100);
+                }
+              };
+              
+              if (typingQueueRef.current.length === 0) {
+                checkAndFinalize();
+              } else {
+                setTimeout(checkAndFinalize, 100);
+              }
+              
+              break;
+            } else if (data.type === 'error') {
+              throw new Error(data.error || '请求失败');
+            }
+          } catch (e) {
+            // 忽略解析错误
+          }
+        }
+      }
+    } catch (error: any) {
+      setChatMessages(prev => {
+        const newMessages = [...prev];
+        if (newMessages[assistantMessageIndex]) {
+          newMessages[assistantMessageIndex] = {
+            role: 'assistant',
+            content: `错误: ${error.message || '未知错误'}`,
+          };
+        }
+        return newMessages;
+      });
+      Notification.error('AI 聊天失败: ' + (error.message || '未知错误'));
+    } finally {
+      setIsChatLoading(false);
+    }
+  }, [chatInput, isChatLoading, chatMessages, yamlText, addToTypingQueue]);
+
+  // 处理拖拽开始
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    resizeStartXRef.current = e.clientX;
+    resizeStartWidthRef.current = chatPanelWidth;
+  }, [chatPanelWidth]);
+
+  // 处理拖拽过程
+  useEffect(() => {
+    const handleResizeMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      
+      const deltaX = resizeStartXRef.current - e.clientX; // 向左拖拽时 deltaX 为正
+      const containerWidth = window.innerWidth;
+      const deltaPercent = (deltaX / containerWidth) * 100;
+      const newWidth = Math.max(20, Math.min(60, resizeStartWidthRef.current + deltaPercent));
+      setChatPanelWidth(newWidth);
+      
+      // 手动触发编辑器布局更新，使用 requestAnimationFrame 避免 ResizeObserver 循环
+      requestAnimationFrame(() => {
+        if (editorRef.current) {
+          try {
+            editorRef.current.layout();
+          } catch (e) {
+            // 忽略布局错误
+          }
+        }
+      });
+    };
+
+    const handleResizeEnd = () => {
+      setIsResizing(false);
+      // 拖拽结束后再次更新布局
+      requestAnimationFrame(() => {
+        if (editorRef.current) {
+          try {
+            editorRef.current.layout();
+          } catch (e) {
+            // 忽略布局错误
+          }
+        }
+      });
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleResizeMove);
+      document.addEventListener('mouseup', handleResizeEnd);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleResizeMove);
+      document.removeEventListener('mouseup', handleResizeEnd);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
-      {/* 工具栏 */}
-      <div style={{
-        padding: '10px 20px',
-        background: '#f5f5f5',
-        borderBottom: '1px solid #ddd',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
+    <div style={{ display: 'flex', flexDirection: 'row', height: '100%', width: '100%' }}>
+      {/* 主编辑区域 */}
+      <div style={{ 
+        display: 'flex', 
+        flexDirection: 'column', 
+        height: '100%', 
+        width: showChat ? `${100 - chatPanelWidth}%` : '100%', 
+        transition: isResizing ? 'none' : 'width 0.3s ease' 
       }}>
-        <button
-          onClick={handleSave}
-          disabled={isSaving || !isDirty}
+        {/* 工具栏 */}
+        <div style={{
+          padding: '10px 20px',
+          background: '#f5f5f5',
+          borderBottom: '1px solid #ddd',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+        }}>
+          <button
+            onClick={handleSave}
+            disabled={isSaving || !isDirty}
+            style={{
+              padding: '8px 16px',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              background: isSaving || !isDirty ? '#f5f5f5' : '#4caf50',
+              color: isSaving || !isDirty ? '#999' : '#fff',
+              cursor: isSaving || !isDirty ? 'not-allowed' : 'pointer',
+              fontWeight: 'bold',
+            }}
+          >
+            {isSaving ? '保存中...' : '保存 (Ctrl+S)'}
+          </button>
+          {isDirty && (
+            <span style={{ color: '#ff9800', fontSize: '14px' }}>● 未保存的更改</span>
+          )}
+          <div style={{ marginLeft: 'auto' }}>
+            <button
+              onClick={() => setShowChat(!showChat)}
+              style={{
+                padding: '8px 16px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                background: showChat ? '#2196f3' : '#fff',
+                color: showChat ? '#fff' : '#333',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+              }}
+            >
+              {showChat ? '隐藏 AI' : '显示 AI'}
+            </button>
+          </div>
+        </div>
+        {/* 编辑器容器 */}
+        <div ref={containerRef} style={{ flex: 1, width: '100%' }} />
+      </div>
+
+      {/* 分隔条 */}
+      {showChat && (
+        <div
+          onMouseDown={handleResizeStart}
           style={{
-            padding: '8px 16px',
-            border: '1px solid #ddd',
-            borderRadius: '4px',
-            background: isSaving || !isDirty ? '#f5f5f5' : '#4caf50',
-            color: isSaving || !isDirty ? '#999' : '#fff',
-            cursor: isSaving || !isDirty ? 'not-allowed' : 'pointer',
-            fontWeight: 'bold',
+            width: '4px',
+            height: '100%',
+            background: isResizing ? '#2196f3' : '#ddd',
+            cursor: 'col-resize',
+            position: 'relative',
+            flexShrink: 0,
+            transition: isResizing ? 'none' : 'background 0.2s ease',
+          }}
+          onMouseEnter={(e) => {
+            if (!isResizing) {
+              e.currentTarget.style.background = '#bbb';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!isResizing) {
+              e.currentTarget.style.background = '#ddd';
+            }
           }}
         >
-          {isSaving ? '保存中...' : '保存 (Ctrl+S)'}
-        </button>
-        {isDirty && (
-          <span style={{ color: '#ff9800', fontSize: '14px' }}>● 未保存的更改</span>
-        )}
-      </div>
-      {/* 编辑器容器 */}
-      <div ref={containerRef} style={{ flex: 1, width: '100%' }} />
+          <div style={{
+            position: 'absolute',
+            left: '-2px',
+            top: 0,
+            width: '8px',
+            height: '100%',
+            cursor: 'col-resize',
+          }} />
+        </div>
+      )}
+
+      {/* AI 聊天面板 */}
+      {showChat && (
+        <div style={{
+          width: `${chatPanelWidth}%`,
+          height: '100%',
+          borderLeft: '1px solid #ddd',
+          display: 'flex',
+          flexDirection: 'column',
+          background: '#fff',
+          transition: isResizing ? 'none' : 'width 0.3s ease',
+          flexShrink: 0,
+        }}>
+          <div style={{
+            padding: '12px 16px',
+            borderBottom: '1px solid #ddd',
+            background: '#f5f5f5',
+            fontWeight: 'bold',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+            <span>AI 助手</span>
+            <button
+              onClick={() => setShowChat(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                fontSize: '18px',
+                cursor: 'pointer',
+                color: '#999',
+              }}
+            >
+              &times;
+            </button>
+          </div>
+          
+          <div 
+            ref={chatMessagesContainerRef}
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}
+          >
+            {chatMessages.length === 0 && (
+              <div style={{
+                textAlign: 'center',
+                color: '#999',
+                padding: '20px',
+                fontSize: '14px',
+              }}>
+                <p>你好！我是 AI 助手，可以帮助你编辑 YAML。</p>
+                <p style={{ marginTop: '8px', fontSize: '12px' }}>例如：</p>
+                <ul style={{ textAlign: 'left', marginTop: '8px', fontSize: '12px', color: '#666' }}>
+                  <li>"添加一个名为 '新节点' 的子节点到 Root"</li>
+                  <li>"删除 'Ancient' 节点"</li>
+                  <li>"将 'CT-辅助' 重命名为 'CT辅助'"</li>
+                </ul>
+              </div>
+            )}
+            {chatMessages.map((msg, index) => (
+              <div
+                key={index}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                }}
+              >
+                <div style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  background: msg.role === 'user' ? '#2196f3' : '#f5f5f5',
+                  color: msg.role === 'user' ? '#fff' : '#333',
+                  maxWidth: '85%',
+                  fontSize: '14px',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}>
+                  {msg.content}
+                </div>
+              </div>
+            ))}
+            {isChatLoading && (
+              <div style={{
+                padding: '8px 12px',
+                borderRadius: '8px',
+                background: '#f5f5f5',
+                color: '#999',
+                fontSize: '14px',
+              }}>
+                正在思考...
+              </div>
+            )}
+            <div ref={chatMessagesEndRef} />
+          </div>
+
+          <div style={{
+            padding: '12px',
+            borderTop: '1px solid #ddd',
+            background: '#f5f5f5',
+          }}>
+            <textarea
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleChatSend();
+                }
+              }}
+              placeholder="输入消息... (Shift+Enter换行，Enter发送)"
+              rows={3}
+              disabled={isChatLoading}
+              style={{
+                width: '100%',
+                padding: '8px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px',
+                resize: 'none',
+                fontFamily: 'inherit',
+              }}
+            />
+            <button
+              onClick={handleChatSend}
+              disabled={!chatInput.trim() || isChatLoading}
+              style={{
+                marginTop: '8px',
+                width: '100%',
+                padding: '8px',
+                border: 'none',
+                borderRadius: '4px',
+                background: (!chatInput.trim() || isChatLoading) ? '#ccc' : '#2196f3',
+                color: '#fff',
+                cursor: (!chatInput.trim() || isChatLoading) ? 'not-allowed' : 'pointer',
+                fontWeight: 'bold',
+              }}
+            >
+              发送
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
