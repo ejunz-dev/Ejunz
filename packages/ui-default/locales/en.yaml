@@ -251,7 +251,17 @@ mcp_detail: MCP Detail
 mcp_domain: MCP
 mcp_edit: Edit MCP
 mcp_logs: MCP Logs
+mindmap_create: Create MindMap
+mindmap_data: MindMap Data
+mindmap_delete: Delete MindMap
+mindmap_detail: MindMap Detail
 mindmap_domain: MindMap
+mindmap_edge: MindMap Edge
+mindmap_edit: Edit MindMap
+mindmap_list: MindMap List
+mindmap_node: MindMap Node
+mindmap_save: Save MindMap
+mindmap_study: Study MindMap
 no_translation_warn: <blockquote class="warn">This part of content is under translation.</blockquote>
 node_create: Create Node
 node_detail: Node Detail
