@@ -1060,6 +1060,94 @@ const OutlineView = ({
   onNodeClick: (nodeId: string) => void;
   selectedNodeId: string | null;
 }) => {
+  // 卡片展开状态管理（使用 localStorage 持久化）
+  const getStorageKey = useCallback(() => {
+    const docId = (window as any).UiContext?.mindMap?.docId;
+    const mmid = (window as any).UiContext?.mindMap?.mmid;
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    if (docId) {
+      return `mindmap_cards_expanded_${domainId}_${docId}`;
+    } else if (mmid) {
+      return `mindmap_cards_expanded_${domainId}_mmid_${mmid}`;
+    }
+    return 'mindmap_cards_expanded_default';
+  }, []);
+
+  // 从 localStorage 加载卡片展开状态
+  const loadCardsExpandedState = useCallback((): Record<string, boolean> => {
+    try {
+      const key = getStorageKey();
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error('Failed to load cards expanded state:', e);
+    }
+    return {};
+  }, [getStorageKey]);
+
+  // 保存卡片展开状态到 localStorage
+  const saveCardsExpandedState = useCallback((state: Record<string, boolean>) => {
+    try {
+      const key = getStorageKey();
+      localStorage.setItem(key, JSON.stringify(state));
+    } catch (e) {
+      console.error('Failed to save cards expanded state:', e);
+    }
+  }, [getStorageKey]);
+
+  // 卡片展开状态
+  const [cardsExpanded, setCardsExpanded] = useState<Record<string, boolean>>(() => {
+    // 默认所有卡片都展开
+    const loaded = loadCardsExpandedState();
+    // 合并默认展开状态
+    const defaultExpanded: Record<string, boolean> = {};
+    nodes.forEach(node => {
+      const nodeCards = (window as any).UiContext?.nodeCardsMap?.[node.id] || [];
+      if (nodeCards.length > 0) {
+        defaultExpanded[node.id] = loaded[node.id] !== undefined ? loaded[node.id] : true;
+      }
+    });
+    return { ...loaded, ...defaultExpanded };
+  });
+
+  // 切换卡片展开状态
+  const toggleCardsExpanded = useCallback((nodeId: string) => {
+    setCardsExpanded(prev => {
+      const newState = {
+        ...prev,
+        [nodeId]: !prev[nodeId],
+      };
+      saveCardsExpandedState(newState);
+      return newState;
+    });
+  }, [saveCardsExpandedState]);
+
+  // 当节点变化时，更新展开状态
+  useEffect(() => {
+    const loaded = loadCardsExpandedState();
+    const newState: Record<string, boolean> = {};
+    nodes.forEach(node => {
+      const nodeCards = (window as any).UiContext?.nodeCardsMap?.[node.id] || [];
+      if (nodeCards.length > 0) {
+        newState[node.id] = loaded[node.id] !== undefined ? loaded[node.id] : true;
+      }
+    });
+    setCardsExpanded(prev => {
+      const updated = { ...prev };
+      let changed = false;
+      nodes.forEach(node => {
+        const nodeCards = (window as any).UiContext?.nodeCardsMap?.[node.id] || [];
+        if (nodeCards.length > 0 && updated[node.id] === undefined) {
+          updated[node.id] = loaded[node.id] !== undefined ? loaded[node.id] : true;
+          changed = true;
+        }
+      });
+      return changed ? updated : prev;
+    });
+  }, [nodes, loadCardsExpandedState]);
+
   // 构建节点树结构
   const buildTree = useMemo(() => {
     const nodeMap = new Map<string, { node: Node; children: string[] }>();
@@ -1123,6 +1211,27 @@ const OutlineView = ({
     return visibleChildren;
   }, [buildTree]);
 
+  // 获取节点的卡片列表
+  const getNodeCards = useCallback((nodeId: string): Card[] => {
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    return nodeCardsMap[nodeId] || [];
+  }, []);
+
+  // 构建卡片 URL
+  const getCardUrl = useCallback((card: Card, nodeId: string): string => {
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    const branch = (window as any).UiContext?.currentBranch || 'main';
+    const docId = (window as any).UiContext?.mindMap?.docId;
+    const mmid = (window as any).UiContext?.mindMap?.mmid;
+    
+    if (docId) {
+      return `/d/${domainId}/mindmap/${docId}/branch/${branch}/node/${nodeId}/cards?cardId=${card.docId}`;
+    } else if (mmid) {
+      return `/d/${domainId}/mindmap/mmid/${mmid}/branch/${branch}/node/${nodeId}/cards?cardId=${card.docId}`;
+    }
+    return '#';
+  }, []);
+
   // 递归渲染节点树
   const renderNodeTree = useCallback(
     (nodeId: string, level: number = 0, isLast: boolean = false, hasSiblings: boolean = false): JSX.Element | null => {
@@ -1134,96 +1243,228 @@ const OutlineView = ({
       const expanded = originalNode?.expanded !== false; // 默认为 true
       const hasChildren = children.length > 0;
       const isSelected = selectedNodeId === nodeId;
+      
+      // 获取节点的卡片列表
+      const cards = getNodeCards(nodeId);
+      const hasCards = cards.length > 0;
+      const cardsExpandedState = cardsExpanded[nodeId] !== false; // 默认为 true（展开）
 
       return (
         <div key={nodeId} style={{ position: 'relative' }}>
-          <div style={{ display: 'flex', alignItems: 'center', marginLeft: `${level * 24}px`, position: 'relative' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '4px 0',
-                cursor: 'pointer',
-                position: 'relative',
-                zIndex: 1,
-                width: '100%',
-              }}
-              onClick={() => onNodeClick(nodeId)}
-              onMouseEnter={(e) => {
-                if (!isSelected) {
-                  e.currentTarget.style.backgroundColor = '#f5f5f5';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isSelected) {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }
-              }}
-            >
-              {/* 展开/折叠箭头按钮 */}
-              {hasChildren ? (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleExpand(nodeId);
-                  }}
-                  style={{
-                    width: '18px',
-                    height: '18px',
-                    border: 'none',
-                    background: 'transparent',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginRight: '4px',
-                    padding: 0,
-                    flexShrink: 0,
-                    position: 'relative',
-                    zIndex: 2,
-                    color: '#666',
-                  }}
-                  title={expanded ? '折叠' : '展开'}
-                >
-                  <span style={{ 
-                    fontSize: '10px',
-                    transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                    transition: 'transform 0.15s ease',
-                    display: 'inline-block',
-                    lineHeight: '1',
-                  }}>
-                    ▼
-                  </span>
-                </button>
-              ) : (
-                <div style={{ width: '22px', marginRight: '0px', flexShrink: 0 }} />
-              )}
-              
-              {/* 项目符号（点） */}
-              <span style={{ 
-                marginRight: '8px',
-                color: '#666',
-                fontSize: '12px',
-                flexShrink: 0,
-                lineHeight: '1',
-              }}>
-                •
-              </span>
-              
-              {/* 节点文本 */}
+          <div style={{ marginLeft: `${level * 24}px`, position: 'relative' }}>
+            {/* 节点行 */}
+            <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
               <div
                 style={{
-                  flex: 1,
-                  color: isSelected ? '#1976d2' : (originalNode?.color || '#333'),
-                  fontSize: `${originalNode?.fontSize || 14}px`,
-                  fontWeight: isSelected ? '600' : 'normal',
-                  lineHeight: '1.5',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '4px 0',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  zIndex: 1,
+                  width: '100%',
+                }}
+                onClick={() => onNodeClick(nodeId)}
+                onMouseEnter={(e) => {
+                  if (!isSelected) {
+                    e.currentTarget.style.backgroundColor = '#f5f5f5';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSelected) {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }
                 }}
               >
-                {originalNode?.text || '未命名节点'}
+                {/* 展开/折叠箭头按钮 */}
+                {hasChildren ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleExpand(nodeId);
+                    }}
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: '4px',
+                      padding: 0,
+                      flexShrink: 0,
+                      position: 'relative',
+                      zIndex: 2,
+                      color: '#666',
+                    }}
+                    title={expanded ? '折叠' : '展开'}
+                  >
+                    <span style={{ 
+                      fontSize: '10px',
+                      transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                      transition: 'transform 0.15s ease',
+                      display: 'inline-block',
+                      lineHeight: '1',
+                    }}>
+                      ▼
+                    </span>
+                  </button>
+                ) : (
+                  <div style={{ width: '22px', marginRight: '0px', flexShrink: 0 }} />
+                )}
+                
+                {/* 项目符号（点） */}
+                <span style={{ 
+                  marginRight: '8px',
+                  color: '#666',
+                  fontSize: '12px',
+                  flexShrink: 0,
+                  lineHeight: '1',
+                }}>
+                  •
+                </span>
+                
+                {/* 节点文本 */}
+                <div
+                  style={{
+                    flex: 1,
+                    color: isSelected ? '#1976d2' : (originalNode?.color || '#333'),
+                    fontSize: `${originalNode?.fontSize || 14}px`,
+                    fontWeight: isSelected ? '600' : 'normal',
+                    lineHeight: '1.5',
+                  }}
+                >
+                  {originalNode?.text || '未命名节点'}
+                </div>
+                
+                {/* 卡片折叠/展开按钮 */}
+                {hasCards && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      marginLeft: '8px',
+                      flexShrink: 0,
+                      position: 'relative',
+                      zIndex: 2,
+                    }}
+                  >
+                    {cardsExpandedState ? (
+                      // 展开状态：显示箭头按钮（用于折叠）
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleCardsExpanded(nodeId);
+                        }}
+                        style={{
+                          width: '18px',
+                          height: '18px',
+                          border: 'none',
+                          background: 'transparent',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: 0,
+                          color: '#666',
+                        }}
+                        title="折叠卡片"
+                      >
+                        <span style={{ 
+                          fontSize: '10px',
+                          transform: 'rotate(90deg)',
+                          transition: 'transform 0.15s ease',
+                          display: 'inline-block',
+                          lineHeight: '1',
+                        }}>
+                          ▶
+                        </span>
+                      </button>
+                    ) : (
+                      // 折叠状态：显示带数字的圆按钮
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleCardsExpanded(nodeId);
+                        }}
+                        style={{
+                          width: '20px',
+                          height: '20px',
+                          borderRadius: '50%',
+                          border: '1px solid #4caf50',
+                          background: '#fff',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: 0,
+                          color: '#4caf50',
+                          fontSize: '11px',
+                          fontWeight: '500',
+                          lineHeight: '1',
+                        }}
+                        title="展开卡片"
+                      >
+                        {cards.length}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
+            
+            {/* 卡片列表 */}
+            {hasCards && cardsExpandedState && (
+              <div style={{ 
+                marginLeft: '40px', 
+                marginTop: '4px', 
+                marginBottom: '8px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+              }}>
+                {cards.map((card) => (
+                  <a
+                    key={card.docId || card.cid}
+                    href={getCardUrl(card, nodeId)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // 在新标签页打开
+                      window.open(getCardUrl(card, nodeId), '_blank');
+                      e.preventDefault();
+                    }}
+                    style={{
+                      display: 'inline-block',
+                      padding: '4px 8px',
+                      fontSize: '12px',
+                      color: '#1976d2',
+                      textDecoration: 'none',
+                      borderRadius: '4px',
+                      backgroundColor: '#f0f7ff',
+                      border: '1px solid #e3f2fd',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      maxWidth: 'fit-content',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#e3f2fd';
+                      e.currentTarget.style.textDecoration = 'underline';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = '#f0f7ff';
+                      e.currentTarget.style.textDecoration = 'none';
+                    }}
+                    title={card.title}
+                  >
+                    {card.title || '未命名卡片'}
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
+          
           {/* 子节点 */}
           {hasChildren && expanded && (
             <div style={{ position: 'relative', marginLeft: `${level * 24}px` }}>
@@ -1251,7 +1492,7 @@ const OutlineView = ({
         </div>
       );
     },
-    [buildTree, selectedNodeId, onToggleExpand, onNodeClick]
+    [buildTree, selectedNodeId, onToggleExpand, onNodeClick, getNodeCards, getCardUrl, cardsExpanded, toggleCardsExpanded]
   );
 
   return (
