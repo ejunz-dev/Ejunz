@@ -1,6 +1,6 @@
 import { ObjectId } from 'mongodb';
 import type { Context } from '../context';
-import { Handler, param, route, Types, ConnectionHandler } from '../service/server';
+import { Handler, param, route, post, Types, ConnectionHandler } from '../service/server';
 import { NotFoundError, ForbiddenError, BadRequestError, ValidationError } from '../error';
 import { PRIV, PERM } from '../model/builtin';
 import { MindMapModel, CardModel, TYPE_CARD } from '../model/mindmap';
@@ -1650,6 +1650,36 @@ class MindMapCardListHandler extends Handler {
         // 获取节点信息（用于显示节点名称）
         const node = mindMap.nodes?.find(n => n.id === nodeId);
         
+        // 构建从根节点到当前节点的完整路径
+        const nodePath: Array<{ id: string; text: string }> = [];
+        const branchData = getBranchData(mindMap, branch || 'main');
+        const nodes = branchData.nodes || [];
+        const edges = branchData.edges || [];
+        
+        // 构建节点映射
+        const nodeMap = new Map<string, MindMapNode>();
+        nodes.forEach(n => nodeMap.set(n.id, n));
+        
+        // 构建父节点映射
+        const parentMap = new Map<string, string>();
+        edges.forEach(edge => {
+            parentMap.set(edge.target, edge.source);
+        });
+        
+        // 从当前节点向上遍历到根节点
+        let currentNodeId: string | undefined = nodeId;
+        const pathNodes: Array<{ id: string; text: string }> = [];
+        while (currentNodeId) {
+            const currentNode = nodeMap.get(currentNodeId);
+            if (currentNode) {
+                pathNodes.unshift({ id: currentNodeId, text: currentNode.text || '未命名节点' });
+            }
+            currentNodeId = parentMap.get(currentNodeId);
+        }
+        
+        // 反转路径数组（从当前节点到根节点）
+        const reversedPathNodes = pathNodes.slice().reverse();
+        
         // 确定当前选中的卡片
         let selectedCard = null;
         if (cardId) {
@@ -1659,15 +1689,19 @@ class MindMapCardListHandler extends Handler {
             selectedCard = cards[0];
         }
         
+        const extraTitleContent = `${reversedPathNodes.map(p => p.text).join(' / ')} - ${mindMap.title}`;
+        
         this.response.template = 'mindmap_card_list.html';
         this.response.body = {
             mindMap,
             cards,
             nodeId,
             nodeText: node?.text || '节点',
+            nodePath: reversedPathNodes, // 使用反转后的路径
             branch: branch || 'main',
             selectedCard,
         };
+        this.UiContext.extraTitleContent = extraTitleContent;
     }
 }
 
@@ -1701,26 +1735,27 @@ class MindMapCardEditHandler extends Handler {
             nodeId,
             branch: branch || 'main',
         };
+        this.UiContext.extraTitleContent = `${card?.title || '卡片'} - ${mindMap.title}`;
     }
     
     @param('docId', Types.ObjectId, true)
     @param('mmid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
-    @param('cardId', Types.ObjectId, true)
-    @param('title', Types.String, true)
-    @param('content', Types.String, true)
-    @param('operation', Types.String, true)
+    @route('cardId', Types.ObjectId, true)
     @param('branch', Types.String, true)
-    async post(
+    @post('title', Types.String, true)
+    @post('content', Types.String, true)
+    @post('operation', Types.String, true)
+    async postUpdate(
         domainId: string,
         docId: ObjectId,
         mmid: number,
         nodeId: string,
         cardId?: ObjectId,
+        branch?: string,
         title?: string,
         content?: string,
-        operation?: string,
-        branch?: string
+        operation?: string
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
@@ -1753,17 +1788,26 @@ class MindMapCardEditHandler extends Handler {
             if (title !== undefined) updates.title = title;
             if (content !== undefined) updates.content = content;
             await CardModel.update(domainId, cardId, updates);
-            this.response.redirect = this.url('mindmap_card_list_branch', { 
-                docId: docId.toString(), 
-                branch: effectiveBranch, 
-                nodeId 
-            });
+            // 重定向到更新后的卡片URL
+            if (docId) {
+                this.response.redirect = this.url('mindmap_card_list_branch', { 
+                    docId: docId.toString(), 
+                    branch: effectiveBranch, 
+                    nodeId 
+                }) + `?cardId=${cardId.toString()}`;
+            } else {
+                this.response.redirect = this.url('mindmap_card_list_branch_mmid', { 
+                    mmid: mmid.toString(), 
+                    branch: effectiveBranch, 
+                    nodeId 
+                }) + `?cardId=${cardId.toString()}`;
+            }
         } else {
             // 创建新卡片
             if (!title) {
                 throw new ValidationError('title is required');
             }
-            await CardModel.create(
+            const newCardId = await CardModel.create(
                 domainId,
                 mindMap.mmid,
                 nodeId,
@@ -1772,11 +1816,20 @@ class MindMapCardEditHandler extends Handler {
                 content || '',
                 this.request.ip
             );
-            this.response.redirect = this.url('mindmap_card_list_branch', { 
-                docId: docId.toString(), 
-                branch: effectiveBranch, 
-                nodeId 
-            });
+            // 重定向到新创建的卡片URL
+            if (docId) {
+                this.response.redirect = this.url('mindmap_card_list_branch', { 
+                    docId: docId.toString(), 
+                    branch: effectiveBranch, 
+                    nodeId 
+                }) + `?cardId=${newCardId.toString()}`;
+            } else {
+                this.response.redirect = this.url('mindmap_card_list_branch_mmid', { 
+                    mmid: mmid.toString(), 
+                    branch: effectiveBranch, 
+                    nodeId 
+                }) + `?cardId=${newCardId.toString()}`;
+            }
         }
     }
 }
