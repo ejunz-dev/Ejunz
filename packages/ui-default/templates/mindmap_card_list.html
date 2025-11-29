@@ -77,13 +77,20 @@
     <div class="section">
       <div class="section__header mindmap-card-list__content-header">
         <h1 class="section__title mindmap-card-list__content-title">
+          <span id="card-title">{{ selectedCard.title if selectedCard else '请选择卡片' }}</span>
+          <span style="margin: 0 10px;">/</span>
+          {% if nodePath and nodePath|length > 0 %}
+            {% for pathNode in nodePath %}
+              {{ pathNode.text }}
+              <span style="margin: 0 10px;">/</span>
+            {% endfor %}
+          {% else %}
+            {{ nodeText }}
+            <span style="margin: 0 10px;">/</span>
+          {% endif %}
           <a href="{{ url('mindmap_detail_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch) }}">
             {{ mindMap.title if mindMap else '思维导图' }}
           </a>
-          <span style="margin: 0 10px;">/</span>
-          {{ nodeText }}
-          <span style="margin: 0 10px;">/</span>
-          <span id="card-title">{{ selectedCard.title if selectedCard else '请选择卡片' }}</span>
         </h1>
         {% if selectedCard %}
           <a 
