@@ -3,7 +3,7 @@ import type { Context } from '../context';
 import { Handler, param, route, Types, ConnectionHandler } from '../service/server';
 import { NotFoundError, ForbiddenError, BadRequestError, ValidationError } from '../error';
 import { PRIV, PERM } from '../model/builtin';
-import { MindMapModel, CardModel } from '../model/mindmap';
+import { MindMapModel, CardModel, TYPE_CARD } from '../model/mindmap';
 import type { MindMapDoc, MindMapNode, MindMapEdge, CardDoc, MindMapHistoryEntry } from '../interface';
 import * as document from '../model/document';
 import { exec as execCb } from 'child_process';
@@ -2660,26 +2660,41 @@ async function importMindMapFromFileStructure(
         // Read cards (Markdown files) in this directory
         try {
             const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+            // 先取出该节点下现有的所有卡片，用于后续精确对齐（新增、更新、删除）
+            const existingCards = await CardModel.getByNodeId(domainId, mmid, nodeId);
+            const existingCardsByTitle = new Map<string, CardDoc>();
+            const processedCardIds = new Set<string>();
+
+            for (const card of existingCards) {
+                // 以标题作为同一目录下卡片的唯一标识
+                if (card.title) {
+                    existingCardsByTitle.set(card.title, card);
+                }
+            }
+
             for (const entry of entries) {
-                if (entry.isFile() && entry.name.toLowerCase().endsWith('.md') && entry.name.toLowerCase() !== 'readme.md') {
+                if (
+                    entry.isFile() &&
+                    entry.name.toLowerCase().endsWith('.md') &&
+                    entry.name.toLowerCase() !== 'readme.md'
+                ) {
                     const cardPath = path.join(dirPath, entry.name);
                     const cardContent = await fs.promises.readFile(cardPath, 'utf-8');
                     const cardTitle = sanitize(entry.name.replace(/\.md$/i, ''));
-                    
-                    // Create or update card in database
+
+                    // 根据文件名（标题）精确匹配已有卡片，做到“只更新有改动的 / 新增的文件”
                     try {
-                        // Check if card already exists
-                        const existingCards = await CardModel.getByNodeId(domainId, mmid, nodeId);
-                        const existingCard = existingCards.find(c => c.title === cardTitle);
-                        
+                        const existingCard = existingCardsByTitle.get(cardTitle);
+
                         if (existingCard) {
-                            // Update existing card
+                            // 更新已有卡片
                             await CardModel.update(domainId, existingCard.docId, {
                                 content: cardContent,
                             });
+                            processedCardIds.add(existingCard.docId.toString());
                         } else {
-                            // Create new card
-                            await CardModel.create(
+                            // 创建新卡片
+                            const newCardId = await CardModel.create(
                                 domainId,
                                 mmid,
                                 nodeId,
@@ -2688,9 +2703,22 @@ async function importMindMapFromFileStructure(
                                 cardContent,
                                 '127.0.0.1'
                             );
+                            processedCardIds.add(newCardId.toString());
                         }
                     } catch (err) {
                         console.error(`Failed to create/update card ${cardTitle} for node ${nodeId}:`, err);
+                    }
+                }
+            }
+
+            // 删除目录下已经不存在对应 Markdown 文件的旧卡片（包括在 GitHub 上被删除或移动到其它目录的）
+            for (const card of existingCards) {
+                const idStr = card.docId.toString();
+                if (!processedCardIds.has(idStr)) {
+                    try {
+                        await CardModel.delete(domainId, card.docId);
+                    } catch (err) {
+                        console.error(`Failed to delete stale card ${idStr} for node ${nodeId}:`, err);
                     }
                 }
             }
@@ -2719,8 +2747,28 @@ async function importMindMapFromFileStructure(
     } catch (err) {
         console.error(`Failed to read top-level directories:`, err);
     }
-    
+
     return { nodes, edges };
+}
+
+/**
+ * Cleanup all cards of a mindmap before re-importing from Git.
+ * 拉取前删除该思维导图下的所有卡片，后续完全按照仓库结构重建。
+ */
+async function cleanupMindMapCards(
+    domainId: string,
+    mmid: number,
+    _nodes: MindMapNode[] // 兼容旧签名，暂不使用 nodes
+): Promise<void> {
+    try {
+        // 直接删除该思维导图下所有旧卡片，完全按照本次拉取结果重建
+        await document.deleteMulti(domainId, TYPE_CARD as any, { mmid } as any);
+    } catch (err) {
+        console.error(
+            `cleanupMindMapCards failed for mmid=${mmid}:`,
+            (err as any)?.message || err
+        );
+    }
 }
 
 /**
@@ -2793,7 +2841,10 @@ class MindMapGithubPullHandler extends Handler {
             await exec('git fetch origin', { cwd: repoGitPath });
             await exec(`git reset --hard origin/${effectiveBranch}`, { cwd: repoGitPath });
             
-            // Import mindmap structure from git file system
+            // 在从 Git 导入结构前，先清空旧卡片，确保后续严格以仓库为准重建
+            await cleanupMindMapCards(domainId, mindMap.mmid, []);
+
+            // Import mindmap structure from git file system（会根据目录和 .md 文件重新创建卡片）
             const { nodes, edges } = await importMindMapFromFileStructure(
                 domainId,
                 mindMap.mmid,
