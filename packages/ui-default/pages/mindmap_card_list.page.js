@@ -4,7 +4,7 @@ import { request } from 'vj/utils';
 
 const page = new NamedPage('mindmap_card_list', () => {
   // 从 UiContext 获取数据
-  const cards = window.UiContext?.cards || [];
+  let cards = window.UiContext?.cards || [];
   const baseUrl = window.UiContext?.baseUrl || '';
   const nodeId = window.UiContext?.nodeId || '';
   const mindMap = window.UiContext?.mindMap || {};
@@ -18,11 +18,385 @@ const page = new NamedPage('mindmap_card_list', () => {
   let draggedElement = null;
   let draggedIndex = null;
   let dragOverIndex = null;
+  let allCards = [...cards]; // 存储当前节点的所有卡片
+  let cardContentCache = {}; // 缓存已渲染的卡片内容
+  let imageCache = null; // Cache API 实例
+  
+  // 初始化图片缓存
+  async function initImageCache() {
+    if ('caches' in window && !imageCache) {
+      try {
+        imageCache = await caches.open('mindmap-card-images-v1');
+      } catch (error) {
+        console.error('Failed to open cache:', error);
+      }
+    }
+  }
+  
+  // 从缓存或网络获取图片
+  async function getCachedImage(url) {
+    if (!imageCache) {
+      await initImageCache();
+    }
+    
+    if (!imageCache) {
+      // 如果 Cache API 不可用，直接返回原 URL
+      return url;
+    }
+    
+    try {
+      // 先检查缓存
+      const cachedResponse = await imageCache.match(url);
+      if (cachedResponse) {
+        // 从缓存创建 blob URL
+        const blob = await cachedResponse.blob();
+        return URL.createObjectURL(blob);
+      }
+      
+      // 缓存中没有，从网络获取
+      const response = await fetch(url);
+      if (response.ok) {
+        // 克隆响应（因为响应只能读取一次）
+        const responseClone = response.clone();
+        // 存储到缓存
+        await imageCache.put(url, responseClone);
+        // 返回 blob URL
+        const blob = await response.blob();
+        return URL.createObjectURL(blob);
+      }
+    } catch (error) {
+      console.error(`Failed to cache image ${url}:`, error);
+    }
+    
+    // 如果出错，返回原 URL
+    return url;
+  }
+  
+  // 预加载并缓存图片
+  async function preloadAndCacheImages(html) {
+    if (!html) return html;
+    
+    // 使用正则表达式提取所有图片 URL
+    const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+    const imageUrls = [];
+    let match;
+    
+    while ((match = imgRegex.exec(html)) !== null) {
+      const url = match[1];
+      if (url && !url.startsWith('blob:') && !url.startsWith('data:')) {
+        imageUrls.push(url);
+      }
+    }
+    
+    if (imageUrls.length === 0) return html;
+    
+    // 初始化缓存
+    await initImageCache();
+    
+    // 替换所有图片 URL 为缓存版本
+    const urlMap = new Map();
+    const imagePromises = imageUrls.map(async (originalUrl) => {
+      try {
+        const cachedUrl = await getCachedImage(originalUrl);
+        if (cachedUrl !== originalUrl) {
+          urlMap.set(originalUrl, cachedUrl);
+        }
+      } catch (error) {
+        console.error(`Failed to cache image ${originalUrl}:`, error);
+      }
+    });
+    
+    await Promise.all(imagePromises);
+    
+    // 替换 HTML 中的图片 URL
+    let updatedHtml = html;
+    urlMap.forEach((cachedUrl, originalUrl) => {
+      // 转义特殊字符用于正则表达式
+      const escapedUrl = originalUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      updatedHtml = updatedHtml.replace(new RegExp(escapedUrl, 'g'), cachedUrl);
+    });
+    
+    return updatedHtml;
+  }
+  
+  // 显示进度条
+  function showProgress(total) {
+    const container = document.getElementById('card-list-container');
+    if (!container) return;
+    
+    // 检查是否已经存在进度条
+    let progressBar = document.getElementById('card-loading-progress');
+    if (!progressBar) {
+      progressBar = document.createElement('div');
+      progressBar.id = 'card-loading-progress';
+      progressBar.style.cssText = `
+        padding: 12px 16px;
+        background: #f5f5f5;
+        border-bottom: 1px solid #e0e0e0;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      `;
+      
+      progressBar.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="flex: 1; background: #e0e0e0; height: 8px; border-radius: 4px; overflow: hidden;">
+            <div id="card-progress-bar" style="background: #4caf50; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+          </div>
+          <div id="card-progress-text" style="font-size: 12px; color: #666; white-space: nowrap;">
+            加载中... 0 / ${total}
+          </div>
+        </div>
+        <div id="card-progress-current" style="font-size: 11px; color: #999; margin-top: 4px;"></div>
+      `;
+      
+      container.insertBefore(progressBar, container.firstChild);
+    }
+  }
+  
+  // 更新进度
+  function updateProgress(loaded, total, current) {
+    const progressBar = document.getElementById('card-progress-bar');
+    const progressText = document.getElementById('card-progress-text');
+    const progressCurrent = document.getElementById('card-progress-current');
+    
+    if (progressBar) {
+      const percentage = (loaded / total) * 100;
+      progressBar.style.width = percentage + '%';
+    }
+    
+    if (progressText) {
+      progressText.textContent = `加载中... ${loaded} / ${total}`;
+    }
+    
+    if (progressCurrent) {
+      progressCurrent.textContent = current ? `正在加载: ${current}` : '';
+    }
+  }
+  
+  // 隐藏进度条
+  function hideProgress() {
+    const progressBar = document.getElementById('card-loading-progress');
+    if (progressBar) {
+      progressBar.style.display = 'none';
+    }
+  }
+  
+  // 预渲染卡片内容（包括下载 storage 并缓存到本地）
+  async function preloadCardContent(card) {
+    if (!card.content) {
+      cardContentCache[String(card.docId)] = '<p style="color: #888;">暂无内容</p>';
+      return;
+    }
+    
+    try {
+      // 渲染 markdown
+      const response = await fetch('/markdown', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: card.content || '',
+          inline: false,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to render markdown');
+      }
+      
+      let html = await response.text();
+      
+      // 预加载并缓存图片到本地
+      html = await preloadAndCacheImages(html);
+      
+      // 如果内容中有图片，等待所有图片加载完成
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = html;
+      const images = tempDiv.querySelectorAll('img');
+      
+      if (images.length > 0) {
+        // 等待所有图片加载完成
+        const imagePromises = Array.from(images).map(img => {
+          return new Promise((resolve) => {
+            if (img.complete) {
+              resolve();
+            } else {
+              img.onload = resolve;
+              img.onerror = resolve; // 即使失败也继续
+              // 设置超时，避免无限等待
+              setTimeout(resolve, 10000);
+            }
+          });
+        });
+        
+        await Promise.all(imagePromises);
+      }
+      
+      // 缓存渲染后的 HTML（包含本地 blob URL）
+      cardContentCache[String(card.docId)] = html;
+    } catch (error) {
+      console.error(`Failed to preload card ${card.docId}:`, error);
+      cardContentCache[String(card.docId)] = '<p style="color: #f44336;">加载内容失败</p>';
+    }
+  }
+  
+  // 加载当前节点的所有卡片（分批加载并预渲染内容）
+  async function loadAllNodeCards() {
+    if (!mindMap.mmid && !mindMap.docId) {
+      console.warn('MindMap data not found');
+      return;
+    }
+    
+    if (!nodeId) {
+      console.warn('Node ID not found');
+      return;
+    }
+    
+    try {
+      const domainId = window.UiContext?.domainId || 'system';
+      const branch = window.UiContext?.currentBranch || 'main';
+      const docId = mindMap.docId;
+      const mmid = mindMap.mmid;
+      
+      // 先获取卡片总数（通过 API 获取）
+      const cardApiUrl = docId
+        ? `/d/${domainId}/mindmap/${docId}/card?nodeId=${encodeURIComponent(nodeId)}`
+        : `/d/${domainId}/mindmap/mmid/${mmid}/card?nodeId=${encodeURIComponent(nodeId)}`;
+      
+      const cardResponse = await request.get(cardApiUrl);
+      const allNodeCards = cardResponse.cards || [];
+      
+      // 过滤掉已经加载的卡片
+      const existingCardIds = new Set(cards.map(c => String(c.docId)));
+      const newCards = allNodeCards.filter(c => !existingCardIds.has(String(c.docId)));
+      
+      if (newCards.length === 0 && allNodeCards.length === cards.length) {
+        // 没有新卡片，但需要预加载已有卡片的内容
+        const totalCards = allNodeCards.length;
+        if (totalCards === 0) {
+          hideProgress();
+          return;
+        }
+        
+        // 检查哪些卡片还没有预加载内容
+        const cardsToPreload = allNodeCards.filter(c => !cardContentCache[String(c.docId)]);
+        
+        if (cardsToPreload.length === 0) {
+          hideProgress();
+          return;
+        }
+        
+        showProgress(totalCards);
+        updateProgress(totalCards - cardsToPreload.length, totalCards, '');
+        
+        // 预加载卡片内容
+        for (let i = 0; i < cardsToPreload.length; i++) {
+          const card = cardsToPreload[i];
+          updateProgress(totalCards - cardsToPreload.length + i + 1, totalCards, card.title || '未命名卡片');
+          await preloadCardContent(card);
+        }
+        
+        hideProgress();
+        return;
+      }
+      
+      const totalCards = allNodeCards.length;
+      const alreadyLoaded = cards.length;
+      
+      // 显示进度条
+      showProgress(totalCards);
+      updateProgress(alreadyLoaded, totalCards, '');
+      
+      // 分批加载新卡片（每批 10 个）
+      const batchSize = 10;
+      for (let i = 0; i < newCards.length; i += batchSize) {
+        const batch = newCards.slice(i, i + batchSize);
+        const loaded = alreadyLoaded + Math.min(i + batchSize, newCards.length);
+        
+        // 更新进度
+        updateProgress(loaded, totalCards, `正在加载卡片 ${loaded} / ${totalCards}`);
+        
+        // 添加卡片到列表
+        batch.forEach((card, index) => {
+          allCards.push(card);
+          appendCardToContainer(card, alreadyLoaded + i + index + 1);
+        });
+        
+        // 添加小延迟，让用户看到进度
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      
+      // 更新全局 cards 变量
+      cards = allCards;
+      
+      // 预加载所有卡片的内容（包括已有和新加载的）
+      const allCardsToPreload = allNodeCards.filter(c => !cardContentCache[String(c.docId)]);
+      for (let i = 0; i < allCardsToPreload.length; i++) {
+        const card = allCardsToPreload[i];
+        const progress = totalCards - allCardsToPreload.length + i + 1;
+        updateProgress(progress, totalCards, `正在预加载: ${card.title || '未命名卡片'}`);
+        await preloadCardContent(card);
+      }
+      
+      // 隐藏进度条
+      hideProgress();
+      
+      // 重新设置拖动功能
+      setupDragAndDrop();
+    } catch (error) {
+      console.error('Failed to load all node cards:', error);
+      hideProgress();
+    }
+  }
+  
+  // 将单个卡片追加到容器
+  function appendCardToContainer(card, order) {
+    const container = document.getElementById('card-list-container');
+    if (!container) return;
+    
+    const progressBar = document.getElementById('card-loading-progress');
+    
+    const cardItem = document.createElement('div');
+    cardItem.className = 'mindmap-card-list__item card-item';
+    cardItem.setAttribute('data-card-id', card.docId);
+    cardItem.setAttribute('data-order', card.order || order);
+    
+    cardItem.innerHTML = `
+      <div class="mindmap-card-list__item-content">
+        <span class="mindmap-card-list__drag-handle drag-handle">⋮⋮</span>
+        <div class="mindmap-card-list__item-title">
+          ${card.title || '未命名卡片'}
+        </div>
+      </div>
+    `;
+    
+    // 添加点击事件
+    cardItem.addEventListener('click', function(e) {
+      if (isEditMode) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      const cardId = this.getAttribute('data-card-id');
+      if (cardId) {
+        loadCard(cardId);
+      }
+    });
+    
+    // 插入到进度条之后（如果存在）或直接追加
+    if (progressBar && progressBar.nextSibling) {
+      container.insertBefore(cardItem, progressBar.nextSibling);
+    } else {
+      container.appendChild(cardItem);
+    }
+  }
   
   // 定义 loadCard 函数
   function loadCard(cardId) {
-    // 找到对应的卡片
-    const card = cards.find(c => {
+    // 从所有卡片中查找（包括从其他节点加载的）
+    const card = allCards.find(c => {
       const cardDocId = c.docId ? (c.docId.toString ? c.docId.toString() : String(c.docId)) : null;
       const targetCardId = String(cardId);
       return cardDocId === targetCardId;
@@ -39,12 +413,18 @@ const page = new NamedPage('mindmap_card_list', () => {
       titleElement.textContent = card.title || '未命名卡片';
     }
     
-    // 更新内容（需要从后端获取渲染后的 Markdown）
+    // 更新内容（优先使用缓存）
     const contentDiv = document.getElementById('card-content');
     if (!contentDiv) return;
     
-    if (card.content) {
-      // 显示加载状态
+    const cardIdStr = String(cardId);
+    
+    // 检查缓存
+    if (cardContentCache[cardIdStr]) {
+      // 直接使用缓存的内容（图片已缓存到本地）
+      contentDiv.innerHTML = cardContentCache[cardIdStr];
+    } else if (card.content) {
+      // 缓存中没有，显示加载状态并渲染
       contentDiv.innerHTML = '<p style="color: #999; text-align: center;">加载中...</p>';
       
       fetch('/markdown', {
@@ -63,15 +443,23 @@ const page = new NamedPage('mindmap_card_list', () => {
         }
         return response.text();
       })
-      .then(html => {
+      .then(async html => {
+        // 预加载并缓存图片到本地
+        html = await preloadAndCacheImages(html);
+        // 缓存渲染结果
+        cardContentCache[cardIdStr] = html;
         contentDiv.innerHTML = html;
       })
       .catch(error => {
         console.error('Failed to render markdown:', error);
-        contentDiv.innerHTML = '<p style="color: #f44336;">加载内容失败</p>';
+        const errorHtml = '<p style="color: #f44336;">加载内容失败</p>';
+        cardContentCache[cardIdStr] = errorHtml;
+        contentDiv.innerHTML = errorHtml;
       });
     } else {
-      contentDiv.innerHTML = '<p style="color: #888;">暂无内容</p>';
+      const emptyHtml = '<p style="color: #888;">暂无内容</p>';
+      cardContentCache[cardIdStr] = emptyHtml;
+      contentDiv.innerHTML = emptyHtml;
     }
     
     // 更新侧边栏选中状态
@@ -315,7 +703,9 @@ const page = new NamedPage('mindmap_card_list', () => {
   }
   
   // 页面加载时，初始化事件监听器和加载卡片
-  function init() {
+  async function init() {
+    // 初始化图片缓存
+    await initImageCache();
     // 编辑模式按钮
     const editBtn = document.getElementById('edit-mode-btn');
     if (editBtn) {
@@ -354,16 +744,19 @@ const page = new NamedPage('mindmap_card_list', () => {
     // 检查 URL 参数并加载对应卡片
     const urlParams = new URLSearchParams(window.location.search);
     const cardId = urlParams.get('cardId');
-    if (cardId && cards.length > 0) {
+    if (cardId && allCards.length > 0) {
       // 如果 URL 中有 cardId，加载对应的卡片
       loadCard(cardId);
-    } else if (cards.length > 0) {
+    } else if (allCards.length > 0) {
       // 如果没有 cardId，加载第一个卡片并更新 URL
-      const firstCardId = cards[0].docId ? (cards[0].docId.toString ? cards[0].docId.toString() : String(cards[0].docId)) : null;
+      const firstCardId = allCards[0].docId ? (allCards[0].docId.toString ? allCards[0].docId.toString() : String(allCards[0].docId)) : null;
       if (firstCardId) {
         loadCard(firstCardId);
       }
     }
+    
+    // 开始加载当前节点的所有卡片
+    loadAllNodeCards();
   }
   
   // 处理浏览器前进/后退
@@ -372,9 +765,9 @@ const page = new NamedPage('mindmap_card_list', () => {
     const cardId = urlParams.get('cardId');
     if (cardId) {
       loadCard(cardId);
-    } else if (cards.length > 0) {
+    } else if (allCards.length > 0) {
       // 如果没有 cardId，加载第一个卡片
-      const firstCardId = cards[0].docId ? (cards[0].docId.toString ? cards[0].docId.toString() : String(cards[0].docId)) : null;
+      const firstCardId = allCards[0].docId ? (allCards[0].docId.toString ? allCards[0].docId.toString() : String(allCards[0].docId)) : null;
       if (firstCardId) {
         loadCard(firstCardId);
       }
