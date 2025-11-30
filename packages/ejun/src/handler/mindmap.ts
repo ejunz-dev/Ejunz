@@ -1738,6 +1738,66 @@ class MindMapCardEditHandler extends Handler {
         this.UiContext.extraTitleContent = `${card?.title || '卡片'} - ${mindMap.title}`;
     }
     
+    // 处理创建新卡片（没有 cardId 的路由）
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('nodeId', Types.String)
+    @param('branch', Types.String, true)
+    @post('title', Types.String, true)
+    @post('content', Types.String, true)
+    @post('operation', Types.String, true)
+    async post(
+        domainId: string,
+        docId: ObjectId,
+        mmid: number,
+        nodeId: string,
+        branch?: string,
+        title?: string,
+        content?: string,
+        operation?: string
+    ) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const mindMap = docId 
+            ? await MindMapModel.get(domainId, docId)
+            : await MindMapModel.getByMmid(domainId, mmid);
+        if (!mindMap) throw new NotFoundError('MindMap not found');
+        
+        if (!this.user.own(mindMap)) {
+            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        }
+        
+        const effectiveBranch = branch || 'main';
+        
+        // 创建新卡片
+        if (!title) {
+            throw new ValidationError('title is required');
+        }
+        const newCardId = await CardModel.create(
+            domainId,
+            mindMap.mmid,
+            nodeId,
+            this.user._id,
+            title,
+            content || '',
+            this.request.ip
+        );
+        // 重定向到新创建的卡片URL
+        if (docId) {
+            this.response.redirect = this.url('mindmap_card_list_branch', { 
+                docId: docId.toString(), 
+                branch: effectiveBranch, 
+                nodeId 
+            }) + `?cardId=${newCardId.toString()}`;
+        } else {
+            this.response.redirect = this.url('mindmap_card_list_branch_mmid', { 
+                mmid: mmid.toString(), 
+                branch: effectiveBranch, 
+                nodeId 
+            }) + `?cardId=${newCardId.toString()}`;
+        }
+    }
+    
     @param('docId', Types.ObjectId, true)
     @param('mmid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
@@ -1803,33 +1863,7 @@ class MindMapCardEditHandler extends Handler {
                 }) + `?cardId=${cardId.toString()}`;
             }
         } else {
-            // 创建新卡片
-            if (!title) {
-                throw new ValidationError('title is required');
-            }
-            const newCardId = await CardModel.create(
-                domainId,
-                mindMap.mmid,
-                nodeId,
-                this.user._id,
-                title,
-                content || '',
-                this.request.ip
-            );
-            // 重定向到新创建的卡片URL
-            if (docId) {
-                this.response.redirect = this.url('mindmap_card_list_branch', { 
-                    docId: docId.toString(), 
-                    branch: effectiveBranch, 
-                    nodeId 
-                }) + `?cardId=${newCardId.toString()}`;
-            } else {
-                this.response.redirect = this.url('mindmap_card_list_branch_mmid', { 
-                    mmid: mmid.toString(), 
-                    branch: effectiveBranch, 
-                    nodeId 
-                }) + `?cardId=${newCardId.toString()}`;
-            }
+            throw new BadRequestError('cardId is required for update operation');
         }
     }
 }
