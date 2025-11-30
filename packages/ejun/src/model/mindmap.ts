@@ -219,6 +219,32 @@ export class MindMapModel {
         const node = mindMap.nodes.find(n => n.id === nodeId);
         if (!node) throw new Error('Node not found');
 
+        // 收集所有要删除的节点ID（包括当前节点和所有子节点）
+        const nodesToDelete = new Set<string>();
+        
+        // 递归收集所有子节点
+        const collectChildNodes = (id: string) => {
+            nodesToDelete.add(id);
+            const nodeToDelete = mindMap.nodes.find(n => n.id === id);
+            if (nodeToDelete?.children) {
+                nodeToDelete.children.forEach(childId => collectChildNodes(childId));
+            }
+        };
+
+        collectChildNodes(nodeId);
+
+
+        for (const nodeIdToDelete of nodesToDelete) {
+            try {
+                const cards = await CardModel.getByNodeId(domainId, mindMap.mmid, nodeIdToDelete);
+                for (const card of cards) {
+                    await CardModel.delete(domainId, card.docId);
+                }
+            } catch (err) {
+                console.error(`Failed to delete cards for node ${nodeIdToDelete}:`, err);
+            }
+        }
+
         // 递归删除所有子节点
         const deleteNodeRecursive = (id: string) => {
             const nodeToDelete = mindMap.nodes.find(n => n.id === id);
