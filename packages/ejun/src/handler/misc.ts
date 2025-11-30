@@ -46,9 +46,20 @@ export class FilesHandler extends Handler {
 
     async get({ }) {
         if (!this.udoc._files?.length) this.checkPriv(PRIV.PRIV_CREATE_FILE);
+        const files = sortFiles(this.udoc._files).map((file) => {
+            let lastModified: Date | null = null;
+            if (file.lastModified) {
+                lastModified = file.lastModified instanceof Date ? file.lastModified : new Date(file.lastModified);
+            }
+            return {
+                ...file,
+                lastModified,
+            };
+        });
         this.response.body = {
-            files: sortFiles(this.udoc._files),
+            files,
             urlForFile: (filename: string) => this.url('fs_download', { uid: this.udoc._id, filename }),
+            urlForFilePreview: (filename: string) => this.url('fs_download', { uid: this.udoc._id, filename, noDisposition: 1 }),
         };
         this.response.pjax = 'partials/files.html';
         this.response.template = 'home_files.html';
