@@ -6,6 +6,7 @@
         <col class="col--checkbox">
         <col class="col--name">
         <col class="col--size">
+        <col class="col--time">
       </colgroup>
       <thead>
         <tr>
@@ -14,14 +15,30 @@
               <input type="checkbox" name="select_all" data-checkbox-toggle="files">
             </label>
           </th>
-          <th class="col--name">{{ _('Filename') }}</th>
-          <th class="col--size">{{ _('Size') }}</th>
+          <th class="col--name">
+            <button class="sort-btn" data-sort="name" title="{{ _('Sort by filename') }}" style="border: none; background: none; cursor: pointer; padding: 0; text-align: left; font-weight: inherit; color: inherit; width: 100%; display: flex; align-items: center; transition: opacity 0.2s;">
+              {{ _('Filename') }}
+              <span class="sort-indicator" style="margin-left: 4px; opacity: 0.5; font-size: 0.9em;">⇅</span>
+            </button>
+          </th>
+          <th class="col--size">
+            <button class="sort-btn" data-sort="size" title="{{ _('Sort by size') }}" style="border: none; background: none; cursor: pointer; padding: 0; text-align: left; font-weight: inherit; color: inherit; width: 100%; display: flex; align-items: center; transition: opacity 0.2s;">
+              {{ _('Size') }}
+              <span class="sort-indicator" style="margin-left: 4px; opacity: 0.5; font-size: 0.9em;">⇅</span>
+            </button>
+          </th>
+          <th class="col--time">
+            <button class="sort-btn" data-sort="time" title="{{ _('Sort by time') }}" style="border: none; background: none; cursor: pointer; padding: 0; text-align: left; font-weight: inherit; color: inherit; width: 100%; display: flex; align-items: center; transition: opacity 0.2s;">
+              {{ _('Time') }}
+              <span class="sort-indicator" style="margin-left: 4px; opacity: 0.5; font-size: 0.9em;">⇅</span>
+            </button>
+          </th>
           <th class="col--operation"></th>
         </tr>
       </thead>
       <tbody>
         {%- for file in files -%}
-        <tr data-filename="{{ file.name }}" data-size="{{ file.size }}">
+        <tr data-filename="{{ file.name }}" data-size="{{ file.size }}" data-last-modified="{{ file.lastModified.getTime() if file.lastModified else 0 }}">
           <td class="col--checkbox">
             <label class="compact checkbox">
               <input type="checkbox" data-checkbox-group="files" data-checkbox-range>
@@ -31,8 +48,20 @@
             <a href="{{ urlForFile(file.name) }}">{{ file.name }}</a>
           </td>
           <td class="col--size">{{ size(file.size) }}</td>
+          <td class="col--time">
+            {% if file.lastModified %}
+              {{ datetimeSpan(file.lastModified)|safe }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
           <td class="col--operation">
-            <a href="{{ urlForFile(file.name) }}" class="icon icon-download"></a>
+            <a href="javascript:;" data-copyfilelink="{{ urlForFilePreview(file.name) }}" title="{{ _('Copy link') }}" style="margin-right: 8px;">
+              <span class="icon icon-link"></span>
+            </a>
+            <a href="{{ urlForFile(file.name) }}" title="{{ _('Download') }}">
+              <span class="icon icon-download"></span>
+            </a>
           </td>
         </tr>
         {%- endfor -%}

@@ -63,7 +63,6 @@ async function handleClickRemoveSelected() {
  */
 function handleDragOver(ev) {
   ev.preventDefault();
-  // TODO display a drag-drop allowed hint
 }
 
 /**
@@ -92,9 +91,93 @@ function handleDrop(ev) {
   handleClickUpload(files);
 }
 
-const page = new NamedPage(['home_files', 'contest_manage', 'training_files', 'homework_files','domain_files','hub_node_main_edit','hub_node_sub_edit'], () => {
+function updateSortIndicator($sortBtn, direction) {
+  $('.sort-btn .sort-indicator').text('⇅').css('opacity', '0.5');
+  
+  const $indicator = $sortBtn.find('.sort-indicator');
+  if (direction === 'asc') {
+    $indicator.text('↑').css('opacity', '1');
+  } else if (direction === 'desc') {
+    $indicator.text('↓').css('opacity', '1');
+  }
+}
+
+function handleClickSort(ev) {
+  ev.preventDefault();
+  const $sortBtn = $(ev.currentTarget);
+  const sortType = $sortBtn.attr('data-sort');
+  const $tbody = $('.files tbody');
+  const $rows = $tbody.find('tr').toArray();
+  
+  const isCurrentSort = $sortBtn.hasClass('active');
+  const isAscending = $sortBtn.hasClass('asc');
+  
+  $('.sort-btn').removeClass('active asc desc');
+  
+  // 设置新的排序状态
+  let newDirection;
+  if (isCurrentSort) {
+    newDirection = isAscending ? 'desc' : 'asc';
+  } else {
+    newDirection = 'desc';
+  }
+  
+  $sortBtn.addClass('active').addClass(newDirection);
+  updateSortIndicator($sortBtn, newDirection);
+  
+  $rows.sort((a, b) => {
+    let compareResult = 0;
+    
+    if (sortType === 'name') {
+      const nameA = $(a).attr('data-filename') || '';
+      const nameB = $(b).attr('data-filename') || '';
+      compareResult = nameA.localeCompare(nameB);
+    } else if (sortType === 'size') {
+      const sizeA = parseInt($(a).attr('data-size') || '0', 10);
+      const sizeB = parseInt($(b).attr('data-size') || '0', 10);
+      compareResult = sizeA - sizeB;
+    } else if (sortType === 'time') {
+      const timeA = parseInt($(a).attr('data-last-modified') || '0', 10);
+      const timeB = parseInt($(b).attr('data-last-modified') || '0', 10);
+      compareResult = timeA - timeB;
+    }
+    
+    return newDirection === 'asc' ? compareResult : -compareResult;
+  });
+  
+  $tbody.empty().append($rows);
+}
+
+const page = new NamedPage(['home_files'], () => {
+  
+  $(document).on('click', '.files [data-copyfilelink]', async function(ev) {
+    ev.preventDefault();
+    const link = $(this).attr('data-copyfilelink');
+    if (!link) return;
+    
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(link);
+        Notification.success(i18n('Link copied to clipboard!'));
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = link;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        Notification.success(i18n('Link copied to clipboard!'));
+      }
+    } catch (error) {
+      Notification.error(i18n('Copy failed :('));
+    }
+  });
+  
   $(document).on('click', '[name="upload_file"]', () => handleClickUpload());
   $(document).on('click', '[name="remove_selected"]', () => handleClickRemoveSelected());
+  $(document).on('click', '.sort-btn', handleClickSort);
   $(document).on('dragover', '.files', (ev) => handleDragOver(ev));
   $(document).on('drop', '.files', (ev) => handleDrop(ev));
 });

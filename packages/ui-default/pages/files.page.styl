@@ -6,4 +6,27 @@
     width: 100px
 
   .col--operation
-    width: 40px
+    width: 80px
+    min-width: 80px
+    white-space: nowrap
+
+  .files
+    .col--name
+      max-width: 300px
+      min-width: 150px
+
+      a
+        display: block
+        overflow: hidden
+        text-overflow: ellipsis
+        white-space: nowrap
+
+    .sort-btn
+      &:hover
+        opacity: 0.8
+
+      &.active
+        opacity: 1
+
+        .sort-indicator
+          opacity: 1 !important
