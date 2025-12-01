@@ -488,6 +488,29 @@ const page = new NamedPage('mindmap_card_list', () => {
         item.classList.remove('selected');
       }
     });
+    
+    // 更新编辑按钮的链接
+    const editBtn = document.getElementById('card-edit-btn');
+    if (editBtn) {
+      const domainId = window.UiContext?.domainId || 'system';
+      const branch = window.UiContext?.currentBranch || 'main';
+      const docId = mindMap.docId;
+      const mmid = mindMap.mmid;
+      
+      let editUrl;
+      if (docId) {
+        editUrl = `/d/${domainId}/mindmap/${docId}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit`;
+      } else if (mmid) {
+        editUrl = `/d/${domainId}/mindmap/mmid/${mmid}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit`;
+      }
+      
+      if (editUrl) {
+        editBtn.href = editUrl;
+        editBtn.style.display = 'inline-block';
+      } else {
+        editBtn.style.display = 'none';
+      }
+    }
   }
   
   // 进入编辑模式

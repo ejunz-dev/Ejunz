@@ -109,14 +109,14 @@
             {{ mindMap.title if mindMap else '思维导图' }}
           </a>
         </h1>
-        {% if selectedCard %}
-          <a 
-            href="{{ url('mindmap_card_edit_branch_with_card', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId, cardId=selectedCard.docId) }}"
-            class="button primary mindmap-card-list__content-edit-btn"
-          >
-            {{ _('编辑') }}
-          </a>
-        {% endif %}
+        <a 
+          id="card-edit-btn"
+          href=""
+          class="button primary mindmap-card-list__content-edit-btn"
+          style="display: none;"
+        >
+          {{ _('编辑') }}
+        </a>
       </div>
       <div class="section__body">
         <div id="card-content" class="typo richmedia topic__content" data-emoji-enabled>
