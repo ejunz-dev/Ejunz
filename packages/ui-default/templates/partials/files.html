@@ -56,7 +56,7 @@
             {% endif %}
           </td>
           <td class="col--operation">
-            <a href="javascript:;" data-copyfilelink="{{ urlForFilePreview(file.name) }}" title="{{ _('Copy link') }}" style="margin-right: 8px;">
+            <a href="javascript:;" data-copyfilelink="{{ urlForFile(file.name) }}" title="{{ _('Copy link') }}" style="margin-right: 8px;">
               <span class="icon icon-link"></span>
             </a>
             <a href="{{ urlForFile(file.name) }}" title="{{ _('Download') }}">
