@@ -1746,6 +1746,7 @@ class MindMapCardEditHandler extends Handler {
     @post('title', Types.String, true)
     @post('content', Types.String, true)
     @post('operation', Types.String, true)
+    @post('cardId', Types.ObjectId, true)
     async post(
         domainId: string,
         docId: ObjectId,
@@ -1754,7 +1755,8 @@ class MindMapCardEditHandler extends Handler {
         branch?: string,
         title?: string,
         content?: string,
-        operation?: string
+        operation?: string,
+        cardId?: ObjectId
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
@@ -1768,6 +1770,29 @@ class MindMapCardEditHandler extends Handler {
         }
         
         const effectiveBranch = branch || 'main';
+        
+        // 如果有 operation=update 和 cardId，执行更新操作
+        if (operation === 'update' && cardId) {
+            const updates: any = {};
+            if (title !== undefined) updates.title = title;
+            if (content !== undefined) updates.content = content;
+            await CardModel.update(domainId, cardId, updates);
+            // 重定向到更新后的卡片URL
+            if (docId) {
+                this.response.redirect = this.url('mindmap_card_list_branch', { 
+                    docId: docId.toString(), 
+                    branch: effectiveBranch, 
+                    nodeId 
+                }) + `?cardId=${cardId.toString()}`;
+            } else {
+                this.response.redirect = this.url('mindmap_card_list_branch_mmid', { 
+                    mmid: mmid.toString(), 
+                    branch: effectiveBranch, 
+                    nodeId 
+                }) + `?cardId=${cardId.toString()}`;
+            }
+            return;
+        }
         
         // 创建新卡片
         if (!title) {
