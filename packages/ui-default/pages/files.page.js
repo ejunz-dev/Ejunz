@@ -1,5 +1,6 @@
 import $ from 'jquery';
 import _ from 'lodash';
+import Clipboard from 'clipboard';
 import { ConfirmDialog } from 'vj/components/dialog/index';
 import Notification from 'vj/components/notification';
 import uploadFiles from 'vj/components/upload';
@@ -148,31 +149,27 @@ function handleClickSort(ev) {
   $tbody.empty().append($rows);
 }
 
-const page = new NamedPage(['home_files'], () => {
-  
-  $(document).on('click', '.files [data-copyfilelink]', async function(ev) {
-    ev.preventDefault();
-    const link = $(this).attr('data-copyfilelink');
-    if (!link) return;
+const page = new NamedPage(['home_files'], (pagename, loadPage) => {
+  $('.files [data-copyfilelink]').each(function() {
+    const $row = $(this).closest('tr');
+    const filename = $row.attr('data-filename') || '';
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    const baseLink = $(this).attr('data-copyfilelink') || '';
     
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(link);
-        Notification.success(i18n('Link copied to clipboard!'));
-      } else {
-        const textarea = document.createElement('textarea');
-        textarea.value = link;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-        Notification.success(i18n('Link copied to clipboard!'));
+    let linkToCopy = baseLink;
+    if (ext === 'pdf') {
+      linkToCopy = baseLink.includes('?') 
+        ? (baseLink.includes('noDisposition=1') ? baseLink : `${baseLink}&noDisposition=1`)
+        : `${baseLink}?noDisposition=1`;
+    } else {
+      if (baseLink.includes('noDisposition=1')) {
+        linkToCopy = baseLink.replace(/[?&]noDisposition=1/, '').replace(/\?$/, '');
       }
-    } catch (error) {
-      Notification.error(i18n('Copy failed :('));
     }
+    
+    const clip = new Clipboard(this, { text: () => linkToCopy });
+    clip.on('success', () => Notification.success(i18n('Link copied to clipboard!')));
+    clip.on('error', () => Notification.error(i18n('Copy failed :(')));
   });
   
   $(document).on('click', '[name="upload_file"]', () => handleClickUpload());
