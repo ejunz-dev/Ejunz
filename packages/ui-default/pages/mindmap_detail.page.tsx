@@ -115,6 +115,78 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
   const cardPopupRef = React.useRef<HTMLDivElement>(null);
   const cardCountRef = React.useRef<HTMLDivElement>(null);
   
+  // 文件相关状态（只在根节点显示）
+  const isRootNode = data.isRootNode || false; // 使用 data 中设置的 isRootNode
+  const [fileCount, setFileCount] = React.useState<number>(0);
+  const [showFilePopup, setShowFilePopup] = React.useState<boolean>(false);
+  const [files, setFiles] = React.useState<any[]>([]);
+  const filePopupRef = React.useRef<HTMLDivElement>(null);
+  const fileCountRef = React.useRef<HTMLDivElement>(null);
+  
+  // 从 UiContext 获取文件数量（只在根节点）
+  React.useEffect(() => {
+    if (!isRootNode || isNewNode) {
+      setFileCount(0);
+      setFiles([]);
+      return;
+    }
+    
+    // 从 UiContext 获取文件列表（思维导图级别的文件）
+    const filesList = (window as any).UiContext?.mindMap?.files || (window as any).UiContext?.files || [];
+    setFileCount(filesList.length || 0);
+    setFiles(filesList);
+  }, [isRootNode, isNewNode, id]);
+  
+  // 点击文件数量时显示悬浮窗
+  const handleFileCountClick = React.useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    e.nativeEvent?.stopPropagation();
+    e.nativeEvent?.stopImmediatePropagation();
+    if (fileCount > 0 && isRootNode) {
+      setShowFilePopup(true);
+      // 从 UiContext 获取文件列表（思维导图级别的文件）
+      const filesList = (window as any).UiContext?.mindMap?.files || (window as any).UiContext?.files || [];
+      setFiles(filesList);
+    }
+  }, [fileCount, isRootNode]);
+  
+  // 点击文件名称跳转（预览文件）
+  const handleFileClick = React.useCallback((file: any) => {
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    const branch = data.branch || 'main';
+    const docId = data.docId as string;
+    // 构建预览 URL（添加 noDisposition=1 参数）
+    let url = docId 
+      ? `/d/${domainId}/mindmap/${docId}/file/${encodeURIComponent(file.name)}`
+      : `/d/${domainId}/mindmap/mmid/${data.mmid}/file/${encodeURIComponent(file.name)}`;
+    // 添加 noDisposition=1 参数以启用预览
+    url = url.includes('?') ? `${url}&noDisposition=1` : `${url}?noDisposition=1`;
+    window.open(url, '_blank');
+  }, [data.docId, data.mmid, data.branch]);
+  
+  // 点击外部关闭文件悬浮窗
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (
+        filePopupRef.current && 
+        !filePopupRef.current.contains(target) &&
+        fileCountRef.current &&
+        !fileCountRef.current.contains(target)
+      ) {
+        setShowFilePopup(false);
+      }
+    };
+    
+    if (showFilePopup) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showFilePopup]);
+  
   // 从 UiContext 获取卡片数量
   React.useEffect(() => {
     if (isNewNode) {
@@ -288,7 +360,7 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
         background: backgroundColor,
         border: `2px solid ${borderColor}`, // 始终有边框，但未选中时透明
         boxShadow: selected ? '0 4px 8px rgba(0,0,0,0.2)' : 'none', // 未选中时不显示阴影
-        cursor: data.isRootNode ? 'move' : 'default',
+        cursor: 'default',
         position: 'relative',
         color: color,
         fontSize: `${fontSize}px`,
@@ -527,6 +599,7 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
         <>
           <div
             ref={cardCountRef}
+            data-card-count="true"
             onClick={handleCardCountClick}
             onMouseDown={(e) => e.stopPropagation()}
             style={{
@@ -678,6 +751,171 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
           )}
         </>
       )}
+      
+      {/* 文件数量显示 - 只在根节点且有文件时显示 */}
+      {isRootNode && fileCount > 0 && !isNewNode && (
+        <>
+          <div
+            ref={fileCountRef}
+            data-file-count="true"
+            onClick={handleFileCountClick}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+            onMouseUp={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+            style={{
+              position: 'absolute',
+              top: '-8px',
+              left: '-8px',
+              width: '24px',
+              height: '24px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #4caf50 0%, #45a049 100%)',
+              color: '#fff',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              zIndex: 20,
+              boxShadow: '0 2px 8px rgba(76, 175, 80, 0.4), 0 0 12px rgba(76, 175, 80, 0.6)',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'scale(1.1)';
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(76, 175, 80, 0.6), 0 0 16px rgba(76, 175, 80, 0.8)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = '0 2px 8px rgba(76, 175, 80, 0.4), 0 0 12px rgba(76, 175, 80, 0.6)';
+            }}
+            title={`${fileCount} 个文件，点击查看`}
+          >
+            {fileCount}
+          </div>
+          
+          {/* 文件列表悬浮窗 */}
+          {showFilePopup && (
+            <div
+              ref={filePopupRef}
+              style={{
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '400px',
+                maxHeight: '500px',
+                background: '#fff',
+                borderRadius: '12px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+                zIndex: 10000,
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+              }}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              {/* 悬浮窗标题 */}
+              <div
+                style={{
+                  padding: '16px 20px',
+                  borderBottom: '1px solid #e0e0e0',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  background: '#f5f5f5',
+                }}
+              >
+                <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#333' }}>
+                  文件列表 ({fileCount})
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowFilePopup(false);
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    fontSize: '20px',
+                    cursor: 'pointer',
+                    color: '#999',
+                    padding: '0',
+                    width: '24px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  title="关闭"
+                >
+                  ×
+                </button>
+              </div>
+              
+              {/* 文件列表 - 可滚动 */}
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  padding: '8px 0',
+                }}
+              >
+                {files.length === 0 ? (
+                  <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
+                    暂无文件
+                  </div>
+                ) : (
+                  files.map((file, index) => (
+                    <div
+                      key={file.name || index}
+                      onClick={() => handleFileClick(file)}
+                      style={{
+                        padding: '12px 20px',
+                        cursor: 'pointer',
+                        borderBottom: index < files.length - 1 ? '1px solid #f0f0f0' : 'none',
+                        transition: 'background-color 0.2s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#f5f5f5';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                    >
+                      <div style={{ 
+                        fontSize: '14px', 
+                        color: '#333',
+                        fontWeight: '500',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {file.name || '未命名文件'}
+                      </div>
+                      {file.lastModified && (
+                        <div style={{ 
+                          fontSize: '12px', 
+                          color: '#999',
+                          marginTop: '4px',
+                        }}>
+                          {new Date(file.lastModified).toLocaleDateString('zh-CN')}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 };
@@ -699,16 +937,16 @@ const FloatingToolbar = ({
   onDelete, 
   onUpdateFontSize, 
   onUpdateColor, 
-  onCopy,
+  onManageFiles,
   onManageCards,
-  onEdit
+  onEdit,
 }: { 
   node: Node; 
   reactFlowInstance: ReactFlowInstance | null;
   onDelete: (nodeId: string) => void;
   onUpdateFontSize: (nodeId: string, fontSize: number) => void;
   onUpdateColor: (nodeId: string, color: string) => void;
-  onCopy: (text: string) => void;
+  onManageFiles: () => void;
   onManageCards: (nodeId: string) => void;
   onEdit: (node: Node) => void;
 }) => {
@@ -791,7 +1029,11 @@ const FloatingToolbar = ({
 
   const originalNode = node.data.originalNode as MindMapNode;
   const currentFontSize = originalNode?.fontSize || 14;
-  const currentColor = originalNode?.color || '#333';
+  // 确保颜色格式是完整的 6 位十六进制（color input 要求）
+  const currentColor = originalNode?.color 
+    ? (originalNode.color.length === 4 ? `#${originalNode.color[1]}${originalNode.color[1]}${originalNode.color[2]}${originalNode.color[2]}${originalNode.color[3]}${originalNode.color[3]}` : originalNode.color)
+    : '#333333';
+  const isRootNode = node.data?.isRootNode || false; // 检查是否是根节点
 
   return (
     <div
@@ -834,22 +1076,26 @@ const FloatingToolbar = ({
         编辑
       </button>
 
-      {/* 删除按钮 */}
+      {/* 删除按钮 - 根节点禁用 */}
       <button
         onClick={(e) => {
           e.stopPropagation();
-          onDelete(node.id);
+          if (!isRootNode) {
+            onDelete(node.id);
+          }
         }}
+        disabled={isRootNode}
         style={{
           padding: '6px 10px',
-          border: '1px solid #f44336',
+          border: `1px solid ${isRootNode ? '#ccc' : '#f44336'}`,
           borderRadius: '4px',
-          background: '#fff',
-          color: '#f44336',
-          cursor: 'pointer',
+          background: isRootNode ? '#f5f5f5' : '#fff',
+          color: isRootNode ? '#999' : '#f44336',
+          cursor: isRootNode ? 'not-allowed' : 'pointer',
           fontSize: '12px',
+          opacity: isRootNode ? 0.6 : 1,
         }}
-        title="删除节点"
+        title={isRootNode ? '根节点不能删除' : '删除节点'}
       >
         删除
       </button>
@@ -920,11 +1166,13 @@ const FloatingToolbar = ({
         title="字体颜色"
       />
 
-      {/* 复制按钮 */}
+      {/* 文件按钮 */}
       <button
         onClick={(e) => {
           e.stopPropagation();
-          onCopy(originalNode?.text || '');
+          e.preventDefault();
+          console.log('文件按钮被点击');
+          onManageFiles();
         }}
         style={{
           padding: '6px 10px',
@@ -935,9 +1183,9 @@ const FloatingToolbar = ({
           cursor: 'pointer',
           fontSize: '12px',
         }}
-        title="复制节点内容"
+        title="管理思维导图文件"
       >
-        复制
+        文件
       </button>
 
       {/* 管理卡片按钮 */}
@@ -1583,6 +1831,16 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     const url = docId 
       ? `/d/${domainId}/mindmap/${docId}/branch/${branch}/node/${nodeId}/cards`
       : `/d/${domainId}/mindmap/mmid/${mindMap.mmid}/branch/${branch}/node/${nodeId}/cards`;
+    window.open(url, '_blank');
+  }, [docId, mindMap.mmid, mindMap.currentBranch]);
+  // 处理文件管理：跳转到思维导图文件页面（文件是思维导图级别的，不依赖节点ID）
+  const handleManageFiles = useCallback(() => {
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    const branch = mindMap.currentBranch || 'main';
+    const url = docId 
+      ? `/d/${domainId}/mindmap/${docId}/branch/${branch}/files`
+      : `/d/${domainId}/mindmap/mmid/${mindMap.mmid}/branch/${branch}/files`;
+    console.log('handleManageFiles called, opening URL:', url);
     window.open(url, '_blank');
   }, [docId, mindMap.mmid, mindMap.currentBranch]);
   const [gitStatus, setGitStatus] = useState<any>(null); // Git 状态
@@ -3036,7 +3294,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       id: tempNodeId,
       type: 'mindmap',
       position,
-      draggable: isRootNode,
+      draggable: false, // 禁止拖动根节点
       data: {
         originalNode: {
           id: tempNodeId,
@@ -3231,7 +3489,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         id: node.id,
         type: 'mindmap',
         position: { x, y },
-        draggable: isRootNode,
+        draggable: false, // 禁止拖动根节点
         data: {
           originalNode: node,
           edges: flowEdges,
@@ -3792,7 +4050,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         return {
           ...n,
           selected: n.id === selectedNodeId,
-          draggable: isRootNode,
+          draggable: false, // 禁止拖动根节点
           data: {
             ...n.data,
             selected: n.id === selectedNodeId,
@@ -3827,18 +4085,46 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
   }, []);
 
 
+  // 记录点击位置，用于区分点击和拖拽
+  const nodeClickStartPosRef = useRef<{ x: number; y: number; nodeId: string } | null>(null);
+  
   // 节点点击事件 - 仅选中节点，不弹出对话框
   const onNodeClick: NodeMouseHandler = useCallback((event, node) => {
+    // 检查点击目标是否是文件气泡或卡片气泡
+    const target = (event.nativeEvent?.target || event.target) as HTMLElement;
+    
+    // 检查是否是气泡元素或其子元素
+    if (target && (
+      target.closest('[data-file-count]') || 
+      target.closest('[data-card-count]') ||
+      target.hasAttribute('data-file-count') ||
+      target.hasAttribute('data-card-count')
+    )) {
+      // 如果点击的是文件气泡或卡片气泡，不处理节点点击
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    
     event.preventDefault();
     event.stopPropagation();
-    // 只有在没有拖拽的情况下才选中节点
-    // 注意：如果刚刚拖拽结束，isDraggingRef 可能已经被重置，所以需要延迟检查
+    
+    // 记录点击开始位置
+    nodeClickStartPosRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      nodeId: node.id,
+    };
+    
+    // 延迟检查：如果是真正的点击（没有拖拽），则选中节点
     setTimeout(() => {
-      if (!isDraggingRef.current) {
+      const clickInfo = nodeClickStartPosRef.current;
+      if (clickInfo && clickInfo.nodeId === node.id && !isDraggingRef.current) {
         setSelectedNodeId(node.id);
-        console.log('Node clicked:', node.id, 'Selected node ID:', node.id);
+        console.log('Node clicked:', node.id, 'Selected node ID:', node.id, 'Is root node:', node.data?.isRootNode);
       }
-    }, 50);
+      nodeClickStartPosRef.current = null;
+    }, 100); // 增加延迟，确保拖拽事件先执行
   }, []);
 
   // 节点双击事件 - 进入编辑模式
@@ -3944,10 +4230,27 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
   const allNodesStartPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
   const onNodeDragStart = useCallback((event: any, node: Node) => {
+    // 检查点击目标是否是文件气泡或卡片气泡
+    const nativeEvent = event.nativeEvent || event;
+    const target = (nativeEvent.target || (nativeEvent as any).srcElement) as HTMLElement;
+    
+    // 检查是否是气泡元素或其子元素
+    if (target && (
+      target.closest('[data-file-count]') || 
+      target.closest('[data-card-count]') ||
+      target.hasAttribute('data-file-count') ||
+      target.hasAttribute('data-card-count')
+    )) {
+      // 如果点击的是文件气泡或卡片气泡，不启动拖拽
+      return;
+    }
+    
     const isRootNode = node.data?.isRootNode;
     if (!isRootNode) {
       return;
     }
+    // 清除点击记录，因为这是拖拽而不是点击
+    nodeClickStartPosRef.current = null;
     isDraggingRef.current = true;
     autoLayoutEnabledRef.current = false;
     rootNodeIdRef.current = node.id;
@@ -3998,12 +4301,65 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
   }, [setNodes]);
 
   const onNodeDragStop = useCallback((event: any, node: Node) => {
-    const isRootNode = node.data?.isRootNode;
-    if (!isRootNode || !isDraggingRef.current) {
+    // 检查点击目标是否是文件气泡或卡片气泡
+    const nativeEvent = event.nativeEvent || event;
+    const target = (nativeEvent.target || (nativeEvent as any).srcElement) as HTMLElement;
+    
+    // 检查是否是气泡元素或其子元素
+    if (target && (
+      target.closest('[data-file-count]') || 
+      target.closest('[data-card-count]') ||
+      target.hasAttribute('data-file-count') ||
+      target.hasAttribute('data-card-count')
+    )) {
+      // 如果点击的是文件气泡或卡片气泡，不处理节点选中
       isDraggingRef.current = false;
       rootNodeDragStartPosRef.current = null;
       rootNodeIdRef.current = null;
       return;
+    }
+    
+    const isRootNode = node.data?.isRootNode;
+    const dragStartPos = rootNodeDragStartPosRef.current;
+    
+    if (!isRootNode) {
+      // 非根节点：直接选中
+      setTimeout(() => {
+        setSelectedNodeId(node.id);
+        console.log('Non-root node clicked (via drag stop):', node.id);
+      }, 50);
+      isDraggingRef.current = false;
+      rootNodeDragStartPosRef.current = null;
+      rootNodeIdRef.current = null;
+      return;
+    }
+    
+    // 根节点：检查是否真的拖拽了
+    if (!isDraggingRef.current) {
+      // 没有拖拽，直接选中
+      setTimeout(() => {
+        setSelectedNodeId(node.id);
+        console.log('Root node clicked (no drag):', node.id);
+      }, 50);
+      rootNodeDragStartPosRef.current = null;
+      rootNodeIdRef.current = null;
+      return;
+    }
+    
+    // 检查拖拽距离，如果很小（小于5px），认为是点击
+    if (dragStartPos) {
+      const dragDistance = Math.sqrt(
+        Math.pow(node.position.x - dragStartPos.x, 2) +
+        Math.pow(node.position.y - dragStartPos.y, 2)
+      );
+      console.log('Root node drag stopped, distance:', dragDistance);
+      if (dragDistance < 5) {
+        // 认为是点击，选中节点
+        setTimeout(() => {
+          setSelectedNodeId(node.id);
+          console.log('Root node clicked (small drag distance):', node.id);
+        }, 50);
+      }
     }
 
     // 更新所有节点的 originalNode 位置，以便下次拖动时使用新位置
@@ -4037,7 +4393,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           autoLayoutEnabledRef.current = true;
           rootNodeDragStartPosRef.current = null;
           rootNodeIdRef.current = null;
-        }, 500);
+        }, 100); // 减少延迟，让点击响应更快
       }, 100);
     });
   }, [triggerAutoSave]);
@@ -4335,7 +4691,11 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           {/* 悬浮工具栏 */}
           {selectedNodeId && reactFlowInstance && (() => {
             const selectedNode = nodes.find(n => n.id === selectedNodeId);
-            if (!selectedNode) return null;
+            if (!selectedNode) {
+              console.log('Selected node not found:', selectedNodeId);
+              return null;
+            }
+            console.log('显示悬浮工具栏，节点ID:', selectedNodeId, '是否为根节点:', selectedNode.data?.isRootNode);
             return (
               <FloatingToolbar
                 node={selectedNode}
@@ -4343,7 +4703,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
                 onDelete={handleDeleteNode}
                 onUpdateFontSize={handleUpdateFontSize}
                 onUpdateColor={handleUpdateColor}
-                onCopy={handleCopyNodeContent}
+                onManageFiles={handleManageFiles}
                 onManageCards={handleManageCards}
                 onEdit={handleEditNode}
               />
@@ -4495,7 +4855,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
                   onDelete={handleDeleteNode}
                   onUpdateFontSize={handleUpdateFontSize}
                   onUpdateColor={handleUpdateColor}
-                  onCopy={handleCopyNodeContent}
+                  onManageFiles={handleManageFiles}
                   onManageCards={handleManageCards}
                   onEdit={handleEditNode}
                 />

@@ -129,7 +129,7 @@ export class MindMapModel {
     static async update(
         domainId: string,
         docId: ObjectId,
-        updates: Partial<Pick<MindMapDoc, 'title' | 'content' | 'layout' | 'viewport' | 'theme'>>
+        updates: Partial<Pick<MindMapDoc, 'title' | 'content' | 'layout' | 'viewport' | 'theme' | 'files'>>
     ): Promise<void> {
         await document.set(domainId, TYPE_MM, docId, {
             ...updates,

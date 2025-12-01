@@ -1,7 +1,7 @@
 import { ObjectId } from 'mongodb';
 import type { Context } from '../context';
 import { Handler, param, route, post, Types, ConnectionHandler } from '../service/server';
-import { NotFoundError, ForbiddenError, BadRequestError, ValidationError } from '../error';
+import { NotFoundError, ForbiddenError, BadRequestError, ValidationError, FileLimitExceededError, FileUploadError, FileExistsError } from '../error';
 import { PRIV, PERM } from '../model/builtin';
 import { MindMapModel, CardModel, TYPE_CARD } from '../model/mindmap';
 import type { MindMapDoc, MindMapNode, MindMapEdge, CardDoc, MindMapHistoryEntry } from '../interface';
@@ -15,6 +15,9 @@ import system from '../model/system';
 import https from 'https';
 import parser from '@ejunz/utils/lib/search';
 import { Logger } from '../utils';
+import { pick } from 'lodash';
+import storage from '../model/storage';
+import { sortFiles } from '@ejunz/utils/lib/common';
 
 const exec = promisify(execCb);
 const logger = new Logger('mindmap');
@@ -216,6 +219,7 @@ class MindMapDetailHandler extends Handler {
             currentBranch: requestedBranch,
             branches,
             nodeCardsMap, // 添加节点卡片映射
+            files: this.mindMap.files || [], // 添加文件列表
         };
     }
 
@@ -1702,6 +1706,140 @@ class MindMapCardListHandler extends Handler {
             selectedCard,
         };
         this.UiContext.extraTitleContent = extraTitleContent;
+    }
+}
+
+/**
+ * MindMap Files Handler
+ * 思维导图文件管理
+ */
+class MindMapFilesHandler extends Handler {
+    mindMap?: MindMapDoc;
+
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('branch', Types.String, true)
+    async _prepare(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
+        if (docId) {
+            this.mindMap = await MindMapModel.get(domainId, docId);
+        } else if (mmid) {
+            this.mindMap = await MindMapModel.getByMmid(domainId, mmid);
+        }
+        if (!this.mindMap) throw new NotFoundError('MindMap not found');
+        if (!this.user.own(this.mindMap)) {
+            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        }
+    }
+
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('branch', Types.String, true)
+    async get(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
+        const files = sortFiles(this.mindMap!.files || []).map((file) => {
+            let lastModified: Date | null = null;
+            if (file.lastModified) {
+                lastModified = file.lastModified instanceof Date ? file.lastModified : new Date(file.lastModified);
+            }
+            return {
+                ...file,
+                lastModified,
+            };
+        });
+        this.response.body = {
+            mindMap: this.mindMap,
+            files,
+            urlForFile: (filename: string) => {
+                if (docId) {
+                    return this.url('mindmap_file_download', { docId, filename });
+                } else {
+                    return this.url('mindmap_file_download_mmid', { mmid, filename });
+                }
+            },
+            urlForFilePreview: (filename: string) => {
+                if (docId) {
+                    return this.url('mindmap_file_download', { docId, filename, noDisposition: 1 });
+                } else {
+                    return this.url('mindmap_file_download_mmid', { mmid, filename, noDisposition: 1 });
+                }
+            },
+            branch: branch || 'main',
+        };
+        this.response.pjax = 'partials/files.html';
+        this.response.template = 'mindmap_files.html';
+    }
+
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('branch', Types.String, true)
+    @post('filename', Types.Filename, true)
+    async postUploadFile(domainId: string, docId: ObjectId, mmid: number, branch?: string, filename?: string) {
+        if ((this.mindMap!.files?.length || 0) >= system.get('limit.user_files')) {
+            if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('count');
+        }
+        const file = this.request.files?.file;
+        if (!file) throw new ValidationError('file');
+        const size = Math.sum((this.mindMap!.files || []).map((i) => i.size)) + file.size;
+        if (size >= system.get('limit.user_files_size')) {
+            if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('size');
+        }
+        const finalFilename = filename || file.originalFilename || 'untitled';
+        if (this.mindMap!.files?.find((i) => i.name === finalFilename)) throw new FileExistsError(finalFilename);
+        const storagePath = `mindmap/${domainId}/${this.mindMap!.mmid}/${finalFilename}`;
+        await storage.put(storagePath, file.filepath, this.user._id);
+        const meta = await storage.getMeta(storagePath);
+        const payload = { _id: finalFilename, name: finalFilename, ...pick(meta, ['size', 'lastModified', 'etag']) };
+        if (!meta) throw new FileUploadError();
+        const updatedFiles = [...(this.mindMap!.files || []), payload];
+        await MindMapModel.update(domainId, this.mindMap!.docId, { files: updatedFiles });
+        this.back();
+    }
+
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('branch', Types.String, true)
+    @post('files', Types.ArrayOf(Types.Filename))
+    async postDeleteFiles(domainId: string, docId: ObjectId, mmid: number, branch: string, files: string[]) {
+        const storagePaths = files.map((t) => `mindmap/${domainId}/${this.mindMap!.mmid}/${t}`);
+        await Promise.all([
+            storage.del(storagePaths, this.user._id),
+            MindMapModel.update(domainId, this.mindMap!.docId, { 
+                files: (this.mindMap!.files || []).filter((i) => !files.includes(i.name)) 
+            }),
+        ]);
+        this.back();
+    }
+}
+
+/**
+ * MindMap File Download Handler
+ * 思维导图文件下载
+ */
+class MindMapFileDownloadHandler extends Handler {
+    noCheckPermView = true;
+
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('filename', Types.Filename)
+    @param('noDisposition', Types.Boolean)
+    async get(domainId: string, docId: ObjectId, mmid: number, filename: string, noDisposition = false) {
+        const mindMap = docId 
+            ? await MindMapModel.get(domainId, docId)
+            : await MindMapModel.getByMmid(domainId, mmid);
+        if (!mindMap) throw new NotFoundError('MindMap not found');
+        
+        const target = `mindmap/${domainId}/${mindMap.mmid}/${filename}`;
+        const file = await storage.getMeta(target);
+        if (!file) throw new NotFoundError(filename);
+        
+        try {
+            this.response.redirect = await storage.signDownloadLink(
+                target, noDisposition ? undefined : filename, false, 'user',
+            );
+            this.response.addHeader('Cache-Control', 'public');
+        } catch (e) {
+            if (e.message.includes('Invalid path')) throw new NotFoundError(filename);
+            throw e;
+        }
     }
 }
 
@@ -3239,6 +3377,12 @@ export async function apply(ctx: Context) {
     ctx.Route('mindmap_card_detail_mmid', '/mindmap/mmid/:mmid/node/:nodeId/card/:cardId', MindMapCardDetailHandler);
     ctx.Route('mindmap_card_detail_branch', '/mindmap/:docId/branch/:branch/node/:nodeId/card/:cardId', MindMapCardDetailHandler);
     ctx.Route('mindmap_card_detail_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/node/:nodeId/card/:cardId', MindMapCardDetailHandler);
+    ctx.Route('mindmap_files', '/mindmap/:docId/files', MindMapFilesHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_files_mmid', '/mindmap/mmid/:mmid/files', MindMapFilesHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_files_branch', '/mindmap/:docId/branch/:branch/files', MindMapFilesHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_files_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/files', MindMapFilesHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_file_download', '/mindmap/:docId/file/:filename', MindMapFileDownloadHandler);
+    ctx.Route('mindmap_file_download_mmid', '/mindmap/mmid/:mmid/file/:filename', MindMapFileDownloadHandler);
     
     // WebSocket 连接路由
     ctx.Connection('mindmap_connection', '/mindmap/:docId/ws', MindMapConnectionHandler);
