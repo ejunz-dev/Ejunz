@@ -9,6 +9,7 @@
     currentBranch: currentBranch
   }) }}
   {{ set(UiContext, 'nodeCardsMap', nodeCardsMap or {}) }}
+  {{ set(UiContext, 'files', files or []) }}
   // Helper function to get Notification
   async function getNotification() {
     if (window.Ejunz?.components?.Notification) {
