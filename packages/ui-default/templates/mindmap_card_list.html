@@ -21,30 +21,42 @@
       <div class="mindmap-card-list__actions">
         <button 
           id="edit-mode-btn"
-          class="button primary mindmap-card-list__action-btn"
+          class="mindmap-card-list__action-btn mindmap-card-list__action-btn--edit"
+          title="{{ _('编辑') }}"
         >
-          {{ _('编辑') }}
+          ✎
         </button>
         <button 
           id="save-order-btn"
-          class="button success mindmap-card-list__action-btn"
+          class="mindmap-card-list__action-btn mindmap-card-list__action-btn--save"
           style="display: none;"
+          title="{{ _('保存') }}"
         >
-          {{ _('保存') }}
+          ✓
         </button>
         <button 
           id="cancel-edit-btn"
-          class="button mindmap-card-list__action-btn"
+          class="mindmap-card-list__action-btn mindmap-card-list__action-btn--cancel"
           style="display: none;"
+          title="{{ _('取消') }}"
         >
-          {{ _('取消') }}
+          ×
+        </button>
+        <button 
+          id="delete-cards-btn"
+          class="mindmap-card-list__action-btn mindmap-card-list__action-btn--delete"
+          style="display: none;"
+          title="{{ _('删除') }}"
+        >
+          🗑
         </button>
         <a 
           href="{{ url('mindmap_card_edit_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId) }}"
-          class="button primary mindmap-card-list__action-btn"
+          class="mindmap-card-list__action-btn mindmap-card-list__action-btn--new"
           style="text-decoration: none;"
+          title="{{ _('新建') }}"
         >
-          {{ _('新建') }}
+          +
         </a>
       </div>
     </div>
@@ -57,6 +69,11 @@
             data-order="{{ card.order or loop.index }}"
           >
             <div class="mindmap-card-list__item-content">
+              <input 
+                type="checkbox" 
+                class="mindmap-card-list__checkbox card-checkbox" 
+                data-card-id="{{ card.docId }}"
+              />
               <span class="mindmap-card-list__drag-handle drag-handle">⋮⋮</span>
               <div class="mindmap-card-list__item-title">
                 {{ card.title or '未命名卡片' }}

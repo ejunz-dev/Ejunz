@@ -365,6 +365,11 @@ const page = new NamedPage('mindmap_card_list', () => {
     
     cardItem.innerHTML = `
       <div class="mindmap-card-list__item-content">
+        <input 
+          type="checkbox" 
+          class="mindmap-card-list__checkbox card-checkbox" 
+          data-card-id="${card.docId}"
+        />
         <span class="mindmap-card-list__drag-handle drag-handle">⋮⋮</span>
         <div class="mindmap-card-list__item-title">
           ${card.title || '未命名卡片'}
@@ -374,6 +379,10 @@ const page = new NamedPage('mindmap_card_list', () => {
     
     // 添加点击事件
     cardItem.addEventListener('click', function(e) {
+      // 如果点击的是复选框，不阻止事件
+      if (e.target.classList.contains('card-checkbox')) {
+        return;
+      }
       if (isEditMode) {
         e.preventDefault();
         e.stopPropagation();
@@ -384,6 +393,14 @@ const page = new NamedPage('mindmap_card_list', () => {
         loadCard(cardId);
       }
     });
+    
+    // 为复选框添加点击事件，阻止冒泡
+    const checkbox = cardItem.querySelector('.card-checkbox');
+    if (checkbox) {
+      checkbox.addEventListener('click', function(e) {
+        e.stopPropagation();
+      });
+    }
     
     // 插入到进度条之后（如果存在）或直接追加
     if (progressBar && progressBar.nextSibling) {
@@ -485,9 +502,11 @@ const page = new NamedPage('mindmap_card_list', () => {
     const editBtn = document.getElementById('edit-mode-btn');
     const saveBtn = document.getElementById('save-order-btn');
     const cancelBtn = document.getElementById('cancel-edit-btn');
+    const deleteBtn = document.getElementById('delete-cards-btn');
     if (editBtn) editBtn.style.display = 'none';
     if (saveBtn) saveBtn.style.display = 'inline-block';
     if (cancelBtn) cancelBtn.style.display = 'inline-block';
+    if (deleteBtn) deleteBtn.style.display = 'inline-block';
     
     // 显示拖动手柄（通过 CSS 类控制）
     
@@ -507,14 +526,99 @@ const page = new NamedPage('mindmap_card_list', () => {
     const editBtn = document.getElementById('edit-mode-btn');
     const saveBtn = document.getElementById('save-order-btn');
     const cancelBtn = document.getElementById('cancel-edit-btn');
+    const deleteBtn = document.getElementById('delete-cards-btn');
     if (editBtn) editBtn.style.display = 'inline-block';
     if (saveBtn) saveBtn.style.display = 'none';
     if (cancelBtn) cancelBtn.style.display = 'none';
+    if (deleteBtn) deleteBtn.style.display = 'none';
+    
+    // 取消所有复选框的选中状态
+    document.querySelectorAll('.card-checkbox').forEach(checkbox => {
+      checkbox.checked = false;
+    });
     
     // 隐藏拖动手柄（通过 CSS 类控制）
     
     // 恢复原始顺序
     restoreOriginalOrder();
+  }
+  
+  // 批量删除卡片
+  async function deleteSelectedCards() {
+    const selectedCheckboxes = document.querySelectorAll('.card-checkbox:checked');
+    if (selectedCheckboxes.length === 0) {
+      Notification.warn('请至少选择一个卡片');
+      return;
+    }
+    
+    const selectedCardIds = Array.from(selectedCheckboxes).map(checkbox => 
+      checkbox.getAttribute('data-card-id')
+    );
+    
+    if (!confirm(`确定要删除选中的 ${selectedCardIds.length} 个卡片吗？此操作不可恢复。`)) {
+      return;
+    }
+    
+    try {
+      const domainId = window.UiContext?.domainId || 'system';
+      
+      // 批量删除
+      for (const cardId of selectedCardIds) {
+        const url = `/d/${domainId}/mindmap/card/${cardId}`;
+        await request.post(url, {
+          operation: 'delete'
+        });
+      }
+      
+      Notification.success(`成功删除 ${selectedCardIds.length} 个卡片`);
+      
+      // 从列表中移除已删除的卡片
+      selectedCardIds.forEach(cardId => {
+        const cardItem = document.querySelector(`[data-card-id="${cardId}"]`);
+        if (cardItem) {
+          cardItem.remove();
+        }
+        // 从 allCards 中移除
+        allCards = allCards.filter(c => {
+          const cardDocId = c.docId ? (c.docId.toString ? c.docId.toString() : String(c.docId)) : null;
+          return cardDocId !== cardId;
+        });
+        // 从缓存中移除
+        delete cardContentCache[cardId];
+      });
+      
+      // 如果当前选中的卡片被删除，加载第一个卡片
+      const urlParams = new URLSearchParams(window.location.search);
+      const currentCardId = urlParams.get('cardId');
+      if (currentCardId && selectedCardIds.includes(currentCardId)) {
+        if (allCards.length > 0) {
+          const firstCardId = allCards[0].docId ? (allCards[0].docId.toString ? allCards[0].docId.toString() : String(allCards[0].docId)) : null;
+          if (firstCardId) {
+            loadCard(firstCardId);
+          } else {
+            // 如果没有卡片了，清空内容
+            const titleElement = document.getElementById('card-title');
+            const contentDiv = document.getElementById('card-content');
+            if (titleElement) titleElement.textContent = '请选择卡片';
+            if (contentDiv) contentDiv.innerHTML = '<p style="color: #888;">请从左侧选择一个卡片</p>';
+            window.history.pushState({}, '', baseUrl);
+          }
+        } else {
+          // 如果没有卡片了，清空内容
+          const titleElement = document.getElementById('card-title');
+          const contentDiv = document.getElementById('card-content');
+          if (titleElement) titleElement.textContent = '请选择卡片';
+          if (contentDiv) contentDiv.innerHTML = '<p style="color: #888;">请从左侧选择一个卡片</p>';
+          window.history.pushState({}, '', baseUrl);
+        }
+      }
+      
+      // 退出编辑模式
+      exitEditMode();
+    } catch (error) {
+      console.error('Failed to delete cards:', error);
+      Notification.error('删除失败: ' + (error.message || '未知错误'));
+    }
   }
   
   // 保存排序
@@ -689,6 +793,10 @@ const page = new NamedPage('mindmap_card_list', () => {
       
       // 在编辑模式下禁用点击事件
       newItem.addEventListener('click', function(e) {
+        // 如果点击的是复选框，不阻止事件
+        if (e.target.classList.contains('card-checkbox')) {
+          return;
+        }
         if (isEditMode) {
           e.preventDefault();
           e.stopPropagation();
@@ -699,6 +807,14 @@ const page = new NamedPage('mindmap_card_list', () => {
           }
         }
       });
+      
+      // 为复选框添加点击事件，阻止冒泡
+      const checkbox = newItem.querySelector('.card-checkbox');
+      if (checkbox) {
+        checkbox.addEventListener('click', function(e) {
+          e.stopPropagation();
+        });
+      }
     });
   }
   
@@ -724,9 +840,19 @@ const page = new NamedPage('mindmap_card_list', () => {
       cancelBtn.addEventListener('click', exitEditMode);
     }
     
+    // 删除按钮
+    const deleteBtn = document.getElementById('delete-cards-btn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', deleteSelectedCards);
+    }
+    
     // 为所有卡片项添加点击事件
     document.querySelectorAll('.card-item').forEach(item => {
       item.addEventListener('click', function(e) {
+        // 如果点击的是复选框，不阻止事件
+        if (e.target.classList.contains('card-checkbox')) {
+          return;
+        }
         if (isEditMode) {
           e.preventDefault();
           e.stopPropagation();
@@ -737,6 +863,14 @@ const page = new NamedPage('mindmap_card_list', () => {
           loadCard(cardId);
         }
       });
+      
+      // 为复选框添加点击事件，阻止冒泡
+      const checkbox = item.querySelector('.card-checkbox');
+      if (checkbox) {
+        checkbox.addEventListener('click', function(e) {
+          e.stopPropagation();
+        });
+      }
       
       // 悬停效果由 CSS 处理
     });
