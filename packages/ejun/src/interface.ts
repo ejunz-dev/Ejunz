@@ -356,6 +356,7 @@ export interface MindMapDoc {
     branches?: string[]; // 分支列表
     currentBranch?: string; // 当前分支
     history?: MindMapHistoryEntry[]; // 操作历史记录（最多50条）
+    files?: FileInfo[]; // 文件列表
 }
 
 export interface MindMapHistoryEntry {
