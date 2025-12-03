@@ -347,6 +347,149 @@ class MindMapOutlineHandler extends Handler {
             (this.mindMap as any).currentBranch = requestedBranch;
         }
         
+        // Get branches list
+        const branches = Array.isArray((this.mindMap as any)?.branches) 
+            ? (this.mindMap as any).branches 
+            : ['main'];
+        if (!branches.includes('main')) {
+            branches.unshift('main');
+        }
+        
+        // Get git status
+        let gitStatus: any = null;
+        const githubRepo = (this.mindMap?.githubRepo || '') as string;
+        
+        if (githubRepo && githubRepo.trim()) {
+            try {
+                const settingValue = this.ctx.setting.get('ejunzrepo.github_token');
+                const systemValue = system.get('ejunzrepo.github_token');
+                const GH_TOKEN = settingValue || systemValue || '';
+                
+                let REPO_URL = githubRepo;
+                if (githubRepo.startsWith('git@')) {
+                    REPO_URL = githubRepo;
+                } else {
+                    if (githubRepo.startsWith('https://github.com/') || githubRepo.startsWith('http://github.com/')) {
+                        if (!githubRepo.includes('@github.com')) {
+                            REPO_URL = githubRepo.replace('https://github.com/', `https://${GH_TOKEN}@github.com/`)
+                                .replace('http://github.com/', `https://${GH_TOKEN}@github.com/`);
+                        } else {
+                            REPO_URL = githubRepo;
+                        }
+                    } else if (!githubRepo.includes('://') && !githubRepo.includes('@')) {
+                        const repoPath = githubRepo.replace('.git', '');
+                        REPO_URL = `https://${GH_TOKEN}@github.com/${repoPath}.git`;
+                    }
+                }
+                
+                gitStatus = await getMindMapGitStatus(domainId, this.mindMap!.mmid, requestedBranch, REPO_URL);
+            } catch (err) {
+                console.error('Failed to get git status:', err);
+                gitStatus = null;
+            }
+        } else {
+            try {
+                gitStatus = await getMindMapGitStatus(domainId, this.mindMap!.mmid, requestedBranch);
+            } catch (err) {
+                console.error('Failed to get local git status:', err);
+                gitStatus = null;
+            }
+        }
+        
+        // 获取当前分支的数据
+        const branchData = getBranchData(this.mindMap!, requestedBranch);
+        
+        // 获取所有节点的卡片数据（按节点ID分组）
+        const nodeCardsMap: Record<string, CardDoc[]> = {};
+        if (branchData.nodes && branchData.nodes.length > 0) {
+            for (const node of branchData.nodes) {
+                try {
+                    const cards = await CardModel.getByNodeId(domainId, this.mindMap!.mmid, node.id);
+                    if (cards && cards.length > 0) {
+                        nodeCardsMap[node.id] = cards;
+                    }
+                } catch (err) {
+                    console.error(`Failed to get cards for node ${node.id}:`, err);
+                }
+            }
+        }
+        
+        this.response.body = {
+            mindMap: {
+                ...this.mindMap,
+                nodes: branchData.nodes,
+                edges: branchData.edges,
+            },
+            gitStatus,
+            currentBranch: requestedBranch,
+            branches,
+            nodeCardsMap, // 添加节点卡片映射
+            files: this.mindMap.files || [], // 添加文件列表
+        };
+    }
+}
+
+/**
+ * MindMap Editor Handler (类似GitHub Web Editor)
+ */
+class MindMapEditorHandler extends Handler {
+    mindMap?: MindMapDoc;
+
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('branch', Types.String, true)
+    async _prepare(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
+        if (docId) {
+            this.mindMap = await MindMapModel.get(domainId, docId);
+            if (!this.mindMap && mmid) {
+                this.mindMap = await MindMapModel.getByMmid(domainId, mmid);
+            }
+        } else if (mmid) {
+            this.mindMap = await MindMapModel.getByMmid(domainId, mmid);
+        }
+        
+        if (!this.mindMap) throw new NotFoundError('MindMap not found');
+        
+        await MindMapModel.incrementViews(domainId, this.mindMap.docId);
+    }
+
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('branch', Types.String, true)
+    async get(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
+        // If no branch parameter, redirect to branch URL
+        if (!branch || !String(branch).trim()) {
+            const target = this.url('mindmap_editor_branch', { 
+                domainId, 
+                docId: docId || this.mindMap!.docId, 
+                branch: 'main' 
+            });
+            this.response.redirect = target;
+            return;
+        }
+        
+        this.response.template = 'mindmap_editor.html';
+        
+        // Handle branch parameter
+        const requestedBranch = branch;
+        const currentMindMapBranch = (this.mindMap as any)?.currentBranch || 'main';
+        
+        // Update currentBranch if different and checkout git branch
+        if (requestedBranch !== currentMindMapBranch) {
+            await document.set(domainId, document.TYPE_MINDMAP, this.mindMap!.docId, { 
+                currentBranch: requestedBranch 
+            });
+            (this.mindMap as any).currentBranch = requestedBranch;
+        }
+        
+        // Get branches list
+        const branches = Array.isArray((this.mindMap as any)?.branches) 
+            ? (this.mindMap as any).branches 
+            : ['main'];
+        if (!branches.includes('main')) {
+            branches.unshift('main');
+        }
+        
         // 获取当前分支的数据
         const branchData = getBranchData(this.mindMap!, requestedBranch);
         
@@ -372,8 +515,9 @@ class MindMapOutlineHandler extends Handler {
                 edges: branchData.edges,
             },
             currentBranch: requestedBranch,
-            nodeCardsMap, // 添加节点卡片映射
-            files: this.mindMap.files || [], // 添加文件列表
+            branches,
+            nodeCardsMap,
+            files: this.mindMap.files || [],
         };
     }
 }
@@ -2607,7 +2751,51 @@ async function commitMindMapChanges(
         };
         await copyDirAndCleanup(tmpDir, repoGitPath);
         
-        await exec('git add -A', { cwd: repoGitPath });
+        // 只添加真正有内容变化的文件
+        // 先检查哪些文件有变化
+        try {
+            const { stdout: statusOutput } = await exec('git status --porcelain', { cwd: repoGitPath });
+            if (statusOutput.trim()) {
+                const lines = statusOutput.trim().split('\n');
+                const changedFiles: string[] = [];
+                
+                for (const line of lines) {
+                    const status = line.substring(0, 2).trim();
+                    const filePath = line.substring(3).trim();
+                    
+                    // 对于修改的文件，检查内容是否真的不同
+                    if (status === 'M' || status.startsWith('M')) {
+                        try {
+                            // git diff --quiet 如果文件内容相同返回0，不同返回非0
+                            await exec(`git diff --quiet "${filePath}"`, { cwd: repoGitPath });
+                            // 如果执行成功（返回0），说明内容相同，跳过
+                            continue;
+                        } catch {
+                            // diff --quiet 返回非零表示有变化，添加到列表
+                            changedFiles.push(filePath);
+                        }
+                    } else if (status === '??' || status.startsWith('A') || status.startsWith('D')) {
+                        // 新增或删除的文件直接添加
+                        changedFiles.push(filePath);
+                    }
+                }
+                
+                // 只添加有变化的文件
+                if (changedFiles.length > 0) {
+                    for (const file of changedFiles) {
+                        try {
+                            await exec(`git add "${file}"`, { cwd: repoGitPath });
+                        } catch (err: any) {
+                            console.warn(`[commitMindMapChanges] Failed to add ${file}:`, err.message);
+                        }
+                    }
+                }
+            }
+        } catch (err: any) {
+            // 如果检查失败，回退到添加所有文件
+            console.warn(`[commitMindMapChanges] Failed to check file changes, using git add -A:`, err.message);
+            await exec('git add -A', { cwd: repoGitPath });
+        }
         
         try {
             const { stdout } = await exec('git status --porcelain', { cwd: repoGitPath });
@@ -3471,6 +3659,10 @@ export async function apply(ctx: Context) {
     ctx.Route('mindmap_files_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/files', MindMapFilesHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_file_download', '/mindmap/:docId/file/:filename', MindMapFileDownloadHandler);
     ctx.Route('mindmap_file_download_mmid', '/mindmap/mmid/:mmid/file/:filename', MindMapFileDownloadHandler);
+    ctx.Route('mindmap_editor', '/mindmap/:docId/editor', MindMapEditorHandler);
+    ctx.Route('mindmap_editor_mmid', '/mindmap/mmid/:mmid/editor', MindMapEditorHandler);
+    ctx.Route('mindmap_editor_branch', '/mindmap/:docId/branch/:branch/editor', MindMapEditorHandler);
+    ctx.Route('mindmap_editor_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/editor', MindMapEditorHandler);
     
     // WebSocket 连接路由
     ctx.Connection('mindmap_connection', '/mindmap/:docId/ws', MindMapConnectionHandler);
