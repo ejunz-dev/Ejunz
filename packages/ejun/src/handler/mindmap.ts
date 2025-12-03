@@ -295,6 +295,90 @@ class MindMapStudyHandler extends Handler {
 }
 
 /**
+ * MindMap Outline Handler (文件模式)
+ */
+class MindMapOutlineHandler extends Handler {
+    mindMap?: MindMapDoc;
+
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('branch', Types.String, true)
+    async _prepare(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
+        if (docId) {
+            this.mindMap = await MindMapModel.get(domainId, docId);
+            if (!this.mindMap && mmid) {
+                this.mindMap = await MindMapModel.getByMmid(domainId, mmid);
+            }
+        } else if (mmid) {
+            this.mindMap = await MindMapModel.getByMmid(domainId, mmid);
+        }
+        
+        if (!this.mindMap) throw new NotFoundError('MindMap not found');
+        
+        await MindMapModel.incrementViews(domainId, this.mindMap.docId);
+    }
+
+    @param('docId', Types.ObjectId, true)
+    @param('mmid', Types.PositiveInt, true)
+    @param('branch', Types.String, true)
+    async get(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
+        // If no branch parameter, redirect to branch URL
+        if (!branch || !String(branch).trim()) {
+            const target = this.url('mindmap_outline_branch', { 
+                domainId, 
+                docId: docId || this.mindMap!.docId, 
+                branch: 'main' 
+            });
+            this.response.redirect = target;
+            return;
+        }
+        
+        this.response.template = 'mindmap_outline.html';
+        
+        // Handle branch parameter
+        const requestedBranch = branch;
+        const currentMindMapBranch = (this.mindMap as any)?.currentBranch || 'main';
+        
+        // Update currentBranch if different and checkout git branch
+        if (requestedBranch !== currentMindMapBranch) {
+            await document.set(domainId, document.TYPE_MINDMAP, this.mindMap!.docId, { 
+                currentBranch: requestedBranch 
+            });
+            (this.mindMap as any).currentBranch = requestedBranch;
+        }
+        
+        // 获取当前分支的数据
+        const branchData = getBranchData(this.mindMap!, requestedBranch);
+        
+        // 获取所有节点的卡片数据（按节点ID分组）
+        const nodeCardsMap: Record<string, CardDoc[]> = {};
+        if (branchData.nodes && branchData.nodes.length > 0) {
+            for (const node of branchData.nodes) {
+                try {
+                    const cards = await CardModel.getByNodeId(domainId, this.mindMap!.mmid, node.id);
+                    if (cards && cards.length > 0) {
+                        nodeCardsMap[node.id] = cards;
+                    }
+                } catch (err) {
+                    console.error(`Failed to get cards for node ${node.id}:`, err);
+                }
+            }
+        }
+        
+        this.response.body = {
+            mindMap: {
+                ...this.mindMap,
+                nodes: branchData.nodes,
+                edges: branchData.edges,
+            },
+            currentBranch: requestedBranch,
+            nodeCardsMap, // 添加节点卡片映射
+            files: this.mindMap.files || [], // 添加文件列表
+        };
+    }
+}
+
+/**
  * MindMap Create Handler
  */
 class MindMapCreateHandler extends Handler {
@@ -3324,6 +3408,10 @@ export async function apply(ctx: Context) {
     ctx.Route('mindmap_study_mmid', '/mindmap/mmid/:mmid/study', MindMapStudyHandler);
     ctx.Route('mindmap_study_branch', '/mindmap/:docId/branch/:branch/study', MindMapStudyHandler);
     ctx.Route('mindmap_study_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/study', MindMapStudyHandler);
+    ctx.Route('mindmap_outline', '/mindmap/:docId/outline', MindMapOutlineHandler);
+    ctx.Route('mindmap_outline_mmid', '/mindmap/mmid/:mmid/outline', MindMapOutlineHandler);
+    ctx.Route('mindmap_outline_branch', '/mindmap/:docId/branch/:branch/outline', MindMapOutlineHandler);
+    ctx.Route('mindmap_outline_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/outline', MindMapOutlineHandler);
     ctx.Route('mindmap_data', '/mindmap/:docId/data', MindMapDataHandler);
     ctx.Route('mindmap_data_mmid', '/mindmap/mmid/:mmid/data', MindMapDataHandler);
     ctx.Route('mindmap_edit', '/mindmap/:docId/edit', MindMapEditHandler, PRIV.PRIV_USER_PROFILE);
