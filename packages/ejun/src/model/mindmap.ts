@@ -152,13 +152,37 @@ export class MindMapModel {
         const nodeIndex = mindMap.nodes.findIndex(n => n.id === nodeId);
         if (nodeIndex === -1) throw new Error('Node not found');
 
-        mindMap.nodes[nodeIndex] = {
-            ...mindMap.nodes[nodeIndex],
+        // 创建新的 nodes 数组，确保引用改变
+        const newNodes = [...mindMap.nodes];
+        newNodes[nodeIndex] = {
+            ...newNodes[nodeIndex],
             ...updates,
         };
 
+        // 获取当前分支
+        const currentBranch = (mindMap as any).currentBranch || 'main';
+        
+        // 更新分支数据（如果存在）
+        const branchData = (mindMap as any).branchData || {};
+        if (branchData[currentBranch]) {
+            const branchNodes = branchData[currentBranch].nodes || [];
+            const branchNodeIndex = branchNodes.findIndex((n: MindMapNode) => n.id === nodeId);
+            if (branchNodeIndex >= 0) {
+                branchNodes[branchNodeIndex] = {
+                    ...branchNodes[branchNodeIndex],
+                    ...updates,
+                };
+                branchData[currentBranch] = {
+                    ...branchData[currentBranch],
+                    nodes: branchNodes,
+                };
+            }
+        }
+
+        // 使用 $set 更新整个 nodes 数组和分支数据
         await document.set(domainId, TYPE_MM, docId, {
-            nodes: mindMap.nodes,
+            nodes: newNodes,
+            branchData: branchData,
             updateAt: new Date(),
         });
     }
@@ -539,7 +563,7 @@ export class CardModel {
     static async update(
         domainId: string,
         docId: ObjectId,
-        updates: Partial<Pick<CardDoc, 'title' | 'content' | 'order'>>
+        updates: Partial<Pick<CardDoc, 'title' | 'content' | 'order' | 'nodeId'>>
     ): Promise<void> {
         await document.set(domainId, TYPE_CARD, docId, {
             ...updates,
