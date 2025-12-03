@@ -1,0 +1,24 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<script>
+  {{ set(UiContext, 'currentBranch', currentBranch) }}
+  {{ set(UiContext, 'mindMap', {
+    domainId: mindMap.domainId,
+    docId: mindMap.docId,
+    mmid: mindMap.mmid,
+    currentBranch: currentBranch
+  }) }}
+  {{ set(UiContext, 'nodeCardsMap', nodeCardsMap or {}) }}
+  {{ set(UiContext, 'files', files or []) }}
+</script>
+<div class="row">
+  <div class="large-12 columns">
+    <div class="section" style="background: transparent; border: none; box-shadow: none; margin: 0;">
+      <div class="section__body no-padding" style="background: transparent; padding: 0;">
+        <div id="mindmap-editor-mode" data-doc-id="{{ mindMap.docId if mindMap else '' }}"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
