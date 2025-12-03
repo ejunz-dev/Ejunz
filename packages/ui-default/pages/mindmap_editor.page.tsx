@@ -69,6 +69,20 @@ interface PendingRename {
   originalName: string;
 }
 
+interface PendingCreate {
+  type: 'card' | 'node';
+  nodeId: string; // 对于 card，是所属节点；对于 node，是父节点
+  title?: string; // card 的标题
+  text?: string; // node 的文本
+  tempId: string; // 临时 ID，用于前端显示
+}
+
+interface PendingDelete {
+  type: 'card' | 'node';
+  id: string; // cardId 或 nodeId
+  nodeId?: string; // 对于 card，记录所属节点
+}
+
 function MindMapEditorMode({ docId, initialData }: { docId: string; initialData: MindMapDoc }) {
   const [mindMap, setMindMap] = useState<MindMapDoc>(initialData);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
@@ -78,6 +92,8 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const [pendingChanges, setPendingChanges] = useState<Map<string, PendingChange>>(new Map());
   const [pendingRenames, setPendingRenames] = useState<Map<string, PendingRename>>(new Map());
+  const [pendingCreates, setPendingCreates] = useState<Map<string, PendingCreate>>(new Map()); // 待创建的项目
+  const [pendingDeletes, setPendingDeletes] = useState<Map<string, PendingDelete>>(new Map()); // 待删除的项目
   const originalContentsRef = useRef<Map<string, string>>(new Map());
   const [draggedFile, setDraggedFile] = useState<FileItem | null>(null);
   const [dragOverFile, setDragOverFile] = useState<FileItem | null>(null);
@@ -90,6 +106,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
   const dragOverTimeoutRef = useRef<NodeJS.Timeout | null>(null); // 用于节流 dragOver 更新
   const lastDragOverFileRef = useRef<FileItem | null>(null); // 上次悬停的文件
   const lastDropPositionRef = useRef<'before' | 'after' | 'into'>('after'); // 上次的放置位置
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null); // 右键菜单
   // 默认展开所有节点
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
     const initialExpanded = new Set<string>();
@@ -137,9 +154,24 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
 
     // 获取最新的 nodeCardsMap（从 UiContext 或本地状态）
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    
+    // 获取待删除的项目 ID 集合
+    const deletedNodeIds = new Set(
+      Array.from(pendingDeletes.values())
+        .filter(d => d.type === 'node')
+        .map(d => d.id)
+    );
+    const deletedCardIds = new Set(
+      Array.from(pendingDeletes.values())
+        .filter(d => d.type === 'card')
+        .map(d => d.id)
+    );
 
     // 递归构建文件树（只显示展开的节点）
     const buildTree = (nodeId: string, level: number, parentId?: string) => {
+      // 如果节点被删除，跳过
+      if (deletedNodeIds.has(nodeId)) return;
+      
       const nodeData = nodeMap.get(nodeId);
       if (!nodeData) return;
 
@@ -167,6 +199,9 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
           .sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
         
         nodeCards.forEach((card: Card) => {
+          // 跳过待删除的卡片
+          if (deletedCardIds.has(card.docId)) return;
+          
           items.push({
             type: 'card',
             id: `card-${card.docId}`,
@@ -177,6 +212,21 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             level: level + 1,
           });
         });
+        
+        // 添加待创建的卡片（临时显示）
+        Array.from(pendingCreates.values())
+          .filter(c => c.type === 'card' && c.nodeId === nodeId)
+          .forEach(create => {
+            items.push({
+              type: 'card',
+              id: create.tempId,
+              name: create.title || '新卡片',
+              nodeId: nodeId,
+              cardId: create.tempId,
+              parentId: nodeId,
+              level: level + 1,
+            });
+          });
 
         // 递归处理子节点
         nodeData.children.forEach((childId) => {
@@ -288,6 +338,8 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     const hasContentChanges = allChanges.size > 0;
     const hasDragChanges = pendingDragChanges.size > 0;
     const hasRenameChanges = pendingRenames.size > 0;
+    const hasCreateChanges = pendingCreates.size > 0;
+    const hasDeleteChanges = pendingDeletes.size > 0;
 
     // 允许即使没有更改也执行保存（用于刷新或验证）
     // if (!hasContentChanges && !hasDragChanges && !hasRenameChanges) {
@@ -353,26 +405,85 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
           if (cardId.startsWith('node-')) {
             // 节点拖动，保存 edges
             const nodeId = cardId.replace('node-', '');
-            // edges 已经在 handleDrop 中更新到 mindMap.edges，这里需要同步到后端
-            const nodeEdges = mindMap.edges.filter(e => e.target === nodeId);
-            if (nodeEdges.length > 0) {
-              const edge = nodeEdges[0];
-              // 删除旧的父节点连接（除了当前边）
-              const oldEdges = mindMap.edges.filter(
-                e => e.target === nodeId && e.id !== edge.id
-              );
-              for (const oldEdge of oldEdges) {
-                await request.post(getMindMapUrl('/edge', docId), {
-                  operation: 'delete',
-                  edgeId: oldEdge.id,
-                });
+            
+            // 从本地 mindMap.edges 中获取新的父节点连接
+            const newEdges = mindMap.edges.filter(e => e.target === nodeId);
+            const newEdge = newEdges.length > 0 ? newEdges[0] : null;
+            
+            if (newEdge) {
+              try {
+                // 获取数据库中该节点的所有 edges（作为 target 的边）
+                const currentMindMap = await request.get(getMindMapUrl('/data', docId));
+                const oldEdges = (currentMindMap.edges || []).filter(
+                  (e: MindMapEdge) => e.target === nodeId
+                );
+                
+                // 检查新边是否已存在（通过 source 和 target 匹配）
+                const edgeExists = oldEdges.some(
+                  (e: MindMapEdge) => e.source === newEdge.source && e.target === newEdge.target
+                );
+                
+                // 删除所有旧的父节点连接（如果新边已存在，则不删除它）
+                for (const oldEdge of oldEdges) {
+                  // 检查是否是我们要保留的新边（通过 source 和 target 匹配）
+                  const isNewEdge = oldEdge.source === newEdge.source && oldEdge.target === newEdge.target;
+                  if (!isNewEdge && oldEdge.id) {
+                    // 跳过临时 edge（前端生成的临时 ID）
+                    if (oldEdge.id.startsWith('temp-') || oldEdge.id.startsWith('edge-')) {
+                      continue;
+                    }
+                    
+                    // 尝试删除旧的 edge，如果失败（edge 可能已经被删除），忽略错误
+                    try {
+                      await request.post(getMindMapUrl('/edge', docId), {
+                        operation: 'delete',
+                        edgeId: oldEdge.id,
+                      });
+                    } catch (deleteError: any) {
+                      // 如果删除失败（edge 可能已经被删除），继续处理，不抛出错误
+                      if (!deleteError.message?.includes('not found')) {
+                        console.warn(`Failed to delete edge ${oldEdge.id}:`, deleteError.message);
+                      }
+                    }
+                  }
+                }
+                
+                // 如果新边不存在，创建它
+                if (!edgeExists) {
+                  try {
+                    await request.post(getMindMapUrl('/edge', docId), {
+                      operation: 'add',
+                      source: newEdge.source,
+                      target: newEdge.target,
+                    });
+                  } catch (addError: any) {
+                    // 如果创建失败（edge 可能已经存在），记录警告但继续，不抛出错误
+                    if (addError.message?.includes('already exists')) {
+                      console.warn('Edge already exists, skipping creation');
+                    } else {
+                      // 其他错误也忽略，避免阻塞保存流程
+                      console.warn('Failed to create edge:', addError.message);
+                    }
+                  }
+                }
+              } catch (error: any) {
+                console.error('Failed to update node edges:', error);
+                // 如果获取失败，尝试直接创建新边（后端会处理重复）
+                try {
+                  await request.post(getMindMapUrl('/edge', docId), {
+                    operation: 'add',
+                    source: newEdge.source,
+                    target: newEdge.target,
+                  });
+                } catch (err: any) {
+                  // 如果 edge 已存在，忽略错误
+                  if (err.message?.includes('already exists')) {
+                    console.warn('Edge already exists, skipping creation');
+                  } else {
+                    console.error('Failed to create edge:', err);
+                  }
+                }
               }
-              // 创建新边（前端已经创建了临时ID，后端会返回真实ID）
-              await request.post(getMindMapUrl('/edge', docId), {
-                operation: 'add',
-                source: edge.source,
-                target: edge.target,
-              });
             }
           } else {
             // 卡片拖动，保存 nodeId 和 order
@@ -443,7 +554,101 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
         }
       }
 
-      const totalChanges = (hasContentChanges ? allChanges.size : 0) + (hasDragChanges ? pendingDragChanges.size : 0) + (hasRenameChanges ? pendingRenames.size : 0);
+      const hasCreateChanges = pendingCreates.size > 0;
+      const hasDeleteChanges = pendingDeletes.size > 0;
+      
+      // 保存新建操作
+      if (hasCreateChanges) {
+        const creates = Array.from(pendingCreates.values());
+        
+        for (const create of creates) {
+          if (create.type === 'card') {
+            // 创建新卡片
+            const response = await request.post(`/d/${domainId}/mindmap/card`, {
+              nodeId: create.nodeId,
+              title: create.title || '新卡片',
+              content: '',
+            });
+            
+            const newCardId = response.cardId;
+            
+            // 更新 nodeCardsMap，将临时 ID 替换为真实 ID
+            const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+            if (nodeCardsMap[create.nodeId]) {
+              const cards = nodeCardsMap[create.nodeId];
+              const tempCardIndex = cards.findIndex((c: Card) => c.docId === create.tempId);
+              if (tempCardIndex >= 0) {
+                cards[tempCardIndex] = {
+                  ...cards[tempCardIndex],
+                  docId: newCardId,
+                };
+                (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+              }
+            }
+          } else if (create.type === 'node') {
+            // 创建新子节点
+            const response = await request.post(getMindMapUrl('/node', docId), {
+              text: create.text || '新节点',
+              parentId: create.nodeId,
+            });
+            
+            const newNodeId = response.nodeId;
+            const newEdgeId = response.edgeId;
+            
+            // 更新 mindMap，将临时 ID 替换为真实 ID
+            setMindMap(prev => ({
+              ...prev,
+              nodes: prev.nodes.map(n => 
+                n.id === create.tempId 
+                  ? { ...n, id: newNodeId }
+                  : n
+              ),
+              edges: prev.edges.map(e => 
+                e.target === create.tempId
+                  ? { ...e, id: newEdgeId || e.id, target: newNodeId }
+                  : e
+              ),
+            }));
+          }
+        }
+      }
+      
+      // 保存删除操作
+      if (hasDeleteChanges) {
+        const deletes = Array.from(pendingDeletes.values());
+        
+        for (const del of deletes) {
+          if (del.type === 'card') {
+            // 删除卡片
+            await request.post(`/d/${domainId}/mindmap/card/${del.id}`, {
+              operation: 'delete',
+            });
+          } else if (del.type === 'node') {
+            // 删除节点（需要先删除所有相关的 edges）
+            const nodeEdges = mindMap.edges.filter(
+              e => e.source === del.id || e.target === del.id
+            );
+            
+            for (const edge of nodeEdges) {
+              await request.post(getMindMapUrl('/edge', docId), {
+                operation: 'delete',
+                edgeId: edge.id,
+              });
+            }
+            
+            // 删除节点
+            await request.post(getMindMapUrl(`/node/${del.id}`, docId), {
+              operation: 'delete',
+            });
+          }
+        }
+      }
+
+      const totalChanges = (hasContentChanges ? allChanges.size : 0) 
+        + (hasDragChanges ? pendingDragChanges.size : 0) 
+        + (hasRenameChanges ? pendingRenames.size : 0)
+        + (hasCreateChanges ? pendingCreates.size : 0)
+        + (hasDeleteChanges ? pendingDeletes.size : 0);
       Notification.success(`已保存 ${totalChanges} 个更改`);
       
       // 如果有重命名更改，重新加载数据以确保同步
@@ -476,6 +681,10 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       setPendingChanges(new Map());
       setPendingDragChanges(new Set());
       setPendingRenames(new Map());
+      setPendingCreates(new Map());
+      setPendingDeletes(new Map());
+      setPendingCreates(new Map());
+      setPendingDeletes(new Map());
       
       // 更新原始内容引用
       if (hasContentChanges) {
@@ -489,7 +698,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     } finally {
       setIsCommitting(false);
     }
-  }, [pendingChanges, pendingDragChanges, pendingRenames, selectedFile, editorInstance, fileContent, docId, getMindMapUrl, mindMap.edges]);
+  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingCreates, pendingDeletes, selectedFile, editorInstance, fileContent, docId, getMindMapUrl, mindMap.edges]);
 
   // 重命名文件（仅前端修改，保存时才提交到后端）
   const handleRename = useCallback((file: FileItem, newName: string) => {
@@ -570,6 +779,145 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       await handleRename(editingFile, editingName);
     }
   }, [editingFile, editingName, handleRename]);
+
+  // 新建卡片（前端操作）
+  const handleNewCard = useCallback((nodeId: string) => {
+    const tempId = `temp-card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const newCard: PendingCreate = {
+      type: 'card',
+      nodeId,
+      title: '新卡片',
+      tempId,
+    };
+    
+    setPendingCreates(prev => {
+      const next = new Map(prev);
+      next.set(tempId, newCard);
+      return next;
+    });
+    
+    // 更新 nodeCardsMap（前端显示）
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    if (!nodeCardsMap[nodeId]) {
+      nodeCardsMap[nodeId] = [];
+    }
+    const maxOrder = nodeCardsMap[nodeId].length > 0 
+      ? Math.max(...nodeCardsMap[nodeId].map((c: Card) => c.order || 0))
+      : 0;
+    
+    const tempCard: Card = {
+      docId: tempId,
+      cid: 0,
+      nodeId,
+      title: '新卡片',
+      content: '',
+      order: maxOrder + 1,
+      updateAt: new Date().toISOString(),
+    } as Card;
+    
+    nodeCardsMap[nodeId].push(tempCard);
+    nodeCardsMap[nodeId].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+    (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+    setNodeCardsMapVersion(prev => prev + 1);
+    
+    setContextMenu(null);
+  }, []);
+
+  // 新建子节点（前端操作）
+  const handleNewChildNode = useCallback((parentNodeId: string) => {
+    const tempId = `temp-node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const newChildNode: PendingCreate = {
+      type: 'node',
+      nodeId: parentNodeId,
+      text: '新节点',
+      tempId,
+    };
+    
+    setPendingCreates(prev => {
+      const next = new Map(prev);
+      next.set(tempId, newChildNode);
+      return next;
+    });
+    
+    // 更新 mindMap（前端显示）
+    const tempNode: MindMapNode = {
+      id: tempId,
+      text: '新节点',
+    };
+    
+    setMindMap(prev => ({
+      ...prev,
+      nodes: [...prev.nodes, tempNode],
+      edges: [...prev.edges, {
+        id: `temp-edge-${Date.now()}`,
+        source: parentNodeId,
+        target: tempId,
+      }],
+    }));
+    
+    // 展开父节点以便看到新节点
+    setExpandedNodes(prev => new Set(prev).add(parentNodeId));
+    
+    setContextMenu(null);
+  }, []);
+
+  // 删除节点或卡片（前端操作）
+  const handleDelete = useCallback((file: FileItem) => {
+    if (file.type === 'node') {
+      // 检查是否有子节点或卡片
+      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+      const hasCards = nodeCardsMap[file.nodeId || '']?.length > 0;
+      const hasChildren = mindMap.edges.some(e => e.source === file.nodeId);
+      
+      if (hasCards || hasChildren) {
+        Notification.error('无法删除：该节点包含子节点或卡片');
+        setContextMenu(null);
+        return;
+      }
+      
+      // 添加到待删除列表
+      setPendingDeletes(prev => {
+        const next = new Map(prev);
+        next.set(file.nodeId || '', {
+          type: 'node',
+          id: file.nodeId || '',
+        });
+        return next;
+      });
+      
+      // 从 mindMap 中移除（前端显示）
+      setMindMap(prev => ({
+        ...prev,
+        nodes: prev.nodes.filter(n => n.id !== file.nodeId),
+        edges: prev.edges.filter(e => e.source !== file.nodeId && e.target !== file.nodeId),
+      }));
+    } else if (file.type === 'card') {
+      // 添加到待删除列表
+      setPendingDeletes(prev => {
+        const next = new Map(prev);
+        next.set(file.cardId || '', {
+          type: 'card',
+          id: file.cardId || '',
+          nodeId: file.nodeId,
+        });
+        return next;
+      });
+      
+      // 从 nodeCardsMap 中移除（前端显示）
+      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+      if (nodeCardsMap[file.nodeId || '']) {
+        const cards = nodeCardsMap[file.nodeId || ''];
+        const cardIndex = cards.findIndex((c: Card) => c.docId === file.cardId);
+        if (cardIndex >= 0) {
+          cards.splice(cardIndex, 1);
+          (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+          setNodeCardsMapVersion(prev => prev + 1);
+        }
+      }
+    }
+    
+    setContextMenu(null);
+  }, [mindMap.edges]);
 
   // 拖拽开始
   const handleDragStart = useCallback((e: React.DragEvent, file: FileItem) => {
@@ -852,15 +1200,57 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
         }
       } else if (draggedFile.type === 'node' && targetFile.type === 'node') {
         // 移动节点到目标节点下（改变父子关系）
-        // 只更新本地 edges，不调用后端
+        // 需要检查是否会造成循环（不能将节点拖到自己或自己的子节点下）
+        const draggedNodeId = draggedFile.nodeId || '';
+        const targetNodeId = targetFile.nodeId || '';
+        
+        // 检查是否会造成循环：检查目标节点是否是拖动节点的子节点
+        const isDescendant = (ancestorId: string, nodeId: string): boolean => {
+          // 找到所有以 ancestorId 为 source 的边
+          const children = mindMap.edges
+            .filter(e => e.source === ancestorId)
+            .map(e => e.target);
+          
+          // 如果 nodeId 是直接子节点，返回 true
+          if (children.includes(nodeId)) {
+            return true;
+          }
+          
+          // 递归检查所有子节点
+          return children.some(childId => isDescendant(childId, nodeId));
+        };
+        
+        // 如果目标节点是拖动节点的子节点，不允许移动
+        if (isDescendant(draggedNodeId, targetNodeId)) {
+          Notification.error('不能将节点移动到自己的子节点下');
+          setDragOverFile(null);
+          return;
+        }
+        
+        // 检查是否已经是目标节点的子节点
         const existingEdge = mindMap.edges.find(
-          e => e.source === targetFile.nodeId && e.target === draggedFile.nodeId
+          e => e.source === targetNodeId && e.target === draggedNodeId
         );
         
         if (!existingEdge) {
-          // 移除旧的父节点连接
+          // 获取拖动节点的所有子节点（递归）
+          const getAllDescendants = (nodeId: string): string[] => {
+            const directChildren = mindMap.edges
+              .filter(e => e.source === nodeId)
+              .map(e => e.target);
+            
+            const allDescendants = [...directChildren];
+            for (const childId of directChildren) {
+              allDescendants.push(...getAllDescendants(childId));
+            }
+            return allDescendants;
+          };
+          
+          const draggedNodeDescendants = getAllDescendants(draggedNodeId);
+          
+          // 移除旧的父节点连接（只移除拖动节点本身的父连接）
           const oldEdges = mindMap.edges.filter(
-            e => e.target === draggedFile.nodeId
+            e => e.target === draggedNodeId
           );
           
           // 删除旧边
@@ -868,11 +1258,11 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             e => !oldEdges.includes(e)
           );
           
-          // 创建新边
+          // 创建新边（拖动节点到目标节点）
           const newEdge: MindMapEdge = {
-            id: `edge-${targetFile.nodeId}-${draggedFile.nodeId}-${Date.now()}`,
-            source: targetFile.nodeId,
-            target: draggedFile.nodeId,
+            id: `edge-${targetNodeId}-${draggedNodeId}-${Date.now()}`,
+            source: targetNodeId,
+            target: draggedNodeId,
           };
           
           newEdges.push(newEdge);
@@ -883,8 +1273,17 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             edges: newEdges,
           }));
           
-          // 记录拖动操作，待保存
-          setPendingDragChanges(prev => new Set(prev).add(`node-${draggedFile.nodeId}`));
+          // 记录拖动操作，待保存（记录拖动节点和所有子节点）
+          setPendingDragChanges(prev => {
+            const newSet = new Set(prev);
+            newSet.add(`node-${draggedNodeId}`);
+            // 所有子节点的 edges 也会被影响，但只需要记录拖动节点即可
+            // 因为保存时会处理所有相关的 edges
+            return newSet;
+          });
+          
+          // 触发 fileTree 重新计算
+          setNodeCardsMapVersion(prev => prev + 1);
         }
       }
       
@@ -1121,6 +1520,11 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
                   handleSelectFile(file);
                 }}
                 onDoubleClick={(e) => handleStartRename(file, e)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setContextMenu({ x: e.clientX, y: e.clientY, file });
+                }}
                 style={{
                   padding: `4px ${8 + file.level * 16}px`,
                   cursor: isEditing ? 'text' : 'pointer',
@@ -1256,6 +1660,116 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
           })}
         </div>
       </div>
+
+      {/* 右键菜单 */}
+      {contextMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            left: contextMenu.x,
+            top: contextMenu.y,
+            backgroundColor: '#fff',
+            border: '1px solid #d1d5db',
+            borderRadius: '4px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            zIndex: 1000,
+            minWidth: '180px',
+            padding: '4px 0',
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          {contextMenu.file.type === 'node' ? (
+            <>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#24292e',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => handleNewCard(contextMenu.file.nodeId || '')}
+              >
+                新建 Card
+              </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#24292e',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => handleNewChildNode(contextMenu.file.nodeId || '')}
+              >
+                新建子 Node
+              </div>
+              <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#d73a49',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => handleDelete(contextMenu.file)}
+              >
+                删除 Node
+              </div>
+            </>
+          ) : (
+            <div
+              style={{
+                padding: '6px 16px',
+                cursor: 'pointer',
+                fontSize: '13px',
+                color: '#d73a49',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#f3f4f6';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+              onClick={() => handleDelete(contextMenu.file)}
+            >
+              删除 Card
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 点击外部关闭右键菜单 */}
+      {contextMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 999,
+          }}
+          onClick={() => setContextMenu(null)}
+        />
+      )}
 
       {/* 右侧编辑器区域 */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

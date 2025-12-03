@@ -2803,7 +2803,7 @@ async function commitMindMapChanges(
         } catch (err: any) {
             // 如果检查失败，回退到添加所有文件
             console.warn(`[commitMindMapChanges] Failed to check file changes, using git add -A:`, err.message);
-            await exec('git add -A', { cwd: repoGitPath });
+        await exec('git add -A', { cwd: repoGitPath });
         }
         
         try {
