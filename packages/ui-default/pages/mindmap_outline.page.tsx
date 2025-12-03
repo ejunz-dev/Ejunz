@@ -903,7 +903,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
   }, [docId]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', backgroundColor: '#fff' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', backgroundColor: '#fff' }}>
       {/* 工具栏 */}
       <div style={{
         padding: '10px 20px',
@@ -931,6 +931,30 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           }}
         >
           返回导图模式
+        </a>
+        <a
+          href={(() => {
+            const domainId = (window as any).UiContext?.domainId || 'system';
+            const branch = mindMap.currentBranch || 'main';
+            return `/d/${domainId}/mindmap/${docId}/branch/${branch}/editor`;
+          })()}
+          style={{
+            padding: '6px 12px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            background: '#fff',
+            color: '#333',
+            textDecoration: 'none',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+          title="进入编辑器模式"
+        >
+          <span>.</span>
+          <span>编辑器</span>
         </a>
         <div style={{ marginLeft: 'auto', fontSize: '14px', color: '#666' }}>
           {mindMap.title} - 文件模式
