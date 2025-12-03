@@ -1,0 +1,62 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<style>
+  body {
+    background: #fff !important;
+  }
+  #panel {
+    background: #fff !important;
+  }
+  #mindmap-outline-editor {
+    background: #fff !important;
+    height: 100vh !important;
+    width: 100% !important;
+  }
+  #mindmap-outline-editor ~ *,
+  #mindmap-outline-editor .row,
+  #mindmap-outline-editor .large-12.columns,
+  #mindmap-outline-editor .section,
+  #mindmap-outline-editor .section__body {
+    background: #fff !important;
+  }
+  #mindmap-outline-editor .section {
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    background: transparent !important;
+  }
+  #mindmap-outline-editor .row {
+    margin: 0 !important;
+    background: transparent !important;
+  }
+  #mindmap-outline-editor .large-12.columns {
+    padding: 0 !important;
+    background: transparent !important;
+  }
+  #mindmap-outline-editor .section__body {
+    padding: 0 !important;
+    background: transparent !important;
+  }
+</style>
+<script>
+  {{ set(UiContext, 'currentBranch', currentBranch) }}
+  {{ set(UiContext, 'mindMap', {
+    domainId: mindMap.domainId,
+    docId: mindMap.docId,
+    mmid: mindMap.mmid,
+    currentBranch: currentBranch
+  }) }}
+  {{ set(UiContext, 'nodeCardsMap', nodeCardsMap or {}) }}
+  {{ set(UiContext, 'files', files or []) }}
+</script>
+<div class="row">
+  <div class="large-12 columns">
+    <div class="section">
+      <div class="section__body no-padding">
+        <div id="mindmap-outline-editor" data-doc-id="{{ mindMap.docId if mindMap else '' }}" style="height: 100vh; width: 100%;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
