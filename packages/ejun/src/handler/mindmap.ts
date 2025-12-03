@@ -753,13 +753,13 @@ class MindMapNodeHandler extends Handler {
 
     @param('docId', Types.ObjectId)
     @param('nodeId', Types.String)
-    @param('text', Types.String, true)
-    @param('color', Types.String, true)
-    @param('backgroundColor', Types.String, true)
-    @param('fontSize', Types.Int, true)
-    @param('x', Types.Float, true)
-    @param('y', Types.Float, true)
-    @param('expanded', Types.Boolean, true)
+    @post('text', Types.String, true)
+    @post('color', Types.String, true)
+    @post('backgroundColor', Types.String, true)
+    @post('fontSize', Types.Int, true)
+    @post('x', Types.Float, true)
+    @post('y', Types.Float, true)
+    @post('expanded', Types.Boolean, true)
     async postUpdate(
         domainId: string,
         docId: ObjectId,
@@ -781,13 +781,20 @@ class MindMapNodeHandler extends Handler {
         }
 
         const updates: Partial<MindMapNode> = {};
-        if (text !== undefined) updates.text = text;
+        if (text !== undefined) {
+            updates.text = text;
+        }
         if (color !== undefined) updates.color = color;
         if (backgroundColor !== undefined) updates.backgroundColor = backgroundColor;
         if (fontSize !== undefined) updates.fontSize = fontSize;
         if (x !== undefined) updates.x = x;
         if (y !== undefined) updates.y = y;
         if (expanded !== undefined) updates.expanded = expanded;
+
+        if (Object.keys(updates).length === 0) {
+            this.response.body = { success: true };
+            return;
+        }
 
         await MindMapModel.updateNode(domainId, docId, nodeId, updates);
         this.response.body = { success: true };
@@ -1854,6 +1861,7 @@ class MindMapCardHandler extends Handler {
         if (title !== undefined) updates.title = title;
         if (content !== undefined) updates.content = content;
         if (order !== undefined) updates.order = order;
+        if (nodeId !== undefined) updates.nodeId = nodeId; // 支持更新 nodeId
 
         await CardModel.update(domainId, targetCard.docId, updates);
         this.response.body = { success: true };
@@ -2341,6 +2349,7 @@ class MindMapCardDetailHandler extends Handler {
         if (title !== undefined) updates.title = title;
         if (content !== undefined) updates.content = content;
         if (order !== undefined) updates.order = order;
+        if (nodeId !== undefined) updates.nodeId = nodeId; // 支持更新 nodeId
         
         await CardModel.update(domainId, cardId, updates);
         this.response.body = { success: true };
@@ -3603,8 +3612,9 @@ export async function apply(ctx: Context) {
     ctx.Route('mindmap_data', '/mindmap/:docId/data', MindMapDataHandler);
     ctx.Route('mindmap_data_mmid', '/mindmap/mmid/:mmid/data', MindMapDataHandler);
     ctx.Route('mindmap_edit', '/mindmap/:docId/edit', MindMapEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_node', '/mindmap/:docId/node', MindMapNodeHandler, PRIV.PRIV_USER_PROFILE);
+    // 更具体的路由先注册，确保 /mindmap/:docId/node/:nodeId 能正确匹配
     ctx.Route('mindmap_node_update', '/mindmap/:docId/node/:nodeId', MindMapNodeHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_node', '/mindmap/:docId/node', MindMapNodeHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_edge', '/mindmap/:docId/edge', MindMapEdgeHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_save', '/mindmap/:docId/save', MindMapSaveHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_branch_create', '/mindmap/:docId/branch', MindMapBranchCreateHandler, PRIV.PRIV_USER_PROFILE);
