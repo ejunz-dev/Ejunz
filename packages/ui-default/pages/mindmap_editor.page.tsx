@@ -55,6 +55,8 @@ type FileItem = {
   cardId?: string;
   parentId?: string;
   level: number;
+  hasPendingChanges?: boolean; // 是否有未保存的更改
+  clipboardType?: 'copy' | 'cut'; // 是否被复制/剪切
 };
 
 interface PendingChange {
@@ -107,6 +109,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
   const lastDragOverFileRef = useRef<FileItem | null>(null); // 上次悬停的文件
   const lastDropPositionRef = useRef<'before' | 'after' | 'into'>('after'); // 上次的放置位置
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null); // 右键菜单
+  const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; item: FileItem } | null>(null); // 剪贴板
   // 默认展开所有节点
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
     const initialExpanded = new Set<string>();
@@ -167,6 +170,75 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
         .map(d => d.id)
     );
 
+    // 检查节点及其所有祖先节点是否被移动
+    const checkAncestorMoved = (nodeId: string): boolean => {
+      // 检查当前节点是否被移动
+      if (pendingDragChanges.has(`node-${nodeId}`)) return true;
+      
+      // 找到当前节点的父节点
+      const parentEdge = mindMap.edges.find(e => e.target === nodeId);
+      if (parentEdge) {
+        // 递归检查父节点
+        return checkAncestorMoved(parentEdge.source);
+      }
+      
+      return false;
+    };
+
+    // 检查项目是否在剪贴板中
+    const checkClipboard = (file: { type: 'node' | 'card'; id: string; nodeId?: string; cardId?: string }): 'copy' | 'cut' | undefined => {
+      if (!clipboard) return undefined;
+      
+      if (file.type === 'node') {
+        if (clipboard.item.type === 'node' && clipboard.item.nodeId === file.nodeId) {
+          return clipboard.type;
+        }
+      } else if (file.type === 'card') {
+        if (clipboard.item.type === 'card' && clipboard.item.cardId === file.cardId) {
+          return clipboard.type;
+        }
+      }
+      
+      return undefined;
+    };
+
+    // 检查项目是否有未保存的更改
+    const checkPendingChanges = (file: { type: 'node' | 'card'; id: string; nodeId?: string; cardId?: string; parentId?: string }): boolean => {
+      // 检查内容修改
+      if (pendingChanges.has(file.id)) return true;
+      
+      // 检查重命名
+      if (pendingRenames.has(file.id)) return true;
+      
+      // 检查新建（临时 ID）
+      // 对于 node，id 直接是 temp-node-...
+      // 对于 card，id 是 card-temp-card-...，需要检查 cardId 或 id
+      if (file.id.startsWith('temp-') || 
+          (file.type === 'card' && file.cardId && file.cardId.startsWith('temp-')) ||
+          (file.type === 'card' && file.id.startsWith('card-temp-')) ||
+          Array.from(pendingCreates.values()).some(c => {
+            if (c.tempId === file.id) return true;
+            // 对于 card，file.id 是 card-${cardId}，需要匹配
+            if (file.type === 'card' && file.id === `card-${c.tempId}`) return true;
+            return false;
+          })) return true;
+      
+      // 检查移动
+      if (file.type === 'node' && file.nodeId) {
+        // 检查节点本身是否被移动
+        if (pendingDragChanges.has(`node-${file.nodeId}`)) return true;
+        // 检查节点的任何祖先节点是否被移动
+        if (checkAncestorMoved(file.nodeId)) return true;
+      } else if (file.type === 'card') {
+        // 检查卡片本身是否被移动
+        if (file.cardId && pendingDragChanges.has(file.cardId)) return true;
+        // 检查卡片所属节点及其祖先节点是否被移动
+        if (file.nodeId && checkAncestorMoved(file.nodeId)) return true;
+      }
+      
+      return false;
+    };
+
     // 递归构建文件树（只显示展开的节点）
     const buildTree = (nodeId: string, level: number, parentId?: string) => {
       // 如果节点被删除，跳过
@@ -178,15 +250,18 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       const { node } = nodeData;
       const isExpanded = expandedNodes.has(nodeId);
       
-      // 添加节点
-      items.push({
+      // 创建节点 FileItem
+      const nodeFileItem: FileItem = {
         type: 'node',
         id: nodeId,
         name: node.text || '未命名节点',
         nodeId: nodeId,
         parentId,
         level,
-      });
+      };
+      nodeFileItem.hasPendingChanges = checkPendingChanges(nodeFileItem);
+      nodeFileItem.clipboardType = checkClipboard(nodeFileItem);
+      items.push(nodeFileItem);
 
       // 如果节点展开，显示其卡片和子节点
       if (isExpanded) {
@@ -202,7 +277,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
           // 跳过待删除的卡片
           if (deletedCardIds.has(card.docId)) return;
           
-          items.push({
+          const cardFileItem: FileItem = {
             type: 'card',
             id: `card-${card.docId}`,
             name: card.title || '未命名卡片',
@@ -210,14 +285,19 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             cardId: card.docId,
             parentId: card.nodeId || nodeId,
             level: level + 1,
-          });
+          };
+          cardFileItem.hasPendingChanges = checkPendingChanges(cardFileItem);
+          cardFileItem.clipboardType = checkClipboard(cardFileItem);
+          items.push(cardFileItem);
         });
         
         // 添加待创建的卡片（临时显示）
+        // 只显示那些不在 nodeCardsMap 中的卡片（避免重复）
+        const existingCardIds = new Set((nodeCardsMap[nodeId] || []).map((c: Card) => c.docId));
         Array.from(pendingCreates.values())
-          .filter(c => c.type === 'card' && c.nodeId === nodeId)
+          .filter(c => c.type === 'card' && c.nodeId === nodeId && !existingCardIds.has(c.tempId))
           .forEach(create => {
-            items.push({
+            const createFileItem: FileItem = {
               type: 'card',
               id: create.tempId,
               name: create.title || '新卡片',
@@ -225,7 +305,9 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
               cardId: create.tempId,
               parentId: nodeId,
               level: level + 1,
-            });
+            };
+            createFileItem.hasPendingChanges = true; // 新建的项目肯定有未保存的更改
+            items.push(createFileItem);
           });
 
         // 递归处理子节点
@@ -240,7 +322,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     });
 
     return items;
-  }, [mindMap.nodes, mindMap.edges, nodeCardsMapVersion, expandedNodes]);
+  }, [mindMap.nodes, mindMap.edges, nodeCardsMapVersion, expandedNodes, pendingChanges, pendingRenames, pendingCreates, pendingDragChanges, pendingDeletes, clipboard]);
 
   // 切换节点展开/折叠
   const toggleNodeExpanded = useCallback((nodeId: string) => {
@@ -860,6 +942,346 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     
     setContextMenu(null);
   }, []);
+
+  // 复制节点或卡片
+  const handleCopy = useCallback((file: FileItem) => {
+    setClipboard({ type: 'copy', item: file });
+    setContextMenu(null);
+  }, []);
+
+  // 剪切节点或卡片
+  const handleCut = useCallback((file: FileItem) => {
+    setClipboard({ type: 'cut', item: file });
+    setContextMenu(null);
+  }, []);
+
+  // 粘贴节点或卡片
+  const handlePaste = useCallback((targetNodeId: string) => {
+    if (!clipboard) return;
+
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+
+    if (clipboard.item.type === 'node') {
+      const sourceNodeId = clipboard.item.nodeId || '';
+      const sourceNode = mindMap.nodes.find(n => n.id === sourceNodeId);
+      
+      // 如果源节点不存在，可能是已经被删除或移动了
+      if (!sourceNode) {
+        // 如果是剪切操作，清空剪贴板
+        if (clipboard.type === 'cut') {
+          setClipboard(null);
+        }
+        return;
+      }
+      
+      // 如果剪切的是临时节点（已经粘贴过的），需要先清理 pendingCreates 和 pendingDeletes
+      if (clipboard.type === 'cut' && sourceNodeId.startsWith('temp-')) {
+        // 清理 pendingCreates 中的旧记录
+        setPendingCreates(prev => {
+          const next = new Map(prev);
+          next.delete(sourceNodeId);
+          return next;
+        });
+        
+        // 清理 pendingDeletes 中的旧记录（如果存在）
+        setPendingDeletes(prev => {
+          const next = new Map(prev);
+          next.delete(sourceNodeId);
+          return next;
+        });
+      }
+
+      // 收集所有需要复制的节点（包括子节点）
+      const nodesToCopy: MindMapNode[] = [];
+      const nodeIdMap = new Map<string, string>(); // 旧ID -> 新ID映射
+      let nodeCounter = 0;
+
+      // 递归收集节点
+      const collectNodes = (nodeId: string) => {
+        const node = mindMap.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        // 如果已经收集过，跳过
+        if (nodeIdMap.has(nodeId)) return;
+
+        nodeCounter++;
+        const newId = `temp-node-${Date.now()}-${nodeCounter}-${Math.random().toString(36).substr(2, 9)}`;
+        nodeIdMap.set(nodeId, newId);
+
+        const newNode: MindMapNode = {
+          ...node,
+          id: newId,
+          text: node.text,
+        };
+        nodesToCopy.push(newNode);
+
+        // 递归收集子节点
+        const childEdges = mindMap.edges.filter(e => e.source === nodeId);
+        childEdges.forEach(edge => {
+          collectNodes(edge.target);
+        });
+      };
+
+      collectNodes(sourceNodeId);
+
+      // 构建新的 edges（在收集完所有节点后）
+      const updatedEdges: MindMapEdge[] = [];
+      
+      // 复制所有相关的 edges
+      mindMap.edges.forEach(edge => {
+        const newSource = nodeIdMap.get(edge.source);
+        const newTarget = nodeIdMap.get(edge.target);
+        if (newSource && newTarget) {
+          updatedEdges.push({
+            id: `temp-edge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            source: newSource,
+            target: newTarget,
+          });
+        }
+      });
+
+      // 添加根节点到目标节点的边
+      const rootNewId = nodeIdMap.get(sourceNodeId);
+      if (rootNewId) {
+        updatedEdges.push({
+          id: `temp-edge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          source: targetNodeId,
+          target: rootNewId,
+        });
+      }
+
+      // 更新 mindMap
+      // 检查是否已存在（避免重复）
+      setMindMap(prev => {
+        const existingNodeIds = new Set(prev.nodes.map(n => n.id));
+        const newNodes = nodesToCopy.filter(n => !existingNodeIds.has(n.id));
+        const existingEdgeKeys = new Set(prev.edges.map(e => `${e.source}-${e.target}`));
+        const newEdges = updatedEdges.filter(e => !existingEdgeKeys.has(`${e.source}-${e.target}`));
+        return {
+          ...prev,
+          nodes: [...prev.nodes, ...newNodes],
+          edges: [...prev.edges, ...newEdges],
+        };
+      });
+
+      // 复制卡片
+      nodesToCopy.forEach(newNode => {
+        const oldNodeId = Array.from(nodeIdMap.entries()).find(([_, newId]) => newId === newNode.id)?.[0];
+        if (oldNodeId && nodeCardsMap[oldNodeId]) {
+          const cards = nodeCardsMap[oldNodeId];
+          const newCards = cards.map((card: Card, index: number) => {
+            const newCardId = `temp-card-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`;
+            return {
+              ...card,
+              docId: newCardId,
+              nodeId: newNode.id,
+            };
+          });
+
+          if (!nodeCardsMap[newNode.id]) {
+            nodeCardsMap[newNode.id] = [];
+          }
+          nodeCardsMap[newNode.id].push(...newCards);
+          
+          // 将复制的卡片添加到待创建列表
+          newCards.forEach(newCard => {
+            setPendingCreates(prev => {
+              const next = new Map(prev);
+              if (!next.has(newCard.docId)) {
+                next.set(newCard.docId, {
+                  type: 'card',
+                  nodeId: newNode.id,
+                  title: newCard.title || '新卡片',
+                  tempId: newCard.docId,
+                });
+              }
+              return next;
+            });
+          });
+        }
+      });
+      (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+
+      // 如果是剪切，删除原节点
+      if (clipboard.type === 'cut') {
+        // 如果源节点是临时节点（已经粘贴过的），不需要添加到 pendingDeletes
+        // 只需要从 mindMap 中删除即可
+        if (sourceNodeId.startsWith('temp-')) {
+          // 临时节点，直接删除，不需要标记为待删除
+          setMindMap(prev => ({
+            ...prev,
+            nodes: prev.nodes.filter(n => !nodeIdMap.has(n.id)),
+            edges: prev.edges.filter(e => !nodeIdMap.has(e.source) && !nodeIdMap.has(e.target)),
+          }));
+          
+          // 清理相关的卡片
+          nodeIdMap.forEach((newId, oldId) => {
+            if (nodeCardsMap[oldId]) {
+              delete nodeCardsMap[oldId];
+            }
+          });
+          (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+        } else {
+          // 真实节点，需要标记为待删除
+          setPendingDeletes(prev => {
+            const next = new Map(prev);
+            next.set(sourceNodeId, {
+              type: 'node',
+              id: sourceNodeId,
+            });
+            return next;
+          });
+
+          setMindMap(prev => ({
+            ...prev,
+            nodes: prev.nodes.filter(n => !nodeIdMap.has(n.id)),
+            edges: prev.edges.filter(e => !nodeIdMap.has(e.source) && !nodeIdMap.has(e.target)),
+          }));
+        }
+      }
+
+      // 添加到待创建列表
+      nodesToCopy.forEach(newNode => {
+        const oldNodeId = Array.from(nodeIdMap.entries()).find(([_, newId]) => newId === newNode.id)?.[0];
+        if (oldNodeId) {
+          setPendingCreates(prev => {
+            const next = new Map(prev);
+            // 检查是否已存在（避免重复）
+            if (!next.has(newNode.id)) {
+              next.set(newNode.id, {
+                type: 'node',
+                nodeId: targetNodeId,
+                text: newNode.text || '新节点',
+                tempId: newNode.id,
+              });
+            }
+            return next;
+          });
+        }
+      });
+
+      setNodeCardsMapVersion(prev => prev + 1);
+      setExpandedNodes(prev => new Set(prev).add(targetNodeId));
+
+      // 如果是剪切，清空剪贴板；如果是复制，保留
+      if (clipboard.type === 'cut') {
+        setClipboard(null);
+      }
+    } else if (clipboard.item.type === 'card') {
+      const sourceCardId = clipboard.item.cardId || '';
+      const sourceNodeId = clipboard.item.nodeId || '';
+
+      // 找到源卡片
+      const sourceCards = nodeCardsMap[sourceNodeId] || [];
+      const sourceCard = sourceCards.find((c: Card) => c.docId === sourceCardId);
+      
+      // 如果源卡片不存在，可能是已经被删除或移动了
+      if (!sourceCard) {
+        // 如果是剪切操作，清空剪贴板
+        if (clipboard.type === 'cut') {
+          setClipboard(null);
+        }
+        return;
+      }
+      
+      // 如果剪切的是临时卡片（已经粘贴过的），需要先清理 pendingCreates 和 pendingDeletes
+      if (clipboard.type === 'cut' && sourceCardId.startsWith('temp-')) {
+        // 清理 pendingCreates 中的旧记录
+        setPendingCreates(prev => {
+          const next = new Map(prev);
+          next.delete(sourceCardId);
+          return next;
+        });
+        
+        // 清理 pendingDeletes 中的旧记录（如果存在）
+        setPendingDeletes(prev => {
+          const next = new Map(prev);
+          next.delete(sourceCardId);
+          return next;
+        });
+      }
+
+      const newCardId = `temp-card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const maxOrder = nodeCardsMap[targetNodeId]?.length > 0
+        ? Math.max(...nodeCardsMap[targetNodeId].map((c: Card) => c.order || 0))
+        : 0;
+
+      const newCard: Card = {
+        ...sourceCard,
+        docId: newCardId,
+        nodeId: targetNodeId,
+        order: maxOrder + 1,
+      };
+
+      // 更新 nodeCardsMap
+      if (!nodeCardsMap[targetNodeId]) {
+        nodeCardsMap[targetNodeId] = [];
+      }
+      // 检查是否已存在（避免重复）
+      const existingIndex = nodeCardsMap[targetNodeId].findIndex((c: Card) => c.docId === newCardId);
+      if (existingIndex === -1) {
+        nodeCardsMap[targetNodeId].push(newCard);
+        nodeCardsMap[targetNodeId].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+        (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+      }
+
+      // 如果是剪切，从原节点移除
+      if (clipboard.type === 'cut') {
+        const sourceCards = nodeCardsMap[sourceNodeId] || [];
+        const cardIndex = sourceCards.findIndex((c: Card) => c.docId === sourceCardId);
+        if (cardIndex >= 0) {
+          sourceCards.splice(cardIndex, 1);
+          nodeCardsMap[sourceNodeId] = sourceCards;
+          (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+
+          // 如果源卡片是临时卡片（已经粘贴过的），不需要添加到 pendingDeletes
+          // 只需要清理 pendingCreates
+          if (sourceCardId.startsWith('temp-')) {
+            setPendingCreates(prev => {
+              const next = new Map(prev);
+              next.delete(sourceCardId);
+              return next;
+            });
+          } else {
+            // 真实卡片，需要标记为待删除
+            setPendingDeletes(prev => {
+              const next = new Map(prev);
+              next.set(sourceCardId, {
+                type: 'card',
+                id: sourceCardId,
+                nodeId: sourceNodeId,
+              });
+              return next;
+            });
+          }
+        }
+      }
+
+      // 添加到待创建列表（用于保存时创建）
+      setPendingCreates(prev => {
+        const next = new Map(prev);
+        // 检查是否已存在（避免重复）
+        if (!next.has(newCardId)) {
+          next.set(newCardId, {
+            type: 'card',
+            nodeId: targetNodeId,
+            title: newCard.title || '新卡片',
+            tempId: newCardId,
+          });
+        }
+        return next;
+      });
+
+      setNodeCardsMapVersion(prev => prev + 1);
+
+      // 如果是剪切，清空剪贴板；如果是复制，保留
+      if (clipboard.type === 'cut') {
+        setClipboard(null);
+      }
+    }
+
+    setContextMenu(null);
+  }, [clipboard, mindMap, setMindMap]);
 
   // 删除节点或卡片（前端操作）
   const handleDelete = useCallback((file: FileItem) => {
@@ -1545,7 +1967,13 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
                     ? dropPosition === 'into'
                       ? '2px dashed #2196F3' 
                       : '2px solid #2196F3'
-                    : '2px solid transparent',
+                    : file.clipboardType === 'cut'
+                      ? '2px dashed #f44336' // 被剪切的用红色虚线
+                      : file.clipboardType === 'copy'
+                        ? '2px dashed #4caf50' // 被复制的用绿色虚线
+                        : file.hasPendingChanges
+                          ? '1px dashed #ff9800' // 未保存的更改用橙色虚线
+                          : '2px solid transparent',
                   borderTop: isDragOver && dropPosition === 'before' 
                     ? '3px solid #1976D2' 
                     : undefined,
@@ -1651,8 +2079,29 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
                   flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
                 }}>
                   {file.name}
+                  {file.clipboardType === 'cut' && (
+                    <span style={{ 
+                      fontSize: '10px', 
+                      color: '#f44336',
+                      fontWeight: 'bold',
+                    }} title="已剪切">
+                      ✂
+                    </span>
+                  )}
+                  {file.clipboardType === 'copy' && (
+                    <span style={{ 
+                      fontSize: '10px', 
+                      color: '#4caf50',
+                      fontWeight: 'bold',
+                    }} title="已复制">
+                      📋
+                    </span>
+                  )}
                 </span>
               )}
             </div>
@@ -1681,6 +2130,29 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
         >
           {contextMenu.file.type === 'node' ? (
             <>
+              {/* 粘贴选项（仅在剪贴板有内容时显示） */}
+              {clipboard && (
+                <>
+                  <div
+                    style={{
+                      padding: '6px 16px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      color: '#24292e',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                    onClick={() => handlePaste(contextMenu.file.nodeId || '')}
+                  >
+                    粘贴
+                  </div>
+                  <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+                </>
+              )}
               <div
                 style={{
                   padding: '6px 16px',
@@ -1721,6 +2193,41 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
                   padding: '6px 16px',
                   cursor: 'pointer',
                   fontSize: '13px',
+                  color: '#24292e',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => handleCopy(contextMenu.file)}
+              >
+                复制
+              </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#24292e',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => handleCut(contextMenu.file)}
+              >
+                剪切
+              </div>
+              <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
                   color: '#d73a49',
                 }}
                 onMouseEnter={(e) => {
@@ -1735,23 +2242,60 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
               </div>
             </>
           ) : (
-            <div
-              style={{
-                padding: '6px 16px',
-                cursor: 'pointer',
-                fontSize: '13px',
-                color: '#d73a49',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#f3f4f6';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }}
-              onClick={() => handleDelete(contextMenu.file)}
-            >
-              删除 Card
-            </div>
+            <>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#24292e',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => handleCopy(contextMenu.file)}
+              >
+                复制
+              </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#24292e',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => handleCut(contextMenu.file)}
+              >
+                剪切
+              </div>
+              <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#d73a49',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => handleDelete(contextMenu.file)}
+              >
+                删除 Card
+              </div>
+            </>
           )}
         </div>
       )}
