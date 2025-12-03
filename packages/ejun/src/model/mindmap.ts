@@ -319,12 +319,38 @@ export class MindMapModel {
             throw new Error('Source or target node not found');
         }
 
-        // 检查连接是否已存在
-        const edgeExists = mindMap.edges.some(
+        // 获取当前分支
+        const currentBranch = (mindMap as any).currentBranch || 'main';
+        const branchData: {
+            [branch: string]: { nodes: MindMapNode[]; edges: MindMapEdge[] };
+        } = (mindMap as any).branchData || {};
+
+        // 如果连接已经存在，则直接返回已有的 edgeId，而不是抛错
+        const existingEdge = mindMap.edges.find(
             e => e.source === edge.source && e.target === edge.target
         );
-        if (edgeExists) {
-            throw new Error('Edge already exists');
+        if (existingEdge) {
+            // 同步到当前分支数据（如果分支中没有这条边，则补上）
+            if (branchData[currentBranch]) {
+                const branchEdges = branchData[currentBranch].edges || [];
+                const branchHasEdge = branchEdges.some(
+                    e => e.source === edge.source && e.target === edge.target
+                );
+                if (!branchHasEdge) {
+                    branchEdges.push(existingEdge);
+                    branchData[currentBranch] = {
+                        ...branchData[currentBranch],
+                        edges: branchEdges,
+                    };
+                }
+
+                await document.set(domainId, TYPE_MM, docId, {
+                    branchData,
+                    updateAt: new Date(),
+                });
+            }
+
+            return existingEdge.id;
         }
 
         const newEdgeId = `edge_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -335,8 +361,19 @@ export class MindMapModel {
 
         mindMap.edges.push(newEdge);
 
+        // 同步到当前分支的 edges
+        if (branchData[currentBranch]) {
+            const branchEdges = branchData[currentBranch].edges || [];
+            branchEdges.push(newEdge);
+            branchData[currentBranch] = {
+                ...branchData[currentBranch],
+                edges: branchEdges,
+            };
+        }
+
         await document.set(domainId, TYPE_MM, docId, {
             edges: mindMap.edges,
+            branchData,
             updateAt: new Date(),
         });
 
@@ -350,13 +387,33 @@ export class MindMapModel {
         const mindMap = await this.get(domainId, docId);
         if (!mindMap) throw new Error('MindMap not found');
 
-        const edgeIndex = mindMap.edges.findIndex(e => e.id === edgeId);
-        if (edgeIndex === -1) throw new Error('Edge not found');
+        // 获取当前分支
+        const currentBranch = (mindMap as any).currentBranch || 'main';
+        const branchData: {
+            [branch: string]: { nodes: MindMapNode[]; edges: MindMapEdge[] };
+        } = (mindMap as any).branchData || {};
 
-        mindMap.edges.splice(edgeIndex, 1);
+        const edgeIndex = mindMap.edges.findIndex(e => e.id === edgeId);
+        if (edgeIndex !== -1) {
+            mindMap.edges.splice(edgeIndex, 1);
+        }
+
+        // 从当前分支的 edges 中删除
+        if (branchData[currentBranch]) {
+            const branchEdges = branchData[currentBranch].edges || [];
+            const branchEdgeIndex = branchEdges.findIndex(e => e.id === edgeId);
+            if (branchEdgeIndex !== -1) {
+                branchEdges.splice(branchEdgeIndex, 1);
+                branchData[currentBranch] = {
+                    ...branchData[currentBranch],
+                    edges: branchEdges,
+                };
+            }
+        }
 
         await document.set(domainId, TYPE_MM, docId, {
             edges: mindMap.edges,
+            branchData,
             updateAt: new Date(),
         });
     }
