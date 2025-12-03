@@ -395,7 +395,7 @@ export class MindMapModel {
 
         const edgeIndex = mindMap.edges.findIndex(e => e.id === edgeId);
         if (edgeIndex !== -1) {
-            mindMap.edges.splice(edgeIndex, 1);
+        mindMap.edges.splice(edgeIndex, 1);
         }
 
         // 从当前分支的 edges 中删除
