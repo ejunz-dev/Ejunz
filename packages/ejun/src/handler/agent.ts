@@ -4315,6 +4315,169 @@ export class DirectAiChatHandler extends Handler {
     }
 }
 
+export class DirectAiChatConnectionHandler extends ConnectionHandler {
+    async prepare() {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.send({ type: 'connected', message: 'WebSocket connection established' });
+    }
+
+    async message(msg: any) {
+        let messageText: string;
+        let historyData: any;
+        
+        if (typeof msg === 'string') {
+            try {
+                const parsed = JSON.parse(msg);
+                messageText = parsed.message;
+                historyData = parsed.history;
+            } catch (e) {
+                this.send({ type: 'error', error: 'Invalid message format' });
+                return;
+            }
+        } else if (typeof msg === 'object' && msg !== null) {
+            messageText = msg.message;
+            historyData = msg.history;
+        } else {
+            this.send({ type: 'error', error: 'Invalid message format' });
+            return;
+        }
+        
+        const message = messageText;
+        const history = historyData;
+        if (!message) {
+            this.send({ type: 'error', error: 'Message cannot be empty' });
+            return;
+        }
+
+        const domainId = this.domain._id;
+        const domainInfo = await domain.get(domainId);
+        if (!domainInfo) {
+            this.send({ type: 'error', error: 'Domain not found' });
+            return;
+        }
+
+        const apiKey = (domainInfo as any)['apiKey'] || '';
+        const model = (domainInfo as any)['model'] || 'deepseek-chat';
+        const apiUrl = (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
+
+        if (!apiKey) {
+            this.send({ type: 'error', error: 'AI API Key not configured' });
+            return;
+        }
+
+        let chatHistory: ChatMessage[] = [];
+        try {
+            chatHistory = Array.isArray(history) ? history : JSON.parse(history || '[]');
+        } catch (e) {
+            chatHistory = [];
+        }
+
+        let accumulatedContent = '';
+        let streamFinished = false;
+
+        try {
+            AgentLogger.info('Starting direct AI chat stream via WebSocket', { apiUrl, model, messageLength: message.length });
+            await new Promise<void>((resolve, reject) => {
+                const req = request.post(apiUrl)
+                    .send({
+                        model,
+                        messages: [
+                            ...chatHistory,
+                            {
+                                role: 'user',
+                                content: message,
+                            },
+                        ],
+                        stream: true,
+                    })
+                    .set('Authorization', `Bearer ${apiKey}`)
+                    .set('content-type', 'application/json')
+                    .buffer(false)
+                    .timeout(60000)
+                    .parse((res, callback) => {
+                        res.setEncoding('utf8');
+                        let buffer = '';
+                        
+                        res.on('data', (chunk: string) => {
+                            if (streamFinished) return;
+                            
+                            buffer += chunk;
+                            const lines = buffer.split('\n');
+                            buffer = lines.pop() || '';
+                            
+                            for (const line of lines) {
+                                if (!line.trim()) continue;
+                                
+                                if (!line.startsWith('data: ')) continue;
+                                
+                                const data = line.slice(6).trim();
+                                if (data === '[DONE]') {
+                                    streamFinished = true;
+                                    this.send({ type: 'done', content: accumulatedContent });
+                                    callback(null, undefined);
+                                    resolve();
+                                    return;
+                                }
+                                
+                                try {
+                                    const parsed = JSON.parse(data);
+                                    const choice = parsed.choices?.[0];
+                                    const delta = choice?.delta;
+                                    
+                                    if (delta?.content) {
+                                        accumulatedContent += delta.content;
+                                        this.send({ type: 'content', content: delta.content });
+                                    }
+                                    
+                                    if (choice?.finish_reason && choice.finish_reason !== null) {
+                                        streamFinished = true;
+                                        this.send({ type: 'done', content: accumulatedContent });
+                                        callback(null, undefined);
+                                        resolve();
+                                        return;
+                                    }
+                                } catch (e) {
+                                    // ignore parse errors
+                                }
+                            }
+                        });
+                        
+                        res.on('end', () => {
+                            if (!streamFinished) {
+                                streamFinished = true;
+                                this.send({ type: 'done', content: accumulatedContent });
+                                resolve();
+                            }
+                        });
+                        
+                        res.on('error', (err: any) => {
+                            AgentLogger.error('AI API response error:', err);
+                            if (!streamFinished) {
+                                streamFinished = true;
+                                this.send({ type: 'error', error: err.message || '请求失败' });
+                                reject(err);
+                            }
+                        });
+                    });
+                
+                req.on('error', (err: any) => {
+                    AgentLogger.error('Stream request error:', err);
+                    if (!streamFinished) {
+                        streamFinished = true;
+                        this.send({ type: 'error', error: err.message || '请求失败' });
+                    }
+                    reject(err);
+                });
+                
+                req.end();
+            });
+        } catch (error: any) {
+            AgentLogger.error('Direct AI chat stream error:', error);
+            this.send({ type: 'error', error: error.message || '请求失败' });
+        }
+    }
+}
+
 export async function apply(ctx: Context) {
     ctx.Route('agent_domain', '/agent', AgentMainHandler);
     ctx.Route('agent_create', '/agent/create', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
@@ -4328,6 +4491,7 @@ export async function apply(ctx: Context) {
     ctx.Connection('agent_api_ws', '/api/agent/chat-ws', AgentApiConnectionHandler);
     ctx.Connection('agent_stream_ws', '/api/agent/:aid/stream', AgentStreamConnectionHandler);
     ctx.Route('direct_ai_chat', '/ai/chat', DirectAiChatHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Connection('direct_ai_chat_ws', '/ai/chat-ws', DirectAiChatConnectionHandler, PRIV.PRIV_USER_PROFILE);
     
     // 注册 agent task record 路由
     // Agent task record routes are now in record.ts

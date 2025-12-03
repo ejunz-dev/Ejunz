@@ -110,6 +110,26 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
   const lastDropPositionRef = useRef<'before' | 'after' | 'into'>('after'); // 上次的放置位置
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null); // 右键菜单
   const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; item: FileItem } | null>(null); // 剪贴板
+  // AI 聊天相关状态
+  const [showAIChat, setShowAIChat] = useState<boolean>(false);
+  const [chatMessages, setChatMessages] = useState<Array<{ 
+    role: 'user' | 'assistant' | 'operation'; 
+    content: string; 
+    references?: Array<{ type: 'node' | 'card'; id: string; name: string; path: string[] }>;
+    operations?: any[];
+    isExpanded?: boolean;
+  }>>([]);
+  const [chatInput, setChatInput] = useState<string>('');
+  const [chatInputReferences, setChatInputReferences] = useState<Array<{ type: 'node' | 'card'; id: string; name: string; path: string[]; startIndex: number; endIndex: number }>>([]);
+  const [isChatLoading, setIsChatLoading] = useState<boolean>(false);
+  const chatMessagesEndRef = useRef<HTMLDivElement>(null);
+  const chatMessagesContainerRef = useRef<HTMLDivElement>(null);
+  const [chatPanelWidth, setChatPanelWidth] = useState<number>(300); // 像素
+  const [isResizing, setIsResizing] = useState<boolean>(false);
+  const resizeStartXRef = useRef<number>(0);
+  const resizeStartWidthRef = useRef<number>(300);
+  const executeAIOperationsRef = useRef<((operations: any[]) => Promise<{ success: boolean; errors: string[] }>) | null>(null);
+  const chatWebSocketRef = useRef<any>(null); // WebSocket 连接
   // 默认展开所有节点
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
     const initialExpanded = new Set<string>();
@@ -946,6 +966,17 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
   // 复制节点或卡片
   const handleCopy = useCallback((file: FileItem) => {
     setClipboard({ type: 'copy', item: file });
+    
+    // 同时将信息存储到系统剪贴板，以便在 AI 对话框中粘贴时识别
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      const reference = file.type === 'node' 
+        ? `ejunz://node/${file.nodeId}`
+        : `ejunz://card/${file.cardId}`;
+      navigator.clipboard.writeText(reference).catch(() => {
+        // 如果写入失败，忽略错误（可能是权限问题）
+      });
+    }
+    
     setContextMenu(null);
   }, []);
 
@@ -1282,6 +1313,1241 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
 
     setContextMenu(null);
   }, [clipboard, mindMap, setMindMap]);
+
+  // 处理拖拽调整大小
+  useEffect(() => {
+    const handleResizeMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      
+      const deltaX = resizeStartXRef.current - e.clientX; // 向左拖拽时 deltaX 为正
+      const newWidth = Math.max(200, Math.min(800, resizeStartWidthRef.current + deltaX));
+      setChatPanelWidth(newWidth);
+    };
+
+    const handleResizeEnd = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleResizeMove);
+      document.addEventListener('mouseup', handleResizeEnd);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleResizeMove);
+      document.removeEventListener('mouseup', handleResizeEnd);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
+
+  // 自动滚动聊天消息到底部
+  useEffect(() => {
+    if (chatMessagesEndRef.current) {
+      chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages]);
+
+  // 获取节点的完整路径（从根节点到当前节点）
+  const getNodePath = useCallback((nodeId: string): string[] => {
+    const path: string[] = [];
+    const nodeMap = new Map<string, string>(); // parentId -> nodeId
+    
+    // 构建父子关系映射
+    mindMap.edges.forEach((edge) => {
+      nodeMap.set(edge.target, edge.source);
+    });
+    
+    // 从当前节点向上追溯到根节点
+    let currentNodeId: string | undefined = nodeId;
+    while (currentNodeId) {
+      const node = mindMap.nodes.find(n => n.id === currentNodeId);
+      if (node) {
+        path.unshift(node.text || '未命名节点');
+      }
+      currentNodeId = nodeMap.get(currentNodeId);
+    }
+    
+    return path;
+  }, [mindMap]);
+
+  // 处理 AI 对话框中的粘贴事件，自动识别复制的 node/card
+  const handleAIChatPaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const textarea = e.currentTarget;
+    const selectionStart = textarea.selectionStart;
+    const selectionEnd = textarea.selectionEnd;
+    const currentText = chatInput;
+
+    let reference: { type: 'node' | 'card'; id: string; name: string; path: string[] } | null = null;
+    let shouldPreventDefault = false;
+
+    // 首先检查内部 clipboard state
+    if (clipboard && clipboard.type === 'copy') {
+      if (clipboard.item.type === 'node') {
+        const nodeId = clipboard.item.nodeId || '';
+        const node = mindMap.nodes.find(n => n.id === nodeId);
+        if (node) {
+          const path = getNodePath(nodeId);
+          reference = {
+            type: 'node',
+            id: nodeId,
+            name: node.text || '未命名节点',
+            path,
+          };
+          shouldPreventDefault = true;
+        }
+      } else if (clipboard.item.type === 'card') {
+        const cardId = clipboard.item.cardId || '';
+        const nodeId = clipboard.item.nodeId || '';
+        const cards = nodeCardsMap[nodeId] || [];
+        const card = cards.find((c: Card) => c.docId === cardId);
+        if (card) {
+          const nodePath = getNodePath(nodeId);
+          const cardPath = [...nodePath, card.title || '未命名卡片'];
+          reference = {
+            type: 'card',
+            id: cardId,
+            name: card.title || '未命名卡片',
+            path: cardPath,
+          };
+          shouldPreventDefault = true;
+        }
+      }
+    }
+
+    // 如果没有从内部 clipboard 找到，尝试从系统剪贴板读取
+    if (!reference) {
+      try {
+        const clipboardText = e.clipboardData.getData('text');
+        if (clipboardText) {
+          // 检查是否是我们的自定义格式
+          const nodeMatch = clipboardText.match(/^ejunz:\/\/node\/(.+)$/);
+          const cardMatch = clipboardText.match(/^ejunz:\/\/card\/(.+)$/);
+          
+          if (nodeMatch) {
+            const nodeId = nodeMatch[1];
+            const node = mindMap.nodes.find(n => n.id === nodeId);
+            if (node) {
+              const path = getNodePath(nodeId);
+              reference = {
+                type: 'node',
+                id: nodeId,
+                name: node.text || '未命名节点',
+                path,
+              };
+              shouldPreventDefault = true;
+            }
+          } else if (cardMatch) {
+            const cardId = cardMatch[1];
+            // 需要遍历所有节点找到对应的卡片
+            for (const nodeId in nodeCardsMap) {
+              const cards = nodeCardsMap[nodeId] || [];
+              const card = cards.find((c: Card) => c.docId === cardId);
+              if (card) {
+                const nodePath = getNodePath(nodeId);
+                const cardPath = [...nodePath, card.title || '未命名卡片'];
+                reference = {
+                  type: 'card',
+                  id: cardId,
+                  name: card.title || '未命名卡片',
+                  path: cardPath,
+                };
+                shouldPreventDefault = true;
+                break;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        // 如果读取剪贴板失败，忽略错误
+        console.warn('Failed to read clipboard:', err);
+      }
+    }
+
+    if (reference && shouldPreventDefault) {
+      e.preventDefault();
+      // 在光标位置插入占位符文本（用于计算位置）
+      const placeholder = `@${reference.name}`;
+      const newText = 
+        currentText.slice(0, selectionStart) + 
+        placeholder + 
+        currentText.slice(selectionEnd);
+      
+      // 更新引用列表
+      setChatInputReferences(prev => {
+        const newRefs = prev.map(ref => {
+          // 调整后续引用的位置
+          if (ref.startIndex >= selectionStart) {
+            return {
+              ...ref,
+              startIndex: ref.startIndex + placeholder.length,
+              endIndex: ref.endIndex + placeholder.length,
+            };
+          }
+          return ref;
+        });
+        
+        // 添加新引用
+        newRefs.push({
+          type: reference!.type,
+          id: reference!.id,
+          name: reference!.name,
+          path: reference!.path,
+          startIndex: selectionStart,
+          endIndex: selectionStart + placeholder.length,
+        });
+        
+        // 按位置排序
+        return newRefs.sort((a, b) => a.startIndex - b.startIndex);
+      });
+      
+      setChatInput(newText);
+      
+      // 如果是 copy 操作，粘贴到聊天框后清除 clipboard 状态
+      if (clipboard && clipboard.type === 'copy') {
+        setClipboard(null);
+      }
+      
+      // 设置光标位置到引用文本之后
+      setTimeout(() => {
+        const newCursorPos = selectionStart + placeholder.length;
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+        textarea.focus();
+      }, 0);
+    }
+  }, [clipboard, chatInput, mindMap, getNodePath, setClipboard]);
+
+  // 将 mindmap 结构转换为文本描述（供 AI 理解）
+  const convertMindMapToText = useCallback((): string => {
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const nodeMap = new Map<string, { node: MindMapNode; children: string[] }>();
+    const rootNodes: string[] = [];
+
+    // 构建节点映射
+    mindMap.nodes.forEach((node) => {
+      nodeMap.set(node.id, { node, children: [] });
+    });
+
+    // 构建父子关系
+    mindMap.edges.forEach((edge) => {
+      const parent = nodeMap.get(edge.source);
+      if (parent) {
+        parent.children.push(edge.target);
+      }
+    });
+
+    // 找到根节点
+    mindMap.nodes.forEach((node) => {
+      const hasParent = mindMap.edges.some((edge) => edge.target === node.id);
+      if (!hasParent) {
+        rootNodes.push(node.id);
+      }
+    });
+
+    // 递归构建文本描述
+    const buildNodeText = (nodeId: string, indent: number = 0): string => {
+      const nodeData = nodeMap.get(nodeId);
+      if (!nodeData) return '';
+
+      const { node, children } = nodeData;
+      const indentStr = '  '.repeat(indent);
+      const path = getNodePath(nodeId);
+      const pathStr = path.join(' > ');
+      let result = `${indentStr}- ${node.text || '未命名节点'} (ID: ${node.id}, 路径: ${pathStr})\n`;
+
+      // 添加卡片信息
+      const cards = nodeCardsMap[nodeId] || [];
+      if (cards.length > 0) {
+        cards.forEach((card: Card) => {
+          const cardPath = [...path, card.title || '未命名卡片'].join(' > ');
+          result += `${indentStr}  📄 ${card.title || '未命名卡片'} (ID: ${card.docId}, 路径: ${cardPath})\n`;
+          if (card.content) {
+            const contentPreview = card.content.length > 100 
+              ? card.content.substring(0, 100) + '...' 
+              : card.content;
+            result += `${indentStr}    内容: ${contentPreview}\n`;
+          }
+        });
+      }
+
+      // 添加子节点
+      children.forEach((childId) => {
+        result += buildNodeText(childId, indent + 1);
+      });
+
+      return result;
+    };
+
+    let text = '当前思维导图结构：\n\n';
+    rootNodes.forEach((rootId) => {
+      text += buildNodeText(rootId, 0);
+    });
+
+    return text;
+  }, [mindMap, getNodePath]);
+
+  // 展开用户消息中的引用（@节点名 或 @卡片名）为详细信息
+  const expandReferences = useCallback((message: string): string => {
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    let expandedMessage = message;
+    
+    // 匹配所有 @引用
+    const referencePattern = /@([^\s@]+)/g;
+    const matches = Array.from(message.matchAll(referencePattern));
+    
+    // 从后往前替换，避免索引变化问题
+    for (let i = matches.length - 1; i >= 0; i--) {
+      const match = matches[i];
+      const refName = match[1];
+      const startIndex = match.index!;
+      const endIndex = startIndex + match[0].length;
+      
+      // 查找匹配的节点
+      const matchedNode = mindMap.nodes.find(n => n.text === refName);
+      if (matchedNode) {
+        const path = getNodePath(matchedNode.id);
+        const pathStr = path.join(' > ');
+        const expandedRef = `@${refName} (节点ID: ${matchedNode.id}, 完整路径: ${pathStr})`;
+        expandedMessage = expandedMessage.slice(0, startIndex) + expandedRef + expandedMessage.slice(endIndex);
+        continue;
+      }
+      
+      // 查找匹配的卡片
+      for (const nodeId in nodeCardsMap) {
+        const cards = nodeCardsMap[nodeId] || [];
+        const matchedCard = cards.find((c: Card) => c.title === refName);
+        if (matchedCard) {
+          const nodePath = getNodePath(nodeId);
+          const cardPath = [...nodePath, matchedCard.title || '未命名卡片'].join(' > ');
+          // 包含完整内容，以便AI能够修改
+          const fullContent = matchedCard.content || '(无内容)';
+          const expandedRef = `@${refName} (卡片ID: ${matchedCard.docId}, 完整路径: ${cardPath}, 完整内容: ${fullContent})`;
+          expandedMessage = expandedMessage.slice(0, startIndex) + expandedRef + expandedMessage.slice(endIndex);
+          break;
+        }
+      }
+    }
+    
+    return expandedMessage;
+  }, [mindMap, getNodePath]);
+
+  // 处理 AI 聊天发送
+  const handleAIChatSend = useCallback(async () => {
+    if (!chatInput.trim() || isChatLoading) return;
+
+    const userMessage = chatInput.trim();
+    // 从引用列表中提取引用对象
+    const references = chatInputReferences.map(ref => ({
+      type: ref.type,
+      id: ref.id,
+      name: ref.name,
+      path: ref.path,
+    }));
+    
+    // 展开引用为详细信息（用于发送给 AI）
+    const expandedMessage = expandReferences(userMessage);
+    setChatInput('');
+    setChatInputReferences([]);
+    setIsChatLoading(true);
+
+    // 先构建历史记录（在添加新消息之前，这样历史记录包含所有之前的对话）
+    const historyBeforeNewMessage = chatMessages
+      .filter(msg => msg.role === 'user' || msg.role === 'assistant') // 只包含用户和助手消息，不包括操作气泡
+      .map(msg => {
+        // 如果是助手消息且包含错误信息，确保错误信息被包含
+        let content = msg.content;
+        // 如果消息内容为空但应该显示，使用默认文本
+        if (!content && msg.role === 'assistant') {
+          content = '已完成';
+        }
+        return {
+          role: msg.role,
+          content: content,
+        };
+      });
+    
+    console.log('发送给AI的历史记录（之前）:', historyBeforeNewMessage);
+    
+    // 先添加用户消息和临时的assistant消息
+    let assistantMessageIndex: number;
+    setChatMessages(prev => {
+      const newMessages: Array<{ 
+        role: 'user' | 'assistant' | 'operation'; 
+        content: string; 
+        references?: Array<{ type: 'node' | 'card'; id: string; name: string; path: string[] }>;
+        operations?: any[];
+        isExpanded?: boolean;
+      }> = [
+        ...prev, 
+        { 
+          role: 'user' as const, 
+          content: userMessage,
+          references: references.length > 0 ? references : undefined,
+        }
+      ];
+      assistantMessageIndex = newMessages.length;
+      newMessages.push({ role: 'assistant' as const, content: '' });
+      return newMessages;
+    });
+
+    // 自动滚动到底部
+    setTimeout(() => {
+      if (chatMessagesEndRef.current) {
+        chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 100);
+
+    try {
+      const domainId = (window as any).UiContext?.domainId || 'system';
+      // 使用之前构建的历史记录（包含所有之前的对话）
+      const history = historyBeforeNewMessage;
+
+      // 获取当前 mindmap 结构描述
+      const mindMapText = convertMindMapToText();
+      
+      // 使用展开后的消息发送给 AI
+      const finalUserMessage = expandedMessage;
+
+      // 构建系统提示
+      const systemPrompt = `你是一个思维导图操作助手，专门帮助用户操作思维导图。
+
+【你的核心职责】
+1. **创建节点**：根据用户需求创建新的节点
+2. **创建卡片**：在指定节点下创建卡片
+3. **移动节点**：将节点移动到新的位置
+4. **重命名**：修改节点或卡片的名称
+5. **修改内容**：修改卡片的内容（当用户要求修改、美化、格式化卡片内容时使用）
+6. **删除**：删除不需要的节点或卡片
+
+【思维导图结构说明】
+${mindMapText}
+
+【操作格式】
+你需要以 JSON 格式回复操作指令，格式如下：
+\`\`\`json
+{
+  "operations": [
+    {
+      "type": "create_node",
+      "parentId": "node_xxx",  // 父节点ID，如果是根节点则为null
+      "text": "新节点名称"
+    },
+    {
+      "type": "create_card",
+      "nodeId": "node_xxx",
+      "title": "卡片标题",
+      "content": "卡片内容（可选）"
+    },
+    {
+      "type": "move_node",
+      "nodeId": "node_xxx",  // 要移动的节点ID
+      "targetParentId": "node_yyy"  // 目标父节点ID（如果移动到根节点则为null）。**重要**：必须根据思维导图结构说明中的节点名称和路径，找到对应的节点ID
+    },
+    {
+      "type": "move_card",
+      "cardId": "card_xxx",  // 要移动的卡片ID
+      "targetNodeId": "node_yyy"  // 目标节点ID（卡片将移动到该节点下）。**重要**：必须根据思维导图结构说明中的节点名称和路径，找到对应的节点ID
+    },
+    {
+      "type": "rename_node",
+      "nodeId": "node_xxx",
+      "newText": "新名称"
+    },
+    {
+      "type": "rename_card",
+      "cardId": "card_xxx",
+      "newTitle": "新标题"
+    },
+    {
+      "type": "update_card_content",
+      "cardId": "card_xxx",
+      "newContent": "新的卡片内容"
+    },
+    {
+      "type": "delete_node",
+      "nodeId": "node_xxx"
+    },
+    {
+      "type": "delete_card",
+      "cardId": "card_xxx"
+    }
+  ]
+}
+\`\`\`
+
+【重要规则】
+1. 只输出 JSON 代码块（\`\`\`json ... \`\`\`）
+2. 不要添加多余说明文字
+3. 如果用户只是询问，不需要操作，则只回复文字说明，不要输出 JSON
+4. **重要**：当用户要求"修改内容"、"美化格式"、"格式化"、"优化内容"等时，应该使用 \`update_card_content\` 操作修改卡片的内容（content），而不是使用 \`rename_card\` 修改标题（title）
+5. 只有在用户明确要求修改标题/名称时，才使用 \`rename_card\` 或 \`rename_node\`
+6. **移动节点时**：
+   - 必须仔细查看思维导图结构说明，根据节点名称和完整路径找到正确的节点ID
+   - 如果用户说"移动到XX文件夹/节点下"，必须在结构说明中找到名称匹配的节点，使用其ID作为 \`targetParentId\`
+   - **重要**：节点ID格式通常是 \`node_xxx\`（如 \`node_1_6\`），不是卡片ID（卡片ID是长字符串）
+   - 如果用户说"移动文件夹"，指的是移动节点（文件夹就是节点）
+   - 如果找不到匹配的节点，应该回复错误信息而不是执行操作
+7. **移动卡片时**：如果用户要移动的是卡片（不是节点），必须使用 \`move_card\` 操作，而不是 \`move_node\`。卡片ID通常是一个长字符串（如 \`692f8ab7f62755451fb3ffa\`），节点ID通常是 \`node_xxx\` 格式。**重要**：如果用户引用了卡片（如 @卡片名），要移动的应该是卡片，使用 \`move_card\` 操作。
+
+用户指令：`;
+
+      // 关闭之前的 WebSocket 连接
+      if (chatWebSocketRef.current) {
+        chatWebSocketRef.current.close();
+        chatWebSocketRef.current = null;
+      }
+
+      // 创建 WebSocket 连接
+      const { default: WebSocket } = await import('../components/socket');
+      const wsPrefix = (window as any).UiContext?.wsPrefix || '';
+      const wsUrl = `/d/${domainId}/ai/chat-ws`;
+      const sock = new WebSocket(wsPrefix + wsUrl, false, true);
+      chatWebSocketRef.current = sock;
+
+      let accumulatedContent = '';
+      let streamFinished = false;
+
+      // WebSocket 消息处理
+      sock.onmessage = (_, data: string) => {
+        try {
+          const msg = JSON.parse(data);
+          
+          if (msg.type === 'content') {
+            accumulatedContent += msg.content;
+            
+            // 过滤掉 JSON 代码块，只显示文字内容（流式显示）
+            let displayContent = accumulatedContent;
+            const jsonMatch = displayContent.match(/```(?:json)?\n([\s\S]*?)\n```/);
+            if (jsonMatch) {
+              // 移除 JSON 代码块，只保留文字部分
+              displayContent = displayContent.replace(/```(?:json)?\n[\s\S]*?\n```/g, '').trim();
+            }
+            
+            // 实时更新显示内容（流式显示）
+            setChatMessages(prev => {
+              const newMessages = [...prev];
+              if (newMessages[assistantMessageIndex]) {
+                newMessages[assistantMessageIndex] = {
+                  role: 'assistant',
+                  content: displayContent || '正在思考...',
+                };
+              }
+              return newMessages;
+            });
+            
+            // 自动滚动到底部
+            setTimeout(() => {
+              if (chatMessagesEndRef.current) {
+                chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+              }
+            }, 0);
+          } else if (msg.type === 'done') {
+            streamFinished = true;
+            const finalContent = msg.content || accumulatedContent;
+            
+            // 提取 JSON 代码块
+            const jsonMatch = finalContent.match(/```(?:json)?\n([\s\S]*?)\n```/);
+            let textContent = finalContent.replace(/```(?:json)?\n[\s\S]*?\n```/g, '').trim();
+            
+            // 更新文字消息（最终内容）
+            setChatMessages(prev => {
+              const newMessages = [...prev];
+              if (newMessages[assistantMessageIndex]) {
+                newMessages[assistantMessageIndex] = {
+                  role: 'assistant',
+                  content: textContent || '已完成',
+                };
+              }
+              return newMessages;
+            });
+            
+            // 滚动到底部
+            setTimeout(() => {
+              if (chatMessagesEndRef.current) {
+                chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+              }
+            }, 100);
+            
+              // 如果有 JSON 操作，创建操作气泡
+              if (jsonMatch) {
+                try {
+                  const operations = JSON.parse(jsonMatch[1]);
+                  if (operations.operations && Array.isArray(operations.operations)) {
+                    // 调试：打印操作信息
+                    console.log('AI 返回的操作:', operations.operations);
+                    
+                    // 添加操作气泡
+                    setChatMessages(prev => {
+                      const newMessages = [...prev];
+                      newMessages.push({
+                        role: 'operation',
+                        content: `执行 ${operations.operations.length} 个操作`,
+                        operations: operations.operations,
+                        isExpanded: false,
+                      });
+                      return newMessages;
+                    });
+                    
+                    // 自动执行操作
+                    if (executeAIOperationsRef.current) {
+                      executeAIOperationsRef.current(operations.operations).then((result) => {
+                        if (result.success) {
+                          Notification.success('AI 已执行操作');
+                        } else {
+                          // 如果有错误，将错误信息添加到聊天消息中，让AI能够看到并纠正
+                          const errorText = result.errors.join('\n');
+                          setChatMessages(prev => {
+                            const newMessages = [...prev];
+                            // 添加错误信息作为助手消息，这样AI在下次对话时能看到
+                            newMessages.push({
+                              role: 'assistant',
+                              content: `操作执行失败，错误信息如下：\n${errorText}\n\n请根据错误信息重新执行操作，确保使用正确的节点ID。`,
+                            });
+                            return newMessages;
+                          });
+                          
+                          // 滚动到底部显示错误信息
+                          setTimeout(() => {
+                            if (chatMessagesEndRef.current) {
+                              chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+                            }
+                          }, 100);
+                        }
+                      }).catch((err) => {
+                        console.error('Failed to execute operations:', err);
+                        const errorMsg = '执行操作失败: ' + (err.message || '未知错误');
+                        Notification.error(errorMsg);
+                        setChatMessages(prev => {
+                          const newMessages = [...prev];
+                          newMessages.push({
+                            role: 'assistant',
+                            content: `操作执行失败：${errorMsg}\n\n请重新执行操作。`,
+                          });
+                          return newMessages;
+                        });
+                      });
+                    } else {
+                      setTimeout(async () => {
+                        if (executeAIOperationsRef.current) {
+                          const result = await executeAIOperationsRef.current(operations.operations);
+                          if (result.success) {
+                            Notification.success('AI 已执行操作');
+                          } else {
+                            const errorText = result.errors.join('\n');
+                            setChatMessages(prev => {
+                              const newMessages = [...prev];
+                              newMessages.push({
+                                role: 'assistant',
+                                content: `操作执行时出现错误：\n${errorText}\n\n请根据错误信息重新执行操作。`,
+                              });
+                              return newMessages;
+                            });
+                          }
+                        }
+                      }, 100);
+                    }
+                  }
+                } catch (e) {
+                  console.error('Failed to parse AI operations:', e);
+                  Notification.error('解析 AI 操作失败: ' + (e.message || '未知错误'));
+                }
+              }
+            
+            // 关闭 WebSocket 连接
+            if (chatWebSocketRef.current) {
+              chatWebSocketRef.current.close();
+              chatWebSocketRef.current = null;
+            }
+            setIsChatLoading(false);
+          } else if (msg.type === 'error') {
+            streamFinished = true;
+            setChatMessages(prev => {
+              const newMessages = [...prev];
+              if (newMessages[assistantMessageIndex]) {
+                newMessages[assistantMessageIndex] = {
+                  role: 'assistant',
+                  content: `错误: ${msg.error || '未知错误'}`,
+                };
+              }
+              return newMessages;
+            });
+            Notification.error('AI 聊天失败: ' + (msg.error || '未知错误'));
+            setIsChatLoading(false);
+            
+            // 关闭 WebSocket 连接
+            if (chatWebSocketRef.current) {
+              chatWebSocketRef.current.close();
+              chatWebSocketRef.current = null;
+            }
+          }
+        } catch (e) {
+          console.error('Failed to parse WebSocket message:', e);
+        }
+      };
+
+      sock.onclose = () => {
+        chatWebSocketRef.current = null;
+        if (!streamFinished) {
+          setIsChatLoading(false);
+        }
+      };
+
+      sock.onopen = () => {
+        // 连接成功后发送消息
+        sock.send(JSON.stringify({
+          message: `${systemPrompt}\n\n用户指令：${finalUserMessage}`,
+          history,
+        }));
+      };
+    } catch (error: any) {
+      setChatMessages(prev => {
+        const newMessages = [...prev];
+        if (newMessages[assistantMessageIndex]) {
+          newMessages[assistantMessageIndex] = {
+            role: 'assistant',
+            content: `错误: ${error.message || '未知错误'}`,
+          };
+        }
+        return newMessages;
+      });
+      Notification.error('AI 聊天失败: ' + (error.message || '未知错误'));
+    } finally {
+      setIsChatLoading(false);
+    }
+  }, [chatInput, isChatLoading, chatMessages, convertMindMapToText, expandReferences]);
+
+  // 执行 AI 操作
+  const executeAIOperations = useCallback(async (operations: any[]): Promise<{ success: boolean; errors: string[] }> => {
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const errors: string[] = [];
+    
+    for (const op of operations) {
+      try {
+        if (op.type === 'create_node') {
+          const tempId = `temp-node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          const newChildNode: PendingCreate = {
+            type: 'node',
+            nodeId: op.parentId || '',
+            text: op.text || '新节点',
+            tempId,
+          };
+          
+          setPendingCreates(prev => {
+            const next = new Map(prev);
+            next.set(tempId, newChildNode);
+            return next;
+          });
+          
+          const tempNode: MindMapNode = {
+            id: tempId,
+            text: op.text || '新节点',
+          };
+          
+          setMindMap(prev => ({
+            ...prev,
+            nodes: [...prev.nodes, tempNode],
+            edges: op.parentId ? [...prev.edges, {
+              id: `temp-edge-${Date.now()}`,
+              source: op.parentId,
+              target: tempId,
+            }] : prev.edges,
+          }));
+          
+          if (op.parentId) {
+            setExpandedNodes(prev => new Set(prev).add(op.parentId));
+          }
+        } else if (op.type === 'create_card') {
+          const tempId = `temp-card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          const newCard: PendingCreate = {
+            type: 'card',
+            nodeId: op.nodeId,
+            title: op.title || '新卡片',
+            tempId,
+          };
+          
+          setPendingCreates(prev => {
+            const next = new Map(prev);
+            next.set(tempId, newCard);
+            return next;
+          });
+          
+          if (!nodeCardsMap[op.nodeId]) {
+            nodeCardsMap[op.nodeId] = [];
+          }
+          const maxOrder = nodeCardsMap[op.nodeId].length > 0 
+            ? Math.max(...nodeCardsMap[op.nodeId].map((c: Card) => c.order || 0))
+            : 0;
+          
+          const tempCard: Card = {
+            docId: tempId,
+            cid: 0,
+            nodeId: op.nodeId,
+            title: op.title || '新卡片',
+            content: op.content || '',
+            order: maxOrder + 1,
+            updateAt: new Date().toISOString(),
+          } as Card;
+          
+          nodeCardsMap[op.nodeId].push(tempCard);
+          nodeCardsMap[op.nodeId].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+          (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+          setNodeCardsMapVersion(prev => prev + 1);
+          setExpandedNodes(prev => new Set(prev).add(op.nodeId));
+        } else if (op.type === 'move_node') {
+          let nodeId = op.nodeId;
+          const targetParentId = op.targetParentId;
+          
+          console.log('执行 move_node 操作:', { nodeId, targetParentId });
+          console.log('所有可用节点:', mindMap.nodes.map(n => ({ id: n.id, text: n.text })));
+          
+          // 验证节点是否存在
+          let node = mindMap.nodes.find(n => n.id === nodeId);
+          
+          // 如果找不到，尝试通过节点名称查找（用于调试）
+          if (!node) {
+            const nodeByName = mindMap.nodes.find(n => n.text === nodeId);
+            if (nodeByName) {
+              console.warn(`警告：nodeId "${nodeId}" 是节点名称，不是节点ID。应该使用节点ID "${nodeByName.id}"`);
+              const errorMsg = `错误：nodeId "${nodeId}" 是节点名称，不是节点ID。请使用节点ID "${nodeByName.id}"`;
+              Notification.error(errorMsg);
+              errors.push(errorMsg);
+              continue;
+            }
+          }
+          
+          // 如果 nodeId 不是节点ID，可能是卡片ID，提示用户使用 move_card
+          if (!node) {
+            console.log('nodeId 不是节点ID，可能是卡片ID:', nodeId);
+            // 在所有节点中查找包含该卡片ID的卡片
+            for (const nId in nodeCardsMap) {
+              const cards = nodeCardsMap[nId] || [];
+              const card = cards.find((c: Card) => c.docId === nodeId);
+              if (card) {
+                console.log('找到卡片，但使用了 move_node 操作，应该使用 move_card');
+                const errorMsg = `检测到 ${nodeId} 是卡片ID，不是节点ID。移动卡片请使用 move_card 操作，而不是 move_node。`;
+                Notification.error(errorMsg);
+                errors.push(errorMsg);
+                continue;
+              }
+            }
+            console.error('节点不存在:', nodeId);
+            console.log('所有节点ID:', mindMap.nodes.map(n => ({ id: n.id, text: n.text })));
+            const errorMsg = `节点 ${nodeId} 不存在。请检查节点ID是否正确。`;
+            Notification.error(errorMsg);
+            errors.push(errorMsg);
+            continue;
+          }
+          
+          // 如果 targetParentId 存在，验证目标节点是否存在
+          if (targetParentId) {
+            const targetNode = mindMap.nodes.find(n => n.id === targetParentId);
+            
+            // 如果找不到，尝试通过节点名称查找（用于调试）
+            if (!targetNode) {
+              const targetNodeByName = mindMap.nodes.find(n => n.text === targetParentId);
+              if (targetNodeByName) {
+                console.warn(`警告：targetParentId "${targetParentId}" 是节点名称，不是节点ID。应该使用节点ID "${targetNodeByName.id}"`);
+                const errorMsg = `错误：targetParentId "${targetParentId}" 是节点名称，不是节点ID。请使用节点ID "${targetNodeByName.id}"`;
+                Notification.error(errorMsg);
+                errors.push(errorMsg);
+                continue;
+              }
+              
+              console.error('目标节点不存在:', targetParentId);
+              console.log('所有节点ID:', mindMap.nodes.map(n => ({ id: n.id, text: n.text })));
+              const errorMsg = `目标节点 ${targetParentId} 不存在。请检查节点ID是否正确。`;
+              Notification.error(errorMsg);
+              errors.push(errorMsg);
+              continue;
+            }
+            console.log('目标节点:', { id: targetNode.id, text: targetNode.text });
+          } else {
+            console.log('移动到根节点');
+          }
+          
+          // 检查是否会造成循环
+          const isDescendant = (ancestorId: string, nodeId: string): boolean => {
+            const children = mindMap.edges
+              .filter(e => e.source === ancestorId)
+              .map(e => e.target);
+            if (children.includes(nodeId)) return true;
+            return children.some(childId => isDescendant(childId, nodeId));
+          };
+          
+          if (targetParentId && isDescendant(nodeId, targetParentId)) {
+            const errorMsg = '不能将节点移动到自己的子节点下';
+            Notification.error(errorMsg);
+            errors.push(errorMsg);
+            continue;
+          }
+          
+          // 移除旧的父节点连接
+          const oldEdges = mindMap.edges.filter(e => e.target === nodeId);
+          const newEdges = mindMap.edges.filter(e => !oldEdges.includes(e));
+          
+          // 创建新边
+          if (targetParentId) {
+            // 检查是否已经存在相同的边
+            const existingEdge = newEdges.find(e => e.source === targetParentId && e.target === nodeId);
+            if (!existingEdge) {
+              newEdges.push({
+                id: `edge-${targetParentId}-${nodeId}-${Date.now()}`,
+                source: targetParentId,
+                target: nodeId,
+              });
+            }
+          }
+          
+          setMindMap(prev => ({
+            ...prev,
+            edges: newEdges,
+          }));
+          
+          setPendingDragChanges(prev => new Set(prev).add(`node-${nodeId}`));
+          
+          // 如果目标节点存在，展开它以便看到移动后的节点
+          if (targetParentId) {
+            setExpandedNodes(prev => new Set(prev).add(targetParentId));
+          }
+          
+          Notification.success(`节点已移动到 ${targetParentId ? '目标节点下' : '根节点'}`);
+        } else if (op.type === 'move_card') {
+          const cardId = op.cardId;
+          const targetNodeId = op.targetNodeId;
+          
+          console.log('执行 move_card 操作:', { cardId, targetNodeId });
+          
+          // 验证目标节点是否存在
+          const targetNode = mindMap.nodes.find(n => n.id === targetNodeId);
+          if (!targetNode) {
+            console.error('目标节点不存在:', targetNodeId);
+            console.log('所有节点ID:', mindMap.nodes.map(n => ({ id: n.id, text: n.text })));
+            Notification.error(`目标节点 ${targetNodeId} 不存在。请检查节点ID是否正确。`);
+            continue;
+          }
+          
+          // 查找卡片
+          let foundCard: Card | null = null;
+          let sourceNodeId: string | null = null;
+          
+          for (const nodeId in nodeCardsMap) {
+            const cards = nodeCardsMap[nodeId] || [];
+            const card = cards.find((c: Card) => c.docId === cardId);
+            if (card) {
+              foundCard = card;
+              sourceNodeId = nodeId;
+              break;
+            }
+          }
+          
+          if (!foundCard || !sourceNodeId) {
+            Notification.error(`卡片 ${cardId} 不存在`);
+            continue;
+          }
+          
+          // 如果卡片已经在目标节点下，不需要移动
+          if (sourceNodeId === targetNodeId) {
+            Notification.error('卡片已经在目标节点下');
+            continue;
+          }
+          
+          // 从原节点移除卡片
+          const sourceCards = nodeCardsMap[sourceNodeId] || [];
+          const cardIndex = sourceCards.findIndex((c: Card) => c.docId === cardId);
+          if (cardIndex >= 0) {
+            sourceCards.splice(cardIndex, 1);
+            nodeCardsMap[sourceNodeId] = sourceCards;
+          }
+          
+          // 添加到目标节点
+          if (!nodeCardsMap[targetNodeId]) {
+            nodeCardsMap[targetNodeId] = [];
+          }
+          
+          // 计算新的 order（放在最后）
+          const maxOrder = nodeCardsMap[targetNodeId].length > 0
+            ? Math.max(...nodeCardsMap[targetNodeId].map((c: Card) => c.order || 0))
+            : 0;
+          
+          // 更新卡片的 nodeId 和 order
+          const updatedCard: Card = {
+            ...foundCard,
+            nodeId: targetNodeId,
+            order: maxOrder + 1,
+          };
+          
+          nodeCardsMap[targetNodeId].push(updatedCard);
+          nodeCardsMap[targetNodeId].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+          
+          (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+          setNodeCardsMapVersion(prev => prev + 1);
+          
+          // 记录拖动操作
+          setPendingDragChanges(prev => new Set(prev).add(cardId));
+          
+          // 展开目标节点以便看到移动后的卡片
+          setExpandedNodes(prev => new Set(prev).add(targetNodeId));
+          
+          Notification.success(`卡片已移动到节点 ${targetNode.text} 下`);
+        } else if (op.type === 'rename_node') {
+          const nodeId = op.nodeId;
+          const newText = op.newText;
+          
+          const node = mindMap.nodes.find(n => n.id === nodeId);
+          if (!node) {
+            Notification.error(`节点 ${nodeId} 不存在`);
+            continue;
+          }
+          
+          // 更新本地数据
+          setMindMap(prev => ({
+            ...prev,
+            nodes: prev.nodes.map(n => 
+              n.id === nodeId ? { ...n, text: newText } : n
+            ),
+          }));
+          
+          // 添加到待重命名列表
+          const fileItem: FileItem = {
+            type: 'node',
+            id: nodeId,
+            name: node.text || '未命名节点',
+            nodeId: nodeId,
+            level: 0,
+          };
+          
+          setPendingRenames(prev => {
+            const next = new Map(prev);
+            next.set(nodeId, {
+              file: fileItem,
+              newName: newText,
+              originalName: node.text || '未命名节点',
+            });
+            return next;
+          });
+        } else if (op.type === 'rename_card') {
+          const cardId = op.cardId;
+          const newTitle = op.newTitle;
+          
+          // 查找卡片
+          let foundCard: Card | null = null;
+          let foundNodeId: string | null = null;
+          
+          for (const nodeId in nodeCardsMap) {
+            const cards = nodeCardsMap[nodeId] || [];
+            const card = cards.find((c: Card) => c.docId === cardId);
+            if (card) {
+              foundCard = card;
+              foundNodeId = nodeId;
+              break;
+            }
+          }
+          
+          if (!foundCard || !foundNodeId) {
+            Notification.error(`卡片 ${cardId} 不存在`);
+            continue;
+          }
+          
+          // 更新本地数据
+          const cards = nodeCardsMap[foundNodeId];
+          const cardIndex = cards.findIndex((c: Card) => c.docId === cardId);
+          if (cardIndex >= 0) {
+            cards[cardIndex] = { ...cards[cardIndex], title: newTitle };
+            (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+            setNodeCardsMapVersion(prev => prev + 1);
+          }
+          
+          // 添加到待重命名列表
+          const fileItem: FileItem = {
+            type: 'card',
+            id: `card-${cardId}`,
+            name: foundCard.title || '未命名卡片',
+            nodeId: foundNodeId,
+            cardId: cardId,
+            level: 0,
+          };
+          
+          setPendingRenames(prev => {
+            const next = new Map(prev);
+            next.set(`card-${cardId}`, {
+              file: fileItem,
+              newName: newTitle,
+              originalName: foundCard!.title || '未命名卡片',
+            });
+            return next;
+          });
+        } else if (op.type === 'update_card_content') {
+          const cardId = op.cardId;
+          const newContent = op.newContent;
+          
+          // 查找卡片
+          let foundCard: Card | null = null;
+          let foundNodeId: string | null = null;
+          
+          for (const nodeId in nodeCardsMap) {
+            const cards = nodeCardsMap[nodeId] || [];
+            const card = cards.find((c: Card) => c.docId === cardId);
+            if (card) {
+              foundCard = card;
+              foundNodeId = nodeId;
+              break;
+            }
+          }
+          
+          if (!foundCard || !foundNodeId) {
+            Notification.error(`卡片 ${cardId} 不存在`);
+            continue;
+          }
+          
+          // 更新本地数据
+          const cards = nodeCardsMap[foundNodeId];
+          const cardIndex = cards.findIndex((c: Card) => c.docId === cardId);
+          if (cardIndex >= 0) {
+            cards[cardIndex] = { ...cards[cardIndex], content: newContent };
+            (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+            setNodeCardsMapVersion(prev => prev + 1);
+          }
+          
+          // 添加到待修改列表（使用 pendingChanges）
+          const fileItem: FileItem = {
+            type: 'card',
+            id: `card-${cardId}`,
+            name: foundCard.title || '未命名卡片',
+            nodeId: foundNodeId,
+            cardId: cardId,
+            level: 0,
+          };
+          
+          // 更新 pendingChanges，确保 fileTree 能检测到变化
+          setPendingChanges(prev => {
+            const next = new Map(prev);
+            next.set(`card-${cardId}`, {
+              file: fileItem,
+              content: newContent,
+              originalContent: foundCard!.content || '',
+            });
+            // 返回新的 Map 实例，确保 React 能检测到变化
+            return new Map(next);
+          });
+          
+          // 如果当前选中的卡片就是被修改的卡片，更新编辑器内容
+          if (selectedFile && selectedFile.type === 'card' && selectedFile.cardId === cardId) {
+            setFileContent(newContent);
+            // 延迟更新编辑器，确保 DOM 已更新
+            setTimeout(() => {
+              // 如果编辑器已经初始化，也更新编辑器的值
+              if (editorRef.current) {
+                editorRef.current.value = newContent;
+                // 触发 input 事件，确保编辑器知道内容已更改
+                const event = new Event('input', { bubbles: true });
+                editorRef.current.dispatchEvent(event);
+              }
+              // 如果使用了 markdown 编辑器，也需要更新
+              if (editorInstance) {
+                try {
+                  editorInstance.value(newContent);
+                } catch (e) {
+                  // 忽略错误
+                }
+              }
+              // 尝试通过 jQuery 更新 textarea（如果存在）
+              const $textarea = $(`#editor-wrapper-${selectedFile.id} textarea`);
+              if ($textarea.length > 0) {
+                $textarea.val(newContent);
+                // 如果 textarea 有 data-markdown 属性，可能需要重新初始化编辑器
+                if ($textarea.attr('data-markdown') === 'true') {
+                  // 触发 change 事件
+                  $textarea.trigger('change');
+                }
+              }
+            }, 100);
+          }
+        } else if (op.type === 'delete_node') {
+          const nodeId = op.nodeId;
+          const node = mindMap.nodes.find(n => n.id === nodeId);
+          if (!node) {
+            Notification.error(`节点 ${nodeId} 不存在`);
+            continue;
+          }
+          
+          // 检查是否有子节点或卡片
+          const hasCards = nodeCardsMap[nodeId]?.length > 0;
+          const hasChildren = mindMap.edges.some(e => e.source === nodeId);
+          
+          if (hasCards || hasChildren) {
+            Notification.error('无法删除：该节点包含子节点或卡片');
+            continue;
+          }
+          
+          setPendingDeletes(prev => {
+            const next = new Map(prev);
+            next.set(nodeId, {
+              type: 'node',
+              id: nodeId,
+            });
+            return next;
+          });
+          
+          setMindMap(prev => ({
+            ...prev,
+            nodes: prev.nodes.filter(n => n.id !== nodeId),
+            edges: prev.edges.filter(e => e.source !== nodeId && e.target !== nodeId),
+          }));
+        } else if (op.type === 'delete_card') {
+          const cardId = op.cardId;
+          
+          // 查找卡片
+          let foundNodeId: string | null = null;
+          for (const nodeId in nodeCardsMap) {
+            const cards = nodeCardsMap[nodeId] || [];
+            const card = cards.find((c: Card) => c.docId === cardId);
+            if (card) {
+              foundNodeId = nodeId;
+              break;
+            }
+          }
+          
+          if (!foundNodeId) {
+            Notification.error(`卡片 ${cardId} 不存在`);
+            continue;
+          }
+          
+          setPendingDeletes(prev => {
+            const next = new Map(prev);
+            next.set(cardId, {
+              type: 'card',
+              id: cardId,
+              nodeId: foundNodeId!,
+            });
+            return next;
+          });
+          
+          const cards = nodeCardsMap[foundNodeId!];
+          const cardIndex = cards.findIndex((c: Card) => c.docId === cardId);
+          if (cardIndex >= 0) {
+            cards.splice(cardIndex, 1);
+            (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+            setNodeCardsMapVersion(prev => prev + 1);
+          }
+        }
+      } catch (error: any) {
+        console.error(`Failed to execute operation ${op.type}:`, error);
+        const errorMsg = `执行操作失败: ${op.type} - ${error.message || '未知错误'}`;
+        Notification.error(errorMsg);
+        errors.push(errorMsg);
+      }
+    }
+    
+    return { success: errors.length === 0, errors };
+  }, [mindMap, setMindMap, selectedFile, editorInstance, setFileContent]);
+
+  // 将 executeAIOperations 赋值给 ref
+  useEffect(() => {
+    executeAIOperationsRef.current = executeAIOperations;
+  }, [executeAIOperations]);
 
   // 删除节点或卡片（前端操作）
   const handleDelete = useCallback((file: FileItem) => {
@@ -1869,6 +3135,26 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       isInitializingRef.current = false;
     };
   }, [selectedFile?.id]);
+  
+  // 监听 fileContent 变化，更新编辑器内容（当编辑器已初始化且文件未变化时）
+  useEffect(() => {
+    if (!editorInstance || !selectedFile || isInitializingRef.current) {
+      return;
+    }
+    
+    // 只有当文件ID没有变化时，才更新编辑器内容
+    if (selectedFileIdRef.current === selectedFile.id) {
+      try {
+        const currentValue = editorInstance.value();
+        if (currentValue !== fileContent) {
+          editorInstance.value(fileContent);
+        }
+      } catch (e) {
+        // 如果编辑器还没有完全初始化，忽略错误
+        console.warn('Failed to update editor content:', e);
+      }
+    }
+  }, [fileContent, editorInstance, selectedFile]);
 
   // 组件卸载时清理
   useEffect(() => {
@@ -2110,6 +3396,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
         </div>
       </div>
 
+
       {/* 右键菜单 */}
       {contextMenu && (
         <div
@@ -2315,8 +3602,15 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
         />
       )}
 
-      {/* 右侧编辑器区域 */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* 中间编辑器区域 */}
+      <div style={{ 
+        flex: 1, 
+        display: 'flex', 
+        flexDirection: 'column', 
+        overflow: 'hidden',
+        width: showAIChat ? `${100 - chatPanelWidth}%` : '100%',
+        transition: isResizing ? 'none' : 'width 0.3s ease',
+      }}>
         {/* 顶部工具栏 */}
         <div style={{
           padding: '8px 16px',
@@ -2359,6 +3653,21 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
                 {pendingRenames.size > 0 && `${pendingRenames.size} 个重命名`}
               </span>
             )}
+            <button
+              onClick={() => setShowAIChat(!showAIChat)}
+              style={{
+                padding: '4px 12px',
+                border: '1px solid #d1d5da',
+                borderRadius: '3px',
+                backgroundColor: showAIChat ? '#2196f3' : '#fff',
+                color: showAIChat ? '#fff' : '#333',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: '500',
+              }}
+            >
+              {showAIChat ? '隐藏 AI' : '显示 AI'}
+            </button>
             <button
               onClick={handleSaveAll}
               disabled={isCommitting}
@@ -2422,6 +3731,401 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
           )}
         </div>
       </div>
+
+      {/* 分隔条 */}
+      {showAIChat && (
+        <div
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setIsResizing(true);
+            resizeStartXRef.current = e.clientX;
+            resizeStartWidthRef.current = chatPanelWidth;
+          }}
+          style={{
+            width: '4px',
+            height: '100%',
+            background: isResizing ? '#2196f3' : '#ddd',
+            cursor: 'col-resize',
+            position: 'relative',
+            flexShrink: 0,
+            transition: isResizing ? 'none' : 'background 0.2s ease',
+          }}
+          onMouseEnter={(e) => {
+            if (!isResizing) {
+              e.currentTarget.style.background = '#bbb';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!isResizing) {
+              e.currentTarget.style.background = '#ddd';
+            }
+          }}
+        >
+          <div style={{
+            position: 'absolute',
+            left: '-2px',
+            top: 0,
+            width: '8px',
+            height: '100%',
+            cursor: 'col-resize',
+          }} />
+        </div>
+      )}
+
+      {/* AI 聊天侧边栏 */}
+      {showAIChat && (
+        <div style={{
+          width: `${chatPanelWidth}px`,
+          height: '100%',
+          borderLeft: '1px solid #ddd',
+          display: 'flex',
+          flexDirection: 'column',
+          background: '#fff',
+          transition: isResizing ? 'none' : 'width 0.3s ease',
+          flexShrink: 0,
+        }}>
+          <div style={{
+            padding: '12px 16px',
+            borderBottom: '1px solid #ddd',
+            background: '#f5f5f5',
+            fontWeight: 'bold',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+            <span>AI 助手</span>
+            <button
+              onClick={() => setShowAIChat(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                fontSize: '18px',
+                cursor: 'pointer',
+                color: '#999',
+              }}
+            >
+              &times;
+            </button>
+          </div>
+          
+          <div 
+            ref={chatMessagesContainerRef}
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}
+          >
+            {chatMessages.length === 0 && (
+              <div style={{
+                textAlign: 'center',
+                color: '#999',
+                padding: '20px',
+                fontSize: '14px',
+              }}>
+                <p>你好！我是 AI 助手，可以帮助你操作思维导图。</p>
+                <p style={{ marginTop: '8px', fontSize: '12px' }}>例如：</p>
+                <ul style={{ textAlign: 'left', marginTop: '8px', fontSize: '12px', color: '#666' }}>
+                  <li>"在根节点下创建一个名为 '新节点' 的节点"</li>
+                  <li>"在 '节点名' 下创建一个卡片，标题为 '新卡片'"</li>
+                  <li>"将 '节点A' 移动到 '节点B' 下"</li>
+                  <li>"将 '节点A' 重命名为 '新名称'"</li>
+                  <li>"删除 '节点A'"</li>
+                </ul>
+              </div>
+            )}
+            {chatMessages.map((msg, index) => {
+              if (msg.role === 'operation') {
+                // 操作气泡
+                return (
+                  <div
+                    key={index}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'flex-start',
+                    }}
+                  >
+                    <div
+                      onClick={() => {
+                        setChatMessages(prev => {
+                          const newMessages = [...prev];
+                          newMessages[index] = {
+                            ...newMessages[index],
+                            isExpanded: !newMessages[index].isExpanded,
+                          };
+                          return newMessages;
+                        });
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        background: '#e3f2fd',
+                        border: '1px solid #90caf9',
+                        color: '#1976d2',
+                        maxWidth: '85%',
+                        fontSize: '14px',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                      }}
+                    >
+                      <span style={{ fontSize: '16px' }}>⚙️</span>
+                      <span>{msg.content}</span>
+                      <span style={{ fontSize: '12px', opacity: 0.7 }}>
+                        {msg.isExpanded ? '▼' : '▶'}
+                      </span>
+                    </div>
+                    {msg.isExpanded && msg.operations && (
+                      <div style={{
+                        marginTop: '8px',
+                        padding: '12px',
+                        background: '#f5f5f5',
+                        borderRadius: '8px',
+                        maxWidth: '85%',
+                        fontSize: '12px',
+                        fontFamily: 'Monaco, Menlo, "Ubuntu Mono", Consolas, monospace',
+                        overflowX: 'auto',
+                      }}>
+                        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                          {JSON.stringify({ operations: msg.operations }, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+              
+              // 普通消息
+              return (
+                <div
+                  key={index}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                  }}
+                >
+                  <div style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: msg.role === 'user' ? '#2196f3' : '#f5f5f5',
+                    color: msg.role === 'user' ? '#fff' : '#333',
+                    maxWidth: '85%',
+                    fontSize: '14px',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                  }}>
+                    {msg.role === 'user' && msg.references && msg.references.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                        {msg.references.map((ref, refIndex) => (
+                          <div
+                            key={refIndex}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '4px 8px',
+                              background: 'rgba(255, 255, 255, 0.2)',
+                              borderRadius: '4px',
+                              fontSize: '12px',
+                            }}
+                          >
+                            <span style={{ fontSize: '12px' }}>
+                              {ref.type === 'node' ? '📂' : '📄'}
+                            </span>
+                            <span style={{ fontWeight: '500' }}>{ref.name}</span>
+                            <span style={{ opacity: 0.8, fontSize: '11px' }}>
+                              {ref.path.join(' > ')}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {msg.content}
+                  </div>
+                </div>
+              );
+            })}
+            {isChatLoading && (
+              <div style={{
+                padding: '8px 12px',
+                borderRadius: '8px',
+                background: '#f5f5f5',
+                color: '#999',
+                fontSize: '14px',
+              }}>
+                正在思考...
+              </div>
+            )}
+            <div ref={chatMessagesEndRef} />
+          </div>
+
+          <div style={{
+            padding: '12px',
+            borderTop: '1px solid #ddd',
+            background: '#f5f5f5',
+          }}>
+            {/* 显示引用标签 */}
+            {chatInputReferences.length > 0 && (
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '6px',
+                marginBottom: '8px',
+                padding: '6px',
+                background: '#fff',
+                borderRadius: '4px',
+                border: '1px solid #ddd',
+                minHeight: '32px',
+              }}>
+                {chatInputReferences.map((ref, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '4px 8px',
+                      background: '#e3f2fd',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      border: '1px solid #90caf9',
+                    }}
+                  >
+                    <span style={{ fontSize: '12px' }}>
+                      {ref.type === 'node' ? '📂' : '📄'}
+                    </span>
+                    <span style={{ fontWeight: '500', color: '#1976d2' }}>{ref.name}</span>
+                    <span style={{ opacity: 0.7, fontSize: '11px', color: '#1976d2' }}>
+                      {ref.path.join(' > ')}
+                    </span>
+                    <button
+                      onClick={() => {
+                        // 移除引用
+                        const placeholder = `@${ref.name}`;
+                        const startIndex = ref.startIndex;
+                        const endIndex = ref.endIndex;
+                        
+                        // 从文本中移除占位符
+                        const newText = chatInput.slice(0, startIndex) + chatInput.slice(endIndex);
+                        
+                        // 更新引用列表
+                        setChatInputReferences(prev => {
+                          const newRefs = prev
+                            .filter((_, i) => i !== index)
+                            .map(r => {
+                              // 调整后续引用的位置
+                              if (r.startIndex > startIndex) {
+                                return {
+                                  ...r,
+                                  startIndex: r.startIndex - placeholder.length,
+                                  endIndex: r.endIndex - placeholder.length,
+                                };
+                              }
+                              return r;
+                            });
+                          return newRefs;
+                        });
+                        
+                        setChatInput(newText);
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: '0',
+                        marginLeft: '4px',
+                        fontSize: '14px',
+                        color: '#1976d2',
+                        lineHeight: '1',
+                      }}
+                      title="移除引用"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <textarea
+              value={chatInput}
+              onChange={(e) => {
+                const newText = e.target.value;
+                const oldText = chatInput;
+                
+                // 更新引用位置
+                if (newText.length !== oldText.length) {
+                  const diff = newText.length - oldText.length;
+                  const selectionStart = e.currentTarget.selectionStart;
+                  
+                  setChatInputReferences(prev => {
+                    return prev.map(ref => {
+                      // 如果插入/删除在引用之前，调整引用位置
+                      if (selectionStart <= ref.startIndex) {
+                        return {
+                          ...ref,
+                          startIndex: ref.startIndex + diff,
+                          endIndex: ref.endIndex + diff,
+                        };
+                      }
+                      // 如果插入/删除在引用内部，可能需要移除引用
+                      else if (selectionStart > ref.startIndex && selectionStart < ref.endIndex) {
+                        // 如果引用被删除，返回 null，稍后过滤
+                        return null as any;
+                      }
+                      return ref;
+                    }).filter(ref => ref !== null && ref.startIndex >= 0 && ref.endIndex <= newText.length);
+                  });
+                }
+                
+                setChatInput(newText);
+              }}
+              onPaste={handleAIChatPaste}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleAIChatSend();
+                }
+              }}
+              placeholder="输入消息... (Shift+Enter换行，Enter发送，粘贴复制的节点/卡片会自动添加引用)"
+              rows={3}
+              disabled={isChatLoading}
+              style={{
+                width: '100%',
+                padding: '8px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px',
+                resize: 'none',
+                fontFamily: 'inherit',
+              }}
+            />
+            <button
+              onClick={handleAIChatSend}
+              disabled={!chatInput.trim() || isChatLoading}
+              style={{
+                marginTop: '8px',
+                width: '100%',
+                padding: '8px',
+                border: 'none',
+                borderRadius: '4px',
+                background: (!chatInput.trim() || isChatLoading) ? '#ccc' : '#2196f3',
+                color: '#fff',
+                cursor: (!chatInput.trim() || isChatLoading) ? 'not-allowed' : 'pointer',
+                fontWeight: 'bold',
+              }}
+            >
+              发送
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
