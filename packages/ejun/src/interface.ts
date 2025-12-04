@@ -392,6 +392,15 @@ export interface CardDoc {
     views: number;
     createdAt?: Date;
     order?: number;
+    // 关联的练习题（本地小题，不依赖 OJ）
+    problems?: {
+        pid: string;          // 本地题目ID
+        type: 'single';       // 题目类型，目前仅支持单选题
+        stem: string;         // 题干
+        options: string[];    // 选项列表（至少2个，通常4个）
+        answer: number;       // 正确答案在 options 中的下标
+        analysis?: string;    // 解析（可选）
+    }[];
 }
 
 // Node document

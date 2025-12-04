@@ -544,7 +544,8 @@ export class CardModel {
         owner: number,
         title: string,
         content: string = '',
-        ip?: string
+        ip?: string,
+        problems?: CardDoc['problems'],
     ): Promise<ObjectId> {
         const newCid = await this.generateNextCid(domainId, mmid, nodeId);
 
@@ -562,6 +563,9 @@ export class CardModel {
             views: 0,
             createdAt: new Date(),
         };
+        if (problems && problems.length > 0) {
+            (payload as any).problems = problems;
+        }
 
         const docId = await document.add(
             domainId,
@@ -620,7 +624,7 @@ export class CardModel {
     static async update(
         domainId: string,
         docId: ObjectId,
-        updates: Partial<Pick<CardDoc, 'title' | 'content' | 'order' | 'nodeId'>>
+        updates: Partial<Pick<CardDoc, 'title' | 'content' | 'order' | 'nodeId' | 'problems'>>
     ): Promise<void> {
         await document.set(domainId, TYPE_CARD, docId, {
             ...updates,

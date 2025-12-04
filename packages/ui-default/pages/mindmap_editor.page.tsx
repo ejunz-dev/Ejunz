@@ -37,6 +37,15 @@ interface MindMapDoc {
   files?: Array<{ _id: string; name: string; size: number; etag?: string; lastModified?: Date | string }>;
 }
 
+interface CardProblem {
+  pid: string;
+  type: 'single';
+  stem: string;
+  options: string[];
+  answer: number; // 正确选项在 options 中的下标
+  analysis?: string;
+}
+
 interface Card {
   docId: string;
   cid: number;
@@ -46,6 +55,7 @@ interface Card {
   createdAt?: string;
   order?: number;
   nodeId?: string; // 卡片所属的节点ID（可能被拖动修改）
+  problems?: CardProblem[]; // 本卡片关联的练习题
 }
 
 type FileItem = {
@@ -134,6 +144,33 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
   const [explorerMode, setExplorerMode] = useState<'tree' | 'files'>('tree'); // 文件树模式或文件模式
   const [files, setFiles] = useState<Array<{ _id: string; name: string; size: number; etag?: string; lastModified?: Date | string }>>(initialData.files || []);
   const [selectedFileForPreview, setSelectedFileForPreview] = useState<string | null>(null);
+  // 单选题编辑状态（针对当前选中的卡片）
+  const [problemStem, setProblemStem] = useState<string>('');
+  const [problemOptions, setProblemOptions] = useState<string[]>(['', '', '', '']);
+  const [problemAnswer, setProblemAnswer] = useState<number>(0);
+  const [problemAnalysis, setProblemAnalysis] = useState<string>('');
+  const [isSavingProblem, setIsSavingProblem] = useState<boolean>(false);
+  const [showProblemForm, setShowProblemForm] = useState<boolean>(false); // 是否展开新建题目表单
+  // 有题目变更但尚未提交的卡片（使用后端真实 cardId）
+  const [pendingProblemCardIds, setPendingProblemCardIds] = useState<Set<string>>(new Set());
+
+  // 获取当前选中卡片的完整信息（包括 problems）
+  const getSelectedCard = useCallback((): Card | null => {
+    if (!selectedFile || selectedFile.type !== 'card') return null;
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const nodeCards = nodeCardsMap[selectedFile.nodeId || ''] || [];
+    const card = nodeCards.find((c: Card) => c.docId === selectedFile.cardId);
+    return card || null;
+  }, [selectedFile]);
+
+  // 当选中的卡片变化时，重置题目编辑表单
+  useEffect(() => {
+    setProblemStem('');
+    setProblemOptions(['', '', '', '']);
+    setProblemAnswer(0);
+    setProblemAnalysis('');
+    setShowProblemForm(false);
+  }, [selectedFile?.id]);
   
   // 当 mindMap.files 变化时更新 files 状态
   useEffect(() => {
@@ -426,6 +463,92 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     setFileContent(content);
   }, [mindMap.nodes, selectedFile, editorInstance, fileContent, pendingChanges]);
 
+  // 生成单选题
+  const handleCreateSingleProblem = useCallback(async () => {
+    if (!selectedFile || selectedFile.type !== 'card') {
+      Notification.error('请先在左侧选择一个卡片');
+      return;
+    }
+
+    const stem = problemStem.trim();
+    const options = problemOptions.map(opt => opt.trim()).filter(opt => opt.length > 0);
+    const analysis = problemAnalysis.trim();
+
+    if (!stem) {
+      Notification.error('题干不能为空');
+      return;
+    }
+    if (options.length < 2) {
+      Notification.error('至少需要两个选项');
+      return;
+    }
+    if (problemAnswer < 0 || problemAnswer >= options.length) {
+      Notification.error('请选择正确的答案选项');
+      return;
+    }
+
+    try {
+      setIsSavingProblem(true);
+
+      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+      const nodeId = selectedFile.nodeId || '';
+      const nodeCards: Card[] = nodeCardsMap[nodeId] || [];
+      const card = nodeCards.find((c: Card) => c.docId === selectedFile.cardId);
+
+      if (!card) {
+        Notification.error('未找到对应的卡片数据，无法生成题目');
+        return;
+      }
+
+      const existingProblems: CardProblem[] = card.problems || [];
+      const newProblem: CardProblem = {
+        pid: `p_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        type: 'single',
+        stem,
+        options,
+        answer: problemAnswer,
+        analysis: analysis || undefined,
+      };
+
+      const updatedProblems = [...existingProblems, newProblem];
+
+      // 只更新前端缓存，真正的保存由「保存更改」统一提交
+      if (nodeCardsMap[nodeId]) {
+        const cardIndex = nodeCards.findIndex((c: Card) => c.docId === selectedFile.cardId);
+        if (cardIndex >= 0) {
+          nodeCards[cardIndex] = {
+            ...nodeCards[cardIndex],
+            problems: updatedProblems,
+          };
+          (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+          setNodeCardsMapVersion(prev => prev + 1);
+
+          // 标记该卡片的题目有待提交（仅针对已有 cardId，临时卡片由创建时一起提交）
+          if (!String(selectedFile.cardId || '').startsWith('temp-card-')) {
+            setPendingProblemCardIds(prev => {
+              const next = new Set(prev);
+              next.add(String(selectedFile.cardId));
+              return next;
+            });
+          }
+        }
+      }
+
+      // 重置表单
+      setProblemStem('');
+      setProblemOptions(['', '', '', '']);
+      setProblemAnswer(0);
+      setProblemAnalysis('');
+
+      Notification.success('单选题已生成并保存');
+    } catch (error: any) {
+      console.error('Failed to create single problem:', error);
+      Notification.error('生成单选题失败: ' + (error.message || '未知错误'));
+    } finally {
+      setIsSavingProblem(false);
+    }
+  }, [selectedFile, problemStem, problemOptions, problemAnswer, problemAnalysis]);
+
   // 保存所有更改
   const handleSaveAll = useCallback(async () => {
     if (isCommitting) return;
@@ -454,6 +577,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     const hasRenameChanges = pendingRenames.size > 0;
     const hasCreateChanges = pendingCreates.size > 0;
     const hasDeleteChanges = pendingDeletes.size > 0;
+    const hasProblemChanges = pendingProblemCardIds.size > 0;
 
     // 允许即使没有更改也执行保存（用于刷新或验证）
     // if (!hasContentChanges && !hasDragChanges && !hasRenameChanges) {
@@ -465,17 +589,15 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     try {
       const domainId = (window as any).UiContext?.domainId || 'system';
       
-      // 保存内容更改
+      // 保存内容更改（包括附带的题目）
       if (hasContentChanges) {
         const changes = Array.from(allChanges.values());
         
         // 批量保存所有内容更改
         for (const change of changes) {
           if (change.file.type === 'node') {
-            // 保存节点文本
-            await request.post(getMindMapUrl('/node', docId), {
-              operation: 'update',
-              nodeId: change.file.nodeId,
+            // 保存节点文本（使用 /node/:nodeId 路径，与 mindmap_detail 保持一致）
+            await request.post(getMindMapUrl(`/node/${change.file.nodeId}`, docId), {
               text: change.content,
             });
             
@@ -489,24 +611,85 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
               ),
             }));
           } else if (change.file.type === 'card') {
-            // 保存卡片内容
+            const cardNodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+            const cardNodeId = change.file.nodeId || '';
+            const cardNodeCards: Card[] = cardNodeCardsMap[cardNodeId] || [];
+            const cardIndex = cardNodeCards.findIndex((c: Card) => c.docId === change.file.cardId);
+            const card = cardIndex >= 0 ? cardNodeCards[cardIndex] : null;
+            const problems = card?.problems;
+
+            // 对于临时卡片：只更新前端 nodeCardsMap 中的 content，真正创建时再一次性写入后端
+            if (!change.file.cardId || String(change.file.cardId).startsWith('temp-card-')) {
+              if (cardIndex >= 0) {
+                // 创建新数组，确保 React 能检测到变化
+                const newCardNodeCards = [...cardNodeCards];
+                newCardNodeCards[cardIndex] = { ...newCardNodeCards[cardIndex], content: change.content, problems };
+                (window as any).UiContext.nodeCardsMap = { 
+                  ...cardNodeCardsMap, 
+                  [cardNodeId]: newCardNodeCards 
+                };
+              }
+              continue;
+            }
+
+            // 对于已存在的卡片：保存卡片内容 + 本地练习题（使用全局 card 更新接口，不带 docId）
             await request.post(`/d/${domainId}/mindmap/card/${change.file.cardId}`, {
               operation: 'update',
               nodeId: change.file.nodeId,
               content: change.content,
+              problems,
             });
             
             // 更新本地数据
-            const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-            if (nodeCardsMap[change.file.nodeId || '']) {
-              const cards = nodeCardsMap[change.file.nodeId || ''];
-              const cardIndex = cards.findIndex((c: Card) => c.docId === change.file.cardId);
-              if (cardIndex >= 0) {
-                cards[cardIndex] = { ...cards[cardIndex], content: change.content };
-                (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
-              }
+            if (cardIndex >= 0) {
+              cardNodeCards[cardIndex] = { ...cardNodeCards[cardIndex], content: change.content, problems };
+              (window as any).UiContext.nodeCardsMap = { ...cardNodeCardsMap };
             }
           }
+        }
+      }
+
+      // 仅题目发生变更但内容未变更的卡片：单独提交一次（不处理临时卡片）
+      if (hasProblemChanges) {
+        const nodeCardsMapForProblems = (window as any).UiContext?.nodeCardsMap || {};
+        // 已经通过内容变更提交过的 cardId 集合
+        const contentChangedCardIds = new Set<string>();
+        for (const change of allChanges.values()) {
+          if (change.file.type === 'card' && change.file.cardId) {
+            contentChangedCardIds.add(String(change.file.cardId));
+          }
+        }
+
+        for (const problemCardId of Array.from(pendingProblemCardIds)) {
+          // 新建临时卡片的题目会在创建时一起提交，这里跳过 temp-card
+          if (String(problemCardId).startsWith('temp-card-')) continue;
+          // 如果已经在内容更新里提交过，就不用再提交一次
+          if (contentChangedCardIds.has(String(problemCardId))) continue;
+
+          // 在 nodeCardsMap 里找到这张卡片及其 nodeId 和 problems
+          let foundNodeId: string | null = null;
+          let foundCard: Card | null = null;
+          for (const nodeId in nodeCardsMapForProblems) {
+            const cards: Card[] = nodeCardsMapForProblems[nodeId] || [];
+            const card = cards.find(c => c.docId === problemCardId);
+            if (card) {
+              foundNodeId = nodeId;
+              foundCard = card;
+              break;
+            }
+          }
+
+          if (!foundNodeId || !foundCard) {
+            console.warn('Problem change: card not found in nodeCardsMap', problemCardId);
+            continue;
+          }
+
+          // 仅更新题目，使用全局 card 更新接口
+          await request.post(`/d/${domainId}/mindmap/card/${problemCardId}`, {
+            operation: 'update',
+            nodeId: foundNodeId,
+            problems: foundCard.problems || [],
+          });
         }
       }
       
@@ -616,6 +799,10 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             }
             
             if (foundCard && foundNodeId) {
+              // 临时卡片（尚未真正创建），不调用后端更新接口，拖动顺序将在创建后再通过真实 ID 进行保存
+              if (String(cardId).startsWith('temp-card-')) {
+                continue;
+              }
               // 使用找到的 nodeId（nodeCardsMap 的 key）和 card 的 order
               await request.post(`/d/${domainId}/mindmap/card/${cardId}`, {
                 operation: 'update',
@@ -630,6 +817,8 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
               // 保存所有卡片的 order（按当前 order 值保存，不重新计算）
               // 这样可以保持用户拖动时指定的位置
               for (const card of nodeCards) {
+                // 跳过临时卡片
+                if (String(card.docId).startsWith('temp-card-')) continue;
                 if (card.order !== undefined && card.order !== null) {
                   // 只更新那些 order 确实需要保存的卡片
                   // 这里我们保存所有卡片的当前 order，因为它们可能都在拖动操作中被修改了
@@ -659,6 +848,10 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
               text: rename.newName,
             });
           } else if (rename.file.type === 'card') {
+            // 临时卡片的重命名只在前端保存，不调用后端
+            if (!rename.file.cardId || String(rename.file.cardId).startsWith('temp-card-')) {
+              continue;
+            }
             // 保存卡片重命名
             await request.post(`/d/${domainId}/mindmap/card/${rename.file.cardId}`, {
               operation: 'update',
@@ -677,26 +870,56 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
         
         for (const create of creates) {
           if (create.type === 'card') {
-            // 创建新卡片
-            const response = await request.post(`/d/${domainId}/mindmap/card`, {
+            // 创建新卡片（携带本地内容和题目）
+            const createNodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+            const createNodeId = create.nodeId;
+            const createNodeCards: Card[] = createNodeCardsMap[createNodeId] || [];
+            const tempCard = createNodeCards.find((c: Card) => c.docId === create.tempId);
+
+            // 检查 allChanges 中是否有对应的 content 更改（优先使用）
+            const contentChange = allChanges.get(`card-${create.tempId}`);
+            const finalContent = contentChange?.content ?? tempCard?.content ?? '';
+            
+            // 检查 pendingRenames 中是否有对应的重命名（优先使用）
+            const renameChange = pendingRenames.get(`card-${create.tempId}`);
+            const finalTitle = renameChange?.newName ?? create.title ?? tempCard?.title ?? '新卡片';
+            const finalProblems = tempCard?.problems;
+
+            const response = await request.post(getMindMapUrl('/card', docId), {
               nodeId: create.nodeId,
-              title: create.title || '新卡片',
-              content: '',
+              title: finalTitle,
+              content: finalContent,
+              problems: finalProblems,
             });
             
             const newCardId = response.cardId;
+
+            // 为了保险，再用真实 cardId 做一次完整更新，确保标题和内容都写入
+            if (newCardId) {
+              try {
+                await request.post(`/d/${domainId}/mindmap/card/${newCardId}`, {
+                  operation: 'update',
+                  nodeId: create.nodeId,
+                  title: finalTitle,
+                  content: finalContent,
+                  problems: finalProblems,
+                });
+              } catch (e) {
+                console.warn('Failed to sync new card title/content, but card was created:', e);
+              }
+            }
             
             // 更新 nodeCardsMap，将临时 ID 替换为真实 ID
             const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-            if (nodeCardsMap[create.nodeId]) {
-              const cards = nodeCardsMap[create.nodeId];
+            if (createNodeCardsMap[create.nodeId]) {
+              const cards = createNodeCardsMap[create.nodeId];
               const tempCardIndex = cards.findIndex((c: Card) => c.docId === create.tempId);
               if (tempCardIndex >= 0) {
                 cards[tempCardIndex] = {
                   ...cards[tempCardIndex],
                   docId: newCardId,
                 };
-                (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+                (window as any).UiContext.nodeCardsMap = { ...createNodeCardsMap };
               }
             }
           } else if (create.type === 'node') {
@@ -733,7 +956,11 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
         
         for (const del of deletes) {
           if (del.type === 'card') {
-            // 删除卡片
+            // 临时卡片（尚未真正创建），只需要在前端移除，不调用后端删除接口
+            if (!del.id || String(del.id).startsWith('temp-card-')) {
+              continue;
+            }
+            // 删除已存在的卡片
             await request.post(`/d/${domainId}/mindmap/card/${del.id}`, {
               operation: 'delete',
             });
@@ -799,6 +1026,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       setPendingDeletes(new Map());
       setPendingCreates(new Map());
       setPendingDeletes(new Map());
+      setPendingProblemCardIds(new Set());
       
       // 更新原始内容引用
       if (hasContentChanges) {
@@ -3846,44 +4074,248 @@ ${mindMapText}
           </div>
         </div>
 
-        {/* 编辑器内容 */}
+        {/* 编辑器内容 + 题目区域 */}
         <div 
           id="editor-container"
-          style={{ flex: 1, padding: '0', overflow: 'hidden', position: 'relative', backgroundColor: '#fff' }}
+          style={{ flex: 1, padding: '0', overflow: 'hidden', position: 'relative', backgroundColor: '#fff', display: 'flex', flexDirection: 'column' }}
         >
-          {selectedFile && selectedFile.type === 'card' ? (
-            <div 
-              id={`editor-wrapper-${selectedFile.id}`}
-              style={{ width: '100%', height: '100%', position: 'relative' }}
+          {/* Markdown 编辑器 */}
+          <div style={{ flex: 1, minHeight: 0 }}>
+            {selectedFile && selectedFile.type === 'card' ? (
+              <div 
+                id={`editor-wrapper-${selectedFile.id}`}
+                style={{ width: '100%', height: '100%', position: 'relative' }}
+              >
+                <textarea
+                  key={selectedFile.id}
+                  ref={editorRef}
+                  defaultValue={fileContent}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    border: 'none',
+                    outline: 'none',
+                    fontFamily: 'Monaco, Menlo, "Ubuntu Mono", Consolas, "source-code-pro", monospace',
+                    fontSize: '14px',
+                    lineHeight: '1.6',
+                    resize: 'none',
+                    padding: '16px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+            ) : (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+                color: '#586069',
+                fontSize: '14px',
+              }}>
+                {selectedFile?.type === 'node' ? '节点不支持编辑，请在 EXPLORER 中重命名' : '请从左侧选择一个卡片'}
+              </div>
+            )}
+          </div>
+
+          {/* 当前卡片的本地单选题区域 */}
+          {selectedFile && selectedFile.type === 'card' && (
+            <div
+              style={{
+                borderTop: '1px solid #e1e4e8',
+                padding: '8px 12px',
+                background: '#fafbfc',
+                maxHeight: '260px',
+                overflowY: 'auto',
+              }}
             >
-              <textarea
-                key={selectedFile.id}
-                ref={editorRef}
-                defaultValue={fileContent}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  border: 'none',
-                  outline: 'none',
-                  fontFamily: 'Monaco, Menlo, "Ubuntu Mono", Consolas, "source-code-pro", monospace',
-                  fontSize: '14px',
-                  lineHeight: '1.6',
-                  resize: 'none',
-                  padding: '16px',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </div>
-          ) : (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              color: '#586069',
-              fontSize: '14px',
-            }}>
-              {selectedFile?.type === 'node' ? '节点不支持编辑，请在 EXPLORER 中重命名' : '请从左侧选择一个卡片'}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontWeight: 600, fontSize: '13px', color: '#24292e' }}>本卡片的练习题</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: '12px', color: '#6a737d' }}>支持本地单选题</span>
+                  <button
+                    onClick={() => setShowProblemForm(true)}
+                    style={{
+                      padding: '2px 8px',
+                      fontSize: '12px',
+                      borderRadius: '3px',
+                      border: '1px solid #0366d6',
+                      background: '#0366d6',
+                      color: '#fff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    新建题目
+                  </button>
+                </div>
+              </div>
+
+              {/* 已有题目列表 */}
+              {(() => {
+                const card = getSelectedCard();
+                const problems = card?.problems || [];
+                if (!problems.length) {
+                  return (
+                    <div style={{ fontSize: '12px', color: '#6a737d', marginBottom: '8px' }}>
+                      还没有为本卡片创建题目，可以点击右上角「新建题目」按钮来添加。
+                    </div>
+                  );
+                }
+                return (
+                  <div style={{ marginBottom: '8px' }}>
+                    {problems.map((p, index) => (
+                      <div
+                        key={p.pid}
+                        style={{
+                          border: '1px solid #e1e4e8',
+                          borderRadius: '4px',
+                          padding: '6px 8px',
+                          marginBottom: '6px',
+                          background: '#fff',
+                        }}
+                      >
+                        <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>
+                          Q{index + 1}（单选）：{p.stem}
+                        </div>
+                        <ul style={{ paddingLeft: '20px', margin: 0, fontSize: '12px' }}>
+                          {p.options.map((opt, oi) => (
+                            <li
+                              key={oi}
+                              style={{
+                                color: oi === p.answer ? '#22863a' : '#24292e',
+                                fontWeight: oi === p.answer ? 600 : 400,
+                              }}
+                            >
+                              {String.fromCharCode(65 + oi)}. {opt}
+                              {oi === p.answer && <span style={{ marginLeft: 4 }}>(正确)</span>}
+                            </li>
+                          ))}
+                        </ul>
+                        {p.analysis && (
+                          <div style={{ marginTop: '4px', fontSize: '12px', color: '#6a737d' }}>
+                            解析：{p.analysis}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* 新建单选题表单（默认收起，点击“新建题目”后显示） */}
+              {showProblemForm && (
+                <div
+                  style={{
+                    borderTop: '1px dashed #e1e4e8',
+                    paddingTop: '8px',
+                    marginTop: '4px',
+                  }}
+                >
+                  <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>生成新的单选题</div>
+                  <div style={{ marginBottom: '4px' }}>
+                    <textarea
+                      value={problemStem}
+                      onChange={e => setProblemStem(e.target.value)}
+                      placeholder="题干（例如：这段卡片主要讲了什么？）"
+                      style={{
+                        width: '100%',
+                        minHeight: '40px',
+                        resize: 'vertical',
+                        fontSize: '12px',
+                        padding: '4px 6px',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '4px' }}>
+                    {problemOptions.map((opt, index) => (
+                      <input
+                        key={index}
+                        value={opt}
+                        onChange={e => {
+                          const next = [...problemOptions];
+                          next[index] = e.target.value;
+                          setProblemOptions(next);
+                        }}
+                        placeholder={`选项 ${String.fromCharCode(65 + index)}`}
+                        style={{
+                          fontSize: '12px',
+                          padding: '3px 6px',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px', fontSize: '12px' }}>
+                    <span style={{ marginRight: 4 }}>正确答案：</span>
+                    {problemOptions.map((_, index) => (
+                      <label key={index} style={{ marginRight: 6, cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name="problem-answer"
+                          checked={problemAnswer === index}
+                          onChange={() => setProblemAnswer(index)}
+                          style={{ marginRight: 2 }}
+                        />
+                        {String.fromCharCode(65 + index)}
+                      </label>
+                    ))}
+                  </div>
+                  <div style={{ marginBottom: '4px' }}>
+                    <textarea
+                      value={problemAnalysis}
+                      onChange={e => setProblemAnalysis(e.target.value)}
+                      placeholder="解析（可选）"
+                      style={{
+                        width: '100%',
+                        minHeight: '32px',
+                        resize: 'vertical',
+                        fontSize: '12px',
+                        padding: '4px 6px',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    <button
+                      onClick={() => {
+                        setShowProblemForm(false);
+                        setProblemStem('');
+                        setProblemOptions(['', '', '', '']);
+                        setProblemAnswer(0);
+                        setProblemAnalysis('');
+                      }}
+                      disabled={isSavingProblem}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5da',
+                        background: '#fff',
+                        color: '#24292e',
+                        fontSize: '12px',
+                        cursor: isSavingProblem ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleCreateSingleProblem}
+                      disabled={isSavingProblem}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '4px',
+                        border: '1px solid #0366d6',
+                        background: isSavingProblem ? '#c0dfff' : '#0366d6',
+                        color: '#fff',
+                        fontSize: '12px',
+                        cursor: isSavingProblem ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {isSavingProblem ? '生成中...' : '生成单选题'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
