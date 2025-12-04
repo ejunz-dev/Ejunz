@@ -34,6 +34,7 @@ interface MindMapDoc {
   nodes: MindMapNode[];
   edges: MindMapEdge[];
   currentBranch?: string;
+  files?: Array<{ _id: string; name: string; size: number; etag?: string; lastModified?: Date | string }>;
 }
 
 interface Card {
@@ -130,6 +131,17 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
   const resizeStartWidthRef = useRef<number>(300);
   const executeAIOperationsRef = useRef<((operations: any[]) => Promise<{ success: boolean; errors: string[] }>) | null>(null);
   const chatWebSocketRef = useRef<any>(null); // WebSocket 连接
+  const [explorerMode, setExplorerMode] = useState<'tree' | 'files'>('tree'); // 文件树模式或文件模式
+  const [files, setFiles] = useState<Array<{ _id: string; name: string; size: number; etag?: string; lastModified?: Date | string }>>(initialData.files || []);
+  const [selectedFileForPreview, setSelectedFileForPreview] = useState<string | null>(null);
+  
+  // 当 mindMap.files 变化时更新 files 状态
+  useEffect(() => {
+    if (mindMap.files) {
+      setFiles(mindMap.files);
+    }
+  }, [mindMap.files]);
+  
   // 默认展开所有节点
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
     const initialExpanded = new Set<string>();
@@ -3180,11 +3192,47 @@ ${mindMapText}
           fontWeight: '600',
           color: '#586069',
           backgroundColor: '#fff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
         }}>
-          EXPLORER
+          <span>EXPLORER</span>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            <button
+              onClick={() => setExplorerMode('tree')}
+              style={{
+                padding: '2px 8px',
+                fontSize: '11px',
+                border: '1px solid #d1d5da',
+                borderRadius: '3px',
+                backgroundColor: explorerMode === 'tree' ? '#0366d6' : '#fff',
+                color: explorerMode === 'tree' ? '#fff' : '#586069',
+                cursor: 'pointer',
+              }}
+              title="树形视图"
+            >
+              树形
+            </button>
+            <button
+              onClick={() => setExplorerMode('files')}
+              style={{
+                padding: '2px 8px',
+                fontSize: '11px',
+                border: '1px solid #d1d5da',
+                borderRadius: '3px',
+                backgroundColor: explorerMode === 'files' ? '#0366d6' : '#fff',
+                color: explorerMode === 'files' ? '#fff' : '#586069',
+                cursor: 'pointer',
+              }}
+              title="文件视图"
+            >
+              文件
+            </button>
+          </div>
         </div>
         <div style={{ padding: '8px 0' }}>
-          {fileTree.map((file) => {
+          {explorerMode === 'tree' ? (
+            fileTree.map((file) => {
             const isSelected = selectedFile?.id === file.id;
             const isDragOver = dragOverFile?.id === file.id;
             const isDragged = draggedFile?.id === file.id;
@@ -3392,7 +3440,116 @@ ${mindMapText}
               )}
             </div>
             );
-          })}
+          })
+          ) : (
+            // 文件模式
+            <div style={{ padding: '8px' }}>
+              {/* 跳转到文件管理页面的按钮 */}
+              <div style={{ marginBottom: '8px' }}>
+                <button
+                  onClick={() => {
+                    const domainId = (window as any).UiContext?.domainId || 'system';
+                    const branch = mindMap.currentBranch || 'main';
+                    const filesUrl = docId 
+                      ? `/d/${domainId}/mindmap/${docId}/files${branch ? `?branch=${branch}` : ''}`
+                      : `/d/${domainId}/mindmap/mmid/${mindMap.mmid}/files${branch ? `?branch=${branch}` : ''}`;
+                    window.open(filesUrl, '_blank');
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    fontSize: '12px',
+                    border: '1px solid #d1d5da',
+                    borderRadius: '3px',
+                    backgroundColor: '#fff',
+                    color: '#586069',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#f3f4f6';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#fff';
+                  }}
+                >
+                  <span>📁</span>
+                  <span>管理文件</span>
+                </button>
+              </div>
+              
+              {/* 文件列表 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                {files.length === 0 ? (
+                  <div style={{
+                    padding: '20px',
+                    textAlign: 'center',
+                    color: '#999',
+                    fontSize: '12px',
+                  }}>
+                    暂无文件
+                  </div>
+                ) : (
+                  files.map((file) => (
+                    <div
+                      key={file._id}
+                      onClick={() => {
+                        const domainId = (window as any).UiContext?.domainId || 'system';
+                        const branch = mindMap.currentBranch || 'main';
+                        let url = docId 
+                          ? `/d/${domainId}/mindmap/${docId}/file/${encodeURIComponent(file.name)}`
+                          : `/d/${domainId}/mindmap/mmid/${mindMap.mmid}/file/${encodeURIComponent(file.name)}`;
+                        // 添加 noDisposition=1 参数以启用预览
+                        url = url.includes('?') ? `${url}&noDisposition=1` : `${url}?noDisposition=1`;
+                        window.open(url, '_blank');
+                        setSelectedFileForPreview(file.name);
+                      }}
+                      style={{
+                        padding: '6px 8px',
+                        fontSize: '12px',
+                        color: selectedFileForPreview === file.name ? '#fff' : '#24292e',
+                        backgroundColor: selectedFileForPreview === file.name ? '#0366d6' : 'transparent',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        borderRadius: '3px',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (selectedFileForPreview !== file.name) {
+                          e.currentTarget.style.backgroundColor = '#f3f4f6';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (selectedFileForPreview !== file.name) {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                        }
+                      }}
+                    >
+                      <span style={{ fontSize: '14px' }}>📄</span>
+                      <span style={{ 
+                        flex: 1,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {file.name}
+                      </span>
+                      <span style={{ 
+                        fontSize: '11px',
+                        color: selectedFileForPreview === file.name ? 'rgba(255,255,255,0.8)' : '#999',
+                      }}>
+                        {(file.size / 1024).toFixed(1)} KB
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
