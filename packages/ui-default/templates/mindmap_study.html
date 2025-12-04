@@ -1,5 +1,18 @@
 {% extends "layout/basic.html" %}
 {% block content %}
+<script>
+  {{ set(UiContext, 'currentBranch', currentBranch) }}
+  {{ set(UiContext, 'mindMap', {
+    domainId: mindMap.domainId,
+    docId: mindMap.docId,
+    mmid: mindMap.mmid,
+    currentBranch: currentBranch,
+    nodes: mindMap.nodes or [],
+    edges: mindMap.edges or [],
+    title: mindMap.title
+  }) }}
+  {{ set(UiContext, 'units', units or []) }}
+</script>
 <div class="row">
   <div class="large-12 columns">
     <div class="section">
