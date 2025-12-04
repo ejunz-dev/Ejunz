@@ -664,6 +664,20 @@ class MindMapNodeHandler extends Handler {
     @param('y', Types.Float, true)
     @param('parentId', Types.String, true)
     @param('siblingId', Types.String, true)
+    // 兼容通用 POST 调用：POST /mindmap/:docId/node
+    // 直接转发到 postAdd，避免 MethodNotAllowedError
+    async post(
+        domainId: string,
+        docId: ObjectId,
+        text: string,
+        x?: number,
+        y?: number,
+        parentId?: string,
+        siblingId?: string,
+    ) {
+        return this.postAdd(domainId, docId, text, x, y, parentId, siblingId);
+    }
+
     async postAdd(
         domainId: string,
         docId: ObjectId,
@@ -1664,13 +1678,19 @@ class MindMapCardHandler extends Handler {
             return;
         }
         
-        // 创建新卡片需要这些参数
-        if (!nodeId || !title) {
-            throw new ValidationError('nodeId and title are required for creating a card');
-        }
-        
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
+        // 优先从 body 中读取字段，兼容 JSON 提交
+        const body: any = this.request?.body || {};
+        const finalNodeId: string | undefined = body.nodeId || nodeId;
+        const finalTitle: string | undefined = body.title || title;
+        const finalContent: string = body.content !== undefined ? body.content : content || '';
+
+        // 创建新卡片需要 nodeId 和 title
+        if (!finalNodeId || !finalTitle) {
+            throw new ValidationError('nodeId and title are required for creating a card');
+        }
+
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
             : await MindMapModel.getByMmid(domainId, mmid!);
@@ -1682,11 +1702,12 @@ class MindMapCardHandler extends Handler {
         const cardDocId = await CardModel.create(
             domainId,
             mindMap.mmid,
-            nodeId,
+            finalNodeId,
             this.user._id,
-            title,
-            content,
-            this.request.ip
+            finalTitle,
+            finalContent,
+            this.request.ip,
+            body?.problems,
         );
         
         this.response.body = { cardId: cardDocId.toString() };
@@ -1724,7 +1745,7 @@ class MindMapCardHandler extends Handler {
         _operation?: string,
         cidParam?: number,
         mmidParam?: number,
-        docIdParam?: ObjectId
+        docIdParam?: ObjectId,
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         await this.handleCardMutation('update', domainId, {
@@ -1862,6 +1883,11 @@ class MindMapCardHandler extends Handler {
         if (content !== undefined) updates.content = content;
         if (order !== undefined) updates.order = order;
         if (nodeId !== undefined) updates.nodeId = nodeId; // 支持更新 nodeId
+        // 从请求体中读取 problems（如果有），用于更新卡片练习题
+        const body: any = (this as any).request?.body || {};
+        if (body && body.problems !== undefined) {
+            updates.problems = body.problems;
+        }
 
         await CardModel.update(domainId, targetCard.docId, updates);
         this.response.body = { success: true };
@@ -2117,10 +2143,9 @@ class MindMapCardEditHandler extends Handler {
     @param('mmid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
     @param('branch', Types.String, true)
-    @post('title', Types.String, true)
+    // 创建/更新时仅要求 title 存在，其它字段从表单 body 中按需读取
+    @post('title', Types.String)
     @post('content', Types.String, true)
-    @post('operation', Types.String, true)
-    @post('cardId', Types.ObjectId, true)
     async post(
         domainId: string,
         docId: ObjectId,
@@ -2202,6 +2227,7 @@ class MindMapCardEditHandler extends Handler {
     @param('nodeId', Types.String)
     @route('cardId', Types.ObjectId, true)
     @param('branch', Types.String, true)
+    // 更新时 title / content / operation 都是从表单 body 中按需读取，允许为空
     @post('title', Types.String, true)
     @post('content', Types.String, true)
     @post('operation', Types.String, true)
