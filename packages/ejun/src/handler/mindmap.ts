@@ -286,10 +286,107 @@ class MindMapStudyHandler extends Handler {
 
     @param('docId', Types.ObjectId, true)
     @param('mmid', Types.PositiveInt, true)
-    async get(domainId: string, docId: ObjectId, mmid: number) {
+    @param('branch', Types.String, true)
+    async get(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
+        const currentBranch = branch || (this.mindMap as any)?.currentBranch || 'main';
+        const branchData = getBranchData(this.mindMap!, currentBranch);
+        
+        // 找到根节点（没有父边的节点）
+        const rootNodes = branchData.nodes.filter(node => 
+            !branchData.edges.some(edge => edge.target === node.id)
+        );
+
+        const units: Array<{ 
+            node: MindMapNode; 
+            problemCount: number;
+            problems: Array<{
+                pid: string;
+                type: 'single';
+                stem: string;
+                options: string[];
+                answer: number;
+                analysis?: string;
+                cardId: string;
+                cardTitle: string;
+                cardUrl: string;
+            }>;
+        }> = [];
+
+        if (rootNodes.length > 0) {
+            // 获取根节点的第一个子节点
+            const rootNode = rootNodes[0];
+            const childEdges = branchData.edges.filter(e => e.source === rootNode.id);
+            
+            if (childEdges.length > 0) {
+                // 获取第一个子节点
+                const firstChildNode = branchData.nodes.find(n => n.id === childEdges[0].target);
+                if (firstChildNode) {
+                    // 获取该节点下的所有卡片
+                    try {
+                        const cards = await CardModel.getByNodeId(domainId, this.mindMap!.mmid, firstChildNode.id);
+                        
+                        // 收集所有 problems
+                        const allProblems: Array<{
+                            pid: string;
+                            type: 'single';
+                            stem: string;
+                            options: string[];
+                            answer: number;
+                            analysis?: string;
+                            cardId: string;
+                            cardTitle: string;
+                            cardUrl: string;
+                        }> = [];
+                        
+                        if (cards && cards.length > 0) {
+                            const docId = this.mindMap!.docId;
+                            const mmid = this.mindMap!.mmid;
+                            
+                            for (const card of cards) {
+                                if (card.problems && card.problems.length > 0) {
+                                    // 构建卡片 URL
+                                    const cardUrl = docId
+                                        ? `/d/${domainId}/mindmap/${docId}/branch/${currentBranch}/node/${firstChildNode.id}/cards?cardId=${card.docId}`
+                                        : `/d/${domainId}/mindmap/mmid/${mmid}/branch/${currentBranch}/node/${firstChildNode.id}/cards?cardId=${card.docId}`;
+                                    
+                                    for (const problem of card.problems) {
+                                        allProblems.push({
+                                            ...problem,
+                                            cardId: card.docId.toString(),
+                                            cardTitle: card.title,
+                                            cardUrl,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        
+                        units.push({
+                            node: firstChildNode,
+                            problemCount: allProblems.length,
+                            problems: allProblems,
+                        });
+                    } catch (err) {
+                        console.error(`Failed to get cards for node ${firstChildNode.id}:`, err);
+                        units.push({
+                            node: firstChildNode,
+                            problemCount: 0,
+                            problems: [],
+                        });
+                    }
+                }
+            }
+        }
+
         this.response.template = 'mindmap_study.html';
         this.response.body = {
-            mindMap: this.mindMap,
+            mindMap: {
+                ...this.mindMap,
+                nodes: branchData.nodes,
+                edges: branchData.edges,
+                currentBranch,
+            },
+            units,
         };
     }
 }

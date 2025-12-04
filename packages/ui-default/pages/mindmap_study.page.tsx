@@ -405,15 +405,32 @@ const StudyCard = ({
   );
 };
 
+interface Problem {
+  pid: string;
+  type: 'single';
+  stem: string;
+  options: string[];
+  answer: number;
+  analysis?: string;
+  cardId: string;
+  cardTitle: string;
+  cardUrl: string;
+}
+
+interface Unit {
+  node: MindMapNode;
+  problemCount: number;
+  problems: Problem[];
+}
+
 function MindMapStudy() {
   const [mindMap, setMindMap] = useState<MindMapDoc | null>(null);
   const [loading, setLoading] = useState(true);
-  const [studyMode, setStudyMode] = useState<'breadth' | 'depth'>('breadth');
-  const [selectedLayer, setSelectedLayer] = useState<number | null>(null);
-  const [currentCardIndex, setCurrentCardIndex] = useState(0);
-  const [showChildren, setShowChildren] = useState(false);
-  // 深度模式：选中的顶层子节点
-  const [selectedTopLevelNode, setSelectedTopLevelNode] = useState<MindMapNode | null>(null);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [selectedUnitNodeId, setSelectedUnitNodeId] = useState<string | null>(null);
+  const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
+  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+  const [showAnswer, setShowAnswer] = useState(false);
 
   // 从 URL 获取 docId
   const docId = useMemo(() => {
@@ -425,256 +442,72 @@ function MindMapStudy() {
     return '';
   }, []);
 
-  // 加载思维导图数据
+  // 从 UiContext 加载思维导图数据和 unit 列表
   useEffect(() => {
-    const loadMindMap = async () => {
-      if (!docId) {
-        Notification.error('思维导图ID未找到');
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const domainId = (window as any).UiContext?.domainId || 'system';
-        const response = await request.get(`/d/${domainId}/mindmap/${docId}/data`);
-        setMindMap(response);
-      } catch (error: any) {
-        Notification.error('加载思维导图失败: ' + (error.message || '未知错误'));
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadMindMap();
-  }, [docId]);
-
-  // 按层组织节点（广度优先，跳过根节点，从根节点的子节点开始作为第0层）
-  // 每一层只包含有子节点的节点（用于刷题）
-  const nodesByLayer = useMemo(() => {
-    if (!mindMap) return [];
-    
-    const layers: { layer: number; nodes: MindMapNode[] }[] = [];
-    const visited = new Set<string>();
-    const nodeMap = new Map<string, MindMapNode>();
-    
-    mindMap.nodes.forEach(node => {
-      nodeMap.set(node.id, node);
-    });
-
-    // 找到根节点（没有父边的节点）
-    const rootNodes = mindMap.nodes.filter(node => 
-      !mindMap.edges.some(edge => edge.target === node.id)
-    );
-
-    if (rootNodes.length === 0) return layers;
-
-    // 从根节点的子节点开始，作为第0层
-    const queue: { nodeId: string; layer: number }[] = [];
-    rootNodes.forEach(root => {
-      // 不添加根节点，直接添加根节点的子节点
-      const childEdges = mindMap.edges.filter(e => e.source === root.id);
-      for (const edge of childEdges) {
-        if (!visited.has(edge.target)) {
-          visited.add(edge.target);
-          queue.push({ nodeId: edge.target, layer: 0 });
-        }
-      }
-    });
-
-    while (queue.length > 0) {
-      const { nodeId, layer } = queue.shift()!;
-      const node = nodeMap.get(nodeId);
-      if (!node) continue;
-
-      // 检查该节点是否有子节点
-      const childEdges = mindMap.edges.filter(e => e.source === nodeId);
-      const hasChildren = childEdges.length > 0;
-
-      // 只有有子节点的节点才添加到层中（用于刷题）
-      if (hasChildren) {
-        // 确保层数组有足够的空间
-        while (layers.length <= layer) {
-          layers.push({ layer: layers.length, nodes: [] });
-        }
-        layers[layer].nodes.push(node);
-      }
-
-      // 添加子节点到队列（无论是否有子节点，都要继续遍历）
-      for (const edge of childEdges) {
-        if (!visited.has(edge.target)) {
-          visited.add(edge.target);
-          queue.push({ nodeId: edge.target, layer: layer + 1 });
-        }
-      }
+    const uiContext = (window as any).UiContext;
+    if (!uiContext) {
+      Notification.error('UiContext 未找到');
+      setLoading(false);
+      return;
     }
 
-    return layers;
-  }, [mindMap]);
+    try {
+      // 从 UiContext 获取数据
+      const mindMapData = uiContext.mindMap;
+      const unitsData = uiContext.units || [];
 
-  // 获取当前层的卡片列表（每个有子节点的节点生成一张卡片）
-  const currentLayerCards = useMemo(() => {
-    if (selectedLayer === null || selectedLayer >= nodesByLayer.length) return [];
-    const layerNodes = nodesByLayer[selectedLayer].nodes;
-    return layerNodes.map(node => {
-      const childEdges = mindMap?.edges.filter(e => e.source === node.id) || [];
-      const children = childEdges.map(e => {
-        const childNode = mindMap?.nodes.find(n => n.id === e.target);
-        return childNode || null;
-      }).filter(Boolean) as MindMapNode[];
-
-      return {
-        parent: node,
-        children,
-      };
-    });
-  }, [selectedLayer, nodesByLayer, mindMap]);
-
-  // 获取根节点的顶层子节点（用于深度模式）
-  const topLevelNodes = useMemo(() => {
-    if (!mindMap) return [];
-    const rootNodes = mindMap.nodes.filter(node => 
-      !mindMap.edges.some(edge => edge.target === node.id)
-    );
-    if (rootNodes.length === 0) return [];
-    
-    // 获取根节点的所有直接子节点
-    const topLevelNodes: MindMapNode[] = [];
-    rootNodes.forEach(root => {
-      const childEdges = mindMap.edges.filter(e => e.source === root.id);
-      childEdges.forEach(edge => {
-        const childNode = mindMap.nodes.find(n => n.id === edge.target);
-        if (childNode) {
-          topLevelNodes.push(childNode);
-        }
-      });
-    });
-    
-    return topLevelNodes;
-  }, [mindMap]);
-
-  // 深度模式：按层组织选中节点的子树（广度优先）
-  const depthNodesByLayer = useMemo(() => {
-    if (!selectedTopLevelNode || !mindMap) return [];
-    
-    const layers: { layer: number; nodes: MindMapNode[] }[] = [];
-    const visited = new Set<string>();
-    const nodeMap = new Map<string, MindMapNode>();
-    
-    mindMap.nodes.forEach(node => {
-      nodeMap.set(node.id, node);
-    });
-
-    // 从选中的顶层节点开始，作为第0层
-    const queue: { nodeId: string; layer: number }[] = [];
-    queue.push({ nodeId: selectedTopLevelNode.id, layer: 0 });
-    visited.add(selectedTopLevelNode.id);
-
-    while (queue.length > 0) {
-      const { nodeId, layer } = queue.shift()!;
-      const node = nodeMap.get(nodeId);
-      if (!node) continue;
-
-      // 检查该节点是否有子节点
-      const childEdges = mindMap.edges.filter(e => e.source === nodeId);
-      const hasChildren = childEdges.length > 0;
-
-      // 只有有子节点的节点才添加到层中（用于刷题）
-      if (hasChildren) {
-        // 确保层数组有足够的空间
-        while (layers.length <= layer) {
-          layers.push({ layer: layers.length, nodes: [] });
-        }
-        layers[layer].nodes.push(node);
+      if (mindMapData) {
+        setMindMap(mindMapData);
+        setUnits(unitsData);
+      } else {
+        Notification.error('思维导图数据未找到');
       }
-
-      // 添加子节点到队列
-      for (const edge of childEdges) {
-        if (!visited.has(edge.target)) {
-          visited.add(edge.target);
-          queue.push({ nodeId: edge.target, layer: layer + 1 });
-        }
-      }
+    } catch (error: any) {
+      Notification.error('加载思维导图失败: ' + (error.message || '未知错误'));
+    } finally {
+      setLoading(false);
     }
+  }, []);
 
-    return layers;
-  }, [selectedTopLevelNode, mindMap]);
 
-  // 深度模式：获取所有层的卡片列表（按层顺序合并）
-  const depthAllCards = useMemo(() => {
-    if (!selectedTopLevelNode || depthNodesByLayer.length === 0) return [];
-    
-    const allCards: Array<{
-      parent: MindMapNode;
-      children: MindMapNode[];
-      layer: number;
-      layerIndex: number;
-    }> = [];
-    
-    depthNodesByLayer.forEach((layerData, layerIndex) => {
-      layerData.nodes.forEach(node => {
-        const childEdges = mindMap?.edges.filter(e => e.source === node.id) || [];
-        const children = childEdges.map(e => {
-          const childNode = mindMap?.nodes.find(n => n.id === e.target);
-          return childNode || null;
-        }).filter(Boolean) as MindMapNode[];
+  // 点击选项立即提交并显示答案
+  const handleOptionClick = useCallback((problemIndex: number, optionIndex: number) => {
+    setSelectedAnswer(optionIndex);
+    setShowAnswer(true);
+  }, []);
 
-        allCards.push({
-          parent: node,
-          children,
-          layer: layerData.layer,
-          layerIndex,
-        });
-      });
-    });
-    
-    return allCards;
-  }, [selectedTopLevelNode, depthNodesByLayer, mindMap]);
-
-  // 切换显示/隐藏子节点
-  const handleToggleShow = useCallback(() => {
-    setShowChildren(!showChildren);
-  }, [showChildren]);
-
-  // 下一个卡片（支持广度模式和深度模式）
-  const handleNextCard = useCallback(() => {
-    const totalCards = studyMode === 'breadth' 
-      ? currentLayerCards.length 
-      : depthAllCards.length;
-    if (currentCardIndex < totalCards - 1) {
-      setCurrentCardIndex(currentCardIndex + 1);
-      setShowChildren(false);
+  // 下一个题目
+  const handleNextProblem = useCallback(() => {
+    const selectedUnit = units.find(u => u.node.id === selectedUnitNodeId);
+    if (selectedUnit && currentProblemIndex < selectedUnit.problems.length - 1) {
+      setCurrentProblemIndex(currentProblemIndex + 1);
+      setSelectedAnswer(null);
+      setShowAnswer(false);
     }
-  }, [currentCardIndex, studyMode, currentLayerCards.length, depthAllCards.length]);
+  }, [currentProblemIndex, units, selectedUnitNodeId]);
 
-  // 上一个卡片
-  const handlePrevCard = useCallback(() => {
-    if (currentCardIndex > 0) {
-      setCurrentCardIndex(currentCardIndex - 1);
-      setShowChildren(false);
+  // 上一个题目
+  const handlePrevProblem = useCallback(() => {
+    if (currentProblemIndex > 0) {
+      setCurrentProblemIndex(currentProblemIndex - 1);
+      setSelectedAnswer(null);
+      setShowAnswer(false);
     }
-  }, [currentCardIndex]);
+  }, [currentProblemIndex]);
 
-  // 选择层时重置卡片索引
+  // 点击 unit 进入刷题页面
+  const handleUnitClick = useCallback((unit: Unit) => {
+    setSelectedUnitNodeId(unit.node.id);
+    setCurrentProblemIndex(0);
+    setSelectedAnswer(null);
+    setShowAnswer(false);
+  }, []);
+
+  // 当题目索引变化时，立即清除选择状态
   useEffect(() => {
-    setCurrentCardIndex(0);
-    setShowChildren(false);
-  }, [selectedLayer]);
-
-  // 切换顶层节点时重置深度模式状态
-  useEffect(() => {
-    if (studyMode === 'depth' && selectedTopLevelNode) {
-      setCurrentCardIndex(0);
-      setShowChildren(false);
-    }
-  }, [selectedTopLevelNode, studyMode]);
-
-  // 切换模式时重置状态
-  useEffect(() => {
-    setSelectedLayer(null);
-    setSelectedTopLevelNode(null);
-    setCurrentCardIndex(0);
-    setShowChildren(false);
-  }, [studyMode]);
+    setSelectedAnswer(null);
+    setShowAnswer(false);
+  }, [currentProblemIndex]);
 
   if (loading) {
     return (
@@ -692,10 +525,11 @@ function MindMapStudy() {
     );
   }
 
-  // 深度模式：如果选择了顶层子节点，显示卡片刷题界面
-  if (studyMode === 'depth' && selectedTopLevelNode) {
-    const currentCard = depthAllCards[currentCardIndex];
-    const totalLayers = depthNodesByLayer.length;
+  // 如果选择了 unit，显示刷题界面
+  if (selectedUnitNodeId) {
+    const selectedUnit = units.find(u => u.node.id === selectedUnitNodeId);
+    const currentProblem = selectedUnit?.problems[currentProblemIndex];
+    
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
         {/* 顶部工具栏 */}
@@ -708,7 +542,12 @@ function MindMapStudy() {
           gap: '10px',
         }}>
           <button
-            onClick={() => setSelectedTopLevelNode(null)}
+            onClick={() => {
+              setSelectedUnitNodeId(null);
+              setCurrentProblemIndex(0);
+              setSelectedAnswer(null);
+              setShowAnswer(false);
+            }}
             style={{
               padding: '6px 12px',
               border: '1px solid #ddd',
@@ -718,31 +557,186 @@ function MindMapStudy() {
               cursor: 'pointer',
             }}
           >
-            返回顶层选择
+            返回 unit 列表
           </button>
           <div style={{ marginLeft: 'auto', fontSize: '14px', color: '#666' }}>
-            {mindMap.title} - {selectedTopLevelNode.text}
+            {mindMap.title} - {selectedUnit?.node.text || '刷题'}
           </div>
         </div>
 
-        {/* 卡片刷题区域 */}
-        <div style={{ flex: 1, padding: '20px', backgroundColor: '#f5f5f5' }}>
-          {currentCard ? (
-            <StudyCard
-              parent={currentCard.parent}
-              children={currentCard.children}
-              showChildren={showChildren}
-              onToggleShow={handleToggleShow}
-              cardIndex={currentCardIndex}
-              totalCards={depthAllCards.length}
-              onNext={handleNextCard}
-              onPrev={handlePrevCard}
-              currentLayer={currentCard.layerIndex + 1}
-              totalLayers={totalLayers}
-            />
+        {/* 题目刷题区域 */}
+        <div style={{ flex: 1, padding: '20px', backgroundColor: '#f5f5f5', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'auto' }}>
+          {currentProblem ? (
+            <div style={{ width: '100%', maxWidth: '800px' }}>
+              <div style={{ marginBottom: '20px', fontSize: '14px', color: '#666', textAlign: 'center' }}>
+                {currentProblemIndex + 1} / {selectedUnit?.problems.length || 0}
+              </div>
+              
+              <div style={{
+                width: '100%',
+                minHeight: '400px',
+                border: '2px solid #2196F3',
+                borderRadius: '12px',
+                padding: '30px',
+                background: '#fff',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+              }}>
+                {/* 题干 */}
+                <div style={{ fontSize: '18px', fontWeight: '600', color: '#333', marginBottom: '30px', lineHeight: '1.6' }}>
+                  {currentProblem.stem}
+                </div>
+                
+                {/* 选项 */}
+                <div style={{ marginBottom: '30px' }}>
+                  {currentProblem.options.map((option, index) => {
+                    const isSelected = selectedAnswer === index;
+                    const isCorrect = index === currentProblem.answer;
+                    
+                    let optionStyle: React.CSSProperties = {
+                      padding: '15px 20px',
+                      marginBottom: '12px',
+                      borderRadius: '8px',
+                      border: '2px solid #ddd',
+                      background: '#fff',
+                      cursor: showAnswer ? 'default' : 'pointer',
+                      fontSize: '16px',
+                      lineHeight: '1.6',
+                      transition: 'all 0.2s',
+                    };
+                    
+                    if (showAnswer) {
+                      if (isCorrect) {
+                        optionStyle.borderColor = '#4caf50';
+                        optionStyle.background = '#e8f5e9';
+                        optionStyle.color = '#2e7d32';
+                      } else if (isSelected && !isCorrect) {
+                        optionStyle.borderColor = '#f44336';
+                        optionStyle.background = '#ffebee';
+                        optionStyle.color = '#c62828';
+                      }
+                    } else if (isSelected) {
+                      optionStyle.borderColor = '#2196F3';
+                      optionStyle.background = '#e3f2fd';
+                    }
+                    
+                    return (
+                      <div
+                        key={`problem-${currentProblemIndex}-option-${index}`}
+                        onClick={() => !showAnswer && handleOptionClick(currentProblemIndex, index)}
+                        style={optionStyle}
+                      >
+                        <span style={{ fontWeight: '600', marginRight: '10px' }}>
+                          {String.fromCharCode(65 + index)}.
+                        </span>
+                        {option}
+                        {showAnswer && isCorrect && (
+                          <span style={{ marginLeft: '10px', color: '#4caf50', fontWeight: '600' }}>✓ 正确答案</span>
+                        )}
+                        {showAnswer && isSelected && !isCorrect && (
+                          <span style={{ marginLeft: '10px', color: '#f44336', fontWeight: '600' }}>✗ 错误</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* 显示答案和解析 */}
+                {showAnswer && (
+                  <>
+                    {/* 结果提示 */}
+                    <div style={{
+                      marginTop: '20px',
+                      padding: '15px',
+                      borderRadius: '8px',
+                      fontSize: '16px',
+                      fontWeight: '600',
+                      textAlign: 'center',
+                      background: selectedAnswer === currentProblem.answer ? '#e8f5e9' : '#ffebee',
+                      color: selectedAnswer === currentProblem.answer ? '#2e7d32' : '#c62828',
+                    }}>
+                      {selectedAnswer === currentProblem.answer ? '✓ 回答正确！' : '✗ 回答错误'}
+                    </div>
+                    
+                    {/* 解析 */}
+                    {currentProblem.analysis && (
+                      <div style={{
+                        marginTop: '20px',
+                        padding: '15px',
+                        background: '#f5f5f5',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        color: '#666',
+                        lineHeight: '1.6',
+                      }}>
+                        <div style={{ fontWeight: '600', marginBottom: '8px', color: '#333' }}>解析：</div>
+                        {currentProblem.analysis}
+                      </div>
+                    )}
+                    
+                    {/* 卡片链接 */}
+                    <div style={{
+                      marginTop: '20px',
+                      padding: '15px',
+                      background: '#e3f2fd',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                    }}>
+                      <div style={{ fontWeight: '600', marginBottom: '8px', color: '#333' }}>来源卡片：</div>
+                      <a 
+                        href={currentProblem.cardUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ 
+                          color: '#2196F3', 
+                          textDecoration: 'none',
+                          fontSize: '16px',
+                          fontWeight: '500',
+                        }}
+                      >
+                        {currentProblem.cardTitle} →
+                      </a>
+                    </div>
+                  </>
+                )}
+              </div>
+              
+              {/* 控制按钮 */}
+              <div style={{ marginTop: '30px', display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                <button
+                  onClick={handlePrevProblem}
+                  disabled={currentProblemIndex === 0}
+                  style={{
+                    padding: '12px 24px',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    background: currentProblemIndex === 0 ? '#f5f5f5' : '#fff',
+                    color: currentProblemIndex === 0 ? '#999' : '#333',
+                    cursor: currentProblemIndex === 0 ? 'not-allowed' : 'pointer',
+                    fontSize: '16px',
+                  }}
+                >
+                  上一题
+                </button>
+                <button
+                  onClick={handleNextProblem}
+                  disabled={currentProblemIndex >= (selectedUnit?.problems.length || 0) - 1}
+                  style={{
+                    padding: '12px 24px',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    background: currentProblemIndex >= (selectedUnit?.problems.length || 0) - 1 ? '#f5f5f5' : '#4caf50',
+                    color: currentProblemIndex >= (selectedUnit?.problems.length || 0) - 1 ? '#999' : '#fff',
+                    cursor: currentProblemIndex >= (selectedUnit?.problems.length || 0) - 1 ? 'not-allowed' : 'pointer',
+                    fontSize: '16px',
+                  }}
+                >
+                  下一题
+                </button>
+              </div>
+            </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '16px', color: '#999' }}>
-              没有节点
+              没有题目
             </div>
           )}
         </div>
@@ -750,62 +744,7 @@ function MindMapStudy() {
     );
   }
 
-  // 广度模式：如果选择了层，显示卡片刷题界面
-  if (studyMode === 'breadth' && selectedLayer !== null) {
-    const currentCard = currentLayerCards[currentCardIndex];
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
-        {/* 顶部工具栏 */}
-        <div style={{
-          padding: '10px 20px',
-          background: '#f5f5f5',
-          borderBottom: '1px solid #ddd',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-        }}>
-          <button
-            onClick={() => setSelectedLayer(null)}
-            style={{
-              padding: '6px 12px',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              background: '#fff',
-              color: '#333',
-              cursor: 'pointer',
-            }}
-          >
-            返回层选择
-          </button>
-          <div style={{ marginLeft: 'auto', fontSize: '14px', color: '#666' }}>
-            {mindMap.title} - 第 {selectedLayer + 1} 层
-          </div>
-        </div>
-
-        {/* 卡片刷题区域 */}
-        <div style={{ flex: 1, padding: '20px', backgroundColor: '#f5f5f5' }}>
-          {currentCard ? (
-            <StudyCard
-              parent={currentCard.parent}
-              children={currentCard.children}
-              showChildren={showChildren}
-              onToggleShow={handleToggleShow}
-              cardIndex={currentCardIndex}
-              totalCards={currentLayerCards.length}
-              onNext={handleNextCard}
-              onPrev={handlePrevCard}
-            />
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '16px', color: '#999' }}>
-              该层没有节点
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // 显示层选择界面
+  // 显示 unit 列表界面
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
       {/* 顶部工具栏 */}
@@ -839,158 +778,55 @@ function MindMapStudy() {
         </div>
       </div>
 
-      {/* 模式选择 */}
-      <div style={{ padding: '20px', borderBottom: '1px solid #ddd', background: '#fff' }}>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <span style={{ fontSize: '16px', fontWeight: '600', color: '#333' }}>刷题模式：</span>
-          <button
-            onClick={() => setStudyMode('breadth')}
-            style={{
-              padding: '8px 16px',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              background: studyMode === 'breadth' ? '#2196f3' : '#fff',
-              color: studyMode === 'breadth' ? '#fff' : '#333',
-              cursor: 'pointer',
-              fontSize: '14px',
-            }}
-          >
-            广度模式
-          </button>
-          <button
-            onClick={() => setStudyMode('depth')}
-            style={{
-              padding: '8px 16px',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              background: studyMode === 'depth' ? '#2196f3' : '#fff',
-              color: studyMode === 'depth' ? '#fff' : '#333',
-              cursor: 'pointer',
-              fontSize: '14px',
-            }}
-          >
-            深度模式
-          </button>
-        </div>
-      </div>
-
-      {/* 层选择区域 */}
+      {/* Unit 列表区域 */}
       <div style={{ flex: 1, padding: '40px', overflow: 'auto', backgroundColor: '#f5f5f5' }}>
-        {studyMode === 'breadth' && (
-          <>
-            <h2 style={{ marginBottom: '30px', fontSize: '24px', fontWeight: '600', color: '#333' }}>
-              选择要刷题的层
-            </h2>
-            {nodesByLayer.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '16px' }}>
-                暂无可刷题的层
+        <h2 style={{ marginBottom: '30px', fontSize: '24px', fontWeight: '600', color: '#333' }}>
+          选择 Unit 开始刷题
+        </h2>
+        {units.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '16px' }}>
+            暂无可刷题的 Unit
+          </div>
+        ) : (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+            gap: '20px',
+          }}>
+            {units.map((unit) => (
+              <div
+                key={unit.node.id}
+                onClick={() => handleUnitClick(unit)}
+                style={{
+                  padding: '24px',
+                  border: '2px solid #2196F3',
+                  borderRadius: '12px',
+                  background: '#fff',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-4px)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+                }}
+              >
+                <div style={{ fontSize: '20px', fontWeight: '600', color: '#2196F3', marginBottom: '12px' }}>
+                  {unit.node.text || '未命名 Unit'}
+                </div>
+                <div style={{ fontSize: '16px', color: '#666', marginBottom: '8px' }}>
+                  {unit.problemCount} 道题目
+                </div>
+                <div style={{ fontSize: '14px', color: '#999', marginTop: '12px' }}>
+                  点击开始刷题 →
+                </div>
               </div>
-            ) : (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                gap: '20px',
-              }}>
-                {nodesByLayer.map((layer, index) => (
-                  <div
-                    key={index}
-                    onClick={() => setSelectedLayer(index)}
-                    style={{
-                      padding: '24px',
-                      border: '2px solid #2196F3',
-                      borderRadius: '12px',
-                      background: '#fff',
-                      cursor: 'pointer',
-                      transition: 'all 0.3s',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-4px)';
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
-                    }}
-                  >
-                    <div style={{ fontSize: '20px', fontWeight: '600', color: '#2196F3', marginBottom: '12px' }}>
-                      第 {index + 1} 层
-                    </div>
-                    <div style={{ fontSize: '16px', color: '#666', marginBottom: '8px' }}>
-                      {layer.nodes.length} 个节点
-                    </div>
-                    <div style={{ fontSize: '14px', color: '#999', marginTop: '12px' }}>
-                      点击开始刷题 →
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-
-        {studyMode === 'depth' && selectedTopLevelNode === null && (
-          <>
-            <h2 style={{ marginBottom: '30px', fontSize: '24px', fontWeight: '600', color: '#333' }}>
-              选择顶层子节点开始深度刷题
-            </h2>
-            {topLevelNodes.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '16px' }}>
-                暂无顶层子节点
-              </div>
-            ) : (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                gap: '20px',
-              }}>
-                {topLevelNodes.map((node) => {
-                  const childEdges = mindMap.edges.filter(e => e.source === node.id);
-                  const hasChildren = childEdges.length > 0;
-                  return (
-                    <div
-                      key={node.id}
-                      onClick={() => hasChildren && setSelectedTopLevelNode(node)}
-                      style={{
-                        padding: '24px',
-                        border: '2px solid #2196F3',
-                        borderRadius: '12px',
-                        background: hasChildren ? '#fff' : '#f5f5f5',
-                        cursor: hasChildren ? 'pointer' : 'not-allowed',
-                        transition: 'all 0.3s',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                        opacity: hasChildren ? 1 : 0.6,
-                      }}
-                      onMouseEnter={(e) => {
-                        if (hasChildren) {
-                          e.currentTarget.style.transform = 'translateY(-4px)';
-                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (hasChildren) {
-                          e.currentTarget.style.transform = 'translateY(0)';
-                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
-                        }
-                      }}
-                    >
-                      <div style={{ fontSize: '20px', fontWeight: '600', color: '#2196F3', marginBottom: '12px' }}>
-                        {node.text || '未命名节点'}
-                      </div>
-                      <div style={{ fontSize: '16px', color: '#666', marginBottom: '8px' }}>
-                        {hasChildren ? `${childEdges.length} 个子节点` : '无子节点'}
-                      </div>
-                      {hasChildren && (
-                        <div style={{ fontSize: '14px', color: '#999', marginTop: '12px' }}>
-                          点击开始刷题 →
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </>
+            ))}
+          </div>
         )}
       </div>
     </div>
