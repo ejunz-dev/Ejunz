@@ -879,10 +879,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             // 检查 allChanges 中是否有对应的 content 更改（优先使用）
             const contentChange = allChanges.get(`card-${create.tempId}`);
             const finalContent = contentChange?.content ?? tempCard?.content ?? '';
-            
-            // 检查 pendingRenames 中是否有对应的重命名（优先使用）
-            const renameChange = pendingRenames.get(`card-${create.tempId}`);
-            const finalTitle = renameChange?.newName ?? create.title ?? tempCard?.title ?? '新卡片';
+            const finalTitle = create.title || tempCard?.title || '新卡片';
             const finalProblems = tempCard?.problems;
 
             const response = await request.post(getMindMapUrl('/card', docId), {
