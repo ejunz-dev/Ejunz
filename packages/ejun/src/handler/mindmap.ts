@@ -756,25 +756,42 @@ class MindMapEditHandler extends Handler {
  */
 class MindMapNodeHandler extends Handler {
     @param('docId', Types.ObjectId)
-    @param('text', Types.String)
-    @param('x', Types.Float, true)
-    @param('y', Types.Float, true)
-    @param('parentId', Types.String, true)
-    @param('siblingId', Types.String, true)
-    // 兼容通用 POST 调用：POST /mindmap/:docId/node
-    // 直接转发到 postAdd，避免 MethodNotAllowedError
+    @post('text', Types.String, true)
+    @post('x', Types.Float, true)
+    @post('y', Types.Float, true)
+    @post('parentId', Types.String, true)
+    @post('siblingId', Types.String, true)
+    @post('operation', Types.String, true)
+    @param('nodeId', Types.String, true)
+    @post('branch', Types.String, true)
+    // 兼容通用 POST 调用：POST /mindmap/:docId/node 或 POST /mindmap/:docId/node/:nodeId
+    // 根据 operation 参数决定调用哪个方法
     async post(
         domainId: string,
         docId: ObjectId,
-        text: string,
+        text?: string,
         x?: number,
         y?: number,
         parentId?: string,
         siblingId?: string,
+        operation?: string,
+        nodeId?: string,
+        branch?: string,
     ) {
-        return this.postAdd(domainId, docId, text, x, y, parentId, siblingId);
+        // 如果 operation 是 'delete'，调用 postDelete
+        if (operation === 'delete' && nodeId) {
+            return this.postDelete(domainId, docId, nodeId, branch);
+        }
+        
+        // 否则，如果有 text 参数，调用 postAdd
+        if (text !== undefined) {
+            return this.postAdd(domainId, docId, text, x, y, parentId, siblingId, branch);
+        }
+        
+        throw new BadRequestError('Missing required parameters');
     }
 
+    @param('branch', Types.String, true)
     async postAdd(
         domainId: string,
         docId: ObjectId,
@@ -782,84 +799,154 @@ class MindMapNodeHandler extends Handler {
         x?: number,
         y?: number,
         parentId?: string,
-        siblingId?: string
+        siblingId?: string,
+        branch?: string
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        const mindMap = await MindMapModel.get(domainId, docId);
-        if (!mindMap) throw new NotFoundError('MindMap not found');
-        if (!this.user.own(mindMap)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
-        }
-
-        let effectiveParentId: string | undefined = parentId;
-
-        if (siblingId && !parentId) {
-            const siblingNode = mindMap.nodes.find(n => n.id === siblingId);
-            if (!siblingNode) {
-                throw new NotFoundError(`Sibling node not found: ${siblingId}`);
+        let newNodeId: string | undefined;
+        let edgeId: string | undefined;
+        let edgeSourceId: string | undefined;
+        let edgeTargetId: string | undefined;
+        
+        try {
+            const mindMap = await MindMapModel.get(domainId, docId);
+            if (!mindMap) throw new NotFoundError('MindMap not found');
+            if (!this.user.own(mindMap)) {
+                this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
             }
-            effectiveParentId = siblingNode.parentId;
-        }
 
-        const node: Omit<MindMapNode, 'id'> = {
-            text,
-            x,
-            y,
-            parentId: effectiveParentId,
-        };
+            // 从请求参数或 body 中获取分支（如果未提供）
+            const effectiveBranch = branch || (this.request.body as any)?.branch || (mindMap as any).currentBranch || (mindMap as any).branch || 'main';
+            
+            // 获取分支数据用于查找节点
+            const branchData: {
+                [branch: string]: { nodes: MindMapNode[]; edges: MindMapEdge[] };
+            } = (mindMap as any).branchData || {};
+            
+            let nodes: MindMapNode[];
+            if (branchData[effectiveBranch] && branchData[effectiveBranch].nodes) {
+                nodes = branchData[effectiveBranch].nodes;
+            } else if (effectiveBranch === 'main') {
+                nodes = mindMap.nodes || [];
+            } else {
+                nodes = [];
+            }
 
-        const newNodeId = await MindMapModel.addNode(
-            domainId,
-            docId,
-            node,
-            effectiveParentId
-        );
+            let effectiveParentId: string | undefined = parentId;
 
-        let edgeSourceId: string;
-        let edgeTargetId: string;
+            if (siblingId && !parentId) {
+                const siblingNode = nodes.find(n => n.id === siblingId);
+                if (!siblingNode) {
+                    throw new NotFoundError(`Sibling node not found: ${siblingId}. Branch: ${effectiveBranch}`);
+                }
+                effectiveParentId = siblingNode.parentId;
+            }
 
-        if (siblingId && !parentId) {
-            if (!effectiveParentId) {
+            const node: Omit<MindMapNode, 'id'> = {
+                text,
+                x,
+                y,
+                parentId: effectiveParentId,
+            };
+
+            // 创建节点（这是最重要的操作）
+            newNodeId = await MindMapModel.addNode(
+                domainId,
+                docId,
+                node,
+                effectiveParentId,
+                effectiveBranch
+            );
+
+            // 确定边的源和目标
+            if (siblingId && !parentId) {
+                if (!effectiveParentId) {
+                    // 没有父节点，不需要创建边
+                    this.response.body = { nodeId: newNodeId };
+                    return;
+                }
+                edgeSourceId = effectiveParentId;
+                edgeTargetId = newNodeId;
+            } else if (parentId) {
+                edgeSourceId = parentId;
+                edgeTargetId = newNodeId;
+            } else {
+                // 没有父节点，不需要创建边
                 this.response.body = { nodeId: newNodeId };
                 return;
             }
-            edgeSourceId = effectiveParentId;
-            edgeTargetId = newNodeId;
-        } else if (parentId) {
-            edgeSourceId = parentId;
-            edgeTargetId = newNodeId;
-        } else {
-            this.response.body = { nodeId: newNodeId };
-            return;
-        }
 
-        let edgeId: string | undefined;
-        try {
-            edgeId = await MindMapModel.addEdge(domainId, docId, {
-                source: edgeSourceId,
-                target: edgeTargetId,
-            });
-        } catch (error: any) {
-            if (error.message?.includes('already exists')) {
-                const mindMapAfter = await MindMapModel.get(domainId, docId);
-                const existingEdge = mindMapAfter?.edges.find(
-                    e => e.source === edgeSourceId && e.target === edgeTargetId
-                );
-                if (existingEdge) {
-                    edgeId = existingEdge.id;
+            // 尝试创建边（参考旧版本的处理方式）
+            let edgeId: string | undefined;
+            try {
+                edgeId = await MindMapModel.addEdge(domainId, docId, {
+                    source: edgeSourceId,
+                    target: edgeTargetId,
+                }, effectiveBranch);
+            } catch (error: any) {
+                // 只处理 "already exists" 错误，其他错误抛出（参考旧版本）
+                const errorMessage = error?.message || String(error);
+                if (errorMessage?.includes('already exists')) {
+                    // 如果是边已存在的错误，尝试获取已存在的边ID
+                    try {
+                        const mindMapAfter = await MindMapModel.get(domainId, docId);
+                        if (mindMapAfter) {
+                            const branchDataAfter: {
+                                [branch: string]: { nodes: MindMapNode[]; edges: MindMapEdge[] };
+                            } = (mindMapAfter as any).branchData || {};
+                            
+                            let edgesAfter: MindMapEdge[];
+                            if (branchDataAfter[effectiveBranch] && branchDataAfter[effectiveBranch].edges) {
+                                edgesAfter = branchDataAfter[effectiveBranch].edges;
+                            } else if (effectiveBranch === 'main') {
+                                edgesAfter = mindMapAfter?.edges || [];
+                            } else {
+                                edgesAfter = [];
+                            }
+                            
+                            const existingEdge = edgesAfter.find(
+                                e => e.source === edgeSourceId && e.target === edgeTargetId
+                            );
+                            if (existingEdge) {
+                                edgeId = existingEdge.id;
+                            }
+                        }
+                    } catch (getError: any) {
+                        console.warn(`Failed to get existing edge after node creation: ${getError.message}`);
+                    }
+                } else {
+                    // 其他错误抛出（参考旧版本）
+                    throw error;
                 }
+            }
+
+            this.response.body = { 
+                nodeId: newNodeId,
+                edgeId: edgeId,
+                edgeSource: edgeSourceId,
+                edgeTarget: edgeTargetId,
+            };
+        } catch (error: any) {
+            // 如果节点已经创建成功，即使后续操作失败，也返回成功响应
+            if (newNodeId) {
+                console.warn(`Error after node creation, but node was created successfully: ${error?.message || String(error)}`);
+                // 设置响应体，确保返回成功响应
+                this.response.body = { 
+                    nodeId: newNodeId,
+                    edgeId: edgeId,
+                    edgeSource: edgeSourceId,
+                    edgeTarget: edgeTargetId,
+                };
+                // 确保状态码是 200，而不是错误状态码
+                this.response.status = 200;
+                // 不抛出错误，直接返回
+                return;
             } else {
+                // 如果节点创建失败，才抛出错误
                 throw error;
             }
         }
-
-        this.response.body = { 
-            nodeId: newNodeId,
-            edgeId: edgeId,
-            edgeSource: edgeSourceId,
-            edgeTarget: edgeTargetId,
-        };
     }
 
     @param('docId', Types.ObjectId)
@@ -913,7 +1000,8 @@ class MindMapNodeHandler extends Handler {
 
     @param('docId', Types.ObjectId)
     @param('nodeId', Types.String)
-    async postDelete(domainId: string, docId: ObjectId, nodeId: string) {
+    @param('branch', Types.String, true)
+    async postDelete(domainId: string, docId: ObjectId, nodeId: string, branch?: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
         const mindMap = await MindMapModel.get(domainId, docId);
@@ -922,7 +1010,10 @@ class MindMapNodeHandler extends Handler {
             this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
         }
 
-        await MindMapModel.deleteNode(domainId, docId, nodeId);
+        // 从请求参数或 body 中获取分支（如果未提供）
+        const effectiveBranch = branch || (this.request.body as any)?.branch || (mindMap as any).currentBranch || (mindMap as any).branch || 'main';
+        
+        await MindMapModel.deleteNode(domainId, docId, nodeId, effectiveBranch);
         this.response.body = { success: true };
     }
 }
@@ -1787,7 +1878,7 @@ class MindMapCardHandler extends Handler {
         if (!finalNodeId || !finalTitle) {
             throw new ValidationError('nodeId and title are required for creating a card');
         }
-
+        
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
             : await MindMapModel.getByMmid(domainId, mmid!);
@@ -2275,12 +2366,12 @@ class MindMapCardEditHandler extends Handler {
             await CardModel.update(domainId, cardId, updates);
             // 重定向到更新后的卡片URL
             if (docId) {
-                this.response.redirect = this.url('mindmap_card_list_branch', { 
-                    docId: docId.toString(), 
-                    branch: effectiveBranch, 
-                    nodeId 
+            this.response.redirect = this.url('mindmap_card_list_branch', { 
+                docId: docId.toString(), 
+                branch: effectiveBranch, 
+                nodeId 
                 }) + `?cardId=${cardId.toString()}`;
-            } else {
+        } else {
                 this.response.redirect = this.url('mindmap_card_list_branch_mmid', { 
                     mmid: mmid.toString(), 
                     branch: effectiveBranch, 
@@ -2290,19 +2381,19 @@ class MindMapCardEditHandler extends Handler {
             return;
         }
         
-        // 创建新卡片
-        if (!title) {
-            throw new ValidationError('title is required');
-        }
+            // 创建新卡片
+            if (!title) {
+                throw new ValidationError('title is required');
+            }
         const newCardId = await CardModel.create(
-            domainId,
-            mindMap.mmid,
-            nodeId,
-            this.user._id,
-            title,
-            content || '',
-            this.request.ip
-        );
+                domainId,
+                mindMap.mmid,
+                nodeId,
+                this.user._id,
+                title,
+                content || '',
+                this.request.ip
+            );
         // 重定向到新创建的卡片URL
         if (docId) {
             this.response.redirect = this.url('mindmap_card_list_branch', { 
@@ -2358,11 +2449,11 @@ class MindMapCardEditHandler extends Handler {
                 const card = await CardModel.get(domainId, cardId);
                 if (!card) throw new NotFoundError('Card not found');
                 await CardModel.delete(domainId, cardId);
-                this.response.redirect = this.url('mindmap_card_list_branch', { 
-                    docId: docId.toString(), 
-                    branch: effectiveBranch, 
-                    nodeId 
-                });
+            this.response.redirect = this.url('mindmap_card_list_branch', { 
+                docId: docId.toString(), 
+                branch: effectiveBranch, 
+                nodeId 
+            });
                 return;
             }
             
