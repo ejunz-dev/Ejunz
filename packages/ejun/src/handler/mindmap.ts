@@ -778,19 +778,30 @@ class MindMapNodeHandler extends Handler {
         nodeId?: string,
         branch?: string,
     ) {
+        // 验证 docId 是否存在
+        if (!docId) {
+            throw new BadRequestError('docId is required');
+        }
+        
         // 如果 operation 是 'delete'，调用 postDelete
         if (operation === 'delete' && nodeId) {
             return this.postDelete(domainId, docId, nodeId, branch);
         }
         
-        // 否则，如果有 text 参数，调用 postAdd
-        if (text !== undefined) {
-            return this.postAdd(domainId, docId, text, x, y, parentId, siblingId, branch);
+        // 从 body 中获取 text（兼容 JSON 提交）
+        const body: any = this.request?.body || {};
+        const finalText = text !== undefined ? text : body.text;
+        
+        // 如果有 text 参数或 operation 是 'add'，调用 postAdd
+        if (finalText !== undefined || operation === 'add') {
+            const finalTextValue = finalText !== undefined ? finalText : '';
+            return this.postAdd(domainId, docId, finalTextValue, x, y, parentId, siblingId, branch);
         }
         
         throw new BadRequestError('Missing required parameters');
     }
 
+    @param('docId', Types.ObjectId)
     @param('branch', Types.String, true)
     async postAdd(
         domainId: string,
@@ -810,8 +821,22 @@ class MindMapNodeHandler extends Handler {
         let edgeTargetId: string | undefined;
         
         try {
-            const mindMap = await MindMapModel.get(domainId, docId);
-            if (!mindMap) throw new NotFoundError('MindMap not found');
+            // 验证 docId 是否存在
+            if (!docId) {
+                throw new BadRequestError('docId is required');
+            }
+            const actualDomainId = this.args.domainId || domainId || 'system';
+            
+            let mindMap = await MindMapModel.get(actualDomainId, docId);
+            if (!mindMap) {
+                // 如果通过 docId 找不到，尝试等待一下（可能是数据库同步延迟）
+                await new Promise(resolve => setTimeout(resolve, 100));
+                mindMap = await MindMapModel.get(actualDomainId, docId);
+                if (!mindMap) {
+                    throw new NotFoundError(`MindMap not found. domainId: ${actualDomainId}, docId: ${docId ? docId.toString() : 'undefined'}`);
+                }
+            }
+            
             if (!this.user.own(mindMap)) {
                 this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
             }
@@ -850,76 +875,49 @@ class MindMapNodeHandler extends Handler {
                 parentId: effectiveParentId,
             };
 
-            // 创建节点（这是最重要的操作）
-            newNodeId = await MindMapModel.addNode(
-                domainId,
-                docId,
-                node,
-                effectiveParentId,
-                effectiveBranch
-            );
-
             // 确定边的源和目标
             if (siblingId && !parentId) {
                 if (!effectiveParentId) {
-                    // 没有父节点，不需要创建边
-                    this.response.body = { nodeId: newNodeId };
+                    // 没有父节点，不需要创建边，只创建节点
+                    const result = await MindMapModel.addNode(
+                        actualDomainId,
+                        docId,
+                        node,
+                        effectiveParentId,
+                        effectiveBranch
+                    );
+                    this.response.body = { nodeId: result.nodeId };
                     return;
                 }
                 edgeSourceId = effectiveParentId;
-                edgeTargetId = newNodeId;
             } else if (parentId) {
                 edgeSourceId = parentId;
-                edgeTargetId = newNodeId;
             } else {
-                // 没有父节点，不需要创建边
-                this.response.body = { nodeId: newNodeId };
+                // 没有父节点，不需要创建边，只创建节点
+                const result = await MindMapModel.addNode(
+                    actualDomainId,
+                    docId,
+                    node,
+                    effectiveParentId,
+                    effectiveBranch
+                );
+                this.response.body = { nodeId: result.nodeId };
                 return;
             }
 
-            // 尝试创建边（参考旧版本的处理方式）
-            let edgeId: string | undefined;
-            try {
-                edgeId = await MindMapModel.addEdge(domainId, docId, {
-                    source: edgeSourceId,
-                    target: edgeTargetId,
-                }, effectiveBranch);
-            } catch (error: any) {
-                // 只处理 "already exists" 错误，其他错误抛出（参考旧版本）
-                const errorMessage = error?.message || String(error);
-                if (errorMessage?.includes('already exists')) {
-                    // 如果是边已存在的错误，尝试获取已存在的边ID
-                    try {
-                        const mindMapAfter = await MindMapModel.get(domainId, docId);
-                        if (mindMapAfter) {
-                            const branchDataAfter: {
-                                [branch: string]: { nodes: MindMapNode[]; edges: MindMapEdge[] };
-                            } = (mindMapAfter as any).branchData || {};
-                            
-                            let edgesAfter: MindMapEdge[];
-                            if (branchDataAfter[effectiveBranch] && branchDataAfter[effectiveBranch].edges) {
-                                edgesAfter = branchDataAfter[effectiveBranch].edges;
-                            } else if (effectiveBranch === 'main') {
-                                edgesAfter = mindMapAfter?.edges || [];
-                            } else {
-                                edgesAfter = [];
-                            }
-                            
-                            const existingEdge = edgesAfter.find(
-                                e => e.source === edgeSourceId && e.target === edgeTargetId
-                            );
-                            if (existingEdge) {
-                                edgeId = existingEdge.id;
-                            }
-                        }
-                    } catch (getError: any) {
-                        console.warn(`Failed to get existing edge after node creation: ${getError.message}`);
-                    }
-                } else {
-                    // 其他错误抛出（参考旧版本）
-                    throw error;
-                }
-            }
+            // 同时创建节点和边（在同一个数据库操作中）
+            const result = await MindMapModel.addNode(
+                actualDomainId,
+                docId,
+                node,
+                effectiveParentId,
+                effectiveBranch,
+                edgeSourceId  // 传入 edgeSourceId，让 addNode 同时创建边
+            );
+            
+            newNodeId = result.nodeId;
+            edgeId = result.edgeId;
+            edgeTargetId = newNodeId;
 
             this.response.body = { 
                 nodeId: newNodeId,
