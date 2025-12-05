@@ -94,12 +94,42 @@ interface MindMapDoc {
 const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boolean; id: string }) => {
   const node = data.originalNode as MindMapNode;
   const shape = node.shape || 'rectangle';
-  const backgroundColor = selected ? (node.backgroundColor || '#e3f2fd') : 'transparent';
-  const borderColor = selected ? '#1976d2' : 'transparent';
-  const color = node.color || '#333';
   const fontSize = node.fontSize || 14;
   const isNewNode = data.isNewNode || false; // 是否是新创建的节点（还未保存）
   const isEditing = data.isEditing || false; // 是否处于编辑模式
+  
+  // 获取节点状态（待创建、待修改、待删除）
+  const pendingCreate = data.pendingCreate || false;
+  const pendingUpdate = data.pendingUpdate || false;
+  const pendingDelete = data.pendingDelete || false;
+  
+  // 根据状态设置颜色和边框
+  let backgroundColor = selected ? (node.backgroundColor || '#e3f2fd') : 'transparent';
+  let borderColor = selected ? '#1976d2' : 'transparent';
+  let borderWidth = '2px';
+  let borderStyle = 'solid';
+  
+  if (pendingDelete) {
+    // 待删除：红色边框，虚线，半透明背景
+    borderColor = '#f44336';
+    borderStyle = 'dashed';
+    borderWidth = '3px';
+    backgroundColor = selected ? 'rgba(244, 67, 54, 0.1)' : 'rgba(244, 67, 54, 0.05)';
+  } else if (pendingCreate) {
+    // 待创建：绿色边框，虚线
+    borderColor = '#4caf50';
+    borderStyle = 'dashed';
+    borderWidth = '3px';
+    backgroundColor = selected ? 'rgba(76, 175, 80, 0.1)' : 'rgba(76, 175, 80, 0.05)';
+  } else if (pendingUpdate) {
+    // 待修改：橙色边框，虚线
+    borderColor = '#ff9800';
+    borderStyle = 'dashed';
+    borderWidth = '3px';
+    backgroundColor = selected ? 'rgba(255, 152, 0, 0.1)' : 'rgba(255, 152, 0, 0.05)';
+  }
+  
+  const color = node.color || '#333';
   const edges = data.edges || [];
   const childEdges = edges.filter((edge: Edge) => edge.source === id);
   const hasChildren = childEdges.length > 0;
@@ -358,7 +388,7 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
       style={{
         ...shapeStyles[shape],
         background: backgroundColor,
-        border: `2px solid ${borderColor}`, // 始终有边框，但未选中时透明
+        border: `${borderWidth} ${borderStyle} ${borderColor}`, // 根据状态设置边框样式
         boxShadow: selected ? '0 4px 8px rgba(0,0,0,0.2)' : 'none', // 未选中时不显示阴影
         cursor: 'default',
         position: 'relative',
@@ -517,8 +547,8 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
         />
       )}
 
-      {/* 加号按钮 - 只在节点被选中时显示 */}
-      {selected && (
+      {/* 加号按钮 - 只在节点被选中时显示，且不是待删除状态 */}
+      {selected && !pendingDelete && (
         <>
           {/* 加号按钮 - 节点右方：创建子节点（如果没有子节点才显示） */}
           {!hasChildren && (
@@ -1081,7 +1111,7 @@ const FloatingToolbar = ({
         onClick={(e) => {
           e.stopPropagation();
           if (!isRootNode) {
-            onDelete(node.id);
+          onDelete(node.id);
           }
         }}
         disabled={isRootNode}
@@ -1211,14 +1241,22 @@ const FloatingToolbar = ({
   );
 };
 
-// 自定义边缘组件：根据节点是否为新建节点显示虚线或实线，虚线按照曲度生成
+// 自定义边缘组件：根据节点状态显示不同的样式
 const CustomMindMapEdge = ({ id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, data, markerEnd, markerStart }: EdgeProps) => {
-  // 从边缘的 data 中获取源节点和目标节点的 isNewNode 状态
+  // 从边缘的 data 中获取源节点和目标节点的状态
   const sourceIsNewNode = data?.sourceIsNewNode as boolean | undefined;
   const targetIsNewNode = data?.targetIsNewNode as boolean | undefined;
+  const sourcePendingCreate = data?.sourcePendingCreate as boolean | undefined;
+  const targetPendingCreate = data?.targetPendingCreate as boolean | undefined;
+  const sourcePendingUpdate = data?.sourcePendingUpdate as boolean | undefined;
+  const targetPendingUpdate = data?.targetPendingUpdate as boolean | undefined;
+  const sourcePendingDelete = data?.sourcePendingDelete as boolean | undefined;
+  const targetPendingDelete = data?.targetPendingDelete as boolean | undefined;
   
-  // 如果源节点或目标节点是新建节点（未保存），显示虚线；否则显示实线
-  const isNewNode = sourceIsNewNode || targetIsNewNode;
+  // 确定边的状态
+  const hasPendingDelete = sourcePendingDelete || targetPendingDelete;
+  const hasPendingCreate = sourcePendingCreate || targetPendingCreate || sourceIsNewNode || targetIsNewNode;
+  const hasPendingUpdate = sourcePendingUpdate || targetPendingUpdate;
   
   // 生成贝塞尔曲线路径，使用与 ReactFlow 默认 'bezier' 类型完全相同的参数
   // 确保虚线和实线使用完全相同的路径，只是样式不同
@@ -1232,11 +1270,39 @@ const CustomMindMapEdge = ({ id, source, target, sourceX, sourceY, targetX, targ
     targetPosition: targetPosition || Position.Left,
   });
   
-  // 如果连接的是新建节点，显示虚线；保存后显示实线
-  // strokeDasharray 会沿着路径（包括曲线）正确分布，确保虚线和实线具有相同的曲度
+  // 根据状态设置边的样式（状态颜色优先级最高）
+  let edgeColor: string;
+  let strokeDasharray: string;
+  let strokeWidth: number;
+  
+  if (hasPendingDelete) {
+    // 待删除：红色虚线（最高优先级）
+    edgeColor = '#f44336';
+    strokeDasharray = '5,5';
+    strokeWidth = 3;
+  } else if (hasPendingCreate) {
+    // 待创建：绿色虚线
+    edgeColor = '#4caf50';
+    strokeDasharray = '5,5';
+    strokeWidth = 3;
+  } else if (hasPendingUpdate) {
+    // 待修改：橙色虚线
+    edgeColor = '#ff9800';
+    strokeDasharray = '5,5';
+    strokeWidth = 3;
+  } else {
+    // 没有状态变化，使用 style 中的颜色或默认颜色
+    edgeColor = style?.stroke || '#999';
+    strokeDasharray = 'none';
+    strokeWidth = typeof style?.strokeWidth === 'number' ? style.strokeWidth : (typeof style?.strokeWidth === 'string' ? parseFloat(style.strokeWidth) || 2 : 2);
+  }
+  
+  // 确保状态颜色优先于 style 中的颜色
   const edgeStyle = {
     ...style,
-    strokeDasharray: isNewNode ? '5,5' : 'none',
+    stroke: edgeColor, // 状态颜色优先，强制覆盖
+    strokeDasharray, // 状态虚线样式优先，强制覆盖
+    strokeWidth, // 状态线宽优先，强制覆盖
   };
 
   return (
@@ -1380,17 +1446,279 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
   // 自动保存的防抖定时器
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 保存思维导图
+  // 待处理的更改（批量保存模式）
+  const pendingCreatesRef = useRef<Map<string, { node: Node; edge?: Edge; parentId?: string; siblingId?: string; mode?: 'child' | 'sibling' }>>(new Map());
+  const pendingDeletesRef = useRef<Set<string>>(new Set());
+  const [pendingChangesCount, setPendingChangesCount] = useState(0);
+
+  // 保存思维导图 - 批量保存模式：处理所有待创建和待删除的节点，然后一次性提交
   // isAutoSave: 是否为自动保存，自动保存时不显示成功提示
   const handleSave = useCallback(async (isAutoSave: boolean = false) => {
     setIsSaving(true);
     try {
-      // 使用 ref 获取最新的节点和边状态
+      // 1. 先处理待创建的节点
+      // 使用拓扑排序确保父节点在子节点之前创建
+      const createsToProcess = Array.from(pendingCreatesRef.current.entries());
+      
+      // 构建依赖图：如果节点A的parentId或siblingId是节点B的ID，那么B必须在A之前创建
+      const nodeIds = new Set(createsToProcess.map(([id]) => id));
+      const sortedNodes: typeof createsToProcess = [];
+      const visited = new Set<string>();
+      const visiting = new Set<string>();
+      
+      const visit = (nodeId: string) => {
+        if (visiting.has(nodeId)) {
+          // 检测到循环依赖，但允许继续（可能是兄弟节点的情况）
+          return;
+        }
+        if (visited.has(nodeId)) {
+          return;
+        }
+        
+        visiting.add(nodeId);
+        const nodeEntry = createsToProcess.find(([id]) => id === nodeId);
+        if (nodeEntry) {
+          const [, data] = nodeEntry;
+          // 如果父节点也是待创建的，先处理父节点
+          if (data.parentId && data.parentId.startsWith('temp_') && nodeIds.has(data.parentId)) {
+            visit(data.parentId);
+          }
+          // 如果兄弟节点也是待创建的，先处理兄弟节点
+          if (data.siblingId && data.siblingId.startsWith('temp_') && nodeIds.has(data.siblingId)) {
+            visit(data.siblingId);
+          }
+        }
+        visiting.delete(nodeId);
+        visited.add(nodeId);
+        if (nodeEntry) {
+          sortedNodes.push(nodeEntry);
+        }
+      };
+      
+      // 对所有节点进行拓扑排序
+      for (const [nodeId] of createsToProcess) {
+        if (!visited.has(nodeId)) {
+          visit(nodeId);
+        }
+      }
+      
+      const createdNodeIdMap = new Map<string, string>(); // 临时ID -> 真实ID 映射
+      
+      // 多轮处理：如果父节点还未创建，等待下一轮
+      let maxRounds = 10;
+      let round = 0;
+      const remainingNodes = new Map(sortedNodes);
+      
+      while (remainingNodes.size > 0 && round < maxRounds) {
+        round++;
+        const nodesToCreateThisRound: typeof createsToProcess = [];
+        
+        for (const [tempNodeId, createData] of remainingNodes.entries()) {
+          const { parentId, siblingId, mode } = createData;
+          
+          // 检查依赖是否已满足
+          let canCreate = true;
+          
+          if (mode === 'child' && parentId && parentId.startsWith('temp_')) {
+            // 如果父节点是待创建的，必须已经创建
+            // 或者如果父节点是已存在的节点（不是待创建的），也可以创建
+            if (!createdNodeIdMap.has(parentId)) {
+              const existingParentNode = nodesRef.current.find(n => n.id === parentId && !n.data.isNewNode);
+              if (!existingParentNode) {
+                // 既不在 createdNodeIdMap 中，也不是已存在的节点，需要等待
+                canCreate = false;
+              }
+            }
+          }
+          
+          if (mode === 'sibling' && siblingId && siblingId.startsWith('temp_')) {
+            // 如果兄弟节点是待创建的，必须已经创建
+            // 或者如果兄弟节点是已存在的节点（不是待创建的），也可以创建
+            if (!createdNodeIdMap.has(siblingId)) {
+              const existingSiblingNode = nodesRef.current.find(n => n.id === siblingId && !n.data.isNewNode);
+              if (!existingSiblingNode) {
+                // 既不在 createdNodeIdMap 中，也不是已存在的节点，需要等待
+                canCreate = false;
+              }
+            }
+          }
+          
+          if (canCreate) {
+            nodesToCreateThisRound.push([tempNodeId, createData]);
+          }
+        }
+        
+        // 如果这一轮没有节点可以创建，说明有循环依赖或错误
+        if (nodesToCreateThisRound.length === 0) {
+          console.error('无法创建节点：可能存在循环依赖或未满足的依赖关系', Array.from(remainingNodes.keys()));
+          break;
+        }
+        
+        // 处理这一轮可以创建的节点
+        for (const [tempNodeId, createData] of nodesToCreateThisRound) {
+          try {
+            const { node, parentId, siblingId, mode } = createData;
+            const originalNode = node.data.originalNode as MindMapNode;
+            const text = originalNode.text;
+            
+            if (!text || !text.trim()) {
+              console.warn(`跳过空文本节点: ${tempNodeId}`);
+              remainingNodes.delete(tempNodeId);
+              continue;
+            }
+            
+            const requestBody: any = {
+              operation: 'add',
+              text: text.trim(),
+            };
+            
+            // 处理父节点或兄弟节点的ID映射（如果它们也是待创建的节点）
+            let realParentId = parentId;
+            let realSiblingId = siblingId;
+            
+            if (parentId && parentId.startsWith('temp_')) {
+              realParentId = createdNodeIdMap.get(parentId);
+              // 如果不在 createdNodeIdMap 中，检查是否是已存在的节点（不是待创建的）
+              if (!realParentId) {
+                const existingParentNode = nodesRef.current.find(n => n.id === parentId && !n.data.isNewNode);
+                if (existingParentNode) {
+                  // 这是一个已存在的节点，直接使用它的ID（虽然格式是临时ID，但实际上是已存在的节点）
+                  realParentId = parentId;
+                } else {
+                  // 检查是否在待创建列表中（可能是同一轮的其他节点）
+                  const pendingParent = remainingNodes.get(parentId);
+                  if (pendingParent) {
+                    // 父节点也在待创建列表中，但还没有被创建，需要等待下一轮
+                    console.warn(`父节点 ${parentId} 还在待创建列表中，等待下一轮处理节点 ${tempNodeId}`);
+                    continue;
+                  } else {
+                    // 既不在 createdNodeIdMap 中，也不是已存在的节点，也不在待创建列表中
+                    // 可能是节点ID格式错误，或者节点已经被删除
+                    console.warn(`父节点 ${parentId} 未找到，跳过节点 ${tempNodeId}`);
+                    continue;
+                  }
+                }
+              }
+            }
+            if (siblingId && siblingId.startsWith('temp_')) {
+              realSiblingId = createdNodeIdMap.get(siblingId);
+              // 如果不在 createdNodeIdMap 中，检查是否是已存在的节点（不是待创建的）
+              if (!realSiblingId) {
+                const existingSiblingNode = nodesRef.current.find(n => n.id === siblingId && !n.data.isNewNode);
+                if (existingSiblingNode) {
+                  // 这是一个已存在的节点，直接使用它的ID（虽然格式是临时ID，但实际上是已存在的节点）
+                  realSiblingId = siblingId;
+                } else {
+                  // 检查是否在待创建列表中（可能是同一轮的其他节点）
+                  const pendingSibling = remainingNodes.get(siblingId);
+                  if (pendingSibling) {
+                    // 兄弟节点也在待创建列表中，但还没有被创建，需要等待下一轮
+                    console.warn(`兄弟节点 ${siblingId} 还在待创建列表中，等待下一轮处理节点 ${tempNodeId}`);
+                    continue;
+                  } else {
+                    // 既不在 createdNodeIdMap 中，也不是已存在的节点，也不在待创建列表中
+                    // 可能是节点ID格式错误，或者节点已经被删除
+                    console.warn(`兄弟节点 ${siblingId} 未找到，跳过节点 ${tempNodeId}`);
+                    continue;
+                  }
+                }
+              }
+            }
+            
+            if (mode === 'sibling' && realSiblingId) {
+              requestBody.siblingId = realSiblingId;
+            } else if (mode === 'child' && realParentId) {
+              requestBody.parentId = realParentId;
+            }
+            
+            const response = await request.post(getMindMapUrl('/node', docId), requestBody);
+            
+            if (response && response.nodeId) {
+              const newNodeId = response.nodeId;
+              createdNodeIdMap.set(tempNodeId, newNodeId);
+              
+              // 更新节点ID
+              setNodes((nds) =>
+                nds.map((n) => {
+                  if (n.id === tempNodeId) {
+                    return {
+                      ...n,
+                      id: newNodeId,
+                      data: {
+                        ...n.data,
+                        originalNode: {
+                          ...originalNode,
+                          id: newNodeId,
+                        },
+                        isNewNode: false,
+                      },
+                    };
+                  }
+                  return n;
+                })
+              );
+              
+              // 更新边的source/target（如果使用了临时ID）
+              if (createData.edge) {
+                const tempEdge = createData.edge;
+                const newSource = createdNodeIdMap.get(tempEdge.source) || tempEdge.source;
+                const newTarget = newNodeId;
+                
+                setEdges((eds) =>
+                  eds.map((e) => {
+                    if (e.id === tempEdge.id) {
+                      return {
+                        ...e,
+                        id: response.edgeId || tempEdge.id,
+                        source: newSource,
+                        target: newTarget,
+                        style: {
+                          ...e.style,
+                          strokeDasharray: undefined, // 移除虚线样式
+                        },
+                      };
+                    }
+                    return e;
+                  })
+                );
+              }
+              
+              // 从待创建列表中移除
+              remainingNodes.delete(tempNodeId);
+            }
+          } catch (error: any) {
+            console.error(`创建节点失败: ${tempNodeId}`, error);
+            // 即使创建失败，也从待创建列表中移除，避免重复处理
+            remainingNodes.delete(tempNodeId);
+            // 只在非自动保存时显示错误提示，避免干扰用户体验
+            if (!isAutoSave) {
+              Notification.error(`创建节点失败: ${error.message || '未知错误'}`);
+            }
+          }
+        }
+      }
+      
+      // 2. 处理待删除的节点
+      const deletesToProcess = Array.from(pendingDeletesRef.current);
+      for (const nodeId of deletesToProcess) {
+        try {
+          await request.post(getMindMapUrl(`/node/${nodeId}`, docId), {
+            operation: 'delete',
+          });
+        } catch (error: any) {
+          console.error(`删除节点失败: ${nodeId}`, error);
+          Notification.error(`删除节点失败: ${error.message || '未知错误'}`);
+        }
+      }
+      
+      // 3. 使用 ref 获取最新的节点和边状态（包括刚创建的节点）
       const currentNodes = nodesRef.current;
       const currentEdges = edgesRef.current;
 
-      // 收集所有节点的位置和属性
-      const updatedNodes = currentNodes.map((node) => {
+      // 收集所有节点的位置和属性（排除待删除的节点）
+      const updatedNodes = currentNodes
+        .filter((node) => !pendingDeletesRef.current.has(node.id))
+        .map((node) => {
         const originalNode = node.data.originalNode as MindMapNode;
         // 确保位置是有效的数字
         const x = typeof node.position.x === 'number' && !isNaN(node.position.x) 
@@ -1487,13 +1815,23 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       
       // 重置操作描述
       lastOperationRef.current = '';
+      
+      // 清空待处理更改
+      pendingCreatesRef.current.clear();
+      pendingDeletesRef.current.clear();
+      setPendingChangesCount(0);
 
-      // 只有手动保存时才显示成功提示
+      // 只有手动保存时才显示成功提示并刷新页面
       if (!isAutoSave) {
         Notification.success('思维导图已保存');
+        // 保存成功后自动刷新页面
+        setTimeout(() => {
+          window.location.reload();
+        }, 500);
+      } else {
+        setIsSaving(false);
       }
       console.log('保存成功，节点数据:', updatedNodes.map(n => ({ id: n.id, x: n.x, y: n.y })));
-      setIsSaving(false);
     } catch (error: any) {
       Notification.error('保存失败: ' + (error.message || '未知错误'));
       setIsSaving(false);
@@ -1924,21 +2262,23 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
   }, [autoLayout, setNodes]);
 
   // 删除节点 - 必须在 useMemo 之前定义
-  const handleDeleteNode = useCallback(async (nodeId: string) => {
+  const handleDeleteNode = useCallback((nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return;
 
     const isNewNode = node.data.isNewNode || false;
     
-    // 如果是新建节点（临时节点），直接从前端删除，不调用后端API
+    // 如果是新建节点（临时节点），直接从前端删除，并从待创建列表中移除
     if (isNewNode) {
+      // 从待创建列表中移除
+      pendingCreatesRef.current.delete(nodeId);
+      
       // 删除临时节点和临时边
       const tempEdgeId = node.data.tempEdgeId;
       
       // 更新节点和边的状态
       setNodes((nds) => {
         const updatedNodes = nds.filter((n) => n.id !== nodeId);
-        // 更新 ref，确保自动布局使用最新数据
         nodesRef.current = updatedNodes;
         return updatedNodes;
       });
@@ -1946,16 +2286,17 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       if (tempEdgeId) {
         setEdges((eds) => {
           const updatedEdges = eds.filter((e) => e.id !== tempEdgeId);
-          // 更新 ref，确保自动布局使用最新数据
           edgesRef.current = updatedEdges;
           return updatedEdges;
         });
       } else {
-        // 即使没有临时边，也要更新 edgesRef
         edgesRef.current = edges.filter((e) => e.source !== nodeId && e.target !== nodeId);
       }
       
-      // 删除新建节点后，如果自动布局开启，触发布局以恢复到之前的间距
+      // 更新待处理更改计数
+      setPendingChangesCount(pendingCreatesRef.current.size + pendingDeletesRef.current.size);
+      
+      // 删除新建节点后，如果自动布局开启，触发布局
       if (autoLayout) {
         setTimeout(() => {
           applyLayout();
@@ -1965,45 +2306,57 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       return;
     }
 
-    // 如果是已保存的节点，需要确认并调用后端API删除
-    if (!confirm('确定要删除这个节点吗？')) {
+    // 如果是已保存的节点，需要确认并标记为待删除
+    if (!confirm('确定要删除这个节点吗？删除操作将在点击"保存"按钮时生效。')) {
       return;
     }
 
-    try {
-      const nodeText = node?.data?.originalNode?.text || '节点';
-      lastOperationRef.current = `删除节点: ${nodeText}`;
-
-      await request.post(getMindMapUrl(`/node/${nodeId}`, docId), {
-        operation: 'delete',
+    // 递归收集所有要删除的节点ID（包括子节点）
+    const collectChildNodeIds = (id: string, collected: Set<string>) => {
+      if (collected.has(id)) return;
+      collected.add(id);
+      
+      // 从 edges 中查找所有以当前节点为 source 的子节点
+      edges.forEach(edge => {
+        if (edge.source === id && !collected.has(edge.target)) {
+          collectChildNodeIds(edge.target, collected);
+        }
       });
-
-      // 从本地状态中移除
-      setNodes((nds) => nds.filter((n) => n.id !== nodeId));
-      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
-
-      Notification.success('节点已删除');
-      
-      // 删除节点后，如果自动布局开启，触发布局
-      if (autoLayout) {
-        setTimeout(() => {
-          applyLayout();
-        }, 100);
-      }
-      
-      // 触发自动保存
-      triggerAutoSave();
-      
-      // 立即刷新Git状态
-      if (mindMap.githubRepo) {
-        setTimeout(() => {
-          loadGitStatus();
-        }, 1000);
-      }
-    } catch (error: any) {
-      Notification.error('删除节点失败: ' + (error.message || '未知错误'));
-    }
-  }, [docId, nodes, setNodes, setEdges, autoLayout, applyLayout, triggerAutoSave]);
+    };
+    
+    const nodesToDelete = new Set<string>();
+    collectChildNodeIds(nodeId, nodesToDelete);
+    
+    // 标记为待删除
+    nodesToDelete.forEach(id => {
+      pendingDeletesRef.current.add(id);
+      // 如果该节点在待创建列表中，也要移除
+      pendingCreatesRef.current.delete(id);
+    });
+    
+    // 更新节点状态，标记为待删除
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (nodesToDelete.has(n.id)) {
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              pendingCreate: false,
+              pendingUpdate: false,
+              pendingDelete: true, // 标记为待删除
+            },
+          };
+        }
+        return n;
+      })
+    );
+    
+    // 更新待处理更改计数
+    setPendingChangesCount(pendingCreatesRef.current.size + pendingDeletesRef.current.size);
+    
+    // 不再显示提示，静默标记为待删除
+  }, [nodes, edges, autoLayout, applyLayout]);
 
   // 编辑节点 - 直接进入编辑模式
   const handleEditNode = useCallback((node: Node) => {
@@ -2325,7 +2678,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     );
   }, [setNodes]);
 
-  // 处理节点文本变化（失去焦点时调用）
+  // 处理节点文本变化（失去焦点时调用）- 批量保存模式：不再立即保存
   const handleNodeTextChange = useCallback(async (nodeId: string, newText: string) => {
     // 使用 ref 获取最新的 nodes，避免依赖 nodes 导致循环
     const node = nodesRef.current.find(n => n.id === nodeId);
@@ -2334,258 +2687,88 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     const isNewNode = node.data.isNewNode || false;
     const originalNode = node.data.originalNode as MindMapNode;
     
-    // 如果是新节点且有文本，保存到后端
+    // 如果是新节点且有文本，标记为待创建（不再立即保存）
     if (isNewNode && newText.trim()) {
-      try {
-        const mode = (originalNode as any).mode || 'child';
-        const parentId = originalNode.parentId;
-        const siblingId = (originalNode as any).siblingId;
-        
-        const requestBody: any = {
-          operation: 'add',
-          text: newText.trim(),
-        };
-
-        // 如果是兄弟节点，必须传递 siblingId，且不能传递 parentId
-        // 后端会根据 siblingId 找到兄弟节点的父节点，然后新节点也使用这个父节点
-        if (mode === 'sibling' && siblingId) {
-          // 确保 siblingId 是真实节点ID，不是临时ID
-          let realSiblingId = siblingId;
-          if (siblingId.startsWith('temp_')) {
-            // 如果是临时ID，尝试从 nodes 中找到对应的真实节点
-            const siblingNode = nodesRef.current.find(n => n.id === siblingId);
-            if (siblingNode && !siblingNode.data.isNewNode) {
-              // 如果节点已经保存，使用保存后的ID
-              realSiblingId = siblingNode.data.originalNode.id;
-            } else {
-              console.error('兄弟节点是临时节点且还未保存，无法创建兄弟节点:', siblingId);
-              Notification.error('兄弟节点还未保存，请先保存兄弟节点');
-              return;
-            }
-          }
-          // 只传递 siblingId，不传递 parentId，让后端自己找父节点
-          requestBody.siblingId = realSiblingId;
-          // 确保不传递 parentId
-          console.log('创建兄弟节点，siblingId:', realSiblingId, '原始siblingId:', siblingId, '不传递parentId');
-        } else if (mode === 'child' && parentId) {
-          // 确保 parentId 是真实节点ID
-          let realParentId = parentId;
-          if (parentId.startsWith('temp_')) {
-            const parentNode = nodesRef.current.find(n => n.id === parentId);
-            if (parentNode && !parentNode.data.isNewNode) {
-              realParentId = parentNode.data.originalNode.id;
-            } else {
-              console.error('父节点是临时节点且还未保存，无法创建子节点:', parentId);
-              Notification.error('父节点还未保存，请先保存父节点');
-              return;
-            }
-          }
-          requestBody.parentId = realParentId;
-          // 确保不传递 siblingId
-        }
-
-        const response = await request.post(getMindMapUrl('/node', docId), requestBody);
-        console.log('后端返回的完整响应:', response);
-        const newNodeId = response.nodeId;
-        
-        // 更新节点ID和状态
-        setNodes((nds) =>
-          nds.map((n) => {
-            if (n.id === nodeId) {
-              return {
-                ...n,
-                id: newNodeId,
-                data: {
-                  ...n.data,
-                  originalNode: {
-                    ...originalNode,
-                    id: newNodeId,
-                    text: newText.trim(),
-                  },
-                  isNewNode: false,
-                  isEditing: false,
-                },
-              };
-            }
-            return n;
-          })
-        );
-
-        // 更新临时边为正式边
-        const tempEdgeId = node.data.tempEdgeId;
-        const edgeSource = node.data.edgeSource;
-        
-        // 获取父节点的颜色（用于继承）
-        const getParentEdgeColor = (sourceId: string): string => {
-          // 优先从 edgesRef 中查找（最新的边状态）
-          const parentEdge = edgesRef.current.find(e => e.target === sourceId);
-          if (parentEdge && parentEdge.style?.stroke) {
-            return parentEdge.style.stroke as string;
-          }
-          // 如果找不到，尝试从 edgeColorMap 中获取（基于边的ID）
-          const parentEdgeFromMap = mindMap.edges.find(e => e.target === sourceId);
-          if (parentEdgeFromMap) {
-            const colorFromMap = edgeColorMap.get(parentEdgeFromMap.id);
-            if (colorFromMap) {
-              return colorFromMap;
-            }
-            if (parentEdgeFromMap.color) {
-              return parentEdgeFromMap.color;
-            }
-          }
-          // 默认返回绿色
-          return '#4caf50';
-        };
-        
-        const parentColor = edgeSource ? getParentEdgeColor(edgeSource) : '#4caf50';
-        
-        console.log('保存节点后的边信息:', {
-          tempEdgeId,
-          edgeSource,
-          responseEdgeId: response.edgeId,
-          responseEdgeSource: response.edgeSource,
-          responseEdgeTarget: response.edgeTarget,
-          nodeId,
-          newNodeId,
-          parentColor,
-        });
-        
-        if (tempEdgeId && edgeSource) {
-          // 如果后端返回了边信息，使用后端的边
-          if (response.edgeId && response.edgeSource && response.edgeTarget) {
-            // 删除临时边
-            setEdges((eds) => eds.filter((e) => e.id !== tempEdgeId));
-            
-            const newEdge: Edge = {
-              id: response.edgeId,
-              source: response.edgeSource,
-              target: response.edgeTarget === nodeId ? newNodeId : response.edgeTarget,
-              type: 'custom', // 使用自定义边缘类型
-              animated: false,
-              style: {
-                stroke: parentColor, // 继承父节点的颜色
-                strokeWidth: 2,
-              },
+      const mode = (originalNode as any).mode || 'child';
+      const parentId = originalNode.parentId;
+      const siblingId = (originalNode as any).siblingId;
+      const tempEdgeId = node.data.tempEdgeId;
+      const edgeSource = node.data.edgeSource;
+      
+      // 更新节点文本并标记为待创建
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === nodeId) {
+            return {
+              ...n,
               data: {
-                // 节点状态会在 useEffect 中自动更新
+                ...n.data,
+                originalNode: {
+                  ...originalNode,
+                  text: newText.trim(),
+                },
+                isEditing: false,
+                pendingCreate: true, // 标记为待创建
+                pendingUpdate: false,
+                pendingDelete: false,
               },
             };
-            console.log('添加正式边:', newEdge);
-            setEdges((eds) => [...eds, newEdge]);
-          } else {
-            // 如果后端没有返回边信息，但存在临时边，更新临时边的 target 为新节点ID
-            console.warn('后端没有返回边信息，但存在临时边，更新临时边的target');
-            setEdges((eds) =>
-              eds.map((e) => {
-                if (e.id === tempEdgeId) {
-                  return {
-                    ...e,
-                    id: tempEdgeId, // 保持临时边ID，等待后续保存
-                    target: newNodeId, // 更新target为新节点ID
-                    style: {
-                      stroke: parentColor, // 继承父节点的颜色
-                      strokeWidth: 2,
-                    },
-                  };
-                }
-                return e;
-              })
-            );
           }
-        } else if (response.edgeId && response.edgeSource && response.edgeTarget) {
-          // 如果没有临时边，直接使用后端返回的边
-          const parentColorForNewEdge = response.edgeSource ? getParentEdgeColor(response.edgeSource) : '#4caf50';
-          const newEdge: Edge = {
-            id: response.edgeId,
-            source: response.edgeSource,
-            target: response.edgeTarget === nodeId ? newNodeId : response.edgeTarget,
-            type: 'custom', // 使用自定义边缘类型
-            animated: false,
-            style: {
-              stroke: parentColorForNewEdge, // 继承父节点的颜色
-              strokeWidth: 2,
+          return n;
+        })
+      );
+      
+      // 查找临时边
+      const tempEdge = edgesRef.current.find(e => e.id === tempEdgeId);
+      
+      // 标记为待创建
+      pendingCreatesRef.current.set(nodeId, {
+        node: {
+          ...node,
+          data: {
+            ...node.data,
+            originalNode: {
+              ...originalNode,
+              text: newText.trim(),
             },
-            data: {
-              // 节点状态会在 useEffect 中自动更新
-            },
-          };
-          console.log('添加后端返回的边（无临时边）:', newEdge);
-          setEdges((eds) => [...eds, newEdge]);
-        } else {
-          console.warn('没有临时边，后端也没有返回边信息');
-        }
-        
-        // 清除节点数据中的临时边信息
-        setNodes((nds) =>
-          nds.map((n) => {
-            if (n.id === newNodeId) {
-              const { tempEdgeId: _, edgeSource: __, ...restData } = n.data;
-              return {
-                ...n,
-                data: restData,
-              };
-            }
-            return n;
-          })
-        );
-        
-        // 节点保存成功后，如果自动布局开启，触发布局
-        if (autoLayout) {
-          setTimeout(() => {
-            applyLayout();
-          }, 100);
-        }
-        
-        // 触发自动保存
-        triggerAutoSave();
-        
-        // 立即刷新Git状态（新建节点）
-        if (mindMap.githubRepo) {
-          setTimeout(() => {
-            loadGitStatus();
-          }, 1000);
-        }
-      } catch (error: any) {
-        Notification.error('保存节点失败: ' + (error.message || '未知错误'));
-      }
+            isEditing: false,
+          },
+        },
+        edge: tempEdge,
+        parentId,
+        siblingId,
+        mode,
+      });
+      
+      // 更新待处理更改计数
+      setPendingChangesCount(pendingCreatesRef.current.size + pendingDeletesRef.current.size);
+      
+      // 不再显示提示，静默标记为待创建
     } else if (!isNewNode && newText.trim() !== originalNode.text) {
-      // 如果是已存在的节点，更新文本
-      try {
-        await request.post(getMindMapUrl(`/node/${nodeId}`, docId), {
-          operation: 'update',
-          text: newText.trim(),
-        });
-        
-        setNodes((nds) =>
-          nds.map((n) => {
-            if (n.id === nodeId) {
-              return {
-                ...n,
-                data: {
-                  ...n.data,
-                  originalNode: {
-                    ...n.data.originalNode,
-                    text: newText.trim(),
-                  },
-                  isEditing: false,
+      // 如果是已存在的节点，更新文本并标记为待修改（批量保存模式：只更新本地状态，不立即保存）
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === nodeId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                originalNode: {
+                  ...n.data.originalNode,
+                  text: newText.trim(),
                 },
-              };
-            }
-            return n;
-          })
-        );
-        
-        triggerAutoSave();
-        
-        // 立即刷新Git状态（更新节点文本）
-        if (mindMap.githubRepo) {
-          setTimeout(() => {
-            loadGitStatus();
-          }, 1000);
-        }
-      } catch (error: any) {
-        Notification.error('更新节点失败: ' + (error.message || '未知错误'));
-      }
+                isEditing: false,
+                pendingCreate: false,
+                pendingUpdate: true, // 标记为待修改
+                pendingDelete: false,
+              },
+            };
+          }
+          return n;
+        })
+      );
+      
+      // 文本更新会在 handleSave 时一起保存，不需要单独处理
     } else if (!isNewNode && newText.trim() === originalNode.text) {
       // 如果是已存在的节点但文本没有变化，只退出编辑模式
       setNodes((nds) =>
@@ -2864,7 +3047,45 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       const siblingNode = nodes.find(n => n.id === siblingId);
       if (siblingNode) {
         // 查找指向兄弟节点的边（即兄弟节点的父边）
-        const parentEdge = edges.find(e => e.target === siblingId);
+        let parentEdge = edges.find(e => e.target === siblingId);
+        
+        // 如果兄弟节点是待创建的节点，可能还没有父边，需要从 originalNode 中获取父节点信息
+        if (!parentEdge && siblingNode.data.isNewNode) {
+          const originalNode = siblingNode.data.originalNode as any;
+          // 如果兄弟节点是子节点，使用 parentId
+          if (originalNode?.parentId) {
+            const parentNode = nodes.find(n => n.id === originalNode.parentId);
+            if (parentNode) {
+              // 创建临时父边（如果还没有）
+              const existingParentEdge = edges.find(e => e.source === originalNode.parentId && e.target === siblingId);
+              if (!existingParentEdge) {
+                // 如果父节点也是临时节点，需要创建临时边
+                const tempParentEdgeId = `temp_edge_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                const tempParentEdge: Edge = {
+                  id: tempParentEdgeId,
+                  source: originalNode.parentId,
+                  target: siblingId,
+                  type: 'custom',
+                  animated: false,
+                  style: {
+                    stroke: '#999',
+                    strokeWidth: 2,
+                    strokeDasharray: '5,5',
+                  },
+                  data: {
+                    sourceIsNewNode: originalNode.parentId.startsWith('temp_'),
+                    targetIsNewNode: true,
+                  },
+                };
+                setEdges((eds) => [...eds, tempParentEdge]);
+                parentEdge = tempParentEdge;
+              } else {
+                parentEdge = existingParentEdge;
+              }
+            }
+          }
+        }
+        
         if (parentEdge) {
           // 连接到同一个父节点
           tempEdgeId = `temp_edge_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -2882,7 +3103,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             },
             data: {
               // 临时边缘连接到新建节点，所以 targetIsNewNode 为 true
-              sourceIsNewNode: false,
+              sourceIsNewNode: parentEdge.source.startsWith('temp_'),
               targetIsNewNode: true,
             },
           };
@@ -2932,8 +3153,8 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     await handleAddNode(parentId, 'child');
   }, [handleAddNode]);
 
-  // 添加兄弟节点
-  const handleAddSibling = useCallback(async (siblingId: string) => {
+  // 添加兄弟节点（支持在待创建的节点上创建兄弟节点）
+  const handleAddSibling = useCallback((siblingId: string) => {
     // 找到兄弟节点
     const siblingNode = nodes.find(n => n.id === siblingId);
     if (!siblingNode) {
@@ -2941,20 +3162,9 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       return;
     }
     
-    // 获取兄弟节点的真实ID
-    // 如果节点已经保存，使用保存后的ID；如果还是临时节点，使用临时ID
-    const originalNode = siblingNode.data?.originalNode as MindMapNode;
-    let realSiblingId = originalNode?.id || siblingId;
-    
-    // 如果兄弟节点是临时节点且还未保存，需要先保存它
-    if (siblingNode.data.isNewNode) {
-      Notification.error('兄弟节点还未保存，请先保存兄弟节点');
-      return;
-    }
-    
-    // 确保传递的是真实节点ID，而不是临时ID
-    // 传递 undefined 作为 parentId，确保后端知道这是兄弟节点
-    await handleAddNode(undefined, 'sibling', realSiblingId);
+    // 批量保存模式：允许在待创建的节点上创建兄弟节点
+    // 直接使用当前的节点ID（可能是临时ID），在保存时会处理ID映射
+    handleAddNode(undefined, 'sibling', siblingId);
   }, [handleAddNode, nodes]);
 
   // 更新回调函数 ref
@@ -3442,12 +3652,24 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     edgesRefForNodes.current = edges;
   }, [edges]);
 
-  // 当 edgeColorMap 变化时，强制更新所有边的颜色
+  // 当 edgeColorMap 变化时，强制更新所有边的颜色（但不覆盖状态颜色）
   useEffect(() => {
     if (edgeColorMap.size === 0) return; // 如果颜色映射为空，跳过更新
     
     setEdges((eds) =>
       eds.map((edge) => {
+        // 检查边是否有状态变化（待删除/待创建/待修改）
+        const sourceNode = nodes.find(n => n.id === edge.source);
+        const targetNode = nodes.find(n => n.id === edge.target);
+        const hasPendingDelete = sourceNode?.data?.pendingDelete || targetNode?.data?.pendingDelete;
+        const hasPendingCreate = sourceNode?.data?.pendingCreate || targetNode?.data?.pendingCreate || sourceNode?.data?.isNewNode || targetNode?.data?.isNewNode;
+        const hasPendingUpdate = sourceNode?.data?.pendingUpdate || targetNode?.data?.pendingUpdate;
+        
+        // 如果有状态变化，不更新颜色（状态颜色会在 CustomMindMapEdge 中设置）
+        if (hasPendingDelete || hasPendingCreate || hasPendingUpdate) {
+          return edge;
+        }
+        
         // 获取该边应该使用的颜色
         const edgeColor = edgeColorMap.get(edge.id);
         
@@ -3465,9 +3687,9 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         return edge;
       })
     );
-  }, [edgeColorMap, setEdges]);
+  }, [edgeColorMap, setEdges, nodes]);
 
-  // 当 mindMap 数据更新时，确保所有边都应用正确的颜色
+  // 当 mindMap 数据更新时，确保所有边都应用正确的颜色（但不覆盖状态颜色）
   useEffect(() => {
     if (edgeColorMap.size === 0) return;
     
@@ -3475,6 +3697,18 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     const timer = setTimeout(() => {
       setEdges((eds) =>
         eds.map((edge) => {
+          // 检查边是否有状态变化（待删除/待创建/待修改）
+          const sourceNode = nodes.find(n => n.id === edge.source);
+          const targetNode = nodes.find(n => n.id === edge.target);
+          const hasPendingDelete = sourceNode?.data?.pendingDelete || targetNode?.data?.pendingDelete;
+          const hasPendingCreate = sourceNode?.data?.pendingCreate || targetNode?.data?.pendingCreate || sourceNode?.data?.isNewNode || targetNode?.data?.isNewNode;
+          const hasPendingUpdate = sourceNode?.data?.pendingUpdate || targetNode?.data?.pendingUpdate;
+          
+          // 如果有状态变化，不更新颜色（状态颜色会在 CustomMindMapEdge 中设置）
+          if (hasPendingDelete || hasPendingCreate || hasPendingUpdate) {
+            return edge;
+          }
+          
           const edgeColor = edgeColorMap.get(edge.id);
           if (edgeColor) {
             return {
@@ -3491,35 +3725,55 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     }, 0);
     
     return () => clearTimeout(timer);
-  }, [mindMap.nodes, mindMap.edges, edgeColorMap, setEdges]);
+  }, [mindMap.nodes, mindMap.edges, edgeColorMap, setEdges, nodes]);
 
-  // 当节点状态变化时，更新边缘的 data，以便边缘组件能够根据节点是否为新建节点显示虚线或实线
+  // 当节点状态变化时，更新边缘的 data，以便边缘组件能够根据节点状态显示不同的样式
   // 更新所有 'custom' 类型的边缘（包括临时边缘和永久边缘）
   useEffect(() => {
     setEdges((eds) =>
       eds.map((edge) => {
         // 只更新 'custom' 类型的边缘
         if (edge.type === 'custom') {
-          // 查找源节点和目标节点，获取它们的 isNewNode 状态
+          // 查找源节点和目标节点，获取它们的状态
           const sourceNode = nodes.find(n => n.id === edge.source);
           const targetNode = nodes.find(n => n.id === edge.target);
           const sourceIsNewNode = sourceNode?.data?.isNewNode || false;
           const targetIsNewNode = targetNode?.data?.isNewNode || false;
+          const sourcePendingCreate = sourceNode?.data?.pendingCreate || false;
+          const targetPendingCreate = targetNode?.data?.pendingCreate || false;
+          const sourcePendingUpdate = sourceNode?.data?.pendingUpdate || false;
+          const targetPendingUpdate = targetNode?.data?.pendingUpdate || false;
+          const sourcePendingDelete = sourceNode?.data?.pendingDelete || false;
+          const targetPendingDelete = targetNode?.data?.pendingDelete || false;
           
           // 获取该边应该使用的颜色（确保使用最新的颜色）
-          const edgeColor = edgeColorMap.get(edge.id);
+          // 但是，如果边连接的是待删除/待创建/待修改的节点，状态颜色优先
+          const hasPendingDelete = sourcePendingDelete || targetPendingDelete;
+          const hasPendingCreate = sourcePendingCreate || targetPendingCreate || sourceIsNewNode || targetIsNewNode;
+          const hasPendingUpdate = sourcePendingUpdate || targetPendingUpdate;
+          
+          // 只有在没有状态变化时，才使用 edgeColorMap 中的颜色
+          const edgeColor = (!hasPendingDelete && !hasPendingCreate && !hasPendingUpdate) 
+            ? edgeColorMap.get(edge.id) 
+            : undefined;
           
           return {
             ...edge,
             style: {
               ...edge.style,
-              // 如果颜色映射中有该边的颜色，使用映射中的颜色；否则保持原有颜色
+              // 如果颜色映射中有该边的颜色且没有状态变化，使用映射中的颜色；否则保持原有颜色（状态颜色会在 CustomMindMapEdge 中设置）
               ...(edgeColor ? { stroke: edgeColor } : {}),
             },
             data: {
               ...edge.data,
               sourceIsNewNode,
               targetIsNewNode,
+              sourcePendingCreate,
+              targetPendingCreate,
+              sourcePendingUpdate,
+              targetPendingUpdate,
+              sourcePendingDelete,
+              targetPendingDelete,
             },
           };
         }
@@ -3589,7 +3843,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
 
   // 记录点击位置，用于区分点击和拖拽
   const nodeClickStartPosRef = useRef<{ x: number; y: number; nodeId: string } | null>(null);
-  
+
   // 节点点击事件 - 仅选中节点，不弹出对话框
   const onNodeClick: NodeMouseHandler = useCallback((event, node) => {
     // 检查点击目标是否是文件气泡或卡片气泡
@@ -3603,8 +3857,8 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       target.hasAttribute('data-card-count')
     )) {
       // 如果点击的是文件气泡或卡片气泡，不处理节点点击
-      event.preventDefault();
-      event.stopPropagation();
+    event.preventDefault();
+    event.stopPropagation();
       return;
     }
     
@@ -4199,6 +4453,28 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           YAML模式
         </button>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {pendingChangesCount > 0 && (
+            <button
+              onClick={() => handleSave(false)}
+              disabled={isSaving}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #4caf50',
+                borderRadius: '4px',
+                background: isSaving ? '#ccc' : '#4caf50',
+                color: '#fff',
+                cursor: isSaving ? 'not-allowed' : 'pointer',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+              title={`保存 ${pendingChangesCount} 个待处理的更改`}
+            >
+              <span>💾</span>
+              <span>保存 ({pendingChangesCount})</span>
+            </button>
+          )}
           <button
             onClick={() => setIsImmersive(true)}
             style={{

@@ -194,10 +194,35 @@ export class MindMapModel {
         domainId: string,
         docId: ObjectId,
         node: Omit<MindMapNode, 'id'>,
-        parentId?: string
+        parentId?: string,
+        branch?: string
     ): Promise<string> {
         const mindMap = await this.get(domainId, docId);
         if (!mindMap) throw new Error('MindMap not found');
+
+        // 获取分支名称（优先使用传入的分支，否则使用 mindMap 中的分支，最后默认为 'main'）
+        const branchName = branch || (mindMap as any).currentBranch || (mindMap as any).branch || 'main';
+        const branchData: {
+            [branch: string]: { nodes: MindMapNode[]; edges: MindMapEdge[] };
+        } = (mindMap as any).branchData || {};
+
+        // 确定使用哪个节点和边数组（使用与 getBranchData 相同的逻辑）
+        let nodes: MindMapNode[];
+        let edges: MindMapEdge[];
+        
+        // 如果存在 branchData，优先使用
+        if (branchData[branchName] && branchData[branchName].nodes) {
+            nodes = branchData[branchName].nodes;
+            edges = branchData[branchName].edges || [];
+        } else if (branchName === 'main') {
+            // 向后兼容：如果 branchData 不存在，使用根节点的 nodes/edges（仅对 main 分支）
+            nodes = mindMap.nodes || [];
+            edges = mindMap.edges || [];
+        } else {
+            // 其他分支如果没有数据，创建新的
+            nodes = [];
+            edges = [];
+        }
 
         const newNodeId = `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const newNode: MindMapNode = {
@@ -207,8 +232,8 @@ export class MindMapModel {
 
         // 如果指定了父节点，更新父子关系
         if (parentId) {
-            const parentNode = mindMap.nodes.find(n => n.id === parentId);
-            if (!parentNode) throw new Error('Parent node not found');
+            const parentNode = nodes.find(n => n.id === parentId);
+            if (!parentNode) throw new Error(`Parent node not found: ${parentId}. Branch: ${branchName}`);
 
             newNode.parentId = parentId;
             newNode.level = (parentNode.level || 0) + 1;
@@ -217,18 +242,35 @@ export class MindMapModel {
             if (!parentNode.children) parentNode.children = [];
             parentNode.children.push(newNodeId);
 
-            const parentIndex = mindMap.nodes.findIndex(n => n.id === parentId);
-            mindMap.nodes[parentIndex] = parentNode;
+            const parentIndex = nodes.findIndex(n => n.id === parentId);
+            nodes[parentIndex] = parentNode;
         } else {
             newNode.level = 0;
         }
 
-        mindMap.nodes.push(newNode);
+        nodes.push(newNode);
 
-        await document.set(domainId, TYPE_MM, docId, {
-            nodes: mindMap.nodes,
+        // 更新分支数据
+        if (!branchData[branchName]) {
+            branchData[branchName] = { nodes: [], edges: [] };
+        }
+        branchData[branchName] = {
+            nodes: nodes,
+            edges: edges,
+        };
+
+        // 同时更新主数据（向后兼容，仅对 main 分支）
+        const updateData: any = {
+            branchData: branchData,
             updateAt: new Date(),
-        });
+        };
+        
+        if (branchName === 'main') {
+            updateData.nodes = nodes;
+            updateData.edges = edges;
+        }
+
+        await document.set(domainId, TYPE_MM, docId, updateData);
 
         return newNodeId;
     }
@@ -236,28 +278,83 @@ export class MindMapModel {
     /**
      * 删除节点
      */
-    static async deleteNode(domainId: string, docId: ObjectId, nodeId: string): Promise<void> {
+    static async deleteNode(domainId: string, docId: ObjectId, nodeId: string, branch?: string): Promise<void> {
         const mindMap = await this.get(domainId, docId);
         if (!mindMap) throw new Error('MindMap not found');
 
-        const node = mindMap.nodes.find(n => n.id === nodeId);
-        if (!node) throw new Error('Node not found');
+        // 获取分支名称（优先使用传入的分支，否则使用 mindMap 中的分支，最后默认为 'main'）
+        const branchName = branch || (mindMap as any).currentBranch || (mindMap as any).branch || 'main';
+        const branchData: {
+            [branch: string]: { nodes: MindMapNode[]; edges: MindMapEdge[] };
+        } = (mindMap as any).branchData || {};
+
+        // 确定使用哪个节点和边数组（使用与 getBranchData 相同的逻辑）
+        let nodes: MindMapNode[];
+        let edges: MindMapEdge[];
+        
+        // 如果存在 branchData，优先使用
+        if (branchData[branchName] && branchData[branchName].nodes) {
+            nodes = branchData[branchName].nodes;
+            edges = branchData[branchName].edges || [];
+        } else if (branchName === 'main') {
+            // 向后兼容：如果 branchData 不存在，使用根节点的 nodes/edges（仅对 main 分支）
+            nodes = mindMap.nodes || [];
+            edges = mindMap.edges || [];
+        } else {
+            // 其他分支如果没有数据，返回空数组
+            nodes = [];
+            edges = [];
+        }
+
+        const node = nodes.find(n => n.id === nodeId);
+        if (!node) {
+            // 节点不存在，可能是已经被删除或从未存在
+            // 为了幂等性，如果节点不存在，直接返回成功（不抛错）
+            // 这样可以避免重复删除时的错误
+            console.warn(`Node not found for deletion: ${nodeId}. Branch: ${branchName}. It may have been already deleted.`);
+            return;
+        }
 
         // 收集所有要删除的节点ID（包括当前节点和所有子节点）
         const nodesToDelete = new Set<string>();
         
         // 递归收集所有子节点
+        // 同时考虑 children 字段和 edges 中的父子关系
         const collectChildNodes = (id: string) => {
-            nodesToDelete.add(id);
-            const nodeToDelete = mindMap.nodes.find(n => n.id === id);
-            if (nodeToDelete?.children) {
-                nodeToDelete.children.forEach(childId => collectChildNodes(childId));
+            // 如果已经收集过，跳过
+            if (nodesToDelete.has(id)) {
+                return;
             }
+            
+            nodesToDelete.add(id);
+            const nodeToDelete = nodes.find(n => n.id === id);
+            
+            // 如果节点不存在，跳过（可能已经被删除）
+            if (!nodeToDelete) {
+                return;
+            }
+            
+            // 方法1: 从节点的 children 字段获取子节点
+            if (nodeToDelete.children && nodeToDelete.children.length > 0) {
+                nodeToDelete.children.forEach(childId => {
+                    if (!nodesToDelete.has(childId)) {
+                        collectChildNodes(childId);
+                    }
+                });
+            }
+            
+            // 方法2: 从 edges 中查找所有以当前节点为 source 的子节点
+            const childEdges = edges.filter(e => e.source === id);
+            childEdges.forEach(edge => {
+                if (!nodesToDelete.has(edge.target)) {
+                    collectChildNodes(edge.target);
+                }
+            });
         };
 
         collectChildNodes(nodeId);
 
-
+        // 删除所有相关节点的卡片
         for (const nodeIdToDelete of nodesToDelete) {
             try {
                 const cards = await CardModel.getByNodeId(domainId, mindMap.mmid, nodeIdToDelete);
@@ -269,36 +366,82 @@ export class MindMapModel {
             }
         }
 
-        // 递归删除所有子节点
+        // 递归删除所有子节点（同时考虑 children 和 edges）
         const deleteNodeRecursive = (id: string) => {
-            const nodeToDelete = mindMap.nodes.find(n => n.id === id);
-            if (nodeToDelete?.children) {
-                nodeToDelete.children.forEach(childId => deleteNodeRecursive(childId));
+            const nodeToDelete = nodes.find(n => n.id === id);
+            
+            // 如果节点不存在，跳过（可能已经被删除）
+            if (!nodeToDelete) {
+                return;
             }
+            
+            // 先收集所有子节点ID（避免在删除过程中修改数组导致的问题）
+            const childIds = new Set<string>();
+            
+            // 从 children 字段获取子节点
+            if (nodeToDelete.children && nodeToDelete.children.length > 0) {
+                nodeToDelete.children.forEach(childId => {
+                    childIds.add(childId);
+                });
+            }
+            
+            // 从 edges 中获取子节点
+            const childEdges = edges.filter(e => e.source === id);
+            childEdges.forEach(edge => {
+                childIds.add(edge.target);
+            });
+            
+            // 递归删除所有子节点
+            childIds.forEach(childId => {
+                deleteNodeRecursive(childId);
+            });
+            
             // 删除节点
-            const index = mindMap.nodes.findIndex(n => n.id === id);
-            if (index !== -1) mindMap.nodes.splice(index, 1);
-            // 删除相关连接
-            mindMap.edges = mindMap.edges.filter(e => e.source !== id && e.target !== id);
+            const index = nodes.findIndex(n => n.id === id);
+            if (index !== -1) nodes.splice(index, 1);
+            
+            // 删除相关连接（包括作为 source 和 target 的边）
+            edges = edges.filter(e => e.source !== id && e.target !== id);
         };
 
         // 如果节点有父节点，从父节点的子节点列表中移除
         if (node.parentId) {
-            const parentNode = mindMap.nodes.find(n => n.id === node.parentId);
+            const parentNode = nodes.find(n => n.id === node.parentId);
             if (parentNode?.children) {
                 parentNode.children = parentNode.children.filter(id => id !== nodeId);
-                const parentIndex = mindMap.nodes.findIndex(n => n.id === node.parentId);
-                mindMap.nodes[parentIndex] = parentNode;
+                const parentIndex = nodes.findIndex(n => n.id === node.parentId);
+                if (parentIndex !== -1) {
+                    nodes[parentIndex] = parentNode;
+                }
             }
         }
+        
+        // 从父节点的 edges 中移除（如果有的话）
+        edges = edges.filter(e => !(e.source === node.parentId && e.target === nodeId));
 
         deleteNodeRecursive(nodeId);
 
-        await document.set(domainId, TYPE_MM, docId, {
-            nodes: mindMap.nodes,
-            edges: mindMap.edges,
+        // 更新分支数据
+        if (!branchData[branchName]) {
+            branchData[branchName] = { nodes: [], edges: [] };
+        }
+        branchData[branchName] = {
+            nodes: nodes,
+            edges: edges,
+        };
+
+        // 同时更新主数据（向后兼容，仅对 main 分支）
+        const updateData: any = {
+            branchData: branchData,
             updateAt: new Date(),
-        });
+        };
+        
+        if (branchName === 'main') {
+            updateData.nodes = nodes;
+            updateData.edges = edges;
+        }
+
+        await document.set(domainId, TYPE_MM, docId, updateData);
     }
 
     /**
@@ -307,48 +450,89 @@ export class MindMapModel {
     static async addEdge(
         domainId: string,
         docId: ObjectId,
-        edge: Omit<MindMapEdge, 'id'>
+        edge: Omit<MindMapEdge, 'id'>,
+        branch?: string
     ): Promise<string> {
-        const mindMap = await this.get(domainId, docId);
-        if (!mindMap) throw new Error('MindMap not found');
-
-        // 验证源节点和目标节点是否存在
-        const sourceExists = mindMap.nodes.some(n => n.id === edge.source);
-        const targetExists = mindMap.nodes.some(n => n.id === edge.target);
-        if (!sourceExists || !targetExists) {
-            throw new Error('Source or target node not found');
+        let mindMap = await this.get(domainId, docId);
+        if (!mindMap) {
+            // 如果获取失败，可能是数据库延迟，尝试再获取一次
+            await new Promise(resolve => setTimeout(resolve, 100)); // 等待100ms
+            mindMap = await this.get(domainId, docId);
+            if (!mindMap) {
+                // 如果仍然获取失败，再等待一次
+                await new Promise(resolve => setTimeout(resolve, 100)); // 再等待100ms
+                mindMap = await this.get(domainId, docId);
+                if (!mindMap) {
+                    // 如果仍然获取失败，抛出错误
+                    throw new Error('MindMap not found');
+                }
+            }
         }
 
-        // 获取当前分支
-        const currentBranch = (mindMap as any).currentBranch || 'main';
+        // 获取分支名称（优先使用传入的分支，否则使用 mindMap 中的分支，最后默认为 'main'）
+        const branchName = branch || (mindMap as any).currentBranch || (mindMap as any).branch || 'main';
         const branchData: {
             [branch: string]: { nodes: MindMapNode[]; edges: MindMapEdge[] };
         } = (mindMap as any).branchData || {};
 
+        // 确定使用哪个节点和边数组（使用与 getBranchData 相同的逻辑）
+        let nodes: MindMapNode[];
+        let edges: MindMapEdge[];
+        
+        // 如果存在 branchData，优先使用
+        if (branchData[branchName] && branchData[branchName].nodes) {
+            nodes = branchData[branchName].nodes;
+            edges = branchData[branchName].edges || [];
+        } else if (branchName === 'main') {
+            // 向后兼容：如果 branchData 不存在，使用根节点的 nodes/edges（仅对 main 分支）
+            nodes = mindMap.nodes || [];
+            edges = mindMap.edges || [];
+        } else {
+            // 其他分支如果没有数据，创建新的
+            nodes = [];
+            edges = [];
+        }
+
+        // 验证源节点和目标节点是否存在（参考旧版本的简单逻辑）
+        const sourceExists = nodes.some(n => n.id === edge.source);
+        const targetExists = nodes.some(n => n.id === edge.target);
+        if (!sourceExists || !targetExists) {
+            throw new Error(`Source or target node not found. Source: ${edge.source}, Target: ${edge.target}, Branch: ${branchName}`);
+        }
+
         // 如果连接已经存在，则直接返回已有的 edgeId，而不是抛错
-        const existingEdge = mindMap.edges.find(
+        const existingEdge = edges.find(
             e => e.source === edge.source && e.target === edge.target
         );
         if (existingEdge) {
             // 同步到当前分支数据（如果分支中没有这条边，则补上）
-            if (branchData[currentBranch]) {
-                const branchEdges = branchData[currentBranch].edges || [];
-                const branchHasEdge = branchEdges.some(
-                    e => e.source === edge.source && e.target === edge.target
-                );
-                if (!branchHasEdge) {
-                    branchEdges.push(existingEdge);
-                    branchData[currentBranch] = {
-                        ...branchData[currentBranch],
-                        edges: branchEdges,
-                    };
-                }
-
-                await document.set(domainId, TYPE_MM, docId, {
-                    branchData,
-                    updateAt: new Date(),
-                });
+            if (!branchData[branchName]) {
+                branchData[branchName] = { nodes: nodes, edges: edges };
             }
+            
+            const branchEdges = branchData[branchName].edges || [];
+            const branchHasEdge = branchEdges.some(
+                e => e.source === edge.source && e.target === edge.target
+            );
+            if (!branchHasEdge) {
+                branchEdges.push(existingEdge);
+                branchData[branchName] = {
+                    ...branchData[branchName],
+                    edges: branchEdges,
+                };
+            }
+
+            const updateData: any = {
+                branchData,
+                updateAt: new Date(),
+            };
+            
+            if (branchName === 'main') {
+                updateData.nodes = nodes;
+                updateData.edges = edges;
+            }
+
+            await document.set(domainId, TYPE_MM, docId, updateData);
 
             return existingEdge.id;
         }
@@ -359,23 +543,30 @@ export class MindMapModel {
             id: newEdgeId,
         };
 
-        mindMap.edges.push(newEdge);
+        edges.push(newEdge);
 
-        // 同步到当前分支的 edges
-        if (branchData[currentBranch]) {
-            const branchEdges = branchData[currentBranch].edges || [];
-            branchEdges.push(newEdge);
-            branchData[currentBranch] = {
-                ...branchData[currentBranch],
-                edges: branchEdges,
+        // 更新分支数据
+        if (!branchData[branchName]) {
+            branchData[branchName] = { nodes: nodes, edges: edges };
+        } else {
+            branchData[branchName] = {
+                ...branchData[branchName],
+                edges: edges,
             };
         }
 
-        await document.set(domainId, TYPE_MM, docId, {
-            edges: mindMap.edges,
-            branchData,
+        // 同时更新主数据（向后兼容，仅对 main 分支）
+        const updateData: any = {
+            branchData: branchData,
             updateAt: new Date(),
-        });
+        };
+        
+        if (branchName === 'main') {
+            updateData.nodes = nodes;
+            updateData.edges = edges;
+        }
+
+        await document.set(domainId, TYPE_MM, docId, updateData);
 
         return newEdgeId;
     }
