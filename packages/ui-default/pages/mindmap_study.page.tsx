@@ -447,11 +447,11 @@ function MindMapStudy() {
     const uiContext = (window as any).UiContext;
     if (!uiContext) {
       Notification.error('UiContext 未找到');
-      setLoading(false);
-      return;
-    }
+        setLoading(false);
+        return;
+      }
 
-    try {
+      try {
       // 从 UiContext 获取数据
       const mindMapData = uiContext.mindMap;
       const unitsData = uiContext.units || [];
@@ -462,11 +462,11 @@ function MindMapStudy() {
       } else {
         Notification.error('思维导图数据未找到');
       }
-    } catch (error: any) {
-      Notification.error('加载思维导图失败: ' + (error.message || '未知错误'));
-    } finally {
-      setLoading(false);
-    }
+      } catch (error: any) {
+        Notification.error('加载思维导图失败: ' + (error.message || '未知错误'));
+      } finally {
+        setLoading(false);
+      }
   }, []);
 
 
@@ -570,7 +570,7 @@ function MindMapStudy() {
             <div style={{ width: '100%', maxWidth: '800px' }}>
               <div style={{ marginBottom: '20px', fontSize: '14px', color: '#666', textAlign: 'center' }}>
                 {currentProblemIndex + 1} / {selectedUnit?.problems.length || 0}
-              </div>
+            </div>
               
               <div style={{
                 width: '100%',
@@ -584,7 +584,7 @@ function MindMapStudy() {
                 {/* 题干 */}
                 <div style={{ fontSize: '18px', fontWeight: '600', color: '#333', marginBottom: '30px', lineHeight: '1.6' }}>
                   {currentProblem.stem}
-                </div>
+        </div>
                 
                 {/* 选项 */}
                 <div style={{ marginBottom: '30px' }}>
@@ -619,7 +619,7 @@ function MindMapStudy() {
                       optionStyle.background = '#e3f2fd';
                     }
                     
-                    return (
+    return (
                       <div
                         key={`problem-${currentProblemIndex}-option-${index}`}
                         onClick={() => !showAnswer && handleOptionClick(currentProblemIndex, index)}
@@ -644,7 +644,7 @@ function MindMapStudy() {
                 {showAnswer && (
                   <>
                     {/* 结果提示 */}
-                    <div style={{
+        <div style={{
                       marginTop: '20px',
                       padding: '15px',
                       borderRadius: '8px',
@@ -662,7 +662,7 @@ function MindMapStudy() {
                       <div style={{
                         marginTop: '20px',
                         padding: '15px',
-                        background: '#f5f5f5',
+          background: '#f5f5f5',
                         borderRadius: '8px',
                         fontSize: '14px',
                         color: '#666',
@@ -702,21 +702,21 @@ function MindMapStudy() {
               
               {/* 控制按钮 */}
               <div style={{ marginTop: '30px', display: 'flex', gap: '10px', justifyContent: 'center' }}>
-                <button
+          <button
                   onClick={handlePrevProblem}
                   disabled={currentProblemIndex === 0}
-                  style={{
+            style={{
                     padding: '12px 24px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
                     background: currentProblemIndex === 0 ? '#f5f5f5' : '#fff',
                     color: currentProblemIndex === 0 ? '#999' : '#333',
                     cursor: currentProblemIndex === 0 ? 'not-allowed' : 'pointer',
                     fontSize: '16px',
-                  }}
-                >
+            }}
+          >
                   上一题
-                </button>
+          </button>
                 <button
                   onClick={handleNextProblem}
                   disabled={currentProblemIndex >= (selectedUnit?.problems.length || 0) - 1}
@@ -732,8 +732,8 @@ function MindMapStudy() {
                 >
                   下一题
                 </button>
-              </div>
-            </div>
+          </div>
+        </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '16px', color: '#999' }}>
               没有题目
@@ -780,54 +780,54 @@ function MindMapStudy() {
 
       {/* Unit 列表区域 */}
       <div style={{ flex: 1, padding: '40px', overflow: 'auto', backgroundColor: '#f5f5f5' }}>
-        <h2 style={{ marginBottom: '30px', fontSize: '24px', fontWeight: '600', color: '#333' }}>
+            <h2 style={{ marginBottom: '30px', fontSize: '24px', fontWeight: '600', color: '#333' }}>
           选择 Unit 开始刷题
-        </h2>
+            </h2>
         {units.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '16px' }}>
+              <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '16px' }}>
             暂无可刷题的 Unit
-          </div>
-        ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-            gap: '20px',
-          }}>
+              </div>
+            ) : (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                gap: '20px',
+              }}>
             {units.map((unit) => (
-              <div
+                  <div
                 key={unit.node.id}
                 onClick={() => handleUnitClick(unit)}
-                style={{
-                  padding: '24px',
-                  border: '2px solid #2196F3',
-                  borderRadius: '12px',
-                  background: '#fff',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-4px)';
-                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
-                }}
-              >
-                <div style={{ fontSize: '20px', fontWeight: '600', color: '#2196F3', marginBottom: '12px' }}>
+                    style={{
+                      padding: '24px',
+                      border: '2px solid #2196F3',
+                      borderRadius: '12px',
+                      background: '#fff',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-4px)';
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+                    }}
+                  >
+                    <div style={{ fontSize: '20px', fontWeight: '600', color: '#2196F3', marginBottom: '12px' }}>
                   {unit.node.text || '未命名 Unit'}
-                </div>
-                <div style={{ fontSize: '16px', color: '#666', marginBottom: '8px' }}>
+                    </div>
+                    <div style={{ fontSize: '16px', color: '#666', marginBottom: '8px' }}>
                   {unit.problemCount} 道题目
-                </div>
-                <div style={{ fontSize: '14px', color: '#999', marginTop: '12px' }}>
-                  点击开始刷题 →
-                </div>
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#999', marginTop: '12px' }}>
+                      点击开始刷题 →
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
+            )}
       </div>
     </div>
   );
