@@ -1635,6 +1635,10 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             
             if (response && response.nodeId) {
               const newNodeId = response.nodeId;
+              const newEdgeId = response.edgeId;
+              const edgeSource = response.edgeSource;
+              const edgeTarget = response.edgeTarget;
+              
               createdNodeIdMap.set(tempNodeId, newNodeId);
               
               // 更新节点ID
@@ -1658,20 +1662,40 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
                 })
               );
               
-              // 更新边的source/target（如果使用了临时ID）
+              // 处理边的更新或创建
               if (createData.edge) {
+                // 如果有临时边，更新它
                 const tempEdge = createData.edge;
-                const newSource = createdNodeIdMap.get(tempEdge.source) || tempEdge.source;
-                const newTarget = newNodeId;
+                // 优先使用后端返回的 edgeSource 和 edgeTarget，如果没有则使用临时边的信息
+                const finalSource = edgeSource || createdNodeIdMap.get(tempEdge.source) || tempEdge.source;
+                const finalTarget = edgeTarget || newNodeId;
+                const finalEdgeId = newEdgeId || tempEdge.id;
                 
-                setEdges((eds) =>
-                  eds.map((e) => {
+                setEdges((eds) => {
+                  const edgeExists = eds.some(e => e.id === tempEdge.id);
+                  
+                  if (!edgeExists) {
+                    // 如果临时边不存在，添加新边
+                    return [...eds, {
+                      id: finalEdgeId,
+                      source: finalSource,
+                      target: finalTarget,
+                      type: 'custom',
+                      animated: false,
+                      style: {
+                        stroke: '#999',
+                        strokeWidth: 2,
+                      },
+                    }];
+                  }
+                  
+                  return eds.map((e) => {
                     if (e.id === tempEdge.id) {
                       return {
                         ...e,
-                        id: response.edgeId || tempEdge.id,
-                        source: newSource,
-                        target: newTarget,
+                        id: finalEdgeId,
+                        source: finalSource,
+                        target: finalTarget,
                         style: {
                           ...e.style,
                           strokeDasharray: undefined, // 移除虚线样式
@@ -1679,8 +1703,51 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
                       };
                     }
                     return e;
-                  })
+                  });
+                });
+              } else if (newEdgeId && edgeSource && edgeTarget) {
+                // 如果没有临时边但后端返回了 edgeId 和 edgeSource/edgeTarget，创建新边
+                // 检查边是否已存在
+                const existingEdge = edgesRef.current.find(
+                  e => e.source === edgeSource && e.target === edgeTarget
                 );
+                
+                if (!existingEdge) {
+                  // 创建新边
+                  const newEdge: Edge = {
+                    id: newEdgeId,
+                    source: edgeSource,
+                    target: edgeTarget,
+                    type: 'custom',
+                    animated: false,
+                    style: {
+                      stroke: '#999',
+                      strokeWidth: 2,
+                    },
+                  };
+                  setEdges((eds) => [...eds, newEdge]);
+                }
+              } else if (edgeSource && edgeTarget) {
+                // 即使没有 edgeId，只要有 edgeSource 和 edgeTarget，也创建边（使用临时ID）
+                const tempEdgeId = `edge_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                const existingEdge = edgesRef.current.find(
+                  e => e.source === edgeSource && e.target === edgeTarget
+                );
+                
+                if (!existingEdge) {
+                  const newEdge: Edge = {
+                    id: tempEdgeId,
+                    source: edgeSource,
+                    target: edgeTarget,
+                    type: 'custom',
+                    animated: false,
+                    style: {
+                      stroke: '#999',
+                      strokeWidth: 2,
+                    },
+                  };
+                  setEdges((eds) => [...eds, newEdge]);
+                }
               }
               
               // 从待创建列表中移除
@@ -1712,6 +1779,8 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       }
       
       // 3. 使用 ref 获取最新的节点和边状态（包括刚创建的节点）
+      // 等待一下，确保状态已更新（特别是刚创建的边）
+      await new Promise(resolve => setTimeout(resolve, 50));
       const currentNodes = nodesRef.current;
       const currentEdges = edgesRef.current;
 
@@ -1756,16 +1825,6 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
 
       // 获取当前视口状态
       const viewport = reactFlowInstance?.getViewport();
-
-      console.log('保存节点数据:', updatedNodes.map(n => ({ 
-        id: n.id, 
-        x: n.x, 
-        y: n.y, 
-        xType: typeof n.x, 
-        yType: typeof n.y,
-        xValid: typeof n.x === 'number' && !isNaN(n.x),
-        yValid: typeof n.y === 'number' && !isNaN(n.y)
-      })));
 
       // 生成操作描述
       const operationDescription = lastOperationRef.current || '自动保存';
@@ -1831,7 +1890,6 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       } else {
         setIsSaving(false);
       }
-      console.log('保存成功，节点数据:', updatedNodes.map(n => ({ id: n.id, x: n.x, y: n.y })));
     } catch (error: any) {
       Notification.error('保存失败: ' + (error.message || '未知错误'));
       setIsSaving(false);
