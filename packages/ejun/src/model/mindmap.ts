@@ -189,14 +189,17 @@ export class MindMapModel {
 
     /**
      * 添加节点
+     * @param edgeSourceId 如果提供，将同时创建从 edgeSourceId 到新节点的边
+     * @returns 返回 nodeId，如果创建了边则同时返回 edgeId
      */
     static async addNode(
         domainId: string,
         docId: ObjectId,
         node: Omit<MindMapNode, 'id'>,
         parentId?: string,
-        branch?: string
-    ): Promise<string> {
+        branch?: string,
+        edgeSourceId?: string
+    ): Promise<{ nodeId: string; edgeId?: string }> {
         const mindMap = await this.get(domainId, docId);
         if (!mindMap) throw new Error('MindMap not found');
 
@@ -250,6 +253,34 @@ export class MindMapModel {
 
         nodes.push(newNode);
 
+        // 如果需要创建边，在同一个操作中创建
+        let newEdgeId: string | undefined;
+        if (edgeSourceId) {
+            // 验证源节点是否存在
+            const sourceExists = nodes.some(n => n.id === edgeSourceId);
+            if (!sourceExists) {
+                throw new Error(`Source node not found: ${edgeSourceId}. Branch: ${branchName}`);
+            }
+
+            // 检查边是否已存在
+            const existingEdge = edges.find(
+                e => e.source === edgeSourceId && e.target === newNodeId
+            );
+            
+            if (existingEdge) {
+                newEdgeId = existingEdge.id;
+            } else {
+                // 创建新边
+                newEdgeId = `edge_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                const newEdge: MindMapEdge = {
+                    id: newEdgeId,
+                    source: edgeSourceId,
+                    target: newNodeId,
+                };
+                edges.push(newEdge);
+            }
+        }
+
         // 更新分支数据
         if (!branchData[branchName]) {
             branchData[branchName] = { nodes: [], edges: [] };
@@ -272,7 +303,7 @@ export class MindMapModel {
 
         await document.set(domainId, TYPE_MM, docId, updateData);
 
-        return newNodeId;
+        return { nodeId: newNodeId, edgeId: newEdgeId };
     }
 
     /**
