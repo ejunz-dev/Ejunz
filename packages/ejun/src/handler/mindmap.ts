@@ -802,7 +802,12 @@ class MindMapNodeHandler extends Handler {
     }
 
     @param('docId', Types.ObjectId)
-    @param('branch', Types.String, true)
+    @post('text', Types.String)
+    @post('x', Types.Float, true)
+    @post('y', Types.Float, true)
+    @post('parentId', Types.String, true)
+    @post('siblingId', Types.String, true)
+    @post('branch', Types.String, true)
     async postAdd(
         domainId: string,
         docId: ObjectId,
@@ -825,6 +830,12 @@ class MindMapNodeHandler extends Handler {
             if (!docId) {
                 throw new BadRequestError('docId is required');
             }
+            
+            // 从 body 中获取参数（兼容 JSON 提交）
+            const body: any = this.request?.body || {};
+            const finalParentId = parentId !== undefined ? parentId : body.parentId;
+            const finalSiblingId = siblingId !== undefined ? siblingId : body.siblingId;
+            
             const actualDomainId = this.args.domainId || domainId || 'system';
             
             let mindMap = await MindMapModel.get(actualDomainId, docId);
@@ -842,7 +853,7 @@ class MindMapNodeHandler extends Handler {
             }
 
             // 从请求参数或 body 中获取分支（如果未提供）
-            const effectiveBranch = branch || (this.request.body as any)?.branch || (mindMap as any).currentBranch || (mindMap as any).branch || 'main';
+            const effectiveBranch = branch || body.branch || (mindMap as any).currentBranch || (mindMap as any).branch || 'main';
             
             // 获取分支数据用于查找节点
             const branchData: {
@@ -858,12 +869,12 @@ class MindMapNodeHandler extends Handler {
                 nodes = [];
             }
 
-            let effectiveParentId: string | undefined = parentId;
+            let effectiveParentId: string | undefined = finalParentId;
 
-            if (siblingId && !parentId) {
-                const siblingNode = nodes.find(n => n.id === siblingId);
+            if (finalSiblingId && !finalParentId) {
+                const siblingNode = nodes.find(n => n.id === finalSiblingId);
                 if (!siblingNode) {
-                    throw new NotFoundError(`Sibling node not found: ${siblingId}. Branch: ${effectiveBranch}`);
+                    throw new NotFoundError(`Sibling node not found: ${finalSiblingId}. Branch: ${effectiveBranch}`);
                 }
                 effectiveParentId = siblingNode.parentId;
             }
@@ -876,7 +887,7 @@ class MindMapNodeHandler extends Handler {
             };
 
             // 确定边的源和目标
-            if (siblingId && !parentId) {
+            if (finalSiblingId && !finalParentId) {
                 if (!effectiveParentId) {
                     // 没有父节点，不需要创建边，只创建节点
                     const result = await MindMapModel.addNode(
@@ -890,8 +901,8 @@ class MindMapNodeHandler extends Handler {
                     return;
                 }
                 edgeSourceId = effectiveParentId;
-            } else if (parentId) {
-                edgeSourceId = parentId;
+            } else if (finalParentId) {
+                edgeSourceId = finalParentId;
             } else {
                 // 没有父节点，不需要创建边，只创建节点
                 const result = await MindMapModel.addNode(
