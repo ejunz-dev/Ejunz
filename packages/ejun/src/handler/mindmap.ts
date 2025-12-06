@@ -2343,6 +2343,8 @@ class MindMapCardEditHandler extends Handler {
     // 创建/更新时仅要求 title 存在，其它字段从表单 body 中按需读取
     @post('title', Types.String)
     @post('content', Types.String, true)
+    @post('operation', Types.String, true)
+    @post('cardId', Types.ObjectId, true)
     async post(
         domainId: string,
         docId: ObjectId,
