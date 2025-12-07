@@ -2154,17 +2154,22 @@ class MindMapCardListHandler extends Handler {
             : await MindMapModel.getByMmid(domainId, mmid);
         if (!mindMap) throw new NotFoundError('MindMap not found');
         
+        const effectiveBranch = branch || 'main';
+        const branchData = getBranchData(mindMap, effectiveBranch);
+        const nodes = branchData.nodes || [];
+        const edges = branchData.edges || [];
+        
+        // 检查节点是否存在于当前分支中
+        const node = nodes.find(n => n.id === nodeId);
+        if (!node) {
+            throw new NotFoundError('Node not found in this branch');
+        }
+        
         // 获取节点的所有卡片
         const cards = await CardModel.getByNodeId(domainId, mindMap.mmid, nodeId);
         
-        // 获取节点信息（用于显示节点名称）
-        const node = mindMap.nodes?.find(n => n.id === nodeId);
-        
         // 构建从根节点到当前节点的完整路径
         const nodePath: Array<{ id: string; text: string }> = [];
-        const branchData = getBranchData(mindMap, branch || 'main');
-        const nodes = branchData.nodes || [];
-        const edges = branchData.edges || [];
         
         // 构建节点映射
         const nodeMap = new Map<string, MindMapNode>();
@@ -2555,6 +2560,16 @@ class MindMapCardDetailHandler extends Handler {
             : await MindMapModel.getByMmid(domainId, mmid);
         if (!mindMap) throw new NotFoundError('MindMap not found');
         
+        const effectiveBranch = branch || 'main';
+        const branchData = getBranchData(mindMap, effectiveBranch);
+        const nodes = branchData.nodes || [];
+        
+        // 检查节点是否存在于当前分支中
+        const node = nodes.find(n => n.id === nodeId);
+        if (!node) {
+            throw new NotFoundError('Node not found in this branch');
+        }
+        
         const card = await CardModel.get(domainId, cardId);
         if (!card) throw new NotFoundError('Card not found');
         if (card.nodeId !== nodeId) throw new NotFoundError('Card does not belong to this node');
@@ -2570,7 +2585,7 @@ class MindMapCardDetailHandler extends Handler {
             cards,
             currentIndex: currentIndex >= 0 ? currentIndex : 0,
             nodeId,
-            branch: branch || 'main',
+            branch: effectiveBranch,
         };
     }
     
