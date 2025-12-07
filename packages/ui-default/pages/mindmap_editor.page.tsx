@@ -18,6 +18,7 @@ interface MindMapNode {
   parentId?: string;
   children?: string[];
   expanded?: boolean;
+  order?: number; // 节点顺序
 }
 
 interface MindMapEdge {
@@ -96,8 +97,430 @@ interface PendingDelete {
   nodeId?: string; // 对于 card，记录所属节点
 }
 
+// 排序窗口组件
+function SortWindow({ 
+  nodeId, 
+  mindMap, 
+  docId,
+  getMindMapUrl,
+  onClose, 
+  onSave 
+}: { 
+  nodeId: string; 
+  mindMap: MindMapDoc; 
+  docId: string;
+  getMindMapUrl: (path: string, docId: string) => string;
+  onClose: () => void; 
+  onSave: (sortedItems: Array<{ type: 'node' | 'card'; id: string; order: number }>) => Promise<void>;
+}) {
+  const [draggedItem, setDraggedItem] = useState<{ type: 'node' | 'card'; id: string; index: number } | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  
+  // 获取子节点（按order排序）
+  const childNodes = useMemo(() => {
+    return mindMap.edges
+      .filter(e => e.source === nodeId)
+      .map(e => {
+        const node = mindMap.nodes.find(n => n.id === e.target);
+        return node ? { 
+          id: node.id, 
+          name: node.text || '未命名节点',
+          order: node.order || 0,
+        } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => (a!.order || 0) - (b!.order || 0)) as Array<{ id: string; name: string; order: number }>;
+  }, [mindMap.edges, mindMap.nodes, nodeId]);
+  
+  // 获取卡片（按order排序）
+  const cards = useMemo(() => {
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const nodeCards = (nodeCardsMap[nodeId] || [])
+      .filter((card: Card) => !card.nodeId || card.nodeId === nodeId)
+      .sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+    return nodeCards.map((card: Card) => ({
+      id: card.docId,
+      name: card.title || '未命名卡片',
+      order: card.order || 0,
+    }));
+  }, [nodeId]);
+  
+  // 合并的列表，按照order混合排序（node和card混合在一起）
+  const [items, setItems] = useState<Array<{ type: 'node' | 'card'; id: string; name: string; order: number }>>(() => {
+    const allItems: Array<{ type: 'node' | 'card'; id: string; name: string; order: number }> = [
+      ...childNodes.map(n => ({ type: 'node' as const, id: n.id, name: n.name, order: n.order })),
+      ...cards.map(c => ({ type: 'card' as const, id: c.id, name: c.name, order: c.order })),
+    ];
+    // 按order排序
+    return allItems.sort((a, b) => (a.order || 0) - (b.order || 0));
+  });
+  
+  // 当childNodes或cards变化时更新items
+  useEffect(() => {
+    const allItems: Array<{ type: 'node' | 'card'; id: string; name: string; order: number }> = [
+      ...childNodes.map(n => ({ type: 'node' as const, id: n.id, name: n.name, order: n.order })),
+      ...cards.map(c => ({ type: 'card' as const, id: c.id, name: c.name, order: c.order })),
+    ];
+    // 按order排序
+    setItems(allItems.sort((a, b) => (a.order || 0) - (b.order || 0)));
+  }, [childNodes, cards]);
+  
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedItem({ type: items[index].type, id: items[index].id, index });
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', '');
+  };
+  
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedItem && draggedItem.index !== index) {
+      setDragOverIndex(index);
+    }
+  };
+  
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
+  };
+  
+  const handleDrop = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (!draggedItem || draggedItem.index === index) {
+      setDragOverIndex(null);
+      setDraggedItem(null);
+      return;
+    }
+    
+    const newItems = [...items];
+    const [removed] = newItems.splice(draggedItem.index, 1);
+    newItems.splice(index, 0, removed);
+    setItems(newItems);
+    
+    setDragOverIndex(null);
+    setDraggedItem(null);
+  };
+  
+  const handleDragEnd = () => {
+    setDragOverIndex(null);
+    setDraggedItem(null);
+  };
+  
+  const handleSave = async () => {
+    // 按照当前items的顺序，为每个item分配order（从1开始）
+    const sortedItems: Array<{ type: 'node' | 'card'; id: string; order: number }> = [];
+    
+    for (let i = 0; i < items.length; i++) {
+      sortedItems.push({
+        type: items[i].type,
+        id: items[i].id,
+        order: i + 1,
+      });
+    }
+    
+    await onSave(sortedItems);
+  };
+  
+  const currentNode = mindMap.nodes.find(n => n.id === nodeId);
+  
+  return (
+    <>
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          zIndex: 2000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+        onClick={onClose}
+      >
+        <div
+          style={{
+            backgroundColor: '#fff',
+            borderRadius: '8px',
+            padding: '20px',
+            minWidth: '500px',
+            maxWidth: '80%',
+            maxHeight: '80%',
+            overflow: 'auto',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>
+              排序: {currentNode?.text || '未命名节点'}
+            </h3>
+            <button
+              onClick={onClose}
+              style={{
+                background: 'none',
+                border: 'none',
+                fontSize: '20px',
+                cursor: 'pointer',
+                color: '#666',
+                padding: '0',
+                width: '24px',
+                height: '24px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              ×
+            </button>
+          </div>
+          
+          <div style={{ marginBottom: '16px', fontSize: '13px', color: '#666' }}>
+            拖拽项目以改变顺序
+          </div>
+          
+          <div style={{ marginBottom: '16px' }}>
+            {items.length === 0 ? (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
+                暂无子节点和卡片
+              </div>
+            ) : (
+              items.map((item, index) => (
+                <div
+                  key={`${item.type}-${item.id}`}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, index)}
+                  onDragEnd={handleDragEnd}
+                  style={{
+                    padding: '12px',
+                    marginBottom: '8px',
+                    backgroundColor: dragOverIndex === index ? '#e3f2fd' : draggedItem?.index === index ? '#f5f5f5' : '#fff',
+                    border: '1px solid #e1e4e8',
+                    borderRadius: '4px',
+                    cursor: 'move',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    opacity: draggedItem?.index === index ? 0.5 : 1,
+                    transition: 'background-color 0.2s',
+                  }}
+                >
+                  <div style={{ fontSize: '18px', color: '#999' }}>⋮⋮</div>
+                  <div style={{ 
+                    padding: '2px 8px', 
+                    borderRadius: '3px', 
+                    fontSize: '12px',
+                    backgroundColor: item.type === 'node' ? '#2196f3' : '#4caf50',
+                    color: '#fff',
+                    fontWeight: '500',
+                  }}>
+                    {item.type === 'node' ? 'Node' : 'Card'}
+                  </div>
+                  <div style={{ flex: 1, fontSize: '14px', color: '#24292e' }}>
+                    {item.name}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+            <button
+              onClick={onClose}
+              style={{
+                padding: '6px 16px',
+                border: '1px solid #d1d5da',
+                borderRadius: '4px',
+                backgroundColor: '#fff',
+                color: '#24292e',
+                cursor: 'pointer',
+                fontSize: '13px',
+              }}
+            >
+              取消
+            </button>
+            <button
+              onClick={handleSave}
+              style={{
+                padding: '6px 16px',
+                border: '1px solid #28a745',
+                borderRadius: '4px',
+                backgroundColor: '#28a745',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: '500',
+              }}
+            >
+              保存
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// 迁移函数：为没有order字段的node和card分配order
+// 返回迁移后的mindMap和是否需要保存的标志
+function migrateOrderFields(mindMap: MindMapDoc): { mindMap: MindMapDoc; needsSave: boolean; cardUpdates: Array<{ cardId: string; nodeId: string; order: number }> } {
+  const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+  let needsSave = false;
+  const cardUpdates: Array<{ cardId: string; nodeId: string; order: number }> = [];
+  
+  // 检查nodes是否需要迁移
+  const nodesNeedMigration = mindMap.nodes.some(node => node.order === undefined);
+  
+  // 检查cards是否需要迁移
+  let cardsNeedMigration = false;
+  for (const nodeId in nodeCardsMap) {
+    const cards = nodeCardsMap[nodeId] || [];
+    if (cards.some((card: Card) => card.order === undefined)) {
+      cardsNeedMigration = true;
+      break;
+    }
+  }
+  
+  if (!nodesNeedMigration && !cardsNeedMigration) {
+    return { mindMap, needsSave: false, cardUpdates: [] };
+  }
+  
+  needsSave = true;
+  
+  // 创建节点映射
+  const nodeMap = new Map<string, MindMapNode>();
+  mindMap.nodes.forEach(node => {
+    nodeMap.set(node.id, { ...node });
+  });
+  
+  // 为每个节点的子节点分配order
+  const processedNodes = new Set<string>();
+  
+  const assignOrderToChildren = (parentId: string) => {
+    if (processedNodes.has(parentId)) return;
+    processedNodes.add(parentId);
+    
+    // 获取该节点的所有子节点（按edges的顺序）
+    const childEdges = mindMap.edges
+      .filter(e => e.source === parentId)
+      .map(e => {
+        const node = nodeMap.get(e.target);
+        return node ? { node, edge: e } : null;
+      })
+      .filter(Boolean) as Array<{ node: MindMapNode; edge: MindMapEdge }>;
+    
+    // 如果子节点需要迁移，按edges的顺序分配order
+    if (childEdges.some(item => item.node.order === undefined)) {
+      childEdges.forEach((item, index) => {
+        if (item.node.order === undefined) {
+          item.node.order = index + 1;
+        }
+      });
+    }
+    
+    // 递归处理子节点
+    childEdges.forEach(item => {
+      assignOrderToChildren(item.node.id);
+    });
+  };
+  
+  // 找到根节点并开始迁移
+  const rootNodes = mindMap.nodes.filter(node => 
+    !mindMap.edges.some(edge => edge.target === node.id)
+  );
+  
+  rootNodes.forEach(rootNode => {
+    assignOrderToChildren(rootNode.id);
+  });
+  
+  // 迁移cards的order
+  for (const nodeId in nodeCardsMap) {
+    const cards = nodeCardsMap[nodeId] || [];
+    const cardsNeedOrder = cards.filter((card: Card) => card.order === undefined);
+    
+    if (cardsNeedOrder.length > 0) {
+      // 获取已有order的最大值
+      const maxOrder = cards
+        .filter((card: Card) => card.order !== undefined)
+        .reduce((max: number, card: Card) => Math.max(max, card.order || 0), 0);
+      
+      // 为没有order的card分配order
+      cardsNeedOrder.forEach((card: Card, index: number) => {
+        const newOrder = maxOrder + index + 1;
+        card.order = newOrder;
+        cardUpdates.push({
+          cardId: card.docId,
+          nodeId: nodeId,
+          order: newOrder,
+        });
+      });
+    }
+  }
+  
+  // 更新nodeCardsMap
+  if (cardsNeedMigration) {
+    (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+  }
+  
+  // 返回更新后的mindMap
+  return {
+    mindMap: {
+      ...mindMap,
+      nodes: Array.from(nodeMap.values()),
+    },
+    needsSave,
+    cardUpdates,
+  };
+}
+
 function MindMapEditorMode({ docId, initialData }: { docId: string; initialData: MindMapDoc }) {
-  const [mindMap, setMindMap] = useState<MindMapDoc>(initialData);
+  // 在初始化时迁移order字段
+  const migrationResult = useMemo(() => migrateOrderFields(initialData), [initialData]);
+  const [mindMap, setMindMap] = useState<MindMapDoc>(() => migrationResult.mindMap);
+  
+  // 如果需要进行迁移，自动保存
+  useEffect(() => {
+    if (migrationResult.needsSave) {
+      const saveMigration = async () => {
+        try {
+          const domainId = (window as any).UiContext?.domainId || 'system';
+          const getMindMapUrl = (path: string, docId: string): string => {
+            return `/d/${domainId}/mindmap/${docId}${path}`;
+          };
+          
+          // 保存nodes的order
+          await request.post(getMindMapUrl('/save', docId), {
+            nodes: migrationResult.mindMap.nodes,
+            edges: migrationResult.mindMap.edges,
+            operationDescription: '自动迁移：为节点和卡片添加order字段',
+          });
+          
+          // 批量更新cards的order
+          if (migrationResult.cardUpdates.length > 0) {
+            const updatePromises = migrationResult.cardUpdates.map(update =>
+              request.post(`/d/${domainId}/mindmap/card/${update.cardId}`, {
+                operation: 'update',
+                nodeId: update.nodeId,
+                order: update.order,
+              })
+            );
+            await Promise.all(updatePromises);
+          }
+          
+          console.log('Order字段迁移完成');
+        } catch (error: any) {
+          console.error('迁移order字段失败:', error);
+          // 不显示错误提示，因为这是后台自动迁移
+        }
+      };
+      
+      saveMigration();
+    }
+  }, [migrationResult.needsSave, migrationResult.mindMap.nodes, migrationResult.mindMap.edges, migrationResult.cardUpdates, docId]);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [fileContent, setFileContent] = useState<string>('');
   const [isCommitting, setIsCommitting] = useState(false);
@@ -125,6 +548,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
   const lastDropPositionRef = useRef<'before' | 'after' | 'into'>('after'); // 上次的放置位置
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null); // 右键菜单
   const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; item: FileItem } | null>(null); // 剪贴板
+  const [sortWindow, setSortWindow] = useState<{ nodeId: string } | null>(null); // 排序窗口
   // AI 聊天相关状态
   const [showAIChat, setShowAIChat] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<Array<{ 
@@ -218,6 +642,17 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       if (parent) {
         parent.children.push(edge.target);
       }
+    });
+    
+    // 为每个节点的子节点按照order排序
+    nodeMap.forEach((nodeData) => {
+      nodeData.children.sort((a, b) => {
+        const nodeA = mindMap.nodes.find(n => n.id === a);
+        const nodeB = mindMap.nodes.find(n => n.id === b);
+        const orderA = nodeA?.order || 0;
+        const orderB = nodeB?.order || 0;
+        return orderA - orderB;
+      });
     });
 
     // 找到根节点
@@ -336,7 +771,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       nodeFileItem.clipboardType = checkClipboard(nodeFileItem);
       items.push(nodeFileItem);
 
-      // 如果节点展开，显示其卡片和子节点
+      // 如果节点展开，显示其卡片和子节点（按order混合排序）
       if (isExpanded) {
         // 获取该节点的卡片（按 order 排序）
         const nodeCards = (nodeCardsMap[nodeId] || [])
@@ -346,25 +781,50 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
           })
           .sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
         
-        nodeCards.forEach((card: Card) => {
-          // 跳过待删除的卡片
-          if (deletedCardIds.has(card.docId)) return;
-          
-          const cardFileItem: FileItem = {
-            type: 'card',
-            id: `card-${card.docId}`,
-            name: card.title || '未命名卡片',
-            nodeId: card.nodeId || nodeId, // 使用 card.nodeId（如果存在）或当前 nodeId
-            cardId: card.docId,
-            parentId: card.nodeId || nodeId,
-            level: level + 1,
-          };
-          cardFileItem.hasPendingChanges = checkPendingChanges(cardFileItem);
-          cardFileItem.clipboardType = checkClipboard(cardFileItem);
-          items.push(cardFileItem);
+        // 获取子节点（按 order 排序）
+        const childNodes = nodeData.children
+          .map(childId => {
+            const childNode = mindMap.nodes.find(n => n.id === childId);
+            return childNode ? { id: childId, node: childNode, order: childNode.order || 0 } : null;
+          })
+          .filter(Boolean)
+          .sort((a, b) => (a!.order || 0) - (b!.order || 0)) as Array<{ id: string; node: MindMapNode; order: number }>;
+        
+        // 合并node和card，按照order混合排序
+        const allChildren: Array<{ type: 'node' | 'card'; id: string; order: number; data: any }> = [
+          ...childNodes.map(n => ({ type: 'node' as const, id: n.id, order: n.order, data: n.node })),
+          ...nodeCards.map(c => ({ type: 'card' as const, id: c.docId, order: c.order || 0, data: c })),
+        ];
+        
+        // 按order排序
+        allChildren.sort((a, b) => (a.order || 0) - (b.order || 0));
+        
+        // 按照排序后的顺序添加
+        allChildren.forEach(item => {
+          if (item.type === 'card') {
+            const card = item.data as Card;
+            // 跳过待删除的卡片
+            if (deletedCardIds.has(card.docId)) return;
+            
+            const cardFileItem: FileItem = {
+              type: 'card',
+              id: `card-${card.docId}`,
+              name: card.title || '未命名卡片',
+              nodeId: card.nodeId || nodeId,
+              cardId: card.docId,
+              parentId: card.nodeId || nodeId,
+              level: level + 1,
+            };
+            cardFileItem.hasPendingChanges = checkPendingChanges(cardFileItem);
+            cardFileItem.clipboardType = checkClipboard(cardFileItem);
+            items.push(cardFileItem);
+          } else {
+            // 递归处理子节点
+            buildTree(item.id, level + 1, nodeId);
+          }
         });
         
-        // 添加待创建的卡片（临时显示）
+        // 添加待创建的卡片（临时显示，放在最后）
         // 只显示那些不在 nodeCardsMap 中的卡片（避免重复）
         const existingCardIds = new Set((nodeCardsMap[nodeId] || []).map((c: Card) => c.docId));
         Array.from(pendingCreatesRef.current.values())
@@ -382,11 +842,6 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             createFileItem.hasPendingChanges = true; // 新建的项目肯定有未保存的更改
             items.push(createFileItem);
           });
-
-        // 递归处理子节点
-        nodeData.children.forEach((childId) => {
-          buildTree(childId, level + 1, nodeId);
-        });
       }
     };
 
@@ -4464,6 +4919,27 @@ ${mindMapText}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
                 }}
+                onClick={() => {
+                  setSortWindow({ nodeId: contextMenu.file.nodeId || '' });
+                  setContextMenu(null);
+                }}
+              >
+                排序
+              </div>
+              <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#24292e',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
                 onClick={() => handleCopy(contextMenu.file)}
               >
                 复制
@@ -4575,6 +5051,107 @@ ${mindMapText}
             zIndex: 999,
           }}
           onClick={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* 排序窗口 */}
+      {sortWindow && (
+        <SortWindow
+          nodeId={sortWindow.nodeId}
+          mindMap={mindMap}
+          docId={docId}
+          getMindMapUrl={getMindMapUrl}
+          onClose={() => setSortWindow(null)}
+          onSave={async (sortedItems) => {
+            try {
+              const domainId = (window as any).UiContext?.domainId || 'system';
+              const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+              
+              // 更新node的order和card的order
+              const updatePromises = [];
+              
+              // 更新mindMap中的nodes的order
+              const updatedNodes = mindMap.nodes.map(node => {
+                const sortedItem = sortedItems.find(item => item.type === 'node' && item.id === node.id);
+                if (sortedItem && node.order !== sortedItem.order) {
+                  return { ...node, order: sortedItem.order };
+                }
+                return node;
+              });
+              
+              // 更新mindMap状态（包含更新后的nodes）
+              setMindMap(prev => ({
+                ...prev,
+                nodes: updatedNodes,
+              }));
+              
+              // 批量更新card的order
+              for (const sortedItem of sortedItems) {
+                if (sortedItem.type === 'card') {
+                  const card = (nodeCardsMap[sortWindow.nodeId] || []).find((c: Card) => c.docId === sortedItem.id);
+                  if (card && card.order !== sortedItem.order) {
+                    updatePromises.push(
+                      request.post(`/d/${domainId}/mindmap/card/${sortedItem.id}`, {
+                        operation: 'update',
+                        nodeId: sortWindow.nodeId,
+                        order: sortedItem.order,
+                      }).then(() => {
+                        card.order = sortedItem.order;
+                      }).catch((error: any) => {
+                        console.error(`Failed to update card ${sortedItem.id} order:`, error);
+                        throw new Error(`更新卡片「${card.title || sortedItem.id}」顺序失败: ${error?.message || '未知错误'}`);
+                      })
+                    );
+                  }
+                }
+              }
+              
+              // 等待所有更新完成
+              if (updatePromises.length > 0) {
+                await Promise.all(updatePromises);
+              }
+              
+              // 更新nodeCardsMap并排序
+              if (nodeCardsMap[sortWindow.nodeId]) {
+                nodeCardsMap[sortWindow.nodeId].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+                (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+              }
+              
+              // 触发重新渲染
+              setNodeCardsMapVersion(prev => prev + 1);
+              
+              // 保存mindMap以持久化node的order字段
+              try {
+                await request.post(getMindMapUrl('/save', docId), {
+                  nodes: updatedNodes,
+                  edges: mindMap.edges,
+                  operationDescription: '排序更新',
+                });
+              } catch (error: any) {
+                console.warn('Failed to save mindMap after sort:', error);
+                // 不阻止排序保存，只是警告
+              }
+              
+              // 记录更改，以便在保存时一起保存
+              setPendingDragChanges(prev => {
+                const newSet = new Set(prev);
+                sortedItems.forEach(item => {
+                  if (item.type === 'node') {
+                    newSet.add(`node-${item.id}`);
+                  } else {
+                    newSet.add(`card-${item.id}`);
+                  }
+                });
+                return newSet;
+              });
+              
+              Notification.success('排序已保存');
+              setSortWindow(null);
+            } catch (error: any) {
+              console.error('Failed to save sort order:', error);
+              Notification.error(`保存排序失败: ${error?.message || '未知错误'}`);
+            }
+          }}
         />
       )}
 
