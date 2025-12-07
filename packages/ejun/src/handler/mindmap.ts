@@ -39,8 +39,6 @@ class MindMapDetailHandler extends Handler {
         if (docId) {
             this.mindMap = await MindMapModel.get(domainId, docId);
             if (!this.mindMap && mmid) {
-                // 如果通过 docId 找不到，尝试通过 mmid 查找
-                console.log(`[MindMap Detail] Not found by docId ${docId.toString()}, trying mmid ${mmid}`);
                 this.mindMap = await MindMapModel.getByMmid(domainId, mmid);
             }
         } else if (mmid) {
@@ -48,23 +46,9 @@ class MindMapDetailHandler extends Handler {
         }
         
         if (!this.mindMap) {
-            // 尝试在所有 domain 中查找（用于调试）
-            if (docId) {
-                console.log(`[MindMap Detail] Searching in all domains for docId: ${docId.toString()}`);
-                try {
-                    const allDomains = await document.getMulti('system', document.TYPE_MINDMAP, { docId }).limit(10).toArray();
-                    if (allDomains.length > 0) {
-                        console.log(`[MindMap Detail] Found mindmap in domains: ${allDomains.map((d: any) => d.domainId).join(', ')}`);
-                    }
-                } catch (err) {
-                    console.error(`[MindMap Detail] Error searching all domains:`, err);
-                }
-            }
-            
             const errorMsg = docId 
                 ? `MindMap not found with docId: ${docId.toString()}${mmid ? ` or mmid: ${mmid}` : ''} in domain: ${domainId}`
                 : `MindMap not found with mmid: ${mmid} in domain: ${domainId}`;
-            console.error(errorMsg);
             throw new NotFoundError('MindMap not found');
         }
         
@@ -698,6 +682,11 @@ class MindMapCreateHandler extends Handler {
     }
 }
 
+// 请求去重缓存：用于防止重复创建节点
+// key: `${domainId}:${docId}:${text}:${parentId}`, value: timestamp
+const nodeCreationDedupCache = new Map<string, number>();
+const DEDUP_WINDOW_MS = 2000; // 2秒内的相同请求视为重复
+
 /**
  * MindMap Edit Handler
  */
@@ -778,21 +767,21 @@ class MindMapNodeHandler extends Handler {
         nodeId?: string,
         branch?: string,
     ) {
-        // 验证 docId 是否存在
         if (!docId) {
             throw new BadRequestError('docId is required');
         }
         
-        // 如果 operation 是 'delete'，调用 postDelete
         if (operation === 'delete' && nodeId) {
             return this.postDelete(domainId, docId, nodeId, branch);
         }
         
-        // 从 body 中获取 text（兼容 JSON 提交）
         const body: any = this.request?.body || {};
         const finalText = text !== undefined ? text : body.text;
         
-        // 如果有 text 参数或 operation 是 'add'，调用 postAdd
+        if (nodeId && operation === 'update') {
+            return this.postUpdate(domainId, docId, nodeId, finalText, undefined, undefined, undefined, x, y, undefined);
+        }
+        
         if (finalText !== undefined || operation === 'add') {
             const finalTextValue = finalText !== undefined ? finalText : '';
             return this.postAdd(domainId, docId, finalTextValue, x, y, parentId, siblingId, branch);
@@ -818,23 +807,42 @@ class MindMapNodeHandler extends Handler {
         siblingId?: string,
         branch?: string
     ) {
+        const startTime = Date.now();
+        
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
         let newNodeId: string | undefined;
         let edgeId: string | undefined;
         let edgeSourceId: string | undefined;
         let edgeTargetId: string | undefined;
+        let dedupKey: string | undefined;
         
         try {
-            // 验证 docId 是否存在
             if (!docId) {
                 throw new BadRequestError('docId is required');
             }
             
-            // 从 body 中获取参数（兼容 JSON 提交）
             const body: any = this.request?.body || {};
             const finalParentId = parentId !== undefined ? parentId : body.parentId;
             const finalSiblingId = siblingId !== undefined ? siblingId : body.siblingId;
+            
+            dedupKey = `${domainId}:${docId.toString()}:${text}:${finalParentId || ''}`;
+            const lastRequestTimeRaw = nodeCreationDedupCache.get(dedupKey);
+            const lastRequestTime = lastRequestTimeRaw ? Math.abs(lastRequestTimeRaw) : undefined;
+            const timeSinceLastRequest = lastRequestTime ? startTime - lastRequestTime : Infinity;
+            
+            if (lastRequestTime && timeSinceLastRequest < DEDUP_WINDOW_MS) {
+                throw new BadRequestError('Duplicate request detected. Please wait a moment and try again.');
+            }
+            
+            nodeCreationDedupCache.set(dedupKey, -startTime);
+            
+            for (const [key, timestamp] of nodeCreationDedupCache.entries()) {
+                const absTimestamp = Math.abs(timestamp);
+                if (startTime - absTimestamp > DEDUP_WINDOW_MS * 2) {
+                    nodeCreationDedupCache.delete(key);
+                }
+            }
             
             const actualDomainId = this.args.domainId || domainId || 'system';
             
@@ -867,6 +875,47 @@ class MindMapNodeHandler extends Handler {
                 nodes = mindMap.nodes || [];
             } else {
                 nodes = [];
+            }
+            
+            // 数据库级别的去重检查：检查是否在去重窗口内已存在相同内容的节点
+            // 这样可以防止多进程/集群模式下的重复创建
+            if (finalParentId) {
+                const recentDuplicateNode = nodes.find(n => 
+                    n.text === text.trim() && 
+                    n.parentId === finalParentId &&
+                    n.id && 
+                    n.id.startsWith('node_')
+                );
+                
+                if (recentDuplicateNode) {
+                    // 检查节点ID中的时间戳，判断是否在去重窗口内
+                    const nodeIdMatch = recentDuplicateNode.id.match(/^node_(\d+)_/);
+                    if (nodeIdMatch) {
+                        const nodeCreatedTime = parseInt(nodeIdMatch[1], 10);
+                        const timeSinceNodeCreation = startTime - nodeCreatedTime;
+                        
+                        if (timeSinceNodeCreation < DEDUP_WINDOW_MS && timeSinceNodeCreation >= 0) {
+                            // 返回已存在的节点ID，而不是创建新节点
+                            // 需要先获取 edges 用于查找对应的边
+                            let edgesForDedup: MindMapEdge[];
+                            if (branchData[effectiveBranch] && branchData[effectiveBranch].edges) {
+                                edgesForDedup = branchData[effectiveBranch].edges;
+                            } else if (effectiveBranch === 'main') {
+                                edgesForDedup = mindMap.edges || [];
+                            } else {
+                                edgesForDedup = [];
+                            }
+                            
+                            this.response.body = { 
+                                nodeId: recentDuplicateNode.id,
+                                edgeId: edgesForDedup.find(e => e.target === recentDuplicateNode.id && e.source === finalParentId)?.id,
+                                edgeSource: finalParentId,
+                                edgeTarget: recentDuplicateNode.id,
+                            };
+                            return;
+                        }
+                    }
+                }
             }
 
             let effectiveParentId: string | undefined = finalParentId;
@@ -916,7 +965,6 @@ class MindMapNodeHandler extends Handler {
                 return;
             }
 
-            // 同时创建节点和边（在同一个数据库操作中）
             const result = await MindMapModel.addNode(
                 actualDomainId,
                 docId,
@@ -930,6 +978,8 @@ class MindMapNodeHandler extends Handler {
             edgeId = result.edgeId;
             edgeTargetId = newNodeId;
 
+            nodeCreationDedupCache.delete(dedupKey);
+            
             this.response.body = { 
                 nodeId: newNodeId,
                 edgeId: edgeId,
@@ -937,22 +987,19 @@ class MindMapNodeHandler extends Handler {
                 edgeTarget: edgeTargetId,
             };
         } catch (error: any) {
-            // 如果节点已经创建成功，即使后续操作失败，也返回成功响应
             if (newNodeId) {
-                console.warn(`Error after node creation, but node was created successfully: ${error?.message || String(error)}`);
-                // 设置响应体，确保返回成功响应
                 this.response.body = { 
                     nodeId: newNodeId,
                     edgeId: edgeId,
                     edgeSource: edgeSourceId,
                     edgeTarget: edgeTargetId,
                 };
-                // 确保状态码是 200，而不是错误状态码
                 this.response.status = 200;
-                // 不抛出错误，直接返回
                 return;
             } else {
-                // 如果节点创建失败，才抛出错误
+                if (dedupKey) {
+                    nodeCreationDedupCache.delete(dedupKey);
+                }
                 throw error;
             }
         }

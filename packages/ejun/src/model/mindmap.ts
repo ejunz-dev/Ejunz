@@ -340,9 +340,16 @@ export class MindMapModel {
         const node = nodes.find(n => n.id === nodeId);
         if (!node) {
             // 节点不存在，可能是已经被删除或从未存在
-            // 为了幂等性，如果节点不存在，直接返回成功（不抛错）
-            // 这样可以避免重复删除时的错误
-            console.warn(`Node not found for deletion: ${nodeId}. Branch: ${branchName}. It may have been already deleted.`);
+            // 为了幂等性，如果节点不存在，仍然尝试删除该节点的所有卡片，然后返回成功
+            // 这样可以确保即使节点不存在，其卡片也能被删除
+            try {
+                const cards = await CardModel.getByNodeId(domainId, mindMap.mmid, nodeId);
+                for (const card of cards) {
+                    await CardModel.delete(domainId, card.docId);
+                }
+            } catch (err) {
+                // Ignore card deletion errors
+            }
             return;
         }
 
@@ -385,15 +392,16 @@ export class MindMapModel {
 
         collectChildNodes(nodeId);
 
-        // 删除所有相关节点的卡片
+        // 删除所有相关节点的卡片（删除所有分支的卡片，不限于当前分支）
         for (const nodeIdToDelete of nodesToDelete) {
             try {
+                // 获取该节点在所有分支下的所有卡片
                 const cards = await CardModel.getByNodeId(domainId, mindMap.mmid, nodeIdToDelete);
                 for (const card of cards) {
                     await CardModel.delete(domainId, card.docId);
                 }
             } catch (err) {
-                console.error(`Failed to delete cards for node ${nodeIdToDelete}:`, err);
+                // Ignore card deletion errors
             }
         }
 
