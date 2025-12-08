@@ -533,6 +533,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
   const [pendingChanges, setPendingChanges] = useState<Map<string, PendingChange>>(new Map());
   const [pendingRenames, setPendingRenames] = useState<Map<string, PendingRename>>(new Map());
   const pendingCreatesRef = useRef<Map<string, PendingCreate>>(new Map()); // 待创建的项目（使用 useRef，避免重新渲染导致状态不一致）
+  const [pendingCreatesCount, setPendingCreatesCount] = useState<number>(0); // 用于触发重新渲染，跟踪pendingCreates的数量
   const [pendingDeletes, setPendingDeletes] = useState<Map<string, PendingDelete>>(new Map()); // 待删除的项目
   const originalContentsRef = useRef<Map<string, string>>(new Map());
   const [draggedFile, setDraggedFile] = useState<FileItem | null>(null);
@@ -569,7 +570,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
   const resizeStartWidthRef = useRef<number>(300);
   const executeAIOperationsRef = useRef<((operations: any[]) => Promise<{ success: boolean; errors: string[] }>) | null>(null);
   const chatWebSocketRef = useRef<any>(null); // WebSocket 连接
-  const [explorerMode, setExplorerMode] = useState<'tree' | 'files'>('tree'); // 文件树模式或文件模式
+  const [explorerMode, setExplorerMode] = useState<'tree' | 'files' | 'pending'>('tree'); // 文件树模式、文件模式或待提交模式
   const [files, setFiles] = useState<Array<{ _id: string; name: string; size: number; etag?: string; lastModified?: Date | string }>>(initialData.files || []);
   const [selectedFileForPreview, setSelectedFileForPreview] = useState<string | null>(null);
   // 单选题编辑状态（针对当前选中的卡片）
@@ -1041,6 +1042,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     }
     
     setSelectedFile(file);
+    selectedFileRef.current = file; // 更新ref，确保onChange回调能访问到最新的值
     
     // 先检查是否有待提交的修改
     const pendingChange = pendingChanges.get(file.id);
@@ -1352,6 +1354,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
                 }));
                 
                 pendingCreatesRef.current.delete(create.tempId);
+                setPendingCreatesCount(pendingCreatesRef.current.size);
                 
                 if (renameRecord) {
                   setPendingRenames(prev => {
@@ -1384,6 +1387,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
                   edges: prev.edges.filter(e => e.target !== create.tempId && e.source !== create.tempId),
                 }));
                 pendingCreatesRef.current.delete(create.tempId);
+                setPendingCreatesCount(pendingCreatesRef.current.size);
                 // 如果有重命名记录，也移除
                 setPendingRenames(prev => {
                   const next = new Map(prev);
@@ -1481,6 +1485,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             
             // 立即从 pendingCreatesRef 中移除已创建的卡片（避免重复创建）
             pendingCreatesRef.current.delete(create.tempId);
+            setPendingCreatesCount(pendingCreatesRef.current.size);
             
             if (renameRecord) {
               setPendingRenames(prev => {
@@ -2014,6 +2019,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       setPendingDragChanges(new Set());
       setPendingRenames(new Map());
       pendingCreatesRef.current.clear();
+      setPendingCreatesCount(0);
       setPendingDeletes(new Map());
       setPendingProblemCardIds(new Set());
       
@@ -2122,6 +2128,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     };
     
     pendingCreatesRef.current.set(tempId, newCard);
+    setPendingCreatesCount(pendingCreatesRef.current.size);
     
     // 更新 nodeCardsMap（前端显示）
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
@@ -2161,6 +2168,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     };
     
     pendingCreatesRef.current.set(tempId, newChildNode);
+    setPendingCreatesCount(pendingCreatesRef.current.size);
     
     // 更新 mindMap（前端显示）
     const tempNode: MindMapNode = {
@@ -2254,6 +2262,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       if (clipboard.type === 'cut' && sourceNodeId.startsWith('temp-')) {
         // 清理 pendingCreatesRef 中的旧记录
         pendingCreatesRef.current.delete(sourceNodeId);
+        setPendingCreatesCount(pendingCreatesRef.current.size);
         
         // 清理 pendingDeletes 中的旧记录（如果存在）
         setPendingDeletes(prev => {
@@ -2364,6 +2373,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
                 title: newCard.title || '新卡片',
                 tempId: newCard.docId,
               });
+              setPendingCreatesCount(pendingCreatesRef.current.size);
             }
           });
         }
@@ -2420,6 +2430,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
               text: newNode.text || '新节点',
               tempId: newNode.id,
             });
+            setPendingCreatesCount(pendingCreatesRef.current.size);
           }
         }
       });
@@ -2476,6 +2487,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       if (clipboard.type === 'cut' && sourceCardId.startsWith('temp-')) {
         // 清理 pendingCreatesRef 中的旧记录
         pendingCreatesRef.current.delete(sourceCardId);
+        setPendingCreatesCount(pendingCreatesRef.current.size);
         
         // 清理 pendingDeletes 中的旧记录（如果存在）
         setPendingDeletes(prev => {
@@ -2522,6 +2534,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
           // 只需要清理 pendingCreatesRef
           if (sourceCardId.startsWith('temp-')) {
             pendingCreatesRef.current.delete(sourceCardId);
+            setPendingCreatesCount(pendingCreatesRef.current.size);
           } else {
             // 真实卡片，需要标记为待删除
             setPendingDeletes(prev => {
@@ -2546,6 +2559,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
           title: newCard.title || '新卡片',
           tempId: newCardId,
         });
+        setPendingCreatesCount(pendingCreatesRef.current.size);
       }
 
       setNodeCardsMapVersion(prev => prev + 1);
@@ -3281,6 +3295,7 @@ ${mindMapText}
           };
           
           pendingCreatesRef.current.set(tempId, newChildNode);
+          setPendingCreatesCount(pendingCreatesRef.current.size);
           
           const tempNode: MindMapNode = {
             id: tempId,
@@ -3334,6 +3349,7 @@ ${mindMapText}
           };
           
           pendingCreatesRef.current.set(tempId, newCard);
+          setPendingCreatesCount(pendingCreatesRef.current.size);
           
           if (!nodeCardsMap[op.nodeId]) {
             nodeCardsMap[op.nodeId] = [];
@@ -3933,6 +3949,100 @@ ${mindMapText}
     });
   }, [isMultiSelectMode, fileTree]);
 
+  // 清理临时card/node的所有pending操作
+  const cleanupPendingForTempItem = useCallback((file: FileItem) => {
+    if (file.type === 'node') {
+      const nodeId = file.nodeId || '';
+      if (nodeId.startsWith('temp-node-')) {
+        // 从 pendingCreatesRef 中移除
+        pendingCreatesRef.current.delete(nodeId);
+        setPendingCreatesCount(pendingCreatesRef.current.size);
+        
+        // 从 pendingChanges 中移除
+        setPendingChanges(prev => {
+          const next = new Map(prev);
+          next.delete(nodeId);
+          return next;
+        });
+        
+        // 从 pendingRenames 中移除
+        setPendingRenames(prev => {
+          const next = new Map(prev);
+          next.delete(nodeId);
+          return next;
+        });
+        
+        // 从 pendingDragChanges 中移除
+        setPendingDragChanges(prev => {
+          const next = new Set(prev);
+          next.delete(`node-${nodeId}`);
+          return next;
+        });
+        
+        // 清理该node下的所有临时card的pending操作
+        const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+        const nodeCards = nodeCardsMap[nodeId] || [];
+        for (const card of nodeCards) {
+          const cardId = card.docId;
+          if (cardId && cardId.startsWith('temp-card-')) {
+            // 从 pendingCreatesRef 中移除
+            pendingCreatesRef.current.delete(cardId);
+            setPendingCreatesCount(pendingCreatesRef.current.size);
+            
+            // 从 pendingChanges 中移除（card的id是 card-${cardId}）
+            setPendingChanges(prev => {
+              const next = new Map(prev);
+              next.delete(`card-${cardId}`);
+              return next;
+            });
+            
+            // 从 pendingRenames 中移除
+            setPendingRenames(prev => {
+              const next = new Map(prev);
+              next.delete(`card-${cardId}`);
+              return next;
+            });
+            
+            // 从 pendingDragChanges 中移除
+            setPendingDragChanges(prev => {
+              const next = new Set(prev);
+              next.delete(cardId);
+              return next;
+            });
+          }
+        }
+      }
+    } else if (file.type === 'card') {
+      const cardId = file.cardId || '';
+      if (cardId.startsWith('temp-card-')) {
+        // 从 pendingCreatesRef 中移除
+        pendingCreatesRef.current.delete(cardId);
+        setPendingCreatesCount(pendingCreatesRef.current.size);
+        
+        // 从 pendingChanges 中移除（card的id是 card-${cardId}）
+        setPendingChanges(prev => {
+          const next = new Map(prev);
+          next.delete(`card-${cardId}`);
+          return next;
+        });
+        
+        // 从 pendingRenames 中移除
+        setPendingRenames(prev => {
+          const next = new Map(prev);
+          next.delete(`card-${cardId}`);
+          return next;
+        });
+        
+        // 从 pendingDragChanges 中移除
+        setPendingDragChanges(prev => {
+          const next = new Set(prev);
+          next.delete(cardId);
+          return next;
+        });
+      }
+    }
+  }, []);
+
   // 批量删除选中的项目
   const handleBatchDelete = useCallback(() => {
     if (selectedItems.size === 0) {
@@ -3951,21 +4061,49 @@ ${mindMapText}
       }
     }
     
-    // 添加到待删除列表
+    // 清理待新建状态：如果是临时节点或卡片，清理所有相关的pending操作
+    const tempNodeIds: string[] = [];
+    const tempCardIds: string[] = [];
+    
+    for (const file of itemsToDelete) {
+      if (file.type === 'node') {
+        const nodeId = file.nodeId || '';
+        if (nodeId.startsWith('temp-node-')) {
+          cleanupPendingForTempItem(file);
+          tempNodeIds.push(nodeId);
+        }
+      } else if (file.type === 'card') {
+        const cardId = file.cardId || '';
+        if (cardId.startsWith('temp-card-')) {
+          cleanupPendingForTempItem(file);
+          tempCardIds.push(cardId);
+        }
+      }
+    }
+    
+    // 添加到待删除列表（只添加已存在的项目，临时项目不需要）
     setPendingDeletes(prev => {
       const next = new Map(prev);
       for (const file of itemsToDelete) {
         if (file.type === 'node') {
-          next.set(file.nodeId || '', {
-            type: 'node',
-            id: file.nodeId || '',
-          });
+          const nodeId = file.nodeId || '';
+          // 临时节点不需要添加到pendingDeletes
+          if (!tempNodeIds.includes(nodeId)) {
+            next.set(nodeId, {
+              type: 'node',
+              id: nodeId,
+            });
+          }
         } else if (file.type === 'card') {
-          next.set(file.cardId || '', {
-            type: 'card',
-            id: file.cardId || '',
-            nodeId: file.nodeId,
-          });
+          const cardId = file.cardId || '';
+          // 临时卡片不需要添加到pendingDeletes
+          if (!tempCardIds.includes(cardId)) {
+            next.set(cardId, {
+              type: 'card',
+              id: cardId,
+              nodeId: file.nodeId,
+            });
+          }
         }
       }
       return next;
@@ -3999,55 +4137,76 @@ ${mindMapText}
     // 清空选择
     setSelectedItems(new Set());
     Notification.success(`已标记 ${itemsToDelete.length} 个项目待删除，请保存以确认删除`);
-  }, [selectedItems, fileTree]);
+  }, [selectedItems, fileTree, cleanupPendingForTempItem]);
 
   // 删除节点或卡片（前端操作）
   const handleDelete = useCallback((file: FileItem) => {
     if (file.type === 'node') {
+      const nodeId = file.nodeId || '';
+      
       // 检查是否有子节点或卡片
       const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-      const hasCards = nodeCardsMap[file.nodeId || '']?.length > 0;
-      const hasChildren = mindMap.edges.some(e => e.source === file.nodeId);
+      const nodeCards = nodeCardsMap[nodeId] || [];
+      const hasCards = nodeCards.length > 0;
+      const hasChildren = mindMap.edges.some(e => e.source === nodeId);
       
-      if (hasCards || hasChildren) {
+      // 如果是临时节点，即使有card也可以删除（因为都是临时的）
+      const isTempNode = nodeId.startsWith('temp-node-');
+      const hasTempCards = isTempNode && nodeCards.every((card: Card) => card.docId?.startsWith('temp-card-'));
+      
+      if (!isTempNode && (hasCards || hasChildren)) {
         Notification.error('无法删除：该节点包含子节点或卡片');
         setContextMenu(null);
         return;
       }
       
-      // 添加到待删除列表
-      setPendingDeletes(prev => {
-        const next = new Map(prev);
-        next.set(file.nodeId || '', {
-          type: 'node',
-          id: file.nodeId || '',
+      // 如果是临时节点（待新建的），清理所有相关的pending操作（包括其下的临时card）
+      if (isTempNode) {
+        cleanupPendingForTempItem(file);
+        // 临时节点不需要添加到pendingDeletes，因为它还没有真正创建
+      } else {
+        // 只有已存在的节点才添加到待删除列表
+        setPendingDeletes(prev => {
+          const next = new Map(prev);
+          next.set(nodeId, {
+            type: 'node',
+            id: nodeId,
+          });
+          return next;
         });
-        return next;
-      });
+      }
       
       // 从 mindMap 中移除（前端显示）
       setMindMap(prev => ({
         ...prev,
-        nodes: prev.nodes.filter(n => n.id !== file.nodeId),
-        edges: prev.edges.filter(e => e.source !== file.nodeId && e.target !== file.nodeId),
+        nodes: prev.nodes.filter(n => n.id !== nodeId),
+        edges: prev.edges.filter(e => e.source !== nodeId && e.target !== nodeId),
       }));
     } else if (file.type === 'card') {
-      // 添加到待删除列表
-      setPendingDeletes(prev => {
-        const next = new Map(prev);
-        next.set(file.cardId || '', {
-          type: 'card',
-          id: file.cardId || '',
-          nodeId: file.nodeId,
+      const cardId = file.cardId || '';
+      
+      // 如果是临时卡片（待新建的），清理所有相关的pending操作
+      if (cardId.startsWith('temp-card-')) {
+        cleanupPendingForTempItem(file);
+        // 临时卡片不需要添加到pendingDeletes，因为它还没有真正创建
+      } else {
+        // 只有已存在的卡片才添加到待删除列表
+        setPendingDeletes(prev => {
+          const next = new Map(prev);
+          next.set(cardId, {
+            type: 'card',
+            id: cardId,
+            nodeId: file.nodeId,
+          });
+          return next;
         });
-        return next;
-      });
+      }
       
       // 从 nodeCardsMap 中移除（前端显示）
       const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
       if (nodeCardsMap[file.nodeId || '']) {
         const cards = nodeCardsMap[file.nodeId || ''];
-        const cardIndex = cards.findIndex((c: Card) => c.docId === file.cardId);
+        const cardIndex = cards.findIndex((c: Card) => c.docId === cardId);
         if (cardIndex >= 0) {
           cards.splice(cardIndex, 1);
           (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
@@ -4057,7 +4216,7 @@ ${mindMapText}
     }
     
     setContextMenu(null);
-  }, [mindMap.edges]);
+  }, [mindMap.edges, cleanupPendingForTempItem]);
 
   // 拖拽开始
   const handleDragStart = useCallback((e: React.DragEvent, file: FileItem) => {
@@ -4449,6 +4608,7 @@ ${mindMapText}
 
   // 使用 ref 跟踪当前选中的文件ID，避免在fileContent变化时重新初始化
   const selectedFileIdRef = useRef<string | null>(null);
+  const selectedFileRef = useRef<FileItem | null>(null); // 用于在onChange回调中访问最新的selectedFile
   const isInitializingRef = useRef(false);
   
   // 初始化编辑器（只在选择文件变化时）
@@ -4554,7 +4714,34 @@ ${mindMapText}
               return;
             }
             setFileContent(value);
-            // 不自动保存，只更新内容
+            
+            // 立即将修改添加到pendingChanges
+            const currentSelectedFile = selectedFileRef.current;
+            if (currentSelectedFile) {
+              const originalContent = originalContentsRef.current.get(currentSelectedFile.id) || '';
+              
+              // 如果内容有变化，立即添加到待提交列表
+              if (value !== originalContent) {
+                setPendingChanges(prev => {
+                  const newMap = new Map(prev);
+                  newMap.set(currentSelectedFile.id, {
+                    file: currentSelectedFile,
+                    content: value,
+                    originalContent: originalContent,
+                  });
+                  return newMap;
+                });
+              } else {
+                // 如果内容恢复原样，从pendingChanges中移除
+                setPendingChanges(prev => {
+                  const newMap = new Map(prev);
+                  if (newMap.has(currentSelectedFile.id)) {
+                    newMap.delete(currentSelectedFile.id);
+                  }
+                  return newMap;
+                });
+              }
+            }
           },
         });
 
@@ -4708,6 +4895,21 @@ ${mindMapText}
               title="文件视图"
             >
               文件
+            </button>
+            <button
+              onClick={() => setExplorerMode('pending')}
+              style={{
+                padding: '2px 8px',
+                fontSize: '11px',
+                border: '1px solid #d1d5da',
+                borderRadius: '3px',
+                backgroundColor: explorerMode === 'pending' ? '#0366d6' : '#fff',
+                color: explorerMode === 'pending' ? '#fff' : '#586069',
+                cursor: 'pointer',
+              }}
+              title="查看待提交的更改"
+            >
+              修改
             </button>
           </div>
         </div>
@@ -4935,7 +5137,7 @@ ${mindMapText}
             </div>
             );
           })
-          ) : (
+          ) : explorerMode === 'files' ? (
             // 文件模式
             <div style={{ padding: '8px' }}>
               {/* 跳转到文件管理页面的按钮 */}
@@ -5040,6 +5242,140 @@ ${mindMapText}
                       </span>
                     </div>
                   ))
+                )}
+              </div>
+            </div>
+          ) : (
+            // 待提交模式
+            <div style={{ padding: '8px' }}>
+              <div style={{
+                fontSize: '12px',
+                fontWeight: '600',
+                color: '#586069',
+                marginBottom: '12px',
+                padding: '0 8px',
+              }}>
+                待提交的更改
+              </div>
+              <div style={{
+                fontSize: '11px',
+                color: '#586069',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                padding: '0 8px',
+              }}>
+                {/* 内容更改 */}
+                {pendingChanges.size > 0 && (
+                  <div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>内容更改 ({pendingChanges.size})</div>
+                    <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
+                      {Array.from(pendingChanges.values()).slice(0, 5).map((change, idx) => (
+                        <div key={idx} style={{ marginBottom: '2px' }}>
+                          • {change.file.name}
+                        </div>
+                      ))}
+                      {pendingChanges.size > 5 && (
+                        <div style={{ color: '#999', fontStyle: 'italic' }}>... 还有 {pendingChanges.size - 5} 个</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {/* 拖动更改 */}
+                {pendingDragChanges.size > 0 && (
+                  <div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>拖动更改 ({pendingDragChanges.size})</div>
+                    <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
+                      {Array.from(pendingDragChanges).slice(0, 5).map((item, idx) => {
+                        const file = fileTree.find(f => 
+                          (f.type === 'node' && f.nodeId === item.replace('node-', '')) ||
+                          (f.type === 'card' && f.cardId === item)
+                        );
+                        return (
+                          <div key={idx} style={{ marginBottom: '2px' }}>
+                            • {file ? file.name : item}
+                          </div>
+                        );
+                      })}
+                      {pendingDragChanges.size > 5 && (
+                        <div style={{ color: '#999', fontStyle: 'italic' }}>... 还有 {pendingDragChanges.size - 5} 个</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {/* 重命名更改 */}
+                {pendingRenames.size > 0 && (
+                  <div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>重命名 ({pendingRenames.size})</div>
+                    <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
+                      {Array.from(pendingRenames.values()).slice(0, 5).map((rename, idx) => (
+                        <div key={idx} style={{ marginBottom: '2px' }}>
+                          • {rename.file.name} → {rename.newName}
+                        </div>
+                      ))}
+                      {pendingRenames.size > 5 && (
+                        <div style={{ color: '#999', fontStyle: 'italic' }}>... 还有 {pendingRenames.size - 5} 个</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {/* 新建项目 */}
+                {pendingCreatesCount > 0 && (
+                  <div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>新建 ({pendingCreatesCount})</div>
+                    <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
+                      {Array.from(pendingCreatesRef.current.values()).slice(0, 5).map((create, idx) => (
+                        <div key={idx} style={{ marginBottom: '2px' }}>
+                          • {create.type === 'card' ? '卡片' : '节点'}: {create.title || create.text || '未命名'}
+                        </div>
+                      ))}
+                      {pendingCreatesCount > 5 && (
+                        <div style={{ color: '#999', fontStyle: 'italic' }}>... 还有 {pendingCreatesCount - 5} 个</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {/* 删除项目 */}
+                {pendingDeletes.size > 0 && (
+                  <div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>删除 ({pendingDeletes.size})</div>
+                    <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
+                      {Array.from(pendingDeletes.values()).slice(0, 5).map((del, idx) => {
+                        const file = fileTree.find(f => 
+                          (del.type === 'node' && f.type === 'node' && f.nodeId === del.id) ||
+                          (del.type === 'card' && f.type === 'card' && f.cardId === del.id)
+                        );
+                        return (
+                          <div key={idx} style={{ marginBottom: '2px' }}>
+                            • {file ? file.name : `${del.type === 'card' ? '卡片' : '节点'} (${del.id.substring(0, 8)}...)`}
+                          </div>
+                        );
+                      })}
+                      {pendingDeletes.size > 5 && (
+                        <div style={{ color: '#999', fontStyle: 'italic' }}>... 还有 {pendingDeletes.size - 5} 个</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {/* 如果没有待提交内容 */}
+                {pendingChanges.size === 0 && 
+                 pendingDragChanges.size === 0 && 
+                 pendingRenames.size === 0 && 
+                 pendingCreatesCount === 0 && 
+                 pendingDeletes.size === 0 && (
+                  <div style={{ 
+                    color: '#999', 
+                    fontStyle: 'italic',
+                    textAlign: 'center',
+                    padding: '8px 0',
+                  }}>
+                    暂无待提交的更改
+                  </div>
                 )}
               </div>
             </div>
@@ -5443,21 +5779,21 @@ ${mindMapText}
             </button>
             <button
               onClick={handleSaveAll}
-              disabled={isCommitting}
+              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0)}
               style={{
                 padding: '4px 12px',
                 border: '1px solid #d1d5da',
                 borderRadius: '3px',
-                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0) ? '#28a745' : '#6c757d',
+                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0) ? '#28a745' : '#6c757d',
                 color: '#fff',
-                cursor: isCommitting ? 'not-allowed' : 'pointer',
+                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0)) ? 'not-allowed' : 'pointer',
                 fontSize: '12px',
                 fontWeight: '500',
-                opacity: isCommitting ? 0.6 : 1,
+                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0)) ? 0.6 : 1,
               }}
-              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0) ? '没有待保存的更改' : '保存所有更改'}
+              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0) ? '没有待保存的更改' : '保存所有更改'}
             >
-              {isCommitting ? '保存中...' : `保存更改 (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size})`}
+              {isCommitting ? '保存中...' : `保存更改 (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size})`}
             </button>
           </div>
         </div>
