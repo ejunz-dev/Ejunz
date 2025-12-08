@@ -548,7 +548,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
   const lastDragOverFileRef = useRef<FileItem | null>(null); // 上次悬停的文件
   const lastDropPositionRef = useRef<'before' | 'after' | 'into'>('after'); // 上次的放置位置
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null); // 右键菜单
-  const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; item: FileItem } | null>(null); // 剪贴板
+  const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; items: FileItem[] } | null>(null); // 剪贴板（支持多个项目）
   const [sortWindow, setSortWindow] = useState<{ nodeId: string } | null>(null); // 排序窗口
   // AI 聊天相关状态
   const [showAIChat, setShowAIChat] = useState<boolean>(false);
@@ -727,17 +727,16 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     const checkClipboard = (file: { type: 'node' | 'card'; id: string; nodeId?: string; cardId?: string }): 'copy' | 'cut' | undefined => {
       if (!clipboard) return undefined;
       
-      if (file.type === 'node') {
-        if (clipboard.item.type === 'node' && clipboard.item.nodeId === file.nodeId) {
-          return clipboard.type;
+      const found = clipboard.items.find(item => {
+        if (file.type === 'node') {
+          return item.type === 'node' && item.nodeId === file.nodeId;
+        } else if (file.type === 'card') {
+          return item.type === 'card' && item.cardId === file.cardId;
         }
-      } else if (file.type === 'card') {
-        if (clipboard.item.type === 'card' && clipboard.item.cardId === file.cardId) {
-          return clipboard.type;
-        }
-      }
+        return false;
+      });
       
-      return undefined;
+      return found ? clipboard.type : undefined;
     };
 
     // 检查项目是否有未保存的更改
@@ -1915,15 +1914,41 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             }
             
             // 删除节点（需要先删除所有相关的 edges）
-            const nodeEdges = mindMap.edges.filter(
-              e => e.source === del.id || e.target === del.id
-            );
-            
-            for (const edge of nodeEdges) {
-              await request.post(getMindMapUrl('/edge', docId), {
-                operation: 'delete',
-                edgeId: edge.id,
-              });
+            // 从后端获取最新的 edges，因为前端可能已经删除了这些 edges
+            try {
+              const currentMindMap = await request.get(getMindMapUrl('/data', docId));
+              const nodeEdges = (currentMindMap.edges || []).filter(
+                (e: MindMapEdge) => e.source === del.id || e.target === del.id
+              );
+              
+              for (const edge of nodeEdges) {
+                try {
+                  await request.post(getMindMapUrl('/edge', docId), {
+                    operation: 'delete',
+                    edgeId: edge.id,
+                  });
+                } catch (deleteError: any) {
+                  // 如果删除失败，可能是 edge 已经被删除，继续处理
+                  console.warn('Failed to delete edge:', edge.id, deleteError);
+                }
+              }
+            } catch (error: any) {
+              // 如果获取数据失败，尝试直接从 mindMap 中查找（向后兼容）
+              const nodeEdges = mindMap.edges.filter(
+                e => e.source === del.id || e.target === del.id
+              );
+              
+              for (const edge of nodeEdges) {
+                try {
+                  await request.post(getMindMapUrl('/edge', docId), {
+                    operation: 'delete',
+                    edgeId: edge.id,
+                  });
+                } catch (deleteError: any) {
+                  // 如果删除失败，可能是 edge 已经被删除，继续处理
+                  console.warn('Failed to delete edge:', edge.id, deleteError);
+                }
+              }
             }
             
             // 删除节点
@@ -2216,60 +2241,191 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     setContextMenu(null);
   }, [triggerExpandAutoSave]);
 
-  // 复制节点或卡片
-  const handleCopy = useCallback((file: FileItem) => {
-    setClipboard({ type: 'copy', item: file });
+  // 复制节点或卡片（支持多选）
+  const handleCopy = useCallback((file?: FileItem) => {
+    let itemsToCopy: FileItem[] = [];
+    
+    // 如果有多选且传入了file，使用多选；否则使用单个file
+    if (isMultiSelectMode && selectedItems.size > 0 && !file) {
+      // 多选模式：复制所有选中的项目
+      itemsToCopy = fileTree.filter(f => selectedItems.has(f.id));
+    } else if (file) {
+      // 单个文件模式
+      itemsToCopy = [file];
+    } else {
+      return;
+    }
+    
+    if (itemsToCopy.length === 0) return;
+    
+    setClipboard({ type: 'copy', items: itemsToCopy });
     
     // 同时将信息存储到系统剪贴板，以便在 AI 对话框中粘贴时识别
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      const reference = file.type === 'node' 
-        ? `ejunz://node/${file.nodeId}`
-        : `ejunz://card/${file.cardId}`;
+    if (navigator.clipboard && navigator.clipboard.writeText && itemsToCopy.length === 1) {
+      const firstItem = itemsToCopy[0];
+      const reference = firstItem.type === 'node' 
+        ? `ejunz://node/${firstItem.nodeId}`
+        : `ejunz://card/${firstItem.cardId}`;
       navigator.clipboard.writeText(reference).catch(() => {
         // 如果写入失败，忽略错误（可能是权限问题）
       });
     }
     
     setContextMenu(null);
-  }, []);
+  }, [isMultiSelectMode, selectedItems, fileTree]);
 
-  // 剪切节点或卡片
-  const handleCut = useCallback((file: FileItem) => {
-    setClipboard({ type: 'cut', item: file });
+  // 剪切节点或卡片（支持多选）
+  const handleCut = useCallback((file?: FileItem) => {
+    let itemsToCut: FileItem[] = [];
+    
+    // 如果有多选且传入了file，使用多选；否则使用单个file
+    if (isMultiSelectMode && selectedItems.size > 0 && !file) {
+      // 多选模式：剪切所有选中的项目
+      itemsToCut = fileTree.filter(f => selectedItems.has(f.id));
+    } else if (file) {
+      // 单个文件模式
+      itemsToCut = [file];
+    } else {
+      return;
+    }
+    
+    if (itemsToCut.length === 0) return;
+    
+    setClipboard({ type: 'cut', items: itemsToCut });
+    
+    // 同时将信息存储到系统剪贴板，以便在 AI 对话框中粘贴时识别
+    if (navigator.clipboard && navigator.clipboard.writeText && itemsToCut.length === 1) {
+      const firstItem = itemsToCut[0];
+      const reference = firstItem.type === 'node' 
+        ? `ejunz://node/${firstItem.nodeId}`
+        : `ejunz://card/${firstItem.cardId}`;
+      navigator.clipboard.writeText(reference).catch(() => {
+        // 如果写入失败，忽略错误（可能是权限问题）
+      });
+    }
+    
     setContextMenu(null);
+  }, [isMultiSelectMode, selectedItems, fileTree]);
+
+  // 清理临时card/node的所有pending操作
+  const cleanupPendingForTempItem = useCallback((file: FileItem) => {
+    if (file.type === 'node') {
+      const nodeId = file.nodeId || '';
+      if (nodeId.startsWith('temp-node-')) {
+        // 从 pendingCreatesRef 中移除
+        pendingCreatesRef.current.delete(nodeId);
+        setPendingCreatesCount(pendingCreatesRef.current.size);
+        
+        // 从 pendingChanges 中移除
+        setPendingChanges(prev => {
+          const next = new Map(prev);
+          next.delete(nodeId);
+          return next;
+        });
+        
+        // 从 pendingRenames 中移除
+        setPendingRenames(prev => {
+          const next = new Map(prev);
+          next.delete(nodeId);
+          return next;
+        });
+        
+        // 从 pendingDragChanges 中移除
+        setPendingDragChanges(prev => {
+          const next = new Set(prev);
+          next.delete(`node-${nodeId}`);
+          return next;
+        });
+        
+        // 清理该node下的所有临时card的pending操作
+        const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+        const nodeCards = nodeCardsMap[nodeId] || [];
+        for (const card of nodeCards) {
+          const cardId = card.docId;
+          if (cardId && cardId.startsWith('temp-card-')) {
+            // 从 pendingCreatesRef 中移除
+            pendingCreatesRef.current.delete(cardId);
+            setPendingCreatesCount(pendingCreatesRef.current.size);
+            
+            // 从 pendingChanges 中移除（card的id是 card-${cardId}）
+            setPendingChanges(prev => {
+              const next = new Map(prev);
+              next.delete(`card-${cardId}`);
+              return next;
+            });
+            
+            // 从 pendingRenames 中移除
+            setPendingRenames(prev => {
+              const next = new Map(prev);
+              next.delete(`card-${cardId}`);
+              return next;
+            });
+            
+            // 从 pendingDragChanges 中移除
+            setPendingDragChanges(prev => {
+              const next = new Set(prev);
+              next.delete(cardId);
+              return next;
+            });
+          }
+        }
+      }
+    } else if (file.type === 'card') {
+      const cardId = file.cardId || '';
+      if (cardId.startsWith('temp-card-')) {
+        // 从 pendingCreatesRef 中移除
+        pendingCreatesRef.current.delete(cardId);
+        setPendingCreatesCount(pendingCreatesRef.current.size);
+        
+        // 从 pendingChanges 中移除（card的id是 card-${cardId}）
+        setPendingChanges(prev => {
+          const next = new Map(prev);
+          next.delete(`card-${cardId}`);
+          return next;
+        });
+        
+        // 从 pendingRenames 中移除
+        setPendingRenames(prev => {
+          const next = new Map(prev);
+          next.delete(`card-${cardId}`);
+          return next;
+        });
+        
+        // 从 pendingDragChanges 中移除
+        setPendingDragChanges(prev => {
+          const next = new Set(prev);
+          next.delete(cardId);
+          return next;
+        });
+      }
+    }
   }, []);
 
-  // 粘贴节点或卡片
+  // 粘贴节点或卡片（支持多个项目）
   const handlePaste = useCallback((targetNodeId: string) => {
-    if (!clipboard) return;
+    if (!clipboard || clipboard.items.length === 0) return;
 
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
 
-    if (clipboard.item.type === 'node') {
-      const sourceNodeId = clipboard.item.nodeId || '';
-      const sourceNode = mindMap.nodes.find(n => n.id === sourceNodeId);
-      
-      // 如果源节点不存在，可能是已经被删除或移动了
-      if (!sourceNode) {
-        // 如果是剪切操作，清空剪贴板
-        if (clipboard.type === 'cut') {
-          setClipboard(null);
-        }
-        return;
-      }
-      
-      // 如果剪切的是临时节点（已经粘贴过的），需要先清理 pendingCreates 和 pendingDeletes
-      if (clipboard.type === 'cut' && sourceNodeId.startsWith('temp-')) {
-        // 清理 pendingCreatesRef 中的旧记录
-        pendingCreatesRef.current.delete(sourceNodeId);
-        setPendingCreatesCount(pendingCreatesRef.current.size);
+    // 遍历所有要粘贴的项目
+    for (const item of clipboard.items) {
+      if (item.type === 'node') {
+        const sourceNodeId = item.nodeId || '';
+        const sourceNode = mindMap.nodes.find(n => n.id === sourceNodeId);
         
-        // 清理 pendingDeletes 中的旧记录（如果存在）
-        setPendingDeletes(prev => {
-          const next = new Map(prev);
-          next.delete(sourceNodeId);
-          return next;
-        });
+        // 如果源节点不存在，可能是已经被删除或移动了
+        if (!sourceNode) {
+          // 如果是剪切操作，清空剪贴板
+          if (clipboard.type === 'cut') {
+            setClipboard(null);
+          }
+          continue; // 跳过这个项目，继续处理下一个
+        }
+      
+      // 如果剪切的是临时节点（已经粘贴过的），需要先清理所有相关的pending操作
+      if (clipboard.type === 'cut' && sourceNodeId.startsWith('temp-node-')) {
+        // 使用cleanupPendingForTempItem清理所有pending操作
+        cleanupPendingForTempItem({ type: 'node', id: sourceNodeId, nodeId: sourceNodeId, name: sourceNode.text || '', level: 0 });
       }
 
       // 收集所有需要复制的节点（包括子节点）
@@ -2384,21 +2540,38 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       if (clipboard.type === 'cut') {
         // 如果源节点是临时节点（已经粘贴过的），不需要添加到 pendingDeletes
         // 只需要从 mindMap 中删除即可
-        if (sourceNodeId.startsWith('temp-')) {
+        if (sourceNodeId.startsWith('temp-node-')) {
           // 临时节点，直接删除，不需要标记为待删除
+          // 清理所有相关的卡片（包括它们的pending操作）
+          nodeIdMap.forEach((newId, oldId) => {
+            // 清理该节点下所有临时card的pending操作
+            const oldCards = nodeCardsMap[oldId] || [];
+            oldCards.forEach((card: Card) => {
+              if (card.docId && card.docId.startsWith('temp-card-')) {
+                cleanupPendingForTempItem({ 
+                  type: 'card', 
+                  id: `card-${card.docId}`, 
+                  cardId: card.docId, 
+                  nodeId: oldId, 
+                  name: card.title || '', 
+                  level: 0 
+                });
+              }
+            });
+            // 删除节点下的卡片
+            if (nodeCardsMap[oldId]) {
+              delete nodeCardsMap[oldId];
+            }
+          });
+          
           setMindMap(prev => ({
             ...prev,
             nodes: prev.nodes.filter(n => !nodeIdMap.has(n.id)),
             edges: prev.edges.filter(e => !nodeIdMap.has(e.source) && !nodeIdMap.has(e.target)),
           }));
           
-          // 清理相关的卡片
-          nodeIdMap.forEach((newId, oldId) => {
-            if (nodeCardsMap[oldId]) {
-              delete nodeCardsMap[oldId];
-            }
-          });
           (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+          setNodeCardsMapVersion(prev => prev + 1);
         } else {
           // 真实节点，需要标记为待删除
           setPendingDeletes(prev => {
@@ -2462,38 +2635,33 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
         return newSet;
       });
 
-      // 如果是剪切，清空剪贴板；如果是复制，保留
-      if (clipboard.type === 'cut') {
-        setClipboard(null);
-      }
-    } else if (clipboard.item.type === 'card') {
-      const sourceCardId = clipboard.item.cardId || '';
-      const sourceNodeId = clipboard.item.nodeId || '';
+      } else if (item.type === 'card') {
+        const sourceCardId = item.cardId || '';
+        const sourceNodeId = item.nodeId || '';
 
-      // 找到源卡片
-      const sourceCards = nodeCardsMap[sourceNodeId] || [];
-      const sourceCard = sourceCards.find((c: Card) => c.docId === sourceCardId);
-      
-      // 如果源卡片不存在，可能是已经被删除或移动了
-      if (!sourceCard) {
-        // 如果是剪切操作，清空剪贴板
-        if (clipboard.type === 'cut') {
-          setClipboard(null);
-        }
-        return;
-      }
-      
-      // 如果剪切的是临时卡片（已经粘贴过的），需要先清理 pendingCreates 和 pendingDeletes
-      if (clipboard.type === 'cut' && sourceCardId.startsWith('temp-')) {
-        // 清理 pendingCreatesRef 中的旧记录
-        pendingCreatesRef.current.delete(sourceCardId);
-        setPendingCreatesCount(pendingCreatesRef.current.size);
+        // 找到源卡片
+        const sourceCards = nodeCardsMap[sourceNodeId] || [];
+        const sourceCard = sourceCards.find((c: Card) => c.docId === sourceCardId);
         
-        // 清理 pendingDeletes 中的旧记录（如果存在）
-        setPendingDeletes(prev => {
-          const next = new Map(prev);
-          next.delete(sourceCardId);
-          return next;
+        // 如果源卡片不存在，可能是已经被删除或移动了
+        if (!sourceCard) {
+          // 如果是剪切操作，清空剪贴板
+          if (clipboard.type === 'cut') {
+            setClipboard(null);
+          }
+          continue; // 跳过这个项目，继续处理下一个
+        }
+      
+      // 如果剪切的是临时卡片（已经粘贴过的），需要先清理所有相关的pending操作
+      if (clipboard.type === 'cut' && sourceCardId.startsWith('temp-card-')) {
+        // 使用cleanupPendingForTempItem清理所有pending操作
+        cleanupPendingForTempItem({ 
+          type: 'card', 
+          id: `card-${sourceCardId}`, 
+          cardId: sourceCardId, 
+          nodeId: sourceNodeId, 
+          name: sourceCard.title || '', 
+          level: 0 
         });
       }
 
@@ -2529,13 +2697,11 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
           sourceCards.splice(cardIndex, 1);
           nodeCardsMap[sourceNodeId] = sourceCards;
           (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+          setNodeCardsMapVersion(prev => prev + 1);
 
           // 如果源卡片是临时卡片（已经粘贴过的），不需要添加到 pendingDeletes
-          // 只需要清理 pendingCreatesRef
-          if (sourceCardId.startsWith('temp-')) {
-            pendingCreatesRef.current.delete(sourceCardId);
-            setPendingCreatesCount(pendingCreatesRef.current.size);
-          } else {
+          // 已经在前面清理过了
+          if (!sourceCardId.startsWith('temp-card-')) {
             // 真实卡片，需要标记为待删除
             setPendingDeletes(prev => {
               const next = new Map(prev);
@@ -2562,16 +2728,17 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
         setPendingCreatesCount(pendingCreatesRef.current.size);
       }
 
-      setNodeCardsMapVersion(prev => prev + 1);
-
-      // 如果是剪切，清空剪贴板；如果是复制，保留
-      if (clipboard.type === 'cut') {
-        setClipboard(null);
+        setNodeCardsMapVersion(prev => prev + 1);
       }
     }
 
+    // 如果是剪切，清空剪贴板；如果是复制，保留
+    if (clipboard.type === 'cut') {
+      setClipboard(null);
+    }
+
     setContextMenu(null);
-  }, [clipboard, mindMap, setMindMap]);
+  }, [clipboard, mindMap, setMindMap, cleanupPendingForTempItem, triggerExpandAutoSave]);
 
   // 处理拖拽调整大小
   useEffect(() => {
@@ -2644,9 +2811,11 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     let shouldPreventDefault = false;
 
     // 首先检查内部 clipboard state
-    if (clipboard && clipboard.type === 'copy') {
-      if (clipboard.item.type === 'node') {
-        const nodeId = clipboard.item.nodeId || '';
+    if (clipboard && clipboard.type === 'copy' && clipboard.items.length > 0) {
+      // 只使用第一个项目来生成引用（用于AI对话框）
+      const firstItem = clipboard.items[0];
+      if (firstItem.type === 'node') {
+        const nodeId = firstItem.nodeId || '';
         const node = mindMap.nodes.find(n => n.id === nodeId);
         if (node) {
           const path = getNodePath(nodeId);
@@ -2658,9 +2827,9 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
           };
           shouldPreventDefault = true;
         }
-      } else if (clipboard.item.type === 'card') {
-        const cardId = clipboard.item.cardId || '';
-        const nodeId = clipboard.item.nodeId || '';
+      } else if (firstItem.type === 'card') {
+        const cardId = firstItem.cardId || '';
+        const nodeId = firstItem.nodeId || '';
         const cards = nodeCardsMap[nodeId] || [];
         const card = cards.find((c: Card) => c.docId === cardId);
         if (card) {
@@ -3949,100 +4118,6 @@ ${mindMapText}
     });
   }, [isMultiSelectMode, fileTree]);
 
-  // 清理临时card/node的所有pending操作
-  const cleanupPendingForTempItem = useCallback((file: FileItem) => {
-    if (file.type === 'node') {
-      const nodeId = file.nodeId || '';
-      if (nodeId.startsWith('temp-node-')) {
-        // 从 pendingCreatesRef 中移除
-        pendingCreatesRef.current.delete(nodeId);
-        setPendingCreatesCount(pendingCreatesRef.current.size);
-        
-        // 从 pendingChanges 中移除
-        setPendingChanges(prev => {
-          const next = new Map(prev);
-          next.delete(nodeId);
-          return next;
-        });
-        
-        // 从 pendingRenames 中移除
-        setPendingRenames(prev => {
-          const next = new Map(prev);
-          next.delete(nodeId);
-          return next;
-        });
-        
-        // 从 pendingDragChanges 中移除
-        setPendingDragChanges(prev => {
-          const next = new Set(prev);
-          next.delete(`node-${nodeId}`);
-          return next;
-        });
-        
-        // 清理该node下的所有临时card的pending操作
-        const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-        const nodeCards = nodeCardsMap[nodeId] || [];
-        for (const card of nodeCards) {
-          const cardId = card.docId;
-          if (cardId && cardId.startsWith('temp-card-')) {
-            // 从 pendingCreatesRef 中移除
-            pendingCreatesRef.current.delete(cardId);
-            setPendingCreatesCount(pendingCreatesRef.current.size);
-            
-            // 从 pendingChanges 中移除（card的id是 card-${cardId}）
-            setPendingChanges(prev => {
-              const next = new Map(prev);
-              next.delete(`card-${cardId}`);
-              return next;
-            });
-            
-            // 从 pendingRenames 中移除
-            setPendingRenames(prev => {
-              const next = new Map(prev);
-              next.delete(`card-${cardId}`);
-              return next;
-            });
-            
-            // 从 pendingDragChanges 中移除
-            setPendingDragChanges(prev => {
-              const next = new Set(prev);
-              next.delete(cardId);
-              return next;
-            });
-          }
-        }
-      }
-    } else if (file.type === 'card') {
-      const cardId = file.cardId || '';
-      if (cardId.startsWith('temp-card-')) {
-        // 从 pendingCreatesRef 中移除
-        pendingCreatesRef.current.delete(cardId);
-        setPendingCreatesCount(pendingCreatesRef.current.size);
-        
-        // 从 pendingChanges 中移除（card的id是 card-${cardId}）
-        setPendingChanges(prev => {
-          const next = new Map(prev);
-          next.delete(`card-${cardId}`);
-          return next;
-        });
-        
-        // 从 pendingRenames 中移除
-        setPendingRenames(prev => {
-          const next = new Map(prev);
-          next.delete(`card-${cardId}`);
-          return next;
-        });
-        
-        // 从 pendingDragChanges 中移除
-        setPendingDragChanges(prev => {
-          const next = new Set(prev);
-          next.delete(cardId);
-          return next;
-        });
-      }
-    }
-  }, []);
-
   // 批量删除选中的项目
   const handleBatchDelete = useCallback(() => {
     if (selectedItems.size === 0) {
@@ -4090,19 +4165,19 @@ ${mindMapText}
           // 临时节点不需要添加到pendingDeletes
           if (!tempNodeIds.includes(nodeId)) {
             next.set(nodeId, {
-              type: 'node',
+            type: 'node',
               id: nodeId,
-            });
+          });
           }
         } else if (file.type === 'card') {
           const cardId = file.cardId || '';
           // 临时卡片不需要添加到pendingDeletes
           if (!tempCardIds.includes(cardId)) {
             next.set(cardId, {
-              type: 'card',
+            type: 'card',
               id: cardId,
-              nodeId: file.nodeId,
-            });
+            nodeId: file.nodeId,
+          });
           }
         }
       }
@@ -4166,14 +4241,14 @@ ${mindMapText}
         // 临时节点不需要添加到pendingDeletes，因为它还没有真正创建
       } else {
         // 只有已存在的节点才添加到待删除列表
-        setPendingDeletes(prev => {
-          const next = new Map(prev);
+      setPendingDeletes(prev => {
+        const next = new Map(prev);
           next.set(nodeId, {
-            type: 'node',
+          type: 'node',
             id: nodeId,
-          });
-          return next;
         });
+        return next;
+      });
       }
       
       // 从 mindMap 中移除（前端显示）
@@ -4191,15 +4266,15 @@ ${mindMapText}
         // 临时卡片不需要添加到pendingDeletes，因为它还没有真正创建
       } else {
         // 只有已存在的卡片才添加到待删除列表
-        setPendingDeletes(prev => {
-          const next = new Map(prev);
+      setPendingDeletes(prev => {
+        const next = new Map(prev);
           next.set(cardId, {
-            type: 'card',
+          type: 'card',
             id: cardId,
-            nodeId: file.nodeId,
-          });
-          return next;
+          nodeId: file.nodeId,
         });
+        return next;
+      });
       }
       
       // 从 nodeCardsMap 中移除（前端显示）
@@ -4847,23 +4922,6 @@ ${mindMapText}
                 >
                   {isMultiSelectMode ? '✓' : '☐'}
                 </button>
-                {isMultiSelectMode && selectedItems.size > 0 && (
-                  <button
-                    onClick={handleBatchDelete}
-                    style={{
-                      padding: '2px 8px',
-                      fontSize: '11px',
-                      border: '1px solid #d1d5da',
-                      borderRadius: '3px',
-                      backgroundColor: '#dc3545',
-                      color: '#fff',
-                      cursor: 'pointer',
-                    }}
-                    title={`删除选中的 ${selectedItems.size} 个项目`}
-                  >
-                    删除({selectedItems.size})
-                  </button>
-                )}
               </>
             )}
             <button
@@ -5277,9 +5335,9 @@ ${mindMapText}
                       ))}
                       {pendingChanges.size > 5 && (
                         <div style={{ color: '#999', fontStyle: 'italic' }}>... 还有 {pendingChanges.size - 5} 个</div>
-                      )}
-                    </div>
-                  </div>
+          )}
+        </div>
+      </div>
                 )}
                 
                 {/* 拖动更改 */}
@@ -5422,7 +5480,67 @@ ${mindMapText}
                     }}
                     onClick={() => handlePaste(contextMenu.file.nodeId || '')}
                   >
-                    粘贴
+                    粘贴{clipboard.items.length > 1 ? ` (${clipboard.items.length})` : ''}
+                  </div>
+                  <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+                </>
+              )}
+              {/* 多选模式的复制、剪切和删除 */}
+              {isMultiSelectMode && selectedItems.size > 0 && (
+                <>
+                  <div
+                    style={{
+                      padding: '6px 16px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      color: '#24292e',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                    onClick={() => handleCopy()}
+                  >
+                    复制选中项 ({selectedItems.size})
+                  </div>
+                  <div
+                    style={{
+                      padding: '6px 16px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      color: '#24292e',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                    onClick={() => handleCut()}
+                  >
+                    剪切选中项 ({selectedItems.size})
+                  </div>
+                  <div
+                    style={{
+                      padding: '6px 16px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      color: '#d73a49',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                    onClick={() => {
+                      handleBatchDelete();
+                      setContextMenu(null);
+                    }}
+                  >
+                    删除选中项 ({selectedItems.size})
                   </div>
                   <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
                 </>
@@ -5538,6 +5656,66 @@ ${mindMapText}
             </>
           ) : (
             <>
+              {/* 多选模式的复制、剪切和删除 */}
+              {isMultiSelectMode && selectedItems.size > 0 && (
+                <>
+                  <div
+                    style={{
+                      padding: '6px 16px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      color: '#24292e',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                    onClick={() => handleCopy()}
+                  >
+                    复制选中项 ({selectedItems.size})
+                  </div>
+                  <div
+                    style={{
+                      padding: '6px 16px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      color: '#24292e',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                    onClick={() => handleCut()}
+                  >
+                    剪切选中项 ({selectedItems.size})
+                  </div>
+                  <div
+                    style={{
+                      padding: '6px 16px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      color: '#d73a49',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                    onClick={() => {
+                      handleBatchDelete();
+                      setContextMenu(null);
+                    }}
+                  >
+                    删除选中项 ({selectedItems.size})
+                  </div>
+                  <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+                </>
+              )}
               <div
                 style={{
                   padding: '6px 16px',
