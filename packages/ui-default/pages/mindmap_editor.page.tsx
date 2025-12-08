@@ -4615,7 +4615,24 @@ ${mindMapText}
           newDropPosition = mouseY < itemMiddle ? 'before' : 'after';
         }
       } else if (draggedFile.type === 'node' && file.type === 'node') {
-        newDropPosition = 'into';
+        // 检查是否在同一父节点下
+        const draggedNodeId = draggedFile.nodeId || '';
+        const targetNodeId = file.nodeId || '';
+        
+        // 找到拖动节点和目标节点的父节点
+        const draggedParentEdge = mindMap.edges.find(e => e.target === draggedNodeId);
+        const targetParentEdge = mindMap.edges.find(e => e.target === targetNodeId);
+        const draggedParentId = draggedParentEdge?.source;
+        const targetParentId = targetParentEdge?.source;
+        
+        // 如果两个节点有相同的父节点，可以进行排序（before/after）
+        if (draggedParentId && targetParentId && draggedParentId === targetParentId && draggedNodeId !== targetNodeId) {
+          // 在同一父节点下，根据鼠标位置判断是之前还是之后
+          newDropPosition = mouseY < itemMiddle ? 'before' : 'after';
+        } else {
+          // 不同父节点或没有父节点，放在内部（作为子节点）
+          newDropPosition = 'into';
+        }
       }
       
       // 只在位置改变时更新
@@ -4647,8 +4664,24 @@ ${mindMapText}
         }
       }
     } else if (draggedFile.type === 'node' && file.type === 'node') {
-      // 拖动节点到节点，放在内部（作为子节点）
-      newDropPosition = 'into';
+      // 检查是否在同一父节点下
+      const draggedNodeId = draggedFile.nodeId || '';
+      const targetNodeId = file.nodeId || '';
+      
+      // 找到拖动节点和目标节点的父节点
+      const draggedParentEdge = mindMap.edges.find(e => e.target === draggedNodeId);
+      const targetParentEdge = mindMap.edges.find(e => e.target === targetNodeId);
+      const draggedParentId = draggedParentEdge?.source;
+      const targetParentId = targetParentEdge?.source;
+      
+      // 如果两个节点有相同的父节点，可以进行排序（before/after）
+      if (draggedParentId && targetParentId && draggedParentId === targetParentId && draggedNodeId !== targetNodeId) {
+        // 在同一父节点下，根据鼠标位置判断是之前还是之后
+        newDropPosition = mouseY < itemMiddle ? 'before' : 'after';
+      } else {
+        // 不同父节点或没有父节点，放在内部（作为子节点）
+        newDropPosition = 'into';
+      }
     }
     
     // 清除之前的延迟更新
@@ -4662,7 +4695,7 @@ ${mindMapText}
     setDropPosition(newDropPosition);
     lastDragOverFileRef.current = file;
     lastDropPositionRef.current = newDropPosition;
-  }, [draggedFile]);
+  }, [draggedFile, mindMap.edges]);
 
   // 拖拽离开
   const handleDragLeave = useCallback((e: React.DragEvent) => {
@@ -4824,91 +4857,171 @@ ${mindMapText}
           setNodeCardsMapVersion(prev => prev + 1);
         }
       } else if (draggedFile.type === 'node' && targetFile.type === 'node') {
-        // 移动节点到目标节点下（改变父子关系）
-        // 需要检查是否会造成循环（不能将节点拖到自己或自己的子节点下）
         const draggedNodeId = draggedFile.nodeId || '';
         const targetNodeId = targetFile.nodeId || '';
         
-        // 检查是否会造成循环：检查目标节点是否是拖动节点的子节点
-        const isDescendant = (ancestorId: string, nodeId: string): boolean => {
-          // 找到所有以 ancestorId 为 source 的边
-          const children = mindMap.edges
-            .filter(e => e.source === ancestorId)
-            .map(e => e.target);
+        // 找到拖动节点和目标节点的父节点
+        const draggedParentEdge = mindMap.edges.find(e => e.target === draggedNodeId);
+        const targetParentEdge = mindMap.edges.find(e => e.target === targetNodeId);
+        const draggedParentId = draggedParentEdge?.source;
+        const targetParentId = targetParentEdge?.source;
+        
+        // 检查是否在同一父节点下（排序模式）
+        const isSameParent = draggedParentId && targetParentId && draggedParentId === targetParentId;
+        
+        if (isSameParent && dropPosition !== 'into') {
+          // 排序模式：在同一父节点下改变顺序
+          // 获取同一父节点下的所有子节点（按order排序）
+          const siblingNodes = mindMap.edges
+            .filter(e => e.source === draggedParentId)
+            .map(e => {
+              const node = mindMap.nodes.find(n => n.id === e.target);
+              return node ? { id: node.id, node, order: node.order || 0 } : null;
+            })
+            .filter(Boolean)
+            .sort((a, b) => (a!.order || 0) - (b!.order || 0)) as Array<{ id: string; node: MindMapNode; order: number }>;
           
-          // 如果 nodeId 是直接子节点，返回 true
-          if (children.includes(nodeId)) {
-            return true;
+          const draggedNodeIndex = siblingNodes.findIndex(n => n.id === draggedNodeId);
+          const targetNodeIndex = siblingNodes.findIndex(n => n.id === targetNodeId);
+          
+          if (draggedNodeIndex >= 0 && targetNodeIndex >= 0 && draggedNodeIndex !== targetNodeIndex) {
+            // 移除被拖动的节点
+            const [draggedNodeData] = siblingNodes.splice(draggedNodeIndex, 1);
+            
+            // 根据 dropPosition 插入到目标位置
+            let newIndex: number;
+            if (dropPosition === 'before') {
+              newIndex = targetNodeIndex;
+            } else {
+              // after
+              newIndex = draggedNodeIndex < targetNodeIndex ? targetNodeIndex : targetNodeIndex + 1;
+            }
+            siblingNodes.splice(newIndex, 0, draggedNodeData);
+            
+            // 更新所有节点的 order
+            siblingNodes.forEach((nodeData, index) => {
+              nodeData.node.order = index + 1;
+            });
+            
+            // 更新 mindMap
+            setMindMap(prev => ({
+              ...prev,
+              nodes: prev.nodes.map(n => {
+                const updatedNode = siblingNodes.find(sn => sn.id === n.id);
+                return updatedNode ? { ...n, order: updatedNode.node.order } : n;
+              }),
+            }));
+            
+            // 记录拖动操作，待保存
+            setPendingDragChanges(prev => {
+              const newSet = new Set(prev);
+              newSet.add(`node-${draggedNodeId}`);
+              return newSet;
+            });
+            
+            // 触发 fileTree 重新计算
+            setNodeCardsMapVersion(prev => prev + 1);
           }
-          
-          // 递归检查所有子节点
-          return children.some(childId => isDescendant(childId, nodeId));
-        };
-        
-        // 如果目标节点是拖动节点的子节点，不允许移动
-        if (isDescendant(draggedNodeId, targetNodeId)) {
-          Notification.error('不能将节点移动到自己的子节点下');
-          setDragOverFile(null);
-          return;
-        }
-        
-        // 检查是否已经是目标节点的子节点
-        const existingEdge = mindMap.edges.find(
-          e => e.source === targetNodeId && e.target === draggedNodeId
-        );
-        
-        if (!existingEdge) {
-          // 获取拖动节点的所有子节点（递归）
-          const getAllDescendants = (nodeId: string): string[] => {
-            const directChildren = mindMap.edges
-              .filter(e => e.source === nodeId)
+        } else {
+          // 移动模式：改变父节点（包括所有嵌套结构）
+          // 需要检查是否会造成循环（不能将节点拖到自己或自己的子节点下）
+          const isDescendant = (ancestorId: string, nodeId: string): boolean => {
+            // 找到所有以 ancestorId 为 source 的边
+            const children = mindMap.edges
+              .filter(e => e.source === ancestorId)
               .map(e => e.target);
             
-            const allDescendants = [...directChildren];
-            for (const childId of directChildren) {
-              allDescendants.push(...getAllDescendants(childId));
+            // 如果 nodeId 是直接子节点，返回 true
+            if (children.includes(nodeId)) {
+              return true;
             }
-            return allDescendants;
+            
+            // 递归检查所有子节点
+            return children.some(childId => isDescendant(childId, nodeId));
           };
           
-          const draggedNodeDescendants = getAllDescendants(draggedNodeId);
+          // 如果目标节点是拖动节点的子节点，不允许移动
+          if (isDescendant(draggedNodeId, targetNodeId)) {
+            Notification.error('不能将节点移动到自己的子节点下');
+            setDragOverFile(null);
+            return;
+          }
           
-          // 移除旧的父节点连接（只移除拖动节点本身的父连接）
-          const oldEdges = mindMap.edges.filter(
-            e => e.target === draggedNodeId
+          // 检查是否已经是目标节点的子节点
+          const existingEdge = mindMap.edges.find(
+            e => e.source === targetNodeId && e.target === draggedNodeId
           );
           
-          // 删除旧边
-          const newEdges = mindMap.edges.filter(
-            e => !oldEdges.includes(e)
-          );
-          
-          // 创建新边（拖动节点到目标节点）
-          const newEdge: MindMapEdge = {
-            id: `edge-${targetNodeId}-${draggedNodeId}-${Date.now()}`,
-            source: targetNodeId,
-            target: draggedNodeId,
-          };
-          
-          newEdges.push(newEdge);
-          
-          // 更新本地数据
-          setMindMap(prev => ({
-            ...prev,
-            edges: newEdges,
-          }));
-          
-          // 记录拖动操作，待保存（记录拖动节点和所有子节点）
-          setPendingDragChanges(prev => {
-            const newSet = new Set(prev);
-            newSet.add(`node-${draggedNodeId}`);
-            // 所有子节点的 edges 也会被影响，但只需要记录拖动节点即可
-            // 因为保存时会处理所有相关的 edges
-            return newSet;
-          });
-          
-          // 触发 fileTree 重新计算
-          setNodeCardsMapVersion(prev => prev + 1);
+          if (!existingEdge) {
+            // 获取拖动节点的所有子节点（递归，用于记录拖动操作）
+            const getAllDescendants = (nodeId: string): string[] => {
+              const directChildren = mindMap.edges
+                .filter(e => e.source === nodeId)
+                .map(e => e.target);
+              
+              const allDescendants = [...directChildren];
+              for (const childId of directChildren) {
+                allDescendants.push(...getAllDescendants(childId));
+              }
+              return allDescendants;
+            };
+            
+            const draggedNodeDescendants = getAllDescendants(draggedNodeId);
+            
+            // 获取目标节点的子节点数量（用于设置order）
+            const targetChildren = mindMap.edges.filter(e => e.source === targetNodeId);
+            const targetChildNodes = targetChildren.map(e => {
+              const node = mindMap.nodes.find(n => n.id === e.target);
+              return node ? { id: node.id, order: node.order || 0 } : null;
+            }).filter(Boolean) as Array<{ id: string; order: number }>;
+            const maxOrder = targetChildNodes.length > 0 
+              ? Math.max(...targetChildNodes.map(n => n.order))
+              : 0;
+            const newOrder = maxOrder + 1;
+            
+            // 移除旧的父节点连接（只移除拖动节点本身的父连接）
+            const oldEdges = mindMap.edges.filter(
+              e => e.target === draggedNodeId
+            );
+            
+            // 删除旧边
+            const newEdges = mindMap.edges.filter(
+              e => !oldEdges.includes(e)
+            );
+            
+            // 创建新边（拖动节点到目标节点）
+            const newEdge: MindMapEdge = {
+              id: `edge-${targetNodeId}-${draggedNodeId}-${Date.now()}`,
+              source: targetNodeId,
+              target: draggedNodeId,
+            };
+            
+            newEdges.push(newEdge);
+            
+            // 更新拖动节点的order
+            const draggedNode = mindMap.nodes.find(n => n.id === draggedNodeId);
+            
+            // 更新本地数据
+            setMindMap(prev => ({
+              ...prev,
+              edges: newEdges,
+              nodes: prev.nodes.map(n => 
+                n.id === draggedNodeId ? { ...n, order: newOrder } : n
+              ),
+            }));
+            
+            // 记录拖动操作，待保存（记录拖动节点，所有子节点会自动迁移）
+            setPendingDragChanges(prev => {
+              const newSet = new Set(prev);
+              newSet.add(`node-${draggedNodeId}`);
+              // 所有子节点的 edges 也会被影响，但只需要记录拖动节点即可
+              // 因为保存时会处理所有相关的 edges
+              return newSet;
+            });
+            
+            // 触发 fileTree 重新计算
+            setNodeCardsMapVersion(prev => prev + 1);
+          }
         }
       }
       
@@ -4930,7 +5043,7 @@ ${mindMapText}
       setDragOverFile(null);
       setDropPosition('after');
     }
-  }, [draggedFile, dropPosition, mindMap.edges]);
+  }, [draggedFile, dropPosition, mindMap.edges, mindMap.nodes]);
 
   // 使用 ref 跟踪当前选中的文件ID，避免在fileContent变化时重新初始化
   const selectedFileIdRef = useRef<string | null>(null);
