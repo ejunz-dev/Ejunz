@@ -493,9 +493,17 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
           };
           
           // 保存nodes的order
+          // 过滤掉临时节点和边，确保不会保存临时数据
+          const migrationNodes = migrationResult.mindMap.nodes.filter(n => !n.id.startsWith('temp-node-'));
+          const migrationEdges = migrationResult.mindMap.edges.filter(e => 
+            !e.source.startsWith('temp-node-') && 
+            !e.target.startsWith('temp-node-') &&
+            !e.id.startsWith('temp-edge-')
+          );
+          
           await request.post(getMindMapUrl('/save', docId), {
-            nodes: migrationResult.mindMap.nodes,
-            edges: migrationResult.mindMap.edges,
+            nodes: migrationNodes,
+            edges: migrationEdges,
             operationDescription: '自动迁移：为节点和卡片添加order字段',
           });
           
@@ -521,6 +529,17 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       saveMigration();
     }
   }, [migrationResult.needsSave, migrationResult.mindMap.nodes, migrationResult.mindMap.edges, migrationResult.cardUpdates, docId]);
+  
+  // 页面刷新时清空所有pending状态，确保不会有残留的临时数据
+  useEffect(() => {
+    pendingCreatesRef.current.clear();
+    setPendingCreatesCount(0);
+    setPendingChanges(new Map());
+    setPendingRenames(new Map());
+    setPendingDeletes(new Map());
+    setPendingDragChanges(new Set());
+  }, [docId]); // 当docId变化时（即切换到不同的mindmap时）清空
+  
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [fileContent, setFileContent] = useState<string>('');
   const [isCommitting, setIsCommitting] = useState(false);
@@ -754,9 +773,10 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
           (file.type === 'card' && file.cardId && file.cardId.startsWith('temp-')) ||
           (file.type === 'card' && file.id.startsWith('card-temp-')) ||
           Array.from(pendingCreatesRef.current.values()).some(c => {
-            if (c.tempId === file.id) return true;
+            // 对于 node，只有当 file.id 是 tempId 时才匹配（真实节点ID不会匹配临时ID）
+            if (file.type === 'node' && c.type === 'node' && c.tempId === file.id) return true;
             // 对于 card，file.id 是 card-${cardId}，需要匹配
-            if (file.type === 'card' && file.id === `card-${c.tempId}`) return true;
+            if (file.type === 'card' && c.type === 'card' && file.id === `card-${c.tempId}`) return true;
             return false;
           })) return true;
       
@@ -871,12 +891,50 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             createFileItem.hasPendingChanges = true; // 新建的项目肯定有未保存的更改
             items.push(createFileItem);
           });
+        
+        // 添加待创建的节点（临时显示，放在最后）
+        // 只显示那些不在 mindMap.nodes 中的节点（避免重复）
+        const existingNodeIds = new Set(mindMap.nodes.map(n => n.id));
+        Array.from(pendingCreatesRef.current.values())
+          .filter(c => c.type === 'node' && c.nodeId === nodeId && !existingNodeIds.has(c.tempId))
+          .forEach(create => {
+            // 递归构建待创建的节点及其子树
+            const createFileItem: FileItem = {
+              type: 'node',
+              id: create.tempId,
+              name: create.text || '新节点',
+              nodeId: create.tempId,
+              parentId: nodeId,
+              level: level + 1,
+            };
+            createFileItem.hasPendingChanges = true; // 新建的项目肯定有未保存的更改
+            items.push(createFileItem);
+            // 如果节点展开，递归构建其子树（但待创建的节点默认不展开）
+            // 注意：待创建的节点不会有子节点，因为它们还没有保存到后端
+          });
       }
     };
 
     rootNodes.forEach((rootId) => {
       buildTree(rootId, 0);
     });
+    
+    // 添加待创建的根节点（临时显示，放在最后）
+    // 只显示那些不在 mindMap.nodes 中的节点（避免重复）
+    const existingNodeIds = new Set(mindMap.nodes.map(n => n.id));
+    Array.from(pendingCreatesRef.current.values())
+      .filter(c => c.type === 'node' && !c.nodeId && !existingNodeIds.has(c.tempId))
+      .forEach(create => {
+        const createFileItem: FileItem = {
+          type: 'node',
+          id: create.tempId,
+          name: create.text || '新节点',
+          nodeId: create.tempId,
+          level: 0,
+        };
+        createFileItem.hasPendingChanges = true; // 新建的项目肯定有未保存的更改
+        items.push(createFileItem);
+      });
 
     return items;
   }, [mindMap.nodes, mindMap.edges, nodeCardsMapVersion, expandedNodes, pendingChanges, pendingRenames, pendingDragChanges, pendingDeletes, clipboard]);
@@ -905,9 +963,17 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
         });
 
         // 调用 /save 接口保存整个 mindMap（包含 expanded 状态）
+        // 过滤掉临时节点和边，确保不会保存临时数据
+        const filteredNodes = updatedNodes.filter(n => !n.id.startsWith('temp-node-'));
+        const filteredEdges = currentMindMap.edges.filter(e => 
+          !e.source.startsWith('temp-node-') && 
+          !e.target.startsWith('temp-node-') &&
+          !e.id.startsWith('temp-edge-')
+        );
+        
         await request.post(getMindMapUrl('/save', docId), {
-          nodes: updatedNodes,
-          edges: currentMindMap.edges,
+          nodes: filteredNodes,
+          edges: filteredEdges,
           operationDescription: '自动保存展开状态',
         });
         
@@ -1418,22 +1484,57 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             const createNodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
             let createNodeId = create.nodeId;
             
-            if (createNodeId && createNodeId.startsWith('temp-node-')) {
+            if (!createNodeId) {
+              continue;
+            }
+            
+            // 如果节点ID是临时节点ID，尝试从nodeIdMap中获取真实ID
+            if (createNodeId.startsWith('temp-node-')) {
               const realNodeId = nodeIdMap.get(createNodeId);
               if (realNodeId) {
                 createNodeId = realNodeId;
               } else {
+                // 临时节点还没有创建，跳过这个card，等待下一轮保存
+                console.warn(`跳过创建card：临时节点 ${createNodeId} 还没有创建，等待下一轮保存`);
                 continue;
               }
-            } else if (!createNodeId) {
-              continue;
             }
             
+            // 此时createNodeId应该是真实ID，不应该再是临时ID
             if (createNodeId.startsWith('temp-node-')) {
+              console.warn(`跳过创建card：节点 ${createNodeId} 仍然是临时ID，无法创建card`);
               continue;
             }
             
-            const createNodeCards: Card[] = createNodeCardsMap[createNodeId] || [];
+            // 检查节点是否在待删除列表中
+            if (pendingDeletes.has(createNodeId)) {
+              console.warn(`跳过创建card：节点 ${createNodeId} 在待删除列表中`);
+              // 清理这个待创建的card
+              pendingCreatesRef.current.delete(create.tempId);
+              setPendingCreatesCount(pendingCreatesRef.current.size);
+              continue;
+            }
+            
+            // 检查节点是否存在
+            // 优先检查nodeIdMap（因为新创建的节点可能还没有更新到mindMap.nodes）
+            const nodeExistsInMap = Array.from(nodeIdMap.values()).includes(createNodeId);
+            const nodeExistsInMindMap = mindMap.nodes.some(n => n.id === createNodeId);
+            
+            if (!nodeExistsInMap && !nodeExistsInMindMap) {
+              console.warn(`跳过创建card：节点 ${createNodeId} 不存在（不在nodeIdMap也不在mindMap.nodes中）`);
+              // 清理这个待创建的card
+              pendingCreatesRef.current.delete(create.tempId);
+              setPendingCreatesCount(pendingCreatesRef.current.size);
+              continue;
+            }
+            
+            // 注意：createNodeCardsMap可能使用临时节点ID作为key，需要检查
+            // 如果createNodeId是真实ID，但createNodeCardsMap中使用的是临时ID，需要查找
+            let createNodeCards: Card[] = createNodeCardsMap[createNodeId] || [];
+            // 如果找不到，尝试使用原始的临时节点ID查找
+            if (createNodeCards.length === 0 && create.nodeId && create.nodeId.startsWith('temp-node-')) {
+              createNodeCards = createNodeCardsMap[create.nodeId] || [];
+            }
             const tempCard = createNodeCards.find((c: Card) => c.docId === create.tempId);
 
             // 检查 allChanges 中是否有对应的 content 更改（优先使用）
@@ -1470,15 +1571,31 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             
             // 更新 nodeCardsMap，将临时 ID 替换为真实 ID
             const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-            if (createNodeCardsMap[createNodeId]) {
-              const cards = createNodeCardsMap[createNodeId];
+            // 需要找到正确的节点ID（可能是临时ID或真实ID）
+            const originalNodeId = create.nodeId; // 原始的节点ID（可能是临时ID）
+            const targetNodeId = createNodeId; // 真实的节点ID
+            
+            // 先尝试使用真实ID查找
+            let cards = nodeCardsMap[targetNodeId];
+            // 如果找不到，尝试使用原始临时ID查找
+            if (!cards && originalNodeId && originalNodeId.startsWith('temp-node-')) {
+              cards = nodeCardsMap[originalNodeId];
+              // 如果找到了，需要将cards从临时ID的key移动到真实ID的key
+              if (cards) {
+                nodeCardsMap[targetNodeId] = cards;
+                delete nodeCardsMap[originalNodeId];
+              }
+            }
+            
+            if (cards) {
               const tempCardIndex = cards.findIndex((c: Card) => c.docId === create.tempId);
               if (tempCardIndex >= 0) {
                 cards[tempCardIndex] = {
                   ...cards[tempCardIndex],
                   docId: newCardId,
+                  nodeId: targetNodeId, // 确保nodeId也是真实ID
                 };
-                (window as any).UiContext.nodeCardsMap = { ...createNodeCardsMap };
+                (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
               }
             }
             
@@ -1897,65 +2014,83 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       if (hasDeleteChanges) {
         const deletes = Array.from(pendingDeletes.values());
         
-        for (const del of deletes) {
-          if (del.type === 'card') {
-            // 临时卡片（尚未真正创建），只需要在前端移除，不调用后端删除接口
-            if (!del.id || String(del.id).startsWith('temp-card-')) {
-              continue;
-            }
-            // 删除已存在的卡片
+        // 先删除所有card，再删除node（避免node删除时card已经被删除的情况）
+        const cardDeletes = deletes.filter(d => d.type === 'card');
+        const nodeDeletes = deletes.filter(d => d.type === 'node');
+        
+        // 删除所有card
+        for (const del of cardDeletes) {
+          // 临时卡片（尚未真正创建），只需要在前端移除，不调用后端删除接口
+          if (!del.id || String(del.id).startsWith('temp-card-')) {
+            continue;
+          }
+          
+          // 删除已存在的卡片
+          try {
             await request.post(`/d/${domainId}/mindmap/card/${del.id}`, {
               operation: 'delete',
             });
-          } else if (del.type === 'node') {
-            // 临时节点（尚未真正创建），只需要在前端移除，不调用后端删除接口
-            if (!del.id || String(del.id).startsWith('temp-node-')) {
+          } catch (deleteError: any) {
+            // 如果card不存在（可能已经被删除），忽略错误继续处理
+            const errorMessage = deleteError.message || deleteError.toString() || '';
+            if (errorMessage.includes('Card not found') || errorMessage.includes('NotFoundError')) {
+              console.warn(`Card ${del.id} not found, skipping deletion`);
               continue;
             }
+            // 其他错误继续抛出
+            throw deleteError;
+          }
+        }
+        
+        // 删除所有node
+        for (const del of nodeDeletes) {
+          // 临时节点（尚未真正创建），只需要在前端移除，不调用后端删除接口
+          if (!del.id || String(del.id).startsWith('temp-node-')) {
+            continue;
+          }
+          
+          // 删除节点（需要先删除所有相关的 edges）
+          // 从后端获取最新的 edges，因为前端可能已经删除了这些 edges
+          try {
+            const currentMindMap = await request.get(getMindMapUrl('/data', docId));
+            const nodeEdges = (currentMindMap.edges || []).filter(
+              (e: MindMapEdge) => e.source === del.id || e.target === del.id
+            );
             
-            // 删除节点（需要先删除所有相关的 edges）
-            // 从后端获取最新的 edges，因为前端可能已经删除了这些 edges
-            try {
-              const currentMindMap = await request.get(getMindMapUrl('/data', docId));
-              const nodeEdges = (currentMindMap.edges || []).filter(
-                (e: MindMapEdge) => e.source === del.id || e.target === del.id
-              );
-              
-              for (const edge of nodeEdges) {
-                try {
-                  await request.post(getMindMapUrl('/edge', docId), {
-                    operation: 'delete',
-                    edgeId: edge.id,
-                  });
-                } catch (deleteError: any) {
-                  // 如果删除失败，可能是 edge 已经被删除，继续处理
-                  console.warn('Failed to delete edge:', edge.id, deleteError);
-                }
-              }
-            } catch (error: any) {
-              // 如果获取数据失败，尝试直接从 mindMap 中查找（向后兼容）
-              const nodeEdges = mindMap.edges.filter(
-                e => e.source === del.id || e.target === del.id
-              );
-              
-              for (const edge of nodeEdges) {
-                try {
-                  await request.post(getMindMapUrl('/edge', docId), {
-                    operation: 'delete',
-                    edgeId: edge.id,
-                  });
-                } catch (deleteError: any) {
-                  // 如果删除失败，可能是 edge 已经被删除，继续处理
-                  console.warn('Failed to delete edge:', edge.id, deleteError);
-                }
+            for (const edge of nodeEdges) {
+              try {
+                await request.post(getMindMapUrl('/edge', docId), {
+                  operation: 'delete',
+                  edgeId: edge.id,
+                });
+              } catch (deleteError: any) {
+                // 如果删除失败，可能是 edge 已经被删除，继续处理
+                console.warn('Failed to delete edge:', edge.id, deleteError);
               }
             }
+          } catch (error: any) {
+            // 如果获取数据失败，尝试直接从 mindMap 中查找（向后兼容）
+            const nodeEdges = mindMap.edges.filter(
+              e => e.source === del.id || e.target === del.id
+            );
             
-            // 删除节点
-            await request.post(getMindMapUrl(`/node/${del.id}`, docId), {
-              operation: 'delete',
-            });
+            for (const edge of nodeEdges) {
+              try {
+                await request.post(getMindMapUrl('/edge', docId), {
+                  operation: 'delete',
+                  edgeId: edge.id,
+                });
+              } catch (deleteError: any) {
+                // 如果删除失败，可能是 edge 已经被删除，继续处理
+                console.warn('Failed to delete edge:', edge.id, deleteError);
+              }
+            }
           }
+          
+          // 删除节点
+          await request.post(getMindMapUrl(`/node/${del.id}`, docId), {
+            operation: 'delete',
+          });
         }
       }
 
@@ -2144,6 +2279,21 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
 
   // 新建卡片（前端操作）
   const handleNewCard = useCallback((nodeId: string) => {
+    // 检查节点是否在待删除列表中
+    if (pendingDeletes.has(nodeId)) {
+      Notification.error('无法创建：该节点已在待删除列表中');
+      setContextMenu(null);
+      return;
+    }
+    
+    // 检查节点是否存在
+    const nodeExists = mindMap.nodes.some(n => n.id === nodeId);
+    if (!nodeExists && !nodeId.startsWith('temp-node-')) {
+      Notification.error('无法创建：节点不存在');
+      setContextMenu(null);
+      return;
+    }
+    
     const tempId = `temp-card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const newCard: PendingCreate = {
       type: 'card',
@@ -2180,7 +2330,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     setNodeCardsMapVersion(prev => prev + 1);
     
     setContextMenu(null);
-  }, []);
+  }, [pendingDeletes, mindMap.nodes]);
 
   // 新建子节点（前端操作）
   const handleNewChildNode = useCallback((parentNodeId: string) => {
@@ -4069,6 +4219,11 @@ ${mindMapText}
     
     return { nodes: allNodes, cards: allCards };
   }, [mindMap.edges]);
+  
+  // 设置getNodeChildrenRef，供其他函数使用
+  useEffect(() => {
+    getNodeChildrenRef.current = getNodeChildren;
+  }, [getNodeChildren]);
 
   // 多选模式：切换选择状态
   const handleToggleSelect = useCallback((file: FileItem) => {
@@ -4127,12 +4282,43 @@ ${mindMapText}
     
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const itemsToDelete: FileItem[] = [];
+    const allNodeIdsToDelete = new Set<string>();
+    const allCardIdsToDelete = new Set<string>();
     
-    // 收集所有要删除的项目
+    // 收集所有要删除的项目（包括递归的子节点和card）
     for (const fileId of selectedItems) {
       const file = fileTree.find(f => f.id === fileId);
       if (file) {
         itemsToDelete.push(file);
+        
+        // 如果是node，递归收集所有子节点和card
+        if (file.type === 'node' && getNodeChildrenRef.current) {
+          const nodeId = file.nodeId || '';
+          const children = getNodeChildrenRef.current(nodeId);
+          children.nodes.forEach(childNodeId => {
+            allNodeIdsToDelete.add(childNodeId);
+            // 找到对应的FileItem并添加到itemsToDelete
+            const childFile = fileTree.find(f => f.type === 'node' && f.nodeId === childNodeId);
+            if (childFile && !itemsToDelete.find(f => f.id === childFile.id)) {
+              itemsToDelete.push(childFile);
+            }
+          });
+          children.cards.forEach(cardId => {
+            allCardIdsToDelete.add(cardId);
+            // 找到对应的FileItem并添加到itemsToDelete
+            const cardFile = fileTree.find(f => f.type === 'card' && f.cardId === cardId);
+            if (cardFile && !itemsToDelete.find(f => f.id === cardFile.id)) {
+              itemsToDelete.push(cardFile);
+            }
+          });
+        }
+        
+        // 记录要删除的节点和card ID
+        if (file.type === 'node') {
+          allNodeIdsToDelete.add(file.nodeId || '');
+        } else if (file.type === 'card') {
+          allCardIdsToDelete.add(file.cardId || '');
+        }
       }
     }
     
@@ -4159,104 +4345,169 @@ ${mindMapText}
     // 添加到待删除列表（只添加已存在的项目，临时项目不需要）
     setPendingDeletes(prev => {
       const next = new Map(prev);
-      for (const file of itemsToDelete) {
-        if (file.type === 'node') {
-          const nodeId = file.nodeId || '';
-          // 临时节点不需要添加到pendingDeletes
-          if (!tempNodeIds.includes(nodeId)) {
-            next.set(nodeId, {
+      
+      // 添加所有节点（包括递归的子节点）
+      for (const nodeId of allNodeIdsToDelete) {
+        if (!tempNodeIds.includes(nodeId)) {
+          next.set(nodeId, {
             type: 'node',
-              id: nodeId,
+            id: nodeId,
           });
-          }
-        } else if (file.type === 'card') {
-          const cardId = file.cardId || '';
-          // 临时卡片不需要添加到pendingDeletes
-          if (!tempCardIds.includes(cardId)) {
-            next.set(cardId, {
-            type: 'card',
-              id: cardId,
-            nodeId: file.nodeId,
-          });
-          }
         }
       }
+      
+      // 添加所有card（包括递归的子card）
+      for (const cardId of allCardIdsToDelete) {
+        if (!tempCardIds.includes(cardId)) {
+          // 找到card所属的nodeId
+          const cardFile = itemsToDelete.find(f => f.type === 'card' && f.cardId === cardId);
+          const cardNodeId = cardFile?.nodeId || 
+            mindMap.nodes.find(n => {
+              const cards = nodeCardsMap[n.id] || [];
+              return cards.some((c: Card) => c.docId === cardId);
+            })?.id;
+          
+          next.set(cardId, {
+            type: 'card',
+            id: cardId,
+            nodeId: cardNodeId,
+          });
+        }
+      }
+      
       return next;
     });
     
-    // 从 mindMap 中移除节点（前端显示）
-    const nodeIdsToDelete = itemsToDelete.filter(f => f.type === 'node').map(f => f.nodeId).filter(Boolean);
-    if (nodeIdsToDelete.length > 0) {
+    // 从 mindMap 中移除节点（前端显示）：递归移除所有子节点
+    const nodeIdsArray = Array.from(allNodeIdsToDelete);
+    if (nodeIdsArray.length > 0) {
       setMindMap(prev => ({
         ...prev,
-        nodes: prev.nodes.filter(n => !nodeIdsToDelete.includes(n.id)),
+        nodes: prev.nodes.filter(n => !nodeIdsArray.includes(n.id)),
         edges: prev.edges.filter(e => 
-          !nodeIdsToDelete.includes(e.source) && !nodeIdsToDelete.includes(e.target)
+          !nodeIdsArray.includes(e.source) && !nodeIdsArray.includes(e.target)
         ),
       }));
     }
     
-    // 从 nodeCardsMap 中移除卡片（前端显示）
-    const cardsToDelete = itemsToDelete.filter(f => f.type === 'card');
-    for (const card of cardsToDelete) {
-      if (nodeCardsMap[card.nodeId || '']) {
-        const cards = nodeCardsMap[card.nodeId || ''];
-        const cardIndex = cards.findIndex((c: Card) => c.docId === card.cardId);
+    // 从 nodeCardsMap 中移除卡片（前端显示）：递归移除所有card
+    const cardIdsArray = Array.from(allCardIdsToDelete);
+    for (const cardId of cardIdsArray) {
+      // 找到card所属的nodeId
+      for (const nodeIdKey in nodeCardsMap) {
+        const cards = nodeCardsMap[nodeIdKey];
+        const cardIndex = cards.findIndex((c: Card) => c.docId === cardId);
         if (cardIndex >= 0) {
           cards.splice(cardIndex, 1);
           (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+          setNodeCardsMapVersion(prev => prev + 1);
+          break;
         }
       }
     }
     
     // 清空选择
     setSelectedItems(new Set());
-    Notification.success(`已标记 ${itemsToDelete.length} 个项目待删除，请保存以确认删除`);
+    const totalItemsToDelete = allNodeIdsToDelete.size + allCardIdsToDelete.size;
+    Notification.success(`已标记 ${totalItemsToDelete} 个项目待删除（包括 ${allNodeIdsToDelete.size} 个节点和 ${allCardIdsToDelete.size} 个卡片），请保存以确认删除`);
   }, [selectedItems, fileTree, cleanupPendingForTempItem]);
 
   // 删除节点或卡片（前端操作）
   const handleDelete = useCallback((file: FileItem) => {
     if (file.type === 'node') {
-      const nodeId = file.nodeId || '';
+      // 对于节点，id就是nodeId
+      const nodeId = file.nodeId || file.id || '';
       
-      // 检查是否有子节点或卡片
-      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-      const nodeCards = nodeCardsMap[nodeId] || [];
-      const hasCards = nodeCards.length > 0;
-      const hasChildren = mindMap.edges.some(e => e.source === nodeId);
+      if (!nodeId) {
+        Notification.error('无法删除：节点ID无效');
+        setContextMenu(null);
+        return;
+      }
       
-      // 如果是临时节点，即使有card也可以删除（因为都是临时的）
-      const isTempNode = nodeId.startsWith('temp-node-');
-      const hasTempCards = isTempNode && nodeCards.every((card: Card) => card.docId?.startsWith('temp-card-'));
-      
-      if (!isTempNode && (hasCards || hasChildren)) {
-        Notification.error('无法删除：该节点包含子节点或卡片');
+      // 检查节点是否已经在待删除列表中
+      if (pendingDeletes.has(nodeId)) {
+        Notification.info('该节点已经在待删除列表中');
         setContextMenu(null);
         return;
       }
       
       // 如果是临时节点（待新建的），清理所有相关的pending操作（包括其下的临时card）
+      const isTempNode = nodeId.startsWith('temp-node-');
+      
       if (isTempNode) {
         cleanupPendingForTempItem(file);
         // 临时节点不需要添加到pendingDeletes，因为它还没有真正创建
       } else {
-        // 只有已存在的节点才添加到待删除列表
-      setPendingDeletes(prev => {
-        const next = new Map(prev);
+        // 递归获取所有子节点和card
+        const children = getNodeChildrenRef.current ? getNodeChildrenRef.current(nodeId) : { nodes: [], cards: [] };
+        
+        // 添加到待删除列表：先添加子节点和card，再添加当前节点
+        setPendingDeletes(prev => {
+          const next = new Map(prev);
+          
+          // 先添加所有子节点
+          for (const childNodeId of children.nodes) {
+            if (!next.has(childNodeId)) {
+              next.set(childNodeId, {
+                type: 'node',
+                id: childNodeId,
+              });
+            }
+          }
+          
+          // 再添加所有card
+          for (const cardId of children.cards) {
+            if (!next.has(cardId)) {
+              // 找到card所属的nodeId
+              const cardNodeId = mindMap.nodes.find(n => {
+                const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                const cards = nodeCardsMap[n.id] || [];
+                return cards.some((c: Card) => c.docId === cardId);
+              })?.id;
+              
+              next.set(cardId, {
+                type: 'card',
+                id: cardId,
+                nodeId: cardNodeId,
+              });
+            }
+          }
+          
+          // 最后添加当前节点
           next.set(nodeId, {
-          type: 'node',
+            type: 'node',
             id: nodeId,
+          });
+          
+          return next;
         });
-        return next;
-      });
+        
+        // 从 mindMap 中移除（前端显示）：递归移除所有子节点和card
+        const allNodeIdsToDelete = [nodeId, ...children.nodes];
+        setMindMap(prev => ({
+          ...prev,
+          nodes: prev.nodes.filter(n => !allNodeIdsToDelete.includes(n.id)),
+          edges: prev.edges.filter(e => 
+            !allNodeIdsToDelete.includes(e.source) && !allNodeIdsToDelete.includes(e.target)
+          ),
+        }));
+        
+        // 从 nodeCardsMap 中移除所有card（前端显示）
+        const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+        for (const cardId of children.cards) {
+          // 找到card所属的nodeId
+          for (const nodeIdKey in nodeCardsMap) {
+            const cards = nodeCardsMap[nodeIdKey];
+            const cardIndex = cards.findIndex((c: Card) => c.docId === cardId);
+            if (cardIndex >= 0) {
+              cards.splice(cardIndex, 1);
+              (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+              setNodeCardsMapVersion(prev => prev + 1);
+              break;
+            }
+          }
+        }
       }
-      
-      // 从 mindMap 中移除（前端显示）
-      setMindMap(prev => ({
-        ...prev,
-        nodes: prev.nodes.filter(n => n.id !== nodeId),
-        edges: prev.edges.filter(e => e.source !== nodeId && e.target !== nodeId),
-      }));
     } else if (file.type === 'card') {
       const cardId = file.cardId || '';
       
@@ -4291,7 +4542,7 @@ ${mindMapText}
     }
     
     setContextMenu(null);
-  }, [mindMap.edges, cleanupPendingForTempItem]);
+  }, [mindMap.edges, mindMap.nodes, pendingDeletes, cleanupPendingForTempItem]);
 
   // 拖拽开始
   const handleDragStart = useCallback((e: React.DragEvent, file: FileItem) => {
@@ -5856,9 +6107,17 @@ ${mindMapText}
               
               // 保存mindMap以持久化node的order字段
               try {
+                // 过滤掉临时节点和边，确保不会保存临时数据
+                const sortedNodes = updatedNodes.filter(n => !n.id.startsWith('temp-node-'));
+                const sortedEdges = mindMap.edges.filter(e => 
+                  !e.source.startsWith('temp-node-') && 
+                  !e.target.startsWith('temp-node-') &&
+                  !e.id.startsWith('temp-edge-')
+                );
+                
                 await request.post(getMindMapUrl('/save', docId), {
-                  nodes: updatedNodes,
-                  edges: mindMap.edges,
+                  nodes: sortedNodes,
+                  edges: sortedEdges,
                   operationDescription: '排序更新',
                 });
               } catch (error: any) {
