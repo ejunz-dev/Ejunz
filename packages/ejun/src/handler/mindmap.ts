@@ -1143,7 +1143,41 @@ class MindMapSaveHandler extends Handler {
         }
 
         const data = this.request.body || {};
-        const { nodes, edges, layout, viewport, theme, operationDescription } = data;
+        let { nodes, edges, layout, viewport, theme, operationDescription } = data;
+        
+        // 过滤掉临时节点和边，确保不会保存临时数据
+        // 临时节点ID格式：temp-node-xxx，临时边ID格式：temp-edge-xxx
+        if (nodes && Array.isArray(nodes)) {
+            nodes = nodes.filter((node: MindMapNode) => {
+                if (!node.id) return false;
+                // 拒绝保存临时节点
+                if (node.id.startsWith('temp-node-')) {
+                    console.warn(`Rejected temporary node from save: ${node.id}`);
+                    return false;
+                }
+                return true;
+            });
+        }
+        
+        if (edges && Array.isArray(edges)) {
+            edges = edges.filter((edge: MindMapEdge) => {
+                if (!edge.id && !edge.source && !edge.target) return false;
+                // 拒绝保存临时边或包含临时节点的边
+                if (edge.id && edge.id.startsWith('temp-edge-')) {
+                    console.warn(`Rejected temporary edge from save: ${edge.id}`);
+                    return false;
+                }
+                if (edge.source && edge.source.startsWith('temp-node-')) {
+                    console.warn(`Rejected edge with temporary source node: ${edge.source}`);
+                    return false;
+                }
+                if (edge.target && edge.target.startsWith('temp-node-')) {
+                    console.warn(`Rejected edge with temporary target node: ${edge.target}`);
+                    return false;
+                }
+                return true;
+            });
+        }
         
         // 获取当前分支
         const currentBranch = (mindMap as any).currentBranch || 'main';
@@ -1180,7 +1214,7 @@ class MindMapSaveHandler extends Handler {
             history.splice(50);
         }
 
-        // 更新当前分支的数据
+        // 更新当前分支的数据（使用过滤后的nodes和edges）
         setBranchData(mindMap, currentBranch, nodes || [], edges || []);
 
         await MindMapModel.updateFull(domainId, docId, {
