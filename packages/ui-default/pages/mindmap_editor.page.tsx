@@ -607,17 +607,46 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     }
   }, [mindMap.files]);
   
-  // 默认展开所有节点
+  // 从节点的 expanded 字段读取展开状态
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
     const initialExpanded = new Set<string>();
-    // 在组件初始化时，展开所有节点
+    // 在组件初始化时，根据节点的 expanded 字段决定是否展开
+    // expanded 为 undefined 或 true 时展开，为 false 时折叠
     if (initialData?.nodes) {
       initialData.nodes.forEach(node => {
-        initialExpanded.add(node.id);
+        if (node.expanded !== false) {
+          initialExpanded.add(node.id);
+        }
       });
     }
     return initialExpanded;
   }); // 记录展开的节点
+  
+  // 自动保存定时器 ref
+  const expandSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // 保存最新的展开状态 ref，用于自动保存时获取最新值
+  const expandedNodesRef = useRef<Set<string>>(expandedNodes);
+  // 保存最新的 mindMap ref，用于自动保存时获取最新值
+  const mindMapRef = useRef<MindMapDoc>(mindMap);
+  
+  // 同步 refs
+  useEffect(() => {
+    expandedNodesRef.current = expandedNodes;
+  }, [expandedNodes]);
+  
+  useEffect(() => {
+    mindMapRef.current = mindMap;
+  }, [mindMap]);
+  
+  // 组件卸载时清理定时器
+  useEffect(() => {
+    return () => {
+      if (expandSaveTimerRef.current) {
+        clearTimeout(expandSaveTimerRef.current);
+        expandSaveTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // 获取带 domainId 的 mindmap URL
   const getMindMapUrl = (path: string, docId: string): string => {
@@ -852,18 +881,89 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     return items;
   }, [mindMap.nodes, mindMap.edges, nodeCardsMapVersion, expandedNodes, pendingChanges, pendingRenames, pendingDragChanges, pendingDeletes, clipboard]);
 
+  // 触发自动保存展开状态（带防抖）- 复用 mindmap_outline 的方式
+  const triggerExpandAutoSave = useCallback(() => {
+    // 清除之前的定时器（如果有）
+    if (expandSaveTimerRef.current) {
+      clearTimeout(expandSaveTimerRef.current);
+      expandSaveTimerRef.current = null;
+    }
+
+    expandSaveTimerRef.current = setTimeout(async () => {
+      try {
+        // 使用 ref 获取最新的展开状态和节点数据
+        const currentExpandedNodes = expandedNodesRef.current;
+        const currentMindMap = mindMapRef.current;
+        
+        // 更新所有节点的 expanded 字段，匹配当前的展开状态
+        const updatedNodes = currentMindMap.nodes.map((node) => {
+          const isExpanded = currentExpandedNodes.has(node.id);
+          return {
+            ...node,
+            expanded: isExpanded,
+          };
+        });
+
+        // 调用 /save 接口保存整个 mindMap（包含 expanded 状态）
+        await request.post(getMindMapUrl('/save', docId), {
+          nodes: updatedNodes,
+          edges: currentMindMap.edges,
+          operationDescription: '自动保存展开状态',
+        });
+        
+        // 更新本地 mindMap 状态（确保与后端同步）
+        setMindMap(prev => ({
+          ...prev,
+          nodes: updatedNodes,
+        }));
+        
+        expandSaveTimerRef.current = null;
+      } catch (error: any) {
+        console.error('保存展开状态失败:', error);
+        expandSaveTimerRef.current = null;
+      }
+    }, 1500);
+  }, [docId]);
+
   // 切换节点展开/折叠
   const toggleNodeExpanded = useCallback((nodeId: string) => {
+    let newExpandedState: boolean;
+    
     setExpandedNodes(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(nodeId)) {
+      const isExpanded = newSet.has(nodeId);
+      newExpandedState = !isExpanded;
+      
+      if (isExpanded) {
         newSet.delete(nodeId);
       } else {
         newSet.add(nodeId);
       }
+      
+      // 立即更新 ref，确保自动保存时能获取最新值
+      expandedNodesRef.current = newSet;
+      
+      // 立即更新本地 mindMap 状态，实现即时 UI 响应
+      setMindMap(prev => {
+        const updated = {
+          ...prev,
+          nodes: prev.nodes.map(n =>
+            n.id === nodeId
+              ? { ...n, expanded: newExpandedState }
+              : n
+          ),
+        };
+        // 立即更新 ref，确保自动保存时能获取最新值
+        mindMapRef.current = updated;
+        return updated;
+      });
+      
       return newSet;
     });
-  }, []);
+    
+    // 触发自动保存（1.5秒后保存到后端）
+    triggerExpandAutoSave();
+  }, [triggerExpandAutoSave]);
 
   // 选择文件
   const handleSelectFile = useCallback(async (file: FileItem) => {
@@ -2079,10 +2179,34 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     }));
     
     // 展开父节点以便看到新节点
-    setExpandedNodes(prev => new Set(prev).add(parentNodeId));
+    setExpandedNodes(prev => {
+      const newSet = new Set(prev);
+      if (!newSet.has(parentNodeId)) {
+        newSet.add(parentNodeId);
+        // 立即更新 ref，确保自动保存时能获取最新值
+        expandedNodesRef.current = newSet;
+        // 立即更新本地 mindMap 状态
+        setMindMap(prev => {
+          const updated = {
+            ...prev,
+            nodes: prev.nodes.map(n =>
+              n.id === parentNodeId
+                ? { ...n, expanded: true }
+                : n
+            ),
+          };
+          // 立即更新 ref，确保自动保存时能获取最新值
+          mindMapRef.current = updated;
+          return updated;
+        });
+        // 触发自动保存
+        triggerExpandAutoSave();
+      }
+      return newSet;
+    });
     
     setContextMenu(null);
-  }, []);
+  }, [triggerExpandAutoSave]);
 
   // 复制节点或卡片
   const handleCopy = useCallback((file: FileItem) => {
@@ -2301,7 +2425,31 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       });
 
       setNodeCardsMapVersion(prev => prev + 1);
-      setExpandedNodes(prev => new Set(prev).add(targetNodeId));
+      setExpandedNodes(prev => {
+        const newSet = new Set(prev);
+        if (!newSet.has(targetNodeId)) {
+          newSet.add(targetNodeId);
+          // 立即更新 ref，确保自动保存时能获取最新值
+          expandedNodesRef.current = newSet;
+          // 立即更新本地 mindMap 状态
+          setMindMap(prev => {
+            const updated = {
+              ...prev,
+              nodes: prev.nodes.map(n =>
+                n.id === targetNodeId
+                  ? { ...n, expanded: true }
+                  : n
+              ),
+            };
+            // 立即更新 ref，确保自动保存时能获取最新值
+            mindMapRef.current = updated;
+            return updated;
+          });
+          // 触发自动保存
+          triggerExpandAutoSave();
+        }
+        return newSet;
+      });
 
       // 如果是剪切，清空剪贴板；如果是复制，保留
       if (clipboard.type === 'cut') {
@@ -3150,7 +3298,31 @@ ${mindMapText}
           }));
           
           if (op.parentId) {
-            setExpandedNodes(prev => new Set(prev).add(op.parentId));
+            setExpandedNodes(prev => {
+              const newSet = new Set(prev);
+              if (!newSet.has(op.parentId)) {
+                newSet.add(op.parentId);
+                // 立即更新 ref，确保自动保存时能获取最新值
+                expandedNodesRef.current = newSet;
+                // 立即更新本地 mindMap 状态
+                setMindMap(prev => {
+                  const updated = {
+                    ...prev,
+                    nodes: prev.nodes.map(n =>
+                      n.id === op.parentId
+                        ? { ...n, expanded: true }
+                        : n
+                    ),
+                  };
+                  // 立即更新 ref，确保自动保存时能获取最新值
+                  mindMapRef.current = updated;
+                  return updated;
+                });
+                // 触发自动保存
+                triggerExpandAutoSave();
+              }
+              return newSet;
+            });
           }
         } else if (op.type === 'create_card') {
           const tempId = `temp-card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -3299,7 +3471,31 @@ ${mindMapText}
           
           // 如果目标节点存在，展开它以便看到移动后的节点
           if (targetParentId) {
-            setExpandedNodes(prev => new Set(prev).add(targetParentId));
+            setExpandedNodes(prev => {
+              const newSet = new Set(prev);
+              if (!newSet.has(targetParentId)) {
+                newSet.add(targetParentId);
+                // 立即更新 ref，确保自动保存时能获取最新值
+                expandedNodesRef.current = newSet;
+                // 立即更新本地 mindMap 状态
+                setMindMap(prev => {
+                  const updated = {
+                    ...prev,
+                    nodes: prev.nodes.map(n =>
+                      n.id === targetParentId
+                        ? { ...n, expanded: true }
+                        : n
+                    ),
+                  };
+                  // 立即更新 ref，确保自动保存时能获取最新值
+                  mindMapRef.current = updated;
+                  return updated;
+                });
+                // 触发自动保存
+                triggerExpandAutoSave();
+              }
+              return newSet;
+            });
           }
           
           Notification.success(`节点已移动到 ${targetParentId ? '目标节点下' : '根节点'}`);
@@ -3378,7 +3574,31 @@ ${mindMapText}
           setPendingDragChanges(prev => new Set(prev).add(cardId));
           
           // 展开目标节点以便看到移动后的卡片
-          setExpandedNodes(prev => new Set(prev).add(targetNodeId));
+          setExpandedNodes(prev => {
+            const newSet = new Set(prev);
+            if (!newSet.has(targetNodeId)) {
+              newSet.add(targetNodeId);
+              // 立即更新 ref，确保自动保存时能获取最新值
+              expandedNodesRef.current = newSet;
+              // 立即更新本地 mindMap 状态
+              setMindMap(prev => {
+                const updated = {
+                  ...prev,
+                  nodes: prev.nodes.map(n =>
+                    n.id === targetNodeId
+                      ? { ...n, expanded: true }
+                      : n
+                  ),
+                };
+                // 立即更新 ref，确保自动保存时能获取最新值
+                mindMapRef.current = updated;
+                return updated;
+              });
+              // 触发自动保存
+              triggerExpandAutoSave();
+            }
+            return newSet;
+          });
           
           Notification.success(`卡片已移动到节点 ${targetNode.text} 下`);
         } else if (op.type === 'rename_node') {
@@ -3631,7 +3851,7 @@ ${mindMapText}
     }
     
     return { success: errors.length === 0, errors };
-  }, [mindMap, setMindMap, selectedFile, editorInstance, setFileContent]);
+  }, [mindMap, setMindMap, selectedFile, editorInstance, setFileContent, triggerExpandAutoSave]);
 
   // 将 executeAIOperations 赋值给 ref
   useEffect(() => {
