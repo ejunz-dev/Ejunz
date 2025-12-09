@@ -5,6 +5,7 @@ import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
 import { request } from 'vj/utils';
 import Editor from 'vj/components/editor';
+import { Dialog } from 'vj/components/dialog/index';
 
 interface MindMapNode {
   id: string;
@@ -4227,6 +4228,461 @@ ${mindMapText}
     getNodeChildrenRef.current = getNodeChildren;
   }, [getNodeChildren]);
 
+  // 导出节点为PDF
+  const handleExportToPDF = useCallback(async (nodeId: string) => {
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const node = mindMap.nodes.find(n => n.id === nodeId);
+    if (!node) {
+      Notification.error('节点不存在');
+      return;
+    }
+
+    // 创建进度对话框
+    const dialog = new Dialog({
+      $body: `
+        <div style="padding: 20px;">
+          <div style="text-align: center; margin-bottom: 15px; font-size: 16px; font-weight: 500; color: #333;">
+            正在导出PDF
+          </div>
+          <div id="pdf-export-status" style="text-align: center; margin-bottom: 10px; color: #666; font-size: 13px;">
+            准备中...
+          </div>
+          <div class="bp5-progress-bar bp5-intent-primary bp5-no-stripes" style="margin-bottom: 10px;">
+            <div id="pdf-export-progress" class="bp5-progress-meter" style="width: 0%; transition: width 0.3s ease;"></div>
+          </div>
+          <div id="pdf-export-current" style="text-align: center; color: #999; font-size: 12px; margin-top: 8px;">
+          </div>
+        </div>
+      `,
+    });
+
+    const $status = dialog.$dom.find('#pdf-export-status');
+    const $progress = dialog.$dom.find('#pdf-export-progress');
+    const $current = dialog.$dom.find('#pdf-export-current');
+
+    try {
+      dialog.open();
+      setContextMenu(null);
+
+      // 动态导入jsPDF和html2canvas（使用ES模块）
+      $status.text('正在加载PDF库...');
+      $progress.css('width', '10%');
+      
+      const [{ jsPDF }, html2canvasModule] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas'),
+      ]);
+      
+      $status.text('正在收集数据...');
+      $progress.css('width', '20%');
+      
+      // 递归收集所有节点和卡片数据（按order排序）
+      interface ExportItem {
+        type: 'node' | 'card';
+        id: string;
+        title: string;
+        content: string;
+        level: number;
+        order: number;
+        parentOrder?: string; // 父级序号，用于生成完整序号
+      }
+
+      const collectItems = (parentNodeId: string, level: number = 0, parentOrder: string = ''): ExportItem[] => {
+        const items: ExportItem[] = [];
+        
+        // 获取子节点（按order排序）
+        const childNodes = mindMap.edges
+          .filter(e => e.source === parentNodeId)
+          .map(e => {
+            const childNode = mindMap.nodes.find(n => n.id === e.target);
+            return childNode ? { id: childNode.id, node: childNode, order: childNode.order || 0 } : null;
+          })
+          .filter(Boolean)
+          .sort((a, b) => (a!.order || 0) - (b!.order || 0)) as Array<{ id: string; node: MindMapNode; order: number }>;
+        
+        // 获取卡片（按order排序）
+        const cards = (nodeCardsMap[parentNodeId] || [])
+          .filter((card: Card) => !card.nodeId || card.nodeId === parentNodeId)
+          .sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+        
+        // 合并node和card，按照order混合排序
+        const allChildren: Array<{ type: 'node' | 'card'; id: string; order: number; data: any }> = [
+          ...childNodes.map(n => ({ type: 'node' as const, id: n.id, order: n.order, data: n.node })),
+          ...cards.map(c => ({ type: 'card' as const, id: c.docId, order: c.order || 0, data: c })),
+        ];
+        
+        allChildren.sort((a, b) => (a.order || 0) - (b.order || 0));
+        
+        // 生成序号并添加到items
+        let itemIndex = 1;
+        for (const child of allChildren) {
+          const currentOrder = parentOrder ? `${parentOrder}.${itemIndex}` : `${itemIndex}`;
+          
+          if (child.type === 'node') {
+            items.push({
+              type: 'node',
+              id: child.id,
+              title: child.data.text || '未命名节点',
+              content: '',
+              level,
+              order: child.order,
+              parentOrder: currentOrder,
+            });
+            
+            // 递归收集子节点
+            const childItems = collectItems(child.id, level + 1, currentOrder);
+            items.push(...childItems);
+          } else {
+            // 获取卡片内容（优先从pendingChanges获取最新内容）
+            let cardContent = child.data.content || '';
+            const cardFileId = `card-${child.id}`;
+            const pendingChange = pendingChanges.get(cardFileId);
+            if (pendingChange) {
+              cardContent = pendingChange.content;
+            }
+            
+            items.push({
+              type: 'card',
+              id: child.id,
+              title: child.data.title || '未命名卡片',
+              content: cardContent,
+              level,
+              order: child.order,
+              parentOrder: currentOrder,
+            });
+          }
+          
+          itemIndex++;
+        }
+        
+        return items;
+      };
+
+      const allItems = collectItems(nodeId, 0, '');
+      const totalItems = allItems.length;
+      
+      $status.text(`共找到 ${totalItems} 个项目，开始生成PDF...`);
+      $progress.css('width', '30%');
+      
+      // 创建PDF
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 20;
+      const contentWidth = pageWidth - 2 * margin;
+      let yPos = margin;
+      const lineHeight = 7;
+      const titleHeight = 10;
+      const sectionSpacing = 5;
+
+      // 添加标题
+      pdf.setFontSize(18);
+      pdf.setFont('helvetica', 'bold');
+      const rootTitle = String(node.text || '未命名节点').trim();
+      if (rootTitle && !isNaN(margin) && !isNaN(yPos)) {
+        pdf.text(rootTitle, margin, yPos);
+        yPos += titleHeight + sectionSpacing;
+      }
+
+      // 先渲染内容并记录每个项目的页码
+      const tocItems: Array<{ order: string; title: string; page: number }> = [];
+      let contentYPos = margin;
+
+      // 添加内容页面（目录后从第2页开始）
+      pdf.addPage();
+
+      let processedCount = 0;
+      for (const item of allItems) {
+        processedCount++;
+        const progressPercent = 30 + Math.round((processedCount / totalItems) * 50); // 30-80%
+        $progress.css('width', `${progressPercent}%`);
+        $status.text(`正在处理: ${item.parentOrder} ${item.title}`);
+        $current.text(`${processedCount} / ${totalItems}`);
+        // 记录当前页码作为目录项（目录占第1页，内容从第2页开始）
+        const currentPageNumber = pdf.internal.getNumberOfPages();
+        tocItems.push({
+          order: item.parentOrder || '',
+          title: item.title,
+          page: currentPageNumber,
+        });
+
+        // 检查是否需要新页面
+        if (contentYPos > pageHeight - margin - 20) {
+          pdf.addPage();
+          contentYPos = margin;
+        }
+
+        // 添加标题
+        pdf.setFontSize(12 + (3 - item.level) * 2);
+        pdf.setFont('helvetica', 'bold');
+        const titleText = `${item.parentOrder || ''} ${item.title || '未命名'}`.trim();
+        if (titleText) {
+          const titleLines = pdf.splitTextToSize(titleText, contentWidth);
+          // 确保 contentYPos 是有效数字
+          if (isNaN(contentYPos) || contentYPos < margin) {
+            contentYPos = margin;
+          }
+          // pdf.text 可以接受字符串数组
+          if (Array.isArray(titleLines)) {
+            titleLines.forEach((line: string) => {
+              if (contentYPos + lineHeight > pageHeight - margin) {
+                pdf.addPage();
+                contentYPos = margin;
+              }
+              const lineText = String(line || '').trim();
+              if (lineText && !isNaN(margin) && !isNaN(contentYPos)) {
+                pdf.text(lineText, margin, contentYPos);
+                contentYPos += lineHeight + 2;
+              }
+            });
+          } else {
+            const singleLine = String(titleLines || '').trim();
+            if (singleLine && !isNaN(margin) && !isNaN(contentYPos)) {
+              pdf.text(singleLine, margin, contentYPos);
+              contentYPos += lineHeight + 2;
+            }
+          }
+        }
+
+        // 添加内容（仅对card）
+        if (item.type === 'card' && item.content) {
+          try {
+            $status.text(`正在渲染: ${item.title}`);
+            // 渲染Markdown为HTML
+            const htmlContent = await fetch('/markdown', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                text: item.content,
+                inline: false,
+              }),
+            }).then(res => res.text());
+            
+            if (htmlContent) {
+              // 使用html2pdf.js将HTML转换为PDF图片，然后插入到当前PDF
+              // 创建临时div来渲染HTML
+              const tempDiv = document.createElement('div');
+              tempDiv.style.width = `${contentWidth}mm`;
+              tempDiv.style.padding = '10px';
+              tempDiv.style.fontSize = '12px';
+              tempDiv.style.lineHeight = '1.6';
+              tempDiv.style.fontFamily = 'Arial, "Microsoft YaHei", "SimSun", sans-serif';
+              tempDiv.style.color = '#000';
+              tempDiv.style.backgroundColor = '#fff';
+              tempDiv.style.position = 'absolute';
+              tempDiv.style.left = '-9999px';
+              tempDiv.style.top = '0';
+              tempDiv.innerHTML = htmlContent;
+              document.body.appendChild(tempDiv);
+              
+              // 等待图片加载完成
+              await new Promise<void>((resolve) => {
+                const images = tempDiv.querySelectorAll('img');
+                if (images.length === 0) {
+                  resolve();
+                  return;
+                }
+                let loadedCount = 0;
+                const totalImages = images.length;
+                images.forEach((img) => {
+                  if (img.complete) {
+                    loadedCount++;
+                    if (loadedCount === totalImages) resolve();
+                  } else {
+                    img.onload = () => {
+                      loadedCount++;
+                      if (loadedCount === totalImages) resolve();
+                    };
+                    img.onerror = () => {
+                      loadedCount++;
+                      if (loadedCount === totalImages) resolve();
+                    };
+                  }
+                });
+                setTimeout(() => resolve(), 5000);
+              });
+              
+              // 使用html2canvas将HTML转换为canvas
+              const canvas = await html2canvasModule.default(tempDiv, {
+                scale: 2,
+                backgroundColor: '#ffffff',
+                useCORS: true,
+                logging: false,
+                width: contentWidth * 3.779527559, // mm转px
+              });
+              
+              // 清理临时div
+              document.body.removeChild(tempDiv);
+              
+              // 计算图片尺寸（转换为mm）
+              const imgWidth = contentWidth;
+              const imgHeight = (canvas.height / canvas.width) * imgWidth;
+              
+              // 如果图片太高，需要分页
+              const maxHeightPerPage = pageHeight - 2 * margin;
+              if (imgHeight > maxHeightPerPage) {
+                // 分页处理：将图片分成多个部分
+                const parts = Math.ceil(imgHeight / maxHeightPerPage);
+                const partHeight = imgHeight / parts;
+                
+                for (let i = 0; i < parts; i++) {
+                  // 检查是否需要新页面
+                  if (contentYPos > pageHeight - margin - 10) {
+                    pdf.addPage();
+                    contentYPos = margin;
+                  }
+                  
+                  // 创建部分图片的canvas
+                  const partCanvas = document.createElement('canvas');
+                  partCanvas.width = canvas.width;
+                  partCanvas.height = Math.ceil(canvas.height / parts);
+                  const ctx = partCanvas.getContext('2d');
+                  if (ctx) {
+                    const sourceY = i * (canvas.height / parts);
+                    const sourceHeight = canvas.height / parts;
+                    
+                    ctx.drawImage(
+                      canvas,
+                      0,
+                      sourceY,
+                      canvas.width,
+                      sourceHeight,
+                      0,
+                      0,
+                      canvas.width,
+                      sourceHeight
+                    );
+                    
+                    const partImgData = partCanvas.toDataURL('image/png');
+                    pdf.addImage(partImgData, 'PNG', margin, contentYPos, imgWidth, partHeight);
+                    contentYPos += partHeight;
+                  }
+                }
+              } else {
+                // 检查是否需要新页面
+                if (contentYPos + imgHeight > pageHeight - margin) {
+                  pdf.addPage();
+                  contentYPos = margin;
+                }
+                
+                // 将图片添加到PDF
+                const imgData = canvas.toDataURL('image/png');
+                pdf.addImage(imgData, 'PNG', margin, contentYPos, imgWidth, imgHeight);
+                contentYPos += imgHeight;
+              }
+              
+              contentYPos += sectionSpacing;
+            }
+          } catch (error) {
+            console.error('渲染Markdown失败:', error);
+            // 如果渲染失败，使用纯文本作为后备
+            pdf.setFontSize(10);
+            pdf.setFont('helvetica', 'normal');
+            
+            // 提取HTML中的纯文本
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = item.content;
+            const textContent = tempDiv.textContent || tempDiv.innerText || item.content;
+            const contentLines = pdf.splitTextToSize(textContent.substring(0, 1000), contentWidth);
+            
+            for (const line of contentLines) {
+              if (contentYPos + lineHeight > pageHeight - margin) {
+                pdf.addPage();
+                contentYPos = margin;
+              }
+              const lineText = String(line || '').trim();
+              if (lineText && !isNaN(margin) && !isNaN(contentYPos)) {
+                pdf.text(lineText, margin, contentYPos);
+                contentYPos += lineHeight;
+              }
+            }
+            
+            contentYPos += sectionSpacing;
+          }
+        }
+
+        contentYPos += sectionSpacing;
+      }
+
+      $status.text('正在生成目录...');
+      $progress.css('width', '85%');
+      
+      // 现在在开头插入目录页
+      pdf.insertPage(1);
+      let tocYPos = margin;
+
+      // 添加标题
+      pdf.setFontSize(18);
+      pdf.setFont('helvetica', 'bold');
+      const tocRootTitle = String(node.text || '未命名节点').trim();
+      if (tocRootTitle && !isNaN(margin) && !isNaN(tocYPos)) {
+        pdf.text(tocRootTitle, margin, tocYPos);
+        tocYPos += titleHeight + sectionSpacing;
+      }
+
+      // 添加目录标题
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      if (!isNaN(margin) && !isNaN(tocYPos)) {
+        pdf.text('目录', margin, tocYPos);
+        tocYPos += lineHeight + 2;
+      }
+
+      // 绘制目录
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      for (const tocItem of tocItems) {
+        if (tocYPos + lineHeight > pageHeight - margin) {
+          pdf.addPage();
+          tocYPos = margin;
+        }
+        
+        const tocText = `${tocItem.order || ''} ${tocItem.title || '未命名'} ................ ${tocItem.page || 1}`;
+        const tocTextStr = String(tocText).trim();
+        if (tocTextStr && !isNaN(margin) && !isNaN(tocYPos)) {
+          pdf.text(tocTextStr, margin, tocYPos);
+          tocYPos += lineHeight;
+        }
+      }
+
+      $status.text('正在保存PDF...');
+      $progress.css('width', '95%');
+      
+      // 保存PDF
+      const fileName = `${node.text || '未命名节点'}_${new Date().toISOString().split('T')[0]}.pdf`;
+      pdf.save(fileName);
+      
+      $status.text('导出完成！');
+      $progress.css('width', '100%');
+      $current.text('');
+      
+      Notification.success('PDF导出成功');
+      
+      // 延迟关闭对话框
+      setTimeout(() => {
+        dialog.close();
+      }, 1000);
+    } catch (error: any) {
+      console.error('导出PDF失败:', error);
+      $status.text(`导出失败: ${error?.message || '未知错误'}`);
+      $progress.css('width', '100%');
+      $progress.css('background-color', '#dc3545');
+      Notification.error(`导出PDF失败: ${error?.message || '未知错误'}`);
+      
+      // 延迟关闭对话框
+      setTimeout(() => {
+        dialog.close();
+      }, 3000);
+    }
+  }, [mindMap.nodes, mindMap.edges, pendingChanges]);
+
   // 多选模式：切换选择状态
   const handleToggleSelect = useCallback((file: FileItem) => {
     if (!isMultiSelectMode) return;
@@ -5965,6 +6421,25 @@ ${mindMapText}
                 }}
               >
                 排序
+              </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#24292e',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => {
+                  handleExportToPDF(contextMenu.file.nodeId || '');
+                }}
+              >
+                导出为PDF
               </div>
               <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
               <div
