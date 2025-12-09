@@ -104,7 +104,8 @@ function SortWindow({
   docId,
   getMindMapUrl,
   onClose, 
-  onSave 
+  onSave,
+  nodeCardsMapVersion
 }: { 
   nodeId: string; 
   mindMap: MindMapDoc; 
@@ -112,11 +113,12 @@ function SortWindow({
   getMindMapUrl: (path: string, docId: string) => string;
   onClose: () => void; 
   onSave: (sortedItems: Array<{ type: 'node' | 'card'; id: string; order: number }>) => Promise<void>;
+  nodeCardsMapVersion?: number; // 用于触发重新计算cards
 }) {
   const [draggedItem, setDraggedItem] = useState<{ type: 'node' | 'card'; id: string; index: number } | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   
-  // 获取子节点（按order排序）
+  // 获取子节点（按order排序，包含临时节点）
   const childNodes = useMemo(() => {
     return mindMap.edges
       .filter(e => e.source === nodeId)
@@ -132,7 +134,7 @@ function SortWindow({
       .sort((a, b) => (a!.order || 0) - (b!.order || 0)) as Array<{ id: string; name: string; order: number }>;
   }, [mindMap.edges, mindMap.nodes, nodeId]);
   
-  // 获取卡片（按order排序）
+  // 获取卡片（按order排序，包含临时卡片）
   const cards = useMemo(() => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const nodeCards = (nodeCardsMap[nodeId] || [])
@@ -143,7 +145,7 @@ function SortWindow({
       name: card.title || '未命名卡片',
       order: card.order || 0,
     }));
-  }, [nodeId]);
+  }, [nodeId, nodeCardsMapVersion]); // 添加nodeCardsMapVersion依赖，确保能响应nodeCardsMap的变化
   
   // 合并的列表，按照order混合排序（node和card混合在一起）
   const [items, setItems] = useState<Array<{ type: 'node' | 'card'; id: string; name: string; order: number }>>(() => {
@@ -6160,6 +6162,7 @@ ${mindMapText}
           docId={docId}
           getMindMapUrl={getMindMapUrl}
           onClose={() => setSortWindow(null)}
+          nodeCardsMapVersion={nodeCardsMapVersion}
           onSave={async (sortedItems) => {
             try {
               const domainId = (window as any).UiContext?.domainId || 'system';
@@ -6168,7 +6171,7 @@ ${mindMapText}
               // 更新node的order和card的order
               const updatePromises = [];
               
-              // 更新mindMap中的nodes的order
+              // 更新mindMap中的nodes的order（包括临时节点）
               const updatedNodes = mindMap.nodes.map(node => {
                 const sortedItem = sortedItems.find(item => item.type === 'node' && item.id === node.id);
                 if (sortedItem && node.order !== sortedItem.order) {
@@ -6188,18 +6191,24 @@ ${mindMapText}
                 if (sortedItem.type === 'card') {
                   const card = (nodeCardsMap[sortWindow.nodeId] || []).find((c: Card) => c.docId === sortedItem.id);
                   if (card && card.order !== sortedItem.order) {
-                    updatePromises.push(
-                      request.post(`/d/${domainId}/mindmap/card/${sortedItem.id}`, {
-                        operation: 'update',
-                        nodeId: sortWindow.nodeId,
-                        order: sortedItem.order,
-                      }).then(() => {
-                        card.order = sortedItem.order;
-                      }).catch((error: any) => {
-                        console.error(`Failed to update card ${sortedItem.id} order:`, error);
-                        throw new Error(`更新卡片「${card.title || sortedItem.id}」顺序失败: ${error?.message || '未知错误'}`);
-                      })
-                    );
+                    // 如果是临时卡片，只更新前端状态，不调用后端API
+                    if (sortedItem.id.startsWith('temp-card-')) {
+                      card.order = sortedItem.order;
+                    } else {
+                      // 已存在的卡片，调用后端API更新
+                      updatePromises.push(
+                        request.post(`/d/${domainId}/mindmap/card/${sortedItem.id}`, {
+                          operation: 'update',
+                          nodeId: sortWindow.nodeId,
+                          order: sortedItem.order,
+                        }).then(() => {
+                          card.order = sortedItem.order;
+                        }).catch((error: any) => {
+                          console.error(`Failed to update card ${sortedItem.id} order:`, error);
+                          throw new Error(`更新卡片「${card.title || sortedItem.id}」顺序失败: ${error?.message || '未知错误'}`);
+                        })
+                      );
+                    }
                   }
                 }
               }
