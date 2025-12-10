@@ -296,68 +296,85 @@ class MindMapStudyHandler extends Handler {
             }>;
         }> = [];
 
-        if (rootNodes.length > 0) {
-            // 获取根节点的第一个子节点
-            const rootNode = rootNodes[0];
-            const childEdges = branchData.edges.filter(e => e.source === rootNode.id);
+        // 辅助函数：收集节点的所有 problems
+        const collectNodeProblems = async (node: MindMapNode): Promise<Array<{
+            pid: string;
+            type: 'single';
+            stem: string;
+            options: string[];
+            answer: number;
+            analysis?: string;
+            cardId: string;
+            cardTitle: string;
+            cardUrl: string;
+        }>> => {
+            const allProblems: Array<{
+                pid: string;
+                type: 'single';
+                stem: string;
+                options: string[];
+                answer: number;
+                analysis?: string;
+                cardId: string;
+                cardTitle: string;
+                cardUrl: string;
+            }> = [];
             
-            if (childEdges.length > 0) {
-                // 获取第一个子节点
-                const firstChildNode = branchData.nodes.find(n => n.id === childEdges[0].target);
-                if (firstChildNode) {
-                    // 获取该节点下的所有卡片
-                    try {
-                        const cards = await CardModel.getByNodeId(domainId, this.mindMap!.mmid, firstChildNode.id);
-                        
-                        // 收集所有 problems
-                        const allProblems: Array<{
-                            pid: string;
-                            type: 'single';
-                            stem: string;
-                            options: string[];
-                            answer: number;
-                            analysis?: string;
-                            cardId: string;
-                            cardTitle: string;
-                            cardUrl: string;
-                        }> = [];
-                        
-                        if (cards && cards.length > 0) {
-                            const docId = this.mindMap!.docId;
-                            const mmid = this.mindMap!.mmid;
+            try {
+                const cards = await CardModel.getByNodeId(domainId, this.mindMap!.mmid, node.id);
+                
+                if (cards && cards.length > 0) {
+                    const docId = this.mindMap!.docId;
+                    const mmid = this.mindMap!.mmid;
+                    
+                    for (const card of cards) {
+                        if (card.problems && card.problems.length > 0) {
+                            // 构建卡片 URL
+                            const cardUrl = docId
+                                ? `/d/${domainId}/mindmap/${docId}/branch/${currentBranch}/node/${node.id}/cards?cardId=${card.docId}`
+                                : `/d/${domainId}/mindmap/mmid/${mmid}/branch/${currentBranch}/node/${node.id}/cards?cardId=${card.docId}`;
                             
-                            for (const card of cards) {
-                                if (card.problems && card.problems.length > 0) {
-                                    // 构建卡片 URL
-                                    const cardUrl = docId
-                                        ? `/d/${domainId}/mindmap/${docId}/branch/${currentBranch}/node/${firstChildNode.id}/cards?cardId=${card.docId}`
-                                        : `/d/${domainId}/mindmap/mmid/${mmid}/branch/${currentBranch}/node/${firstChildNode.id}/cards?cardId=${card.docId}`;
-                                    
-                                    for (const problem of card.problems) {
-                                        allProblems.push({
-                                            ...problem,
-                                            cardId: card.docId.toString(),
-                                            cardTitle: card.title,
-                                            cardUrl,
-                                        });
-                                    }
-                                }
+                            for (const problem of card.problems) {
+                                allProblems.push({
+                                    ...problem,
+                                    cardId: card.docId.toString(),
+                                    cardTitle: card.title,
+                                    cardUrl,
+                                });
                             }
                         }
-                        
-                        units.push({
-                            node: firstChildNode,
-                            problemCount: allProblems.length,
-                            problems: allProblems,
-                        });
-                    } catch (err) {
-                        console.error(`Failed to get cards for node ${firstChildNode.id}:`, err);
-                        units.push({
-                            node: firstChildNode,
-                            problemCount: 0,
-                            problems: [],
-                        });
                     }
+                }
+            } catch (err) {
+                console.error(`Failed to get cards for node ${node.id}:`, err);
+            }
+            
+            return allProblems;
+        };
+
+        if (rootNodes.length > 0) {
+            const rootNode = rootNodes[0];
+            
+            // 先处理根节点本身
+            const rootProblems = await collectNodeProblems(rootNode);
+            units.push({
+                node: rootNode,
+                problemCount: rootProblems.length,
+                problems: rootProblems,
+            });
+            
+            // 然后处理根节点的所有子节点
+            const childEdges = branchData.edges.filter(e => e.source === rootNode.id);
+            
+            for (const edge of childEdges) {
+                const childNode = branchData.nodes.find(n => n.id === edge.target);
+                if (childNode) {
+                    const childProblems = await collectNodeProblems(childNode);
+                    units.push({
+                        node: childNode,
+                        problemCount: childProblems.length,
+                        problems: childProblems,
+                    });
                 }
             }
         }
