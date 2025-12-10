@@ -98,6 +98,151 @@ interface PendingDelete {
   nodeId?: string; // 对于 card，记录所属节点
 }
 
+// 可编辑的题目组件
+const EditableProblem = React.memo(({ 
+  problem, 
+  index, 
+  cardId, 
+  borderColor, 
+  borderStyle,
+  isNew, 
+  isEdited,
+  originalProblem,
+  onUpdate 
+}: { 
+  problem: CardProblem;
+  index: number;
+  cardId: string;
+  borderColor: string;
+  borderStyle: string;
+  isNew: boolean;
+  isEdited: boolean;
+  originalProblem?: CardProblem;
+  onUpdate: (updated: CardProblem) => void;
+}) => {
+  const [problemStem, setProblemStem] = useState(problem.stem);
+  const [problemOptions, setProblemOptions] = useState([...problem.options]);
+  const [problemAnswer, setProblemAnswer] = useState(problem.answer);
+  const [problemAnalysis, setProblemAnalysis] = useState(problem.analysis || '');
+  
+  // 当problem数据变化时同步状态（例如从外部更新）
+  useEffect(() => {
+    setProblemStem(problem.stem);
+    setProblemOptions([...problem.options]);
+    setProblemAnswer(problem.answer);
+    setProblemAnalysis(problem.analysis || '');
+  }, [problem.pid, problem.stem, problem.answer, problem.analysis, JSON.stringify(problem.options)]);
+  
+  // 检测变更并更新
+  useEffect(() => {
+    const hasChanged = (
+      problemStem !== problem.stem ||
+      JSON.stringify(problemOptions) !== JSON.stringify(problem.options) ||
+      problemAnswer !== problem.answer ||
+      problemAnalysis !== (problem.analysis || '')
+    );
+    
+    if (hasChanged) {
+      const updated: CardProblem = {
+        ...problem,
+        stem: problemStem,
+        options: problemOptions,
+        answer: problemAnswer,
+        analysis: problemAnalysis || undefined,
+      };
+      onUpdate(updated);
+    }
+  }, [problemStem, problemOptions, problemAnswer, problemAnalysis, problem, onUpdate]);
+  
+  return (
+    <div
+      style={{
+        border: `1px ${borderStyle} ${borderColor}`,
+        borderRadius: '4px',
+        padding: '6px 8px',
+        marginBottom: '6px',
+        background: '#fff',
+      }}
+    >
+      <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>
+        Q{index + 1}（单选）
+        {isNew && <span style={{ marginLeft: '8px', fontSize: '10px', color: '#4caf50' }}>新建</span>}
+        {isEdited && !isNew && <span style={{ marginLeft: '8px', fontSize: '10px', color: '#ff9800' }}>已编辑</span>}
+      </div>
+      <div style={{ marginBottom: '4px' }}>
+        <textarea
+          value={problemStem}
+          onChange={e => setProblemStem(e.target.value)}
+          placeholder="题干"
+          style={{
+            width: '100%',
+            minHeight: '40px',
+            resize: 'vertical',
+            fontSize: '12px',
+            padding: '4px 6px',
+            boxSizing: 'border-box',
+            border: '1px solid #e1e4e8',
+            borderRadius: '2px',
+          }}
+        />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '4px' }}>
+        {problemOptions.map((opt, oi) => (
+          <input
+            key={oi}
+            value={opt}
+            onChange={e => {
+              const next = [...problemOptions];
+              next[oi] = e.target.value;
+              setProblemOptions(next);
+            }}
+            placeholder={`选项 ${String.fromCharCode(65 + oi)}`}
+            style={{
+              fontSize: '12px',
+              padding: '3px 6px',
+              boxSizing: 'border-box',
+              border: '1px solid #e1e4e8',
+              borderRadius: '2px',
+            }}
+          />
+        ))}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px', fontSize: '12px' }}>
+        <span style={{ marginRight: 4 }}>正确答案：</span>
+        {problemOptions.map((_, oi) => (
+          <label key={oi} style={{ marginRight: 6, cursor: 'pointer' }}>
+            <input
+              type="radio"
+              name={`problem-answer-${problem.pid}`}
+              checked={problemAnswer === oi}
+              onChange={() => setProblemAnswer(oi)}
+              style={{ marginRight: 2 }}
+            />
+            {String.fromCharCode(65 + oi)}
+          </label>
+        ))}
+      </div>
+      <div style={{ marginBottom: '4px' }}>
+        <textarea
+          value={problemAnalysis}
+          onChange={e => setProblemAnalysis(e.target.value)}
+          placeholder="解析（可选）"
+          style={{
+            width: '100%',
+            minHeight: '32px',
+            resize: 'vertical',
+            fontSize: '12px',
+            padding: '4px 6px',
+            boxSizing: 'border-box',
+            border: '1px solid #e1e4e8',
+            borderRadius: '2px',
+          }}
+        />
+      </div>
+    </div>
+  );
+});
+
 // 排序窗口组件
 function SortWindow({ 
   nodeId, 
@@ -604,6 +749,18 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
   const [showProblemForm, setShowProblemForm] = useState<boolean>(false); // 是否展开新建题目表单
   // 有题目变更但尚未提交的卡片（使用后端真实 cardId）
   const [pendingProblemCardIds, setPendingProblemCardIds] = useState<Set<string>>(new Set());
+  // 区分新建和编辑：新建的problem cardId集合
+  const [pendingNewProblemCardIds, setPendingNewProblemCardIds] = useState<Set<string>>(new Set());
+  // 编辑的problem cardId集合（cardId -> Set<problemId>）
+  const [pendingEditedProblemIds, setPendingEditedProblemIds] = useState<Map<string, Set<string>>>(new Map());
+  // 跟踪新建的problem ID（用于颜色标记）
+  const [newProblemIds, setNewProblemIds] = useState<Set<string>>(new Set());
+  // 跟踪已编辑的problem ID（用于颜色标记）
+  const [editedProblemIds, setEditedProblemIds] = useState<Set<string>>(new Set());
+  // 保存原始problem数据用于比较（cardId -> Map<problemId, originalProblem>）
+  const originalProblemsRef = useRef<Map<string, Map<string, CardProblem>>>(new Map());
+  // 用于触发题目列表重新渲染的版本号
+  const [originalProblemsVersion, setOriginalProblemsVersion] = useState(0);
   const [isGeneratingProblemWithAgent, setIsGeneratingProblemWithAgent] = useState<boolean>(false); // 是否正在通过agent生成题目
 
   // 获取当前选中卡片的完整信息（包括 problems）
@@ -615,13 +772,26 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     return card || null;
   }, [selectedFile]);
 
-  // 当选中的卡片变化时，重置题目编辑表单
+  // 当选中的卡片变化时，重置题目编辑表单并保存原始problem数据
   useEffect(() => {
     setProblemStem('');
     setProblemOptions(['', '', '', '']);
     setProblemAnswer(0);
     setProblemAnalysis('');
     setShowProblemForm(false);
+    
+    // 保存当前卡片的原始problem数据用于比较
+    if (selectedFile && selectedFile.type === 'card') {
+      const card = getSelectedCard();
+      if (card && card.problems) {
+        const cardIdStr = String(selectedFile.cardId || '');
+        const originalProblems = new Map<string, CardProblem>();
+        card.problems.forEach(p => {
+          originalProblems.set(p.pid, { ...p });
+        });
+        originalProblemsRef.current.set(cardIdStr, originalProblems);
+      }
+    }
   }, [selectedFile?.id]);
   
   // 当 mindMap.files 变化时更新 files 状态
@@ -1224,7 +1394,8 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     } finally {
       setIsSavingProblem(false);
     }
-  }, [selectedFile, problemStem, problemOptions, problemAnswer, problemAnalysis]);
+  }, [selectedFile, problemStem, problemOptions, problemAnswer, problemAnalysis, setPendingProblemCardIds, setPendingNewProblemCardIds]);
+
 
   const handleSaveAll = useCallback(async () => {
     if (isCommitting) {
@@ -1256,11 +1427,13 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     const hasRenameChanges = pendingRenames.size > 0;
     const hasCreateChanges = pendingCreatesRef.current.size > 0;
     const hasDeleteChanges = pendingDeletes.size > 0;
-    const hasProblemChanges = pendingProblemCardIds.size > 0;
+    const hasProblemChanges = pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0;
     console.log('[handleSaveAll] 检查待保存更改:', {
       hasProblemChanges,
       pendingProblemCardIds: Array.from(pendingProblemCardIds),
       pendingProblemCardIdsSize: pendingProblemCardIds.size,
+      pendingNewProblemCardIds: Array.from(pendingNewProblemCardIds),
+      pendingEditedProblemIds: Array.from(pendingEditedProblemIds.entries()),
     });
     try {
       const domainId = (window as any).UiContext?.domainId || 'system';
@@ -2134,11 +2307,15 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
         actualRenameCount = hasRenameChanges ? pendingRenames.size : 0;
       }
       
+      // 计算题目更改数
+      const problemChangesCount = pendingNewProblemCardIds.size + pendingEditedProblemIds.size;
+      
       const totalChanges = (hasContentChanges ? allChanges.size : 0) 
         + (hasDragChanges ? pendingDragChanges.size : 0) 
         + actualRenameCount
         + createCountBeforeSave
-        + (hasDeleteChanges ? pendingDeletes.size : 0);
+        + (hasDeleteChanges ? pendingDeletes.size : 0)
+        + problemChangesCount;
       
       console.log('Total changes calculation:', {
         hasContentChanges,
@@ -2150,6 +2327,9 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
         createCount: createCountBeforeSave,
         hasDeleteChanges,
         deleteChanges: hasDeleteChanges ? pendingDeletes.size : 0,
+        problemChanges: problemChangesCount,
+        newProblemCards: pendingNewProblemCardIds.size,
+        editedProblemCards: pendingEditedProblemIds.size,
         total: totalChanges,
       });
       
@@ -2200,7 +2380,63 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       pendingCreatesRef.current.clear();
       setPendingCreatesCount(0);
       setPendingDeletes(new Map());
+      // 在清空之前，先保存需要更新UI状态的cardId列表
+      const savedProblemCardIds = new Set<string>(pendingProblemCardIds);
+      
       setPendingProblemCardIds(new Set());
+      setPendingNewProblemCardIds(new Set());
+      setPendingEditedProblemIds(new Map());
+      
+      // 更新题目的UI状态：清空新建/编辑标记，并更新原始数据
+      if (hasProblemChanges) {
+        // 清空新建和编辑的problem ID标记
+        setNewProblemIds(new Set());
+        setEditedProblemIds(new Set());
+        
+        // 更新原始problem数据（保存后，当前状态就是新的原始状态）
+        const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+        const savedCardIds = new Set<string>();
+        
+        // 收集所有已保存的cardId（包括通过内容更新和题目更新保存的）
+        for (const change of allChanges.values()) {
+          if (change.file.type === 'card' && change.file.cardId) {
+            savedCardIds.add(String(change.file.cardId));
+          }
+        }
+        // 添加题目更新的cardId
+        for (const cardId of Array.from(savedProblemCardIds)) {
+          if (!String(cardId).startsWith('temp-card-')) {
+            savedCardIds.add(String(cardId));
+          }
+        }
+        
+        // 更新每个已保存card的原始problem数据
+        for (const cardId of savedCardIds) {
+          // 找到对应的card
+          let foundCard: Card | null = null;
+          for (const nodeId in nodeCardsMap) {
+            const cards: Card[] = nodeCardsMap[nodeId] || [];
+            const card = cards.find(c => c.docId === cardId);
+            if (card) {
+              foundCard = card;
+              break;
+            }
+          }
+          
+          if (foundCard && foundCard.problems) {
+            // 更新原始problem数据
+            const originalProblems = new Map<string, CardProblem>();
+            foundCard.problems.forEach(p => {
+              originalProblems.set(p.pid, { ...p });
+            });
+            originalProblemsRef.current.set(String(cardId), originalProblems);
+          }
+        }
+        
+        // 触发UI更新（包括题目列表的重新渲染）
+        setNodeCardsMapVersion(prev => prev + 1);
+        setOriginalProblemsVersion(prev => prev + 1);
+      }
       
       // 更新原始内容引用
       if (hasContentChanges) {
@@ -3088,10 +3324,17 @@ ${cardContext}
                 setNodeCardsMapVersion(prev => prev + 1);
 
                 // 标记该卡片的题目有待提交
-                if (!String(selectedFile.cardId || '').startsWith('temp-card-')) {
+                const cardIdStr = String(selectedFile.cardId || '');
+                if (cardIdStr && !cardIdStr.startsWith('temp-card-')) {
                   setPendingProblemCardIds(prev => {
                     const next = new Set(prev);
-                    next.add(String(selectedFile.cardId));
+                    next.add(cardIdStr);
+                    return next;
+                  });
+                  // 标记为新建的problem（Agent生成的）
+                  setPendingNewProblemCardIds(prev => {
+                    const next = new Set(prev);
+                    next.add(cardIdStr);
                     return next;
                   });
                 }
@@ -3126,7 +3369,7 @@ ${cardContext}
     } finally {
       setIsGeneratingProblemWithAgent(false);
     }
-  }, [selectedFile, problemStem, getNodePath, setNodeCardsMapVersion, setPendingProblemCardIds]);
+  }, [selectedFile, problemStem, getNodePath, setNodeCardsMapVersion, setPendingProblemCardIds, setPendingNewProblemCardIds]);
 
   // 处理 AI 对话框中的粘贴事件，自动识别复制的 node/card
   const handleAIChatPaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -3474,15 +3717,36 @@ ${cardContext}
       if (currentCard && selectedFile && selectedFile.type === 'card') {
         const nodePath = getNodePath(selectedFile.nodeId || '');
         const cardPath = [...nodePath, currentCard.title || '未命名卡片'].join(' > ');
+        const problems = currentCard.problems || [];
+        
+        // 构建题目列表的文本描述
+        let problemsText = '';
+        if (problems.length > 0) {
+          problemsText = '\n- 已有题目列表：\n';
+          problems.forEach((p: CardProblem, index: number) => {
+            const optionsText = p.options.map((opt, oi) => 
+              `  ${String.fromCharCode(65 + oi)}. ${opt}${oi === p.answer ? ' (正确答案)' : ''}`
+            ).join('\n');
+            problemsText += `\n  题目 ${index + 1} (ID: ${p.pid})：\n`;
+            problemsText += `  - 题干：${p.stem}\n`;
+            problemsText += `  - 选项：\n${optionsText}\n`;
+            if (p.analysis) {
+              problemsText += `  - 解析：${p.analysis}\n`;
+            }
+          });
+        } else {
+          problemsText = '\n- 已有题目列表：暂无题目';
+        }
+        
         currentCardContext = `
 【当前显示的卡片信息】
 - 卡片标题：${currentCard.title || '未命名卡片'}
 - 卡片ID：${currentCard.docId}
 - 卡片路径：${cardPath}
 - 卡片内容：${currentCard.content || '(无内容)'}
-- 已有题目数量：${(currentCard.problems || []).length}
+- 已有题目数量：${problems.length}${problemsText}
 
-**重要**：用户当前正在查看这个卡片，如果用户询问关于题目生成、编辑题目等问题，都是针对这个卡片的。`;
+**重要**：用户当前正在查看这个卡片，如果用户询问关于题目生成、编辑题目等问题，都是针对这个卡片的。生成新题目时，请避免与已有题目重复。`;
       }
 
       // 构建系统提示
@@ -4459,16 +4723,19 @@ ${currentCardContext}
 
             // 对于临时卡片，problems会在创建card时一起提交
             // 对于已有卡片，需要标记为待提交
-            if (!String(cardId).startsWith('temp-card-')) {
+            const cardIdStr = String(cardId);
+            if (cardIdStr && !cardIdStr.startsWith('temp-card-')) {
               setPendingProblemCardIds(prev => {
                 const next = new Set(prev);
-                next.add(String(cardId));
+                next.add(cardIdStr);
                 return next;
               });
-            } else {
-              // 临时卡片：确保problems被包含在card的创建数据中
-              // 由于card还没有创建，problems已经更新到nodeCardsMap中，创建时会自动包含
-              // 这里不需要额外操作，因为创建card时会从nodeCardsMap读取problems
+              // 标记为新建的problem（Agent通过create_problem操作生成的）
+              setPendingNewProblemCardIds(prev => {
+                const next = new Set(prev);
+                next.add(cardIdStr);
+                return next;
+              });
             }
           }
 
@@ -6536,12 +6803,12 @@ ${currentCardContext}
                   </div>
                 )}
                 
-                {/* 题目更改 */}
-                {pendingProblemCardIds.size > 0 && (
+                {/* 题目新建 */}
+                {pendingNewProblemCardIds.size > 0 && (
                   <div>
-                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>题目新建 ({pendingProblemCardIds.size})</div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>题目新建 ({pendingNewProblemCardIds.size})</div>
                     <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
-                      {Array.from(pendingProblemCardIds).slice(0, 5).map((cardId, idx) => {
+                      {Array.from(pendingNewProblemCardIds).slice(0, 5).map((cardId, idx) => {
                         // 在fileTree中查找对应的card
                         const file = fileTree.find(f => 
                           f.type === 'card' && f.cardId === cardId
@@ -6565,8 +6832,45 @@ ${currentCardContext}
                           </div>
                         );
                       })}
-                      {pendingProblemCardIds.size > 5 && (
-                        <div style={{ color: '#999', fontStyle: 'italic' }}>... 还有 {pendingProblemCardIds.size - 5} 个</div>
+                      {pendingNewProblemCardIds.size > 5 && (
+                        <div style={{ color: '#999', fontStyle: 'italic' }}>... 还有 {pendingNewProblemCardIds.size - 5} 个</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {/* 题目更改 */}
+                {pendingEditedProblemIds.size > 0 && (
+                  <div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>题目更改 ({pendingEditedProblemIds.size})</div>
+                    <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
+                      {Array.from(pendingEditedProblemIds.entries()).slice(0, 5).map(([cardId, problemIds], idx) => {
+                        // 在fileTree中查找对应的card
+                        const file = fileTree.find(f => 
+                          f.type === 'card' && f.cardId === cardId
+                        );
+                        // 如果找不到，尝试从nodeCardsMap中查找
+                        let cardName = file ? file.name : '';
+                        if (!cardName) {
+                          const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                          for (const nodeId in nodeCardsMap) {
+                            const cards = nodeCardsMap[nodeId] || [];
+                            const card = cards.find((c: Card) => c.docId === cardId);
+                            if (card) {
+                              cardName = card.title || '未命名卡片';
+                              break;
+                            }
+                          }
+                        }
+                        const problemCount = problemIds.size;
+                        return (
+                          <div key={idx} style={{ marginBottom: '2px' }}>
+                            • {cardName || `卡片 (${cardId.substring(0, 8)}...)`} ({problemCount} 个题目)
+                          </div>
+                        );
+                      })}
+                      {pendingEditedProblemIds.size > 5 && (
+                        <div style={{ color: '#999', fontStyle: 'italic' }}>... 还有 {pendingEditedProblemIds.size - 5} 个</div>
                       )}
                     </div>
                   </div>
@@ -6578,7 +6882,8 @@ ${currentCardContext}
                  pendingRenames.size === 0 && 
                  pendingCreatesCount === 0 && 
                  pendingDeletes.size === 0 &&
-                 pendingProblemCardIds.size === 0 && (
+                 pendingNewProblemCardIds.size === 0 &&
+                 pendingEditedProblemIds.size === 0 && (
                   <div style={{ 
                     color: '#999', 
                     fontStyle: 'italic',
@@ -7118,15 +7423,17 @@ ${currentCardContext}
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingProblemCardIds.size > 0) && (
+            {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) && (
               <span style={{ fontSize: '12px', color: '#586069' }}>
                 {pendingChanges.size > 0 && `${pendingChanges.size} 个文件已修改`}
-                {pendingChanges.size > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingProblemCardIds.size > 0) && '，'}
+                {pendingChanges.size > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) && '，'}
                 {pendingDragChanges.size > 0 && `${pendingDragChanges.size} 个拖动操作`}
-                {pendingDragChanges.size > 0 && (pendingRenames.size > 0 || pendingProblemCardIds.size > 0) && '，'}
+                {pendingDragChanges.size > 0 && (pendingRenames.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) && '，'}
                 {pendingRenames.size > 0 && `${pendingRenames.size} 个重命名`}
-                {(pendingRenames.size > 0 || pendingChanges.size > 0 || pendingDragChanges.size > 0) && pendingProblemCardIds.size > 0 && '，'}
-                {pendingProblemCardIds.size > 0 && `${pendingProblemCardIds.size} 个题目新建`}
+                {(pendingRenames.size > 0 || pendingChanges.size > 0 || pendingDragChanges.size > 0) && (pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) && '，'}
+                {pendingNewProblemCardIds.size > 0 && `${pendingNewProblemCardIds.size} 个题目新建`}
+                {pendingNewProblemCardIds.size > 0 && pendingEditedProblemIds.size > 0 && '，'}
+                {pendingEditedProblemIds.size > 0 && `${pendingEditedProblemIds.size} 个题目更改`}
               </span>
             )}
             <button
@@ -7149,21 +7456,21 @@ ${currentCardContext}
                 console.log('[保存按钮] 点击保存，pendingProblemCardIds:', Array.from(pendingProblemCardIds));
                 handleSaveAll();
               }}
-              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingProblemCardIds.size === 0)}
+              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0)}
               style={{
                 padding: '4px 12px',
                 border: '1px solid #d1d5da',
                 borderRadius: '3px',
-                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingProblemCardIds.size > 0) ? '#28a745' : '#6c757d',
+                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0) ? '#28a745' : '#6c757d',
                 color: '#fff',
-                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingProblemCardIds.size === 0)) ? 'not-allowed' : 'pointer',
+                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0)) ? 'not-allowed' : 'pointer',
                 fontSize: '12px',
                 fontWeight: '500',
-                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingProblemCardIds.size === 0)) ? 0.6 : 1,
+                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0)) ? 0.6 : 1,
               }}
-              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingProblemCardIds.size === 0) ? '没有待保存的更改' : '保存所有更改'}
+              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0) ? '没有待保存的更改' : '保存所有更改'}
             >
-              {isCommitting ? '保存中...' : `保存更改 (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingProblemCardIds.size})`}
+              {isCommitting ? '保存中...' : `保存更改 (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size})`}
             </button>
           </div>
         </div>
@@ -7244,10 +7551,15 @@ ${currentCardContext}
                 </div>
               </div>
 
-              {/* 已有题目列表 */}
+              {/* 已有题目列表 - 所有题目都是可编辑的 */}
               {(() => {
                 const card = getSelectedCard();
                 const problems = card?.problems || [];
+                const cardIdStr = String(selectedFile?.cardId || '');
+                // 使用originalProblemsVersion来触发重新渲染（当原始数据更新时）
+                const _ = originalProblemsVersion; // 确保依赖originalProblemsVersion
+                const originalProblems = originalProblemsRef.current.get(cardIdStr) || new Map();
+                
                 if (!problems.length) {
                   return (
                     <div style={{ fontSize: '12px', color: '#6a737d', marginBottom: '8px' }}>
@@ -7257,41 +7569,103 @@ ${currentCardContext}
                 }
                 return (
                   <div style={{ marginBottom: '8px' }}>
-                    {problems.map((p, index) => (
-                      <div
-                        key={p.pid}
-                        style={{
-                          border: '1px solid #e1e4e8',
-                          borderRadius: '4px',
-                          padding: '6px 8px',
-                          marginBottom: '6px',
-                          background: '#fff',
-                        }}
-                      >
-                        <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>
-                          Q{index + 1}（单选）：{p.stem}
-                        </div>
-                        <ul style={{ paddingLeft: '20px', margin: 0, fontSize: '12px' }}>
-                          {p.options.map((opt, oi) => (
-                            <li
-                              key={oi}
-                              style={{
-                                color: oi === p.answer ? '#22863a' : '#24292e',
-                                fontWeight: oi === p.answer ? 600 : 400,
-                              }}
-                            >
-                              {String.fromCharCode(65 + oi)}. {opt}
-                              {oi === p.answer && <span style={{ marginLeft: 4 }}>(正确)</span>}
-                            </li>
-                          ))}
-                        </ul>
-                        {p.analysis && (
-                          <div style={{ marginTop: '4px', fontSize: '12px', color: '#6a737d' }}>
-                            解析：{p.analysis}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                    {problems.map((p, index) => {
+                      // 判断problem状态
+                      const isNew = newProblemIds.has(p.pid) || !originalProblems.has(p.pid);
+                      const originalProblem = originalProblems.get(p.pid);
+                      const isEdited = editedProblemIds.has(p.pid) || (originalProblem && (
+                        originalProblem.stem !== p.stem ||
+                        JSON.stringify(originalProblem.options) !== JSON.stringify(p.options) ||
+                        originalProblem.answer !== p.answer ||
+                        (originalProblem.analysis || '') !== (p.analysis || '')
+                      ));
+                      
+                      // 根据状态设置边框颜色
+                      let borderColor = '#e1e4e8'; // 默认：未改动
+                      let borderStyle = 'solid';
+                      if (isNew) {
+                        borderColor = '#4caf50'; // 新建：绿色
+                        borderStyle = 'dashed';
+                      } else if (isEdited) {
+                        borderColor = '#ff9800'; // 已编辑：橙色
+                        borderStyle = 'dashed';
+                      }
+                      
+                      return (
+                        <EditableProblem
+                          key={p.pid}
+                          problem={p}
+                          index={index}
+                          cardId={cardIdStr}
+                          borderColor={borderColor}
+                          borderStyle={borderStyle}
+                          isNew={isNew}
+                          isEdited={isEdited}
+                          originalProblem={originalProblem}
+                          onUpdate={(updatedProblem) => {
+                            // 更新problem
+                            const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                            const nodeId = selectedFile?.nodeId || '';
+                            const nodeCards: Card[] = nodeCardsMap[nodeId] || [];
+                            const cardIndex = nodeCards.findIndex((c: Card) => c.docId === selectedFile?.cardId);
+                            
+                            if (cardIndex >= 0) {
+                              const existingProblems = nodeCards[cardIndex].problems || [];
+                              const problemIndex = existingProblems.findIndex(prob => prob.pid === p.pid);
+                              
+                              if (problemIndex >= 0) {
+                                existingProblems[problemIndex] = updatedProblem;
+                                nodeCards[cardIndex] = {
+                                  ...nodeCards[cardIndex],
+                                  problems: existingProblems,
+                                };
+                                (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+                                setNodeCardsMapVersion(prev => prev + 1);
+                                
+                                // 标记状态
+                                if (isNew) {
+                                  setNewProblemIds(prev => new Set(prev).add(p.pid));
+                                } else {
+                                  setEditedProblemIds(prev => new Set(prev).add(p.pid));
+                                }
+                                
+                                // 标记该卡片的题目有待提交
+                                if (cardIdStr && !cardIdStr.startsWith('temp-card-')) {
+                                  setPendingProblemCardIds(prev => {
+                                    const next = new Set(prev);
+                                    next.add(cardIdStr);
+                                    return next;
+                                  });
+                                  
+                                  if (isNew) {
+                                    setPendingNewProblemCardIds(prev => {
+                                      const next = new Set(prev);
+                                      next.add(cardIdStr);
+                                      return next;
+                                    });
+                                  } else {
+                                    setPendingEditedProblemIds(prev => {
+                                      const next = new Map(prev);
+                                      if (!next.has(cardIdStr)) {
+                                        next.set(cardIdStr, new Set());
+                                      }
+                                      next.get(cardIdStr)!.add(p.pid);
+                                      return next;
+                                    });
+                                    // 如果之前标记为新建，移除新建标记
+                                    setPendingNewProblemCardIds(prev => {
+                                      const next = new Set(prev);
+                                      next.delete(cardIdStr);
+                                      return next;
+                                    });
+                                  }
+                                }
+                              }
+                            }
+                          }}
+                        />
+                      );
+                    })}
                   </div>
                 );
               })()}
