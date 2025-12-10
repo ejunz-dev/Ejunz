@@ -604,6 +604,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
   const [showProblemForm, setShowProblemForm] = useState<boolean>(false); // 是否展开新建题目表单
   // 有题目变更但尚未提交的卡片（使用后端真实 cardId）
   const [pendingProblemCardIds, setPendingProblemCardIds] = useState<Set<string>>(new Set());
+  const [isGeneratingProblemWithAgent, setIsGeneratingProblemWithAgent] = useState<boolean>(false); // 是否正在通过agent生成题目
 
   // 获取当前选中卡片的完整信息（包括 problems）
   const getSelectedCard = useCallback((): Card | null => {
@@ -768,6 +769,9 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       
       // 检查重命名
       if (pendingRenames.has(file.id)) return true;
+      
+      // 检查problem修改（仅针对card）
+      if (file.type === 'card' && file.cardId && pendingProblemCardIds.has(file.cardId)) return true;
       
       // 检查新建（临时 ID）
       // 对于 node，id 直接是 temp-node-...
@@ -1253,6 +1257,11 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     const hasCreateChanges = pendingCreatesRef.current.size > 0;
     const hasDeleteChanges = pendingDeletes.size > 0;
     const hasProblemChanges = pendingProblemCardIds.size > 0;
+    console.log('[handleSaveAll] 检查待保存更改:', {
+      hasProblemChanges,
+      pendingProblemCardIds: Array.from(pendingProblemCardIds),
+      pendingProblemCardIdsSize: pendingProblemCardIds.size,
+    });
     try {
       const domainId = (window as any).UiContext?.domainId || 'system';
       
@@ -1824,11 +1833,18 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
           }
 
           // 仅更新题目，使用全局 card 更新接口
+          console.log('[handleSaveAll] 保存problem到card:', {
+            cardId: problemCardId,
+            nodeId: foundNodeId,
+            problemsCount: (foundCard.problems || []).length,
+            problems: foundCard.problems,
+          });
           await request.post(`/d/${domainId}/mindmap/card/${problemCardId}`, {
             operation: 'update',
             nodeId: foundNodeId,
             problems: foundCard.problems || [],
           });
+          console.log('[handleSaveAll] problem保存成功:', problemCardId);
         }
       }
       
@@ -2952,6 +2968,166 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     return path;
   }, [mindMap]);
 
+  // 通过Agent生成题目
+  const handleGenerateProblemWithAgent = useCallback(async (userPrompt?: string) => {
+    if (!selectedFile || selectedFile.type !== 'card') {
+      Notification.error('请先在左侧选择一个卡片');
+      return;
+    }
+
+    try {
+      setIsGeneratingProblemWithAgent(true);
+
+      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+      const nodeId = selectedFile.nodeId || '';
+      const nodeCards: Card[] = nodeCardsMap[nodeId] || [];
+      const card = nodeCards.find((c: Card) => c.docId === selectedFile.cardId);
+
+      if (!card) {
+        Notification.error('未找到对应的卡片数据，无法生成题目');
+        return;
+      }
+
+      // 获取当前card的路径信息
+      const nodePath = getNodePath(nodeId);
+      const cardPath = [...nodePath, card.title || '未命名卡片'].join(' > ');
+
+      // 构建当前card的上下文信息
+      const cardContext = `当前卡片信息：
+- 卡片标题：${card.title || '未命名卡片'}
+- 卡片ID：${card.docId}
+- 卡片路径：${cardPath}
+- 卡片内容：${card.content || '(无内容)'}
+- 已有题目数量：${(card.problems || []).length}`;
+
+      const domainId = (window as any).UiContext?.domainId || 'system';
+      const prompt = userPrompt || problemStem.trim() || '请根据当前卡片的内容生成一道单选题';
+
+      // 构建系统提示
+      const systemPrompt = `你是一个题目生成助手，专门帮助用户根据卡片内容生成单选题。
+
+【当前卡片上下文】
+${cardContext}
+
+【你的任务】
+根据用户的要求和当前卡片的内容，生成一道单选题。题目应该：
+1. 与卡片内容相关
+2. 题干清晰明确
+3. 提供4个选项（A、B、C、D）
+4. 明确正确答案
+5. 提供解析说明（可选）
+
+【输出格式】
+你需要以 JSON 格式回复，格式如下：
+\`\`\`json
+{
+  "stem": "题干内容",
+  "options": ["选项A", "选项B", "选项C", "选项D"],
+  "answer": 0,  // 正确答案的索引（0表示A，1表示B，2表示C，3表示D）
+  "analysis": "解析说明（可选）"
+}
+\`\`\`
+
+【重要规则】
+1. 只输出 JSON 代码块（\`\`\`json ... \`\`\`）
+2. 不要添加多余说明文字
+3. answer 必须是 0、1、2 或 3 中的一个数字
+4. options 数组必须包含4个选项
+
+用户要求：${prompt}`;
+
+      // 调用AI接口生成题目
+      const response = await fetch(`/d/${domainId}/ai/chat?stream=false`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: `${systemPrompt}\n\n用户要求：${prompt}`,
+          history: [],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: '请求失败' }));
+        throw new Error(errorData.error || '请求失败');
+      }
+
+      const data = await response.json();
+      let aiResponse = data.content || data.message || '';
+
+      // 解析JSON响应
+      const jsonMatch = aiResponse.match(/```(?:json)?\n([\s\S]*?)\n```/);
+      if (!jsonMatch) {
+        // 尝试直接解析整个响应
+        try {
+          const parsed = JSON.parse(aiResponse);
+          if (parsed.stem && parsed.options && parsed.answer !== undefined) {
+            // 直接生成并保存problem
+            const existingProblems: CardProblem[] = card.problems || [];
+            const newProblem: CardProblem = {
+              pid: `p_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+              type: 'single',
+              stem: parsed.stem,
+              options: parsed.options,
+              answer: parsed.answer,
+              analysis: parsed.analysis || undefined,
+            };
+
+            const updatedProblems = [...existingProblems, newProblem];
+
+            // 更新前端缓存
+            if (nodeCardsMap[nodeId]) {
+              const cardIndex = nodeCards.findIndex((c: Card) => c.docId === selectedFile.cardId);
+              if (cardIndex >= 0) {
+                nodeCards[cardIndex] = {
+                  ...nodeCards[cardIndex],
+                  problems: updatedProblems,
+                };
+                (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+                setNodeCardsMapVersion(prev => prev + 1);
+
+                // 标记该卡片的题目有待提交
+                if (!String(selectedFile.cardId || '').startsWith('temp-card-')) {
+                  setPendingProblemCardIds(prev => {
+                    const next = new Set(prev);
+                    next.add(String(selectedFile.cardId));
+                    return next;
+                  });
+                }
+              }
+            }
+
+            Notification.success('题目已通过Agent生成并保存');
+            return;
+          }
+        } catch (e) {
+          // 忽略解析错误
+        }
+        throw new Error('AI返回的格式不正确，请重试');
+      }
+
+      const jsonContent = jsonMatch[1];
+      const problemData = JSON.parse(jsonContent);
+
+      if (!problemData.stem || !problemData.options || problemData.answer === undefined) {
+        throw new Error('AI返回的题目数据不完整');
+      }
+
+      // 填充表单
+      setProblemStem(problemData.stem);
+      setProblemOptions(problemData.options);
+      setProblemAnswer(problemData.answer);
+      setProblemAnalysis(problemData.analysis || '');
+
+      Notification.success('题目已生成，请检查并确认');
+    } catch (error: any) {
+      Notification.error('通过Agent生成题目失败: ' + (error.message || '未知错误'));
+    } finally {
+      setIsGeneratingProblemWithAgent(false);
+    }
+  }, [selectedFile, problemStem, getNodePath, setNodeCardsMapVersion, setPendingProblemCardIds]);
+
   // 处理 AI 对话框中的粘贴事件，自动识别复制的 node/card
   const handleAIChatPaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
@@ -3292,6 +3468,23 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       // 使用展开后的消息发送给 AI
       const finalUserMessage = expandedMessage;
 
+      // 获取当前显示的card信息（如果有）
+      let currentCardContext = '';
+      const currentCard = getSelectedCard();
+      if (currentCard && selectedFile && selectedFile.type === 'card') {
+        const nodePath = getNodePath(selectedFile.nodeId || '');
+        const cardPath = [...nodePath, currentCard.title || '未命名卡片'].join(' > ');
+        currentCardContext = `
+【当前显示的卡片信息】
+- 卡片标题：${currentCard.title || '未命名卡片'}
+- 卡片ID：${currentCard.docId}
+- 卡片路径：${cardPath}
+- 卡片内容：${currentCard.content || '(无内容)'}
+- 已有题目数量：${(currentCard.problems || []).length}
+
+**重要**：用户当前正在查看这个卡片，如果用户询问关于题目生成、编辑题目等问题，都是针对这个卡片的。`;
+      }
+
       // 构建系统提示
       const systemPrompt = `你是一个思维导图操作助手，专门帮助用户操作思维导图。
 
@@ -3302,9 +3495,11 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
 4. **重命名**：修改节点或卡片的名称
 5. **修改内容**：修改卡片的内容（当用户要求修改、美化、格式化卡片内容时使用）
 6. **删除**：删除不需要的节点或卡片
+7. **生成题目**：根据卡片内容生成单选题（当用户要求生成题目时，应该针对当前显示的卡片）
 
 【思维导图结构说明】
 ${mindMapText}
+${currentCardContext}
 
 【操作格式】
 你需要以 JSON 格式回复操作指令，格式如下：
@@ -3354,6 +3549,14 @@ ${mindMapText}
     {
       "type": "delete_card",
       "cardId": "card_xxx"
+    },
+    {
+      "type": "create_problem",
+      "cardId": "card_xxx",  // 卡片ID（必须根据当前显示的卡片信息中的cardId）
+      "stem": "题干内容",
+      "options": ["选项A", "选项B", "选项C", "选项D"],
+      "answer": 0,  // 正确答案的索引（0表示A，1表示B，2表示C，3表示D）
+      "analysis": "解析说明（可选）"
     }
   ]
 }
@@ -4179,6 +4382,97 @@ ${mindMapText}
             (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
             setNodeCardsMapVersion(prev => prev + 1);
           }
+        } else if (op.type === 'create_problem') {
+          const cardId = op.cardId;
+          const stem = op.stem;
+          const options = op.options || [];
+          const answer = op.answer;
+          const analysis = op.analysis;
+
+          if (!cardId) {
+            Notification.error('cardId 是必需的');
+            errors.push('create_problem 操作缺少 cardId');
+            continue;
+          }
+
+          if (!stem) {
+            Notification.error('题干是必需的');
+            errors.push('create_problem 操作缺少 stem');
+            continue;
+          }
+
+          if (!options || options.length < 2) {
+            Notification.error('至少需要两个选项');
+            errors.push('create_problem 操作的选项数量不足');
+            continue;
+          }
+
+          if (answer === undefined || answer < 0 || answer >= options.length) {
+            Notification.error('答案索引无效');
+            errors.push('create_problem 操作的答案索引无效');
+            continue;
+          }
+
+          // 查找卡片
+          let foundCard: Card | null = null;
+          let foundNodeId: string | null = null;
+
+          for (const nodeId in nodeCardsMap) {
+            const cards = nodeCardsMap[nodeId] || [];
+            const card = cards.find((c: Card) => c.docId === cardId);
+            if (card) {
+              foundCard = card;
+              foundNodeId = nodeId;
+              break;
+            }
+          }
+
+          if (!foundCard || !foundNodeId) {
+            Notification.error(`卡片 ${cardId} 不存在`);
+            errors.push(`卡片 ${cardId} 不存在`);
+            continue;
+          }
+
+          // 创建新的problem
+          const existingProblems: CardProblem[] = foundCard.problems || [];
+          const newProblem: CardProblem = {
+            pid: `p_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+            type: 'single',
+            stem,
+            options,
+            answer,
+            analysis: analysis || undefined,
+          };
+
+          const updatedProblems = [...existingProblems, newProblem];
+
+          // 更新前端缓存
+          const cards = nodeCardsMap[foundNodeId];
+          const cardIndex = cards.findIndex((c: Card) => c.docId === cardId);
+          if (cardIndex >= 0) {
+            cards[cardIndex] = {
+              ...cards[cardIndex],
+              problems: updatedProblems,
+            };
+            (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+            setNodeCardsMapVersion(prev => prev + 1);
+
+            // 对于临时卡片，problems会在创建card时一起提交
+            // 对于已有卡片，需要标记为待提交
+            if (!String(cardId).startsWith('temp-card-')) {
+              setPendingProblemCardIds(prev => {
+                const next = new Set(prev);
+                next.add(String(cardId));
+                return next;
+              });
+            } else {
+              // 临时卡片：确保problems被包含在card的创建数据中
+              // 由于card还没有创建，problems已经更新到nodeCardsMap中，创建时会自动包含
+              // 这里不需要额外操作，因为创建card时会从nodeCardsMap读取problems
+            }
+          }
+
+          Notification.success('题目已通过Agent生成并保存');
         }
       } catch (error: any) {
         console.error(`Failed to execute operation ${op.type}:`, error);
@@ -4189,7 +4483,7 @@ ${mindMapText}
     }
     
     return { success: errors.length === 0, errors };
-  }, [mindMap, setMindMap, selectedFile, editorInstance, setFileContent, triggerExpandAutoSave]);
+  }, [mindMap, setMindMap, selectedFile, editorInstance, setFileContent, triggerExpandAutoSave, setNodeCardsMapVersion, setPendingProblemCardIds]);
 
   // 将 executeAIOperations 赋值给 ref
   useEffect(() => {
@@ -6242,12 +6536,49 @@ ${mindMapText}
                   </div>
                 )}
                 
+                {/* 题目更改 */}
+                {pendingProblemCardIds.size > 0 && (
+                  <div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>题目新建 ({pendingProblemCardIds.size})</div>
+                    <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
+                      {Array.from(pendingProblemCardIds).slice(0, 5).map((cardId, idx) => {
+                        // 在fileTree中查找对应的card
+                        const file = fileTree.find(f => 
+                          f.type === 'card' && f.cardId === cardId
+                        );
+                        // 如果找不到，尝试从nodeCardsMap中查找
+                        let cardName = file ? file.name : '';
+                        if (!cardName) {
+                          const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                          for (const nodeId in nodeCardsMap) {
+                            const cards = nodeCardsMap[nodeId] || [];
+                            const card = cards.find((c: Card) => c.docId === cardId);
+                            if (card) {
+                              cardName = card.title || '未命名卡片';
+                              break;
+                            }
+                          }
+                        }
+                        return (
+                          <div key={idx} style={{ marginBottom: '2px' }}>
+                            • {cardName || `卡片 (${cardId.substring(0, 8)}...)`}
+                          </div>
+                        );
+                      })}
+                      {pendingProblemCardIds.size > 5 && (
+                        <div style={{ color: '#999', fontStyle: 'italic' }}>... 还有 {pendingProblemCardIds.size - 5} 个</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
                 {/* 如果没有待提交内容 */}
                 {pendingChanges.size === 0 && 
                  pendingDragChanges.size === 0 && 
                  pendingRenames.size === 0 && 
                  pendingCreatesCount === 0 && 
-                 pendingDeletes.size === 0 && (
+                 pendingDeletes.size === 0 &&
+                 pendingProblemCardIds.size === 0 && (
                   <div style={{ 
                     color: '#999', 
                     fontStyle: 'italic',
@@ -6787,13 +7118,15 @@ ${mindMapText}
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0) && (
+            {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingProblemCardIds.size > 0) && (
               <span style={{ fontSize: '12px', color: '#586069' }}>
                 {pendingChanges.size > 0 && `${pendingChanges.size} 个文件已修改`}
-                {pendingChanges.size > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0) && '，'}
+                {pendingChanges.size > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingProblemCardIds.size > 0) && '，'}
                 {pendingDragChanges.size > 0 && `${pendingDragChanges.size} 个拖动操作`}
-                {pendingDragChanges.size > 0 && pendingRenames.size > 0 && '，'}
+                {pendingDragChanges.size > 0 && (pendingRenames.size > 0 || pendingProblemCardIds.size > 0) && '，'}
                 {pendingRenames.size > 0 && `${pendingRenames.size} 个重命名`}
+                {(pendingRenames.size > 0 || pendingChanges.size > 0 || pendingDragChanges.size > 0) && pendingProblemCardIds.size > 0 && '，'}
+                {pendingProblemCardIds.size > 0 && `${pendingProblemCardIds.size} 个题目新建`}
               </span>
             )}
             <button
@@ -6812,22 +7145,25 @@ ${mindMapText}
               {showAIChat ? '隐藏 AI' : '显示 AI'}
             </button>
             <button
-              onClick={handleSaveAll}
-              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0)}
+              onClick={() => {
+                console.log('[保存按钮] 点击保存，pendingProblemCardIds:', Array.from(pendingProblemCardIds));
+                handleSaveAll();
+              }}
+              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingProblemCardIds.size === 0)}
               style={{
                 padding: '4px 12px',
                 border: '1px solid #d1d5da',
                 borderRadius: '3px',
-                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0) ? '#28a745' : '#6c757d',
+                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingProblemCardIds.size > 0) ? '#28a745' : '#6c757d',
                 color: '#fff',
-                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0)) ? 'not-allowed' : 'pointer',
+                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingProblemCardIds.size === 0)) ? 'not-allowed' : 'pointer',
                 fontSize: '12px',
                 fontWeight: '500',
-                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0)) ? 0.6 : 1,
+                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingProblemCardIds.size === 0)) ? 0.6 : 1,
               }}
-              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0) ? '没有待保存的更改' : '保存所有更改'}
+              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingProblemCardIds.size === 0) ? '没有待保存的更改' : '保存所有更改'}
             >
-              {isCommitting ? '保存中...' : `保存更改 (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size})`}
+              {isCommitting ? '保存中...' : `保存更改 (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingProblemCardIds.size})`}
             </button>
           </div>
         </div>
@@ -6970,11 +7306,29 @@ ${mindMapText}
                   }}
                 >
                   <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>生成新的单选题</div>
+                  <div style={{ marginBottom: '4px', display: 'flex', gap: 4 }}>
+                    <button
+                      onClick={() => handleGenerateProblemWithAgent()}
+                      disabled={isGeneratingProblemWithAgent || isSavingProblem}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        border: '1px solid #28a745',
+                        background: isGeneratingProblemWithAgent ? '#c0dfff' : '#28a745',
+                        color: '#fff',
+                        fontSize: '11px',
+                        cursor: (isGeneratingProblemWithAgent || isSavingProblem) ? 'not-allowed' : 'pointer',
+                        flex: 1,
+                      }}
+                    >
+                      {isGeneratingProblemWithAgent ? '生成中...' : '通过Agent生成'}
+                    </button>
+                  </div>
                   <div style={{ marginBottom: '4px' }}>
                     <textarea
                       value={problemStem}
                       onChange={e => setProblemStem(e.target.value)}
-                      placeholder="题干（例如：这段卡片主要讲了什么？）"
+                      placeholder="题干（例如：这段卡片主要讲了什么？）或输入要求让Agent生成"
                       style={{
                         width: '100%',
                         minHeight: '40px',
