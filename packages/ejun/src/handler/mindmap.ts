@@ -1727,17 +1727,20 @@ async function createAndPushToGitHubOrgForMindMap(
             }
         }
 
-        // 重试获取 mindmap，因为可能刚创建，需要等待数据库同步
+        let repoUrlForStorage = remoteUrl;
+        if (remoteUrl.startsWith('https://') && remoteUrl.includes('@github.com')) {
+            repoUrlForStorage = remoteUrl.replace(/^https:\/\/[^@]+@github\.com\//, 'https://github.com/');
+        }
+
         let mindMap = await MindMapModel.getByMmid(domainId, mmid);
         if (!mindMap) {
-            // 如果第一次获取失败，等待一小段时间后重试
             await new Promise(resolve => setTimeout(resolve, 100));
             mindMap = await MindMapModel.getByMmid(domainId, mmid);
         }
         
         if (mindMap) {
             await document.set(domainId, document.TYPE_MINDMAP, mindMap.docId, {
-                githubRepo: REPO_URL,
+                githubRepo: repoUrlForStorage,
             });
         } else {
             console.warn(`MindMap with mmid ${mmid} not found, skipping GitHub repo setup`);
@@ -1778,16 +1781,50 @@ async function gitInitAndPushMindMap(
 ) {
     const repoGitPath = await ensureMindMapGitRepo(domainId, mmid, remoteUrlWithAuth);
     
+    // 设置环境变量禁用终端提示，避免非交互式环境下的密码输入问题
+    const gitEnv: Record<string, string> = {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: '0',
+        GIT_ASKPASS: 'echo',
+    };
+    
+    const execOptions: any = { cwd: repoGitPath, env: gitEnv };
+    
     const botName = system.get('ejunzrepo.github_bot_name') || 'ejunz-bot';
     const botEmail = system.get('ejunzrepo.github_bot_email') || 'bot@ejunz.local';
-    await exec(`git config user.name "${botName}"`, { cwd: repoGitPath });
-    await exec(`git config user.email "${botEmail}"`, { cwd: repoGitPath });
+    await exec(`git config user.name "${botName}"`, execOptions);
+    await exec(`git config user.email "${botEmail}"`, execOptions);
+    
+    await exec(`git config credential.helper store`, execOptions);
+    await exec(`git config credential.https://github.com.helper store`, execOptions);
+    
+    try {
+        const { stdout: currentRemote } = await exec('git remote get-url origin', execOptions);
+        const currentUrl = (typeof currentRemote === 'string' ? currentRemote : currentRemote.toString()).trim();
+        
+        const currentTokenMatch = currentUrl.match(/^https?:\/\/([^@]+)@github\.com\//);
+        const targetTokenMatch = remoteUrlWithAuth.match(/^https?:\/\/([^@]+)@github\.com\//);
+        const currentToken = currentTokenMatch ? currentTokenMatch[1] : '';
+        const targetToken = targetTokenMatch ? targetTokenMatch[1] : '';
+        
+        if (currentToken !== targetToken || currentUrl !== remoteUrlWithAuth) {
+            await exec(`git remote set-url origin "${remoteUrlWithAuth}"`, execOptions);
+            try {
+                await exec(`echo -e "protocol=https\\nhost=github.com\\n" | git credential reject`, execOptions);
+            } catch {
+            }
+        } else {
+            await exec(`git remote set-url origin "${remoteUrlWithAuth}"`, execOptions);
+        }
+    } catch {
+        await exec(`git remote add origin "${remoteUrlWithAuth}"`, execOptions);
+    }
     
     let isNewRepo = false;
     
     try {
         try {
-            await exec('git rev-parse HEAD', { cwd: repoGitPath });
+            await exec('git rev-parse HEAD', execOptions);
             isNewRepo = false;
         } catch {
             isNewRepo = true;
@@ -1797,7 +1834,7 @@ async function gitInitAndPushMindMap(
             try {
                 const tmpCloneDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-mindmap-clone-'));
                 try {
-                    await exec(`git clone ${remoteUrlWithAuth} .`, { cwd: tmpCloneDir });
+                    await exec(`git clone ${remoteUrlWithAuth} .`, { cwd: tmpCloneDir, env: gitEnv } as any);
                     await fs.promises.cp(path.join(tmpCloneDir, '.git'), path.join(repoGitPath, '.git'), { recursive: true });
                     isNewRepo = false;
                 } catch {
@@ -1809,29 +1846,29 @@ async function gitInitAndPushMindMap(
             } catch {}
         } else {
             try {
-                await exec('git fetch origin', { cwd: repoGitPath });
+                await exec('git fetch origin', execOptions);
             } catch {}
         }
         
         try {
-            await exec(`git checkout ${branch}`, { cwd: repoGitPath });
+            await exec(`git checkout ${branch}`, execOptions);
         } catch {
             try {
-                await exec(`git checkout -b ${branch} origin/${branch}`, { cwd: repoGitPath });
+                await exec(`git checkout -b ${branch} origin/${branch}`, execOptions);
             } catch {
                 try {
-                    const { stdout: currentBranch } = await exec('git rev-parse --abbrev-ref HEAD', { cwd: repoGitPath });
-                    const baseBranch = currentBranch.trim() || 'main';
-                    await exec(`git checkout -b ${branch} ${baseBranch}`, { cwd: repoGitPath });
+                    const { stdout: currentBranch } = await exec('git rev-parse --abbrev-ref HEAD', execOptions);
+                    const baseBranch = String(currentBranch).trim() || 'main';
+                    await exec(`git checkout -b ${branch} ${baseBranch}`, execOptions);
                 } catch {
-                    await exec(`git checkout -b ${branch}`, { cwd: repoGitPath });
+                    await exec(`git checkout -b ${branch}`, execOptions);
                 }
             }
         }
         
         if (!isNewRepo) {
             try {
-                await exec(`git pull origin ${branch}`, { cwd: repoGitPath });
+                await exec(`git pull origin ${branch}`, execOptions);
             } catch {
             }
         }
@@ -1839,29 +1876,30 @@ async function gitInitAndPushMindMap(
         // Export mindmap to files (use the branch parameter from function signature)
         await exportMindMapToFile(mindMap, repoGitPath, branch);
         
-        await exec('git add -A', { cwd: repoGitPath });
+        await exec('git add -A', execOptions);
         
         try {
-            const { stdout } = await exec('git status --porcelain', { cwd: repoGitPath });
-            if (stdout.trim()) {
+            const { stdout } = await exec('git status --porcelain', execOptions);
+            const stdoutStr = typeof stdout === 'string' ? stdout : stdout.toString();
+            if (stdoutStr.trim()) {
                 const escapedMessage = commitMessage.replace(/'/g, "'\\''");
-                await exec(`git commit -m '${escapedMessage}'`, { cwd: repoGitPath });
+                await exec(`git commit -m '${escapedMessage}'`, execOptions);
             }
         } catch (err) {
             const escapedMessage = commitMessage.replace(/'/g, "'\\''");
             try {
-                await exec(`git commit -m '${escapedMessage}'`, { cwd: repoGitPath });
+                await exec(`git commit -m '${escapedMessage}'`, execOptions);
             } catch {
             }
         }
         
         if (isNewRepo) {
-            await exec(`git push -u origin ${branch}`, { cwd: repoGitPath });
+            await exec(`git push -u origin ${branch}`, execOptions);
         } else {
             try {
-                await exec(`git push origin ${branch}`, { cwd: repoGitPath });
+                await exec(`git push origin ${branch}`, execOptions);
             } catch {
-                await exec(`git push -u origin ${branch}`, { cwd: repoGitPath });
+                await exec(`git push -u origin ${branch}`, execOptions);
             }
         }
     } catch (err) {
@@ -1904,12 +1942,21 @@ class MindMapGithubPushHandler extends Handler {
         if (githubRepo.startsWith('git@')) {
             REPO_URL = githubRepo;
         } else {
-            if (githubRepo.startsWith('https://github.com/') || githubRepo.startsWith('http://github.com/')) {
-                if (githubRepo.includes('@github.com')) {
-                    REPO_URL = githubRepo;
+            const isGitHubHttps = /^https?:\/\/.*github\.com\//.test(githubRepo);
+            
+            if (isGitHubHttps) {
+                let repoPathMatch = githubRepo.match(/^https?:\/\/[^@]+@github\.com\/(.+)$/);
+                if (!repoPathMatch) {
+                    repoPathMatch = githubRepo.match(/^https?:\/\/github\.com\/(.+)$/);
+                }
+                
+                if (repoPathMatch && repoPathMatch[1]) {
+                    REPO_URL = `https://${GH_TOKEN}@github.com/${repoPathMatch[1]}`;
                 } else {
-                    REPO_URL = githubRepo.replace('https://github.com/', `https://${GH_TOKEN}@github.com/`)
-                        .replace('http://github.com/', `https://${GH_TOKEN}@github.com/`);
+                    // 如果匹配失败，使用简单的替换方式
+                    // 先去掉可能的旧 token，然后添加新 token
+                    const urlWithoutToken = githubRepo.replace(/^https?:\/\/[^@]+@github\.com\//, 'https://github.com/');
+                    REPO_URL = urlWithoutToken.replace(/^https:\/\/github\.com\//, `https://${GH_TOKEN}@github.com/`);
                 }
             } else if (!githubRepo.includes('://') && !githubRepo.includes('@')) {
                 const repoPath = githubRepo.replace('.git', '');
@@ -3676,11 +3723,15 @@ class MindMapGithubPullHandler extends Handler {
             REPO_URL = githubRepo;
         } else {
             if (githubRepo.startsWith('https://github.com/') || githubRepo.startsWith('http://github.com/')) {
-                if (githubRepo.includes('@github.com')) {
-                    REPO_URL = githubRepo;
+                // 无论 URL 是否已包含 token，都强制使用最新的 token 重新构建 URL
+                // 这样可以确保使用最新的、有效的 token，避免使用已过期或无效的旧 token
+                // 提取仓库路径（去掉协议、域名和可能的旧 token）
+                const repoPathMatch = githubRepo.match(/^https?:\/\/[^@]*@?github\.com\/(.+)$/);
+                if (repoPathMatch && repoPathMatch[1]) {
+                    REPO_URL = `https://${GH_TOKEN}@github.com/${repoPathMatch[1]}`;
                 } else {
-                    REPO_URL = githubRepo.replace('https://github.com/', `https://${GH_TOKEN}@github.com/`)
-                        .replace('http://github.com/', `https://${GH_TOKEN}@github.com/`);
+                    // 如果匹配失败，使用简单的替换方式
+                    REPO_URL = githubRepo.replace(/^https?:\/\/[^@]*@?github\.com\//, `https://${GH_TOKEN}@github.com/`);
                 }
             } else if (!githubRepo.includes('://') && !githubRepo.includes('@')) {
                 const repoPath = githubRepo.replace('.git', '');
@@ -3771,8 +3822,13 @@ class MindMapGithubConfigHandler extends Handler {
     @param('githubRepo', Types.String, true)
     async post(domainId: string, docId: ObjectId, mmid: number, githubRepo?: string) {
         if (githubRepo !== undefined) {
+            let repoUrlForStorage = githubRepo;
+            if (repoUrlForStorage && repoUrlForStorage.startsWith('https://') && repoUrlForStorage.includes('@github.com')) {
+                repoUrlForStorage = repoUrlForStorage.replace(/^https:\/\/[^@]+@github\.com\//, 'https://github.com/');
+            }
+            
             await document.set(domainId, document.TYPE_MINDMAP, this.mindMap!.docId, {
-                githubRepo: githubRepo || null,
+                githubRepo: repoUrlForStorage || null,
             });
         }
         
