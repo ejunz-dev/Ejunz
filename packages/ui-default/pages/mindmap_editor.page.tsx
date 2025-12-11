@@ -6,6 +6,8 @@ import Notification from 'vj/components/notification';
 import { request } from 'vj/utils';
 import Editor from 'vj/components/editor';
 import { Dialog } from 'vj/components/dialog/index';
+import uploadFiles from 'vj/components/upload';
+import { nanoid } from 'nanoid';
 
 interface MindMapNode {
   id: string;
@@ -46,6 +48,8 @@ interface CardProblem {
   options: string[];
   answer: number; // 正确选项在 options 中的下标
   analysis?: string;
+  imageUrl?: string; // 题目图片URL
+  imageNote?: string; // 图片备注
 }
 
 interface Card {
@@ -110,7 +114,9 @@ const EditableProblem = React.memo(({
   isPendingDelete,
   originalProblem,
   onUpdate,
-  onDelete
+  onDelete,
+  docId,
+  getMindMapUrl
 }: { 
   problem: CardProblem;
   index: number;
@@ -123,11 +129,17 @@ const EditableProblem = React.memo(({
   originalProblem?: CardProblem;
   onUpdate: (updated: CardProblem) => void;
   onDelete: () => void;
+  docId: string;
+  getMindMapUrl: (path: string, docId: string) => string;
 }) => {
   const [problemStem, setProblemStem] = useState(problem.stem);
   const [problemOptions, setProblemOptions] = useState([...problem.options]);
   const [problemAnswer, setProblemAnswer] = useState(problem.answer);
   const [problemAnalysis, setProblemAnalysis] = useState(problem.analysis || '');
+  const [problemImageUrl, setProblemImageUrl] = useState(problem.imageUrl || '');
+  const [problemImageNote, setProblemImageNote] = useState(problem.imageNote || '');
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // 当problem数据变化时同步状态（例如从外部更新）
   useEffect(() => {
@@ -135,7 +147,9 @@ const EditableProblem = React.memo(({
     setProblemOptions([...problem.options]);
     setProblemAnswer(problem.answer);
     setProblemAnalysis(problem.analysis || '');
-  }, [problem.pid, problem.stem, problem.answer, problem.analysis, JSON.stringify(problem.options)]);
+    setProblemImageUrl(problem.imageUrl || '');
+    setProblemImageNote(problem.imageNote || '');
+  }, [problem.pid, problem.stem, problem.answer, problem.analysis, problem.imageUrl, problem.imageNote, JSON.stringify(problem.options)]);
   
   // 检测变更并更新
   useEffect(() => {
@@ -143,7 +157,9 @@ const EditableProblem = React.memo(({
       problemStem !== problem.stem ||
       JSON.stringify(problemOptions) !== JSON.stringify(problem.options) ||
       problemAnswer !== problem.answer ||
-      problemAnalysis !== (problem.analysis || '')
+      problemAnalysis !== (problem.analysis || '') ||
+      problemImageUrl !== (problem.imageUrl || '') ||
+      problemImageNote !== (problem.imageNote || '')
     );
     
     if (hasChanged) {
@@ -153,10 +169,92 @@ const EditableProblem = React.memo(({
         options: problemOptions,
         answer: problemAnswer,
         analysis: problemAnalysis || undefined,
+        imageUrl: problemImageUrl || undefined,
+        imageNote: problemImageNote || undefined,
       };
       onUpdate(updated);
     }
-  }, [problemStem, problemOptions, problemAnswer, problemAnalysis, problem, onUpdate]);
+  }, [problemStem, problemOptions, problemAnswer, problemAnalysis, problemImageUrl, problemImageNote, problem, onUpdate]);
+  
+  // 处理图片上传（使用和 Markdown 编辑器一样的上传逻辑）
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // 检查文件类型（和 Markdown 编辑器一样）
+    let ext: string;
+    const matches = file.type.match(/^image\/(png|jpg|jpeg|gif)$/i);
+    if (matches) {
+      [, ext] = matches;
+    } else {
+      Notification.error('不支持的文件类型，请上传图片文件（png、jpg、jpeg、gif）');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+    
+    setIsUploading(true);
+    try {
+      // 使用 nanoid 生成文件名（和 Markdown 编辑器一样）
+      const filename = `${nanoid()}.${ext}`;
+      
+      // 使用 uploadFiles 函数上传（和 Markdown 编辑器一样）
+      // 注意：mindmap 文件上传端点是 /files，不是 /file
+      await uploadFiles(getMindMapUrl('/files', docId), [file], {
+        filenameCallback: () => filename,
+      });
+      
+      // 构建图片 URL（下载/预览端点是 /file）
+      const domainId = (window as any).UiContext?.domainId || 'system';
+      const imageUrl = `/d/${domainId}/mindmap/${docId}/file/${encodeURIComponent(filename)}`;
+      setProblemImageUrl(imageUrl);
+    } catch (error: any) {
+      Notification.error(`图片上传失败: ${error.message || '未知错误'}`);
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+  
+  // 预览图片
+  const handlePreviewImage = async () => {
+    if (!problemImageUrl) return;
+    try {
+      // 使用InfoDialog显示图片（和file预览一样）
+      const { InfoDialog } = await import('vj/components/dialog/index');
+      const $ = (await import('jquery')).default;
+      const { nanoid } = await import('nanoid');
+      const { tpl } = await import('vj/utils');
+      
+      const id = nanoid();
+      const dialog = new InfoDialog({
+        $body: tpl`<div class="typo"><img src="${problemImageUrl}" style="max-height: calc(80vh - 45px);"></img></div>`,
+        $action: [
+          tpl`<button class="rounded button" data-action="copy" id="copy-${id}">复制链接</button>`,
+          tpl`<button class="rounded button" data-action="cancel">取消</button>`,
+          tpl`<button class="primary rounded button" data-action="download">下载</button>`,
+        ],
+      });
+      
+      // 绑定复制链接功能
+      $(`#copy-${id}`).on('click', () => {
+        navigator.clipboard.writeText(problemImageUrl).then(() => {
+          Notification.success('链接已复制到剪贴板');
+        });
+      });
+      
+      const action = await dialog.open();
+      if (action === 'download') {
+        window.open(problemImageUrl, '_blank');
+      }
+    } catch (error) {
+      console.error('预览图片失败:', error);
+      Notification.error('预览图片失败');
+    }
+  };
   
   return (
     <div
@@ -225,6 +323,68 @@ const EditableProblem = React.memo(({
             borderRadius: '2px',
           }}
         />
+      </div>
+      {/* 图片上传和预览区域 */}
+      <div style={{ marginBottom: '4px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: problemImageUrl ? '4px' : '0' }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+            onChange={handleImageUpload}
+            style={{ display: 'none' }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            style={{
+              padding: '2px 8px',
+              fontSize: '11px',
+              borderRadius: '3px',
+              border: '1px solid #0366d6',
+              background: isUploading ? '#ccc' : '#0366d6',
+              color: '#fff',
+              cursor: isUploading ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {isUploading ? '上传中...' : '上传图片'}
+          </button>
+          {problemImageUrl && (
+            <button
+              onClick={handlePreviewImage}
+              style={{
+                padding: '2px 8px',
+                fontSize: '11px',
+                borderRadius: '3px',
+                border: '1px solid #28a745',
+                background: '#28a745',
+                color: '#fff',
+                cursor: 'pointer',
+              }}
+            >
+              预览图片
+            </button>
+          )}
+        </div>
+        {/* 图片备注输入框（仅在已上传图片时显示） */}
+        {problemImageUrl && (
+          <div style={{ marginTop: '4px' }}>
+            <input
+              type="text"
+              value={problemImageNote}
+              onChange={e => setProblemImageNote(e.target.value)}
+              placeholder="图片备注（可选）"
+              style={{
+                width: '100%',
+                fontSize: '11px',
+                padding: '3px 6px',
+                boxSizing: 'border-box',
+                border: '1px solid #e1e4e8',
+                borderRadius: '2px',
+              }}
+            />
+          </div>
+        )}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '4px' }}>
         {problemOptions.map((opt, oi) => (
@@ -7709,6 +7869,8 @@ ${currentCardContext}
                           isEdited={isEdited}
                           isPendingDelete={isPendingDelete}
                           originalProblem={originalProblem}
+                          docId={docId}
+                          getMindMapUrl={getMindMapUrl}
                           onUpdate={(updatedProblem) => {
                             // 更新problem
                             const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
