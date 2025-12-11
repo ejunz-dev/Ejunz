@@ -406,6 +406,8 @@ const StudyCard = ({
 };
 
 interface Problem {
+  imageUrl?: string; // 题目图片URL
+  imageNote?: string; // 图片备注
   pid: string;
   type: 'single';
   stem: string;
@@ -584,7 +586,55 @@ function MindMapStudy() {
                 {/* 题干 */}
                 <div style={{ fontSize: '18px', fontWeight: '600', color: '#333', marginBottom: '30px', lineHeight: '1.6' }}>
                   {currentProblem.stem}
-        </div>
+                </div>
+                
+                {/* 题目图片（题干下方，选项上方） */}
+                {currentProblem.imageUrl && (
+                  <div style={{ marginBottom: '30px', textAlign: 'center' }}>
+                    <img
+                      src={currentProblem.imageUrl}
+                      alt="题目图片"
+                      onClick={async () => {
+                        try {
+                          const previewImage = (window as any).Ejunz?.components?.preview?.previewImage;
+                          if (previewImage) {
+                            await previewImage(currentProblem.imageUrl!);
+                          } else {
+                            // 使用InfoDialog显示图片
+                            const { InfoDialog } = await import('vj/components/dialog/index');
+                            const $ = (await import('jquery')).default;
+                            const dialog = new InfoDialog({
+                              $body: $(`<div class="typo"><img src="${currentProblem.imageUrl}" style="max-height: calc(80vh - 45px);"></img></div>`),
+                            });
+                            await dialog.open();
+                          }
+                        } catch (error) {
+                          console.error('预览图片失败:', error);
+                          Notification.error('预览图片失败');
+                        }
+                      }}
+                      style={{
+                        maxWidth: '100%',
+                        maxHeight: '400px',
+                        cursor: 'pointer',
+                        borderRadius: '8px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                      }}
+                    />
+                    {/* 图片备注（显示在图片下方） */}
+                    {currentProblem.imageNote && (
+                      <div style={{
+                        marginTop: '12px',
+                        fontSize: '14px',
+                        color: '#666',
+                        lineHeight: '1.5',
+                        fontStyle: 'italic',
+                      }}>
+                        {currentProblem.imageNote}
+                      </div>
+                    )}
+                  </div>
+                )}
                 
                 {/* 选项 */}
                 <div style={{ marginBottom: '30px' }}>
