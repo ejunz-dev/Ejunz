@@ -555,6 +555,8 @@ class MindMapEditorHandler extends Handler {
     @param('mmid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
     async get(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
         // If no branch parameter, redirect to branch URL
         if (!branch || !String(branch).trim()) {
             const target = this.url('mindmap_editor_branch', { 
@@ -4063,10 +4065,10 @@ export async function apply(ctx: Context) {
     ctx.Route('mindmap_files_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/files', MindMapFilesHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_file_download', '/mindmap/:docId/file/:filename', MindMapFileDownloadHandler);
     ctx.Route('mindmap_file_download_mmid', '/mindmap/mmid/:mmid/file/:filename', MindMapFileDownloadHandler);
-    ctx.Route('mindmap_editor', '/mindmap/:docId/editor', MindMapEditorHandler);
-    ctx.Route('mindmap_editor_mmid', '/mindmap/mmid/:mmid/editor', MindMapEditorHandler);
-    ctx.Route('mindmap_editor_branch', '/mindmap/:docId/branch/:branch/editor', MindMapEditorHandler);
-    ctx.Route('mindmap_editor_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/editor', MindMapEditorHandler);
+    ctx.Route('mindmap_editor', '/mindmap/:docId/editor', MindMapEditorHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_editor_mmid', '/mindmap/mmid/:mmid/editor', MindMapEditorHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_editor_branch', '/mindmap/:docId/branch/:branch/editor', MindMapEditorHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('mindmap_editor_branch_mmid', '/mindmap/mmid/:mmid/branch/:branch/editor', MindMapEditorHandler, PRIV.PRIV_USER_PROFILE);
     
     // WebSocket 连接路由
     ctx.Connection('mindmap_connection', '/mindmap/:docId/ws', MindMapConnectionHandler);
