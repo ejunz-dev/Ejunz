@@ -116,7 +116,8 @@ const EditableProblem = React.memo(({
   onUpdate,
   onDelete,
   docId,
-  getMindMapUrl
+  getMindMapUrl,
+  themeStyles
 }: { 
   problem: CardProblem;
   index: number;
@@ -131,6 +132,7 @@ const EditableProblem = React.memo(({
   onDelete: () => void;
   docId: string;
   getMindMapUrl: (path: string, docId: string) => string;
+  themeStyles: any;
 }) => {
   const [problemStem, setProblemStem] = useState(problem.stem);
   const [problemOptions, setProblemOptions] = useState([...problem.options]);
@@ -263,7 +265,7 @@ const EditableProblem = React.memo(({
         borderRadius: '4px',
         padding: '6px 8px',
         marginBottom: '6px',
-        background: '#fff',
+        background: themeStyles.bgPrimary,
         position: 'relative',
         opacity: isPendingDelete ? 0.5 : 1,
       }}
@@ -303,9 +305,9 @@ const EditableProblem = React.memo(({
       </div>
       <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '4px', paddingRight: '24px' }}>
         Q{index + 1}（单选）
-        {isNew && <span style={{ marginLeft: '8px', fontSize: '10px', color: '#4caf50' }}>新建</span>}
-        {isEdited && !isNew && <span style={{ marginLeft: '8px', fontSize: '10px', color: '#ff9800' }}>已编辑</span>}
-        {isPendingDelete && <span style={{ marginLeft: '8px', fontSize: '10px', color: '#f44336' }}>待删除</span>}
+        {isNew && <span style={{ marginLeft: '8px', fontSize: '10px', color: themeStyles.success }}>新建</span>}
+        {isEdited && !isNew && <span style={{ marginLeft: '8px', fontSize: '10px', color: themeStyles.warning }}>已编辑</span>}
+        {isPendingDelete && <span style={{ marginLeft: '8px', fontSize: '10px', color: themeStyles.error }}>待删除</span>}
       </div>
       <div style={{ marginBottom: '4px' }}>
         <textarea
@@ -319,8 +321,10 @@ const EditableProblem = React.memo(({
             fontSize: '12px',
             padding: '4px 6px',
             boxSizing: 'border-box',
-            border: '1px solid #e1e4e8',
+            border: `1px solid ${themeStyles.borderPrimary}`,
             borderRadius: '2px',
+            backgroundColor: themeStyles.bgPrimary,
+            color: themeStyles.textPrimary,
           }}
         />
       </div>
@@ -341,9 +345,9 @@ const EditableProblem = React.memo(({
               padding: '2px 8px',
               fontSize: '11px',
               borderRadius: '3px',
-              border: '1px solid #0366d6',
-              background: isUploading ? '#ccc' : '#0366d6',
-              color: '#fff',
+              border: `1px solid ${themeStyles.accent}`,
+              background: isUploading ? themeStyles.textTertiary : themeStyles.accent,
+              color: themeStyles.textOnPrimary,
               cursor: isUploading ? 'not-allowed' : 'pointer',
             }}
           >
@@ -356,9 +360,9 @@ const EditableProblem = React.memo(({
                 padding: '2px 8px',
                 fontSize: '11px',
                 borderRadius: '3px',
-                border: '1px solid #28a745',
-                background: '#28a745',
-                color: '#fff',
+                border: `1px solid ${themeStyles.success}`,
+                background: themeStyles.success,
+                color: themeStyles.textOnPrimary,
                 cursor: 'pointer',
               }}
             >
@@ -379,8 +383,10 @@ const EditableProblem = React.memo(({
                 fontSize: '11px',
                 padding: '3px 6px',
                 boxSizing: 'border-box',
-                border: '1px solid #e1e4e8',
+                border: `1px solid ${themeStyles.borderPrimary}`,
                 borderRadius: '2px',
+                backgroundColor: themeStyles.bgPrimary,
+                color: themeStyles.textPrimary,
               }}
             />
           </div>
@@ -401,16 +407,18 @@ const EditableProblem = React.memo(({
               fontSize: '12px',
               padding: '3px 6px',
               boxSizing: 'border-box',
-              border: '1px solid #e1e4e8',
+              border: `1px solid ${themeStyles.borderPrimary}`,
               borderRadius: '2px',
+              backgroundColor: themeStyles.bgPrimary,
+              color: themeStyles.textPrimary,
             }}
           />
         ))}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px', fontSize: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px', fontSize: '12px', color: themeStyles.textPrimary }}>
         <span style={{ marginRight: 4 }}>正确答案：</span>
         {problemOptions.map((_, oi) => (
-          <label key={oi} style={{ marginRight: 6, cursor: 'pointer' }}>
+          <label key={oi} style={{ marginRight: 6, cursor: 'pointer', color: themeStyles.textPrimary }}>
             <input
               type="radio"
               name={`problem-answer-${problem.pid}`}
@@ -434,8 +442,10 @@ const EditableProblem = React.memo(({
             fontSize: '12px',
             padding: '4px 6px',
             boxSizing: 'border-box',
-            border: '1px solid #e1e4e8',
+            border: `1px solid ${themeStyles.borderPrimary}`,
             borderRadius: '2px',
+            backgroundColor: themeStyles.bgPrimary,
+            color: themeStyles.textPrimary,
           }}
         />
       </div>
@@ -451,7 +461,9 @@ function SortWindow({
   getMindMapUrl,
   onClose, 
   onSave,
-  nodeCardsMapVersion
+  nodeCardsMapVersion,
+  themeStyles,
+  theme
 }: { 
   nodeId: string; 
   mindMap: MindMapDoc; 
@@ -460,6 +472,8 @@ function SortWindow({
   onClose: () => void; 
   onSave: (sortedItems: Array<{ type: 'node' | 'card'; id: string; order: number }>) => Promise<void>;
   nodeCardsMapVersion?: number; // 用于触发重新计算cards
+  themeStyles: any;
+  theme: 'light' | 'dark';
 }) {
   const [draggedItem, setDraggedItem] = useState<{ type: 'node' | 'card'; id: string; index: number } | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -589,19 +603,19 @@ function SortWindow({
       >
         <div
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: themeStyles.bgPrimary,
             borderRadius: '8px',
             padding: '20px',
             minWidth: '500px',
             maxWidth: '80%',
             maxHeight: '80%',
             overflow: 'auto',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+            boxShadow: theme === 'dark' ? '0 4px 20px rgba(0,0,0,0.5)' : '0 4px 20px rgba(0,0,0,0.3)',
           }}
           onClick={(e) => e.stopPropagation()}
         >
           <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>
+            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: themeStyles.textPrimary }}>
               排序: {currentNode?.text || '未命名节点'}
             </h3>
             <button
@@ -611,7 +625,7 @@ function SortWindow({
                 border: 'none',
                 fontSize: '20px',
                 cursor: 'pointer',
-                color: '#666',
+                color: themeStyles.textTertiary,
                 padding: '0',
                 width: '24px',
                 height: '24px',
@@ -624,13 +638,13 @@ function SortWindow({
             </button>
           </div>
           
-          <div style={{ marginBottom: '16px', fontSize: '13px', color: '#666' }}>
+          <div style={{ marginBottom: '16px', fontSize: '13px', color: themeStyles.textTertiary }}>
             拖拽项目以改变顺序
           </div>
           
           <div style={{ marginBottom: '16px' }}>
             {items.length === 0 ? (
-              <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
+              <div style={{ padding: '20px', textAlign: 'center', color: themeStyles.textTertiary }}>
                 暂无子节点和卡片
               </div>
             ) : (
@@ -646,8 +660,8 @@ function SortWindow({
                   style={{
                     padding: '12px',
                     marginBottom: '8px',
-                    backgroundColor: dragOverIndex === index ? '#e3f2fd' : draggedItem?.index === index ? '#f5f5f5' : '#fff',
-                    border: '1px solid #e1e4e8',
+                    backgroundColor: dragOverIndex === index ? themeStyles.bgDragOver : draggedItem?.index === index ? themeStyles.bgDragged : themeStyles.bgPrimary,
+                    border: `1px solid ${themeStyles.borderPrimary}`,
                     borderRadius: '4px',
                     cursor: 'move',
                     display: 'flex',
@@ -657,18 +671,18 @@ function SortWindow({
                     transition: 'background-color 0.2s',
                   }}
                 >
-                  <div style={{ fontSize: '18px', color: '#999' }}>⋮⋮</div>
+                  <div style={{ fontSize: '18px', color: themeStyles.textTertiary }}>⋮⋮</div>
                   <div style={{ 
                     padding: '2px 8px', 
                     borderRadius: '3px', 
                     fontSize: '12px',
-                    backgroundColor: item.type === 'node' ? '#2196f3' : '#4caf50',
-                    color: '#fff',
+                    backgroundColor: item.type === 'node' ? themeStyles.accent : themeStyles.success,
+                    color: themeStyles.textOnPrimary,
                     fontWeight: '500',
                   }}>
                     {item.type === 'node' ? 'Node' : 'Card'}
                   </div>
-                  <div style={{ flex: 1, fontSize: '14px', color: '#24292e' }}>
+                  <div style={{ flex: 1, fontSize: '14px', color: themeStyles.textPrimary }}>
                     {item.name}
                   </div>
                 </div>
@@ -681,10 +695,10 @@ function SortWindow({
               onClick={onClose}
               style={{
                 padding: '6px 16px',
-                border: '1px solid #d1d5da',
+                border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '4px',
-                backgroundColor: '#fff',
-                color: '#24292e',
+                backgroundColor: themeStyles.bgButton,
+                color: themeStyles.textPrimary,
                 cursor: 'pointer',
                 fontSize: '13px',
               }}
@@ -695,10 +709,10 @@ function SortWindow({
               onClick={handleSave}
               style={{
                 padding: '6px 16px',
-                border: '1px solid #28a745',
+                border: `1px solid ${themeStyles.success}`,
                 borderRadius: '4px',
-                backgroundColor: '#28a745',
-                color: '#fff',
+                backgroundColor: themeStyles.success,
+                color: themeStyles.textOnPrimary,
                 cursor: 'pointer',
                 fontSize: '13px',
                 fontWeight: '500',
@@ -826,6 +840,75 @@ function migrateOrderFields(mindMap: MindMapDoc): { mindMap: MindMapDoc; needsSa
 }
 
 function MindMapEditorMode({ docId, initialData }: { docId: string; initialData: MindMapDoc }) {
+  // 主题检测
+  const getTheme = useCallback(() => {
+    try {
+      if ((window as any).Ejunz?.utils?.getTheme) {
+        return (window as any).Ejunz.utils.getTheme();
+      }
+      if ((window as any).UserContext?.theme) {
+        return (window as any).UserContext.theme === 'dark' ? 'dark' : 'light';
+      }
+    } catch (e) {
+      console.warn('Failed to get theme:', e);
+    }
+    return 'light';
+  }, []);
+
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => getTheme());
+
+  // 监听主题变化
+  useEffect(() => {
+    const checkTheme = () => {
+      const newTheme = getTheme();
+      if (newTheme !== theme) {
+        setTheme(newTheme);
+      }
+    };
+
+    // 初始检查
+    checkTheme();
+
+    // 定期检查主题变化（因为主题切换可能通过页面刷新实现）
+    const interval = setInterval(checkTheme, 500);
+    return () => clearInterval(interval);
+  }, [theme, getTheme]);
+
+  // 主题样式对象
+  const themeStyles = useMemo(() => {
+    const isDark = theme === 'dark';
+    return {
+      // 背景色
+      bgPrimary: isDark ? '#121212' : '#fff',
+      bgSecondary: isDark ? '#323334' : '#f6f8fa',
+      bgTertiary: isDark ? '#424242' : '#fafbfc',
+      bgHover: isDark ? '#424242' : '#f3f4f6',
+      bgSelected: isDark ? '#0366d6' : '#0366d6',
+      bgDragOver: isDark ? '#1e3a5f' : '#e3f2fd',
+      bgDragged: isDark ? '#2a2a2a' : '#f0f0f0',
+      bgButton: isDark ? '#323334' : '#fff',
+      bgButtonActive: isDark ? '#0366d6' : '#0366d6',
+      bgButtonHover: isDark ? '#424242' : '#f3f4f6',
+      
+      // 文字颜色
+      textPrimary: isDark ? '#eee' : '#24292e',
+      textSecondary: isDark ? '#bdbdbd' : '#586069',
+      textTertiary: isDark ? '#999' : '#6a737d',
+      textOnPrimary: isDark ? '#fff' : '#fff',
+      
+      // 边框颜色
+      borderPrimary: isDark ? '#424242' : '#e1e4e8',
+      borderSecondary: isDark ? '#555' : '#d1d5da',
+      borderFocus: isDark ? '#0366d6' : '#0366d6',
+      
+      // 其他颜色
+      accent: isDark ? '#55b6e2' : '#0366d6',
+      success: isDark ? '#4caf50' : '#28a745',
+      warning: isDark ? '#ff9800' : '#ff9800',
+      error: isDark ? '#f44336' : '#f44336',
+    };
+  }, [theme]);
+
   // 在初始化时迁移order字段
   const migrationResult = useMemo(() => migrateOrderFields(initialData), [initialData]);
   const [mindMap, setMindMap] = useState<MindMapDoc>(() => migrationResult.mindMap);
@@ -6484,22 +6567,22 @@ ${currentCardContext}
   }, []);
 
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100%', backgroundColor: '#fff' }}>
+    <div style={{ display: 'flex', height: '100vh', width: '100%', backgroundColor: themeStyles.bgPrimary }}>
       {/* 左侧文件树 */}
       <div style={{
         width: '250px',
-        borderRight: '1px solid #e1e4e8',
-        backgroundColor: '#f6f8fa',
+        borderRight: `1px solid ${themeStyles.borderPrimary}`,
+        backgroundColor: themeStyles.bgSecondary,
         overflow: 'auto',
         flexShrink: 0,
       }}>
         <div style={{
           padding: '12px 16px',
-          borderBottom: '1px solid #e1e4e8',
+          borderBottom: `1px solid ${themeStyles.borderPrimary}`,
           fontSize: '12px',
           fontWeight: '600',
-          color: '#586069',
-          backgroundColor: '#fff',
+          color: themeStyles.textSecondary,
+          backgroundColor: themeStyles.bgPrimary,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -6518,10 +6601,10 @@ ${currentCardContext}
                   style={{
                     padding: '2px 8px',
                     fontSize: '11px',
-                    border: '1px solid #d1d5da',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
                     borderRadius: '3px',
-                    backgroundColor: isMultiSelectMode ? '#0366d6' : '#fff',
-                    color: isMultiSelectMode ? '#fff' : '#586069',
+                    backgroundColor: isMultiSelectMode ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                    color: isMultiSelectMode ? themeStyles.textOnPrimary : themeStyles.textSecondary,
                     cursor: 'pointer',
                   }}
                   title={isMultiSelectMode ? '退出多选模式' : '多选模式'}
@@ -6535,10 +6618,10 @@ ${currentCardContext}
               style={{
                 padding: '2px 8px',
                 fontSize: '11px',
-                border: '1px solid #d1d5da',
+                border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
-                backgroundColor: explorerMode === 'tree' ? '#0366d6' : '#fff',
-                color: explorerMode === 'tree' ? '#fff' : '#586069',
+                backgroundColor: explorerMode === 'tree' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                color: explorerMode === 'tree' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
                 cursor: 'pointer',
               }}
               title="树形视图"
@@ -6550,10 +6633,10 @@ ${currentCardContext}
               style={{
                 padding: '2px 8px',
                 fontSize: '11px',
-                border: '1px solid #d1d5da',
+                border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
-                backgroundColor: explorerMode === 'files' ? '#0366d6' : '#fff',
-                color: explorerMode === 'files' ? '#fff' : '#586069',
+                backgroundColor: explorerMode === 'files' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                color: explorerMode === 'files' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
                 cursor: 'pointer',
               }}
               title="文件视图"
@@ -6565,10 +6648,10 @@ ${currentCardContext}
               style={{
                 padding: '2px 8px',
                 fontSize: '11px',
-                border: '1px solid #d1d5da',
+                border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
-                backgroundColor: explorerMode === 'pending' ? '#0366d6' : '#fff',
-                color: explorerMode === 'pending' ? '#fff' : '#586069',
+                backgroundColor: explorerMode === 'pending' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                color: explorerMode === 'pending' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
                 cursor: 'pointer',
               }}
               title="查看待提交的更改"
@@ -6632,13 +6715,13 @@ ${currentCardContext}
                   padding: `4px ${8 + file.level * 16}px`,
                   cursor: isEditing ? 'text' : 'pointer',
                   fontSize: '13px',
-                  color: isSelected ? '#fff' : '#24292e',
+                  color: isSelected ? themeStyles.textOnPrimary : themeStyles.textPrimary,
                   backgroundColor: isSelected 
-                    ? '#0366d6' 
+                    ? themeStyles.bgSelected
                     : isDragOver 
-                      ? '#e3f2fd' 
+                      ? themeStyles.bgDragOver
                       : isDragged
-                        ? '#f0f0f0'
+                        ? themeStyles.bgDragged
                         : 'transparent',
                   display: 'flex',
                   alignItems: 'center',
@@ -6646,25 +6729,25 @@ ${currentCardContext}
                   opacity: isDragged ? 0.5 : 1,
                   border: isDragOver 
                     ? dropPosition === 'into'
-                      ? '2px dashed #2196F3' 
-                      : '2px solid #2196F3'
+                      ? `2px dashed ${themeStyles.accent}` 
+                      : `2px solid ${themeStyles.accent}`
                     : file.clipboardType === 'cut'
-                      ? '2px dashed #f44336' // 被剪切的用红色虚线
+                      ? `2px dashed ${themeStyles.error}` // 被剪切的用红色虚线
                       : file.clipboardType === 'copy'
-                        ? '2px dashed #4caf50' // 被复制的用绿色虚线
+                        ? `2px dashed ${themeStyles.success}` // 被复制的用绿色虚线
                         : file.hasPendingChanges
-                          ? '1px dashed #ff9800' // 未保存的更改用橙色虚线
+                          ? `1px dashed ${themeStyles.warning}` // 未保存的更改用橙色虚线
                           : '2px solid transparent',
                   borderTop: isDragOver && dropPosition === 'before' 
-                    ? '3px solid #1976D2' 
+                    ? `3px solid ${themeStyles.accent}` 
                     : undefined,
                   borderBottom: isDragOver && dropPosition === 'after' 
-                    ? '3px solid #1976D2' 
+                    ? `3px solid ${themeStyles.accent}` 
                     : undefined,
                 }}
                 onMouseEnter={(e) => {
                   if (!isSelected && !isDragOver && !isDragged) {
-                    e.currentTarget.style.backgroundColor = '#f3f4f6';
+                    e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                   }
                 }}
                 onMouseLeave={(e) => {
@@ -6702,7 +6785,7 @@ ${currentCardContext}
                       cursor: 'pointer',
                       flexShrink: 0,
                       fontSize: '10px',
-                      color: '#666',
+                      color: themeStyles.textTertiary,
                       userSelect: 'none',
                       marginRight: '2px',
                     }}
@@ -6762,9 +6845,11 @@ ${currentCardContext}
                     flex: 1,
                     padding: '2px 4px',
                     fontSize: '13px',
-                    border: '1px solid #0366d6',
+                    border: `1px solid ${themeStyles.borderFocus}`,
                     borderRadius: '3px',
                     outline: 'none',
+                    backgroundColor: themeStyles.bgPrimary,
+                    color: themeStyles.textPrimary,
                   }}
                 />
               ) : (
@@ -6819,10 +6904,10 @@ ${currentCardContext}
                     width: '100%',
                     padding: '6px 8px',
                     fontSize: '12px',
-                    border: '1px solid #d1d5da',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
                     borderRadius: '3px',
-                    backgroundColor: '#fff',
-                    color: '#586069',
+                    backgroundColor: themeStyles.bgButton,
+                    color: themeStyles.textSecondary,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
@@ -6830,10 +6915,10 @@ ${currentCardContext}
                     gap: '4px',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#f3f4f6';
+                    e.currentTarget.style.backgroundColor = themeStyles.bgButtonHover;
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = '#fff';
+                    e.currentTarget.style.backgroundColor = themeStyles.bgButton;
                   }}
                 >
                   <span>📁</span>
@@ -6847,7 +6932,7 @@ ${currentCardContext}
                   <div style={{
                     padding: '20px',
                     textAlign: 'center',
-                    color: '#999',
+                    color: themeStyles.textTertiary,
                     fontSize: '12px',
                   }}>
                     暂无文件
@@ -6870,8 +6955,8 @@ ${currentCardContext}
                       style={{
                         padding: '6px 8px',
                         fontSize: '12px',
-                        color: selectedFileForPreview === file.name ? '#fff' : '#24292e',
-                        backgroundColor: selectedFileForPreview === file.name ? '#0366d6' : 'transparent',
+                        color: selectedFileForPreview === file.name ? themeStyles.textOnPrimary : themeStyles.textPrimary,
+                        backgroundColor: selectedFileForPreview === file.name ? themeStyles.bgSelected : 'transparent',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
@@ -6880,7 +6965,7 @@ ${currentCardContext}
                       }}
                       onMouseEnter={(e) => {
                         if (selectedFileForPreview !== file.name) {
-                          e.currentTarget.style.backgroundColor = '#f3f4f6';
+                          e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                         }
                       }}
                       onMouseLeave={(e) => {
@@ -6900,7 +6985,7 @@ ${currentCardContext}
                       </span>
                       <span style={{ 
                         fontSize: '11px',
-                        color: selectedFileForPreview === file.name ? 'rgba(255,255,255,0.8)' : '#999',
+                        color: selectedFileForPreview === file.name ? 'rgba(255,255,255,0.8)' : themeStyles.textTertiary,
                       }}>
                         {(file.size / 1024).toFixed(1)} KB
                       </span>
@@ -6915,7 +7000,7 @@ ${currentCardContext}
               <div style={{
                 fontSize: '12px',
                 fontWeight: '600',
-                color: '#586069',
+                color: themeStyles.textSecondary,
                 marginBottom: '12px',
                 padding: '0 8px',
               }}>
@@ -6923,7 +7008,7 @@ ${currentCardContext}
               </div>
               <div style={{
                 fontSize: '11px',
-                color: '#586069',
+                color: themeStyles.textSecondary,
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '8px',
@@ -6940,7 +7025,7 @@ ${currentCardContext}
                         </div>
                       ))}
                       {pendingChanges.size > 5 && (
-                        <div style={{ color: '#999', fontStyle: 'italic' }}>... 还有 {pendingChanges.size - 5} 个</div>
+                        <div style={{ color: themeStyles.textTertiary, fontStyle: 'italic' }}>... 还有 {pendingChanges.size - 5} 个</div>
           )}
         </div>
       </div>
@@ -7145,7 +7230,7 @@ ${currentCardContext}
                  pendingEditedProblemIds.size === 0 &&
                  pendingDeleteProblemIds.size === 0 && (
                   <div style={{ 
-                    color: '#999', 
+                    color: themeStyles.textTertiary, 
                     fontStyle: 'italic',
                     textAlign: 'center',
                     padding: '8px 0',
@@ -7167,10 +7252,10 @@ ${currentCardContext}
             position: 'fixed',
             left: contextMenu.x,
             top: contextMenu.y,
-            backgroundColor: '#fff',
-            border: '1px solid #d1d5db',
+            backgroundColor: themeStyles.bgPrimary,
+            border: `1px solid ${themeStyles.borderSecondary}`,
             borderRadius: '4px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            boxShadow: theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.15)',
             zIndex: 1000,
             minWidth: '180px',
             padding: '4px 0',
@@ -7188,10 +7273,10 @@ ${currentCardContext}
                       padding: '6px 16px',
                       cursor: 'pointer',
                       fontSize: '13px',
-                      color: '#24292e',
+                      color: themeStyles.textPrimary,
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                      e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor = 'transparent';
@@ -7211,10 +7296,10 @@ ${currentCardContext}
                       padding: '6px 16px',
                       cursor: 'pointer',
                       fontSize: '13px',
-                      color: '#24292e',
+                      color: themeStyles.textPrimary,
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                      e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor = 'transparent';
@@ -7228,10 +7313,10 @@ ${currentCardContext}
                       padding: '6px 16px',
                       cursor: 'pointer',
                       fontSize: '13px',
-                      color: '#24292e',
+                      color: themeStyles.textPrimary,
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                      e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor = 'transparent';
@@ -7401,10 +7486,10 @@ ${currentCardContext}
                       padding: '6px 16px',
                       cursor: 'pointer',
                       fontSize: '13px',
-                      color: '#24292e',
+                      color: themeStyles.textPrimary,
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                      e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor = 'transparent';
@@ -7418,10 +7503,10 @@ ${currentCardContext}
                       padding: '6px 16px',
                       cursor: 'pointer',
                       fontSize: '13px',
-                      color: '#24292e',
+                      color: themeStyles.textPrimary,
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                      e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor = 'transparent';
@@ -7534,6 +7619,8 @@ ${currentCardContext}
           getMindMapUrl={getMindMapUrl}
           onClose={() => setSortWindow(null)}
           nodeCardsMapVersion={nodeCardsMapVersion}
+          themeStyles={themeStyles}
+          theme={theme}
           onSave={async (sortedItems) => {
             try {
               const domainId = (window as any).UiContext?.domainId || 'system';
@@ -7653,8 +7740,8 @@ ${currentCardContext}
         {/* 顶部工具栏 */}
         <div style={{
           padding: '8px 16px',
-          borderBottom: '1px solid #e1e4e8',
-          backgroundColor: '#fff',
+          borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+          backgroundColor: themeStyles.bgPrimary,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -7669,7 +7756,7 @@ ${currentCardContext}
               style={{
                 padding: '4px 8px',
                 fontSize: '12px',
-                color: '#586069',
+                color: themeStyles.textSecondary,
                 textDecoration: 'none',
                 cursor: 'pointer',
               }}
@@ -7677,14 +7764,14 @@ ${currentCardContext}
               ← 返回
             </a>
             {selectedFile && (
-              <div style={{ fontSize: '13px', color: '#586069' }}>
+              <div style={{ fontSize: '13px', color: themeStyles.textSecondary }}>
                 {selectedFile.name}
               </div>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) && (
-              <span style={{ fontSize: '12px', color: '#586069' }}>
+              <span style={{ fontSize: '12px', color: themeStyles.textSecondary }}>
                 {pendingChanges.size > 0 && `${pendingChanges.size} 个文件已修改`}
                 {pendingChanges.size > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) && '，'}
                 {pendingDragChanges.size > 0 && `${pendingDragChanges.size} 个拖动操作`}
@@ -7702,10 +7789,10 @@ ${currentCardContext}
               onClick={() => setShowAIChat(!showAIChat)}
               style={{
                 padding: '4px 12px',
-                border: '1px solid #d1d5da',
+                border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
-                backgroundColor: showAIChat ? '#2196f3' : '#fff',
-                color: showAIChat ? '#fff' : '#333',
+                backgroundColor: showAIChat ? themeStyles.accent : themeStyles.bgButton,
+                color: showAIChat ? themeStyles.textOnPrimary : themeStyles.textPrimary,
                 cursor: 'pointer',
                 fontSize: '12px',
                 fontWeight: '500',
@@ -7721,10 +7808,10 @@ ${currentCardContext}
               disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0)}
               style={{
                 padding: '4px 12px',
-                border: '1px solid #d1d5da',
+                border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
-                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) ? '#28a745' : '#6c757d',
-                color: '#fff',
+                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
+                color: themeStyles.textOnPrimary,
                 cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0)) ? 'not-allowed' : 'pointer',
                 fontSize: '12px',
                 fontWeight: '500',
@@ -7740,7 +7827,7 @@ ${currentCardContext}
         {/* 编辑器内容 + 题目区域 */}
         <div 
           id="editor-container"
-          style={{ flex: 1, padding: '0', overflow: 'hidden', position: 'relative', backgroundColor: '#fff', display: 'flex', flexDirection: 'column' }}
+          style={{ flex: 1, padding: '0', overflow: 'hidden', position: 'relative', backgroundColor: themeStyles.bgPrimary, display: 'flex', flexDirection: 'column' }}
         >
           {/* Markdown 编辑器 */}
           <div style={{ flex: 1, minHeight: 0 }}>
@@ -7764,6 +7851,8 @@ ${currentCardContext}
                     resize: 'none',
                     padding: '16px',
                     boxSizing: 'border-box',
+                    backgroundColor: themeStyles.bgPrimary,
+                    color: themeStyles.textPrimary,
                   }}
                 />
               </div>
@@ -7773,7 +7862,7 @@ ${currentCardContext}
                 alignItems: 'center',
                 justifyContent: 'center',
                 height: '100%',
-                color: '#586069',
+                color: themeStyles.textSecondary,
                 fontSize: '14px',
               }}>
                 {selectedFile?.type === 'node' ? '节点不支持编辑，请在 EXPLORER 中重命名' : '请从左侧选择一个卡片'}
@@ -7785,17 +7874,17 @@ ${currentCardContext}
           {selectedFile && selectedFile.type === 'card' && (
             <div
               style={{
-                borderTop: '1px solid #e1e4e8',
+                borderTop: `1px solid ${themeStyles.borderPrimary}`,
                 padding: '8px 12px',
-                background: '#fafbfc',
+                background: themeStyles.bgTertiary,
                 maxHeight: '260px',
                 overflowY: 'auto',
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontWeight: 600, fontSize: '13px', color: '#24292e' }}>本卡片的练习题</span>
+                <span style={{ fontWeight: 600, fontSize: '13px', color: themeStyles.textPrimary }}>本卡片的练习题</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: '12px', color: '#6a737d' }}>支持本地单选题</span>
+                  <span style={{ fontSize: '12px', color: themeStyles.textTertiary }}>支持本地单选题</span>
                   <button
                     onClick={() => setShowProblemForm(true)}
                     style={{
@@ -7871,6 +7960,7 @@ ${currentCardContext}
                           originalProblem={originalProblem}
                           docId={docId}
                           getMindMapUrl={getMindMapUrl}
+                          themeStyles={themeStyles}
                           onUpdate={(updatedProblem) => {
                             // 更新problem
                             const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
@@ -8097,9 +8187,9 @@ ${currentCardContext}
                       style={{
                         padding: '4px 8px',
                         borderRadius: '4px',
-                        border: '1px solid #d1d5da',
-                        background: '#fff',
-                        color: '#24292e',
+                        border: `1px solid ${themeStyles.borderSecondary}`,
+                        background: themeStyles.bgButton,
+                        color: themeStyles.textPrimary,
                         fontSize: '12px',
                         cursor: isSavingProblem ? 'not-allowed' : 'pointer',
                       }}
@@ -8112,9 +8202,9 @@ ${currentCardContext}
                       style={{
                         padding: '4px 10px',
                         borderRadius: '4px',
-                        border: '1px solid #0366d6',
-                        background: isSavingProblem ? '#c0dfff' : '#0366d6',
-                        color: '#fff',
+                        border: `1px solid ${themeStyles.accent}`,
+                        background: isSavingProblem ? themeStyles.textTertiary : themeStyles.accent,
+                        color: themeStyles.textOnPrimary,
                         fontSize: '12px',
                         cursor: isSavingProblem ? 'not-allowed' : 'pointer',
                       }}
@@ -8141,7 +8231,7 @@ ${currentCardContext}
           style={{
             width: '4px',
             height: '100%',
-            background: isResizing ? '#2196f3' : '#ddd',
+            background: isResizing ? themeStyles.accent : themeStyles.borderPrimary,
             cursor: 'col-resize',
             position: 'relative',
             flexShrink: 0,
@@ -8149,12 +8239,12 @@ ${currentCardContext}
           }}
           onMouseEnter={(e) => {
             if (!isResizing) {
-              e.currentTarget.style.background = '#bbb';
+              e.currentTarget.style.background = themeStyles.textSecondary;
             }
           }}
           onMouseLeave={(e) => {
             if (!isResizing) {
-              e.currentTarget.style.background = '#ddd';
+              e.currentTarget.style.background = themeStyles.borderPrimary;
             }
           }}
         >
@@ -8174,18 +8264,19 @@ ${currentCardContext}
         <div style={{
           width: `${chatPanelWidth}px`,
           height: '100%',
-          borderLeft: '1px solid #ddd',
+          borderLeft: `1px solid ${themeStyles.borderPrimary}`,
           display: 'flex',
           flexDirection: 'column',
-          background: '#fff',
+          background: themeStyles.bgPrimary,
           transition: isResizing ? 'none' : 'width 0.3s ease',
           flexShrink: 0,
         }}>
           <div style={{
             padding: '12px 16px',
-            borderBottom: '1px solid #ddd',
-            background: '#f5f5f5',
+            borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+            background: themeStyles.bgSecondary,
             fontWeight: 'bold',
+            color: themeStyles.textPrimary,
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -8198,7 +8289,7 @@ ${currentCardContext}
                 border: 'none',
                 fontSize: '18px',
                 cursor: 'pointer',
-                color: '#999',
+                color: themeStyles.textTertiary,
               }}
             >
               &times;
@@ -8214,18 +8305,19 @@ ${currentCardContext}
               display: 'flex',
               flexDirection: 'column',
               gap: '12px',
+              backgroundColor: themeStyles.bgPrimary,
             }}
           >
             {chatMessages.length === 0 && (
               <div style={{
                 textAlign: 'center',
-                color: '#999',
+                color: themeStyles.textTertiary,
                 padding: '20px',
                 fontSize: '14px',
               }}>
                 <p>你好！我是 AI 助手，可以帮助你操作思维导图。</p>
                 <p style={{ marginTop: '8px', fontSize: '12px' }}>例如：</p>
-                <ul style={{ textAlign: 'left', marginTop: '8px', fontSize: '12px', color: '#666' }}>
+                <ul style={{ textAlign: 'left', marginTop: '8px', fontSize: '12px', color: themeStyles.textSecondary }}>
                   <li>"在根节点下创建一个名为 '新节点' 的节点"</li>
                   <li>"在 '节点名' 下创建一个卡片，标题为 '新卡片'"</li>
                   <li>"将 '节点A' 移动到 '节点B' 下"</li>
@@ -8311,8 +8403,8 @@ ${currentCardContext}
                   <div style={{
                     padding: '8px 12px',
                     borderRadius: '8px',
-                    background: msg.role === 'user' ? '#2196f3' : '#f5f5f5',
-                    color: msg.role === 'user' ? '#fff' : '#333',
+                    background: msg.role === 'user' ? themeStyles.accent : themeStyles.bgSecondary,
+                    color: msg.role === 'user' ? themeStyles.textOnPrimary : themeStyles.textPrimary,
                     maxWidth: '85%',
                     fontSize: '14px',
                     whiteSpace: 'pre-wrap',
@@ -8353,8 +8445,8 @@ ${currentCardContext}
               <div style={{
                 padding: '8px 12px',
                 borderRadius: '8px',
-                background: '#f5f5f5',
-                color: '#999',
+                background: themeStyles.bgSecondary,
+                color: themeStyles.textTertiary,
                 fontSize: '14px',
               }}>
                 正在思考...
@@ -8365,8 +8457,8 @@ ${currentCardContext}
 
           <div style={{
             padding: '12px',
-            borderTop: '1px solid #ddd',
-            background: '#f5f5f5',
+            borderTop: `1px solid ${themeStyles.borderPrimary}`,
+            background: themeStyles.bgSecondary,
           }}>
             {/* 显示引用标签 */}
             {chatInputReferences.length > 0 && (
@@ -8376,9 +8468,9 @@ ${currentCardContext}
                 gap: '6px',
                 marginBottom: '8px',
                 padding: '6px',
-                background: '#fff',
+                background: themeStyles.bgPrimary,
                 borderRadius: '4px',
-                border: '1px solid #ddd',
+                border: `1px solid ${themeStyles.borderPrimary}`,
                 minHeight: '32px',
               }}>
                 {chatInputReferences.map((ref, index) => (
@@ -8389,17 +8481,17 @@ ${currentCardContext}
                       alignItems: 'center',
                       gap: '4px',
                       padding: '4px 8px',
-                      background: '#e3f2fd',
+                      background: themeStyles.bgDragOver,
                       borderRadius: '4px',
                       fontSize: '12px',
-                      border: '1px solid #90caf9',
+                      border: `1px solid ${themeStyles.accent}`,
                     }}
                   >
                     <span style={{ fontSize: '12px' }}>
                       {ref.type === 'node' ? '📂' : '📄'}
                     </span>
-                    <span style={{ fontWeight: '500', color: '#1976d2' }}>{ref.name}</span>
-                    <span style={{ opacity: 0.7, fontSize: '11px', color: '#1976d2' }}>
+                    <span style={{ fontWeight: '500', color: themeStyles.accent }}>{ref.name}</span>
+                    <span style={{ opacity: 0.7, fontSize: '11px', color: themeStyles.accent }}>
                       {ref.path.join(' > ')}
                     </span>
                     <button
@@ -8496,11 +8588,13 @@ ${currentCardContext}
               style={{
                 width: '100%',
                 padding: '8px',
-                border: '1px solid #ddd',
+                border: `1px solid ${themeStyles.borderPrimary}`,
                 borderRadius: '4px',
                 fontSize: '14px',
                 resize: 'none',
                 fontFamily: 'inherit',
+                backgroundColor: themeStyles.bgPrimary,
+                color: themeStyles.textPrimary,
               }}
             />
             <button
@@ -8512,8 +8606,8 @@ ${currentCardContext}
                 padding: '8px',
                 border: 'none',
                 borderRadius: '4px',
-                background: (!chatInput.trim() || isChatLoading) ? '#ccc' : '#2196f3',
-                color: '#fff',
+                background: (!chatInput.trim() || isChatLoading) ? themeStyles.textTertiary : themeStyles.accent,
+                color: themeStyles.textOnPrimary,
                 cursor: (!chatInput.trim() || isChatLoading) ? 'not-allowed' : 'pointer',
                 fontWeight: 'bold',
               }}
