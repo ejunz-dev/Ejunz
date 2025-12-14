@@ -20,6 +20,7 @@ interface MindMapNode {
   children?: string[];
   expanded?: boolean;
   level?: number;
+  order?: number; // 节点顺序
   style?: Record<string, any>;
   data?: Record<string, any>;
 }
@@ -93,19 +94,71 @@ type FileItem = {
   clipboardType?: 'copy' | 'cut';
 };
 
+// ReactFlow Node和Edge类型（用于OutlineView）
+interface ReactFlowNode {
+  id: string;
+  type?: string;
+  position: { x: number; y: number };
+  data: {
+    label?: string;
+    originalNode: MindMapNode;
+    [key: string]: any;
+  };
+}
+
+interface ReactFlowEdge {
+  id: string;
+  source: string;
+  target: string;
+  type?: string;
+  data?: {
+    originalEdge: MindMapEdge;
+    [key: string]: any;
+  };
+}
+
 const OutlineView = ({
   nodes,
   edges,
   onToggleExpand,
   onNodeClick,
   selectedNodeId,
+  rootNodeId,
 }: {
-  nodes: Node[];
-  edges: Edge[];
+  nodes: ReactFlowNode[];
+  edges: ReactFlowEdge[];
   onToggleExpand: (nodeId: string) => void;
   onNodeClick: (nodeId: string) => void;
   selectedNodeId: string | null;
+  rootNodeId?: string | null;
 }) => {
+  // 大纲节点的展开状态（不记录状态，默认展开）
+  const [expandedNodesOutline, setExpandedNodesOutline] = useState<Set<string>>(() => {
+    // 默认所有节点都展开
+    const allExpanded = new Set<string>();
+    nodes.forEach(node => {
+      allExpanded.add(node.id);
+    });
+    return allExpanded;
+  });
+  
+  // 内部的toggleExpand函数，管理大纲的展开状态（不持久化，仅内存中，完全独立于文件结构）
+  const handleToggleExpand = useCallback((nodeId: string) => {
+    setExpandedNodesOutline(prev => {
+      // 创建新的 Set 实例以确保 React 能检测到变化
+      const newSet = new Set(prev);
+      const wasExpanded = newSet.has(nodeId);
+      if (wasExpanded) {
+        newSet.delete(nodeId);
+      } else {
+        newSet.add(nodeId);
+      }
+      // 始终返回新的 Set，确保引用变化
+      return new Set(newSet);
+    });
+    // 不调用外部的onToggleExpand，保持大纲状态完全独立
+  }, []);
+  
   // 卡片展开状态管理（使用 localStorage 持久化）
   const getStorageKey = useCallback(() => {
     const docId = (window as any).UiContext?.mindMap?.docId;
@@ -170,7 +223,22 @@ const OutlineView = ({
     });
   }, [saveCardsExpandedState]);
 
-  // 当节点变化时，更新展开状态
+  // 当节点变化时，更新展开状态（大纲默认展开所有节点，不记录状态）
+  useEffect(() => {
+    setExpandedNodesOutline(prev => {
+      const newSet = new Set(prev);
+      let changed = false;
+      nodes.forEach(node => {
+        if (!newSet.has(node.id)) {
+          newSet.add(node.id);
+          changed = true;
+        }
+      });
+      return changed ? newSet : prev;
+    });
+  }, [nodes]);
+
+  // 当节点变化时，更新卡片展开状态
   useEffect(() => {
     const loaded = loadCardsExpandedState();
     const newState: Record<string, boolean> = {};
@@ -196,7 +264,7 @@ const OutlineView = ({
 
   // 构建节点树结构
   const buildTree = useMemo(() => {
-    const nodeMap = new Map<string, { node: Node; children: string[] }>();
+    const nodeMap = new Map<string, { node: ReactFlowNode; children: string[] }>();
     const rootNodes: string[] = [];
 
     // 初始化节点映射
@@ -212,30 +280,50 @@ const OutlineView = ({
       }
     });
 
+    // 为每个节点的子节点按照order排序（保持和原始mindMap中的顺序一致）
+    nodeMap.forEach((nodeData) => {
+      nodeData.children.sort((a, b) => {
+        const nodeA = nodes.find(n => n.id === a);
+        const nodeB = nodes.find(n => n.id === b);
+        const originalNodeA = nodeA?.data.originalNode as MindMapNode | undefined;
+        const originalNodeB = nodeB?.data.originalNode as MindMapNode | undefined;
+        const orderA = originalNodeA?.order || 0;
+        const orderB = originalNodeB?.order || 0;
+        return orderA - orderB;
+      });
+    });
+
     // 找到根节点（没有父节点的节点）
+    // 如果指定了rootNodeId，优先使用它作为根节点
+    if (rootNodeId && nodeMap.has(rootNodeId)) {
+      rootNodes.push(rootNodeId);
+    } else {
     nodes.forEach((node) => {
       const hasParent = edges.some((edge) => edge.target === node.id);
       if (!hasParent) {
         rootNodes.push(node.id);
       }
     });
+    }
 
     return { nodeMap, rootNodes };
-  }, [nodes, edges]);
+  }, [nodes, edges, rootNodeId]);
 
   // 获取根节点信息（用于显示标题）
   const rootNodeInfo = useMemo(() => {
-    if (buildTree.rootNodes.length === 0) return null;
-    const rootNodeId = buildTree.rootNodes[0]; // 通常只有一个根节点
-    const rootNodeData = buildTree.nodeMap.get(rootNodeId);
+    // 如果指定了rootNodeId，使用它作为根节点
+    const targetRootNodeId = rootNodeId || (buildTree.rootNodes.length > 0 ? buildTree.rootNodes[0] : null);
+    if (!targetRootNodeId) return null;
+    
+    const rootNodeData = buildTree.nodeMap.get(targetRootNodeId);
     if (!rootNodeData) return null;
     const originalNode = rootNodeData.node.data.originalNode as MindMapNode;
     return {
-      id: rootNodeId,
+      id: targetRootNodeId,
       text: originalNode?.text || '未命名节点',
       children: rootNodeData.children,
     };
-  }, [buildTree]);
+  }, [buildTree, rootNodeId]);
 
   // 获取节点的所有可见子节点（递归）
   const getAllVisibleChildren = useCallback((nodeId: string): string[] => {
@@ -243,8 +331,8 @@ const OutlineView = ({
     if (!nodeData) return [];
     
     const { node, children } = nodeData;
-    const originalNode = node.data.originalNode as MindMapNode;
-    const expanded = originalNode?.expanded !== false;
+    // 使用大纲的独立展开状态
+    const expanded = expandedNodesOutline.has(nodeId);
     
     if (!expanded || children.length === 0) return [];
     
@@ -255,12 +343,18 @@ const OutlineView = ({
     });
     
     return visibleChildren;
-  }, [buildTree]);
+  }, [buildTree, expandedNodesOutline]);
 
   // 获取节点的卡片列表
   const getNodeCards = useCallback((nodeId: string): Card[] => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-    return nodeCardsMap[nodeId] || [];
+    const cards = nodeCardsMap[nodeId] || [];
+    // 按order排序，保持和原始mindMap中的顺序一致
+    return [...cards].sort((a, b) => {
+      const orderA = (a.order as number) || 0;
+      const orderB = (b.order as number) || 0;
+      return orderA - orderB;
+    });
   }, []);
 
   // 构建卡片 URL
@@ -286,14 +380,38 @@ const OutlineView = ({
 
       const { node, children } = nodeData;
       const originalNode = node.data.originalNode as MindMapNode;
-      const expanded = originalNode?.expanded !== false; // 默认为 true
+      // 大纲默认折叠（使用独立的展开状态，不与文件结构同步）
+      const expanded = expandedNodesOutline.has(nodeId);
       const hasChildren = children.length > 0;
       const isSelected = selectedNodeId === nodeId;
       
-      // 获取节点的卡片列表
+      // 获取节点的卡片列表（已按order排序）
       const cards = getNodeCards(nodeId);
-      const hasCards = cards.length > 0;
-      const cardsExpandedState = cardsExpanded[nodeId] !== false; // 默认为 true（展开）
+      
+      // 获取子节点（按order排序）
+      const childNodes = children.map(childId => {
+        const childNodeData = buildTree.nodeMap.get(childId);
+        if (!childNodeData) return null;
+        const childOriginalNode = childNodeData.node.data.originalNode as MindMapNode;
+        return {
+          id: childId,
+          order: childOriginalNode?.order || 0,
+        };
+      }).filter(Boolean) as Array<{ id: string; order: number }>;
+      
+      // 合并节点和卡片，按照order混合排序
+      const allChildren: Array<{ type: 'node' | 'card'; id: string; order: number; data: any }> = [
+        ...childNodes.map(n => ({ type: 'node' as const, id: n.id, order: n.order, data: null })),
+        ...cards.map(c => ({ 
+          type: 'card' as const, 
+          id: c.docId || String(c.cid || ''), 
+          order: (c.order as number) || 0, 
+          data: c 
+        })),
+      ];
+      
+      // 按order排序
+      allChildren.sort((a, b) => (a.order || 0) - (b.order || 0));
 
       return (
         <div key={nodeId} style={{ position: 'relative' }}>
@@ -323,11 +441,11 @@ const OutlineView = ({
                 }}
               >
                 {/* 展开/折叠箭头按钮 */}
-                {hasChildren ? (
+                {hasChildren || cards.length > 0 ? (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onToggleExpand(nodeId);
+                      handleToggleExpand(nodeId);
                     }}
                     style={{
                       width: '18px',
@@ -384,104 +502,43 @@ const OutlineView = ({
                 >
                   {originalNode?.text || '未命名节点'}
                 </div>
-                
-                {/* 卡片折叠/展开按钮 */}
-                {hasCards && (
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      marginLeft: '8px',
-                      flexShrink: 0,
-                      position: 'relative',
-                      zIndex: 2,
-                    }}
-                  >
-                    {cardsExpandedState ? (
-                      // 展开状态：显示箭头按钮（用于折叠）
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleCardsExpanded(nodeId);
-                        }}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          border: 'none',
-                          background: 'transparent',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: 0,
-                          color: '#666',
-                        }}
-                        title="折叠卡片"
-                      >
-                        <span style={{ 
-                          fontSize: '10px',
-                          transform: 'rotate(90deg)',
-                          transition: 'transform 0.15s ease',
-                          display: 'inline-block',
-                          lineHeight: '1',
-                        }}>
-                          ▶
-                        </span>
-                      </button>
-                    ) : (
-                      // 折叠状态：显示带数字的圆按钮
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleCardsExpanded(nodeId);
-                        }}
-                        style={{
-                          width: '20px',
-                          height: '20px',
-                          borderRadius: '50%',
-                          border: '1px solid #4caf50',
-                          background: '#fff',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: 0,
-                          color: '#4caf50',
-                          fontSize: '11px',
-                          fontWeight: '500',
-                          lineHeight: '1',
-                        }}
-                        title="展开卡片"
-                      >
-                        {cards.length}
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
-            
-            {/* 卡片列表 */}
-            {hasCards && cardsExpandedState && (
-              <div style={{ 
-                marginLeft: '40px', 
-                marginTop: '4px', 
-                marginBottom: '8px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '4px',
-              }}>
-                {cards.map((card) => (
+                </div>
+                
+          {/* 子节点和卡片 - 按order混合排序，平铺显示 */}
+          {expanded && allChildren.length > 0 && (
+            <div style={{ position: 'relative', marginLeft: `${level * 24}px` }}>
+              {/* 侧边垂直范围线 */}
                   <div
-                    key={card.docId || card.cid}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (onCardClick) {
-                        onCardClick(card);
-                      } else {
-                        // 如果没有onCardClick，默认在新标签页打开
-                        window.open(getCardUrl(card, nodeId), '_blank');
-                      }
+                    style={{
+                  position: 'absolute',
+                  left: '8px',
+                  top: '0px',
+                  bottom: '0px',
+                  width: '1px',
+                  backgroundColor: '#e0e0e0',
+                  zIndex: 0,
+                    }}
+              />
+              <div>
+                {allChildren.map((item, index) => {
+                  if (item.type === 'card') {
+                    // 渲染卡片（平铺显示，无折叠按钮）
+                    const card = item.data as Card;
+                    return (
+                      <div
+                        key={`card-${card.docId || card.cid}`}
+                        style={{
+                          marginLeft: '24px',
+                          marginTop: '4px',
+                          marginBottom: '4px',
+                        }}
+                      >
+                        <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                      window.open(getCardUrl(card, nodeId), '_blank');
                     }}
                     style={{
                       display: 'inline-block',
@@ -507,32 +564,18 @@ const OutlineView = ({
                     title={card.title}
                   >
                     {card.title || '未命名卡片'}
-                  </div>
-                ))}
               </div>
-            )}
           </div>
-          
-          {/* 子节点 */}
-          {hasChildren && expanded && (
-            <div style={{ position: 'relative', marginLeft: `${level * 24}px` }}>
-              {/* 侧边垂直范围线 - 从父节点延伸到所有子节点 */}
-              <div
-                style={{
-                  position: 'absolute',
-                  left: '8px',
-                  top: '0px',
-                  bottom: '0px',
-                  width: '1px',
-                  backgroundColor: '#e0e0e0',
-                  zIndex: 0,
-                }}
-              />
-              <div>
-                {children.map((childId, index) => {
-                  const isLastChild = index === children.length - 1;
-                  const childHasSiblings = children.length > 1;
+                    );
+                  } else {
+                    // 渲染子节点
+                    const childId = item.id;
+                    const childNodeData = buildTree.nodeMap.get(childId);
+                    if (!childNodeData) return null;
+                    const isLastChild = index === allChildren.length - 1;
+                    const childHasSiblings = allChildren.length > 1;
                   return renderNodeTree(childId, level + 1, isLastChild, childHasSiblings);
+                  }
                 })}
               </div>
             </div>
@@ -540,7 +583,7 @@ const OutlineView = ({
         </div>
       );
     },
-    [buildTree, selectedNodeId, onToggleExpand, onNodeClick, getNodeCards, getCardUrl, cardsExpanded, toggleCardsExpanded]
+    [buildTree, selectedNodeId, handleToggleExpand, onNodeClick, getNodeCards, getCardUrl, cardsExpanded, toggleCardsExpanded, expandedNodesOutline]
   );
 
   return (
@@ -571,19 +614,100 @@ const OutlineView = ({
           >
             {rootNodeInfo.text}
           </div>
-          {/* 从根节点的子节点开始展示，level 从 0 开始 */}
-          {rootNodeInfo.children.length === 0 ? (
+          
+          {/* 从根节点的子节点和卡片开始展示，按order混合排序 */}
+          {(() => {
+            const rootCards = getNodeCards(rootNodeInfo.id);
+            const rootChildNodes = rootNodeInfo.children.map(childId => {
+              const childNodeData = buildTree.nodeMap.get(childId);
+              if (!childNodeData) return null;
+              const childOriginalNode = childNodeData.node.data.originalNode as MindMapNode;
+              return {
+                id: childId,
+                order: childOriginalNode?.order || 0,
+              };
+            }).filter(Boolean) as Array<{ id: string; order: number }>;
+            
+            // 合并根节点的子节点和卡片，按照order混合排序
+            const rootAllChildren: Array<{ type: 'node' | 'card'; id: string; order: number; data: any }> = [
+              ...rootChildNodes.map(n => ({ type: 'node' as const, id: n.id, order: n.order, data: null })),
+              ...rootCards.map(c => ({ 
+                type: 'card' as const, 
+                id: c.docId || String(c.cid || ''), 
+                order: (c.order as number) || 0, 
+                data: c 
+              })),
+            ];
+            
+            // 按order排序
+            rootAllChildren.sort((a, b) => (a.order || 0) - (b.order || 0));
+            
+            if (rootAllChildren.length === 0) {
+              return (
             <div style={{ textAlign: 'center', color: '#999', marginTop: '40px', fontSize: '14px' }}>
-              暂无子节点
+                  暂无内容
             </div>
-          ) : (
+              );
+            }
+            
+            return (
             <div style={{ paddingLeft: '4px' }}>
-              {rootNodeInfo.children.map((childId, index) => {
-                const isLastChild = index === rootNodeInfo.children.length - 1;
-                return renderNodeTree(childId, 0, isLastChild, rootNodeInfo.children.length > 1);
+                {rootAllChildren.map((item, index) => {
+                  if (item.type === 'card') {
+                    // 渲染根节点的卡片（平铺显示）
+                    const card = item.data as Card;
+                    return (
+                      <div
+                        key={`card-${card.docId || card.cid}`}
+                        style={{
+                          marginLeft: '24px',
+                          marginTop: '4px',
+                          marginBottom: '4px',
+                        }}
+                      >
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(getCardUrl(card, rootNodeInfo.id), '_blank');
+                          }}
+                          style={{
+                            display: 'inline-block',
+                            padding: '4px 8px',
+                            fontSize: '12px',
+                            color: '#1976d2',
+                            textDecoration: 'none',
+                            borderRadius: '4px',
+                            backgroundColor: '#f0f7ff',
+                            border: '1px solid #e3f2fd',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            maxWidth: 'fit-content',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = '#e3f2fd';
+                            e.currentTarget.style.textDecoration = 'underline';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = '#f0f7ff';
+                            e.currentTarget.style.textDecoration = 'none';
+                          }}
+                          title={card.title}
+                        >
+                          {card.title || '未命名卡片'}
+                        </div>
+                      </div>
+                    );
+                  } else {
+                    // 渲染根节点的子节点
+                    const childId = item.id;
+                    const isLastChild = index === rootAllChildren.length - 1;
+                    const childHasSiblings = rootAllChildren.length > 1;
+                    return renderNodeTree(childId, 0, isLastChild, childHasSiblings);
+                  }
               })}
             </div>
-          )}
+            );
+          })()}
         </>
       )}
     </div>
@@ -593,6 +717,9 @@ const OutlineView = ({
 function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialData: MindMapDoc }) {
   const [mindMap, setMindMap] = useState<MindMapDoc>(initialData);
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  // 标记是否正在手动设置选择（避免useEffect干扰）
+  const isManualSelectionRef = useRef(false);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
     const initialExpanded = new Set<string>();
     if (initialData?.nodes) {
@@ -698,7 +825,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
       };
       items.push(nodeFileItem);
 
-      // 如果节点展开，显示其卡片和子节点
+      // 如果节点展开，显示其卡片和子节点（按order混合排序）
       if (isExpanded) {
         // 获取该节点的卡片（按 order 排序）
         const nodeCards = (nodeCardsMap[nodeId] || [])
@@ -706,24 +833,43 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
             return !card.nodeId || card.nodeId === nodeId;
           })
           .sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
-
-        // 添加卡片
-        nodeCards.forEach((card: Card) => {
-          const cardFileItem: FileItem = {
-            type: 'card',
-            id: `card-${card.docId}`,
-            name: card.title || '未命名卡片',
-            nodeId: card.nodeId || nodeId,
-            cardId: card.docId,
-            parentId: card.nodeId || nodeId,
-            level: level + 1,
-          };
-          items.push(cardFileItem);
-        });
-
-        // 递归处理子节点
-        children.forEach((childId) => {
-          buildTree(childId, level + 1, nodeId);
+        
+        // 获取子节点（按 order 排序）
+        const childNodes = children
+          .map(childId => {
+            const childNode = mindMap.nodes.find(n => n.id === childId);
+            return childNode ? { id: childId, node: childNode, order: childNode.order || 0 } : null;
+          })
+          .filter(Boolean)
+          .sort((a, b) => (a!.order || 0) - (b!.order || 0)) as Array<{ id: string; node: MindMapNode; order: number }>;
+        
+        // 合并node和card，按照order混合排序（直接使用editor的逻辑）
+        const allChildren: Array<{ type: 'node' | 'card'; id: string; order: number; data: any }> = [
+          ...childNodes.map(n => ({ type: 'node' as const, id: n.id, order: n.order, data: n.node })),
+          ...nodeCards.map(c => ({ type: 'card' as const, id: c.docId, order: c.order || 0, data: c })),
+        ];
+        
+        // 按order排序
+        allChildren.sort((a, b) => (a.order || 0) - (b.order || 0));
+        
+        // 按照排序后的顺序添加
+        allChildren.forEach(item => {
+          if (item.type === 'card') {
+            const card = item.data as Card;
+            const cardFileItem: FileItem = {
+              type: 'card',
+              id: `card-${card.docId}`,
+              name: card.title || '未命名卡片',
+              nodeId: card.nodeId || nodeId,
+              cardId: card.docId,
+              parentId: card.nodeId || nodeId,
+              level: level + 1,
+            };
+            items.push(cardFileItem);
+          } else {
+            // 递归处理子节点
+            buildTree(item.id, level + 1, nodeId);
+          }
         });
       }
     };
@@ -746,6 +892,80 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
       }
       return newSet;
     });
+  }, []);
+
+  // 构建选中node及其子节点的nodes和edges（用于OutlineView）
+  const getNodeSubgraph = useCallback((nodeId: string): { nodes: ReactFlowNode[]; edges: ReactFlowEdge[] } => {
+    const nodeMap = new Map<string, MindMapNode>();
+    const edgeMap = new Map<string, MindMapEdge>();
+    const visitedNodes = new Set<string>();
+
+    // 递归收集节点及其所有子节点（包括子节点的子节点）
+    const collectNodes = (id: string) => {
+      if (visitedNodes.has(id)) return;
+      visitedNodes.add(id);
+
+      const node = mindMap.nodes.find(n => n.id === id);
+    if (!node) return;
+    
+      nodeMap.set(id, node);
+
+      // 收集所有子节点（递归）
+      const childEdges = mindMap.edges.filter(e => e.source === id);
+      childEdges.forEach(edge => {
+        edgeMap.set(edge.id, edge);
+        // 递归收集子节点的子节点
+        collectNodes(edge.target);
+    });
+    };
+
+    // 从被点击的node开始收集
+    collectNodes(nodeId);
+
+    // 转换为ReactFlow格式
+    const reactFlowNodes: ReactFlowNode[] = Array.from(nodeMap.values()).map(node => ({
+        id: node.id,
+      type: 'default',
+      position: { x: node.x || 0, y: node.y || 0 },
+        data: {
+        label: node.text || '未命名节点',
+          originalNode: node,
+      },
+    }));
+
+    // 只保留以收集到的节点为source的edges（确保被点击的node是根节点）
+    const reactFlowEdges: ReactFlowEdge[] = Array.from(edgeMap.values())
+      .filter(edge => nodeMap.has(edge.source) && nodeMap.has(edge.target))
+      .map(edge => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+        type: 'default',
+        data: {
+          originalEdge: edge,
+        },
+      }));
+
+    return { nodes: reactFlowNodes, edges: reactFlowEdges };
+  }, [mindMap]);
+
+  // 处理node展开/折叠（用于OutlineView）
+  const handleNodeToggleExpand = useCallback((nodeId: string) => {
+    // 更新mindMap中对应node的expanded状态
+    setMindMap(prev => ({
+      ...prev,
+      nodes: prev.nodes.map(node =>
+        node.id === nodeId
+          ? { ...node, expanded: node.expanded === false ? true : false }
+          : node
+      ),
+    }));
+  }, []);
+
+  // 处理node点击（用于OutlineView）
+  const handleNodeClick = useCallback((nodeId: string) => {
+    // 可以在这里添加额外的逻辑，比如导航到该node
+    console.log('Node clicked:', nodeId);
   }, []);
 
   // 使用ref来存储preloadCardContent函数，避免循环依赖和初始化顺序问题
@@ -869,15 +1089,23 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     if (!skipUrlUpdate) {
       const urlParams = new URLSearchParams(window.location.search);
       urlParams.set('cardId', String(card.docId));
+      urlParams.delete('nodeId'); // 清除nodeId参数
       const newUrl = window.location.pathname + '?' + urlParams.toString();
       window.history.pushState({ cardId: card.docId }, '', newUrl);
     }
   }, []);
 
-  // 根据URL参数加载对应的card
+  // 根据URL参数加载对应的card或node（只在初始化或URL变化时执行）
   useEffect(() => {
+    // 如果正在手动设置选择，跳过
+    if (isManualSelectionRef.current) {
+      isManualSelectionRef.current = false;
+      return;
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const cardId = urlParams.get('cardId');
+    const nodeId = urlParams.get('nodeId');
     
     if (cardId && fileTree.length > 0) {
       // 在fileTree中查找对应的card
@@ -889,16 +1117,32 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
         const card = nodeCards.find((c: Card) => c.docId === cardId);
         if (card && (!selectedCard || selectedCard.docId !== card.docId)) {
           handleSelectCard(card, true); // 跳过URL更新，避免循环
+          setSelectedNodeId(null); // 清除node选择
         }
       }
+    } else if (nodeId && fileTree.length > 0) {
+      // 在fileTree中查找对应的node
+      const nodeFile = fileTree.find(f => f.type === 'node' && f.nodeId === nodeId);
+      if (nodeFile && (!selectedNodeId || selectedNodeId !== nodeId)) {
+        setSelectedNodeId(nodeId);
+        setSelectedCard(null); // 清除card选择
+      }
+    } else if (!cardId && !nodeId) {
+      // 如果URL中没有参数，清除选择
+      setSelectedCard(null);
+      setSelectedNodeId(null);
     }
-  }, [fileTree, selectedCard, handleSelectCard]);
+  }, [fileTree, selectedCard, selectedNodeId, handleSelectCard]);
 
   // 监听浏览器前进/后退事件
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
       const urlParams = new URLSearchParams(window.location.search);
       const cardId = urlParams.get('cardId');
+      const nodeId = urlParams.get('nodeId');
+      
+      // 标记为popstate事件，避免useEffect干扰
+      isManualSelectionRef.current = false;
       
       if (cardId && fileTree.length > 0) {
         const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
@@ -908,10 +1152,18 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           const card = nodeCards.find((c: Card) => c.docId === cardId);
           if (card && (!selectedCard || selectedCard.docId !== card.docId)) {
             handleSelectCard(card, true); // 跳过URL更新，避免循环
+            setSelectedNodeId(null); // 清除node选择
           }
         }
-      } else if (!cardId) {
+      } else if (nodeId && fileTree.length > 0) {
+        const nodeFile = fileTree.find(f => f.type === 'node' && f.nodeId === nodeId);
+        if (nodeFile && (!selectedNodeId || selectedNodeId !== nodeId)) {
+          setSelectedNodeId(nodeId);
+          setSelectedCard(null); // 清除card选择
+        }
+      } else if (!cardId && !nodeId) {
         setSelectedCard(null);
+        setSelectedNodeId(null);
       }
     };
     
@@ -919,7 +1171,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [fileTree, selectedCard, handleSelectCard]);
+  }, [fileTree, selectedCard, selectedNodeId, handleSelectCard]);
 
   // 初始化图片缓存
   const initImageCache = useCallback(async () => {
@@ -981,7 +1233,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     if (imageUrls.length === 0) return html;
     
     await initImageCache();
-    
+
     const urlMap = new Map<string, string>();
     const imagePromises = imageUrls.map(async (originalUrl) => {
       try {
@@ -1183,13 +1435,13 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                     }
                   });
                   
-                  // 清除缓存并重新开始缓存
-                  cardContentCacheRef.current = {};
-                  cachedCardsRef.current.clear();
-                  setCachedCount(0);
-                  cachingTaskRef.current.cancelled = false;
-                  setIsCachingPaused(false);
-                  startCaching();
+                  // 清除缓存并重新开始缓存（已注释）
+                  // cardContentCacheRef.current = {};
+                  // cachedCardsRef.current.clear();
+                  // setCachedCount(0);
+                  // cachingTaskRef.current.cancelled = false;
+                  // setIsCachingPaused(false);
+                  // startCaching();
                 }
               }).catch((error) => {
                 console.error('Failed to reload data:', error);
@@ -1426,7 +1678,9 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
               文件结构
             </div>
             {fileTree.map((file) => {
-              const isSelected = file.type === 'card' && selectedCard && file.cardId === selectedCard.docId;
+              const isSelectedCard = file.type === 'card' && selectedCard && file.cardId === selectedCard.docId;
+              const isSelectedNode = file.type === 'node' && selectedNodeId === file.nodeId;
+              const isSelected = isSelectedCard || isSelectedNode;
               return (
                 <div
                   key={file.id}
@@ -1436,10 +1690,31 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                       const nodeCards = nodeCardsMap[file.nodeId || ''] || [];
                       const card = nodeCards.find((c: Card) => c.docId === file.cardId);
                       if (card) {
+                        // 标记为手动选择，避免useEffect干扰
+                        isManualSelectionRef.current = true;
                         handleSelectCard(card);
+                        setSelectedNodeId(null); // 清除node选择
+                        // handleSelectCard内部已经更新URL了
                       }
                     } else {
-                      toggleNodeExpanded(file.nodeId || '');
+                      // 点击node，显示该node的缩略图
+                      const nodeId = file.nodeId || null;
+                      
+                      // 标记为手动选择，避免useEffect干扰
+                      isManualSelectionRef.current = true;
+                      setSelectedNodeId(nodeId);
+                      setSelectedCard(null); // 清除card选择
+                      
+                      // 更新URL参数
+                      const urlParams = new URLSearchParams(window.location.search);
+                      if (nodeId) {
+                        urlParams.set('nodeId', nodeId);
+                        urlParams.delete('cardId'); // 清除cardId参数
+                      } else {
+                        urlParams.delete('nodeId');
+                      }
+                      const newUrl = window.location.pathname + '?' + urlParams.toString();
+                      window.history.pushState({ nodeId }, '', newUrl);
                     }
                   }}
                   style={{
@@ -1501,7 +1776,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           </div>
         </div>
 
-        {/* 右侧card内容显示区域 */}
+        {/* 右侧内容显示区域 */}
         {selectedCard ? (
           <div style={{
             flex: 1,
@@ -1520,26 +1795,6 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                 <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: '#333' }}>
                   {selectedCard.title || '未命名卡片'}
                 </h3>
-                {/* {cachingProgress && cachingProgress.nodeId === selectedCard.nodeId && (
-                  <div style={{ fontSize: '12px', color: '#666', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>缓存中...</span>
-                    <div style={{ 
-                      width: '100px', 
-                      height: '6px', 
-                      backgroundColor: '#e0e0e0', 
-                      borderRadius: '3px',
-                      overflow: 'hidden',
-                    }}>
-                      <div style={{
-                        width: `${(cachingProgress.current / cachingProgress.total) * 100}%`,
-                        height: '100%',
-                        backgroundColor: '#4caf50',
-                        transition: 'width 0.3s ease',
-                      }} />
-                    </div>
-                    <span>{cachingProgress.current}/{cachingProgress.total}</span>
-                  </div>
-                )} */}
               </div>
             </div>
             <div style={{
@@ -1558,6 +1813,45 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
               />
             </div>
           </div>
+        ) : selectedNodeId ? (
+          <div style={{
+            flex: 1,
+            borderLeft: '1px solid #e0e0e0',
+            backgroundColor: '#fff',
+            overflow: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            <div style={{
+              padding: '16px',
+              borderBottom: '1px solid #e0e0e0',
+              backgroundColor: '#f6f8fa',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: '#333' }}>
+                  {mindMap.nodes.find(n => n.id === selectedNodeId)?.text || '未命名节点'}
+                </h3>
+              </div>
+            </div>
+            <div style={{
+              flex: 1,
+              overflow: 'auto',
+            }}>
+              {(() => {
+                const subgraph = getNodeSubgraph(selectedNodeId);
+                return (
+        <OutlineView
+                    nodes={subgraph.nodes}
+                    edges={subgraph.edges}
+                    onToggleExpand={handleNodeToggleExpand}
+                    onNodeClick={handleNodeClick}
+          selectedNodeId={selectedNodeId}
+                    rootNodeId={selectedNodeId}
+        />
+                );
+              })()}
+            </div>
+          </div>
         ) : (
           <div style={{
             flex: 1,
@@ -1567,7 +1861,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
             color: '#999',
             fontSize: '14px',
           }}>
-            请从左侧选择一个卡片
+            请从左侧选择一个节点或卡片
           </div>
         )}
       </div>
