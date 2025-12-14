@@ -1494,7 +1494,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
   }, [triggerExpandAutoSave]);
 
   // 选择文件
-  const handleSelectFile = useCallback(async (file: FileItem) => {
+  const handleSelectFile = useCallback(async (file: FileItem, skipUrlUpdate = false) => {
     // 如果是多选模式，切换选择状态
     if (isMultiSelectMode) {
       // 使用内联逻辑，避免循环依赖
@@ -1571,6 +1571,14 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     setSelectedFile(file);
     selectedFileRef.current = file; // 更新ref，确保onChange回调能访问到最新的值
     
+    // 如果是card类型，更新URL参数（除非skipUrlUpdate为true）
+    if (!skipUrlUpdate && file.type === 'card' && file.cardId) {
+      const urlParams = new URLSearchParams(window.location.search);
+      urlParams.set('cardId', String(file.cardId));
+      const newUrl = window.location.pathname + '?' + urlParams.toString();
+      window.history.pushState({ cardId: file.cardId }, '', newUrl);
+    }
+    
     // 先检查是否有待提交的修改
     const pendingChange = pendingChanges.get(file.id);
     let content = '';
@@ -1595,6 +1603,44 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     
     setFileContent(content);
   }, [mindMap.nodes, selectedFile, editorInstance, fileContent, pendingChanges, isMultiSelectMode, fileTree]);
+
+  // 根据URL参数加载对应的card
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const cardId = urlParams.get('cardId');
+    
+    if (cardId && fileTree.length > 0) {
+      // 在fileTree中查找对应的card
+      const cardFile = fileTree.find(f => f.type === 'card' && f.cardId === cardId);
+      if (cardFile && (!selectedFile || selectedFile.id !== cardFile.id)) {
+        // 如果找到了card且当前没有选中或选中的不是这个card，则选中它
+        // 跳过URL更新，避免循环
+        handleSelectFile(cardFile, true);
+      }
+    }
+  }, [fileTree, selectedFile, handleSelectFile]); // 当fileTree变化时检查URL参数
+
+  // 监听浏览器前进/后退事件
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const cardId = urlParams.get('cardId');
+      
+      if (cardId && fileTree.length > 0) {
+        // 在fileTree中查找对应的card
+        const cardFile = fileTree.find(f => f.type === 'card' && f.cardId === cardId);
+        if (cardFile && (!selectedFile || selectedFile.id !== cardFile.id)) {
+          // 跳过URL更新，避免循环
+          handleSelectFile(cardFile, true);
+        }
+      }
+    };
+    
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [fileTree, selectedFile, handleSelectFile]);
 
   // 生成单选题
   const handleCreateSingleProblem = useCallback(async () => {
