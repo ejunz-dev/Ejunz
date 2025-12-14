@@ -4,13 +4,6 @@ import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
 import { request } from 'vj/utils';
-import ReactFlow, {
-  Node,
-  Edge,
-  useNodesState,
-  useEdgesState,
-} from 'reactflow';
-import 'reactflow/dist/style.css';
 
 interface MindMapNode {
   id: string;
@@ -83,7 +76,22 @@ interface Card {
   content: string;
   updateAt: string;
   createdAt?: string;
+  order?: number;
+  nodeId?: string;
 }
+
+// FileItem 接口（用于文件树）
+type FileItem = {
+  type: 'node' | 'card';
+  id: string;
+  name: string;
+  nodeId?: string;
+  cardId?: string;
+  parentId?: string;
+  level: number;
+  hasPendingChanges?: boolean;
+  clipboardType?: 'copy' | 'cut';
+};
 
 const OutlineView = ({
   nodes,
@@ -464,14 +472,16 @@ const OutlineView = ({
                 gap: '4px',
               }}>
                 {cards.map((card) => (
-                  <a
+                  <div
                     key={card.docId || card.cid}
-                    href={getCardUrl(card, nodeId)}
                     onClick={(e) => {
                       e.stopPropagation();
-                      // 在新标签页打开
-                      window.open(getCardUrl(card, nodeId), '_blank');
-                      e.preventDefault();
+                      if (onCardClick) {
+                        onCardClick(card);
+                      } else {
+                        // 如果没有onCardClick，默认在新标签页打开
+                        window.open(getCardUrl(card, nodeId), '_blank');
+                      }
                     }}
                     style={{
                       display: 'inline-block',
@@ -497,7 +507,7 @@ const OutlineView = ({
                     title={card.title}
                   >
                     {card.title || '未命名卡片'}
-                  </a>
+                  </div>
                 ))}
               </div>
             )}
@@ -582,15 +592,32 @@ const OutlineView = ({
 
 function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialData: MindMapDoc }) {
   const [mindMap, setMindMap] = useState<MindMapDoc>(initialData);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  
-  // 先定义状态
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
+    const initialExpanded = new Set<string>();
+    if (initialData?.nodes) {
+      initialData.nodes.forEach(node => {
+        if (node.expanded !== false) {
+          initialExpanded.add(node.id);
+        }
+      });
+    }
+    return initialExpanded;
+  });
 
-  // 使用 ref 存储最新的节点和边状态，确保保存时获取最新数据
-  const nodesRef = useRef(nodes);
-  const edgesRef = useRef(edges);
+  // 卡片内容缓存
+  const cardContentCacheRef = useRef<Record<string, string>>({});
+  const imageCacheRef = useRef<Cache | null>(null);
+  // 缓存状态：记录哪些card已经被缓存
+  const cachedCardsRef = useRef<Set<string>>(new Set());
+  // 缓存进度：记录正在缓存的进度
+  const [cachingProgress, setCachingProgress] = useState<{ current: number; total: number } | null>(null);
+  // 缓存控制：是否暂停缓存
+  const [isCachingPaused, setIsCachingPaused] = useState(false);
+  // 缓存管理侧边栏是否显示
+  const [showCachePanel, setShowCachePanel] = useState(false);
+  // 缓存任务是否正在运行
+  const cachingTaskRef = useRef<{ cancelled: boolean }>({ cancelled: false });
 
   // 设置页面背景色
   useEffect(() => {
@@ -607,229 +634,511 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     };
   }, []);
 
-  // 同步 ref 和 state
+  // 当 mindMap 更新时，更新展开状态
   useEffect(() => {
-    nodesRef.current = nodes;
-  }, [nodes]);
-
-  useEffect(() => {
-    edgesRef.current = edges;
-  }, [edges]);
-
-  // 自动保存的防抖定时器
-  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // 辅助函数：获取带 domainId 的 mindmap URL
-  const getMindMapUrl = (path: string, docId: string): string => {
-    const domainId = (window as any).UiContext?.domainId || 'system';
-    return `/d/${domainId}/mindmap/${docId}${path}`;
-  };
-
-  // 保存思维导图
-  // isAutoSave: 是否为自动保存，自动保存时不显示成功提示
-  const handleSave = useCallback(async (isAutoSave: boolean = false) => {
-    try {
-      // 使用 ref 获取最新的节点和边状态
-      const currentNodes = nodesRef.current;
-      const currentEdges = edgesRef.current;
-
-      // 收集所有节点的位置和属性
-      const updatedNodes = currentNodes.map((node) => {
-        const originalNode = node.data.originalNode as MindMapNode;
-        // 确保位置是有效的数字
-        const x = typeof node.position.x === 'number' && !isNaN(node.position.x) 
-          ? node.position.x 
-          : (originalNode.x || 0);
-        const y = typeof node.position.y === 'number' && !isNaN(node.position.y) 
-          ? node.position.y 
-          : (originalNode.y || 0);
-        
-        const updatedNode = {
-          ...originalNode,
-          x,
-          y,
-          expanded: originalNode.expanded, // 保存 expanded 状态
-        };
-        
-        return updatedNode;
+    setExpandedNodes(prev => {
+      const newSet = new Set(prev);
+      mindMap.nodes.forEach(node => {
+        if (node.expanded !== false && !newSet.has(node.id)) {
+          newSet.add(node.id);
+        } else if (node.expanded === false && newSet.has(node.id)) {
+          newSet.delete(node.id);
+        }
       });
+      return newSet;
+    });
+  }, [mindMap]);
 
-      // 获取当前视口状态（文件模式不需要视口，但保持兼容性）
-      const viewport = undefined;
+  // 构建文件树
+  const fileTree = useMemo(() => {
+    const items: FileItem[] = [];
+    const nodeMap = new Map<string, { node: MindMapNode; children: string[] }>();
+    const rootNodes: string[] = [];
 
-      const response = await request.post(getMindMapUrl('/save', docId), {
-        nodes: updatedNodes,
-        edges: currentEdges.map(e => ({
-          id: e.id,
-          source: e.source,
-          target: e.target,
-          label: e.label,
-          style: e.style,
-          type: e.type,
-          color: (e.style as any)?.stroke,
-          width: (e.style as any)?.strokeWidth,
-        })),
-        viewport: viewport,
-        operationDescription: '文件模式保存',
-      });
-      
-      if (!isAutoSave) {
-        Notification.success('保存成功');
+    // 初始化节点映射
+    mindMap.nodes.forEach((node) => {
+      nodeMap.set(node.id, { node, children: [] });
+    });
+
+    // 构建父子关系
+    mindMap.edges.forEach((edge) => {
+      const parent = nodeMap.get(edge.source);
+      if (parent) {
+        parent.children.push(edge.target);
       }
-    } catch (error: any) {
-      Notification.error('保存失败: ' + (error.message || '未知错误'));
-    }
-  }, [docId]);
-
-  // 触发自动保存（带防抖）
-  const triggerAutoSave = useCallback(() => {
-    // 清除之前的定时器（如果有）
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-
-    saveTimerRef.current = setTimeout(() => {
-      handleSave(true); // 传入 true 表示自动保存，不显示成功提示
-      saveTimerRef.current = null;
-    }, 1500);
-  }, [handleSave]);
-
-  // 处理节点展开/折叠
-  const handleToggleExpand = useCallback((nodeId: string) => {
-    const node = nodes.find(n => n.id === nodeId);
-    if (!node) return;
-    
-    const originalNode = node.data.originalNode as MindMapNode;
-    if (!originalNode) return;
-
-    const newExpanded = !(originalNode.expanded !== false); // 切换状态，默认为 true
-
-    // 立即更新本地状态，实现即时 UI 响应
-    setNodes((nds) => {
-      const updatedNodes = nds.map((n) =>
-        n.id === nodeId
-          ? {
-              ...n,
-              data: {
-                ...n.data,
-                originalNode: {
-                  ...originalNode,
-                  expanded: newExpanded,
-                },
-              },
-            }
-          : n
-      );
-      // 同时更新 nodesRef，确保自动保存时能获取最新状态
-      nodesRef.current = updatedNodes;
-      return updatedNodes;
     });
 
-    // 触发自动保存（1.5秒后保存到后端）
-    triggerAutoSave();
-  }, [nodes, setNodes, triggerAutoSave]);
-
-  // 将 MindMapNode 转换为 ReactFlow Node
-  const initialFlowNodes = useMemo(() => {
-    const flowEdges = mindMap.edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-    })) as Edge[];
-    
-    return mindMap.nodes.map((node) => {
-      const x = typeof node.x === 'number' && !isNaN(node.x) ? node.x : 0;
-      const y = typeof node.y === 'number' && !isNaN(node.y) ? node.y : 0;
-      
-      return {
-        id: node.id,
-        type: 'mindmap',
-        position: { x, y },
-        draggable: false,
-        data: {
-          originalNode: node,
-          edges: flowEdges,
-          docId: docId,
-          mmid: mindMap.mmid,
-          branch: mindMap.currentBranch || 'main',
-        },
-      } as Node;
-    });
-  }, [mindMap.nodes, mindMap.edges, docId, mindMap.mmid, mindMap.currentBranch]);
-
-  // 将 MindMapEdge 转换为 ReactFlow Edge
-  const initialFlowEdges = useMemo(() => {
-    return mindMap.edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      type: 'custom',
-      animated: false,
-      style: {
-        stroke: edge.color || '#2196f3',
-        strokeWidth: edge.width || 2,
-      },
-    })) as Edge[];
-  }, [mindMap.edges]);
-
-  // 初始化节点和边
-  useEffect(() => {
-    setNodes(initialFlowNodes);
-    setEdges(initialFlowEdges);
-  }, [initialFlowNodes, initialFlowEdges, setNodes, setEdges]);
-
-  // 当 mindMap 更新时，更新节点和边
-  useEffect(() => {
-    const flowEdges = mindMap.edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-    })) as Edge[];
-    
-    const updatedNodes = mindMap.nodes.map((node) => {
-      const x = typeof node.x === 'number' && !isNaN(node.x) ? node.x : 0;
-      const y = typeof node.y === 'number' && !isNaN(node.y) ? node.y : 0;
-      
-      return {
-        id: node.id,
-        type: 'mindmap',
-        position: { x, y },
-        draggable: false,
-        data: {
-          originalNode: node,
-          edges: flowEdges,
-          docId: docId,
-          mmid: mindMap.mmid,
-          branch: mindMap.currentBranch || 'main',
-        },
-      } as Node;
+    // 找到根节点
+    mindMap.nodes.forEach((node) => {
+      const hasParent = mindMap.edges.some((edge) => edge.target === node.id);
+      if (!hasParent) {
+        rootNodes.push(node.id);
+      }
     });
 
-    const updatedEdges = mindMap.edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      type: 'custom',
-      animated: false,
-      style: {
-        stroke: edge.color || '#2196f3',
-        strokeWidth: edge.width || 2,
-      },
-    })) as Edge[];
+    // 获取最新的 nodeCardsMap
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
 
-    setNodes(updatedNodes);
-    setEdges(updatedEdges);
-  }, [mindMap, docId, setNodes, setEdges]);
+    // 递归构建文件树
+    const buildTree = (nodeId: string, level: number, parentId?: string) => {
+      const nodeData = nodeMap.get(nodeId);
+      if (!nodeData) return;
 
-  // 组件卸载时清理定时器
-  useEffect(() => {
-    return () => {
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
+      const { node, children } = nodeData;
+      const isExpanded = expandedNodes.has(nodeId);
+
+      // 创建节点 FileItem
+      const nodeFileItem: FileItem = {
+        type: 'node',
+        id: nodeId,
+        name: node.text || '未命名节点',
+        nodeId: nodeId,
+        parentId,
+        level,
+      };
+      items.push(nodeFileItem);
+
+      // 如果节点展开，显示其卡片和子节点
+      if (isExpanded) {
+        // 获取该节点的卡片（按 order 排序）
+        const nodeCards = (nodeCardsMap[nodeId] || [])
+          .filter((card: Card) => {
+            return !card.nodeId || card.nodeId === nodeId;
+          })
+          .sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+
+        // 添加卡片
+        nodeCards.forEach((card: Card) => {
+          const cardFileItem: FileItem = {
+            type: 'card',
+            id: `card-${card.docId}`,
+            name: card.title || '未命名卡片',
+            nodeId: card.nodeId || nodeId,
+            cardId: card.docId,
+            parentId: card.nodeId || nodeId,
+            level: level + 1,
+          };
+          items.push(cardFileItem);
+        });
+
+        // 递归处理子节点
+        children.forEach((childId) => {
+          buildTree(childId, level + 1, nodeId);
+        });
       }
     };
+
+    rootNodes.forEach((rootId) => {
+      buildTree(rootId, 0);
+    });
+
+    return items;
+  }, [mindMap.nodes, mindMap.edges, expandedNodes]);
+
+  // 切换节点展开/折叠
+  const toggleNodeExpanded = useCallback((nodeId: string) => {
+    setExpandedNodes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(nodeId)) {
+        newSet.delete(nodeId);
+      } else {
+        newSet.add(nodeId);
+      }
+      return newSet;
+    });
   }, []);
+
+  // 使用ref来存储preloadCardContent函数，避免循环依赖和初始化顺序问题
+  // const preloadCardContentRef = useRef<((card: Card) => Promise<void>) | null>(null);
+
+  // 全量预加载所有card
+  // const preloadAllCards = useCallback(async () => {
+  //   if (isCachingPaused || cachingTaskRef.current.cancelled) {
+  //     return;
+  //   }
+
+  //   const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+  //   const allCards: Card[] = [];
+    
+  //   // 收集所有card
+  //   Object.values(nodeCardsMap).forEach((cards: Card[]) => {
+  //     if (Array.isArray(cards)) {
+  //       allCards.push(...cards);
+  //     }
+  //   });
+
+  //   // 过滤掉已经缓存的card
+  //   const cardsToPreload = allCards.filter(card => {
+  //     const cardIdStr = String(card.docId);
+  //     return !cachedCardsRef.current.has(cardIdStr);
+  //   });
+
+  //   if (cardsToPreload.length === 0) {
+  //     setCachingProgress(null);
+  //     return;
+  //   }
+
+  //   // 显示进度
+  //   setCachingProgress({ current: 0, total: cardsToPreload.length });
+
+  //   // 逐个预加载card
+  //   for (let i = 0; i < cardsToPreload.length; i++) {
+  //     // 检查是否暂停或取消
+  //     if (isCachingPaused || cachingTaskRef.current.cancelled) {
+  //       break;
+  //     }
+
+  //     const card = cardsToPreload[i];
+      
+  //     // 使用ref调用preloadCardContent
+  //     if (preloadCardContentRef.current) {
+  //       try {
+  //         await preloadCardContentRef.current(card);
+  //       } catch (error) {
+  //         console.error(`Failed to preload card ${card.docId}:`, error);
+  //       }
+  //     }
+      
+  //     // 更新进度
+  //     setCachingProgress({ current: i + 1, total: cardsToPreload.length });
+  //   }
+
+  //   // 如果完成或取消，隐藏进度
+  //   if (!isCachingPaused && !cachingTaskRef.current.cancelled) {
+  //     setCachingProgress(null);
+  //   }
+  // }, [isCachingPaused]);
+
+  // 开始缓存
+  // const startCaching = useCallback(() => {
+  //   setIsCachingPaused(false);
+  //   cachingTaskRef.current.cancelled = false;
+  //   preloadAllCards();
+  // }, [preloadAllCards]);
+
+  // 暂停缓存
+  // const pauseCaching = useCallback(() => {
+  //   setIsCachingPaused(true);
+  // }, []);
+
+  // 删除缓存
+  // const clearCache = useCallback(async () => {
+  //   // 清空内容缓存
+  //   cardContentCacheRef.current = {};
+  //   cachedCardsRef.current.clear();
+  //   setCachedCount(0);
+    
+  //   // 清空图片缓存
+  //   if (imageCacheRef.current) {
+  //     try {
+  //       await caches.delete('mindmap-card-images-v1');
+  //       imageCacheRef.current = null;
+  //     } catch (error) {
+  //       console.error('Failed to clear image cache:', error);
+  //     }
+  //   }
+    
+  //   // 重置进度
+  //   setCachingProgress(null);
+  //   cachingTaskRef.current.cancelled = true;
+    
+  //   Notification.success('缓存已清空');
+  // }, []);
+
+  // 计算缓存大小
+  // const getCacheSize = useCallback(() => {
+  //   let size = 0;
+  //   Object.values(cardContentCacheRef.current).forEach((html: string) => {
+  //     size += new Blob([html]).size;
+  //   });
+  //   return size;
+  // }, []);
+
+  // 格式化缓存大小
+  // const formatCacheSize = useCallback((bytes: number) => {
+  //   if (bytes < 1024) return bytes + ' B';
+  //   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+  //   return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  // }, []);
+
+  // 选择card
+  const handleSelectCard = useCallback((card: Card, skipUrlUpdate = false) => {
+    setSelectedCard(card);
+    
+    // 更新URL参数（除非skipUrlUpdate为true）
+    if (!skipUrlUpdate) {
+      const urlParams = new URLSearchParams(window.location.search);
+      urlParams.set('cardId', String(card.docId));
+      const newUrl = window.location.pathname + '?' + urlParams.toString();
+      window.history.pushState({ cardId: card.docId }, '', newUrl);
+    }
+  }, []);
+
+  // 根据URL参数加载对应的card
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const cardId = urlParams.get('cardId');
+    
+    if (cardId && fileTree.length > 0) {
+      // 在fileTree中查找对应的card
+      const cardFile = fileTree.find(f => f.type === 'card' && f.cardId === cardId);
+      if (cardFile) {
+        // 从nodeCardsMap中获取card数据
+        const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+        const nodeCards = nodeCardsMap[cardFile.nodeId || ''] || [];
+        const card = nodeCards.find((c: Card) => c.docId === cardId);
+        if (card && (!selectedCard || selectedCard.docId !== card.docId)) {
+          handleSelectCard(card, true); // 跳过URL更新，避免循环
+        }
+      }
+    }
+  }, [fileTree, selectedCard, handleSelectCard]);
+
+  // 监听浏览器前进/后退事件
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const cardId = urlParams.get('cardId');
+      
+      if (cardId && fileTree.length > 0) {
+        const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+        const cardFile = fileTree.find(f => f.type === 'card' && f.cardId === cardId);
+        if (cardFile) {
+          const nodeCards = nodeCardsMap[cardFile.nodeId || ''] || [];
+          const card = nodeCards.find((c: Card) => c.docId === cardId);
+          if (card && (!selectedCard || selectedCard.docId !== card.docId)) {
+            handleSelectCard(card, true); // 跳过URL更新，避免循环
+          }
+        }
+      } else if (!cardId) {
+        setSelectedCard(null);
+      }
+    };
+    
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [fileTree, selectedCard, handleSelectCard]);
+
+  // 初始化图片缓存
+  const initImageCache = useCallback(async () => {
+    if ('caches' in window && !imageCacheRef.current) {
+      try {
+        imageCacheRef.current = await caches.open('mindmap-card-images-v1');
+      } catch (error) {
+        console.error('Failed to open cache:', error);
+      }
+    }
+  }, []);
+
+  // 从缓存或网络获取图片
+  const getCachedImage = useCallback(async (url: string): Promise<string> => {
+    if (!imageCacheRef.current) {
+      await initImageCache();
+    }
+    
+    if (!imageCacheRef.current) {
+      return url;
+    }
+    
+    try {
+      const cachedResponse = await imageCacheRef.current.match(url);
+      if (cachedResponse) {
+        const blob = await cachedResponse.blob();
+        return URL.createObjectURL(blob);
+      }
+      
+      const response = await fetch(url);
+      if (response.ok) {
+        const responseClone = response.clone();
+        await imageCacheRef.current.put(url, responseClone);
+        const blob = await response.blob();
+        return URL.createObjectURL(blob);
+      }
+    } catch (error) {
+      console.error(`Failed to cache image ${url}:`, error);
+    }
+    
+    return url;
+  }, [initImageCache]);
+
+  // 预加载并缓存图片
+  const preloadAndCacheImages = useCallback(async (html: string): Promise<string> => {
+    if (!html) return html;
+    
+    const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+    const imageUrls: string[] = [];
+    let match;
+    
+    while ((match = imgRegex.exec(html)) !== null) {
+      const url = match[1];
+      if (url && !url.startsWith('blob:') && !url.startsWith('data:')) {
+        imageUrls.push(url);
+      }
+    }
+    
+    if (imageUrls.length === 0) return html;
+    
+    await initImageCache();
+    
+    const urlMap = new Map<string, string>();
+    const imagePromises = imageUrls.map(async (originalUrl) => {
+      try {
+        const cachedUrl = await getCachedImage(originalUrl);
+        if (cachedUrl !== originalUrl) {
+          urlMap.set(originalUrl, cachedUrl);
+        }
+      } catch (error) {
+        console.error(`Failed to cache image ${originalUrl}:`, error);
+      }
+    });
+    
+    await Promise.all(imagePromises);
+    
+    let updatedHtml = html;
+    urlMap.forEach((cachedUrl, originalUrl) => {
+      const escapedUrl = originalUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      updatedHtml = updatedHtml.replace(new RegExp(escapedUrl, 'g'), cachedUrl);
+    });
+    
+    return updatedHtml;
+  }, [initImageCache, getCachedImage]);
+
+  // 预渲染卡片内容
+  const preloadCardContent = useCallback(async (card: Card) => {
+    const cardIdStr = String(card.docId);
+    
+    // 如果已经在缓存中，跳过
+    if (cardContentCacheRef.current[cardIdStr]) {
+      return;
+    }
+    
+    if (!card.content) {
+      cardContentCacheRef.current[cardIdStr] = '<p style="color: #888;">暂无内容</p>';
+      return;
+    }
+    
+    try {
+      const response = await fetch('/markdown', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: card.content || '',
+          inline: false,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to render markdown');
+      }
+      
+      let html = await response.text();
+      
+      // 预加载并缓存图片
+      html = await preloadAndCacheImages(html);
+      
+      // 等待图片加载完成
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = html;
+      const images = tempDiv.querySelectorAll('img');
+      
+      if (images.length > 0) {
+        const imagePromises = Array.from(images).map(img => {
+          return new Promise<void>((resolve) => {
+            if ((img as HTMLImageElement).complete) {
+              resolve();
+            } else {
+              img.onload = () => resolve();
+              img.onerror = () => resolve();
+              setTimeout(() => resolve(), 10000);
+            }
+          });
+        });
+        
+        await Promise.all(imagePromises);
+      }
+      
+      cardContentCacheRef.current[cardIdStr] = html;
+      // cachedCardsRef.current.add(cardIdStr);
+      // setCachedCount(cachedCardsRef.current.size);
+    } catch (error) {
+      console.error(`Failed to preload card ${card.docId}:`, error);
+      cardContentCacheRef.current[cardIdStr] = '<p style="color: #f44336;">加载内容失败</p>';
+    }
+  }, [preloadAndCacheImages]);
+
+  // 将preloadCardContent存储到ref中
+  // useEffect(() => {
+  //   preloadCardContentRef.current = preloadCardContent;
+  // }, [preloadCardContent]);
+
+  // 初始化时自动开始缓存
+  // useEffect(() => {
+  //   const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+  //   if (Object.keys(nodeCardsMap).length > 0) {
+  //     // 延迟一下，确保组件完全加载
+  //     setTimeout(() => {
+  //       startCaching();
+  //     }, 1000);
+  //   }
+  // }, [mindMap.mmid, startCaching]);
+
+  // 渲染card内容（优先使用缓存）
+  useEffect(() => {
+    if (!selectedCard) return;
+    
+    const contentDiv = document.getElementById('card-content-outline');
+    if (!contentDiv) return;
+    
+    const cardIdStr = String(selectedCard.docId);
+    
+    // 检查缓存
+    if (cardContentCacheRef.current[cardIdStr]) {
+      // 直接使用缓存的内容
+      contentDiv.innerHTML = cardContentCacheRef.current[cardIdStr];
+    } else if (selectedCard.content) {
+      // 缓存中没有，显示加载状态并渲染
+      contentDiv.innerHTML = '<p style="color: #999; text-align: center;">加载中...</p>';
+      
+      fetch('/markdown', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: selectedCard.content || '',
+          inline: false,
+        }),
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Failed to render markdown');
+        }
+        return response.text();
+      })
+      .then(async html => {
+        // 预加载并缓存图片
+        html = await preloadAndCacheImages(html);
+        // 缓存渲染结果
+        cardContentCacheRef.current[cardIdStr] = html;
+        contentDiv.innerHTML = html;
+      })
+      .catch(error => {
+        console.error('Failed to render markdown:', error);
+        const errorHtml = '<p style="color: #f44336;">加载内容失败</p>';
+        cardContentCacheRef.current[cardIdStr] = errorHtml;
+        contentDiv.innerHTML = errorHtml;
+      });
+    } else {
+      const emptyHtml = '<p style="color: #888;">暂无内容</p>';
+      cardContentCacheRef.current[cardIdStr] = emptyHtml;
+      contentDiv.innerHTML = emptyHtml;
+    }
+  }, [selectedCard, preloadAndCacheImages]);
+
 
   // 监听数据更新
   useEffect(() => {
@@ -865,6 +1174,22 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                     || responseData?.mindMap?.nodeCardsMap
                     || {};
                   (window as any).UiContext.nodeCardsMap = updatedMap;
+                  
+                  // 预加载新卡片内容
+                  const allCards: Card[] = [];
+                  Object.values(updatedMap).forEach((cards: Card[]) => {
+                    if (Array.isArray(cards)) {
+                      allCards.push(...cards);
+                    }
+                  });
+                  
+                  // 清除缓存并重新开始缓存
+                  cardContentCacheRef.current = {};
+                  cachedCardsRef.current.clear();
+                  setCachedCount(0);
+                  cachingTaskRef.current.cancelled = false;
+                  setIsCachingPaused(false);
+                  startCaching();
                 }
               }).catch((error) => {
                 console.error('Failed to reload data:', error);
@@ -900,7 +1225,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
         }
       }
     };
-  }, [docId]);
+  }, [docId, selectedCard]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', backgroundColor: '#fff' }}>
@@ -956,20 +1281,295 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           <span>.</span>
           <span>编辑器</span>
         </a>
+        {/* <button
+          onClick={() => setShowCachePanel(!showCachePanel)}
+          style={{
+            padding: '6px 12px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            background: showCachePanel ? '#1976d2' : '#fff',
+            color: showCachePanel ? '#fff' : '#333',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+            marginLeft: '10px',
+          }}
+          title="缓存管理"
+        >
+          💾 缓存
+        </button> */}
         <div style={{ marginLeft: 'auto', fontSize: '14px', color: '#666' }}>
           {mindMap.title} - 文件模式
         </div>
       </div>
 
-      {/* 文件模式视图 */}
-      <div style={{ flex: 1, width: '100%', position: 'relative', backgroundColor: '#fff' }}>
-        <OutlineView
-          nodes={nodes}
-          edges={edges}
-          onToggleExpand={handleToggleExpand}
-          onNodeClick={setSelectedNodeId}
-          selectedNodeId={selectedNodeId}
-        />
+      {/* 主内容区域 */}
+      <div style={{ display: 'flex', flex: 1, width: '100%', position: 'relative', backgroundColor: '#fff' }}>
+        {/* 缓存管理侧边栏 */}
+        {/* {showCachePanel && (
+          <div style={{
+            width: '280px',
+            borderRight: '1px solid #e0e0e0',
+            backgroundColor: '#fff',
+            overflow: 'auto',
+            flexShrink: 0,
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            <div style={{
+              padding: '16px',
+              borderBottom: '1px solid #e0e0e0',
+              backgroundColor: '#f6f8fa',
+            }}>
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: '#333' }}>
+                💾 缓存管理
+              </h3>
+            </div>
+            <div style={{ padding: '16px', flex: 1 }}>
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>缓存统计</div>
+                <div style={{ fontSize: '13px', color: '#333', marginBottom: '4px' }}>
+                  已缓存: {cachedCardsRef.current.size} 个卡片
+                </div>
+                <div style={{ fontSize: '13px', color: '#333' }}>
+                  缓存大小: {formatCacheSize(getCacheSize())}
+                </div>
+              </div>
+
+              {cachingProgress && (
+                <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f6f8fa', borderRadius: '4px' }}>
+                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>缓存进度</div>
+                  <div style={{ 
+                    width: '100%', 
+                    height: '8px', 
+                    backgroundColor: '#e0e0e0', 
+                    borderRadius: '4px',
+                    overflow: 'hidden',
+                    marginBottom: '8px',
+                  }}>
+                    <div style={{
+                      width: `${(cachingProgress.current / cachingProgress.total) * 100}%`,
+                      height: '100%',
+                      backgroundColor: '#4caf50',
+                      transition: 'width 0.3s ease',
+                    }} />
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#666', textAlign: 'center' }}>
+                    {cachingProgress.current} / {cachingProgress.total}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {isCachingPaused ? (
+                  <button
+                    onClick={startCaching}
+                    style={{
+                      padding: '8px 16px',
+                      border: 'none',
+                      borderRadius: '4px',
+                      background: '#4caf50',
+                      color: '#fff',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                      fontSize: '13px',
+                    }}
+                  >
+                    ▶ 开始缓存
+                  </button>
+                ) : (
+                  <button
+                    onClick={pauseCaching}
+                    style={{
+                      padding: '8px 16px',
+                      border: 'none',
+                      borderRadius: '4px',
+                      background: '#ff9800',
+                      color: '#fff',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                      fontSize: '13px',
+                    }}
+                  >
+                    ⏸ 暂停缓存
+                  </button>
+                )}
+                <button
+                  onClick={clearCache}
+                  style={{
+                    padding: '8px 16px',
+                    border: 'none',
+                    borderRadius: '4px',
+                    background: '#f44336',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '13px',
+                  }}
+                >
+                  🗑 清空缓存
+                </button>
+              </div>
+            </div>
+          </div>
+        )} */}
+
+        {/* 左侧文件树侧边栏 */}
+        <div style={{
+          width: '300px',
+          borderRight: '1px solid #e0e0e0',
+          backgroundColor: '#f6f8fa',
+          overflow: 'auto',
+          flexShrink: 0,
+        }}>
+          <div style={{ padding: '8px' }}>
+            <div style={{ fontSize: '12px', fontWeight: '600', color: '#666', marginBottom: '8px', padding: '0 8px' }}>
+              文件结构
+            </div>
+            {fileTree.map((file) => {
+              const isSelected = file.type === 'card' && selectedCard && file.cardId === selectedCard.docId;
+              return (
+                <div
+                  key={file.id}
+                  onClick={() => {
+                    if (file.type === 'card') {
+                      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                      const nodeCards = nodeCardsMap[file.nodeId || ''] || [];
+                      const card = nodeCards.find((c: Card) => c.docId === file.cardId);
+                      if (card) {
+                        handleSelectCard(card);
+                      }
+                    } else {
+                      toggleNodeExpanded(file.nodeId || '');
+                    }
+                  }}
+                  style={{
+                    padding: `4px ${8 + file.level * 16}px`,
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    color: isSelected ? '#1976d2' : '#333',
+                    backgroundColor: isSelected ? '#e3f2fd' : 'transparent',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'background-color 0.15s ease, color 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    // 如果已选中，保持选中背景色和文字颜色；否则显示悬停背景色
+                    if (!isSelected) {
+                      e.currentTarget.style.backgroundColor = '#f0f0f0';
+                      e.currentTarget.style.color = '#333';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    // 恢复正确的背景色和文字颜色：如果选中则保持选中样式，否则恢复默认
+                    e.currentTarget.style.backgroundColor = isSelected ? '#e3f2fd' : 'transparent';
+                    e.currentTarget.style.color = isSelected ? '#1976d2' : '#333';
+                  }}
+                >
+                  {file.type === 'node' ? (
+                    <>
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleNodeExpanded(file.nodeId || '');
+                        }}
+                        style={{
+                          width: '16px',
+                          height: '16px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                          fontSize: '10px',
+                          color: '#666',
+                        }}
+                      >
+                        {expandedNodes.has(file.nodeId || '') ? '▼' : '▶'}
+                      </span>
+                      <span style={{ fontSize: '16px', flexShrink: 0 }}>📁</span>
+                    </>
+                  ) : (
+                    <span style={{ fontSize: '16px', flexShrink: 0 }}>📄</span>
+                  )}
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {file.name}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 右侧card内容显示区域 */}
+        {selectedCard ? (
+          <div style={{
+            flex: 1,
+            borderLeft: '1px solid #e0e0e0',
+            backgroundColor: '#fff',
+            overflow: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            <div style={{
+              padding: '16px',
+              borderBottom: '1px solid #e0e0e0',
+              backgroundColor: '#f6f8fa',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: '#333' }}>
+                  {selectedCard.title || '未命名卡片'}
+                </h3>
+                {/* {cachingProgress && cachingProgress.nodeId === selectedCard.nodeId && (
+                  <div style={{ fontSize: '12px', color: '#666', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>缓存中...</span>
+                    <div style={{ 
+                      width: '100px', 
+                      height: '6px', 
+                      backgroundColor: '#e0e0e0', 
+                      borderRadius: '3px',
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        width: `${(cachingProgress.current / cachingProgress.total) * 100}%`,
+                        height: '100%',
+                        backgroundColor: '#4caf50',
+                        transition: 'width 0.3s ease',
+                      }} />
+                    </div>
+                    <span>{cachingProgress.current}/{cachingProgress.total}</span>
+                  </div>
+                )} */}
+              </div>
+            </div>
+            <div style={{
+              flex: 1,
+              padding: '16px',
+              overflow: 'auto',
+            }}>
+              <div
+                id="card-content-outline"
+                style={{
+                  fontSize: '14px',
+                  lineHeight: '1.6',
+                  color: '#333',
+                }}
+                dangerouslySetInnerHTML={{ __html: '<p style="color: #999;">加载中...</p>' }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#999',
+            fontSize: '14px',
+          }}>
+            请从左侧选择一个卡片
+          </div>
+        )}
       </div>
     </div>
   );
