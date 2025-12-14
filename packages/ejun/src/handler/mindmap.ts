@@ -3905,6 +3905,107 @@ class MindMapConnectionHandler extends ConnectionHandler {
         this.subscriptions.push({ dispose: dispose3 });
     }
 
+    async message(msg: any) {
+        try {
+            if (!msg || typeof msg !== 'object') {
+                return;
+            }
+
+            if (msg.type === 'request_markdown') {
+                await this.handleMarkdownRequest(msg);
+            } else if (msg.type === 'request_image') {
+                await this.handleImageRequest(msg);
+            }
+        } catch (err) {
+            logger.error('Failed to handle WebSocket message:', err);
+        }
+    }
+
+    private async handleMarkdownRequest(msg: any) {
+        try {
+            const { requestId, text, inline = false } = msg;
+            if (!requestId || !text) {
+                this.send({ type: 'markdown_response', requestId, error: 'Missing requestId or text' });
+                return;
+            }
+
+            const markdownModule = require('@ejunz/ui-default/backendlib/markdown');
+            const html = inline 
+                ? markdownModule.renderInline(text)
+                : markdownModule.render(text);
+            
+            this.send({
+                type: 'markdown_response',
+                requestId,
+                html,
+            });
+        } catch (err) {
+            logger.error('Failed to handle markdown request:', err);
+            this.send({
+                type: 'markdown_response',
+                requestId: msg.requestId,
+                error: err instanceof Error ? err.message : 'Unknown error',
+            });
+        }
+    }
+
+    private async handleImageRequest(msg: any) {
+        try {
+            const { requestId, url } = msg;
+            if (!requestId || !url) {
+                this.send({ type: 'image_response', requestId, error: 'Missing requestId or url' });
+                return;
+            }
+
+            let fullUrl = url;
+            if (url.startsWith('/')) {
+                const protocol = (this.request.headers['x-forwarded-proto'] as string) || 
+                                 ((this.request.headers['x-forwarded-ssl'] === 'on') ? 'https' : 'http');
+                const host = this.request.host || this.request.headers.host || 'localhost';
+                fullUrl = `${protocol}://${host}${url}`;
+            }
+
+            const https = require('https');
+            const http = require('http');
+            const urlModule = require('url');
+            const parsedUrl = urlModule.parse(fullUrl);
+            const client = parsedUrl.protocol === 'https:' ? https : http;
+            
+            const imageData = await new Promise<Buffer>((resolve, reject) => {
+                client.get(fullUrl, (res: any) => {
+                    if (res.statusCode !== 200) {
+                        reject(new Error(`Failed to fetch image: ${res.statusCode}`));
+                        return;
+                    }
+                    const chunks: Buffer[] = [];
+                    res.on('data', (chunk: Buffer) => chunks.push(chunk));
+                    res.on('end', () => resolve(Buffer.concat(chunks)));
+                    res.on('error', reject);
+                }).on('error', reject);
+            });
+            
+            const base64 = imageData.toString('base64');
+            const contentType = imageData.length > 0 && imageData[0] === 0x89 && imageData[1] === 0x50 
+                ? 'image/png' 
+                : (imageData.length > 0 && imageData[0] === 0xFF && imageData[1] === 0xD8 
+                    ? 'image/jpeg' 
+                    : 'image/png');
+            
+            this.send({
+                type: 'image_response',
+                requestId,
+                data: `data:${contentType};base64,${base64}`,
+            });
+        } catch (err) {
+            logger.error('Failed to handle image request:', err);
+            this.send({
+                type: 'image_response',
+                requestId: msg.requestId,
+                error: err instanceof Error ? err.message : 'Unknown error',
+            });
+        }
+    }
+
     async cleanup() {
         for (const sub of this.subscriptions) {
             try {
