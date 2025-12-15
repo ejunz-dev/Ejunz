@@ -740,6 +740,17 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
   const cachedCardsRef = useRef<Set<string>>(new Set());
   // 缓存进度
   const [cachingProgress, setCachingProgress] = useState<{ current: number; total: number; currentCard?: string } | null>(null);
+  // 缓存状态检查结果
+  const [cacheStatus, setCacheStatus] = useState<{
+    outdated: Array<{ cardId: string; title: string; cachedUpdateAt: string; currentUpdateAt: string }>;
+    total: number;
+  } | null>(null);
+  const [isCheckingCache, setIsCheckingCache] = useState(false);
+  const [isUpdatingCache, setIsUpdatingCache] = useState(false);
+  // Explorer 模式：'tree' | 'cache'
+  const [explorerMode, setExplorerMode] = useState<'tree' | 'cache'>('tree');
+  // 右键菜单
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null);
   // 缓存计数
   // const [cachedCount, setCachedCount] = useState(0);
   // 卡片缓存进度：记录正在缓存的进度
@@ -757,27 +768,68 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
   // WebSocket 请求的 Promise Map（用于处理响应）
   const wsRequestMapRef = useRef<Map<string, { resolve: (value: any) => void; reject: (error: any) => void }>>(new Map());
 
-  // 从 localStorage 加载缓存
+  // 从 localStorage 加载缓存（检查版本）
   useEffect(() => {
     try {
       const keys = Object.keys(localStorage);
       const cachePrefix = 'mindmap-outline-card-';
       let loadedCount = 0;
+      let invalidatedCount = 0;
+      
+      // 获取最新的 card 数据用于版本检查
+      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+      const allCards: Card[] = [];
+      Object.values(nodeCardsMap).forEach((cards: Card[]) => {
+        if (Array.isArray(cards)) {
+          allCards.push(...cards);
+        }
+      });
+      const cardMap = new Map<string, Card>();
+      allCards.forEach(card => {
+        cardMap.set(String(card.docId), card);
+      });
       
       keys.forEach(key => {
         if (key.startsWith(cachePrefix)) {
           const cardId = key.replace(cachePrefix, '');
-          const cachedHtml = localStorage.getItem(key);
-          if (cachedHtml) {
-            cardContentCacheRef.current[cardId] = cachedHtml;
-            cachedCardsRef.current.add(cardId);
-            loadedCount++;
+          const cachedDataStr = localStorage.getItem(key);
+          if (cachedDataStr) {
+            try {
+              // 尝试解析新格式（包含updateAt）
+              const cachedData = JSON.parse(cachedDataStr);
+              if (cachedData.html && cachedData.updateAt) {
+                // 检查版本
+                const currentCard = cardMap.get(cardId);
+                if (currentCard && currentCard.updateAt && currentCard.updateAt !== cachedData.updateAt) {
+                  // 版本不匹配，删除缓存
+                  localStorage.removeItem(key);
+                  invalidatedCount++;
+                  return;
+                }
+                cardContentCacheRef.current[cardId] = cachedData.html;
+                cachedCardsRef.current.add(cardId);
+                loadedCount++;
+              } else {
+                // 旧格式（纯HTML），直接使用但标记为需要更新
+                cardContentCacheRef.current[cardId] = cachedData.html || cachedDataStr;
+                cachedCardsRef.current.add(cardId);
+                loadedCount++;
+              }
+            } catch (e) {
+              // 旧格式（纯HTML字符串），直接使用但标记为需要更新
+              cardContentCacheRef.current[cardId] = cachedDataStr;
+              cachedCardsRef.current.add(cardId);
+              loadedCount++;
+            }
           }
         }
       });
       
       if (loadedCount > 0) {
         console.log(`[MindMap Outline] 从 localStorage 加载了 ${loadedCount} 个 card 缓存`);
+      }
+      if (invalidatedCount > 0) {
+        console.log(`[MindMap Outline] 清除了 ${invalidatedCount} 个过期缓存`);
       }
     } catch (error) {
       console.error('Failed to load cache from localStorage:', error);
@@ -808,6 +860,121 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     };
   }, []);
 
+  // 检查缓存状态（类似 git status）
+  const checkCacheStatus = useCallback(async () => {
+    setIsCheckingCache(true);
+    try {
+      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+      const allCards: Card[] = [];
+      Object.values(nodeCardsMap).forEach((cards: Card[]) => {
+        if (Array.isArray(cards)) {
+          allCards.push(...cards);
+        }
+      });
+      
+      const outdated: Array<{ cardId: string; title: string; cachedUpdateAt: string; currentUpdateAt: string }> = [];
+      const cachedCardIds = new Set<string>();
+      
+      // 方法1: 检查所有卡片，看它们是否有缓存需要更新
+      for (const card of allCards) {
+        const cardIdStr = String(card.docId);
+        try {
+          const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+          const cachedDataStr = localStorage.getItem(cacheKey);
+          if (cachedDataStr) {
+            // 有缓存，标记为已缓存
+            cachedCardIds.add(cardIdStr);
+            // 同步到 cachedCardsRef
+            if (!cachedCardsRef.current.has(cardIdStr)) {
+              cachedCardsRef.current.add(cardIdStr);
+            }
+            
+            try {
+              const cachedData = JSON.parse(cachedDataStr);
+              // 检查是否有 html 字段（新格式）
+              if (cachedData.html) {
+                // 新格式，检查 updateAt
+                if (cachedData.updateAt && card.updateAt && cachedData.updateAt !== card.updateAt) {
+                  outdated.push({
+                    cardId: cardIdStr,
+                    title: card.title || '未命名卡片',
+                    cachedUpdateAt: cachedData.updateAt,
+                    currentUpdateAt: card.updateAt,
+                  });
+                }
+                // 如果 updateAt 匹配，说明缓存是最新的，不需要更新
+              } else {
+                // 旧格式（纯HTML字符串），标记为需要更新
+                outdated.push({
+                  cardId: cardIdStr,
+                  title: card.title || '未命名卡片',
+                  cachedUpdateAt: '未知',
+                  currentUpdateAt: card.updateAt || '未知',
+                });
+              }
+            } catch (e) {
+              // 解析失败，可能是旧格式（纯HTML字符串），标记为需要更新
+              outdated.push({
+                cardId: cardIdStr,
+                title: card.title || '未命名卡片',
+                cachedUpdateAt: '未知',
+                currentUpdateAt: card.updateAt || '未知',
+              });
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to check cache for card ${cardIdStr}:`, error);
+        }
+      }
+      
+      // 方法2: 检查 localStorage 中所有 mindmap-outline-card-* 的键，清理不存在的卡片缓存
+      try {
+        const allKeys: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('mindmap-outline-card-')) {
+            allKeys.push(key);
+          }
+        }
+        
+        for (const key of allKeys) {
+          const cardIdStr = key.replace('mindmap-outline-card-', '');
+          const card = allCards.find(c => String(c.docId) === cardIdStr);
+          if (!card) {
+            // 如果 card 不存在于当前数据中，从缓存中移除
+            cachedCardsRef.current.delete(cardIdStr);
+            delete cardContentCacheRef.current[cardIdStr];
+            try {
+              localStorage.removeItem(key);
+            } catch (error) {
+              console.error(`Failed to remove cache for ${cardIdStr}:`, error);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to clean up old cache entries:', error);
+      }
+      
+      // 同步 cachedCardsRef，移除不在 localStorage 中的标记
+      cachedCardsRef.current.forEach(cardIdStr => {
+        const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+        if (!localStorage.getItem(cacheKey)) {
+          cachedCardsRef.current.delete(cardIdStr);
+          delete cardContentCacheRef.current[cardIdStr];
+        }
+      });
+      
+      setCacheStatus({
+        outdated,
+        total: cachedCardIds.size,
+      });
+    } catch (error) {
+      console.error('Failed to check cache status:', error);
+    } finally {
+      setIsCheckingCache(false);
+    }
+  }, []);
+
   // 当 mindMap 更新时，更新展开状态
   useEffect(() => {
     setExpandedNodes(prev => {
@@ -821,7 +988,15 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
       });
       return newSet;
     });
-  }, [mindMap]);
+    
+    // 当 mindMap 更新时，自动检查缓存状态（延迟一下，确保 nodeCardsMap 已更新）
+    const timer = setTimeout(() => {
+      if (cachedCardsRef.current.size > 0) {
+        checkCacheStatus();
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [mindMap, checkCacheStatus]);
 
   // 递归检查 node 及其所有子节点和子卡片是否都已缓存
   const checkNodeCachedRef = useRef<((nodeId: string) => boolean) | null>(null);
@@ -1160,7 +1335,11 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
       cachedCardsRef.current.add(cardIdStr);
       try {
         const cacheKey = `mindmap-outline-card-${cardIdStr}`;
-        localStorage.setItem(cacheKey, emptyHtml);
+        const cacheData = {
+          html: emptyHtml,
+          updateAt: card.updateAt || '',
+        };
+        localStorage.setItem(cacheKey, JSON.stringify(cacheData));
       } catch (error) {
         console.error('Failed to save to localStorage:', error);
       }
@@ -1229,7 +1408,11 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
       
       try {
         const cacheKey = `mindmap-outline-card-${cardIdStr}`;
-        localStorage.setItem(cacheKey, html);
+        const cacheData = {
+          html: html,
+          updateAt: card.updateAt || '',
+        };
+        localStorage.setItem(cacheKey, JSON.stringify(cacheData));
       } catch (error) {
         console.error('Failed to save to localStorage:', error);
       }
@@ -1240,6 +1423,209 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
       cachedCardsRef.current.add(cardIdStr);
     }
   }, [preloadAndCacheImages]);
+
+  // 清除单个 card 的缓存
+  const clearCardCache = useCallback((cardId: string) => {
+    const cardIdStr = String(cardId);
+    // 清除内存缓存
+    delete cardContentCacheRef.current[cardIdStr];
+    cachedCardsRef.current.delete(cardIdStr);
+    // 清除 localStorage 缓存
+    try {
+      const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+      localStorage.removeItem(cacheKey);
+    } catch (error) {
+      console.error(`Failed to remove cache for ${cardIdStr}:`, error);
+    }
+    // 如果当前选中的是这个 card，重新加载
+    if (selectedCard && String(selectedCard.docId) === cardIdStr) {
+      const currentCard = selectedCard;
+      setSelectedCard(null);
+      setTimeout(() => {
+        setSelectedCard(currentCard);
+      }, 100);
+    }
+    // 更新缓存状态
+    if (cacheStatus) {
+      setCacheStatus(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          outdated: prev.outdated.filter(item => item.cardId !== cardIdStr),
+        };
+      });
+    }
+  }, [selectedCard, cacheStatus]);
+
+  // 清除 node 下所有 card 的缓存
+  const clearNodeCache = useCallback((nodeId: string) => {
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const nodeCards = nodeCardsMap[nodeId] || [];
+    
+    // 清除该 node 下所有 card 的缓存
+    nodeCards.forEach((card: Card) => {
+      const cardIdStr = String(card.docId);
+      delete cardContentCacheRef.current[cardIdStr];
+      cachedCardsRef.current.delete(cardIdStr);
+      try {
+        const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+        localStorage.removeItem(cacheKey);
+      } catch (error) {
+        console.error(`Failed to remove cache for ${cardIdStr}:`, error);
+      }
+    });
+    
+    // 递归清除子节点的缓存
+    const childNodeIds = mindMap.edges
+      .filter(edge => edge.source === nodeId)
+      .map(edge => edge.target);
+    
+    childNodeIds.forEach(childNodeId => {
+      clearNodeCache(childNodeId);
+    });
+    
+    // 如果当前选中的 card 在这个 node 下，重新加载
+    if (selectedCard && selectedCard.nodeId === nodeId) {
+      const currentCard = selectedCard;
+      setSelectedCard(null);
+      setTimeout(() => {
+        setSelectedCard(currentCard);
+      }, 100);
+    }
+    
+    // 更新缓存状态
+    if (cacheStatus) {
+      checkCacheStatus();
+    }
+  }, [mindMap.edges, selectedCard, cacheStatus, checkCacheStatus]);
+
+  // 一键更新所有过期缓存
+  const updateOutdatedCache = useCallback(async () => {
+    if (!cacheStatus || cacheStatus.outdated.length === 0) return;
+    
+    setIsUpdatingCache(true);
+    setCachingProgress({
+      current: 0,
+      total: cacheStatus.outdated.length,
+    });
+    
+    try {
+      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+      const allCards: Card[] = [];
+      Object.values(nodeCardsMap).forEach((cards: Card[]) => {
+        if (Array.isArray(cards)) {
+          allCards.push(...cards);
+        }
+      });
+      
+      // 逐个更新，显示进度，每完成一个就从列表中移除
+      const remainingOutdated = [...cacheStatus.outdated];
+      for (let i = 0; i < remainingOutdated.length; i++) {
+        const item = remainingOutdated[i];
+        const card = allCards.find(c => String(c.docId) === item.cardId);
+        if (card) {
+          // 更新进度显示
+          setCachingProgress(prev => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              current: i,
+              currentCard: card.title || '未命名卡片',
+            };
+          });
+          
+          // 清除旧缓存
+          delete cardContentCacheRef.current[item.cardId];
+          cachedCardsRef.current.delete(item.cardId);
+          try {
+            const cacheKey = `mindmap-outline-card-${item.cardId}`;
+            localStorage.removeItem(cacheKey);
+          } catch (error) {
+            console.error(`Failed to remove cache for ${item.cardId}:`, error);
+          }
+          
+          // 重新缓存（确保使用最新的 card.updateAt）
+          await preloadCardContent(card);
+          
+          // 等待一小段时间，确保 localStorage 已保存
+          await new Promise(resolve => setTimeout(resolve, 50));
+          
+          // 验证缓存是否已正确保存（检查 updateAt）
+          let cacheVerified = false;
+          try {
+            const cacheKey = `mindmap-outline-card-${item.cardId}`;
+            const cachedDataStr = localStorage.getItem(cacheKey);
+            if (cachedDataStr) {
+              try {
+                const cachedData = JSON.parse(cachedDataStr);
+                // 检查是否有 html 字段（新格式）
+                if (cachedData.html) {
+                  // 如果 updateAt 匹配，说明缓存已正确更新
+                  if (cachedData.updateAt && card.updateAt && cachedData.updateAt === card.updateAt) {
+                    cacheVerified = true;
+                  } else {
+                    // updateAt 不匹配，但我们已经重新下载了，认为已更新
+                    console.warn(`Cache updateAt mismatch for ${item.cardId}: cached=${cachedData.updateAt}, card=${card.updateAt}, but cache was just updated`);
+                    cacheVerified = true; // 即使不匹配，也认为已更新（因为我们已经重新下载了）
+                  }
+                } else {
+                  // 没有 html 字段，可能是旧格式
+                  cacheVerified = false;
+                }
+              } catch (e) {
+                // 解析失败，可能是旧格式
+                cacheVerified = false;
+              }
+            } else {
+              // 没有缓存，说明保存失败
+              cacheVerified = false;
+            }
+          } catch (error) {
+            console.error(`Failed to verify cache for ${item.cardId}:`, error);
+            cacheVerified = false;
+          }
+          
+          // 如果验证通过，从待更新列表中移除
+          if (cacheVerified) {
+            setCacheStatus(prev => {
+              if (!prev) return null;
+              const updatedOutdated = prev.outdated.filter(outdatedItem => outdatedItem.cardId !== item.cardId);
+              return {
+                outdated: updatedOutdated,
+                total: prev.total,
+              };
+            });
+          } else {
+            console.warn(`Cache verification failed for ${item.cardId}, keeping it in outdated list`);
+          }
+        }
+        
+        // 更新进度
+        setCachingProgress(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            current: i + 1,
+          };
+        });
+      }
+      
+      // 不再调用 checkCacheStatus，因为我们已经实时更新了列表
+      // 如果列表为空，更新状态显示
+      setCacheStatus(prev => {
+        if (!prev || prev.outdated.length === 0) {
+          return null;
+        }
+        return prev;
+      });
+      setCachingProgress(null);
+    } catch (error) {
+      console.error('Failed to update outdated cache:', error);
+    } finally {
+      setIsUpdatingCache(false);
+      setCachingProgress(null);
+    }
+  }, [cacheStatus, preloadCardContent]);
 
   // 缓存指定 node 的所有 card 的 markdown 内容
   const cacheNodeCards = useCallback(async (nodeId: string) => {
@@ -1527,7 +1913,11 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
         // 保存到 localStorage
         try {
           const cacheKey = `mindmap-outline-card-${cardIdStr}`;
-          localStorage.setItem(cacheKey, html);
+          const cacheData = {
+            html: html,
+            updateAt: selectedCard.updateAt || '',
+          };
+          localStorage.setItem(cacheKey, JSON.stringify(cacheData));
         } catch (error) {
           console.error('Failed to save to localStorage:', error);
         }
@@ -1540,7 +1930,11 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           cardContentCacheRef.current[cardIdStr] = htmlWithCachedImages;
           try {
             const cacheKey = `mindmap-outline-card-${cardIdStr}`;
-            localStorage.setItem(cacheKey, htmlWithCachedImages);
+            const cacheData = {
+              html: htmlWithCachedImages,
+              updateAt: selectedCard.updateAt || '',
+            };
+            localStorage.setItem(cacheKey, JSON.stringify(cacheData));
           } catch (error) {
             console.error('Failed to update localStorage with cached images:', error);
           }
@@ -1986,10 +2380,187 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           flexShrink: 0,
         }}>
           <div style={{ padding: '8px' }}>
-            <div style={{ fontSize: '12px', fontWeight: '600', color: '#666', marginBottom: '8px', padding: '0 8px' }}>
-              文件结构
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', padding: '0 8px' }}>
+              <div style={{ fontSize: '12px', fontWeight: '600', color: '#666' }}>
+                EXPLORER
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <button
+                  onClick={() => setExplorerMode('tree')}
+                  style={{
+                    padding: '2px 8px',
+                    fontSize: '11px',
+                    border: '1px solid #ddd',
+                    borderRadius: '3px',
+                    backgroundColor: explorerMode === 'tree' ? '#1976d2' : '#fff',
+                    color: explorerMode === 'tree' ? '#fff' : '#333',
+                    cursor: 'pointer',
+                  }}
+                  title="文件结构"
+                >
+                  文件结构
+                </button>
+                <button
+                  onClick={() => {
+                    setExplorerMode('cache');
+                    // 切换到缓存模式时自动检查状态
+                    if (cachedCardsRef.current.size > 0) {
+                      checkCacheStatus();
+                    }
+                  }}
+                  style={{
+                    padding: '2px 8px',
+                    fontSize: '11px',
+                    border: '1px solid #ddd',
+                    borderRadius: '3px',
+                    backgroundColor: explorerMode === 'cache' ? '#1976d2' : '#fff',
+                    color: explorerMode === 'cache' ? '#fff' : '#333',
+                    cursor: 'pointer',
+                    position: 'relative',
+                  }}
+                  title="缓存管理"
+                >
+                  <span>缓存</span>
+                  {cacheStatus && cacheStatus.outdated.length > 0 && (
+                    <span style={{
+                      position: 'absolute',
+                      top: '-4px',
+                      right: '-4px',
+                      width: '12px',
+                      height: '12px',
+                      backgroundColor: '#f44336',
+                      borderRadius: '50%',
+                      border: '2px solid #fff',
+                      fontSize: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#fff',
+                      fontWeight: 'bold',
+                    }}>
+                      {cacheStatus.outdated.length > 9 ? '9+' : cacheStatus.outdated.length}
+                    </span>
+                  )}
+                </button>
+              </div>
             </div>
-            {fileTree.map((file) => {
+            
+            {/* 根据模式显示不同内容 */}
+            {explorerMode === 'tree' ? (
+              // 文件结构模式 - 文件列表在下面渲染
+              null
+            ) : (
+              // 缓存管理模式
+              <div>
+                {cacheStatus ? (
+                  <div>
+                    <div style={{
+                      marginBottom: '8px',
+                      padding: '8px',
+                      backgroundColor: cacheStatus.outdated.length > 0 ? '#fff3e0' : '#e8f5e9',
+                      borderRadius: '4px',
+                      border: `1px solid ${cacheStatus.outdated.length > 0 ? '#ff9800' : '#4caf50'}`,
+                      fontSize: '11px',
+                    }}>
+                      <div style={{ fontWeight: '600', color: cacheStatus.outdated.length > 0 ? '#e65100' : '#2e7d32', marginBottom: '8px' }}>
+                        {cacheStatus.outdated.length > 0 ? `⚠️ ${cacheStatus.outdated.length} 个缓存需要更新` : `✅ 所有缓存都是最新的`}
+                      </div>
+                      {cacheStatus.outdated.length > 0 && (
+                        <>
+                          <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '8px' }}>
+                            {cacheStatus.outdated.map(item => (
+                              <div key={item.cardId} style={{
+                                padding: '6px 8px',
+                                marginBottom: '4px',
+                                backgroundColor: '#fff',
+                                borderRadius: '2px',
+                                fontSize: '11px',
+                                color: '#666',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                border: '1px solid #e0e0e0',
+                              }}>
+                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {item.title}
+                                </span>
+                                <span style={{ marginLeft: '8px', color: '#999', fontSize: '10px', whiteSpace: 'nowrap' }}>
+                                  {item.cachedUpdateAt !== '未知' ? new Date(item.cachedUpdateAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '旧格式'}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            onClick={updateOutdatedCache}
+                            disabled={isUpdatingCache}
+                            style={{
+                              width: '100%',
+                              padding: '8px',
+                              backgroundColor: isUpdatingCache ? '#ccc' : '#4caf50',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: '4px',
+                              fontSize: '12px',
+                              fontWeight: '500',
+                              cursor: isUpdatingCache ? 'not-allowed' : 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '6px',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isUpdatingCache) {
+                                e.currentTarget.style.backgroundColor = '#388e3c';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isUpdatingCache) {
+                                e.currentTarget.style.backgroundColor = '#4caf50';
+                              }
+                            }}
+                          >
+                            <span>{isUpdatingCache ? '⏳' : '🔄'}</span>
+                            <span>{isUpdatingCache ? '更新中...' : '更新所有'}</span>
+                          </button>
+                          {cachingProgress && isUpdatingCache && (
+                            <div style={{ marginTop: '8px', padding: '4px', backgroundColor: '#fff', borderRadius: '2px' }}>
+                              <div style={{ fontSize: '10px', color: '#666', marginBottom: '4px', textAlign: 'center' }}>
+                                {cachingProgress.currentCard && `${cachingProgress.currentCard} - `}
+                                {cachingProgress.current} / {cachingProgress.total}
+                              </div>
+                              <div style={{
+                                width: '100%',
+                                height: '6px',
+                                backgroundColor: '#e0e0e0',
+                                borderRadius: '3px',
+                                overflow: 'hidden',
+                              }}>
+                                <div style={{
+                                  width: `${(cachingProgress.current / cachingProgress.total) * 100}%`,
+                                  height: '100%',
+                                  backgroundColor: '#4caf50',
+                                  transition: 'width 0.3s ease',
+                                }} />
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{
+                    padding: '16px',
+                    textAlign: 'center',
+                    color: '#999',
+                    fontSize: '12px',
+                  }}>
+                    {isCheckingCache ? '检查中...' : '点击"文件结构"按钮查看文件，或等待自动检查缓存状态'}
+                  </div>
+                )}
+              </div>
+            )}
+            {explorerMode === 'tree' && fileTree.map((file) => {
               // 检查缓存状态
               let isCached = false;
               if (file.type === 'card') {
@@ -2036,6 +2607,11 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                       const newUrl = window.location.pathname + '?' + urlParams.toString();
                       window.history.pushState({ nodeId }, '', newUrl);
                     }
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setContextMenu({ x: e.clientX, y: e.clientY, file });
                   }}
                   style={{
                     padding: `4px ${8 + file.level * 16}px`,
@@ -2244,6 +2820,97 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           </div>
         )}
       </div>
+      
+      {/* 右键菜单 */}
+      {contextMenu && (
+        <>
+          {/* 背景遮罩，点击关闭菜单 */}
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 999,
+            }}
+            onClick={() => setContextMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setContextMenu(null);
+            }}
+          />
+          {/* 菜单 */}
+          <div
+            style={{
+              position: 'fixed',
+              left: contextMenu.x,
+              top: contextMenu.y,
+              backgroundColor: '#fff',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              zIndex: 1000,
+              minWidth: '180px',
+              padding: '4px 0',
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            {contextMenu.file.type === 'card' ? (
+              <>
+                <div
+                  style={{
+                    padding: '6px 16px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    color: '#24292e',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#f3f4f6';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                  onClick={() => {
+                    if (contextMenu.file.cardId) {
+                      clearCardCache(contextMenu.file.cardId);
+                    }
+                    setContextMenu(null);
+                  }}
+                >
+                  🗑 清除缓存
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  style={{
+                    padding: '6px 16px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    color: '#24292e',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#f3f4f6';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                  onClick={() => {
+                    if (contextMenu.file.nodeId) {
+                      clearNodeCache(contextMenu.file.nodeId);
+                    }
+                    setContextMenu(null);
+                  }}
+                >
+                  🗑 清除节点缓存
+                </div>
+              </>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
