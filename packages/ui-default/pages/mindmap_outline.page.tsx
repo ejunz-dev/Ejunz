@@ -1100,7 +1100,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
   }, [isCheckingCache]);
 
   // 跟踪已初始化的 mindmap（通过 mmid），避免重复初始化
-  const initializedMindMapRef = useRef<string | null>(null);
+  const initializedMindMapRef = useRef<number | null>(null);
   
   // 只在初始化时或切换 mindmap 时设置展开状态，之后完全由用户操作控制
   useEffect(() => {
@@ -2218,302 +2218,220 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
   }, [docId, selectedCard]);
 
   // 监听数据更新（WebSocket 连接）
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const reconnectAttemptsRef = useRef(0);
-  const maxReconnectAttempts = 5;
-  const reconnectDelayRef = useRef(1000); // 初始重连延迟1秒
-  const isConnectingRef = useRef(false); // 防止重复连接的标志
-
+  // 使用全局变量管理连接，参考 record_main.page.ts 的做法
+  const globalWsKey = `mindmap-ws-${docId}`;
+  
   useEffect(() => {
-    // 使用全局标志防止多个组件实例同时创建连接
-    const globalWsKey = `mindmap-ws-${docId}`;
-    
-    // 如果全局已有连接，复用它
-    if ((window as any)[globalWsKey] && (window as any)[globalWsKey].readyState === 1) {
-      wsRef.current = (window as any)[globalWsKey];
-      return;
-    }
-    
-    // 如果已经有 WebSocket 连接，不重复连接
-    if (wsRef.current && wsRef.current.readyState === 1) { // WebSocket.OPEN
-      return;
-    }
-    
-    // 如果正在连接中，不重复连接
-    if (isConnectingRef.current) {
-      return;
-    }
-
-    let ws: any = null;
-    const domainId = (window as any).UiContext?.domainId || 'system';
-    const wsUrl = `/d/${domainId}/mindmap/${docId}/ws`;
-
-    // 清除心跳定时器
-    const clearHeartbeat = () => {
-      if (heartbeatIntervalRef.current) {
-        clearInterval(heartbeatIntervalRef.current);
-        heartbeatIntervalRef.current = null;
-      }
-    };
-
-    // 启动心跳保活（每30秒发送一次ping）
-    const startHeartbeat = () => {
-      clearHeartbeat();
-      heartbeatIntervalRef.current = setInterval(() => {
-        if (wsRef.current && wsRef.current.readyState === 1) { // WebSocket.OPEN
-          try {
-            wsRef.current.send(JSON.stringify({ type: 'ping' }));
-          } catch (error) {
-            console.error('[MindMap Outline] Failed to send heartbeat:', error);
-            clearHeartbeat();
-          }
-        } else {
-          clearHeartbeat();
-        }
-      }, 30000); // 30秒
-    };
-
-    // 连接 WebSocket 的函数
-    let isConnecting = false;
-    const connectWebSocket = () => {
-      // 防止重复连接
-      if (isConnecting || wsRef.current) {
-        return;
-      }
-      isConnecting = true;
-      
-      // 清除之前的重连定时器
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
-      
-      import('../components/socket').then(({ default: WebSocket }) => {
-        // 再次检查，避免重复连接
-        if (wsRef.current) {
-          isConnecting = false;
-          return;
-        }
-
-        ws = new WebSocket(wsUrl, false, true);
-
-        ws.onopen = () => {
-          // 连接成功，重置重连计数和延迟
-          reconnectAttemptsRef.current = 0;
-          reconnectDelayRef.current = 1000;
-          isConnectingRef.current = false;
-          
-          // 保存到全局，供其他实例复用
-          (window as any)[globalWsKey] = ws;
-          
-          // 启动心跳保活
-          startHeartbeat();
-          
-          // 移除详细日志，减少控制台输出
-          // console.log('[MindMap Outline] WebSocket connected');
-        };
-
-        ws.onmessage = (_: any, data: string) => {
-          try {
-            const msg = JSON.parse(data);
-            // 移除详细日志，减少控制台输出
-            // console.log('[MindMap Outline] WebSocket message:', msg);
-
-            // 处理缓存响应
-            if (msg.type === 'markdown_response') {
-              const { requestId, html, error } = msg;
-              const requestHandler = wsRequestMapRef.current.get(requestId);
-              if (requestHandler) {
-                wsRequestMapRef.current.delete(requestId);
-                if (error) {
-                  requestHandler.reject(new Error(error));
-                } else {
-                  requestHandler.resolve(html);
-                }
-              }
-            } else if (msg.type === 'image_response') {
-              const { requestId, data: imageData, error } = msg;
-              const requestHandler = wsRequestMapRef.current.get(requestId);
-              if (requestHandler) {
-                wsRequestMapRef.current.delete(requestId);
-                if (error) {
-                  requestHandler.reject(new Error(error));
-                } else {
-                  requestHandler.resolve(imageData);
-                }
-              }
-            } else if (msg.type === 'init' || msg.type === 'update') {
-              // 使用 setTimeout 将数据重新加载操作推迟到下一个事件循环，避免阻塞 onmessage 处理器
-              setTimeout(() => {
-                const domainId = (window as any).UiContext?.domainId || 'system';
-                request.get(getMindMapUrl('/data', docId)).then((responseData) => {
-                  const newMindMap = responseData?.mindMap || responseData;
-                  
-                  // 保存当前的展开状态，避免被覆盖
-                  const currentExpandedNodes = expandedNodesRef.current;
-                  
-                  // 合并展开状态：完全保留当前的展开状态，不根据数据库的 expandedOutline 覆盖
-                  const mergedNodes = newMindMap.nodes.map((node: MindMapNode) => {
-                    const isCurrentlyExpanded = currentExpandedNodes.has(node.id);
-                    // 如果当前状态中有这个节点，使用当前状态；否则使用数据库中的 expandedOutline
-                    return {
-                      ...node,
-                      expandedOutline: currentExpandedNodes.has(node.id) ? isCurrentlyExpanded : (node.expandedOutline !== false),
-                    };
-                  });
-                  
-                  setMindMap({
-                    ...newMindMap,
-                    nodes: mergedNodes,
-                  });
-                  
-                  // 完全保持当前的展开状态，不根据数据库的 expandedOutline 覆盖
-                  // 只处理新节点（不在 currentExpandedNodes 中的）
-                  setExpandedNodes(prev => {
-                    const newSet = new Set(prev);
-                    let changed = false;
-                    mergedNodes.forEach((node: MindMapNode) => {
-                      // 只处理新节点（不在 prev 中的），根据 expandedOutline 字段决定是否展开
-                      if (!prev.has(node.id)) {
-                        if (node.expandedOutline !== false) {
-                          newSet.add(node.id);
-                          changed = true;
-                        }
-                      }
-                      // 如果节点已经在 prev 中，完全保持当前状态，不覆盖
-                    });
-                    if (changed) {
-                      expandedNodesRef.current = newSet;
-                    }
-                    return changed ? newSet : prev;
-                  });
-                  
-                  if ((window as any).UiContext) {
-                    const updatedMap = responseData?.nodeCardsMap
-                      || responseData?.mindMap?.nodeCardsMap
-                      || {};
-                    (window as any).UiContext.nodeCardsMap = updatedMap;
-                    
-                    // 如果当前有选中的 card，更新其数据（异步清除缓存）
-                    const currentSelectedCard = selectedCard;
-                    if (currentSelectedCard) {
-                      const nodeCards = updatedMap[currentSelectedCard.nodeId || ''] || [];
-                      const updatedCard = nodeCards.find((c: Card) => c.docId === currentSelectedCard.docId);
-                      if (updatedCard) {
-                        // 只有当 updateAt 发生变化时才清除缓存并更新
-                        if (updatedCard.updateAt && currentSelectedCard.updateAt && 
-                            updatedCard.updateAt !== currentSelectedCard.updateAt) {
-                          // 异步清除缓存，避免阻塞
-                          setTimeout(() => {
-                            const cardIdStr = String(currentSelectedCard.docId);
-                            delete cardContentCacheRef.current[cardIdStr];
-                            cachedCardsRef.current.delete(cardIdStr);
-                            try {
-                              const cacheKey = `mindmap-outline-card-${cardIdStr}`;
-                              localStorage.removeItem(cacheKey);
-                            } catch (error) {
-                              console.error('Failed to remove from localStorage:', error);
-                            }
-                          }, 0);
-                        }
-                        // 更新 selectedCard（即使 updateAt 没变，也要更新以同步其他字段）
-                        // 但避免不必要的更新导致循环
-                        if (JSON.stringify(updatedCard) !== JSON.stringify(currentSelectedCard)) {
-                          setSelectedCard(updatedCard);
-                        }
-                      } else {
-                        // card 不存在了，清除选择
-                        setSelectedCard(null);
-                      }
-                    }
-                    
-                    // 预加载新卡片内容 - 暂时注释掉
-                    // 所有缓存逻辑已注释
-                  }
-                }).catch((error) => {
-                  console.error('Failed to reload data:', error);
-                });
-              }, 0);
-            }
-          } catch (error) {
-            console.error('[MindMap Outline] Failed to parse WebSocket message:', error);
-          }
-        };
-        
-        // 保存 WebSocket 引用
-        wsRef.current = ws;
-
-        ws.onclose = (event: any) => {
-          // console.log('[MindMap Outline] WebSocket closed', event.code, event.reason);
-          ws = null;
-          wsRef.current = null;
-          isConnecting = false;
-          
-          // 清除心跳
-          clearHeartbeat();
-          
-          // 如果不是正常关闭（code !== 1000），尝试重连
-          if (event.code !== 1000 && reconnectAttemptsRef.current < maxReconnectAttempts) {
-            reconnectAttemptsRef.current++;
-            
-            // 指数退避：延迟时间逐渐增加
-            const delay = reconnectDelayRef.current;
-            reconnectDelayRef.current = Math.min(delay * 2, 30000); // 最大30秒
-            
-            reconnectTimeoutRef.current = setTimeout(() => {
-              reconnectTimeoutRef.current = null;
-              if (!wsRef.current && reconnectAttemptsRef.current <= maxReconnectAttempts) {
-                connectWebSocket();
-              }
-            }, delay);
-          } else if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
-            console.warn('[MindMap Outline] WebSocket reconnection failed after', maxReconnectAttempts, 'attempts');
-          }
-        };
-
-        ws.onerror = (error: any) => {
-          console.error('[MindMap Outline] WebSocket error:', error);
-          isConnecting = false;
-          // 错误时不清除连接，让 onclose 处理重连逻辑
-        };
-      }).catch((error) => {
-        console.error('[MindMap Outline] Failed to load WebSocket:', error);
-        isConnectingRef.current = false;
-      });
-    };
-
-    // 初始连接
-    connectWebSocket();
-
-    return () => {
-      // 清除心跳定时器
-      clearHeartbeat();
-      
-      // 清除重连定时器
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
-      
-      // 正常关闭连接（code 1000 表示正常关闭，不会触发重连）
-      if (ws) {
+    // 清理旧连接的函数
+    const cleanupOldConnection = () => {
+      const oldWs = (window as any)[globalWsKey];
+      if (oldWs) {
         try {
-          ws.close(1000, 'Component unmounting');
+          // 清理事件处理器，避免内存泄漏
+          if (oldWs.onopen) oldWs.onopen = null;
+          if (oldWs.onclose) oldWs.onclose = null;
+          if (oldWs.onmessage) oldWs.onmessage = null;
+          // Sock 类没有 onerror 属性
+          // 关闭连接
+          if (oldWs.close) {
+            oldWs.close(1000, 'Reconnecting');
+          } else if (oldWs.sock && oldWs.sock.close) {
+            oldWs.sock.close(1000, 'Reconnecting');
+          }
         } catch (e) {
           // ignore
         }
+        (window as any)[globalWsKey] = null;
       }
+    };
+    
+    // 如果全局已有活跃连接，复用它
+    const existingWs = (window as any)[globalWsKey];
+    if (existingWs && existingWs.readyState === 1) { // WebSocket.OPEN
+      wsRef.current = existingWs;
+      return () => {
+        // 组件卸载时不清除全局连接，因为可能被其他组件使用
+        if (wsRef.current === existingWs) {
+          wsRef.current = null;
+        }
+      };
+    }
+    
+    // 清理旧连接
+    cleanupOldConnection();
+    
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    const wsUrl = `/d/${domainId}/mindmap/${docId}/ws`;
+
+    // 连接 WebSocket（使用 ReconnectingWebSocket，它自带重连功能）
+    import('../components/socket').then(({ default: WebSocket }) => {
+      const ws = new WebSocket(wsUrl, false, true);
       
-      // 清除引用
-      if (wsRef.current === ws) {
+      // 保存到全局和 ref
+      (window as any)[globalWsKey] = ws;
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        // 连接成功
+        // console.log('[MindMap Outline] WebSocket connected');
+      };
+
+      ws.onmessage = (_: any, data: string) => {
+        try {
+          const msg = JSON.parse(data);
+          // 移除详细日志，减少控制台输出
+          // console.log('[MindMap Outline] WebSocket message:', msg);
+
+          // 处理缓存响应
+          if (msg.type === 'markdown_response') {
+            const { requestId, html, error } = msg;
+            const requestHandler = wsRequestMapRef.current.get(requestId);
+            if (requestHandler) {
+              wsRequestMapRef.current.delete(requestId);
+              if (error) {
+                requestHandler.reject(new Error(error));
+              } else {
+                requestHandler.resolve(html);
+              }
+            }
+          } else if (msg.type === 'image_response') {
+            const { requestId, data: imageData, error } = msg;
+            const requestHandler = wsRequestMapRef.current.get(requestId);
+            if (requestHandler) {
+              wsRequestMapRef.current.delete(requestId);
+              if (error) {
+                requestHandler.reject(new Error(error));
+              } else {
+                requestHandler.resolve(imageData);
+              }
+            }
+          } else if (msg.type === 'init' || msg.type === 'update') {
+            // 使用 setTimeout 将数据重新加载操作推迟到下一个事件循环，避免阻塞 onmessage 处理器
+            setTimeout(() => {
+              const domainId = (window as any).UiContext?.domainId || 'system';
+              request.get(getMindMapUrl('/data', docId)).then((responseData) => {
+                const newMindMap = responseData?.mindMap || responseData;
+                
+                // 保存当前的展开状态，避免被覆盖
+                const currentExpandedNodes = expandedNodesRef.current;
+                
+                // 合并展开状态：完全保留当前的展开状态，不根据数据库的 expandedOutline 覆盖
+                const mergedNodes = newMindMap.nodes.map((node: MindMapNode) => {
+                  const isCurrentlyExpanded = currentExpandedNodes.has(node.id);
+                  // 如果当前状态中有这个节点，使用当前状态；否则使用数据库中的 expandedOutline
+                  return {
+                    ...node,
+                    expandedOutline: currentExpandedNodes.has(node.id) ? isCurrentlyExpanded : (node.expandedOutline !== false),
+                  };
+                });
+                
+                setMindMap({
+                  ...newMindMap,
+                  nodes: mergedNodes,
+                });
+                
+                // 完全保持当前的展开状态，不根据数据库的 expandedOutline 覆盖
+                // 只处理新节点（不在 currentExpandedNodes 中的）
+                setExpandedNodes(prev => {
+                  const newSet = new Set(prev);
+                  let changed = false;
+                  mergedNodes.forEach((node: MindMapNode) => {
+                    // 只处理新节点（不在 prev 中的），根据 expandedOutline 字段决定是否展开
+                    if (!prev.has(node.id)) {
+                      if (node.expandedOutline !== false) {
+                        newSet.add(node.id);
+                        changed = true;
+                      }
+                    }
+                    // 如果节点已经在 prev 中，完全保持当前状态，不覆盖
+                  });
+                  if (changed) {
+                    expandedNodesRef.current = newSet;
+                  }
+                  return changed ? newSet : prev;
+                });
+                
+                if ((window as any).UiContext) {
+                  const updatedMap = responseData?.nodeCardsMap
+                    || responseData?.mindMap?.nodeCardsMap
+                    || {};
+                  (window as any).UiContext.nodeCardsMap = updatedMap;
+                  
+                  // 如果当前有选中的 card，更新其数据（异步清除缓存）
+                  const currentSelectedCard = selectedCard;
+                  if (currentSelectedCard) {
+                    const nodeCards = updatedMap[currentSelectedCard.nodeId || ''] || [];
+                    const updatedCard = nodeCards.find((c: Card) => c.docId === currentSelectedCard.docId);
+                    if (updatedCard) {
+                      // 只有当 updateAt 发生变化时才清除缓存并更新
+                      if (updatedCard.updateAt && currentSelectedCard.updateAt && 
+                          updatedCard.updateAt !== currentSelectedCard.updateAt) {
+                        // 异步清除缓存，避免阻塞
+                        setTimeout(() => {
+                          const cardIdStr = String(currentSelectedCard.docId);
+                          delete cardContentCacheRef.current[cardIdStr];
+                          cachedCardsRef.current.delete(cardIdStr);
+                          try {
+                            const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+                            localStorage.removeItem(cacheKey);
+                          } catch (error) {
+                            console.error('Failed to remove from localStorage:', error);
+                          }
+                        }, 0);
+                      }
+                      // 更新 selectedCard（即使 updateAt 没变，也要更新以同步其他字段）
+                      // 但避免不必要的更新导致循环
+                      if (JSON.stringify(updatedCard) !== JSON.stringify(currentSelectedCard)) {
+                        setSelectedCard(updatedCard);
+                      }
+                    } else {
+                      // card 不存在了，清除选择
+                      setSelectedCard(null);
+                    }
+                  }
+                  
+                  // 预加载新卡片内容 - 暂时注释掉
+                  // 所有缓存逻辑已注释
+                }
+              }).catch((error) => {
+                console.error('Failed to reload data:', error);
+              });
+            }, 0);
+          }
+        } catch (error) {
+          console.error('[MindMap Outline] Failed to parse WebSocket message:', error);
+        }
+      };
+
+      ws.onclose = (event: any) => {
+        // console.log('[MindMap Outline] WebSocket closed', event.code, event.reason);
+        // 如果全局连接就是这个连接，清除全局引用
+        if ((window as any)[globalWsKey] === ws) {
+          (window as any)[globalWsKey] = null;
+        }
+        // 如果 ref 指向这个连接，清除 ref
+        if (wsRef.current === ws) {
+          wsRef.current = null;
+        }
+        // ReconnectingWebSocket 会自动重连，不需要手动重连
+      };
+
+      // Sock 类没有 onerror，错误会通过 onclose 处理
+      // ReconnectingWebSocket 会自动处理错误和重连
+    }).catch((error) => {
+      console.error('[MindMap Outline] Failed to load WebSocket:', error);
+    });
+
+    return () => {
+      // 组件卸载时的清理
+      const currentWs = (window as any)[globalWsKey];
+      // 只有当全局连接就是这个组件创建的连接时，才清理
+      // 但不清除全局连接，因为可能被其他组件使用
+      if (wsRef.current === currentWs) {
         wsRef.current = null;
       }
-      isConnecting = false;
-      reconnectAttemptsRef.current = 0;
-      reconnectDelayRef.current = 1000;
     };
-  }, [docId]); // 移除 selectedCard 依赖，避免频繁重建连接
+  }, [docId]); // 只依赖 docId，避免频繁重建连接
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', backgroundColor: '#fff' }}>
