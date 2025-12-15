@@ -823,6 +823,53 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     });
   }, [mindMap]);
 
+  // 递归检查 node 及其所有子节点和子卡片是否都已缓存
+  const checkNodeCachedRef = useRef<((nodeId: string) => boolean) | null>(null);
+  const checkNodeCached = useCallback((nodeId: string): boolean => {
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const nodeCards = (nodeCardsMap[nodeId] || []).filter((card: Card) => {
+      return !card.nodeId || card.nodeId === nodeId;
+    });
+    
+    // 检查该 node 下的所有 card 是否都已缓存
+    const allCardsCached = nodeCards.length === 0 || nodeCards.every((card: Card) => {
+      const cardIdStr = String(card.docId);
+      return cachedCardsRef.current.has(cardIdStr);
+    });
+    
+    if (!allCardsCached) {
+      return false;
+    }
+    
+    // 检查该 node 下的所有子 node 是否都已缓存（递归）
+    const nodeData = mindMap.nodes.find(n => n.id === nodeId);
+    if (!nodeData) {
+      return allCardsCached;
+    }
+    
+    // 获取所有子节点
+    const childNodeIds = mindMap.edges
+      .filter(edge => edge.source === nodeId)
+      .map(edge => edge.target);
+    
+    if (childNodeIds.length === 0) {
+      return allCardsCached;
+    }
+    
+    // 递归检查每个子节点（使用 ref 中的函数避免循环依赖）
+    const checkFn = checkNodeCachedRef.current || checkNodeCached;
+    const allChildNodesCached = childNodeIds.every(childNodeId => {
+      return checkFn(childNodeId);
+    });
+    
+    return allCardsCached && allChildNodesCached;
+  }, [mindMap]);
+  
+  // 将函数存储到 ref 中，用于递归调用
+  useEffect(() => {
+    checkNodeCachedRef.current = checkNodeCached;
+  }, [checkNodeCached]);
+
   // 构建文件树（优化性能：使用 nodeMap 而不是 find，优化 expandedNodes 依赖）
   const expandedNodesArray = useMemo(() => Array.from(expandedNodes), [expandedNodes]);
   const fileTree = useMemo(() => {
@@ -1943,6 +1990,17 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
               文件结构
             </div>
             {fileTree.map((file) => {
+              // 检查缓存状态
+              let isCached = false;
+              if (file.type === 'card') {
+                // 检查 card 是否已缓存
+                const cardIdStr = String(file.cardId);
+                isCached = cachedCardsRef.current.has(cardIdStr);
+              } else if (file.type === 'node') {
+                // 递归检查 node 及其所有子节点和子卡片是否都已缓存
+                isCached = checkNodeCached(file.nodeId || '');
+              }
+              
               return (
                 <div
                   key={file.id}
@@ -1983,7 +2041,8 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                     padding: `4px ${8 + file.level * 16}px`,
                     cursor: 'pointer',
                     fontSize: '13px',
-                    color: '#333',
+                    color: isCached ? '#333' : '#999',
+                    fontWeight: isCached ? '600' : 'normal',
                     backgroundColor: 'transparent',
                     display: 'flex',
                     alignItems: 'center',
