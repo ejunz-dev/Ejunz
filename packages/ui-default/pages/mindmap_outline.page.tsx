@@ -18,7 +18,8 @@ interface MindMapNode {
   shape?: 'rectangle' | 'circle' | 'ellipse' | 'diamond';
   parentId?: string;
   children?: string[];
-  expanded?: boolean;
+  expanded?: boolean; // editor 的展开状态
+  expandedOutline?: boolean; // outline 的展开状态（独立于 editor）
   level?: number;
   order?: number; // 节点顺序
   style?: Record<string, any>;
@@ -720,17 +721,96 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   // 标记是否正在手动设置选择（避免useEffect干扰）
   const isManualSelectionRef = useRef(false);
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
-    const initialExpanded = new Set<string>();
+  
+  // 从数据库加载 outline 的展开状态（使用 expandedOutline 字段，独立于 editor）
+  const loadOutlineExpandedState = useCallback((): Set<string> => {
+    const expanded = new Set<string>();
     if (initialData?.nodes) {
       initialData.nodes.forEach(node => {
-        if (node.expanded !== false) {
-          initialExpanded.add(node.id);
+        // 使用 expandedOutline 字段，如果没有则默认展开
+        if (node.expandedOutline !== false) {
+          expanded.add(node.id);
         }
       });
     }
-    return initialExpanded;
+    return expanded;
+  }, [initialData?.nodes]);
+
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
+    return loadOutlineExpandedState();
   });
+
+  // 保存展开状态的 ref（用于自动保存和 WebSocket 更新时保留状态）
+  const expandedNodesRef = useRef<Set<string>>(expandedNodes);
+  const mindMapRef = useRef<MindMapDoc>(mindMap);
+  
+  // 同步 refs
+  useEffect(() => {
+    expandedNodesRef.current = expandedNodes;
+  }, [expandedNodes]);
+  
+  useEffect(() => {
+    mindMapRef.current = mindMap;
+  }, [mindMap]);
+
+  // 自动保存展开状态到数据库（带防抖，参考 editor 的实现）
+  const expandSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const triggerExpandAutoSave = useCallback(() => {
+    // 清除之前的定时器（如果有）
+    if (expandSaveTimerRef.current) {
+      clearTimeout(expandSaveTimerRef.current);
+      expandSaveTimerRef.current = null;
+    }
+
+    expandSaveTimerRef.current = setTimeout(async () => {
+      try {
+        // 使用 ref 获取最新的展开状态和节点数据
+        const currentExpandedNodes = expandedNodesRef.current;
+        const currentMindMap = mindMapRef.current;
+        
+        // 更新所有节点的 expandedOutline 字段，匹配当前的展开状态
+        const updatedNodes = currentMindMap.nodes.map((node) => {
+          const isExpanded = currentExpandedNodes.has(node.id);
+          return {
+            ...node,
+            expandedOutline: isExpanded,
+          };
+        });
+
+        // 调用 /save 接口保存整个 mindMap（包含 expandedOutline 状态）
+        // 过滤掉临时节点和边，确保不会保存临时数据
+        const filteredNodes = updatedNodes.filter(n => !n.id.startsWith('temp-node-'));
+        const filteredEdges = currentMindMap.edges.filter(e => 
+          !e.source.startsWith('temp-node-') && 
+          !e.target.startsWith('temp-node-') &&
+          !e.id.startsWith('temp-edge-')
+        );
+        
+        const domainId = (window as any).UiContext?.domainId || 'system';
+        const getMindMapUrl = (path: string, docId: string) => {
+          return `/d/${domainId}/mindmap/${docId}${path}`;
+        };
+        
+        await request.post(getMindMapUrl('/save', docId), {
+          nodes: filteredNodes,
+          edges: filteredEdges,
+          operationDescription: '自动保存 outline 展开状态',
+        });
+        
+        // 更新本地 mindMap 状态（确保与后端同步）
+        // 注意：这里更新 mindMap 不会触发 useEffect 重置展开状态，因为 useEffect 只依赖 mmid
+        setMindMap(prev => ({
+          ...prev,
+          nodes: updatedNodes,
+        }));
+        
+        expandSaveTimerRef.current = null;
+      } catch (error: any) {
+        console.error('保存 outline 展开状态失败:', error);
+        expandSaveTimerRef.current = null;
+      }
+    }, 1500);
+  }, [docId]);
 
   // 卡片内容缓存（内存缓存，用于快速访问）
   const cardContentCacheRef = useRef<Record<string, string>>({});
@@ -1019,19 +1099,26 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     }
   }, [isCheckingCache]);
 
-  // 当 mindMap 更新时，更新展开状态
+  // 跟踪已初始化的 mindmap（通过 mmid），避免重复初始化
+  const initializedMindMapRef = useRef<string | null>(null);
+  
+  // 只在初始化时或切换 mindmap 时设置展开状态，之后完全由用户操作控制
   useEffect(() => {
-    setExpandedNodes(prev => {
-      const newSet = new Set(prev);
+    const currentMmid = mindMap?.mmid;
+    
+    // 如果是新的 mindmap（mmid 变化），重新初始化
+    if (currentMmid && currentMmid !== initializedMindMapRef.current) {
+      // 从数据库加载展开状态
+      const expanded = new Set<string>();
       mindMap.nodes.forEach(node => {
-        if (node.expanded !== false && !newSet.has(node.id)) {
-          newSet.add(node.id);
-        } else if (node.expanded === false && newSet.has(node.id)) {
-          newSet.delete(node.id);
+        if (node.expandedOutline !== false) {
+          expanded.add(node.id);
         }
       });
-      return newSet;
-    });
+      setExpandedNodes(expanded);
+      expandedNodesRef.current = expanded;
+      initializedMindMapRef.current = currentMmid;
+    }
     
     // 当 mindMap 更新时，自动检查缓存状态（延迟一下，确保 nodeCardsMap 已更新）
     const timer = setTimeout(() => {
@@ -1040,7 +1127,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [mindMap, checkCacheStatus]);
+  }, [mindMap?.mmid, checkCacheStatus]); // 只依赖 mmid，避免频繁触发
 
   // 递归检查 node 及其所有子节点和子卡片是否都已缓存
   const checkNodeCachedRef = useRef<((nodeId: string) => boolean) | null>(null);
@@ -1198,7 +1285,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     return items;
   }, [mindMap.nodes, mindMap.edges, expandedNodesArray]);
 
-  // 切换节点展开/折叠
+  // 切换节点展开/折叠（保存到数据库的 expandedOutline 字段）
   const toggleNodeExpanded = useCallback((nodeId: string) => {
     setExpandedNodes(prev => {
       const newSet = new Set(prev);
@@ -1207,9 +1294,31 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
       } else {
         newSet.add(nodeId);
       }
+      
+      // 立即更新本地 mindMap 状态（实现即时 UI 响应）
+      setMindMap(prev => {
+        const updated = {
+          ...prev,
+          nodes: prev.nodes.map(n =>
+            n.id === nodeId
+              ? { ...n, expandedOutline: newSet.has(nodeId) }
+              : n
+          ),
+        };
+        // 立即更新 ref，确保自动保存时能获取最新值
+        mindMapRef.current = updated;
+        return updated;
+      });
+      
+      // 立即更新 ref，确保自动保存时能获取最新值
+      expandedNodesRef.current = newSet;
+      
+      // 触发自动保存到数据库
+      triggerExpandAutoSave();
+      
       return newSet;
     });
-  }, []);
+  }, [triggerExpandAutoSave]);
 
   // 构建选中node及其子节点的nodes和edges（用于OutlineView）
   const getNodeSubgraph = useCallback((nodeId: string): { nodes: ReactFlowNode[]; edges: ReactFlowEdge[] } => {
@@ -2239,11 +2348,47 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
               setTimeout(() => {
                 const domainId = (window as any).UiContext?.domainId || 'system';
                 request.get(getMindMapUrl('/data', docId)).then((responseData) => {
-                  if (responseData?.mindMap) {
-                    setMindMap(responseData.mindMap);
-                  } else {
-                    setMindMap(responseData);
-                  }
+                  const newMindMap = responseData?.mindMap || responseData;
+                  
+                  // 保存当前的展开状态，避免被覆盖
+                  const currentExpandedNodes = expandedNodesRef.current;
+                  
+                  // 合并展开状态：完全保留当前的展开状态，不根据数据库的 expandedOutline 覆盖
+                  const mergedNodes = newMindMap.nodes.map((node: MindMapNode) => {
+                    const isCurrentlyExpanded = currentExpandedNodes.has(node.id);
+                    // 如果当前状态中有这个节点，使用当前状态；否则使用数据库中的 expandedOutline
+                    return {
+                      ...node,
+                      expandedOutline: currentExpandedNodes.has(node.id) ? isCurrentlyExpanded : (node.expandedOutline !== false),
+                    };
+                  });
+                  
+                  setMindMap({
+                    ...newMindMap,
+                    nodes: mergedNodes,
+                  });
+                  
+                  // 完全保持当前的展开状态，不根据数据库的 expandedOutline 覆盖
+                  // 只处理新节点（不在 currentExpandedNodes 中的）
+                  setExpandedNodes(prev => {
+                    const newSet = new Set(prev);
+                    let changed = false;
+                    mergedNodes.forEach((node: MindMapNode) => {
+                      // 只处理新节点（不在 prev 中的），根据 expandedOutline 字段决定是否展开
+                      if (!prev.has(node.id)) {
+                        if (node.expandedOutline !== false) {
+                          newSet.add(node.id);
+                          changed = true;
+                        }
+                      }
+                      // 如果节点已经在 prev 中，完全保持当前状态，不覆盖
+                    });
+                    if (changed) {
+                      expandedNodesRef.current = newSet;
+                    }
+                    return changed ? newSet : prev;
+                  });
+                  
                   if ((window as any).UiContext) {
                     const updatedMap = responseData?.nodeCardsMap
                       || responseData?.mindMap?.nodeCardsMap
@@ -2256,19 +2401,30 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                       const nodeCards = updatedMap[currentSelectedCard.nodeId || ''] || [];
                       const updatedCard = nodeCards.find((c: Card) => c.docId === currentSelectedCard.docId);
                       if (updatedCard) {
-                        // 异步清除缓存，避免阻塞
-                        setTimeout(() => {
-                          const cardIdStr = String(currentSelectedCard.docId);
-                          delete cardContentCacheRef.current[cardIdStr];
-                          cachedCardsRef.current.delete(cardIdStr);
-                          try {
-                            const cacheKey = `mindmap-outline-card-${cardIdStr}`;
-                            localStorage.removeItem(cacheKey);
-                          } catch (error) {
-                            console.error('Failed to remove from localStorage:', error);
-                          }
-                        }, 0);
-                        setSelectedCard(updatedCard);
+                        // 只有当 updateAt 发生变化时才清除缓存并更新
+                        if (updatedCard.updateAt && currentSelectedCard.updateAt && 
+                            updatedCard.updateAt !== currentSelectedCard.updateAt) {
+                          // 异步清除缓存，避免阻塞
+                          setTimeout(() => {
+                            const cardIdStr = String(currentSelectedCard.docId);
+                            delete cardContentCacheRef.current[cardIdStr];
+                            cachedCardsRef.current.delete(cardIdStr);
+                            try {
+                              const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+                              localStorage.removeItem(cacheKey);
+                            } catch (error) {
+                              console.error('Failed to remove from localStorage:', error);
+                            }
+                          }, 0);
+                        }
+                        // 更新 selectedCard（即使 updateAt 没变，也要更新以同步其他字段）
+                        // 但避免不必要的更新导致循环
+                        if (JSON.stringify(updatedCard) !== JSON.stringify(currentSelectedCard)) {
+                          setSelectedCard(updatedCard);
+                        }
+                      } else {
+                        // card 不存在了，清除选择
+                        setSelectedCard(null);
                       }
                     }
                     
