@@ -23,6 +23,9 @@
             <input type="hidden" name="nodeId" value="{{ nodeId }}">
           {% endif %}
           <input type="hidden" name="branch" value="{{ branch }}">
+          {% if returnUrl %}
+            <input type="hidden" name="returnUrl" value="{{ returnUrl }}">
+          {% endif %}
 
           {{ form.form_text({
               columns: 12,
