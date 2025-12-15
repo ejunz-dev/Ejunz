@@ -720,8 +720,6 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   // 标记是否正在手动设置选择（避免useEffect干扰）
   const isManualSelectionRef = useRef(false);
-  // 跟踪 hover 状态
-  const [hoveredFileId, setHoveredFileId] = useState<string | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
     const initialExpanded = new Set<string>();
     if (initialData?.nodes) {
@@ -1526,6 +1524,58 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
   }, [selectedCard, preloadAndCacheImages, cacheNodeCards, preloadCardContent]);
 
 
+  // 检查是否从编辑页面返回，如果是则刷新当前 card
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const fromEdit = urlParams.get('fromEdit');
+    const cardId = urlParams.get('cardId');
+    
+    if (fromEdit === 'true' && cardId && selectedCard && String(selectedCard.docId) === cardId) {
+      // 清除该 card 的缓存
+      const cardIdStr = String(selectedCard.docId);
+      delete cardContentCacheRef.current[cardIdStr];
+      cachedCardsRef.current.delete(cardIdStr);
+      
+      // 清除 localStorage 缓存
+      try {
+        const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+        localStorage.removeItem(cacheKey);
+      } catch (error) {
+        console.error('Failed to remove from localStorage:', error);
+      }
+      
+      // 重新加载数据
+      const domainId = (window as any).UiContext?.domainId || 'system';
+      request.get(getMindMapUrl('/data', docId)).then((responseData) => {
+        if (responseData?.mindMap) {
+          setMindMap(responseData.mindMap);
+        } else {
+          setMindMap(responseData);
+        }
+        if ((window as any).UiContext) {
+          const updatedMap = responseData?.nodeCardsMap
+            || responseData?.mindMap?.nodeCardsMap
+            || {};
+          (window as any).UiContext.nodeCardsMap = updatedMap;
+          
+          // 更新选中的 card 数据
+          const nodeCards = updatedMap[selectedCard.nodeId || ''] || [];
+          const updatedCard = nodeCards.find((c: Card) => c.docId === selectedCard.docId);
+          if (updatedCard) {
+            setSelectedCard(updatedCard);
+          }
+        }
+        
+        // 移除 URL 中的 fromEdit 参数
+        urlParams.delete('fromEdit');
+        const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+        window.history.replaceState({}, '', newUrl);
+      }).catch((error) => {
+        console.error('Failed to reload data:', error);
+      });
+    }
+  }, [docId, selectedCard]);
+
   // 监听数据更新（WebSocket 连接）
   useEffect(() => {
     // 如果已经有 WebSocket 连接，不重复连接
@@ -1595,6 +1645,25 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                     || {};
                   (window as any).UiContext.nodeCardsMap = updatedMap;
                   
+                  // 如果当前有选中的 card，更新其数据
+                  if (selectedCard) {
+                    const nodeCards = updatedMap[selectedCard.nodeId || ''] || [];
+                    const updatedCard = nodeCards.find((c: Card) => c.docId === selectedCard.docId);
+                    if (updatedCard) {
+                      // 清除缓存
+                      const cardIdStr = String(selectedCard.docId);
+                      delete cardContentCacheRef.current[cardIdStr];
+                      cachedCardsRef.current.delete(cardIdStr);
+                      try {
+                        const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+                        localStorage.removeItem(cacheKey);
+                      } catch (error) {
+                        console.error('Failed to remove from localStorage:', error);
+                      }
+                      setSelectedCard(updatedCard);
+                    }
+                  }
+                  
                   // 预加载新卡片内容
                   const allCards: Card[] = [];
                   Object.values(updatedMap).forEach((cards: Card[]) => {
@@ -1648,7 +1717,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
         wsRef.current = null;
       }
     };
-  }, [docId]);
+  }, [docId, selectedCard]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', backgroundColor: '#fff' }}>
@@ -1874,23 +1943,6 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
               文件结构
             </div>
             {fileTree.map((file) => {
-              const isSelectedCard = file.type === 'card' && selectedCard && file.cardId === selectedCard.docId;
-              const isSelectedNode = file.type === 'node' && selectedNodeId === file.nodeId;
-              const isSelected = isSelectedCard || isSelectedNode;
-              const isHovered = hoveredFileId === file.id;
-              
-              // 根据状态计算样式
-              let backgroundColor = 'transparent';
-              let color = '#333';
-              
-              if (isSelected) {
-                backgroundColor = '#e3f2fd';
-                color = '#1976d2';
-              } else if (isHovered) {
-                backgroundColor = '#f0f0f0';
-                color = '#333';
-              }
-              
               return (
                 <div
                   key={file.id}
@@ -1931,18 +1983,11 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                     padding: `4px ${8 + file.level * 16}px`,
                     cursor: 'pointer',
                     fontSize: '13px',
-                    color,
-                    backgroundColor,
+                    color: '#333',
+                    backgroundColor: 'transparent',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
-                    transition: 'background-color 0.15s ease, color 0.15s ease',
-                  }}
-                  onMouseEnter={() => {
-                    setHoveredFileId(file.id);
-                  }}
-                  onMouseLeave={() => {
-                    setHoveredFileId(null);
                   }}
                 >
                   {file.type === 'node' ? (
@@ -1999,6 +2044,45 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                 <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: '#333' }}>
                   {selectedCard.title || '未命名卡片'}
                 </h3>
+                <a
+                  href={(() => {
+                    const domainId = (window as any).UiContext?.domainId || 'system';
+                    const branch = (window as any).UiContext?.currentBranch || 'main';
+                    const mindMapDocId = (window as any).UiContext?.mindMap?.docId;
+                    const mindMapMmid = (window as any).UiContext?.mindMap?.mmid;
+                    const nodeId = selectedCard.nodeId || '';
+                    const cardId = selectedCard.docId;
+                    
+                    if (mindMapDocId) {
+                      return `/d/${domainId}/mindmap/${mindMapDocId}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit?returnUrl=${encodeURIComponent(window.location.href)}`;
+                    } else if (mindMapMmid) {
+                      return `/d/${domainId}/mindmap/mmid/${mindMapMmid}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit?returnUrl=${encodeURIComponent(window.location.href)}`;
+                    }
+                    return '#';
+                  })()}
+                  style={{
+                    padding: '6px 12px',
+                    backgroundColor: '#1976d2',
+                    color: '#fff',
+                    textDecoration: 'none',
+                    borderRadius: '4px',
+                    fontSize: '13px',
+                    fontWeight: '500',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'background-color 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#1565c0';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#1976d2';
+                  }}
+                >
+                  <span>✎</span>
+                  <span>编辑</span>
+                </a>
               </div>
               {cachingProgress && (
                 <div style={{
