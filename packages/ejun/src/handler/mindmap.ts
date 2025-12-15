@@ -2636,19 +2636,18 @@ class MindMapCardEditHandler extends Handler {
                 returnUrlObj.searchParams.set('cardId', cardId.toString());
                 this.response.redirect = returnUrlObj.pathname + returnUrlObj.search;
             } else {
-                // 重定向到更新后的卡片URL
-                if (docId) {
-                    this.response.redirect = this.url('mindmap_card_list_branch', { 
-                        docId: docId.toString(), 
-                        branch: effectiveBranch, 
-                        nodeId 
-                    }) + `?cardId=${cardId.toString()}`;
-                } else {
-                    this.response.redirect = this.url('mindmap_card_list_branch_mmid', { 
-                        mmid: mmid.toString(), 
-                        branch: effectiveBranch, 
-                        nodeId 
-                    }) + `?cardId=${cardId.toString()}`;
+            if (docId) {
+                this.response.redirect = this.url('mindmap_card_list_branch', { 
+                    docId: docId.toString(), 
+                    branch: effectiveBranch, 
+                    nodeId 
+                }) + `?cardId=${cardId.toString()}`;
+            } else {
+                this.response.redirect = this.url('mindmap_card_list_branch_mmid', { 
+                    mmid: mmid.toString(), 
+                    branch: effectiveBranch, 
+                    nodeId 
+                }) + `?cardId=${cardId.toString()}`;
                 }
             }
         } else {
