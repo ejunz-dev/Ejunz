@@ -1164,6 +1164,41 @@ class MindMapSaveHandler extends Handler {
         const data = this.request.body || {};
         let { nodes, edges, layout, viewport, theme, operationDescription } = data;
         
+        const isExpandOnlySave = operationDescription === '自动保存展开状态' || operationDescription === '自动保存 outline 展开状态';
+        
+        if (isExpandOnlySave && nodes && Array.isArray(nodes)) {
+            const currentBranch = (mindMap as any).currentBranch || 'main';
+            const currentBranchData = getBranchData(mindMap, currentBranch);
+            
+            const updatedNodes = currentBranchData.nodes.map((existingNode: MindMapNode) => {
+                const updatedNode = nodes.find((n: MindMapNode) => n.id === existingNode.id);
+                if (updatedNode) {
+                    const result: MindMapNode = { ...existingNode };
+                    if (updatedNode.expanded !== undefined) {
+                        result.expanded = updatedNode.expanded;
+                    }
+                    if ((updatedNode as any).expandedOutline !== undefined) {
+                        (result as any).expandedOutline = (updatedNode as any).expandedOutline;
+                    }
+                    return result;
+                }
+                return existingNode;
+            });
+            
+            setBranchData(mindMap, currentBranch, updatedNodes, currentBranchData.edges);
+            
+            await MindMapModel.updateFull(domainId, docId, {
+                branchData: mindMap.branchData,
+                nodes: mindMap.nodes, // 向后兼容
+                edges: mindMap.edges, // 向后兼容
+            });
+            
+            (this.ctx.emit as any)('mindmap/update', docId, mindMap.mmid);
+            
+            this.response.body = { success: true, hasNonPositionChanges: false };
+            return;
+        }
+        
         // 过滤掉临时节点和边，确保不会保存临时数据
         // 临时节点ID格式：temp-node-xxx，临时边ID格式：temp-edge-xxx
         if (nodes && Array.isArray(nodes)) {
