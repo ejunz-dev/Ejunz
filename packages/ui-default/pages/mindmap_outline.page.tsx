@@ -860,10 +860,24 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     };
   }, []);
 
-  // 检查缓存状态（类似 git status）
+  // 检查缓存状态（类似 git status）- 优化为异步，避免阻塞
   const checkCacheStatus = useCallback(async () => {
+    // 如果正在检查，跳过
+    if (isCheckingCache) {
+      return;
+    }
+    
     setIsCheckingCache(true);
     try {
+      // 使用 requestIdleCallback 或 setTimeout 将检查分批进行，避免阻塞
+      await new Promise(resolve => {
+        if (window.requestIdleCallback) {
+          window.requestIdleCallback(() => resolve(undefined), { timeout: 1000 });
+        } else {
+          setTimeout(resolve, 0);
+        }
+      });
+
       const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
       const allCards: Card[] = [];
       Object.values(nodeCardsMap).forEach((cards: Card[]) => {
@@ -875,36 +889,49 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
       const outdated: Array<{ cardId: string; title: string; cachedUpdateAt: string; currentUpdateAt: string }> = [];
       const cachedCardIds = new Set<string>();
       
-      // 方法1: 检查所有卡片，看它们是否有缓存需要更新
-      for (const card of allCards) {
-        const cardIdStr = String(card.docId);
-        try {
-          const cacheKey = `mindmap-outline-card-${cardIdStr}`;
-          const cachedDataStr = localStorage.getItem(cacheKey);
-          if (cachedDataStr) {
-            // 有缓存，标记为已缓存
-            cachedCardIds.add(cardIdStr);
-            // 同步到 cachedCardsRef
-            if (!cachedCardsRef.current.has(cardIdStr)) {
-              cachedCardsRef.current.add(cardIdStr);
-            }
-            
-            try {
-              const cachedData = JSON.parse(cachedDataStr);
-              // 检查是否有 html 字段（新格式）
-              if (cachedData.html) {
-                // 新格式，检查 updateAt
-                if (cachedData.updateAt && card.updateAt && cachedData.updateAt !== card.updateAt) {
+      // 分批处理卡片检查，避免一次性处理太多导致阻塞
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < allCards.length; i += BATCH_SIZE) {
+        const batch = allCards.slice(i, i + BATCH_SIZE);
+        
+        for (const card of batch) {
+          const cardIdStr = String(card.docId);
+          try {
+            const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+            const cachedDataStr = localStorage.getItem(cacheKey);
+            if (cachedDataStr) {
+              // 有缓存，标记为已缓存
+              cachedCardIds.add(cardIdStr);
+              // 同步到 cachedCardsRef
+              if (!cachedCardsRef.current.has(cardIdStr)) {
+                cachedCardsRef.current.add(cardIdStr);
+              }
+              
+              try {
+                const cachedData = JSON.parse(cachedDataStr);
+                // 检查是否有 html 字段（新格式）
+                if (cachedData.html) {
+                  // 新格式，检查 updateAt
+                  if (cachedData.updateAt && card.updateAt && cachedData.updateAt !== card.updateAt) {
+                    outdated.push({
+                      cardId: cardIdStr,
+                      title: card.title || '未命名卡片',
+                      cachedUpdateAt: cachedData.updateAt,
+                      currentUpdateAt: card.updateAt,
+                    });
+                  }
+                  // 如果 updateAt 匹配，说明缓存是最新的，不需要更新
+                } else {
+                  // 旧格式（纯HTML字符串），标记为需要更新
                   outdated.push({
                     cardId: cardIdStr,
                     title: card.title || '未命名卡片',
-                    cachedUpdateAt: cachedData.updateAt,
-                    currentUpdateAt: card.updateAt,
+                    cachedUpdateAt: '未知',
+                    currentUpdateAt: card.updateAt || '未知',
                   });
                 }
-                // 如果 updateAt 匹配，说明缓存是最新的，不需要更新
-              } else {
-                // 旧格式（纯HTML字符串），标记为需要更新
+              } catch (e) {
+                // 解析失败，可能是旧格式（纯HTML字符串），标记为需要更新
                 outdated.push({
                   cardId: cardIdStr,
                   title: card.title || '未命名卡片',
@@ -912,22 +939,20 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                   currentUpdateAt: card.updateAt || '未知',
                 });
               }
-            } catch (e) {
-              // 解析失败，可能是旧格式（纯HTML字符串），标记为需要更新
-              outdated.push({
-                cardId: cardIdStr,
-                title: card.title || '未命名卡片',
-                cachedUpdateAt: '未知',
-                currentUpdateAt: card.updateAt || '未知',
-              });
             }
+          } catch (error) {
+            console.error(`Failed to check cache for card ${cardIdStr}:`, error);
           }
-        } catch (error) {
-          console.error(`Failed to check cache for card ${cardIdStr}:`, error);
+        }
+        
+        // 每批处理完后，让出控制权
+        if (i + BATCH_SIZE < allCards.length) {
+          await new Promise(resolve => setTimeout(resolve, 0));
         }
       }
       
       // 方法2: 检查 localStorage 中所有 mindmap-outline-card-* 的键，清理不存在的卡片缓存
+      // 这个操作也分批进行
       try {
         const allKeys: string[] = [];
         for (let i = 0; i < localStorage.length; i++) {
@@ -937,32 +962,51 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           }
         }
         
-        for (const key of allKeys) {
-          const cardIdStr = key.replace('mindmap-outline-card-', '');
-          const card = allCards.find(c => String(c.docId) === cardIdStr);
-          if (!card) {
-            // 如果 card 不存在于当前数据中，从缓存中移除
-            cachedCardsRef.current.delete(cardIdStr);
-            delete cardContentCacheRef.current[cardIdStr];
-            try {
-              localStorage.removeItem(key);
-            } catch (error) {
-              console.error(`Failed to remove cache for ${cardIdStr}:`, error);
+        // 分批清理
+        const CLEANUP_BATCH_SIZE = 100;
+        for (let i = 0; i < allKeys.length; i += CLEANUP_BATCH_SIZE) {
+          const batch = allKeys.slice(i, i + CLEANUP_BATCH_SIZE);
+          
+          for (const key of batch) {
+            const cardIdStr = key.replace('mindmap-outline-card-', '');
+            const card = allCards.find(c => String(c.docId) === cardIdStr);
+            if (!card) {
+              // 如果 card 不存在于当前数据中，从缓存中移除
+              cachedCardsRef.current.delete(cardIdStr);
+              delete cardContentCacheRef.current[cardIdStr];
+              try {
+                localStorage.removeItem(key);
+              } catch (error) {
+                console.error(`Failed to remove cache for ${cardIdStr}:`, error);
+              }
             }
+          }
+          
+          // 每批处理完后，让出控制权
+          if (i + CLEANUP_BATCH_SIZE < allKeys.length) {
+            await new Promise(resolve => setTimeout(resolve, 0));
           }
         }
       } catch (error) {
         console.error('Failed to clean up old cache entries:', error);
       }
       
-      // 同步 cachedCardsRef，移除不在 localStorage 中的标记
-      cachedCardsRef.current.forEach(cardIdStr => {
-        const cacheKey = `mindmap-outline-card-${cardIdStr}`;
-        if (!localStorage.getItem(cacheKey)) {
-          cachedCardsRef.current.delete(cardIdStr);
-          delete cardContentCacheRef.current[cardIdStr];
+      // 同步 cachedCardsRef，移除不在 localStorage 中的标记（分批处理）
+      const cachedCardIdsArray = Array.from(cachedCardsRef.current);
+      const SYNC_BATCH_SIZE = 100;
+      for (let i = 0; i < cachedCardIdsArray.length; i += SYNC_BATCH_SIZE) {
+        const batch = cachedCardIdsArray.slice(i, i + SYNC_BATCH_SIZE);
+        for (const cardIdStr of batch) {
+          const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+          if (!localStorage.getItem(cacheKey)) {
+            cachedCardsRef.current.delete(cardIdStr);
+            delete cardContentCacheRef.current[cardIdStr];
+          }
         }
-      });
+        if (i + SYNC_BATCH_SIZE < cachedCardIdsArray.length) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
       
       setCacheStatus({
         outdated,
@@ -973,7 +1017,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     } finally {
       setIsCheckingCache(false);
     }
-  }, []);
+  }, [isCheckingCache]);
 
   // 当 mindMap 更新时，更新展开状态
   useEffect(() => {
@@ -1814,25 +1858,41 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
   }, [fileTree, selectedCard, selectedNodeId, handleSelectCard]);
 
   // 渲染card内容（优先使用缓存）
+  const renderingCardRef = useRef<string | null>(null); // 防止重复渲染
   useEffect(() => {
-    if (!selectedCard) return;
+    if (!selectedCard) {
+      renderingCardRef.current = null;
+      return;
+    }
     
     const contentDiv = document.getElementById('card-content-outline');
     if (!contentDiv) return;
     
     const cardIdStr = String(selectedCard.docId);
     
+    // 防止重复渲染同一个 card
+    if (renderingCardRef.current === cardIdStr) {
+      return;
+    }
+    renderingCardRef.current = cardIdStr;
+    
     // 检查缓存（优先从内存缓存读取）
     if (cardContentCacheRef.current[cardIdStr]) {
       contentDiv.innerHTML = cardContentCacheRef.current[cardIdStr];
       $(contentDiv).trigger('vjContentNew');
       
-      // 异步缓存该 node 下的其他 card
+      // 异步缓存该 node 下的其他 card（添加防抖，避免频繁调用）
       const nodeId = selectedCard.nodeId || '';
       if (nodeId) {
-        cacheNodeCards(nodeId).catch(error => {
-          console.error('Failed to cache node cards:', error);
-        });
+        // 使用 setTimeout 延迟执行，避免在快速切换卡片时频繁调用
+        setTimeout(() => {
+          // 再次检查 selectedCard 是否还是这个 card，避免在延迟期间切换了卡片
+          if (selectedCard && String(selectedCard.docId) === cardIdStr) {
+            cacheNodeCards(nodeId).catch(error => {
+              console.error('Failed to cache node cards:', error);
+            });
+          }
+        }, 500);
       }
       return;
     }
@@ -1840,21 +1900,48 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     // 检查 localStorage 缓存
     try {
       const cacheKey = `mindmap-outline-card-${cardIdStr}`;
-      const cachedHtml = localStorage.getItem(cacheKey);
-      if (cachedHtml) {
-        cardContentCacheRef.current[cardIdStr] = cachedHtml;
-        cachedCardsRef.current.add(cardIdStr);
-        contentDiv.innerHTML = cachedHtml;
-        $(contentDiv).trigger('vjContentNew');
-        
-        // 异步缓存该 node 下的其他 card
-        const nodeId = selectedCard.nodeId || '';
-        if (nodeId) {
-          cacheNodeCards(nodeId).catch(error => {
-            console.error('Failed to cache node cards:', error);
-          });
+      const cachedDataStr = localStorage.getItem(cacheKey);
+      if (cachedDataStr) {
+        try {
+          // 尝试解析新格式（JSON）
+          const cachedData = JSON.parse(cachedDataStr);
+          const cachedHtml = cachedData.html || cachedDataStr;
+          cardContentCacheRef.current[cardIdStr] = cachedHtml;
+          cachedCardsRef.current.add(cardIdStr);
+          contentDiv.innerHTML = cachedHtml;
+          $(contentDiv).trigger('vjContentNew');
+          
+          // 异步缓存该 node 下的其他 card（添加防抖）
+          const nodeId = selectedCard.nodeId || '';
+          if (nodeId) {
+            setTimeout(() => {
+              if (selectedCard && String(selectedCard.docId) === cardIdStr) {
+                cacheNodeCards(nodeId).catch(error => {
+                  console.error('Failed to cache node cards:', error);
+                });
+              }
+            }, 500);
+          }
+          return;
+        } catch (e) {
+          // 旧格式（纯HTML字符串）
+          cardContentCacheRef.current[cardIdStr] = cachedDataStr;
+          cachedCardsRef.current.add(cardIdStr);
+          contentDiv.innerHTML = cachedDataStr;
+          $(contentDiv).trigger('vjContentNew');
+          
+          const nodeId = selectedCard.nodeId || '';
+          if (nodeId) {
+            setTimeout(() => {
+              if (selectedCard && String(selectedCard.docId) === cardIdStr) {
+                cacheNodeCards(nodeId).catch(error => {
+                  console.error('Failed to cache node cards:', error);
+                });
+              }
+            }, 500);
+          }
+          return;
         }
-        return;
       }
     } catch (error) {
       console.error('Failed to read from localStorage:', error);
@@ -1942,12 +2029,16 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           console.error('Failed to cache images:', error);
         });
         
-        // 异步缓存该 node 下的其他 card
+        // 异步缓存该 node 下的其他 card（添加防抖）
         const nodeId = selectedCard.nodeId || '';
         if (nodeId) {
-          cacheNodeCards(nodeId).catch(error => {
-            console.error('Failed to cache node cards:', error);
-          });
+          setTimeout(() => {
+            if (selectedCard && String(selectedCard.docId) === cardIdStr) {
+              cacheNodeCards(nodeId).catch(error => {
+                console.error('Failed to cache node cards:', error);
+              });
+            }
+          }, 500);
         }
       })
       .catch(error => {
@@ -2018,9 +2109,30 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
   }, [docId, selectedCard]);
 
   // 监听数据更新（WebSocket 连接）
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const maxReconnectAttempts = 5;
+  const reconnectDelayRef = useRef(1000); // 初始重连延迟1秒
+  const isConnectingRef = useRef(false); // 防止重复连接的标志
+
   useEffect(() => {
+    // 使用全局标志防止多个组件实例同时创建连接
+    const globalWsKey = `mindmap-ws-${docId}`;
+    
+    // 如果全局已有连接，复用它
+    if ((window as any)[globalWsKey] && (window as any)[globalWsKey].readyState === 1) {
+      wsRef.current = (window as any)[globalWsKey];
+      return;
+    }
+    
     // 如果已经有 WebSocket 连接，不重复连接
-    if (wsRef.current) {
+    if (wsRef.current && wsRef.current.readyState === 1) { // WebSocket.OPEN
+      return;
+    }
+    
+    // 如果正在连接中，不重复连接
+    if (isConnectingRef.current) {
       return;
     }
 
@@ -2028,25 +2140,76 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     const domainId = (window as any).UiContext?.domainId || 'system';
     const wsUrl = `/d/${domainId}/mindmap/${docId}/ws`;
 
+    // 清除心跳定时器
+    const clearHeartbeat = () => {
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+      }
+    };
+
+    // 启动心跳保活（每30秒发送一次ping）
+    const startHeartbeat = () => {
+      clearHeartbeat();
+      heartbeatIntervalRef.current = setInterval(() => {
+        if (wsRef.current && wsRef.current.readyState === 1) { // WebSocket.OPEN
+          try {
+            wsRef.current.send(JSON.stringify({ type: 'ping' }));
+          } catch (error) {
+            console.error('[MindMap Outline] Failed to send heartbeat:', error);
+            clearHeartbeat();
+          }
+        } else {
+          clearHeartbeat();
+        }
+      }, 30000); // 30秒
+    };
+
     // 连接 WebSocket 的函数
+    let isConnecting = false;
     const connectWebSocket = () => {
+      // 防止重复连接
+      if (isConnecting || wsRef.current) {
+        return;
+      }
+      isConnecting = true;
+      
+      // 清除之前的重连定时器
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      
       import('../components/socket').then(({ default: WebSocket }) => {
         // 再次检查，避免重复连接
         if (wsRef.current) {
+          isConnecting = false;
           return;
         }
 
         ws = new WebSocket(wsUrl, false, true);
 
         ws.onopen = () => {
-          console.log('[MindMap Outline] WebSocket connected');
-          // 不再自动缓存，只在点击 card 时缓存
+          // 连接成功，重置重连计数和延迟
+          reconnectAttemptsRef.current = 0;
+          reconnectDelayRef.current = 1000;
+          isConnectingRef.current = false;
+          
+          // 保存到全局，供其他实例复用
+          (window as any)[globalWsKey] = ws;
+          
+          // 启动心跳保活
+          startHeartbeat();
+          
+          // 移除详细日志，减少控制台输出
+          // console.log('[MindMap Outline] WebSocket connected');
         };
 
         ws.onmessage = (_: any, data: string) => {
           try {
             const msg = JSON.parse(data);
-            console.log('[MindMap Outline] WebSocket message:', msg);
+            // 移除详细日志，减少控制台输出
+            // console.log('[MindMap Outline] WebSocket message:', msg);
 
             // 处理缓存响应
             if (msg.type === 'markdown_response') {
@@ -2072,53 +2235,50 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                 }
               }
             } else if (msg.type === 'init' || msg.type === 'update') {
-              // 重新加载数据
-              const domainId = (window as any).UiContext?.domainId || 'system';
-              request.get(getMindMapUrl('/data', docId)).then((responseData) => {
-                if (responseData?.mindMap) {
-                  setMindMap(responseData.mindMap);
-                } else {
-                  setMindMap(responseData);
-                }
-                if ((window as any).UiContext) {
-                  const updatedMap = responseData?.nodeCardsMap
-                    || responseData?.mindMap?.nodeCardsMap
-                    || {};
-                  (window as any).UiContext.nodeCardsMap = updatedMap;
-                  
-                  // 如果当前有选中的 card，更新其数据
-                  if (selectedCard) {
-                    const nodeCards = updatedMap[selectedCard.nodeId || ''] || [];
-                    const updatedCard = nodeCards.find((c: Card) => c.docId === selectedCard.docId);
-                    if (updatedCard) {
-                      // 清除缓存
-                      const cardIdStr = String(selectedCard.docId);
-                      delete cardContentCacheRef.current[cardIdStr];
-                      cachedCardsRef.current.delete(cardIdStr);
-                      try {
-                        const cacheKey = `mindmap-outline-card-${cardIdStr}`;
-                        localStorage.removeItem(cacheKey);
-                      } catch (error) {
-                        console.error('Failed to remove from localStorage:', error);
-                      }
-                      setSelectedCard(updatedCard);
-                    }
+              // 使用 setTimeout 将数据重新加载操作推迟到下一个事件循环，避免阻塞 onmessage 处理器
+              setTimeout(() => {
+                const domainId = (window as any).UiContext?.domainId || 'system';
+                request.get(getMindMapUrl('/data', docId)).then((responseData) => {
+                  if (responseData?.mindMap) {
+                    setMindMap(responseData.mindMap);
+                  } else {
+                    setMindMap(responseData);
                   }
-                  
-                  // 预加载新卡片内容
-                  const allCards: Card[] = [];
-                  Object.values(updatedMap).forEach((cards: Card[]) => {
-                    if (Array.isArray(cards)) {
-                      allCards.push(...cards);
+                  if ((window as any).UiContext) {
+                    const updatedMap = responseData?.nodeCardsMap
+                      || responseData?.mindMap?.nodeCardsMap
+                      || {};
+                    (window as any).UiContext.nodeCardsMap = updatedMap;
+                    
+                    // 如果当前有选中的 card，更新其数据（异步清除缓存）
+                    const currentSelectedCard = selectedCard;
+                    if (currentSelectedCard) {
+                      const nodeCards = updatedMap[currentSelectedCard.nodeId || ''] || [];
+                      const updatedCard = nodeCards.find((c: Card) => c.docId === currentSelectedCard.docId);
+                      if (updatedCard) {
+                        // 异步清除缓存，避免阻塞
+                        setTimeout(() => {
+                          const cardIdStr = String(currentSelectedCard.docId);
+                          delete cardContentCacheRef.current[cardIdStr];
+                          cachedCardsRef.current.delete(cardIdStr);
+                          try {
+                            const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+                            localStorage.removeItem(cacheKey);
+                          } catch (error) {
+                            console.error('Failed to remove from localStorage:', error);
+                          }
+                        }, 0);
+                        setSelectedCard(updatedCard);
+                      }
                     }
-                  });
-                  
-                  // 清除缓存并重新开始缓存 - 暂时注释掉
-                  // 所有缓存逻辑已注释
-                }
-              }).catch((error) => {
-                console.error('Failed to reload data:', error);
-              });
+                    
+                    // 预加载新卡片内容 - 暂时注释掉
+                    // 所有缓存逻辑已注释
+                  }
+                }).catch((error) => {
+                  console.error('Failed to reload data:', error);
+                });
+              }, 0);
             }
           } catch (error) {
             console.error('[MindMap Outline] Failed to parse WebSocket message:', error);
@@ -2128,17 +2288,42 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
         // 保存 WebSocket 引用
         wsRef.current = ws;
 
-        ws.onclose = () => {
-          console.log('[MindMap Outline] WebSocket closed');
+        ws.onclose = (event: any) => {
+          // console.log('[MindMap Outline] WebSocket closed', event.code, event.reason);
           ws = null;
           wsRef.current = null;
+          isConnecting = false;
+          
+          // 清除心跳
+          clearHeartbeat();
+          
+          // 如果不是正常关闭（code !== 1000），尝试重连
+          if (event.code !== 1000 && reconnectAttemptsRef.current < maxReconnectAttempts) {
+            reconnectAttemptsRef.current++;
+            
+            // 指数退避：延迟时间逐渐增加
+            const delay = reconnectDelayRef.current;
+            reconnectDelayRef.current = Math.min(delay * 2, 30000); // 最大30秒
+            
+            reconnectTimeoutRef.current = setTimeout(() => {
+              reconnectTimeoutRef.current = null;
+              if (!wsRef.current && reconnectAttemptsRef.current <= maxReconnectAttempts) {
+                connectWebSocket();
+              }
+            }, delay);
+          } else if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+            console.warn('[MindMap Outline] WebSocket reconnection failed after', maxReconnectAttempts, 'attempts');
+          }
         };
 
         ws.onerror = (error: any) => {
           console.error('[MindMap Outline] WebSocket error:', error);
+          isConnecting = false;
+          // 错误时不清除连接，让 onclose 处理重连逻辑
         };
       }).catch((error) => {
         console.error('[MindMap Outline] Failed to load WebSocket:', error);
+        isConnectingRef.current = false;
       });
     };
 
@@ -2146,19 +2331,33 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     connectWebSocket();
 
     return () => {
+      // 清除心跳定时器
+      clearHeartbeat();
+      
+      // 清除重连定时器
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      
+      // 正常关闭连接（code 1000 表示正常关闭，不会触发重连）
       if (ws) {
         try {
-          ws.close();
+          ws.close(1000, 'Component unmounting');
         } catch (e) {
           // ignore
         }
       }
+      
       // 清除引用
       if (wsRef.current === ws) {
         wsRef.current = null;
       }
+      isConnecting = false;
+      reconnectAttemptsRef.current = 0;
+      reconnectDelayRef.current = 1000;
     };
-  }, [docId, selectedCard]);
+  }, [docId]); // 移除 selectedCard 依赖，避免频繁重建连接
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', backgroundColor: '#fff' }}>
@@ -2403,10 +2602,12 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                 <button
                   onClick={() => {
                     setExplorerMode('cache');
-                    // 切换到缓存模式时自动检查状态
-                    if (cachedCardsRef.current.size > 0) {
-                      checkCacheStatus();
-                    }
+                    // 切换到缓存模式时延迟检查状态（避免阻塞）
+                    setTimeout(() => {
+                      if (!isCheckingCache && cachedCardsRef.current.size > 0) {
+                        checkCacheStatus();
+                      }
+                    }, 300);
                   }}
                   style={{
                     padding: '2px 8px',
