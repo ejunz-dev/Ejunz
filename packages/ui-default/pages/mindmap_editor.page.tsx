@@ -1301,10 +1301,52 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
           .filter(Boolean)
           .sort((a, b) => (a!.order || 0) - (b!.order || 0)) as Array<{ id: string; node: MindMapNode; order: number }>;
         
-        // 合并node和card，按照order混合排序
-        const allChildren: Array<{ type: 'node' | 'card'; id: string; order: number; data: any }> = [
-          ...childNodes.map(n => ({ type: 'node' as const, id: n.id, order: n.order, data: n.node })),
-          ...nodeCards.map(c => ({ type: 'card' as const, id: c.docId, order: c.order || 0, data: c })),
+        // 添加待创建的卡片和节点到排序列表
+        const existingCardIds = new Set((nodeCardsMap[nodeId] || []).map((c: Card) => c.docId));
+        const existingNodeIds = new Set(mindMap.nodes.map(n => n.id));
+        
+        // 获取待创建的卡片
+        const pendingCards = Array.from(pendingCreatesRef.current.values())
+          .filter(c => c.type === 'card' && c.nodeId === nodeId && !existingCardIds.has(c.tempId))
+          .map(create => {
+            // 从nodeCardsMap中查找对应的临时卡片，获取其order
+            const tempCard = (nodeCardsMap[nodeId] || []).find((c: Card) => c.docId === create.tempId);
+            const maxCardOrder = nodeCards.length > 0 ? Math.max(...nodeCards.map((c: Card) => c.order || 0)) : 0;
+            const maxNodeOrder = childNodes.length > 0 ? Math.max(...childNodes.map(n => n.order || 0)) : 0;
+            const maxOrder = Math.max(maxCardOrder, maxNodeOrder);
+            return {
+              type: 'card' as const,
+              id: create.tempId,
+              order: tempCard?.order || maxOrder + 1,
+              data: tempCard || { docId: create.tempId, title: create.title || '新卡片', nodeId, order: maxOrder + 1 },
+              isPending: true,
+            };
+          });
+        
+        // 获取待创建的节点
+        const pendingNodes = Array.from(pendingCreatesRef.current.values())
+          .filter(c => c.type === 'node' && c.nodeId === nodeId && !existingNodeIds.has(c.tempId))
+          .map(create => {
+            // 从mindMap.nodes中查找对应的临时节点，获取其order
+            const tempNode = mindMap.nodes.find(n => n.id === create.tempId);
+            const maxCardOrder = nodeCards.length > 0 ? Math.max(...nodeCards.map((c: Card) => c.order || 0)) : 0;
+            const maxNodeOrder = childNodes.length > 0 ? Math.max(...childNodes.map(n => n.order || 0)) : 0;
+            const maxOrder = Math.max(maxCardOrder, maxNodeOrder);
+            return {
+              type: 'node' as const,
+              id: create.tempId,
+              order: tempNode?.order || maxOrder + 1,
+              data: tempNode || { id: create.tempId, text: create.text || '新节点', order: maxOrder + 1 },
+              isPending: true,
+            };
+          });
+        
+        // 合并node和card，按照order混合排序（包括待创建的）
+        const allChildren: Array<{ type: 'node' | 'card'; id: string; order: number; data: any; isPending?: boolean }> = [
+          ...childNodes.map(n => ({ type: 'node' as const, id: n.id, order: n.order, data: n.node, isPending: false })),
+          ...nodeCards.map(c => ({ type: 'card' as const, id: c.docId, order: c.order || 0, data: c, isPending: false })),
+          ...pendingNodes,
+          ...pendingCards,
         ];
         
         // 按order排序
@@ -1319,61 +1361,21 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             
             const cardFileItem: FileItem = {
               type: 'card',
-              id: `card-${card.docId}`,
+              id: item.isPending ? card.docId : `card-${card.docId}`,
               name: card.title || '未命名卡片',
               nodeId: card.nodeId || nodeId,
               cardId: card.docId,
               parentId: card.nodeId || nodeId,
               level: level + 1,
             };
-            cardFileItem.hasPendingChanges = checkPendingChanges(cardFileItem);
+            cardFileItem.hasPendingChanges = item.isPending || checkPendingChanges(cardFileItem);
             cardFileItem.clipboardType = checkClipboard(cardFileItem);
             items.push(cardFileItem);
           } else {
-            // 递归处理子节点
+            // 递归处理子节点（包括待创建的节点）
             buildTree(item.id, level + 1, nodeId);
           }
         });
-        
-        // 添加待创建的卡片（临时显示，放在最后）
-        // 只显示那些不在 nodeCardsMap 中的卡片（避免重复）
-        const existingCardIds = new Set((nodeCardsMap[nodeId] || []).map((c: Card) => c.docId));
-        Array.from(pendingCreatesRef.current.values())
-          .filter(c => c.type === 'card' && c.nodeId === nodeId && !existingCardIds.has(c.tempId))
-          .forEach(create => {
-            const createFileItem: FileItem = {
-              type: 'card',
-              id: create.tempId,
-              name: create.title || '新卡片',
-              nodeId: nodeId,
-              cardId: create.tempId,
-              parentId: nodeId,
-              level: level + 1,
-            };
-            createFileItem.hasPendingChanges = true; // 新建的项目肯定有未保存的更改
-            items.push(createFileItem);
-          });
-        
-        // 添加待创建的节点（临时显示，放在最后）
-        // 只显示那些不在 mindMap.nodes 中的节点（避免重复）
-        const existingNodeIds = new Set(mindMap.nodes.map(n => n.id));
-        Array.from(pendingCreatesRef.current.values())
-          .filter(c => c.type === 'node' && c.nodeId === nodeId && !existingNodeIds.has(c.tempId))
-          .forEach(create => {
-            // 递归构建待创建的节点及其子树
-            const createFileItem: FileItem = {
-              type: 'node',
-              id: create.tempId,
-              name: create.text || '新节点',
-              nodeId: create.tempId,
-              parentId: nodeId,
-              level: level + 1,
-            };
-            createFileItem.hasPendingChanges = true; // 新建的项目肯定有未保存的更改
-            items.push(createFileItem);
-            // 如果节点展开，递归构建其子树（但待创建的节点默认不展开）
-            // 注意：待创建的节点不会有子节点，因为它们还没有保存到后端
-          });
       }
     };
 
@@ -2942,6 +2944,24 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
   // 新建子节点（前端操作）
   const handleNewChildNode = useCallback((parentNodeId: string) => {
     const tempId = `temp-node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // 计算父节点下所有子节点和卡片的maxOrder
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const childNodes = mindMap.edges
+      .filter(e => e.source === parentNodeId)
+      .map(e => mindMap.nodes.find(n => n.id === e.target))
+      .filter(Boolean) as MindMapNode[];
+    const nodeCards = (nodeCardsMap[parentNodeId] || [])
+      .filter((card: Card) => !card.nodeId || card.nodeId === parentNodeId);
+    
+    const maxNodeOrder = childNodes.length > 0
+      ? Math.max(...childNodes.map(n => n.order || 0))
+      : 0;
+    const maxCardOrder = nodeCards.length > 0
+      ? Math.max(...nodeCards.map((c: Card) => c.order || 0))
+      : 0;
+    const maxOrder = Math.max(maxNodeOrder, maxCardOrder);
+    
     const newChildNode: PendingCreate = {
       type: 'node',
       nodeId: parentNodeId,
@@ -2956,17 +2976,31 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     const tempNode: MindMapNode = {
       id: tempId,
       text: '新节点',
+      order: maxOrder + 1,
     };
     
-    setMindMap(prev => ({
-      ...prev,
-      nodes: [...prev.nodes, tempNode],
-      edges: [...prev.edges, {
-        id: `temp-edge-${Date.now()}`,
-        source: parentNodeId,
-        target: tempId,
-      }],
-    }));
+    // 创建新的edge
+    const newEdge: MindMapEdge = {
+      id: `temp-edge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      source: parentNodeId,
+      target: tempId,
+    };
+    
+    // 更新 mindMap（前端显示）- 一次性更新nodes和edges，避免状态冲突
+    setMindMap(prev => {
+      const updated = {
+        ...prev,
+        nodes: [...prev.nodes, tempNode].map(n =>
+          n.id === parentNodeId
+            ? { ...n, expanded: true }
+            : n
+        ),
+        edges: [...prev.edges, newEdge],
+      };
+      // 立即更新 ref，确保自动保存时能获取最新值
+      mindMapRef.current = updated;
+      return updated;
+    });
     
     // 展开父节点以便看到新节点
     setExpandedNodes(prev => {
@@ -2975,20 +3009,6 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
         newSet.add(parentNodeId);
         // 立即更新 ref，确保自动保存时能获取最新值
         expandedNodesRef.current = newSet;
-        // 立即更新本地 mindMap 状态
-        setMindMap(prev => {
-          const updated = {
-            ...prev,
-            nodes: prev.nodes.map(n =>
-              n.id === parentNodeId
-                ? { ...n, expanded: true }
-                : n
-            ),
-          };
-          // 立即更新 ref，确保自动保存时能获取最新值
-          mindMapRef.current = updated;
-          return updated;
-        });
         // 触发自动保存
         triggerExpandAutoSave();
       }
@@ -3206,6 +3226,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
           ...node,
           id: newId,
           text: node.text,
+          order: node.order, // 保持原有的order
         };
         nodesToCopy.push(newNode);
 
@@ -3221,10 +3242,13 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       // 构建新的 edges（在收集完所有节点后）
       const updatedEdges: MindMapEdge[] = [];
       
-      // 复制所有相关的 edges
+      // 复制所有相关的 edges（只复制那些source和target都在要复制的节点集合中的edges）
+      // 这样可以保持节点之间的嵌套关系
       mindMap.edges.forEach(edge => {
         const newSource = nodeIdMap.get(edge.source);
         const newTarget = nodeIdMap.get(edge.target);
+        // 只有当source和target都在nodeIdMap中时，才复制这个edge
+        // 这样可以确保只复制节点内部的edges，不包括节点与外部节点的edges
         if (newSource && newTarget) {
           updatedEdges.push({
             id: `temp-edge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -3234,14 +3258,18 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
         }
       });
 
-      // 添加根节点到目标节点的边
+      // 添加根节点到目标节点的边（将复制的节点树连接到目标节点）
       const rootNewId = nodeIdMap.get(sourceNodeId);
       if (rootNewId) {
-        updatedEdges.push({
-          id: `temp-edge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          source: targetNodeId,
-          target: rootNewId,
-        });
+        // 检查是否已经存在这个edge（避免重复）
+        const edgeExists = updatedEdges.some(e => e.source === targetNodeId && e.target === rootNewId);
+        if (!edgeExists) {
+          updatedEdges.push({
+            id: `temp-edge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            source: targetNodeId,
+            target: rootNewId,
+          });
+        }
       }
 
       // 更新 mindMap
@@ -3349,14 +3377,35 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       }
 
       // 添加到待创建列表
+      // 需要根据edges确定每个节点的正确父节点
+      // 只有根节点（sourceNodeId）应该连接到targetNodeId，其他节点应该连接到它们的新父节点
       nodesToCopy.forEach(newNode => {
         const oldNodeId = Array.from(nodeIdMap.entries()).find(([_, newId]) => newId === newNode.id)?.[0];
         if (oldNodeId) {
           // 检查是否已存在（避免重复）
           if (!pendingCreatesRef.current.has(newNode.id)) {
+            // 找到原始节点的父节点
+            const originalParentEdge = mindMap.edges.find(e => e.target === oldNodeId);
+            let parentNodeId: string;
+            
+            if (originalParentEdge) {
+              // 如果原始节点有父节点，找到父节点的新ID
+              const newParentId = nodeIdMap.get(originalParentEdge.source);
+              if (newParentId) {
+                // 父节点也在复制的节点集合中，使用新父节点ID
+                parentNodeId = newParentId;
+              } else {
+                // 父节点不在复制的节点集合中，说明这是根节点，连接到targetNodeId
+                parentNodeId = targetNodeId;
+              }
+            } else {
+              // 原始节点没有父节点，说明这是根节点，连接到targetNodeId
+              parentNodeId = targetNodeId;
+            }
+            
             pendingCreatesRef.current.set(newNode.id, {
               type: 'node',
-              nodeId: targetNodeId,
+              nodeId: parentNodeId,
               text: newNode.text || '新节点',
               tempId: newNode.id,
             });
