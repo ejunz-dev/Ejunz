@@ -2478,11 +2478,13 @@ class MindMapCardEditHandler extends Handler {
         }
         
         this.response.template = 'mindmap_card_edit.html';
+        const returnUrl = this.request.query.returnUrl;
         this.response.body = {
             mindMap,
             card,
             nodeId,
             branch: branch || 'main',
+            returnUrl: returnUrl || '',
         };
         this.UiContext.extraTitleContent = `${card?.title || '卡片'} - ${mindMap.title}`;
     }
@@ -2624,19 +2626,30 @@ class MindMapCardEditHandler extends Handler {
             if (title !== undefined) updates.title = title;
             if (content !== undefined) updates.content = content;
             await CardModel.update(domainId, cardId, updates);
-            // 重定向到更新后的卡片URL
-            if (docId) {
-                this.response.redirect = this.url('mindmap_card_list_branch', { 
-                    docId: docId.toString(), 
-                    branch: effectiveBranch, 
-                    nodeId 
-                }) + `?cardId=${cardId.toString()}`;
+            
+            // 检查是否有 returnUrl 参数
+            const returnUrl = this.request.body.returnUrl || this.request.query.returnUrl;
+            if (returnUrl) {
+                // 如果有 returnUrl，重定向到该 URL，并添加 fromEdit=true 和 cardId 参数
+                const returnUrlObj = new URL(returnUrl, `http://${this.request.headers.host || 'localhost'}`);
+                returnUrlObj.searchParams.set('fromEdit', 'true');
+                returnUrlObj.searchParams.set('cardId', cardId.toString());
+                this.response.redirect = returnUrlObj.pathname + returnUrlObj.search;
             } else {
-                this.response.redirect = this.url('mindmap_card_list_branch_mmid', { 
-                    mmid: mmid.toString(), 
-                    branch: effectiveBranch, 
-                    nodeId 
-                }) + `?cardId=${cardId.toString()}`;
+                // 重定向到更新后的卡片URL
+                if (docId) {
+                    this.response.redirect = this.url('mindmap_card_list_branch', { 
+                        docId: docId.toString(), 
+                        branch: effectiveBranch, 
+                        nodeId 
+                    }) + `?cardId=${cardId.toString()}`;
+                } else {
+                    this.response.redirect = this.url('mindmap_card_list_branch_mmid', { 
+                        mmid: mmid.toString(), 
+                        branch: effectiveBranch, 
+                        nodeId 
+                    }) + `?cardId=${cardId.toString()}`;
+                }
             }
         } else {
             throw new BadRequestError('cardId is required for update operation');
