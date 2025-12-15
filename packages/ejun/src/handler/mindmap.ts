@@ -134,46 +134,46 @@ class MindMapDetailHandler extends Handler {
             branches.unshift('main');
         }
         
-        // Get git status
+        // Get git status - 暂时注释掉，因为代理问题导致无法连接
         let gitStatus: any = null;
-        const githubRepo = (this.mindMap?.githubRepo || '') as string;
+        // const githubRepo = (this.mindMap?.githubRepo || '') as string;
         
-        if (githubRepo && githubRepo.trim()) {
-            try {
-                const settingValue = this.ctx.setting.get('ejunzrepo.github_token');
-                const systemValue = system.get('ejunzrepo.github_token');
-                const GH_TOKEN = settingValue || systemValue || '';
-                
-                let REPO_URL = githubRepo;
-                if (githubRepo.startsWith('git@')) {
-                    REPO_URL = githubRepo;
-                } else {
-                    if (githubRepo.startsWith('https://github.com/') || githubRepo.startsWith('http://github.com/')) {
-                        if (!githubRepo.includes('@github.com')) {
-                            REPO_URL = githubRepo.replace('https://github.com/', `https://${GH_TOKEN}@github.com/`)
-                                .replace('http://github.com/', `https://${GH_TOKEN}@github.com/`);
-                        } else {
-                            REPO_URL = githubRepo;
-                        }
-                    } else if (!githubRepo.includes('://') && !githubRepo.includes('@')) {
-                        const repoPath = githubRepo.replace('.git', '');
-                        REPO_URL = `https://${GH_TOKEN}@github.com/${repoPath}.git`;
-                    }
-                }
-                
-                gitStatus = await getMindMapGitStatus(domainId, this.mindMap!.mmid, requestedBranch, REPO_URL);
-            } catch (err) {
-                console.error('Failed to get git status:', err);
-                gitStatus = null;
-            }
-        } else {
-            try {
-                gitStatus = await getMindMapGitStatus(domainId, this.mindMap!.mmid, requestedBranch);
-            } catch (err) {
-                console.error('Failed to get local git status:', err);
-                gitStatus = null;
-            }
-        }
+        // if (githubRepo && githubRepo.trim()) {
+        //     try {
+        //         const settingValue = this.ctx.setting.get('ejunzrepo.github_token');
+        //         const systemValue = system.get('ejunzrepo.github_token');
+        //         const GH_TOKEN = settingValue || systemValue || '';
+        //         
+        //         let REPO_URL = githubRepo;
+        //         if (githubRepo.startsWith('git@')) {
+        //             REPO_URL = githubRepo;
+        //         } else {
+        //             if (githubRepo.startsWith('https://github.com/') || githubRepo.startsWith('http://github.com/')) {
+        //                 if (!githubRepo.includes('@github.com')) {
+        //                     REPO_URL = githubRepo.replace('https://github.com/', `https://${GH_TOKEN}@github.com/`)
+        //                         .replace('http://github.com/', `https://${GH_TOKEN}@github.com/`);
+        //                 } else {
+        //                     REPO_URL = githubRepo;
+        //                 }
+        //             } else if (!githubRepo.includes('://') && !githubRepo.includes('@')) {
+        //                 const repoPath = githubRepo.replace('.git', '');
+        //                 REPO_URL = `https://${GH_TOKEN}@github.com/${repoPath}.git`;
+        //             }
+        //         }
+        //         
+        //         gitStatus = await getMindMapGitStatus(domainId, this.mindMap!.mmid, requestedBranch, REPO_URL);
+        //     } catch (err) {
+        //         console.error('Failed to get git status:', err);
+        //         gitStatus = null;
+        //     }
+        // } else {
+        //     try {
+        //         gitStatus = await getMindMapGitStatus(domainId, this.mindMap!.mmid, requestedBranch);
+        //     } catch (err) {
+        //         console.error('Failed to get local git status:', err);
+        //         gitStatus = null;
+        //     }
+        // }
         
         // 获取当前分支的数据
         const branchData = getBranchData(this.mindMap!, requestedBranch);
@@ -455,44 +455,44 @@ class MindMapOutlineHandler extends Handler {
         
         // Get git status
         let gitStatus: any = null;
-        const githubRepo = (this.mindMap?.githubRepo || '') as string;
+        // const githubRepo = (this.mindMap?.githubRepo || '') as string;
         
-        if (githubRepo && githubRepo.trim()) {
-            try {
-                const settingValue = this.ctx.setting.get('ejunzrepo.github_token');
-                const systemValue = system.get('ejunzrepo.github_token');
-                const GH_TOKEN = settingValue || systemValue || '';
-                
-                let REPO_URL = githubRepo;
-                if (githubRepo.startsWith('git@')) {
-                    REPO_URL = githubRepo;
-                } else {
-                    if (githubRepo.startsWith('https://github.com/') || githubRepo.startsWith('http://github.com/')) {
-                        if (!githubRepo.includes('@github.com')) {
-                            REPO_URL = githubRepo.replace('https://github.com/', `https://${GH_TOKEN}@github.com/`)
-                                .replace('http://github.com/', `https://${GH_TOKEN}@github.com/`);
-                        } else {
-                            REPO_URL = githubRepo;
-                        }
-                    } else if (!githubRepo.includes('://') && !githubRepo.includes('@')) {
-                        const repoPath = githubRepo.replace('.git', '');
-                        REPO_URL = `https://${GH_TOKEN}@github.com/${repoPath}.git`;
-                    }
-                }
-                
-                gitStatus = await getMindMapGitStatus(domainId, this.mindMap!.mmid, requestedBranch, REPO_URL);
-            } catch (err) {
-                console.error('Failed to get git status:', err);
-                gitStatus = null;
-            }
-        } else {
-            try {
-                gitStatus = await getMindMapGitStatus(domainId, this.mindMap!.mmid, requestedBranch);
-            } catch (err) {
-                console.error('Failed to get local git status:', err);
-                gitStatus = null;
-            }
-        }
+        // if (githubRepo && githubRepo.trim()) {
+        //     try {
+        //         const settingValue = this.ctx.setting.get('ejunzrepo.github_token');
+        //         const systemValue = system.get('ejunzrepo.github_token');
+        //         const GH_TOKEN = settingValue || systemValue || '';
+        //         
+        //         let REPO_URL = githubRepo;
+        //         if (githubRepo.startsWith('git@')) {
+        //             REPO_URL = githubRepo;
+        //         } else {
+        //             if (githubRepo.startsWith('https://github.com/') || githubRepo.startsWith('http://github.com/')) {
+        //                 if (!githubRepo.includes('@github.com')) {
+        //                     REPO_URL = githubRepo.replace('https://github.com/', `https://${GH_TOKEN}@github.com/`)
+        //                         .replace('http://github.com/', `https://${GH_TOKEN}@github.com/`);
+        //                 } else {
+        //                     REPO_URL = githubRepo;
+        //                 }
+        //             } else if (!githubRepo.includes('://') && !githubRepo.includes('@')) {
+        //                 const repoPath = githubRepo.replace('.git', '');
+        //                 REPO_URL = `https://${GH_TOKEN}@github.com/${repoPath}.git`;
+        //             }
+        //         }
+        //         
+        //         gitStatus = await getMindMapGitStatus(domainId, this.mindMap!.mmid, requestedBranch, REPO_URL);
+        //     } catch (err) {
+        //         console.error('Failed to get git status:', err);
+        //         gitStatus = null;
+        //     }
+        // } else {
+        //     try {
+        //         gitStatus = await getMindMapGitStatus(domainId, this.mindMap!.mmid, requestedBranch);
+        //     } catch (err) {
+        //         console.error('Failed to get local git status:', err);
+        //         gitStatus = null;
+        //     }
+        // }
         
         // 获取当前分支的数据
         const branchData = getBranchData(this.mindMap!, requestedBranch);
