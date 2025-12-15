@@ -720,6 +720,8 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   // 标记是否正在手动设置选择（避免useEffect干扰）
   const isManualSelectionRef = useRef(false);
+  // 跟踪 hover 状态
+  const [hoveredFileId, setHoveredFileId] = useState<string | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
     const initialExpanded = new Set<string>();
     if (initialData?.nodes) {
@@ -732,11 +734,14 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     return initialExpanded;
   });
 
-  // 卡片内容缓存 - 暂时注释掉
-  // const cardContentCacheRef = useRef<Record<string, string>>({});
-  // const imageCacheRef = useRef<Cache | null>(null);
+  // 卡片内容缓存（内存缓存，用于快速访问）
+  const cardContentCacheRef = useRef<Record<string, string>>({});
+  // 图片缓存（使用 Cache API）
+  const imageCacheRef = useRef<Cache | null>(null);
   // 缓存状态：记录哪些card已经被缓存
-  // const cachedCardsRef = useRef<Set<string>>(new Set());
+  const cachedCardsRef = useRef<Set<string>>(new Set());
+  // 缓存进度
+  const [cachingProgress, setCachingProgress] = useState<{ current: number; total: number; currentCard?: string } | null>(null);
   // 缓存计数
   // const [cachedCount, setCachedCount] = useState(0);
   // 卡片缓存进度：记录正在缓存的进度
@@ -753,6 +758,42 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
   const wsRef = useRef<any>(null);
   // WebSocket 请求的 Promise Map（用于处理响应）
   const wsRequestMapRef = useRef<Map<string, { resolve: (value: any) => void; reject: (error: any) => void }>>(new Map());
+
+  // 从 localStorage 加载缓存
+  useEffect(() => {
+    try {
+      const keys = Object.keys(localStorage);
+      const cachePrefix = 'mindmap-outline-card-';
+      let loadedCount = 0;
+      
+      keys.forEach(key => {
+        if (key.startsWith(cachePrefix)) {
+          const cardId = key.replace(cachePrefix, '');
+          const cachedHtml = localStorage.getItem(key);
+          if (cachedHtml) {
+            cardContentCacheRef.current[cardId] = cachedHtml;
+            cachedCardsRef.current.add(cardId);
+            loadedCount++;
+          }
+        }
+      });
+      
+      if (loadedCount > 0) {
+        console.log(`[MindMap Outline] 从 localStorage 加载了 ${loadedCount} 个 card 缓存`);
+      }
+    } catch (error) {
+      console.error('Failed to load cache from localStorage:', error);
+    }
+    
+    // 初始化图片缓存（在函数定义之后调用）
+    if ('caches' in window && !imageCacheRef.current) {
+      caches.open('mindmap-outline-images-v1').then(cache => {
+        imageCacheRef.current = cache;
+      }).catch(error => {
+        console.error('Failed to init image cache:', error);
+      });
+    }
+  }, []);
 
   // 设置页面背景色
   useEffect(() => {
@@ -980,8 +1021,230 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     console.log('Node clicked:', nodeId);
   }, []);
 
-  // 使用ref来存储preloadCardContent函数，避免循环依赖和初始化顺序问题
-  const preloadCardContentRef = useRef<((card: Card) => Promise<void>) | null>(null);
+  // 初始化图片缓存
+  const initImageCache = useCallback(async () => {
+    if ('caches' in window && !imageCacheRef.current) {
+      try {
+        imageCacheRef.current = await caches.open('mindmap-outline-images-v1');
+      } catch (error) {
+        console.error('Failed to open image cache:', error);
+      }
+    }
+  }, []);
+
+  // 从缓存或网络获取图片
+  const getCachedImage = useCallback(async (url: string): Promise<string> => {
+    if (!imageCacheRef.current) {
+      await initImageCache();
+    }
+    
+    if (!imageCacheRef.current) {
+      return url;
+    }
+    
+    try {
+      const cachedResponse = await imageCacheRef.current.match(url);
+      if (cachedResponse) {
+        const blob = await cachedResponse.blob();
+        return URL.createObjectURL(blob);
+      }
+      
+      const response = await fetch(url);
+      if (response.ok) {
+        const responseClone = response.clone();
+        await imageCacheRef.current.put(url, responseClone);
+        const blob = await response.blob();
+        return URL.createObjectURL(blob);
+      }
+    } catch (error) {
+      console.error(`Failed to cache image ${url}:`, error);
+    }
+    
+    return url;
+  }, [initImageCache]);
+
+  // 预加载并缓存图片
+  const preloadAndCacheImages = useCallback(async (html: string): Promise<string> => {
+    if (!html) return html;
+    
+    const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+    const imageUrls: string[] = [];
+    let match;
+    
+    while ((match = imgRegex.exec(html)) !== null) {
+      const url = match[1];
+      if (url && !url.startsWith('blob:') && !url.startsWith('data:')) {
+        imageUrls.push(url);
+      }
+    }
+    
+    if (imageUrls.length === 0) return html;
+    
+    await initImageCache();
+    
+    const urlMap = new Map<string, string>();
+    const imagePromises = imageUrls.map(async (originalUrl) => {
+      try {
+        const cachedUrl = await getCachedImage(originalUrl);
+        if (cachedUrl !== originalUrl) {
+          urlMap.set(originalUrl, cachedUrl);
+        }
+      } catch (error) {
+        console.error(`Failed to cache image ${originalUrl}:`, error);
+      }
+    });
+    
+    await Promise.all(imagePromises);
+    
+    let updatedHtml = html;
+    urlMap.forEach((cachedUrl, originalUrl) => {
+      const escapedUrl = originalUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      updatedHtml = updatedHtml.replace(new RegExp(escapedUrl, 'g'), cachedUrl);
+    });
+    
+    return updatedHtml;
+  }, [initImageCache, getCachedImage]);
+
+  // 预渲染卡片内容（包括缓存到 localStorage）
+  const preloadCardContent = useCallback(async (card: Card) => {
+    const cardIdStr = String(card.docId);
+    
+    if (!card.content) {
+      const emptyHtml = '<p style="color: #888;">暂无内容</p>';
+      cardContentCacheRef.current[cardIdStr] = emptyHtml;
+      cachedCardsRef.current.add(cardIdStr);
+      try {
+        const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+        localStorage.setItem(cacheKey, emptyHtml);
+      } catch (error) {
+        console.error('Failed to save to localStorage:', error);
+      }
+      return;
+    }
+    
+    try {
+      let html: string;
+      if (wsRef.current) {
+        const requestId = `md_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        html = await new Promise<string>((resolve, reject) => {
+          wsRequestMapRef.current.set(requestId, { resolve, reject });
+          wsRef.current.send(JSON.stringify({
+            type: 'request_markdown',
+            requestId,
+            text: card.content || '',
+            inline: false,
+          }));
+          setTimeout(() => {
+            if (wsRequestMapRef.current.has(requestId)) {
+              wsRequestMapRef.current.delete(requestId);
+              reject(new Error('Markdown request timeout'));
+            }
+          }, 30000);
+        });
+      } else {
+        const response = await fetch('/markdown', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: card.content || '',
+            inline: false,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error('Failed to render markdown');
+        }
+        html = await response.text();
+      }
+      
+      html = await preloadAndCacheImages(html);
+      
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = html;
+      const images = tempDiv.querySelectorAll('img');
+      
+      if (images.length > 0) {
+        const imagePromises = Array.from(images).map(img => {
+          return new Promise<void>((resolve) => {
+            if ((img as HTMLImageElement).complete) {
+              resolve();
+            } else {
+              img.onload = () => resolve();
+              img.onerror = () => resolve();
+              setTimeout(resolve, 10000);
+            }
+          });
+        });
+        await Promise.all(imagePromises);
+      }
+      
+      cardContentCacheRef.current[cardIdStr] = html;
+      cachedCardsRef.current.add(cardIdStr);
+      
+      try {
+        const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+        localStorage.setItem(cacheKey, html);
+      } catch (error) {
+        console.error('Failed to save to localStorage:', error);
+      }
+    } catch (error) {
+      console.error(`Failed to preload card ${card.docId}:`, error);
+      const errorHtml = '<p style="color: #f44336;">加载内容失败</p>';
+      cardContentCacheRef.current[cardIdStr] = errorHtml;
+      cachedCardsRef.current.add(cardIdStr);
+    }
+  }, [preloadAndCacheImages]);
+
+  // 缓存指定 node 的所有 card 的 markdown 内容
+  const cacheNodeCards = useCallback(async (nodeId: string) => {
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const nodeCards = (nodeCardsMap[nodeId] || []).sort((a: Card, b: Card) => {
+      const orderA = (a.order as number) || 0;
+      const orderB = (b.order as number) || 0;
+      return orderA - orderB;
+    });
+    
+    if (nodeCards.length === 0) return;
+    
+    const cardsToCache = nodeCards.filter((card: Card) => {
+      const cardIdStr = String(card.docId);
+      return !cachedCardsRef.current.has(cardIdStr);
+    });
+    
+    if (cardsToCache.length === 0) {
+      setCachingProgress(null);
+      return;
+    }
+    
+    console.log(`[MindMap Outline] 开始缓存 node ${nodeId} 下的 ${cardsToCache.length} 个 card`);
+    
+    // 显示进度
+    setCachingProgress({ current: 0, total: cardsToCache.length });
+    
+    const batchSize = 5;
+    for (let i = 0; i < cardsToCache.length; i += batchSize) {
+      const batch = cardsToCache.slice(i, i + batchSize);
+      await Promise.all(batch.map(async (card: Card) => {
+        await preloadCardContent(card);
+        setCachingProgress(prev => {
+          if (!prev) return null;
+          const newCurrent = prev.current + 1;
+          return {
+            ...prev,
+            current: newCurrent,
+            currentCard: card.title || '未命名卡片',
+          };
+        });
+      }));
+    }
+    
+    console.log(`[MindMap Outline] 完成缓存 node ${nodeId} 下的 card`);
+    // 延迟隐藏进度条，让用户看到完成状态
+    setTimeout(() => {
+      setCachingProgress(null);
+    }, 500);
+  }, [preloadCardContent]);
 
   // 全量预加载所有card - 暂时注释掉
   /*
@@ -1119,53 +1382,6 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     };
   }, [fileTree, selectedCard, selectedNodeId, handleSelectCard]);
 
-  // 初始化图片缓存 - 暂时注释掉
-  /*
-  const initImageCache = useCallback(async () => {
-    // 所有缓存逻辑已注释
-  }, []);
-  */
-
-  // 从缓存或网络获取图片（通过 WebSocket）- 暂时注释掉
-  /*
-  const getCachedImage = useCallback(async (url: string): Promise<string> => {
-    return url;
-  }, []);
-  */
-
-  // 预加载并缓存图片 - 暂时注释掉
-  /*
-  const preloadAndCacheImages = useCallback(async (html: string): Promise<string> => {
-    return html;
-  }, []);
-  */
-
-  // 预渲染卡片内容（通过 WebSocket）- 暂时注释掉
-  /*
-  const preloadCardContent = useCallback(async (card: Card) => {
-    // 所有缓存逻辑已注释
-  }, []);
-  */
-
-  // 将preloadCardContent存储到ref中 - 暂时注释掉
-  // useEffect(() => {
-  //   preloadCardContentRef.current = preloadCardContent;
-  // }, [preloadCardContent]);
-
-  // 缓存指定 node 的所有 card 的 markdown 内容 - 暂时注释掉
-  /*
-  const cacheNodeCards = useCallback(async (nodeId: string) => {
-    // 所有缓存逻辑已注释
-  }, []);
-  */
-
-  // 缓存指定 node 的所有 card 的图片 - 暂时注释掉
-  /*
-  const cacheNodeImages = useCallback(async (nodeId: string) => {
-    // 所有缓存逻辑已注释
-  }, []);
-  */
-
   // 渲染card内容（优先使用缓存）
   useEffect(() => {
     if (!selectedCard) return;
@@ -1175,12 +1391,48 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     
     const cardIdStr = String(selectedCard.docId);
     
-    // 不使用缓存，直接渲染
+    // 检查缓存（优先从内存缓存读取）
+    if (cardContentCacheRef.current[cardIdStr]) {
+      contentDiv.innerHTML = cardContentCacheRef.current[cardIdStr];
+      $(contentDiv).trigger('vjContentNew');
+      
+      // 异步缓存该 node 下的其他 card
+      const nodeId = selectedCard.nodeId || '';
+      if (nodeId) {
+        cacheNodeCards(nodeId).catch(error => {
+          console.error('Failed to cache node cards:', error);
+        });
+      }
+      return;
+    }
+    
+    // 检查 localStorage 缓存
+    try {
+      const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+      const cachedHtml = localStorage.getItem(cacheKey);
+      if (cachedHtml) {
+        cardContentCacheRef.current[cardIdStr] = cachedHtml;
+        cachedCardsRef.current.add(cardIdStr);
+        contentDiv.innerHTML = cachedHtml;
+        $(contentDiv).trigger('vjContentNew');
+        
+        // 异步缓存该 node 下的其他 card
+        const nodeId = selectedCard.nodeId || '';
+        if (nodeId) {
+          cacheNodeCards(nodeId).catch(error => {
+            console.error('Failed to cache node cards:', error);
+          });
+        }
+        return;
+      }
+    } catch (error) {
+      console.error('Failed to read from localStorage:', error);
+    }
+    
+    // 缓存中没有，显示加载状态并渲染
     if (selectedCard.content) {
-      // 缓存中没有，显示加载状态并渲染
       contentDiv.innerHTML = '<p style="color: #999; text-align: center;">加载中...</p>';
       
-      // 通过 WebSocket 请求 markdown 渲染
       const renderMarkdown = async () => {
         if (wsRef.current) {
           const requestId = `md_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -1192,16 +1444,14 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
               text: selectedCard.content || '',
               inline: false,
             }));
-            // 超时处理
             setTimeout(() => {
               if (wsRequestMapRef.current.has(requestId)) {
                 wsRequestMapRef.current.delete(requestId);
                 reject(new Error('Markdown request timeout'));
-      }
+              }
             }, 30000);
           });
         } else {
-          // 如果 WebSocket 不可用，回退到 HTTP
           const response = await fetch('/markdown', {
             method: 'POST',
             headers: {
@@ -1221,23 +1471,68 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
       
       renderMarkdown()
       .then(async html => {
-        // 不使用缓存，直接显示
+        // 先显示 markdown 内容（不等待图片加载）
         contentDiv.innerHTML = html;
+        $(contentDiv).trigger('vjContentNew');
+        
+        // 缓存渲染结果（不包含缓存的图片 URL）
+        cardContentCacheRef.current[cardIdStr] = html;
+        cachedCardsRef.current.add(cardIdStr);
+        
+        // 保存到 localStorage
+        try {
+          const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+          localStorage.setItem(cacheKey, html);
+        } catch (error) {
+          console.error('Failed to save to localStorage:', error);
+        }
+        
+        // 异步加载并缓存图片（不阻塞显示）
+        preloadAndCacheImages(html).then(async (htmlWithCachedImages) => {
+          // 更新显示和缓存（包含缓存的图片 URL）
+          contentDiv.innerHTML = htmlWithCachedImages;
+          $(contentDiv).trigger('vjContentNew');
+          cardContentCacheRef.current[cardIdStr] = htmlWithCachedImages;
+          try {
+            const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+            localStorage.setItem(cacheKey, htmlWithCachedImages);
+          } catch (error) {
+            console.error('Failed to update localStorage with cached images:', error);
+          }
+        }).catch(error => {
+          console.error('Failed to cache images:', error);
+        });
+        
+        // 异步缓存该 node 下的其他 card
+        const nodeId = selectedCard.nodeId || '';
+        if (nodeId) {
+          cacheNodeCards(nodeId).catch(error => {
+            console.error('Failed to cache node cards:', error);
+          });
+        }
       })
       .catch(error => {
         console.error('Failed to render markdown:', error);
         const errorHtml = '<p style="color: #f44336;">加载内容失败</p>';
+        cardContentCacheRef.current[cardIdStr] = errorHtml;
         contentDiv.innerHTML = errorHtml;
       });
     } else {
       const emptyHtml = '<p style="color: #888;">暂无内容</p>';
+      cardContentCacheRef.current[cardIdStr] = emptyHtml;
+      cachedCardsRef.current.add(cardIdStr);
       contentDiv.innerHTML = emptyHtml;
     }
-  }, [selectedCard]);
+  }, [selectedCard, preloadAndCacheImages, cacheNodeCards, preloadCardContent]);
 
 
-  // 监听数据更新
+  // 监听数据更新（WebSocket 连接）
   useEffect(() => {
+    // 如果已经有 WebSocket 连接，不重复连接
+    if (wsRef.current) {
+      return;
+    }
+
     let ws: any = null;
     const domainId = (window as any).UiContext?.domainId || 'system';
     const wsUrl = `/d/${domainId}/mindmap/${docId}/ws`;
@@ -1245,6 +1540,11 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     // 连接 WebSocket 的函数
     const connectWebSocket = () => {
       import('../components/socket').then(({ default: WebSocket }) => {
+        // 再次检查，避免重复连接
+        if (wsRef.current) {
+          return;
+        }
+
         ws = new WebSocket(wsUrl, false, true);
 
         ws.onopen = () => {
@@ -1343,8 +1643,12 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           // ignore
         }
       }
+      // 清除引用
+      if (wsRef.current === ws) {
+        wsRef.current = null;
+      }
     };
-  }, [docId, selectedCard]);
+  }, [docId]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', backgroundColor: '#fff' }}>
@@ -1573,6 +1877,20 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
               const isSelectedCard = file.type === 'card' && selectedCard && file.cardId === selectedCard.docId;
               const isSelectedNode = file.type === 'node' && selectedNodeId === file.nodeId;
               const isSelected = isSelectedCard || isSelectedNode;
+              const isHovered = hoveredFileId === file.id;
+              
+              // 根据状态计算样式
+              let backgroundColor = 'transparent';
+              let color = '#333';
+              
+              if (isSelected) {
+                backgroundColor = '#e3f2fd';
+                color = '#1976d2';
+              } else if (isHovered) {
+                backgroundColor = '#f0f0f0';
+                color = '#333';
+              }
+              
               return (
                 <div
                   key={file.id}
@@ -1613,24 +1931,18 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                     padding: `4px ${8 + file.level * 16}px`,
                     cursor: 'pointer',
                     fontSize: '13px',
-                    color: isSelected ? '#1976d2' : '#333',
-                    backgroundColor: isSelected ? '#e3f2fd' : 'transparent',
+                    color,
+                    backgroundColor,
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
                     transition: 'background-color 0.15s ease, color 0.15s ease',
                   }}
-                  onMouseEnter={(e) => {
-                    // 如果已选中，保持选中背景色和文字颜色；否则显示悬停背景色
-                    if (!isSelected) {
-                      e.currentTarget.style.backgroundColor = '#f0f0f0';
-                      e.currentTarget.style.color = '#333';
-                    }
+                  onMouseEnter={() => {
+                    setHoveredFileId(file.id);
                   }}
-                  onMouseLeave={(e) => {
-                    // 恢复正确的背景色和文字颜色：如果选中则保持选中样式，否则恢复默认
-                    e.currentTarget.style.backgroundColor = isSelected ? '#e3f2fd' : 'transparent';
-                    e.currentTarget.style.color = isSelected ? '#1976d2' : '#333';
+                  onMouseLeave={() => {
+                    setHoveredFileId(null);
                   }}
                 >
                   {file.type === 'node' ? (
@@ -1688,6 +2000,38 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                   {selectedCard.title || '未命名卡片'}
                 </h3>
               </div>
+              {cachingProgress && (
+                <div style={{
+                  marginTop: '12px',
+                  padding: '8px 12px',
+                  backgroundColor: '#fff',
+                  borderRadius: '4px',
+                  border: '1px solid #e0e0e0',
+                }}>
+                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '6px' }}>
+                    正在缓存同节点下的其他卡片...
+                  </div>
+                  <div style={{ 
+                    width: '100%', 
+                    height: '6px', 
+                    backgroundColor: '#e0e0e0', 
+                    borderRadius: '3px',
+                    overflow: 'hidden',
+                    marginBottom: '4px',
+                  }}>
+                    <div style={{
+                      width: `${(cachingProgress.current / cachingProgress.total) * 100}%`,
+                      height: '100%',
+                      backgroundColor: '#4caf50',
+                      transition: 'width 0.3s ease',
+                    }} />
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#999', textAlign: 'center' }}>
+                    {cachingProgress.current} / {cachingProgress.total}
+                    {cachingProgress.currentCard && ` - ${cachingProgress.currentCard}`}
+                  </div>
+                </div>
+              )}
             </div>
             <div style={{
               flex: 1,
@@ -1696,10 +2040,10 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
             }}>
               <div
                 id="card-content-outline"
+                className="typo topic__content richmedia"
+                data-emoji-enabled
                 style={{
-                  fontSize: '14px',
-                  lineHeight: '1.6',
-                  color: '#333',
+                  padding: '16px',
                 }}
                 dangerouslySetInnerHTML={{ __html: '<p style="color: #999;">加载中...</p>' }}
               />
