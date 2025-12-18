@@ -721,6 +721,10 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   // 标记是否正在手动设置选择（避免useEffect干扰）
   const isManualSelectionRef = useRef(false);
+  // 跟踪当前选中的文件项ID（用于确保只有一个项被高亮）
+  const selectedFileIdRef = useRef<string | null>(null);
+  // 用于强制重新渲染的状态（当选中项改变时更新）
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   
   // 从数据库加载 outline 的展开状态（使用 expandedOutline 字段，独立于 editor）
   const loadOutlineExpandedState = useCallback((): Set<string> => {
@@ -1894,9 +1898,32 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   }, []); */
 
+  // 清除所有文件项的高亮样式
+  const clearAllHighlights = useCallback(() => {
+    const fileTreeContainer = document.querySelector('[data-file-tree-container]');
+    if (fileTreeContainer) {
+      const allItems = fileTreeContainer.querySelectorAll('[data-file-item]');
+      allItems.forEach((item) => {
+        const element = item as HTMLElement;
+        // 清除所有内联样式，让React重新应用样式
+        element.style.backgroundColor = '';
+        element.style.borderLeft = '';
+        element.style.color = '';
+        element.style.fontWeight = '';
+      });
+    }
+  }, []);
+
   // 选择card
   const handleSelectCard = useCallback((card: Card, skipUrlUpdate = false) => {
+    // 先清除所有之前的高亮样式
+    clearAllHighlights();
+    
     setSelectedCard(card);
+    // 立即更新选中的文件ID（使用card的唯一标识）
+    const fileId = `card-${card.docId}`;
+    selectedFileIdRef.current = fileId;
+    setSelectedFileId(fileId); // 触发重新渲染
     
     // 更新URL参数（除非skipUrlUpdate为true）
     if (!skipUrlUpdate) {
@@ -1906,7 +1933,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
       const newUrl = window.location.pathname + '?' + urlParams.toString();
       window.history.pushState({ cardId: card.docId }, '', newUrl);
     }
-  }, []);
+  }, [clearAllHighlights]);
 
   // 根据URL参数加载对应的card或node（只在初始化或URL变化时执行）
   useEffect(() => {
@@ -1929,6 +1956,13 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
         const nodeCards = nodeCardsMap[cardFile.nodeId || ''] || [];
         const card = nodeCards.find((c: Card) => c.docId === cardId);
         if (card && (!selectedCard || selectedCard.docId !== card.docId)) {
+          // 先清除所有之前的高亮样式
+          clearAllHighlights();
+          
+          // 更新选中的文件ID
+          const fileId = `card-${card.docId}`;
+          selectedFileIdRef.current = fileId;
+          setSelectedFileId(fileId); // 触发重新渲染
           handleSelectCard(card, true); // 跳过URL更新，避免循环
           setSelectedNodeId(null); // 清除node选择
         }
@@ -1937,15 +1971,98 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
       // 在fileTree中查找对应的node
       const nodeFile = fileTree.find(f => f.type === 'node' && f.nodeId === nodeId);
       if (nodeFile && (!selectedNodeId || selectedNodeId !== nodeId)) {
+        // 先清除所有之前的高亮样式
+        clearAllHighlights();
+        
+        // 更新选中的文件ID（节点使用nodeId作为ID）
+        selectedFileIdRef.current = nodeId;
+        setSelectedFileId(nodeId); // 触发重新渲染
         setSelectedNodeId(nodeId);
         setSelectedCard(null); // 清除card选择
       }
     } else if (!cardId && !nodeId) {
       // 如果URL中没有参数，清除选择
+      selectedFileIdRef.current = null;
+      setSelectedFileId(null); // 触发重新渲染
       setSelectedCard(null);
       setSelectedNodeId(null);
     }
   }, [fileTree, selectedCard, selectedNodeId, handleSelectCard]);
+
+  // 滚动到选中项的函数（可复用）
+  const scrollToSelectedItem = useCallback(() => {
+    if (!selectedCard && !selectedNodeId) return;
+    
+    // 延迟执行，确保DOM已更新
+    setTimeout(() => {
+      const fileTreeContainer = document.querySelector('[data-file-tree-container]') as HTMLElement;
+      if (!fileTreeContainer) return;
+      
+      // 查找选中的项（确保只匹配一个项）
+      let selectedElement: HTMLElement | null = null;
+      if (selectedCard) {
+        // 优先查找对应的卡片项（只匹配卡片类型）
+        const cardId = String(selectedCard.docId);
+        const items = Array.from(fileTreeContainer.querySelectorAll('[data-file-item]'));
+        for (const item of items) {
+          const fileCardId = (item as HTMLElement).getAttribute('data-file-card-id');
+          // 确保是卡片类型且cardId匹配
+          if (fileCardId && fileCardId === cardId && !(item as HTMLElement).getAttribute('data-file-node-id')) {
+            selectedElement = item as HTMLElement;
+            break;
+          }
+        }
+      } else if (selectedNodeId) {
+        // 查找对应的节点项（只匹配节点类型）
+        const items = Array.from(fileTreeContainer.querySelectorAll('[data-file-item]'));
+        for (const item of items) {
+          const fileNodeId = (item as HTMLElement).getAttribute('data-file-node-id');
+          // 确保是节点类型且nodeId匹配
+          if (fileNodeId && fileNodeId === selectedNodeId && !(item as HTMLElement).getAttribute('data-file-card-id')) {
+            selectedElement = item as HTMLElement;
+            break;
+          }
+        }
+      }
+      
+      // 滚动到选中项
+      if (selectedElement) {
+        const containerRect = fileTreeContainer.getBoundingClientRect();
+        const elementRect = selectedElement.getBoundingClientRect();
+        
+        // 计算需要滚动的距离
+        const scrollTop = fileTreeContainer.scrollTop;
+        const elementTop = elementRect.top - containerRect.top + scrollTop;
+        const elementBottom = elementTop + elementRect.height;
+        const containerHeight = fileTreeContainer.clientHeight;
+        
+        // 如果元素不在可视区域内，滚动到它
+        if (elementTop < scrollTop || elementBottom > scrollTop + containerHeight) {
+          fileTreeContainer.scrollTo({
+            top: elementTop - containerHeight / 2 + elementRect.height / 2,
+            behavior: 'smooth',
+          });
+        }
+      }
+    }, 100);
+  }, [selectedCard, selectedNodeId]);
+
+  // 自动滚动到选中的文件树项（当选中项改变时）
+  useEffect(() => {
+    scrollToSelectedItem();
+  }, [scrollToSelectedItem, fileTree]);
+
+  // 手机模式下，当EXPLORER打开时，自动滚动到选中项
+  useEffect(() => {
+    if (isMobile && isExplorerOpen && (selectedCard || selectedNodeId)) {
+      // 延迟执行，确保EXPLORER完全打开（动画完成）
+      const timer = setTimeout(() => {
+        scrollToSelectedItem();
+      }, 350); // 等待侧边栏动画完成（300ms transition + 50ms缓冲）
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isMobile, isExplorerOpen, selectedCard, selectedNodeId, scrollToSelectedItem]);
 
   // 监听浏览器前进/后退事件
   useEffect(() => {
@@ -1964,6 +2081,13 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           const nodeCards = nodeCardsMap[cardFile.nodeId || ''] || [];
           const card = nodeCards.find((c: Card) => c.docId === cardId);
           if (card && (!selectedCard || selectedCard.docId !== card.docId)) {
+            // 先清除所有之前的高亮样式
+            clearAllHighlights();
+            
+            // 更新选中的文件ID
+            const fileId = `card-${card.docId}`;
+            selectedFileIdRef.current = fileId;
+            setSelectedFileId(fileId); // 触发重新渲染
             handleSelectCard(card, true); // 跳过URL更新，避免循环
             setSelectedNodeId(null); // 清除node选择
           }
@@ -1971,10 +2095,21 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
       } else if (nodeId && fileTree.length > 0) {
         const nodeFile = fileTree.find(f => f.type === 'node' && f.nodeId === nodeId);
         if (nodeFile && (!selectedNodeId || selectedNodeId !== nodeId)) {
+          // 先清除所有之前的高亮样式
+          clearAllHighlights();
+          
+          // 更新选中的文件ID（节点使用nodeId作为ID）
+          selectedFileIdRef.current = nodeId;
+          setSelectedFileId(nodeId); // 触发重新渲染
           setSelectedNodeId(nodeId);
           setSelectedCard(null); // 清除card选择
         }
       } else if (!cardId && !nodeId) {
+        // 先清除所有之前的高亮样式
+        clearAllHighlights();
+        
+        selectedFileIdRef.current = null;
+        setSelectedFileId(null); // 触发重新渲染
         setSelectedCard(null);
         setSelectedNodeId(null);
       }
@@ -2406,6 +2541,8 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                       }
                     } else {
                       // card 不存在了，清除选择
+                      selectedFileIdRef.current = null;
+                      setSelectedFileId(null); // 触发重新渲染
                       setSelectedCard(null);
                     }
                   }
@@ -2719,7 +2856,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
             boxShadow: isExplorerOpen ? '2px 0 8px rgba(0,0,0,0.15)' : 'none',
           } : {}),
         }}>
-          <div style={{ padding: '8px' }}>
+          <div style={{ padding: '8px' }} data-file-tree-container>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', padding: '0 8px' }}>
               <div style={{ fontSize: '12px', fontWeight: '600', color: '#666', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span>EXPLORER</span>
@@ -2932,10 +3069,25 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                 isCached = checkNodeCached(file.nodeId || '');
               }
               
+              // 检查是否被选中（使用ref和state双重检查，确保只有一个项被高亮）
+              const isSelected = selectedFileIdRef.current === file.id && selectedFileId === file.id;
+              
               return (
                 <div
                   key={file.id}
+                  data-file-item
+                  data-file-id={file.id}
+                  data-file-card-id={file.type === 'card' ? String(file.cardId) : undefined}
+                  data-file-node-id={file.type === 'node' ? file.nodeId : undefined}
+                  data-cached={isCached ? 'true' : 'false'}
                   onClick={() => {
+                    // 先清除所有之前的高亮样式
+                    clearAllHighlights();
+                    
+                    // 然后更新选中的文件ID（确保只有一个项被高亮）
+                    selectedFileIdRef.current = file.id;
+                    setSelectedFileId(file.id); // 触发重新渲染
+                    
                     if (file.type === 'card') {
                       const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
                       const nodeCards = nodeCardsMap[file.nodeId || ''] || [];
@@ -2953,8 +3105,14 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                       
                       // 标记为手动选择，避免useEffect干扰
                       isManualSelectionRef.current = true;
+                      // 先清除所有之前的高亮样式
+                      clearAllHighlights();
+                      
                       setSelectedNodeId(nodeId);
                       setSelectedCard(null); // 清除card选择
+                      // 更新选中的文件ID（节点使用nodeId作为ID）
+                      selectedFileIdRef.current = nodeId || null;
+                      setSelectedFileId(nodeId || null); // 触发重新渲染
                       
                       // 更新URL参数
                       const urlParams = new URLSearchParams(window.location.search);
@@ -2967,6 +3125,11 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                       const newUrl = window.location.pathname + '?' + urlParams.toString();
                       window.history.pushState({ nodeId }, '', newUrl);
                     }
+                    
+                    // 手机模式下，点击后自动关闭EXPLORER
+                    if (isMobile) {
+                      setIsExplorerOpen(false);
+                    }
                   }}
                   onContextMenu={(e) => {
                     e.preventDefault();
@@ -2977,12 +3140,23 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                     padding: `4px ${8 + file.level * 16}px`,
                     cursor: 'pointer',
                     fontSize: '13px',
-                    color: isCached ? '#333' : '#999',
-                    fontWeight: isCached ? '600' : 'normal',
-                    backgroundColor: 'transparent',
+                    color: isSelected ? '#1976d2' : (isCached ? '#333' : '#999'),
+                    fontWeight: isSelected ? '600' : (isCached ? '600' : 'normal'),
+                    backgroundColor: isSelected ? '#e3f2fd' : 'transparent',
+                    borderLeft: isSelected ? '3px solid #1976d2' : '3px solid transparent',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
+                    transition: 'background-color 0.2s, border-color 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.backgroundColor = '#f5f5f5';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    // 总是重置到正确的背景色（根据isSelected状态）
+                    e.currentTarget.style.backgroundColor = isSelected ? '#e3f2fd' : 'transparent';
                   }}
                 >
                   {file.type === 'node' ? (
