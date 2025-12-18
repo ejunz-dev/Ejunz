@@ -829,6 +829,26 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
   const [isUpdatingCache, setIsUpdatingCache] = useState(false);
   // Explorer 模式：'tree' | 'cache'
   const [explorerMode, setExplorerMode] = useState<'tree' | 'cache'>('tree');
+  
+  // 手机模式下侧边栏的显示状态
+  const [isMobile, setIsMobile] = useState(false);
+  const [isExplorerOpen, setIsExplorerOpen] = useState(false);
+  
+  // 检测窗口大小变化
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth <= 600;
+      setIsMobile(mobile);
+      // 手机模式下默认关闭侧边栏
+      if (mobile) {
+        setIsExplorerOpen(false);
+      }
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
   // 右键菜单
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null);
   // 缓存计数
@@ -2504,6 +2524,28 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
         >
           💾 缓存
         </button> */}
+        {/* 手机模式下显示EXPLORER展开按钮 */}
+        {isMobile && (
+          <button
+            onClick={() => setIsExplorerOpen(true)}
+            style={{
+              padding: '6px 12px',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              background: '#fff',
+              color: '#333',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+            title="展开EXPLORER"
+          >
+            <span>📁</span>
+            <span>EXPLORER</span>
+          </button>
+        )}
         <div style={{ marginLeft: 'auto', fontSize: '14px', color: '#666' }}>
           {mindMap.title} - 文件模式
         </div>
@@ -2644,18 +2686,61 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           </div>
         )} */}
 
+        {/* 手机模式下的遮罩层 */}
+        {isMobile && isExplorerOpen && (
+          <div
+            onClick={() => setIsExplorerOpen(false)}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              zIndex: 998,
+            }}
+          />
+        )}
+        
         {/* 左侧文件树侧边栏 */}
         <div style={{
-          width: '300px',
+          width: isMobile ? '280px' : '300px',
           borderRight: '1px solid #e0e0e0',
           backgroundColor: '#f6f8fa',
           overflow: 'auto',
           flexShrink: 0,
+          ...(isMobile ? {
+            position: 'fixed',
+            left: isExplorerOpen ? 0 : '-280px',
+            top: 0,
+            bottom: 0,
+            zIndex: 999,
+            transition: 'left 0.3s ease',
+            boxShadow: isExplorerOpen ? '2px 0 8px rgba(0,0,0,0.15)' : 'none',
+          } : {}),
         }}>
           <div style={{ padding: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', padding: '0 8px' }}>
-              <div style={{ fontSize: '12px', fontWeight: '600', color: '#666' }}>
-                EXPLORER
+              <div style={{ fontSize: '12px', fontWeight: '600', color: '#666', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>EXPLORER</span>
+                {isMobile && (
+                  <button
+                    onClick={() => setIsExplorerOpen(false)}
+                    style={{
+                      padding: '2px 6px',
+                      border: 'none',
+                      borderRadius: '3px',
+                      background: '#ddd',
+                      color: '#333',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                    }}
+                    title="关闭"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <button
