@@ -94,6 +94,7 @@ const navigationPage = new AutoloadPage('navigationPage', () => {
     padding: 200,
     tolerance: 70,
     side: 'right',
+    touch: false,
   });
   [['beforeopen', 'add'], ['beforeclose', 'remove']].forEach(([event, action]) => {
     slideout.on(event, () => $('.header__hamburger .hamburger')[`${action}Class`]('is-active'));
