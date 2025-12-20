@@ -1,6 +1,6 @@
 {
     "name": "@ejunz/ui-default",
-    "version": "0.4.44",
+    "version": "0.4.45",
     "repository": "https://github.com/ejunz-dev/Ejunz.git",
     "author": "Jacka10086 <i@jacka10086.me>",
     "license": "AGPL-3.0",
@@ -152,6 +152,7 @@
         "schemastery-jsonschema": "^1.1.1",
         "streamsaver": "^2.0.6",
         "uuid": "^13.0.0",
+        "viewerjs": "^1.11.7",
         "xss": "^1.0.15"
     }
 }
