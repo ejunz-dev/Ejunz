@@ -2121,6 +2121,61 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     };
   }, [fileTree, selectedCard, selectedNodeId, handleSelectCard]);
 
+  // 为card内容中的图片添加点击预览功能
+  const attachImagePreviewHandlers = useCallback((container: HTMLElement) => {
+    const images = container.querySelectorAll('img');
+    images.forEach((img) => {
+      // 移除之前可能存在的监听器（避免重复添加）
+      const newImg = img.cloneNode(true) as HTMLImageElement;
+      img.parentNode?.replaceChild(newImg, img);
+      
+      // 添加点击事件
+      newImg.style.cursor = 'pointer';
+      newImg.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const imageUrl = newImg.src || newImg.getAttribute('src') || '';
+        if (!imageUrl) return;
+        
+        try {
+          // 使用 previewImage 函数预览图片
+          const previewImage = (window as any).Ejunz?.components?.preview?.previewImage;
+          if (previewImage) {
+            await previewImage(imageUrl);
+          } else {
+            // 如果 previewImage 不可用，使用 InfoDialog 作为后备方案
+            const { InfoDialog } = await import('vj/components/dialog/index');
+            const $ = (await import('jquery')).default;
+            const isMobile = window.innerWidth <= 600;
+            const maxHeight = isMobile ? 'calc(90vh - 60px)' : 'calc(80vh - 45px)';
+            const padding = isMobile ? '10px' : '20px';
+            
+            const $img = $(`<img src="${imageUrl}" style="max-width: 100%; max-height: ${maxHeight}; width: auto; height: auto; cursor: pointer;" />`);
+            $img.on('click', function() {
+              const $this = $(this);
+              if ($this.css('max-height') === 'none') {
+                $this.css('max-height', maxHeight);
+              } else {
+                $this.css('max-height', 'none');
+              }
+            });
+            
+            const dialog = new InfoDialog({
+              $body: $(`<div class="typo" style="padding: ${padding}; text-align: center;"></div>`).append($img),
+              $action: null, // 不要按钮
+              cancelByClickingBack: true,
+              cancelByEsc: true,
+            });
+            await dialog.open();
+          }
+        } catch (error) {
+          console.error('预览图片失败:', error);
+          Notification.error('预览图片失败');
+        }
+      });
+    });
+  }, []);
+
   // 渲染card内容（优先使用缓存）
   const renderingCardRef = useRef<string | null>(null); // 防止重复渲染
   useEffect(() => {
@@ -2144,6 +2199,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     if (cardContentCacheRef.current[cardIdStr]) {
       contentDiv.innerHTML = cardContentCacheRef.current[cardIdStr];
       $(contentDiv).trigger('vjContentNew');
+      attachImagePreviewHandlers(contentDiv);
       
       // 异步缓存该 node 下的其他 card（添加防抖，避免频繁调用）
       const nodeId = selectedCard.nodeId || '';
@@ -2174,6 +2230,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           cachedCardsRef.current.add(cardIdStr);
           contentDiv.innerHTML = cachedHtml;
           $(contentDiv).trigger('vjContentNew');
+          attachImagePreviewHandlers(contentDiv);
           
           // 异步缓存该 node 下的其他 card（添加防抖）
           const nodeId = selectedCard.nodeId || '';
@@ -2193,6 +2250,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           cachedCardsRef.current.add(cardIdStr);
           contentDiv.innerHTML = cachedDataStr;
           $(contentDiv).trigger('vjContentNew');
+          attachImagePreviewHandlers(contentDiv);
           
           const nodeId = selectedCard.nodeId || '';
           if (nodeId) {
@@ -2256,6 +2314,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
         // 先显示 markdown 内容（不等待图片加载）
         contentDiv.innerHTML = html;
         $(contentDiv).trigger('vjContentNew');
+        attachImagePreviewHandlers(contentDiv);
         
         // 缓存渲染结果（不包含缓存的图片 URL）
         cardContentCacheRef.current[cardIdStr] = html;
@@ -2278,6 +2337,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           // 更新显示和缓存（包含缓存的图片 URL）
           contentDiv.innerHTML = htmlWithCachedImages;
           $(contentDiv).trigger('vjContentNew');
+          attachImagePreviewHandlers(contentDiv);
           cardContentCacheRef.current[cardIdStr] = htmlWithCachedImages;
           try {
             const cacheKey = `mindmap-outline-card-${cardIdStr}`;
@@ -2317,7 +2377,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
       cachedCardsRef.current.add(cardIdStr);
       contentDiv.innerHTML = emptyHtml;
     }
-  }, [selectedCard, preloadAndCacheImages, cacheNodeCards, preloadCardContent]);
+  }, [selectedCard, preloadAndCacheImages, cacheNodeCards, preloadCardContent, attachImagePreviewHandlers]);
 
 
   // 检查是否从编辑页面返回，如果是则刷新当前 card

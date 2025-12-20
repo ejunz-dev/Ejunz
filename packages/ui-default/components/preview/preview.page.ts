@@ -6,6 +6,7 @@ import Notification from 'vj/components/notification';
 import { AutoloadPage } from 'vj/misc/Page';
 import { i18n, request, tpl } from 'vj/utils';
 import uploadFiles from '../upload';
+import 'viewerjs/dist/viewer.css';
 
 async function startEdit(filename, value, fileCategory = 'file') {
   const { default: Editor } = await import('vj/components/editor/index');
@@ -70,14 +71,85 @@ async function previewVideo(link) {
 }
 
 async function previewImage(link) {
-  const id = nanoid();
-  const dialog = new InfoDialog({
-    $body: tpl`<div class="typo"><img src="${link}" style="max-height: calc(80vh - 45px);"></img></div>`,
-    $action: dialogAction(id),
-  });
-  bindCopyLink(id, link);
-  const action = await dialog.open();
-  if (action === 'download') window.open(link);
+  try {
+    const { default: Viewer } = await import('viewerjs/dist/viewer.esm.js');
+    
+    if (!Viewer || typeof Viewer !== 'function') {
+      throw new Error('Viewer not found or not a constructor');
+    }
+    
+    const img = document.createElement('img');
+    img.src = link;
+    img.style.cssText = 'display: none;';
+    document.body.appendChild(img);
+    
+    await new Promise<void>((resolve) => {
+      if (img.complete) {
+        resolve();
+      } else {
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+      }
+    });
+    
+    const viewer = new Viewer(img, {
+      inline: false,
+      viewed() {
+        document.body.style.overflow = 'hidden';
+      },
+      hidden() {
+        document.body.style.overflow = '';
+        if (img.parentNode) {
+          img.parentNode.removeChild(img);
+        }
+        viewer.destroy();
+      },
+      toolbar: {
+        zoomIn: true,
+        zoomOut: true,
+        oneToOne: true,
+        reset: true,
+        prev: false,
+        play: false,
+        next: false,
+        rotateLeft: true,
+        rotateRight: true,
+        flipHorizontal: true,
+        flipVertical: true,
+      },
+      zoomRatio: 0.1,
+      minZoomRatio: 0.01,
+      maxZoomRatio: 100,
+      // 移动端配置
+      movable: true,
+      rotatable: true,
+      scalable: true,
+      transition: true,
+      fullscreen: true,
+      keyboard: true,
+    });
+    
+    viewer.show();
+    
+  } catch (error) {
+    console.error('Failed to load viewerjs, falling back to simple preview:', error);
+
+    const { InfoDialog } = await import('vj/components/dialog/index');
+    const $ = (await import('jquery')).default;
+    const isMobile = window.innerWidth <= 600;
+    const maxHeight = isMobile ? 'calc(90vh - 60px)' : 'calc(80vh - 45px)';
+    const padding = isMobile ? '10px' : '20px';
+    
+    const $img = $(`<img src="${link}" style="max-width: 100%; max-height: ${maxHeight}; width: auto; height: auto;" />`);
+    
+    const dialog = new InfoDialog({
+      $body: $(`<div class="typo" style="padding: ${padding}; text-align: center;"></div>`).append($img),
+      $action: null,
+      cancelByClickingBack: true,
+      cancelByEsc: true,
+    });
+    await dialog.open();
+  }
 }
 
 async function previewPDF(link) {
@@ -185,5 +257,5 @@ const dataPreviewPage = new AutoloadPage('dataPreview', () => {
   $(document).on('click', '[data-preview]', previewFile);
 });
 
-window.Ejunz.components.preview = { startEdit, previewFile };
+window.Ejunz.components.preview = { startEdit, previewFile, previewImage };
 export default dataPreviewPage;
