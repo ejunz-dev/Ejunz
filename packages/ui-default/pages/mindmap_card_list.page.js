@@ -436,10 +436,66 @@ const page = new NamedPage('mindmap_card_list', () => {
     
     const cardIdStr = String(cardId);
     
+    // 为图片添加点击预览功能的辅助函数
+    const attachImagePreviewHandlers = (container) => {
+      const images = container.querySelectorAll('img');
+      images.forEach((img) => {
+        // 移除之前可能存在的监听器（避免重复添加）
+        const newImg = img.cloneNode(true);
+        img.parentNode?.replaceChild(newImg, img);
+        
+        // 添加点击事件
+        newImg.style.cursor = 'pointer';
+        newImg.addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const imageUrl = newImg.src || newImg.getAttribute('src') || '';
+          if (!imageUrl) return;
+          
+          try {
+            // 使用 previewImage 函数预览图片
+            const previewImage = window.Ejunz?.components?.preview?.previewImage;
+            if (previewImage) {
+              await previewImage(imageUrl);
+            } else {
+              // 如果 previewImage 不可用，使用 InfoDialog 作为后备方案
+              const { InfoDialog } = await import('vj/components/dialog/index');
+              const $ = (await import('jquery')).default;
+              const isMobile = window.innerWidth <= 600;
+              const maxHeight = isMobile ? 'calc(90vh - 60px)' : 'calc(80vh - 45px)';
+              const padding = isMobile ? '10px' : '20px';
+              
+              const $img = $(`<img src="${imageUrl}" style="max-width: 100%; max-height: ${maxHeight}; width: auto; height: auto; cursor: pointer;" />`);
+              $img.on('click', function() {
+                const $this = $(this);
+                if ($this.css('max-height') === 'none') {
+                  $this.css('max-height', maxHeight);
+                } else {
+                  $this.css('max-height', 'none');
+                }
+              });
+              
+              const dialog = new InfoDialog({
+                $body: $(`<div class="typo" style="padding: ${padding}; text-align: center;"></div>`).append($img),
+                $action: null, // 不要按钮
+                cancelByClickingBack: true,
+                cancelByEsc: true,
+              });
+              await dialog.open();
+            }
+          } catch (error) {
+            console.error('预览图片失败:', error);
+            Notification.error('预览图片失败');
+          }
+        });
+      });
+    };
+
     // 检查缓存
     if (cardContentCache[cardIdStr]) {
       // 直接使用缓存的内容（图片已缓存到本地）
       contentDiv.innerHTML = cardContentCache[cardIdStr];
+      attachImagePreviewHandlers(contentDiv);
     } else if (card.content) {
       // 缓存中没有，显示加载状态并渲染
       contentDiv.innerHTML = '<p style="color: #999; text-align: center;">加载中...</p>';
@@ -466,6 +522,7 @@ const page = new NamedPage('mindmap_card_list', () => {
         // 缓存渲染结果
         cardContentCache[cardIdStr] = html;
         contentDiv.innerHTML = html;
+        attachImagePreviewHandlers(contentDiv);
       })
       .catch(error => {
         console.error('Failed to render markdown:', error);
