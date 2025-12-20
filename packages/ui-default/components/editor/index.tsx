@@ -162,80 +162,230 @@ export default class Editor extends DOMAttachedObject {
 
     function EditorComponent() {
       const [val, setVal] = React.useState(value);
+      const [isDragging, setIsDragging] = React.useState(false);
+      const editorWrapperRef = React.useRef<HTMLDivElement>(null);
       that.setMarkdownEditorValue = setVal;
-      return <MdEditor
-        className='textbox'
-        autoFocus={hasFocus}
-        codeTheme='github'
-        codeStyleReverse={false}
-        ref={renderCallback}
-        modelValue={val}
-        theme={getTheme()}
-        noMermaid
-        noPrettier
-        autoDetectCode
-        toolbarsExclude={[
-          // 'bold',
-          // 'underline',
-          // 'italic',
-          // '-',
-          // 'strikeThrough',
-          // 'title',
-          // 'sub',
-          // 'sup',
-          // 'quote',
-          // 'unorderedList',
-          // 'orderedList',
-          // 'task',
-          // '-',
-          // 'codeRow',
-          // 'code',
-          // 'link',
-          // 'image',
-          // 'table',
-          'mermaid',
-          // 'katex',
-          // '-',
-          // 'revoke',
-          // 'next',
-          'save',
-          // '=',
-          'pageFullscreen',
-          'fullscreen',
-          // 'preview',
-          'previewOnly',
-          'htmlPreview',
-          // 'catalog',
-          'github',
-        ]}
-        onChange={(v) => {
-          that.valueCache = v;
-          setVal(v);
-          $dom.val(v);
-          $dom.text(v);
-          onChange?.(v);
-        }}
-        onUploadImg={async (files, callback) => {
-          let ext: string;
-          const matches = files[0].type.match(/^image\/(png|jpg|jpeg|gif)$/i);
+
+      const handleUploadFiles = async (fileList: FileList | File[]): Promise<string[]> => {
+        const files = Array.from(fileList);
+        const imageFiles: File[] = [];
+        const filenameMap = new Map<File, string>();
+
+        for (const file of files) {
+          const matches = file.type.match(/^image\/(png|jpg|jpeg|gif|webp)$/i);
           if (matches) {
-            [, ext] = matches;
-          } else if (files[0].type === 'application/x-zip-compressed') {
-            ext = 'zip';
+            imageFiles.push(file);
+            const [, ext] = matches;
+            const filename = `${nanoid()}.${ext}`;
+            filenameMap.set(file, filename);
           }
-          if (!ext) return i18n('No Supported file type.');
-          const filename = `${nanoid()}.${ext}`;
-          await uploadFiles(isProblemEdit ? './files' : '/file', [files[0]], {
+        }
+
+        if (imageFiles.length === 0) {
+          return [];
+        }
+
+        const uploadedUrls: string[] = [];
+        try {
+          await uploadFiles(isProblemEdit ? './files' : '/file', imageFiles, {
             type: isProblemEdit ? 'additional_file' : undefined,
-            filenameCallback: () => filename,
-          }).then(() => {
-            callback([`${isProblemPage ? 'file://' : `/file/${UserContext._id}/`}${filename}`]);
-          }).catch(() => {
-            callback([]);
+            filenameCallback: (file: File) => filenameMap.get(file) || file.name,
+            singleFileUploadCallback: (file: File) => {
+              const filename = filenameMap.get(file);
+              if (filename) {
+                uploadedUrls.push(`${isProblemPage ? 'file://' : `/file/${UserContext._id}/`}${filename}`);
+              }
+            },
           });
-          return null;
-        }}
-      />;
+        } catch (err) {
+          console.error('Failed to upload images:', err);
+        }
+
+        return uploadedUrls;
+      };
+
+      React.useEffect(() => {
+        const wrapper = editorWrapperRef.current;
+        if (!wrapper) return;
+
+        const handleDragEnter = (e: DragEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.dataTransfer?.types.includes('Files')) {
+            setIsDragging(true);
+          }
+        };
+
+        const handleDragOver = (e: DragEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.dataTransfer) {
+            e.dataTransfer.dropEffect = 'copy';
+          }
+        };
+
+        const handleDragLeave = (e: DragEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const rect = wrapper.getBoundingClientRect();
+          const x = e.clientX;
+          const y = e.clientY;
+          if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+            setIsDragging(false);
+          }
+        };
+
+        const handleDrop = async (e: DragEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragging(false);
+
+          const files = e.dataTransfer?.files;
+          if (!files || files.length === 0) return;
+
+          const uploadedUrls = await handleUploadFiles(files);
+          if (uploadedUrls.length > 0) {
+            const currentValue = val || '';
+            
+            const imageMarkdowns = uploadedUrls.map(url => `![image](${url})`).join('\n');
+            
+            let insertPosition = currentValue.length;
+            try {
+              if (that.markdownEditor && typeof that.markdownEditor.getCursor === 'function') {
+                const cursor = that.markdownEditor.getCursor();
+                if (cursor && typeof cursor.line === 'number') {
+                  const lines = currentValue.split('\n');
+                  let pos = 0;
+                  for (let i = 0; i < cursor.line && i < lines.length; i++) {
+                    pos += lines[i].length + 1; // +1 for newline
+                  }
+                  pos += cursor.column || 0;
+                  insertPosition = Math.min(pos, currentValue.length);
+                }
+              }
+            } catch (e) {
+            }
+            
+            const before = currentValue.substring(0, insertPosition);
+            const after = currentValue.substring(insertPosition);
+            const newValue = before + (before && !before.endsWith('\n') ? '\n' : '') + imageMarkdowns + (after && !after.startsWith('\n') ? '\n' : '') + after;
+            
+            if (that.markdownEditor && typeof that.markdownEditor.setValue === 'function') {
+              that.markdownEditor.setValue(newValue);
+            }
+            setVal(newValue);
+            $dom.val(newValue);
+            $dom.text(newValue);
+            onChange?.(newValue);
+          }
+        };
+
+        wrapper.addEventListener('dragenter', handleDragEnter);
+        wrapper.addEventListener('dragover', handleDragOver);
+        wrapper.addEventListener('dragleave', handleDragLeave);
+        wrapper.addEventListener('drop', handleDrop);
+
+        return () => {
+          wrapper.removeEventListener('dragenter', handleDragEnter);
+          wrapper.removeEventListener('dragover', handleDragOver);
+          wrapper.removeEventListener('dragleave', handleDragLeave);
+          wrapper.removeEventListener('drop', handleDrop);
+        };
+      }, []);
+
+      return (
+        <div
+          ref={editorWrapperRef}
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: '100%',
+          }}
+        >
+          {isDragging && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                border: '2px dashed #2196F3',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1000,
+                pointerEvents: 'none',
+                fontSize: '16px',
+                color: '#2196F3',
+                fontWeight: '500',
+              }}
+            >
+              释放以上传图片
+            </div>
+          )}
+          <MdEditor
+            className='textbox'
+            autoFocus={hasFocus}
+            codeTheme='github'
+            codeStyleReverse={false}
+            ref={renderCallback}
+            modelValue={val}
+            theme={getTheme()}
+            noMermaid
+            noPrettier
+            autoDetectCode
+            toolbarsExclude={[
+              // 'bold',
+              // 'underline',
+              // 'italic',
+              // '-',
+              // 'strikeThrough',
+              // 'title',
+              // 'sub',
+              // 'sup',
+              // 'quote',
+              // 'unorderedList',
+              // 'orderedList',
+              // 'task',
+              // '-',
+              // 'codeRow',
+              // 'code',
+              // 'link',
+              // 'image',
+              // 'table',
+              'mermaid',
+              // 'katex',
+              // '-',
+              // 'revoke',
+              // 'next',
+              'save',
+              // '=',
+              'pageFullscreen',
+              'fullscreen',
+              // 'preview',
+              'previewOnly',
+              'htmlPreview',
+              // 'catalog',
+              'github',
+            ]}
+            onChange={(v) => {
+              that.valueCache = v;
+              setVal(v);
+              $dom.val(v);
+              $dom.text(v);
+              onChange?.(v);
+            }}
+            onUploadImg={async (files, callback) => {
+              const uploadedUrls = await handleUploadFiles(files);
+              callback(uploadedUrls);
+              return null;
+            }}
+          />
+        </div>
+      );
     }
 
     this.reactRoot = ReactDOM.createRoot(ele);
