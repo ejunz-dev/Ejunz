@@ -1964,38 +1964,74 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     const cardId = urlParams.get('cardId');
     const nodeId = urlParams.get('nodeId');
     
-    if (cardId && fileTree.length > 0) {
-      // 在fileTree中查找对应的card
-      const cardFile = fileTree.find(f => f.type === 'card' && f.cardId === cardId);
-      if (cardFile) {
-        // 从nodeCardsMap中获取card数据
-        const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-        const nodeCards = nodeCardsMap[cardFile.nodeId || ''] || [];
-        const card = nodeCards.find((c: Card) => c.docId === cardId);
-        if (card && (!selectedCard || selectedCard.docId !== card.docId)) {
+    if (cardId) {
+      // 从 nodeCardsMap 中查找 card（不依赖 fileTree，因为节点可能未展开）
+      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+      let foundCard: Card | null = null;
+      let cardNodeId: string | null = null;
+      
+      // 遍历所有节点的卡片，查找匹配的 card
+      for (const [nodeIdKey, cards] of Object.entries(nodeCardsMap)) {
+        if (Array.isArray(cards)) {
+          const card = cards.find((c: Card) => String(c.docId) === String(cardId));
+          if (card) {
+            foundCard = card;
+            cardNodeId = nodeIdKey;
+            break;
+          }
+        }
+      }
+      
+      if (foundCard && cardNodeId) {
+        // 确保该节点已展开（如果未展开，先展开它）
+        if (!expandedNodes.has(cardNodeId)) {
+          setExpandedNodes(prev => {
+            const newSet = new Set(prev);
+            newSet.add(cardNodeId!);
+            return newSet;
+          });
+          // 等待 fileTree 更新后再选择 card
+          setTimeout(() => {
+            if (!selectedCard || String(selectedCard.docId) !== String(cardId)) {
+              clearAllHighlights();
+              const fileId = `card-${foundCard!.docId}`;
+              selectedFileIdRef.current = fileId;
+              setSelectedFileId(fileId);
+              handleSelectCard(foundCard!, true);
+              setSelectedNodeId(null);
+            }
+          }, 100);
+          return;
+        }
+        
+        // 节点已展开，直接选择 card
+        if (!selectedCard || String(selectedCard.docId) !== String(cardId)) {
           // 先清除所有之前的高亮样式
           clearAllHighlights();
           
           // 更新选中的文件ID
-          const fileId = `card-${card.docId}`;
+          const fileId = `card-${foundCard.docId}`;
           selectedFileIdRef.current = fileId;
           setSelectedFileId(fileId); // 触发重新渲染
-          handleSelectCard(card, true); // 跳过URL更新，避免循环
+          handleSelectCard(foundCard, true); // 跳过URL更新，避免循环
           setSelectedNodeId(null); // 清除node选择
         }
       }
-    } else if (nodeId && fileTree.length > 0) {
-      // 在fileTree中查找对应的node
-      const nodeFile = fileTree.find(f => f.type === 'node' && f.nodeId === nodeId);
-      if (nodeFile && (!selectedNodeId || selectedNodeId !== nodeId)) {
-        // 先清除所有之前的高亮样式
-        clearAllHighlights();
-        
-        // 更新选中的文件ID（节点使用nodeId作为ID）
-        selectedFileIdRef.current = nodeId;
-        setSelectedFileId(nodeId); // 触发重新渲染
-        setSelectedNodeId(nodeId);
-        setSelectedCard(null); // 清除card选择
+    } else if (nodeId) {
+      // 在fileTree中查找对应的node（如果fileTree已生成）
+      // 如果fileTree还未生成，等待mindMap加载完成
+      if (mindMap.nodes.length > 0) {
+        const nodeFile = fileTree.find(f => f.type === 'node' && f.nodeId === nodeId);
+        if (nodeFile && (!selectedNodeId || selectedNodeId !== nodeId)) {
+          // 先清除所有之前的高亮样式
+          clearAllHighlights();
+          
+          // 更新选中的文件ID（节点使用nodeId作为ID）
+          selectedFileIdRef.current = nodeId;
+          setSelectedFileId(nodeId); // 触发重新渲染
+          setSelectedNodeId(nodeId);
+          setSelectedCard(null); // 清除card选择
+        }
       }
     } else if (!cardId && !nodeId) {
       // 如果URL中没有参数，清除选择
@@ -2004,7 +2040,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
       setSelectedCard(null);
       setSelectedNodeId(null);
     }
-  }, [fileTree, selectedCard, selectedNodeId, handleSelectCard]);
+  }, [fileTree, selectedCard, selectedNodeId, handleSelectCard, expandedNodes, mindMap.nodes]);
 
   // 滚动到选中项的函数（可复用）
   const scrollToSelectedItem = useCallback(() => {

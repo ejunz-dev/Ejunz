@@ -512,6 +512,41 @@ class MindMapOutlineHandler extends Handler {
             }
         }
         
+        const cardId = this.request.query.cardId as string | undefined;
+        if (cardId && branchData.nodes && branchData.edges) {
+            let targetNodeId: string | null = null;
+            for (const [nodeId, cards] of Object.entries(nodeCardsMap)) {
+                if (cards.some(card => String(card.docId) === String(cardId))) {
+                    targetNodeId = nodeId;
+                    break;
+                }
+            }
+            
+            if (targetNodeId) {
+                const parentMap = new Map<string, string>();
+                branchData.edges.forEach(edge => {
+                    parentMap.set(edge.target, edge.source);
+                });
+                
+                const nodesToExpand = new Set<string>();
+                let currentNodeId: string | null = targetNodeId;
+                while (currentNodeId) {
+                    nodesToExpand.add(currentNodeId);
+                    currentNodeId = parentMap.get(currentNodeId) || null;
+                }
+                
+                branchData.nodes = branchData.nodes.map(node => {
+                    if (nodesToExpand.has(node.id)) {
+                        return {
+                            ...node,
+                            expandedOutline: true,
+                        };
+                    }
+                    return node;
+                });
+            }
+        }
+        
         this.response.body = {
             mindMap: {
                 ...this.mindMap,
