@@ -1460,8 +1460,39 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     return url;
   }, [initImageCache]);
 
-  // 预加载并缓存图片
-  const preloadAndCacheImages = useCallback(async (html: string): Promise<string> => {
+  // 预加载并缓存图片到 Cache API（不替换 HTML 中的 URL）
+  const preloadAndCacheImages = useCallback(async (html: string): Promise<void> => {
+    if (!html) return;
+    
+    const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+    const imageUrls: string[] = [];
+    let match;
+    
+    while ((match = imgRegex.exec(html)) !== null) {
+      const url = match[1];
+      if (url && !url.startsWith('blob:') && !url.startsWith('data:')) {
+        imageUrls.push(url);
+      }
+    }
+    
+    if (imageUrls.length === 0) return;
+    
+    await initImageCache();
+    
+    // 只缓存图片，不替换 URL
+    const imagePromises = imageUrls.map(async (originalUrl) => {
+      try {
+        await getCachedImage(originalUrl);
+      } catch (error) {
+        console.error(`Failed to cache image ${originalUrl}:`, error);
+      }
+    });
+    
+    await Promise.all(imagePromises);
+  }, [initImageCache, getCachedImage]);
+
+  // 在渲染时动态替换图片 URL 为缓存的 blob URL
+  const replaceImagesWithCache = useCallback(async (html: string): Promise<string> => {
     if (!html) return html;
     
     const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
@@ -1470,6 +1501,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     
     while ((match = imgRegex.exec(html)) !== null) {
       const url = match[1];
+      // 只处理非 blob 和非 data URL 的图片
       if (url && !url.startsWith('blob:') && !url.startsWith('data:')) {
         imageUrls.push(url);
       }
@@ -1487,7 +1519,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           urlMap.set(originalUrl, cachedUrl);
         }
       } catch (error) {
-        console.error(`Failed to cache image ${originalUrl}:`, error);
+        console.error(`Failed to get cached image ${originalUrl}:`, error);
       }
     });
     
@@ -1559,27 +1591,10 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
         html = await response.text();
       }
       
-      html = await preloadAndCacheImages(html);
+      // 只缓存图片到 Cache API，不替换 HTML 中的 URL
+      await preloadAndCacheImages(html);
       
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = html;
-      const images = tempDiv.querySelectorAll('img');
-      
-      if (images.length > 0) {
-        const imagePromises = Array.from(images).map(img => {
-          return new Promise<void>((resolve) => {
-            if ((img as HTMLImageElement).complete) {
-              resolve();
-            } else {
-              img.onload = () => resolve();
-              img.onerror = () => resolve();
-              setTimeout(resolve, 10000);
-            }
-          });
-        });
-        await Promise.all(imagePromises);
-      }
-      
+      // 保存原始 HTML（不包含 blob URL）到 localStorage
       cardContentCacheRef.current[cardIdStr] = html;
       cachedCardsRef.current.add(cardIdStr);
       
@@ -2197,9 +2212,22 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
     
     // 检查缓存（优先从内存缓存读取）
     if (cardContentCacheRef.current[cardIdStr]) {
-      contentDiv.innerHTML = cardContentCacheRef.current[cardIdStr];
-      $(contentDiv).trigger('vjContentNew');
-      attachImagePreviewHandlers(contentDiv);
+      const cachedHtml = cardContentCacheRef.current[cardIdStr];
+      // 动态替换图片 URL 为缓存的 blob URL
+      replaceImagesWithCache(cachedHtml).then(htmlWithCachedImages => {
+        // 检查是否还是同一个 card（防止切换卡片时覆盖）
+        if (selectedCard && String(selectedCard.docId) === cardIdStr) {
+          contentDiv.innerHTML = htmlWithCachedImages;
+          $(contentDiv).trigger('vjContentNew');
+          attachImagePreviewHandlers(contentDiv);
+        }
+      }).catch(error => {
+        console.error('Failed to replace images with cache:', error);
+        // 如果失败，使用原始 HTML
+        contentDiv.innerHTML = cachedHtml;
+        $(contentDiv).trigger('vjContentNew');
+        attachImagePreviewHandlers(contentDiv);
+      });
       
       // 异步缓存该 node 下的其他 card（添加防抖，避免频繁调用）
       const nodeId = selectedCard.nodeId || '';
@@ -2228,9 +2256,23 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           const cachedHtml = cachedData.html || cachedDataStr;
           cardContentCacheRef.current[cardIdStr] = cachedHtml;
           cachedCardsRef.current.add(cardIdStr);
-          contentDiv.innerHTML = cachedHtml;
-          $(contentDiv).trigger('vjContentNew');
-          attachImagePreviewHandlers(contentDiv);
+          // 动态替换图片 URL 为缓存的 blob URL
+          replaceImagesWithCache(cachedHtml).then(htmlWithCachedImages => {
+            // 检查是否还是同一个 card（防止切换卡片时覆盖）
+            if (selectedCard && String(selectedCard.docId) === cardIdStr) {
+              contentDiv.innerHTML = htmlWithCachedImages;
+              $(contentDiv).trigger('vjContentNew');
+              attachImagePreviewHandlers(contentDiv);
+            }
+          }).catch(error => {
+            console.error('Failed to replace images with cache:', error);
+            // 如果失败，使用原始 HTML
+            if (selectedCard && String(selectedCard.docId) === cardIdStr) {
+              contentDiv.innerHTML = cachedHtml;
+              $(contentDiv).trigger('vjContentNew');
+              attachImagePreviewHandlers(contentDiv);
+            }
+          });
           
           // 异步缓存该 node 下的其他 card（添加防抖）
           const nodeId = selectedCard.nodeId || '';
@@ -2248,9 +2290,23 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           // 旧格式（纯HTML字符串）
           cardContentCacheRef.current[cardIdStr] = cachedDataStr;
           cachedCardsRef.current.add(cardIdStr);
-          contentDiv.innerHTML = cachedDataStr;
-          $(contentDiv).trigger('vjContentNew');
-          attachImagePreviewHandlers(contentDiv);
+          // 动态替换图片 URL 为缓存的 blob URL
+          replaceImagesWithCache(cachedDataStr).then(htmlWithCachedImages => {
+            // 检查是否还是同一个 card（防止切换卡片时覆盖）
+            if (selectedCard && String(selectedCard.docId) === cardIdStr) {
+              contentDiv.innerHTML = htmlWithCachedImages;
+              $(contentDiv).trigger('vjContentNew');
+              attachImagePreviewHandlers(contentDiv);
+            }
+          }).catch(error => {
+            console.error('Failed to replace images with cache:', error);
+            // 如果失败，使用原始 HTML
+            if (selectedCard && String(selectedCard.docId) === cardIdStr) {
+              contentDiv.innerHTML = cachedDataStr;
+              $(contentDiv).trigger('vjContentNew');
+              attachImagePreviewHandlers(contentDiv);
+            }
+          });
           
           const nodeId = selectedCard.nodeId || '';
           if (nodeId) {
@@ -2316,11 +2372,11 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
         $(contentDiv).trigger('vjContentNew');
         attachImagePreviewHandlers(contentDiv);
         
-        // 缓存渲染结果（不包含缓存的图片 URL）
+        // 缓存渲染结果（保存原始 HTML，不包含 blob URL）
         cardContentCacheRef.current[cardIdStr] = html;
         cachedCardsRef.current.add(cardIdStr);
         
-        // 保存到 localStorage
+        // 保存到 localStorage（保存原始 HTML，不包含 blob URL）
         try {
           const cacheKey = `mindmap-outline-card-${cardIdStr}`;
           const cacheData = {
@@ -2332,23 +2388,19 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           console.error('Failed to save to localStorage:', error);
         }
         
-        // 异步加载并缓存图片（不阻塞显示）
-        preloadAndCacheImages(html).then(async (htmlWithCachedImages) => {
-          // 更新显示和缓存（包含缓存的图片 URL）
-          contentDiv.innerHTML = htmlWithCachedImages;
-          $(contentDiv).trigger('vjContentNew');
-          attachImagePreviewHandlers(contentDiv);
-          cardContentCacheRef.current[cardIdStr] = htmlWithCachedImages;
-          try {
-            const cacheKey = `mindmap-outline-card-${cardIdStr}`;
-            const cacheData = {
-              html: htmlWithCachedImages,
-              updateAt: selectedCard.updateAt || '',
-            };
-            localStorage.setItem(cacheKey, JSON.stringify(cacheData));
-          } catch (error) {
-            console.error('Failed to update localStorage with cached images:', error);
-          }
+        // 异步加载并缓存图片到 Cache API（不阻塞显示）
+        preloadAndCacheImages(html).then(async () => {
+          // 图片已缓存到 Cache API，现在动态替换图片 URL
+          replaceImagesWithCache(html).then(htmlWithCachedImages => {
+            // 检查是否还是同一个 card（防止切换卡片时覆盖）
+            if (selectedCard && String(selectedCard.docId) === cardIdStr) {
+              contentDiv.innerHTML = htmlWithCachedImages;
+              $(contentDiv).trigger('vjContentNew');
+              attachImagePreviewHandlers(contentDiv);
+            }
+          }).catch(error => {
+            console.error('Failed to replace images with cache:', error);
+          });
         }).catch(error => {
           console.error('Failed to cache images:', error);
         });
@@ -2377,7 +2429,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
       cachedCardsRef.current.add(cardIdStr);
       contentDiv.innerHTML = emptyHtml;
     }
-  }, [selectedCard, preloadAndCacheImages, cacheNodeCards, preloadCardContent, attachImagePreviewHandlers]);
+  }, [selectedCard, preloadAndCacheImages, replaceImagesWithCache, cacheNodeCards, preloadCardContent, attachImagePreviewHandlers]);
 
 
   // 检查是否从编辑页面返回，如果是则刷新当前 card
