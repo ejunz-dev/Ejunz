@@ -855,6 +855,8 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
   }, []);
   // 右键菜单
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null);
+  // 跟踪长按状态，防止长按后触发点击事件
+  const longPressTriggeredRef = useRef<boolean>(false);
   // 缓存计数
   // const [cachedCount, setCachedCount] = useState(0);
   // 卡片缓存进度：记录正在缓存的进度
@@ -3193,6 +3195,12 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                   data-file-node-id={file.type === 'node' ? file.nodeId : undefined}
                   data-cached={isCached ? 'true' : 'false'}
                   onClick={() => {
+                    // 如果触发了长按，不执行点击操作
+                    if (longPressTriggeredRef.current) {
+                      longPressTriggeredRef.current = false;
+                      return;
+                    }
+                    
                     // 先清除所有之前的高亮样式
                     clearAllHighlights();
                     
@@ -3244,9 +3252,87 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
                     }
                   }}
                   onContextMenu={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setContextMenu({ x: e.clientX, y: e.clientY, file });
+                    // 手机模式下禁用右键菜单，使用长按代替
+                    if (!isMobile) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setContextMenu({ x: e.clientX, y: e.clientY, file });
+                    }
+                  }}
+                  onTouchStart={(e) => {
+                    // 手机模式下长按显示工具栏
+                    if (!isMobile) return;
+                    
+                    const touch = e.touches[0];
+                    const startX = touch.clientX;
+                    const startY = touch.clientY;
+                    const startTime = Date.now();
+                    let touchMoved = false;
+                    let longPressTimer: NodeJS.Timeout | null = null;
+                    
+                    const handleTouchMove = (moveEvent: TouchEvent) => {
+                      const moveTouch = moveEvent.touches[0];
+                      const moveX = moveTouch.clientX;
+                      const moveY = moveTouch.clientY;
+                      const distance = Math.sqrt(
+                        Math.pow(moveX - startX, 2) + Math.pow(moveY - startY, 2)
+                      );
+                      // 如果移动距离超过 10px，取消长按
+                      if (distance > 10) {
+                        touchMoved = true;
+                        document.removeEventListener('touchend', handleTouchEnd);
+                        document.removeEventListener('touchmove', handleTouchMove);
+                        if (longPressTimer) {
+                          clearTimeout(longPressTimer);
+                          longPressTimer = null;
+                        }
+                      }
+                    };
+                    
+                    const handleTouchEnd = (endEvent: TouchEvent) => {
+                      const endTime = Date.now();
+                      const duration = endTime - startTime;
+                      const endTouch = endEvent.changedTouches[0];
+                      const endX = endTouch.clientX;
+                      const endY = endTouch.clientY;
+                      const distance = Math.sqrt(
+                        Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2)
+                      );
+                      
+                      document.removeEventListener('touchend', handleTouchEnd);
+                      document.removeEventListener('touchmove', handleTouchMove);
+                      if (longPressTimer) {
+                        clearTimeout(longPressTimer);
+                        longPressTimer = null;
+                      }
+                      
+                      // 长按时间超过 500ms 且移动距离小于 10px
+                      if (duration >= 500 && distance < 10 && !touchMoved) {
+                        longPressTriggeredRef.current = true;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setContextMenu({ x: endX, y: endY, file });
+                      } else {
+                        // 重置长按标志
+                        setTimeout(() => {
+                          longPressTriggeredRef.current = false;
+                        }, 300);
+                      }
+                    };
+                    
+                    // 设置长按定时器
+                    longPressTimer = setTimeout(() => {
+                      if (!touchMoved && e.touches[0]) {
+                        const currentTouch = e.touches[0];
+                        longPressTriggeredRef.current = true;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setContextMenu({ x: currentTouch.clientX, y: currentTouch.clientY, file });
+                      }
+                    }, 500);
+                    
+                    document.addEventListener('touchend', handleTouchEnd, { once: true });
+                    document.addEventListener('touchmove', handleTouchMove, { once: true });
                   }}
                   style={{
                     padding: `4px ${8 + file.level * 16}px`,
@@ -3481,6 +3567,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
               zIndex: 999,
             }}
             onClick={() => setContextMenu(null)}
+            onTouchStart={() => setContextMenu(null)}
             onContextMenu={(e) => {
               e.preventDefault();
               setContextMenu(null);
@@ -3490,32 +3577,45 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           <div
             style={{
               position: 'fixed',
-              left: contextMenu.x,
-              top: contextMenu.y,
+              left: isMobile ? Math.max(10, Math.min(contextMenu.x, window.innerWidth - 190)) : contextMenu.x,
+              top: isMobile ? Math.max(10, Math.min(contextMenu.y, window.innerHeight - 100)) : contextMenu.y,
               backgroundColor: '#fff',
               border: '1px solid #ddd',
-              borderRadius: '4px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              borderRadius: '8px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
               zIndex: 1000,
-              minWidth: '180px',
-              padding: '4px 0',
+              minWidth: isMobile ? '160px' : '180px',
+              padding: '8px 0',
             }}
             onClick={(e) => e.stopPropagation()}
             onContextMenu={(e) => e.preventDefault()}
+            onTouchStart={(e) => e.stopPropagation()}
           >
             {contextMenu.file.type === 'card' ? (
               <>
                 <div
                   style={{
-                    padding: '6px 16px',
+                    padding: isMobile ? '12px 16px' : '6px 16px',
                     cursor: 'pointer',
-                    fontSize: '13px',
+                    fontSize: isMobile ? '15px' : '13px',
                     color: '#24292e',
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#f3f4f6';
+                    if (!isMobile) {
+                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                    }
                   }}
                   onMouseLeave={(e) => {
+                    if (!isMobile) {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }
+                  }}
+                  onTouchStart={(e) => {
+                    e.currentTarget.style.backgroundColor = '#f3f4f6';
+                  }}
+                  onTouchEnd={(e) => {
                     e.currentTarget.style.backgroundColor = 'transparent';
                   }}
                   onClick={() => {
@@ -3532,15 +3632,27 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
               <>
                 <div
                   style={{
-                    padding: '6px 16px',
+                    padding: isMobile ? '12px 16px' : '6px 16px',
                     cursor: 'pointer',
-                    fontSize: '13px',
+                    fontSize: isMobile ? '15px' : '13px',
                     color: '#24292e',
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#f3f4f6';
+                    if (!isMobile) {
+                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                    }
                   }}
                   onMouseLeave={(e) => {
+                    if (!isMobile) {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }
+                  }}
+                  onTouchStart={(e) => {
+                    e.currentTarget.style.backgroundColor = '#f3f4f6';
+                  }}
+                  onTouchEnd={(e) => {
                     e.currentTarget.style.backgroundColor = 'transparent';
                   }}
                   onClick={() => {
