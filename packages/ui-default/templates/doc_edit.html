@@ -175,25 +175,6 @@ function copyResourceUrl(el) {
     {% endif %}
 
     {% if repos %}
-    <div class="section">
-      <div class="section__header">
-        <h3>{{ _("Related Repositories") }}</h3>
-      </div>
-      <div class="section__body">
-        {% for repo in repos %}
-        <div class="repo-section">
-          <h5>
-            <a class="discussion-node-tag media-link resource-link" 
-               data-resource="{{ repo.title }}"
-               href="javascript:void(0)"
-               onclick="copyResourceUrl(this)">
-              <span class="v-center icon icon-repo"></span> {{ repo.title }}
-            </a>
-          </h5>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
     {% endif %}
   </div>
   {% endif %}

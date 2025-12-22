@@ -31,7 +31,6 @@ import EdgeModel from '../model/edge';
 import ToolModel from '../model/tool';
 import { EdgeServerConnectionHandler } from './edge';
 import * as document from '../model/document';
-import { RepoModel } from '../model/repo';
 import NodeModel from '../model/node';
 import { callToolViaWorker } from './worker';
 import record from '../model/record';
@@ -1021,26 +1020,7 @@ export async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[]
     }
     
     // Repo tools are now handled through Edge/Tool model
-    // When agent has repoIds, automatically include tools from those repos
-    if (repoIds && repoIds.length > 0) {
-        for (const rpid of repoIds) {
-            try {
-                const repo = await RepoModel.getRepoByRpid(domainId, rpid);
-                if (repo && repo.edgeId) {
-                    const edge = await EdgeModel.getByEdgeId(domainId, repo.edgeId);
-                    if (edge && edge.token) {
-                        const repoTools = await ToolModel.getByToken(domainId, edge.token);
-                        for (const tool of repoTools) {
-                            // Add repo tools to the map (they will be included in final tools)
-                            allToolIds.add(tool._id.toString());
-                        }
-                    }
-                }
-            } catch (error) {
-                AgentLogger.warn('Failed to get tools for repo %d: %s', rpid, (error as Error).message);
-            }
-        }
-    }
+    // RepoModel has been removed, repo functionality is no longer available
     
     const finalToolIds: ObjectId[] = Array.from(allToolIds).map(id => new ObjectId(id));
     
@@ -3835,18 +3815,8 @@ export class AgentEditHandler extends Handler {
         const udoc = await user.getById(domainId, agent.owner);
 
         // 获取所有可用的repo列表
+        // RepoModel has been removed, repo functionality is no longer available
         const allRepos: any[] = [];
-        try {
-            const repos = await RepoModel.getAllRepos(domainId);
-            for (const repo of repos) {
-                allRepos.push({
-                    rpid: repo.rpid,
-                    title: repo.title,
-                });
-            }
-        } catch (error: any) {
-            AgentLogger.error('Failed to load repos: %s', error.message);
-        }
 
         // 获取已选择的repo ID列表
         const assignedRepoIds = (agent.repoIds || []).map(id => id.toString());
@@ -3929,20 +3899,10 @@ export class AgentEditHandler extends Handler {
         }
         
         // 验证repo ID是否有效
+        // RepoModel has been removed, repo functionality is no longer available
         const validRepoIds: number[] = [];
         if (repoIds && Array.isArray(repoIds)) {
-            try {
-                for (const rpid of repoIds) {
-                    const repo = await RepoModel.getRepoByRpid(domainId, rpid);
-                    if (repo) {
-                        validRepoIds.push(rpid);
-                    } else {
-                        AgentLogger.warn('Repo not found: rpid=%d', rpid);
-                    }
-                }
-            } catch (error: any) {
-                AgentLogger.warn('Failed to validate repo IDs: %s', error.message);
-            }
+            AgentLogger.warn('Repo functionality is no longer available, ignoring repoIds');
         }
         
         AgentLogger.info('Updating agent: aid=%s, toolIds=%o, validToolIds=%o, repoIds=%o, validRepoIds=%o', 

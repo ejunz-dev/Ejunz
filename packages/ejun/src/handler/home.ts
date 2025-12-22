@@ -23,7 +23,6 @@ import message from '../model/message';
 import { MindMapModel } from '../model/mindmap';
 import AgentModel from '../model/agent';
 import WorkflowModel from '../model/workflow';
-import { RepoModel } from '../model/repo';
 import EdgeModel from '../model/edge';
 import ToolModel from '../model/tool';
 import ClientModel from '../model/client';

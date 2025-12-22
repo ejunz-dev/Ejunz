@@ -148,47 +148,6 @@
           </div>
           {% endif %}
 
-          <!-- Repo MCP Servers -->
-          {% if repoServers and repoServers.length > 0 %}
-          <div class="mcp-category" style="margin-top: 15px;">
-            <h4 style="font-size: 0.9em; margin-bottom: 8px; color: #666;">{{ _('Repo') }}</h4>
-            <div id="mcp-repo-servers">
-              {% for server in repoServers %}
-              <div class="mcp-server-item" data-server-id="{{ server.serverId }}" data-type="repo" data-rpid="{{ server.rpid }}">
-                <div class="mcp-server-header" onclick="window.toggleServer && window.toggleServer('{{ server.serverId }}')">
-                  <span class="mcp-server-toggle icon icon-chevron-right" id="toggle-{{ server.serverId }}"></span>
-                  <span class="mcp-server-name">{{ server.repoTitle }}</span>
-                  <span class="mcp-server-status" id="status-{{ server.serverId }}" data-status="{{ server.status }}">
-                    {% if server.status == 'connected' %}
-                    <span class="status-indicator status-online"></span>{{ _('Online') }}
-                    {% else %}
-                    <span class="status-indicator status-offline"></span>{{ _('Offline') }}
-                    {% endif %}
-                  </span>
-                </div>
-                <div class="mcp-server-tools" id="tools-{{ server.serverId }}" style="display: none;">
-                  {% if server.tools and server.tools.length > 0 %}
-                  {% for tool in server.tools %}
-                  <div class="mcp-tool-item" data-tool-id="{{ tool._id }}">
-                    <div class="mcp-tool-name">{{ tool.name }}</div>
-                    <div class="mcp-tool-description">{{ tool.description }}</div>
-                    {% if tool.inputSchema %}
-                    <details class="mcp-tool-schema">
-                      <summary>{{ _('View Parameters') }}</summary>
-                      <pre>{{ tool.inputSchema|json }}</pre>
-                    </details>
-                    {% endif %}
-                  </div>
-                  {% endfor %}
-                  {% else %}
-                  <div class="mcp-tool-empty">{{ _('No tools available') }}</div>
-                  {% endif %}
-                </div>
-              </div>
-              {% endfor %}
-            </div>
-          </div>
-          {% endif %}
 
           <!-- Node MCP Servers -->
           {% if nodeServers and nodeServers.length > 0 %}
@@ -232,7 +191,7 @@
           </div>
           {% endif %}
 
-          {% if (not providerServers or providerServers.length == 0) and (not nodeServers or nodeServers.length == 0) and (not repoServers or repoServers.length == 0) %}
+          {% if (not providerServers or providerServers.length == 0) and (not nodeServers or nodeServers.length == 0) %}
           <p class="note">{{ _('No MCP servers available.') }}</p>
           {% endif %}
         </div>
