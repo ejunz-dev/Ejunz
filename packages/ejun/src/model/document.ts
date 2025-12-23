@@ -37,10 +37,6 @@ export interface DocType {
     [TYPE_AGENT]: AgentDoc;
     [TYPE_DISCUSSION]: DiscussionDoc;
     [TYPE_DISCUSSION_REPLY]: DiscussionReplyDoc;
-    [TYPE_BASE]: BaseDoc;
-    [TYPE_REPO]: RepoDoc;
-    [TYPE_DOC]: DocDoc;
-    [TYPE_BLOCK]: BlockDoc;
     [TYPE_NODE]: NodeDoc;
     [TYPE_CLIENT]: ClientDoc;
     [TYPE_CLIENT_CHAT]: ClientChatDoc;
@@ -536,10 +532,6 @@ global.Ejunz.model.document = {
     TYPE_DISCUSSION,
     TYPE_DISCUSSION_NODE,
     TYPE_DISCUSSION_REPLY,
-    TYPE_BASE,
-    TYPE_REPO,
-    TYPE_DOC,
-    TYPE_BLOCK,
     TYPE_NODE,
     TYPE_CLIENT,
     TYPE_CLIENT_CHAT,
