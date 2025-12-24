@@ -46,7 +46,7 @@
                                 {% for client in clients %}
                                     <tr>
                                         <td>
-                                            <a href="{{ url('client_detail', { domainId: domainId, clientId: client.clientId }) }}">
+                                            <a href="{{ url('client_detail', { domainId: client.domainId|default(domainId), clientId: client.clientId }) }}">
                                                 {{ client.name }}
                                             </a>
                                             {% if client.description %}
@@ -74,7 +74,7 @@
                                             {% endif %}
                                         </td>
                                         <td>
-                                            <a href="{{ url('client_detail', { domainId: domainId, clientId: client.clientId }) }}" class="button small">{{ _('View Details') }}</a>
+                                            <a href="{{ url('client_detail', { domainId: client.domainId|default(domainId), clientId: client.clientId }) }}" class="button small">{{ _('View Details') }}</a>
                                         </td>
                                     </tr>
                                 {% endfor %}

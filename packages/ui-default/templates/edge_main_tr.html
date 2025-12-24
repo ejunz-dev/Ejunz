@@ -1,6 +1,6 @@
 <tr data-edge-id="{{ edge._id }}">
   <td class="col--id">
-    <a href="{{ url('edge_detail', { domainId: handler.args.domainId, eid: edge.eid }) }}">
+    <a href="{{ url('edge_detail', { domainId: edge.domainId|default(handler.args.domainId), eid: edge.eid }) }}">
       <code>{{ edge.eid }}</code>
     </a>
   </td>
@@ -39,7 +39,7 @@
     {% endif %}
   </td>
   <td class="col--action">
-    <a href="{{ url('edge_detail', { domainId: handler.args.domainId, eid: edge.eid }) }}" class="button small">查看详情</a>
+    <a href="{{ url('edge_detail', { domainId: edge.domainId|default(handler.args.domainId), eid: edge.eid }) }}" class="button small">查看详情</a>
   </td>
 </tr>
 

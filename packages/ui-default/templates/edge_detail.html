@@ -79,7 +79,7 @@
               <tr>
                 <td class="col--key">关联 Node</td>
                 <td>
-                  <a href="{{ url('node_detail', { domainId: domainId, nid: node.nid }) }}">
+                  <a href="{{ url('node_detail', { domainId: node.domainId|default(domainId), nid: node.nid }) }}">
                     {{ node.name }} (NID: {{ node.nid }})
                   </a>
                 </td>
@@ -89,7 +89,7 @@
               <tr>
                 <td class="col--key">关联 Client</td>
                 <td>
-                  <a href="{{ url('client_detail', { domainId: domainId, clientId: client.clientId }) }}">
+                  <a href="{{ url('client_detail', { domainId: client.domainId|default(domainId), clientId: client.clientId }) }}">
                     {{ client.name }} (Client ID: {{ client.clientId }})
                   </a>
                 </td>
