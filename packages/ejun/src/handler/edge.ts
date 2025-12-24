@@ -152,6 +152,7 @@ export class EdgeConnectionHandler extends ConnectionHandler<Context> {
 export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
     static active = new Map<string, EdgeServerConnectionHandler>(); // 使用 token 作为 key
     private token: string | null = null;
+    private tokenDomainId: string | null = null; // 存储token中的域ID，确保使用正确的域
     private edgeDocId: ObjectId | null = null;
     private subscriptions: Array<{ dispose: () => void }> = [];
     private accepted = false;
@@ -172,23 +173,34 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
 
         // 先查找 token 记录
         const tokenDoc = await EdgeTokenModel.getByToken(token);
-        if (!tokenDoc || tokenDoc.domainId !== this.domain._id) {
+        if (!tokenDoc) {
             logger.warn('Edge Server WebSocket connection rejected: Invalid token');
             this.close(4000, 'Invalid token');
             return;
         }
 
+        // 使用token中的域ID，而不是请求路径中的域ID
+        // 这样可以确保token在正确的域中使用
+        this.tokenDomainId = tokenDoc.domainId;
+        
+        // 如果请求路径中的域ID与token中的域ID不匹配，记录警告但继续使用token的域ID
+        if (this.domain._id !== this.tokenDomainId) {
+            logger.warn('Domain mismatch: token domainId=%s, request domainId=%s, using token domainId', 
+                this.tokenDomainId, this.domain._id);
+        }
+
         // 查找或创建 Edge
-        let edge = await EdgeModel.getByToken(this.domain._id, token);
+        let edge = await EdgeModel.getByToken(this.tokenDomainId, token);
         if (!edge) {
             // Edge 不存在，创建 Edge（使用 tokenDoc 中的 token）
             edge = await EdgeModel.add({
-                domainId: this.domain._id,
+                domainId: this.tokenDomainId,
                 type: tokenDoc.type as 'provider' | 'client' | 'node' | 'repo',
                 owner: this.user._id,
                 token: tokenDoc.token,
             });
-            logger.info('Created edge on connection: eid=%d, token=%s, type=%s', edge.eid, token, tokenDoc.type);
+            logger.info('Created edge on connection: eid=%d, token=%s, type=%s, domainId=%s (from token.domainId=%s)', 
+                edge.eid, token, tokenDoc.type, this.tokenDomainId, tokenDoc.domainId);
         }
 
         // 更新 token 最后使用时间（仅在首次连接前有效）
@@ -218,7 +230,7 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
         // 更新edge状态，标记为已使用
         const wasFirstConnection = !edge.tokenUsedAt;
         try {
-            await EdgeModel.update(this.domain._id, edge.eid, {
+            await EdgeModel.update(this.tokenDomainId!, edge.eid, {
                 status: 'online',
                 tokenUsedAt: edge.tokenUsedAt || new Date(),
             });
@@ -227,25 +239,25 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
             if (edge.type === 'node') {
                 if (edge.nodeId) {
                     // 已有关联的 node，更新 node 状态
-                    const node = await NodeModel.getByNodeId(this.domain._id, edge.nodeId);
+                    const node = await NodeModel.getByNodeId(this.tokenDomainId!, edge.nodeId);
                     if (node) {
-                        await NodeModel.update(this.domain._id, node.nid, { status: 'active' });
+                        await NodeModel.update(this.tokenDomainId!, node.nid, { status: 'active' });
                         logger.info('Node already exists, updated status to active: nid=%d, edgeId=%d', node.nid, edge.eid);
                     }
                 } else {
-                    let node = await NodeModel.getByEdgeId(this.domain._id, edge.eid);
+                    let node = await NodeModel.getByEdgeId(this.tokenDomainId!, edge.eid);
                     if (node) {
-                        await EdgeModel.update(this.domain._id, edge.eid, { nodeId: node.nid });
-                        await NodeModel.update(this.domain._id, node.nid, { status: 'active' });
+                        await EdgeModel.update(this.tokenDomainId!, edge.eid, { nodeId: node.nid });
+                        await NodeModel.update(this.tokenDomainId!, node.nid, { status: 'active' });
                         logger.info('Node already exists by edgeId, established bidirectional link: nid=%d, edgeId=%d', node.nid, edge.eid);
                     } else {
                         node = await NodeModel.add({
-                            domainId: this.domain._id,
+                            domainId: this.tokenDomainId!,
                             name: `Node-${edge.eid}`,
                             owner: edge.owner,
                             edgeId: edge.eid,
                         });
-                        await EdgeModel.update(this.domain._id, edge.eid, { nodeId: node.nid });
+                        await EdgeModel.update(this.tokenDomainId!, edge.eid, { nodeId: node.nid });
                         logger.info('Auto-created node for edge on connection: nid=%d, edgeId=%d (downstream does not need to send nodeId)', node.nid, edge.eid);
                     }
                     
@@ -258,28 +270,28 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
             if (edge.type === 'client') {
                 if (edge.clientId) {
                     // 已有关联的 client，更新 client 状态
-                    const client = await ClientModel.getByClientId(this.domain._id, edge.clientId);
+                    const client = await ClientModel.getByClientId(this.tokenDomainId!, edge.clientId);
                     if (client) {
-                        await ClientModel.updateStatus(this.domain._id, client.clientId, 'connected');
+                        await ClientModel.updateStatus(this.tokenDomainId!, client.clientId, 'connected');
                         logger.info('Client already exists, updated status to connected: clientId=%d, edgeId=%d', client.clientId, edge.eid);
                     }
                 } else {
                     // 检查是否已存在通过 edgeId 关联的 client（建立双向链接）
-                    let client = await ClientModel.getByEdgeId(this.domain._id, edge.eid);
+                    let client = await ClientModel.getByEdgeId(this.tokenDomainId!, edge.eid);
                     if (client) {
                         // 已存在 client，建立双向关联
-                        await EdgeModel.update(this.domain._id, edge.eid, { clientId: client.clientId });
-                        await ClientModel.updateStatus(this.domain._id, client.clientId, 'connected');
+                        await EdgeModel.update(this.tokenDomainId!, edge.eid, { clientId: client.clientId });
+                        await ClientModel.updateStatus(this.tokenDomainId!, client.clientId, 'connected');
                         logger.info('Client already exists by edgeId, established bidirectional link: clientId=%d, edgeId=%d', client.clientId, edge.eid);
                     } else {
                         // 自动创建 client 并建立双向关联（系统自动处理，下游无需发送 clientId）
                         client = await ClientModel.add({
-                            domainId: this.domain._id,
+                            domainId: this.tokenDomainId!,
                             name: `Client-${edge.eid}`,
                             owner: edge.owner,
                             edgeId: edge.eid,
                         });
-                        await EdgeModel.update(this.domain._id, edge.eid, { clientId: client.clientId });
+                        await EdgeModel.update(this.tokenDomainId!, edge.eid, { clientId: client.clientId });
                         logger.info('Auto-created client for edge on connection: clientId=%d, edgeId=%d (downstream does not need to send clientId)', client.clientId, edge.eid);
                     }
                     
@@ -290,7 +302,7 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
             
             // 如果是首次连接，发送 edge/connected 事件，让前端显示这个 edge
             if (wasFirstConnection) {
-                const updatedEdge = await EdgeModel.getByToken(this.domain._id, token);
+                const updatedEdge = await EdgeModel.getByToken(this.tokenDomainId!, token);
                 if (updatedEdge) {
                     (this.ctx.emit as any)('edge/connected', updatedEdge);
                 }
@@ -380,7 +392,12 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
                 return;
             }
 
-            const edge = await EdgeModel.getByToken(this.domain._id, this.token);
+            if (!this.tokenDomainId) {
+                logger.error('Cannot sync tools: tokenDomainId is not set');
+                return;
+            }
+            
+            const edge = await EdgeModel.getByToken(this.tokenDomainId, this.token);
             if (!edge) {
                 logger.error('Edge not found: token=%s', this.token);
                 return;
@@ -399,7 +416,7 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
             logger.info('Syncing %d tools from Edge server: token=%s', validTools.length, this.token);
             
             await ToolModel.syncToolsFromEdge(
-                this.domain._id,
+                this.tokenDomainId,
                 this.token,
                 this.edgeDocId,
                 validTools,
@@ -444,10 +461,12 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
             
             // 更新edge状态为离线
             try {
-                const edge = await EdgeModel.getByToken(this.domain._id, this.token);
-                if (edge) {
-                    await EdgeModel.update(this.domain._id, edge.eid, { status: 'offline' });
-                    (this.ctx.emit as any)('edge/status/update', this.token, 'offline');
+                if (this.tokenDomainId) {
+                    const edge = await EdgeModel.getByToken(this.tokenDomainId, this.token);
+                    if (edge) {
+                        await EdgeModel.update(this.tokenDomainId, edge.eid, { status: 'offline' });
+                        (this.ctx.emit as any)('edge/status/update', this.token, 'offline');
+                    }
                 }
             } catch (error) {
                 logger.error('Failed to update edge status: %s', (error as Error).message);
@@ -732,10 +751,12 @@ export class EdgeServerConnectionHandler extends ConnectionHandler<Context> {
         }
 
         try {
-            const edge = await EdgeModel.getByToken(this.domain._id, this.token);
-            if (edge && edge.type === 'node' && edge.nodeId) {
-                envelope.nodeId = edge.nodeId;
-                logger.debug('Auto-filled nodeId from edge association: token=%s, nodeId=%s (downstream does not need to send nodeId)', this.token, edge.nodeId);
+            if (this.tokenDomainId) {
+                const edge = await EdgeModel.getByToken(this.tokenDomainId, this.token);
+                if (edge && edge.type === 'node' && edge.nodeId) {
+                    envelope.nodeId = edge.nodeId;
+                    logger.debug('Auto-filled nodeId from edge association: token=%s, nodeId=%s (downstream does not need to send nodeId)', this.token, edge.nodeId);
+                }
             }
         } catch (error) {
             logger.debug('Failed to auto-fill nodeId from edge: token=%s, error=%s', this.token, (error as Error).message);
@@ -909,12 +930,16 @@ export class EdgeGenerateTokenHandler extends Handler<Context> {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         this.response.template = null;
         
+        // 使用路径中的domainId参数，如果没有则使用this.domain._id
+        // 这样可以确保token在正确的域中生成
+        const targetDomainId = domainId || this.domain._id;
+        
         // 默认类型为 provider，支持 provider、client、node、repo
         const edgeType = (type === 'client' || type === 'node' || type === 'repo') ? type : 'provider';
         
         // 只生成 token，不创建 edge
         const token = await EdgeTokenModel.generateToken();
-        await EdgeTokenModel.add(this.domain._id, edgeType as 'provider' | 'client' | 'node' | 'repo', token, this.user._id);
+        await EdgeTokenModel.add(targetDomainId, edgeType as 'provider' | 'client' | 'node' | 'repo', token, this.user._id);
         
         const protocol = this.request.headers['x-forwarded-proto'] || (this.request.headers['x-forwarded-ssl'] === 'on' ? 'https' : 'http');
         const wsProtocol = protocol === 'https' ? 'wss' : 'ws';
@@ -938,7 +963,7 @@ export class EdgeGenerateTokenHandler extends Handler<Context> {
                 wsPort = protocol === 'https' ? 443 : 80;
             }
             
-            const wsPath = `/d/${this.domain._id}/mcp/ws`;
+            const wsPath = `/d/${targetDomainId}/mcp/ws`;
             const wsEndpoint = `${wsProtocol}://${host}${wsPath}?token=${token}`;
             
             responseBody.wsEndpoint = wsEndpoint;
@@ -951,19 +976,19 @@ export class EdgeGenerateTokenHandler extends Handler<Context> {
                 tcpHost: mqttTcpHost,
                 tcpPort: mqttTcpPort,
                 // 注意：连接前无法确定 eid/nid，连接后会创建 edge 和 node
-                username: `${this.domain._id}:<nid>`,
-                password: `${this.domain._id}:<nid>`,
+                username: `${targetDomainId}:<nid>`,
+                password: `${targetDomainId}:<nid>`,
             };
             responseBody.note = 'Edge 和 Node 将在通过此 token 连接时自动创建';
         } else if (edgeType === 'client') {
             // Client 类型：只生成 WebSocket 接入点（edge 和 client 将在连接时创建）
-            const wsPath = `/d/${this.domain._id}/mcp/ws`;
+            const wsPath = `/d/${targetDomainId}/mcp/ws`;
             const wsEndpoint = `${wsProtocol}://${host}${wsPath}?token=${token}`;
             responseBody.wsEndpoint = wsEndpoint;
             responseBody.note = 'Edge 和 Client 将在通过此 token 连接时自动创建';
         } else {
             // Provider 类型：只生成 WebSocket 接入点
-            const wsPath = `/d/${this.domain._id}/mcp/ws`;
+            const wsPath = `/d/${targetDomainId}/mcp/ws`;
             const wsEndpoint = `${wsProtocol}://${host}${wsPath}?token=${token}`;
             responseBody.wsEndpoint = wsEndpoint;
         }

@@ -153,7 +153,8 @@ const page = new NamedPage('edge_main', async () => {
   $('#generate-token-confirm-btn').on('click', async () => {
     try {
       const edgeType = $('#edge-type-select').val() as string || 'provider';
-      const response = await request.post('/edge/generate-token', { type: edgeType });
+      const domainId = (window as any).UiContext?.domainId || 'system';
+      const response = await request.post(`/d/${domainId}/edge/generate-token`, { type: edgeType });
       if (response.success && response.token) {
         $('#token-display').val(response.token);
         
