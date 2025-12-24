@@ -16,7 +16,7 @@
                         {% for node in nodes %}
                             <div class="node-item">
                                 <div class="node-header">
-                                    <h3><a href="/node/{{ node.nodeId }}">{{ node.name }}</a></h3>
+                                    <h3><a href="{{ url('node_detail', { domainId: node.domainId|default(domainId), nid: node.nid }) }}">{{ node.name }}</a></h3>
                                     <span class="node-status {{ node.status }}">{{ node.status }}</span>
                                 </div>
                                 {% if node.description %}
@@ -32,7 +32,7 @@
                                     <div>创建时间: {{ datetimeSpan(node.createdAt)|safe if node.createdAt else 'N/A' }}</div>
                                 </div>
                                 <div class="node-actions">
-                                    <a href="/node/{{ node.nodeId }}" class="button">查看详情</a>
+                                    <a href="{{ url('node_detail', { domainId: node.domainId|default(domainId), nid: node.nid }) }}" class="button">查看详情</a>
                                 </div>
                             </div>
                         {% endfor %}

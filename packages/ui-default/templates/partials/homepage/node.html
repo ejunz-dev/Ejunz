@@ -8,7 +8,7 @@
     <ol class="section__list">
       {%- for node in nodes -%}
         {% if node and node.nid %}
-          {% set currentDomainId = domain._id|default(handler.args.domainId|default('system')) %}
+          {% set currentDomainId = node.domainId|default(domain._id|default(handler.args.domainId|default('system'))) %}
           <li class="section__list__item">
             <div class="media">
               <div class="media__body medium">

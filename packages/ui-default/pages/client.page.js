@@ -14,7 +14,7 @@ export default new AutoloadPage('client_domain,client_detail', async () => {
         if (!confirm(i18n('Are you sure you want to delete the Token? Connections using this Token will be disconnected.'))) return;
         
         $.ajax({
-            url: `/client/${clientId}/delete-token`,
+            url: `/d/${(window.UiContext?.domainId || 'system')}/client/${clientId}/delete-token`,
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({ clientId }),
@@ -76,7 +76,8 @@ export default new AutoloadPage('client_domain,client_detail', async () => {
         e.preventDefault();
         const clientId = window.location.pathname.match(/\/client\/(\d+)/)?.[1];
         if (!clientId) return;
-
+        
+        const domainId = (window.UiContext?.domainId || 'system');
         const formData = {};
         $(this).serializeArray().forEach(item => {
             if (item.name === 'enableServerVad') {
@@ -87,7 +88,7 @@ export default new AutoloadPage('client_domain,client_detail', async () => {
         });
 
         $.ajax({
-            url: `/client/${clientId}/update-settings`,
+            url: `/d/${domainId}/client/${clientId}/update-settings`,
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({ asr: formData }),
@@ -105,14 +106,15 @@ export default new AutoloadPage('client_domain,client_detail', async () => {
         e.preventDefault();
         const clientId = window.location.pathname.match(/\/client\/(\d+)/)?.[1];
         if (!clientId) return;
-
+        
+        const domainId = (window.UiContext?.domainId || 'system');
         const formData = {};
         $(this).serializeArray().forEach(item => {
             formData[item.name] = item.value;
         });
 
         $.ajax({
-            url: `/client/${clientId}/update-settings`,
+            url: `/d/${domainId}/client/${clientId}/update-settings`,
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({ tts: formData }),
@@ -130,12 +132,13 @@ export default new AutoloadPage('client_domain,client_detail', async () => {
         e.preventDefault();
         const clientId = window.location.pathname.match(/\/client\/(\d+)/)?.[1];
         if (!clientId) return;
-
+        
+        const domainId = (window.UiContext?.domainId || 'system');
         const agentId = $('select[name="agentId"]').val();
         const agentData = agentId ? { agentId } : undefined;
 
         $.ajax({
-            url: `/client/${clientId}/update-settings`,
+            url: `/d/${domainId}/client/${clientId}/update-settings`,
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({ agent: agentData }),
@@ -154,9 +157,11 @@ export default new AutoloadPage('client_domain,client_detail', async () => {
         
         const clientId = window.location.pathname.match(/\/client\/(\d+)/)?.[1];
         if (!clientId) return;
+        
+        const domainId = (window.UiContext?.domainId || 'system');
 
         $.ajax({
-            url: `/client/${clientId}/update-settings`,
+            url: `/d/${domainId}/client/${clientId}/update-settings`,
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({ agent: undefined }),

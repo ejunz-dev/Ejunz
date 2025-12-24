@@ -5,9 +5,9 @@
 {% if type == 'mcp' %}
   {% set detailUrl = url('mcp_detail', { domainId: handler.args.domainId, serverId: item.serverId }) %}
 {% elif type == 'client' %}
-  {% set detailUrl = url('client_detail', { domainId: handler.args.domainId, clientId: item.clientId }) %}
+  {% set detailUrl = url('client_detail', { domainId: item.domainId|default(handler.args.domainId), clientId: item.clientId }) %}
 {% elif type == 'node' %}
-  {% set detailUrl = url('node_detail', { domainId: handler.args.domainId, nodeId: item.nodeId }) %}
+  {% set detailUrl = url('node_detail', { domainId: item.domainId|default(handler.args.domainId), nodeId: item.nodeId }) %}
 {% endif %}
 <td class="col--status record-status--border {{ class }} {{ statusCode }}">
   <div class="col--status__text">
