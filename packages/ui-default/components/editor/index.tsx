@@ -162,9 +162,39 @@ export default class Editor extends DOMAttachedObject {
 
     function EditorComponent() {
       const [val, setVal] = React.useState(value);
+      const [editorKey, setEditorKey] = React.useState(0);
       const [isDragging, setIsDragging] = React.useState(false);
       const editorWrapperRef = React.useRef<HTMLDivElement>(null);
+      const uploadImgCallbackRef = React.useRef<((urls: string[]) => void) | null>(null);
+      const valRef = React.useRef(val);
       that.setMarkdownEditorValue = setVal;
+      
+      React.useEffect(() => {
+        valRef.current = val;
+      }, [val]);
+      
+      React.useEffect(() => {
+        if (that.markdownEditor && val !== undefined && val !== null) {
+          try {
+            const currentValue = typeof that.markdownEditor.getValue === 'function' 
+              ? that.markdownEditor.getValue() 
+              : that.markdownEditor.$props?.modelValue;
+            
+            if (currentValue !== val) {
+              if (typeof that.markdownEditor.setValue === 'function') {
+                that.markdownEditor.setValue(val);
+              } else if (that.markdownEditor.$props) {
+                that.markdownEditor.$props.modelValue = val;
+                if (that.markdownEditor.$forceUpdate) {
+                  that.markdownEditor.$forceUpdate();
+                }
+              }
+            }
+          } catch (e) {
+            // Ignore errors
+          }
+        }
+      }, [val]);
 
       const handleUploadFiles = async (fileList: FileList | File[]): Promise<string[]> => {
         const files = Array.from(fileList);
@@ -187,32 +217,67 @@ export default class Editor extends DOMAttachedObject {
 
         const uploadedUrls: string[] = [];
         try {
+          const filenameByOriginalName = new Map<string, string>();
+          for (const [file, filename] of filenameMap.entries()) {
+            filenameByOriginalName.set(file.name, filename);
+          }
+          
+          const getFilename = (file: File): string => {
+            let filename = filenameMap.get(file);
+            if (!filename) {
+              filename = filenameByOriginalName.get(file.name);
+            }
+            if (!filename) {
+              const matches = file.type.match(/^image\/(png|jpg|jpeg|gif|webp)$/i);
+              if (matches) {
+                const [, ext] = matches;
+                filename = `${nanoid()}.${ext}`;
+              } else {
+                filename = file.name;
+              }
+            }
+            return filename;
+          };
+          
           await uploadFiles(isProblemEdit ? './files' : '/file', imageFiles, {
             type: isProblemEdit ? 'additional_file' : undefined,
-            filenameCallback: (file: File) => filenameMap.get(file) || file.name,
+            filenameCallback: (file: File) => getFilename(file),
             singleFileUploadCallback: (file: File) => {
-              const filename = filenameMap.get(file);
+              const filename = getFilename(file);
               if (filename) {
-                uploadedUrls.push(`${isProblemPage ? 'file://' : `/file/${UserContext._id}/`}${filename}`);
+                const url = `${isProblemPage ? 'file://' : `/file/${UserContext._id}/`}${filename}`;
+                uploadedUrls.push(url);
               }
             },
           });
         } catch (err) {
-          console.error('Failed to upload images:', err);
+          // Ignore upload errors
         }
 
         return uploadedUrls;
       };
 
       React.useEffect(() => {
-        const wrapper = editorWrapperRef.current;
-        if (!wrapper) return;
+        let savedCursorPosition: { line: number; column: number } | null = null;
 
         const handleDragEnter = (e: DragEvent) => {
           e.preventDefault();
           e.stopPropagation();
           if (e.dataTransfer?.types.includes('Files')) {
             setIsDragging(true);
+            try {
+              if (that.markdownEditor && typeof that.markdownEditor.getCursor === 'function') {
+                const cursor = that.markdownEditor.getCursor();
+                if (cursor && typeof cursor.line === 'number') {
+                  savedCursorPosition = {
+                    line: cursor.line,
+                    column: cursor.column || 0,
+                  };
+                }
+              }
+            } catch (e) {
+              // Ignore errors
+            }
           }
         };
 
@@ -227,11 +292,14 @@ export default class Editor extends DOMAttachedObject {
         const handleDragLeave = (e: DragEvent) => {
           e.preventDefault();
           e.stopPropagation();
-          const rect = wrapper.getBoundingClientRect();
-          const x = e.clientX;
-          const y = e.clientY;
-          if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
-            setIsDragging(false);
+          const wrapper = editorWrapperRef.current;
+          if (wrapper) {
+            const rect = wrapper.getBoundingClientRect();
+            const x = e.clientX;
+            const y = e.clientY;
+            if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+              setIsDragging(false);
+            }
           }
         };
 
@@ -241,55 +309,239 @@ export default class Editor extends DOMAttachedObject {
           setIsDragging(false);
 
           const files = e.dataTransfer?.files;
-          if (!files || files.length === 0) return;
+          if (!files || files.length === 0) {
+            return;
+          }
 
+          if (uploadImgCallbackRef.current) {
+            try {
+              const uploadedUrls = await handleUploadFiles(files);
+              if (uploadedUrls.length > 0) {
+                uploadImgCallbackRef.current(uploadedUrls);
+                return;
+              }
+            } catch (e) {
+              // Fallback to manual insertion
+            }
+          }
+          
+          try {
+            const wrapper = editorWrapperRef.current;
+            if (wrapper) {
+              const uploadInput = wrapper.querySelector('input[type="file"]') as HTMLInputElement;
+              if (uploadInput) {
+                const dataTransfer = new DataTransfer();
+                Array.from(files).forEach(file => dataTransfer.items.add(file));
+                uploadInput.files = dataTransfer.files;
+                uploadInput.dispatchEvent(new Event('change', { bubbles: true }));
+                return;
+              }
+            }
+          } catch (e) {
+            // Fallback to manual insertion
+          }
+          
           const uploadedUrls = await handleUploadFiles(files);
-          if (uploadedUrls.length > 0) {
-            const currentValue = val || '';
-            
-            const imageMarkdowns = uploadedUrls.map(url => `![image](${url})`).join('\n');
-            
-            let insertPosition = currentValue.length;
+          if (uploadedUrls.length === 0) {
+            return;
+          }
+          let currentValue = valRef.current || '';
+          try {
+            if (that.markdownEditor) {
+              if (typeof that.markdownEditor.getValue === 'function') {
+                const editorValue = that.markdownEditor.getValue();
+                if (editorValue !== undefined && editorValue !== null && editorValue !== '') {
+                  currentValue = editorValue;
+                }
+              } else if (that.markdownEditor.$props && that.markdownEditor.$props.modelValue) {
+                currentValue = that.markdownEditor.$props.modelValue;
+              }
+            }
+            if (!currentValue && that.valueCache) {
+              currentValue = that.valueCache;
+            }
+          } catch (e) {
+            // Ignore errors
+          }
+          
+          const imageMarkdowns = uploadedUrls.map(url => `![image](${url})`).join('\n');
+          
+          let insertPosition = currentValue.length;
+          if (savedCursorPosition) {
+            try {
+              const lines = currentValue.split('\n');
+              let cursorLine = savedCursorPosition.line;
+              
+              if (cursorLine > lines.length) {
+                cursorLine = cursorLine - 1;
+              }
+              
+              cursorLine = Math.max(0, Math.min(cursorLine, lines.length - 1));
+              
+              let pos = 0;
+              for (let i = 0; i < cursorLine && i < lines.length; i++) {
+                pos += lines[i].length + 1;
+              }
+              
+              const currentLineLength = cursorLine < lines.length ? lines[cursorLine].length : 0;
+              const cursorColumn = Math.max(0, Math.min(savedCursorPosition.column, currentLineLength));
+              pos += cursorColumn;
+              
+              insertPosition = Math.min(pos, currentValue.length);
+            } catch (e) {
+              // Ignore errors
+            }
+          } else {
             try {
               if (that.markdownEditor && typeof that.markdownEditor.getCursor === 'function') {
                 const cursor = that.markdownEditor.getCursor();
                 if (cursor && typeof cursor.line === 'number') {
                   const lines = currentValue.split('\n');
-                  let pos = 0;
-                  for (let i = 0; i < cursor.line && i < lines.length; i++) {
-                    pos += lines[i].length + 1; // +1 for newline
+                  let cursorLine = cursor.line;
+                  
+                  if (cursorLine > lines.length) {
+                    cursorLine = cursorLine - 1;
                   }
-                  pos += cursor.column || 0;
+                  cursorLine = Math.max(0, Math.min(cursorLine, lines.length - 1));
+                  
+                  let pos = 0;
+                  for (let i = 0; i < cursorLine && i < lines.length; i++) {
+                    pos += lines[i].length + 1;
+                  }
+                  const currentLineLength = cursorLine < lines.length ? lines[cursorLine].length : 0;
+                  const cursorColumn = Math.max(0, Math.min(cursor.column || 0, currentLineLength));
+                  pos += cursorColumn;
                   insertPosition = Math.min(pos, currentValue.length);
                 }
               }
             } catch (e) {
+              // Ignore errors
             }
-            
-            const before = currentValue.substring(0, insertPosition);
-            const after = currentValue.substring(insertPosition);
-            const newValue = before + (before && !before.endsWith('\n') ? '\n' : '') + imageMarkdowns + (after && !after.startsWith('\n') ? '\n' : '') + after;
-            
-            if (that.markdownEditor && typeof that.markdownEditor.setValue === 'function') {
-              that.markdownEditor.setValue(newValue);
-            }
-            setVal(newValue);
-            $dom.val(newValue);
-            $dom.text(newValue);
-            onChange?.(newValue);
           }
+          
+          const before = currentValue.substring(0, insertPosition);
+          const after = currentValue.substring(insertPosition);
+          const prefix = before && !before.endsWith('\n') ? '\n' : '';
+          const suffix = after && !after.startsWith('\n') ? '\n' : '';
+          const newValue = before + prefix + imageMarkdowns + suffix + after;
+          
+          that.valueCache = newValue;
+          setVal(newValue);
+          
+          if (that.setMarkdownEditorValue) {
+            that.setMarkdownEditorValue(newValue);
+          }
+          
+          $dom.val(newValue);
+          $dom.text(newValue);
+          
+          setTimeout(() => {
+            if (that.markdownEditor) {
+              const currentValue = typeof that.markdownEditor.getValue === 'function' 
+                ? that.markdownEditor.getValue() 
+                : that.markdownEditor.$props?.modelValue;
+              if (currentValue !== newValue) {
+                setEditorKey(prev => prev + 1);
+              }
+            }
+          }, 200);
+          
+          if (that.markdownEditor) {
+            try {
+              if (typeof that.markdownEditor.setValue === 'function') {
+                that.markdownEditor.setValue(newValue);
+              } else if (that.markdownEditor.$props) {
+                that.markdownEditor.$props.modelValue = newValue;
+                if (that.markdownEditor.$forceUpdate) {
+                  that.markdownEditor.$forceUpdate();
+                }
+              }
+            } catch (e) {
+              // Ignore errors
+            }
+          }
+          
+          requestAnimationFrame(() => {
+            if (that.markdownEditor && typeof that.markdownEditor.setValue === 'function') {
+              try {
+                const currentEditorValue = that.markdownEditor.getValue?.() || '';
+                if (currentEditorValue !== newValue) {
+                  that.markdownEditor.setValue(newValue);
+                }
+              } catch (e) {
+                // Ignore errors
+              }
+            }
+            
+            if (savedCursorPosition && that.markdownEditor) {
+              try {
+                const lines = newValue.split('\n');
+                let insertLine = savedCursorPosition.line;
+                let insertColumn = savedCursorPosition.column + prefix.length + imageMarkdowns.length + suffix.length;
+                
+                if (insertLine < lines.length) {
+                  const maxColumn = lines[insertLine].length;
+                  if (insertColumn > maxColumn) {
+                    insertColumn = maxColumn;
+                  }
+                }
+                
+                if (typeof that.markdownEditor.setCursor === 'function') {
+                  that.markdownEditor.setCursor({
+                    line: insertLine,
+                    column: insertColumn,
+                  });
+                } else if (typeof that.markdownEditor.focus === 'function') {
+                  that.markdownEditor.focus();
+                }
+              } catch (e) {
+                // Ignore errors
+              }
+            }
+          });
+          
+          onChange?.(newValue);
+          
+          if (that.markdownEditor && typeof that.markdownEditor.onChange === 'function') {
+            try {
+              that.markdownEditor.onChange(newValue);
+            } catch (e) {
+              // Ignore errors
+            }
+          }
+          
+          setTimeout(() => {
+            const currentVal = valRef.current;
+            if (currentVal !== newValue) {
+              setVal(newValue);
+              that.valueCache = newValue;
+            }
+          }, 100);
+          
+          savedCursorPosition = null;
         };
 
-        wrapper.addEventListener('dragenter', handleDragEnter);
-        wrapper.addEventListener('dragover', handleDragOver);
-        wrapper.addEventListener('dragleave', handleDragLeave);
-        wrapper.addEventListener('drop', handleDrop);
+        const timer = setTimeout(() => {
+          const wrapper = editorWrapperRef.current;
+          if (!wrapper) {
+            return;
+          }
+
+          wrapper.addEventListener('dragenter', handleDragEnter, true);
+          wrapper.addEventListener('dragover', handleDragOver, true);
+          wrapper.addEventListener('dragleave', handleDragLeave, true);
+          wrapper.addEventListener('drop', handleDrop, true);
+        }, 100);
 
         return () => {
-          wrapper.removeEventListener('dragenter', handleDragEnter);
-          wrapper.removeEventListener('dragover', handleDragOver);
-          wrapper.removeEventListener('dragleave', handleDragLeave);
-          wrapper.removeEventListener('drop', handleDrop);
+          clearTimeout(timer);
+          const wrapper = editorWrapperRef.current;
+          if (wrapper) {
+            wrapper.removeEventListener('dragenter', handleDragEnter, true);
+            wrapper.removeEventListener('dragover', handleDragOver, true);
+            wrapper.removeEventListener('dragleave', handleDragLeave, true);
+            wrapper.removeEventListener('drop', handleDrop, true);
+          }
         };
       }, []);
 
@@ -327,6 +579,7 @@ export default class Editor extends DOMAttachedObject {
             </div>
           )}
           <MdEditor
+            key={editorKey}
             className='textbox'
             autoFocus={hasFocus}
             codeTheme='github'
@@ -379,6 +632,7 @@ export default class Editor extends DOMAttachedObject {
               onChange?.(v);
             }}
             onUploadImg={async (files, callback) => {
+              uploadImgCallbackRef.current = callback;
               const uploadedUrls = await handleUploadFiles(files);
               callback(uploadedUrls);
               return null;
