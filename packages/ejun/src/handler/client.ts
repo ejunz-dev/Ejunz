@@ -666,6 +666,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
     private clientId: number | null = null;
     private clientDocId: ObjectId | null = null;
     private token: string | null = null;
+    private tokenDomainId: string | null = null; // 存储token中的域ID，确保使用正确的域
     private subscriptions: Array<{ dispose: () => void }> = [];
     private eventSubscriptions: ClientSubscription[] = [];
     private accepted = false;
@@ -706,36 +707,46 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         }
 
         const tokenDoc = await EdgeTokenModel.getByToken(token);
-        if (!tokenDoc || tokenDoc.type !== 'client' || tokenDoc.domainId !== this.domain._id) {
-            logger.warn('Client WebSocket connection rejected: Invalid token');
+        if (!tokenDoc || tokenDoc.type !== 'client') {
+            logger.warn('Client WebSocket connection rejected: Invalid token or token type');
             this.close(4000, 'Invalid token');
             return;
         }
 
+        // 使用token中的域ID，而不是请求路径中的域ID
+        // 这样可以确保token在正确的域中使用
+        this.tokenDomainId = tokenDoc.domainId;
+        
+        // 如果请求路径中的域ID与token中的域ID不匹配，记录警告但继续使用token的域ID
+        if (this.domain._id !== this.tokenDomainId) {
+            logger.warn('Domain mismatch: token domainId=%s, request domainId=%s, using token domainId', 
+                this.tokenDomainId, this.domain._id);
+        }
+
         await EdgeTokenModel.updateLastUsed(token);
 
-        let edge = await EdgeModel.getByToken(this.domain._id, token);
+        let edge = await EdgeModel.getByToken(this.tokenDomainId!, token);
         if (!edge) {
             const owner = tokenDoc.owner || this.user?._id || 1;
             edge = await EdgeModel.add({
-                domainId: this.domain._id,
+                domainId: this.tokenDomainId!,
                 type: tokenDoc.type as 'provider' | 'client' | 'node',
                 owner: owner,
                 token: tokenDoc.token,
             });
-            logger.info('Created edge on client connection: eid=%d, token=%s, type=%s, owner=%d (from token.owner=%d)', 
-                edge.eid, token, tokenDoc.type, owner, tokenDoc.owner || -1);
+            logger.info('Created edge on client connection: eid=%d, token=%s, type=%s, owner=%d, domainId=%s (from token.domainId=%s)', 
+                edge.eid, token, tokenDoc.type, owner, this.tokenDomainId, tokenDoc.domainId);
         }
         
         const wasFirstConnection = !edge.tokenUsedAt;
         try {
-            await EdgeModel.update(this.domain._id, edge.eid, {
+            await EdgeModel.update(this.tokenDomainId!, edge.eid, {
                 status: 'online',
                 tokenUsedAt: edge.tokenUsedAt || new Date(),
             });
             
             if (wasFirstConnection) {
-                const updatedEdge = await EdgeModel.getByToken(this.domain._id, token);
+                const updatedEdge = await EdgeModel.getByToken(this.tokenDomainId!, token);
                 if (updatedEdge) {
                     (this.ctx.emit as any)('edge/connected', updatedEdge);
                 }
@@ -748,19 +759,19 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
 
         let client: any = null;
         if (edge.clientId) {
-            client = await ClientModel.getByClientId(this.domain._id, edge.clientId);
+            client = await ClientModel.getByClientId(this.tokenDomainId!, edge.clientId);
             if (client) {
                 if (client.edgeId !== edge.eid) {
-                    await ClientModel.update(this.domain._id, client.clientId, { edgeId: edge.eid });
+                    await ClientModel.update(this.tokenDomainId!, client.clientId, { edgeId: edge.eid });
                     logger.info('Updated client edgeId to establish bidirectional link: clientId=%d, edgeId=%d', client.clientId, edge.eid);
                 }
                 logger.info('Client already exists, using existing client: clientId=%d, edgeId=%d', client.clientId, edge.eid);
             }
         } else {
-            client = await ClientModel.getByEdgeId(this.domain._id, edge.eid);
+            client = await ClientModel.getByEdgeId(this.tokenDomainId!, edge.eid);
             if (client) {
-                await EdgeModel.update(this.domain._id, edge.eid, { clientId: client.clientId });
-                await ClientModel.updateStatus(this.domain._id, client.clientId, 'connected');
+                await EdgeModel.update(this.tokenDomainId!, edge.eid, { clientId: client.clientId });
+                await ClientModel.updateStatus(this.tokenDomainId!, client.clientId, 'connected');
                 logger.info('Client already exists by edgeId, established bidirectional link: clientId=%d, edgeId=%d', client.clientId, edge.eid);
                 
                 logger.info('Client connected event published: clientId=%d', client.clientId);
@@ -770,12 +781,12 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         
         if (!client) {
             client = await ClientModel.add({
-                domainId: this.domain._id,
+                domainId: this.tokenDomainId!,
                 name: `Client-${edge.eid}`,
                 owner: edge.owner,
                 edgeId: edge.eid,
             });
-            await EdgeModel.update(this.domain._id, edge.eid, { clientId: client.clientId });
+            await EdgeModel.update(this.tokenDomainId!, edge.eid, { clientId: client.clientId });
             logger.info('Auto-created client for edge on connection: clientId=%d, edgeId=%d', client.clientId, edge.eid);
             
             logger.info('Client connected event published: clientId=%d', client.clientId);
@@ -819,7 +830,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
 
         addClientLog(this.clientId, 'info', `Client connected: ${this.request.ip}`);
 
-        await ClientModel.updateStatus(this.domain._id, this.clientId, 'connected');
+        await ClientModel.updateStatus(this.tokenDomainId!, this.clientId, 'connected');
         
         (this.ctx.emit as any)('edge/status/update', token, 'online');
         (this.ctx.emit as any)('mcp/server/connection/update', token, 'connected');
@@ -833,8 +844,8 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         
         const dispose1 = this.ctx.on('client/status/update' as any, async (...args: any[]) => {
             const [updateClientId] = args;
-            if (updateClientId === this.clientId) {
-                const updatedClient = await ClientModel.getByClientId(this.domain._id, this.clientId!);
+            if (updateClientId === this.clientId && this.tokenDomainId) {
+                const updatedClient = await ClientModel.getByClientId(this.tokenDomainId, this.clientId!);
                 if (updatedClient) {
                     this.send({ 
                         event: 'status/update', 
@@ -859,12 +870,12 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         }
         
         // 如果已经有session，检查是否有效
-        if (this.currentSessionId) {
+        if (this.currentSessionId && this.tokenDomainId) {
             try {
-                const sdoc = await SessionModel.get(this.domain._id, this.currentSessionId);
+                const sdoc = await SessionModel.get(this.tokenDomainId, this.currentSessionId);
                 if (sdoc && sdoc.type === 'client' && sdoc.clientId === this.clientId) {
                     // 更新最后活动时间
-                    await SessionModel.update(this.domain._id, this.currentSessionId, {
+                    await SessionModel.update(this.tokenDomainId, this.currentSessionId, {
                         lastActivityAt: new Date(),
                     });
                     logger.info('Client session already exists, updated lastActivityAt: clientId=%d, sessionId=%s', 
@@ -878,8 +889,12 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         
         // 查找是否有未超时的session（5分钟内）
         const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+        if (!this.tokenDomainId) {
+            logger.warn('Cannot ensure client session: tokenDomainId is not set');
+            return;
+        }
         try {
-            const existingSessions = await SessionModel.getMulti(this.domain._id, {
+            const existingSessions = await SessionModel.getMulti(this.tokenDomainId, {
                 type: 'client',
                 clientId: this.clientId,
                 lastActivityAt: { $gte: fiveMinutesAgo },
@@ -892,7 +907,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 const sdoc = existingSessions[0];
                 this.currentSessionId = sdoc._id;
                 // 更新最后活动时间
-                await SessionModel.update(this.domain._id, sdoc._id, {
+                await SessionModel.update(this.tokenDomainId!, sdoc._id, {
                     lastActivityAt: new Date(),
                 });
                 logger.info('Reused existing client session: clientId=%d, sessionId=%s', 
@@ -912,7 +927,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         
         const recordUid = this.client.owner;
         const sessionId = await SessionModel.add(
-            this.domain._id,
+            this.tokenDomainId!,
             agentId,
             recordUid,
             'client',
@@ -1000,7 +1015,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                     }
                     
                     if (event !== 'client/asr/audio') {
-                        logger.info('Client published event: clientId=%d, event=%s', this.clientId, event);
+                        logger.info('Client published event: clientId=%d, event=%s, payload=%o', this.clientId, event, payload);
                     }
                     
                     const args = [event, this.clientId, payloadArray];
@@ -1076,7 +1091,11 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             try {
                 const { status, errorMessage } = msg;
                 if (status === 'connected' || status === 'disconnected' || status === 'error') {
-                    await ClientModel.updateStatus(this.domain._id, this.clientId, status, errorMessage);
+                    if (!this.tokenDomainId) {
+                        logger.warn('Cannot update client status: tokenDomainId is not set');
+                        return;
+                    }
+                    await ClientModel.updateStatus(this.tokenDomainId, this.clientId, status, errorMessage);
                     logger.info('Client status update event published: clientId=%d, status=%s', this.clientId, status);
                     (this.ctx.emit as any)('client/status/update', this.clientId);
                 }
@@ -2404,13 +2423,14 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             // Handle remaining operations asynchronously (don't block response)
             (async () => {
                 try {
+                    if (!this.tokenDomainId) return;
                     // Update session last activity
-                    await SessionModel.update(this.domain._id, sessionId, {
+                    await SessionModel.update(this.tokenDomainId, sessionId, {
                         lastActivityAt: new Date(),
                     });
                     
                     // Add record to session
-                    await SessionModel.addRecord(this.domain._id, sessionId, taskRecordId);
+                    await SessionModel.addRecord(this.tokenDomainId, sessionId, taskRecordId);
                 } catch (error: any) {
                     logger.error('Failed to update session: %s', error.message);
                 }
@@ -2522,13 +2542,14 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             // Handle remaining operations asynchronously (don't block response)
             (async () => {
                 try {
+                    if (!this.tokenDomainId) return;
                     // Update session last activity
-                    await SessionModel.update(this.domain._id, sessionId, {
+                    await SessionModel.update(this.tokenDomainId, sessionId, {
                         lastActivityAt: new Date(),
                     });
                     
                     // Add record to session
-                    await SessionModel.addRecord(this.domain._id, sessionId, taskRecordId);
+                    await SessionModel.addRecord(this.tokenDomainId, sessionId, taskRecordId);
                 } catch (error: any) {
                     logger.error('Failed to update session: %s', error.message);
                 }
@@ -2555,7 +2576,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         if (this.currentAsrAudioBuffers.length > 0) {
             try {
                 const audioBuffer = Buffer.concat(this.currentAsrAudioBuffers);
-                const audioPath = `client/${this.domain._id}/${this.clientId}/asr/${Date.now()}.pcm`;
+                const audioPath = `client/${this.tokenDomainId || this.domain._id}/${this.clientId}/asr/${Date.now()}.pcm`;
                 await this.ctx.storage.put(audioPath, audioBuffer, {});
                 userAsrAudioPath = audioPath;
                 logger.info('ASR audio saved: clientId=%d, path=%s, size=%d bytes', this.clientId, audioPath, audioBuffer.length);
@@ -2673,7 +2694,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                     if (this.currentTtsAudioBuffers.length > 0) {
                         try {
                             const audioBuffer = Buffer.concat(this.currentTtsAudioBuffers);
-                            const audioPath = `client/${this.domain._id}/${this.clientId}/tts/${Date.now()}.pcm`;
+                            const audioPath = `client/${this.tokenDomainId || this.domain._id}/${this.clientId}/tts/${Date.now()}.pcm`;
                             await this.ctx.storage.put(audioPath, audioBuffer, {});
                             assistantTtsAudioPath = audioPath;
                             logger.info('TTS audio saved: clientId=%d, path=%s, size=%d bytes', this.clientId, audioPath, audioBuffer.length);
@@ -2973,17 +2994,19 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             }
             
             try {
-                await ClientModel.updateStatus(this.domain._id, this.clientId, 'disconnected');
-                logger.info('Client status update event published: clientId=%d, status=disconnected', this.clientId);
-                (this.ctx.emit as any)('client/status/update', this.clientId);
-                
-                if (this.token) {
-                    const edge = await EdgeModel.getByToken(this.domain._id, this.token);
-                    if (edge) {
-                        await EdgeModel.update(this.domain._id, edge.eid, { status: 'offline' });
-                        (this.ctx.emit as any)('edge/status/update', this.token, 'offline');
+                if (this.tokenDomainId) {
+                    await ClientModel.updateStatus(this.tokenDomainId, this.clientId, 'disconnected');
+                    logger.info('Client status update event published: clientId=%d, status=disconnected', this.clientId);
+                    (this.ctx.emit as any)('client/status/update', this.clientId);
+                    
+                    if (this.token) {
+                        const edge = await EdgeModel.getByToken(this.tokenDomainId, this.token);
+                        if (edge) {
+                            await EdgeModel.update(this.tokenDomainId, edge.eid, { status: 'offline' });
+                            (this.ctx.emit as any)('edge/status/update', this.token, 'offline');
+                        }
+                        (this.ctx.emit as any)('mcp/server/connection/update', this.token, 'disconnected');
                     }
-                    (this.ctx.emit as any)('mcp/server/connection/update', this.token, 'disconnected');
                 }
             } catch (error: any) {
                 logger.error('Failed to update client status on disconnect: %s', error.message);
@@ -2991,9 +3014,9 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         }
         
         // 更新session的最后活动时间（断开连接时）
-        if (this.currentSessionId && this.clientId) {
+        if (this.currentSessionId && this.clientId && this.tokenDomainId) {
             try {
-                await SessionModel.update(this.domain._id, this.currentSessionId, {
+                await SessionModel.update(this.tokenDomainId, this.currentSessionId, {
                     lastActivityAt: new Date(),
                 });
                 logger.info('Updated session lastActivityAt on disconnect: clientId=%d, sessionId=%s', 
@@ -3300,6 +3323,37 @@ export async function apply(ctx: Context) {
         const handler = ClientConnectionHandler.getConnection(clientId);
         if (handler) {
             addClientLog(clientId, 'info', `Agent chat request: ${msg.message ? msg.message.substring(0, 50) + (msg.message.length > 50 ? '...' : '') : 'no message'}`);
+            await handler.handleAgentChat(msg);
+        }
+    });
+
+    // Agent trigger event (reuse handleAgentChat logic)
+    (ctx as any).on('client/agent/trigger', async (clientId: number, ...args: any[]) => {
+        const handler = ClientConnectionHandler.getConnection(clientId);
+        if (handler) {
+            // When published via WebSocket publish: ctx.parallel(event, clientId, payloadArray)
+            // payloadArray is [msg], so args will be the elements of payloadArray
+            // Extract the actual message object from args
+            let msg = args.length > 0 ? args[0] : {};
+            
+            // Handle nested array case: if msg is an array, extract first element
+            if (Array.isArray(msg) && msg.length > 0) {
+                msg = msg[0];
+            }
+            
+            // If msg doesn't have a message field, convert the entire payload to a message string
+            if (!msg.message && typeof msg === 'object') {
+                // Convert the payload object to a JSON string as the message
+                msg = {
+                    message: JSON.stringify(msg),
+                    history: msg.history || [],
+                    createTaskRecord: msg.createTaskRecord !== false,
+                };
+            }
+            
+            logger.debug('Agent trigger received: clientId=%d, args=%o, msg=%o', clientId, args, msg);
+            addClientLog(clientId, 'info', `Agent trigger request: ${msg.message ? msg.message.substring(0, 50) + (msg.message.length > 50 ? '...' : '') : 'no message'}`);
+            // Reuse the same logic as handleAgentChat
             await handler.handleAgentChat(msg);
         }
     });
