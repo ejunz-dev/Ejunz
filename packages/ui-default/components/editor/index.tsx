@@ -294,11 +294,11 @@ export default class Editor extends DOMAttachedObject {
           e.stopPropagation();
           const wrapper = editorWrapperRef.current;
           if (wrapper) {
-            const rect = wrapper.getBoundingClientRect();
-            const x = e.clientX;
-            const y = e.clientY;
-            if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
-              setIsDragging(false);
+          const rect = wrapper.getBoundingClientRect();
+          const x = e.clientX;
+          const y = e.clientY;
+          if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+            setIsDragging(false);
             }
           }
         };
@@ -340,7 +340,7 @@ export default class Editor extends DOMAttachedObject {
           } catch (e) {
             // Fallback to manual insertion
           }
-          
+
           const uploadedUrls = await handleUploadFiles(files);
           if (uploadedUrls.length === 0) {
             return;
@@ -363,10 +363,10 @@ export default class Editor extends DOMAttachedObject {
           } catch (e) {
             // Ignore errors
           }
-          
-          const imageMarkdowns = uploadedUrls.map(url => `![image](${url})`).join('\n');
-          
-          let insertPosition = currentValue.length;
+            
+            const imageMarkdowns = uploadedUrls.map(url => `![image](${url})`).join('\n');
+            
+            let insertPosition = currentValue.length;
           if (savedCursorPosition) {
             try {
               const lines = currentValue.split('\n');
@@ -417,10 +417,10 @@ export default class Editor extends DOMAttachedObject {
             } catch (e) {
               // Ignore errors
             }
-          }
-          
-          const before = currentValue.substring(0, insertPosition);
-          const after = currentValue.substring(insertPosition);
+            }
+            
+            const before = currentValue.substring(0, insertPosition);
+            const after = currentValue.substring(insertPosition);
           const prefix = before && !before.endsWith('\n') ? '\n' : '';
           const suffix = after && !after.startsWith('\n') ? '\n' : '';
           const newValue = before + prefix + imageMarkdowns + suffix + after;
@@ -466,8 +466,8 @@ export default class Editor extends DOMAttachedObject {
               try {
                 const currentEditorValue = that.markdownEditor.getValue?.() || '';
                 if (currentEditorValue !== newValue) {
-                  that.markdownEditor.setValue(newValue);
-                }
+              that.markdownEditor.setValue(newValue);
+            }
               } catch (e) {
                 // Ignore errors
               }
@@ -500,7 +500,7 @@ export default class Editor extends DOMAttachedObject {
             }
           });
           
-          onChange?.(newValue);
+            onChange?.(newValue);
           
           if (that.markdownEditor && typeof that.markdownEditor.onChange === 'function') {
             try {

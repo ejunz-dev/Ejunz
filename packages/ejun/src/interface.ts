@@ -533,6 +533,15 @@ declare module './model/client' {
                 voice?: string;
                 languageType?: string;
             };
+            voiceCloning?: {
+                voices: Array<{
+                    voiceId: string;
+                    preferredName: string;
+                    region: string;
+                    createdAt: Date;
+                    updatedAt: Date;
+                }>;
+            };
             agent?: {
                 agentId?: string;
                 agentDocId?: ObjectId;

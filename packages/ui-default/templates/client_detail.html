@@ -147,9 +147,10 @@
                                     <select name="model" id="tts-model-select" class="textbox">
                                         <option value="">{{ _('-- Please Select Model --') }}</option>
                                         <option value="qwen3-tts-flash-realtime" {% if client.settings.tts.model == 'qwen3-tts-flash-realtime' or not client.settings.tts.model %}selected{% endif %}>qwen3-tts-flash-realtime</option>
+                                        <option value="qwen3-tts-vc-realtime-2025-11-27" {% if client.settings.tts.model == 'qwen3-tts-vc-realtime-2025-11-27' %}selected{% endif %}>qwen3-tts-vc-realtime-2025-11-27 (Voice Cloning)</option>
                                     </select>
                                 </div>
-                                <div id="tts-config-options" class="tts-config-options" style="display: {% if client.settings.tts.model == 'qwen3-tts-flash-realtime' or not client.settings.tts.model %}block{% else %}none{% endif %};">
+                                <div id="tts-config-options" class="tts-config-options" style="display: {% if client.settings.tts.model == 'qwen3-tts-flash-realtime' or client.settings.tts.model == 'qwen3-tts-vc-realtime-2025-11-27' or not client.settings.tts.model %}block{% else %}none{% endif %};">
                                     <div class="form__group">
                                         <label class="form__label">{{ _('Provider') }}</label>
                                         <input type="text" name="provider" class="textbox" value="{{ client.settings.tts.provider|default('qwen') }}" placeholder="qwen">
@@ -164,7 +165,17 @@
                                     </div>
                                     <div class="form__group">
                                         <label class="form__label">{{ _('Voice') }}</label>
-                                        <input type="text" name="voice" class="textbox" value="{{ client.settings.tts.voice|default('Cherry') }}" placeholder="Cherry">
+                                        <select id="tts-voice-select" class="textbox">
+                                            <option value="">{{ _('-- Please Select Voice --') }}</option>
+                                            {% if client.settings.tts.model != 'qwen3-tts-vc-realtime-2025-11-27' %}
+                                            <option value="Cherry" {% if client.settings.tts.voice == 'Cherry' or not client.settings.tts.voice %}selected{% endif %}>Cherry (Default)</option>
+                                            {% endif %}
+                                        </select>
+                                        <input type="text" name="voice" id="tts-voice-input" class="textbox" value="{% if client.settings.tts.voice and client.settings.tts.voice != 'Cherry' %}{{ client.settings.tts.voice }}{% endif %}" placeholder="{{ _('Or enter custom voice ID') }}" style="display: none; margin-top: 5px;">
+                                        <p class="help-text" id="voice-help-text">
+                                            <span id="voice-help-default">{{ _('Use default voice (e.g., Cherry) or select a cloned voice from the list below') }}</span>
+                                            <span id="voice-help-vc" style="display: none; color: #d32f2f;">{{ _('Note: qwen3-tts-vc-realtime-2025-11-27 only supports cloned voices. Please select a cloned voice from the list below.') }}</span>
+                                        </p>
                                     </div>
                                     <div class="form__group">
                                         <label class="form__label">{{ _('Language Type') }}</label>
@@ -175,6 +186,50 @@
                                     </div>
                                 </div>
                             </form>
+                            
+                            <!-- 声音复刻配置 -->
+                            <div class="voice-cloning-section" id="voice-cloning-section" style="margin-top: 30px; padding-top: 30px; border-top: 1px solid #e0e0e0; display: {% if client.settings.tts.model == 'qwen3-tts-vc-realtime-2025-11-27' %}block{% else %}none{% endif %};">
+                                <h4>{{ _('Voice Cloning') }}</h4>
+                                <div class="alert alert-info" style="margin-bottom: 15px;">
+                                    <strong>{{ _('About Voice Cloning Models') }}:</strong>
+                                    <ul style="margin: 10px 0 0 20px; padding: 0;">
+                                        <li><strong>qwen-voice-enrollment</strong>: {{ _('Used to CREATE voices (voice cloning step). This is automatically used when you upload audio.') }}</li>
+                                        <li><strong>qwen3-tts-vc-realtime-2025-11-27</strong>: {{ _('Used to USE voices for TTS synthesis. You must select this model above to use cloned voices.') }}</li>
+                                    </ul>
+                                    <p style="margin: 10px 0 0 0;"><strong>{{ _('Important') }}:</strong> {{ _('The voice created here will be bound to qwen3-tts-vc-realtime-2025-11-27 model. You must use this model for TTS synthesis.') }}</p>
+                                </div>
+                                <p class="help-text">{{ _('Upload an audio file to create a custom voice. The voice will be used for TTS synthesis.') }}</p>
+                                <form id="voice-cloning-form" class="settings-form">
+                                    <div class="form__group">
+                                        <label class="form__label">{{ _('Audio File') }}</label>
+                                        <input type="file" id="voice-audio-file" name="audioFile" accept="audio/*" class="textbox">
+                                        <p class="help-text">{{ _('Supported formats: MP3, WAV, M4A. Duration: 10-20 seconds recommended, max 60 seconds. File size: less than 10 MB. Sample rate: ≥ 24 kHz. Mono channel. Clear speech without background noise.') }}</p>
+                                    </div>
+                                    <div class="form__group">
+                                        <label class="form__label">{{ _('Region') }}</label>
+                                        <select id="voice-region" name="region" class="textbox">
+                                            <option value="beijing" {% if client.settings.tts.voiceRegion == 'beijing' or not client.settings.tts.voiceRegion %}selected{% endif %}>Beijing (北京)</option>
+                                            <option value="singapore" {% if client.settings.tts.voiceRegion == 'singapore' %}selected{% endif %}>Singapore (新加坡)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form__group">
+                                        <label class="form__label">{{ _('Preferred Name') }}</label>
+                                        <input type="text" id="voice-preferred-name" name="preferredName" class="textbox" value="custom" placeholder="custom">
+                                        <p class="help-text">{{ _('Optional: A name for your custom voice') }}</p>
+                                    </div>
+                                    <div class="form__group">
+                                        <button type="submit" class="button primary" id="create-voice-btn">{{ _('Create Voice') }}</button>
+                                    </div>
+                                </form>
+                                
+                                <!-- 音色列表 -->
+                                <div class="voice-list-section" style="margin-top: 30px; padding-top: 30px; border-top: 1px solid #e0e0e0;">
+                                    <h4>{{ _('Cloned Voices') }}</h4>
+                                    <div id="voice-list-container">
+                                        <p class="help-text">{{ _('Loading voices...') }}</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Agent 配置 -->
