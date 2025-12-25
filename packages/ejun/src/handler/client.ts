@@ -655,6 +655,359 @@ export class ClientUpdateSettingsHandler extends Handler<Context> {
     }
 }
 
+export class ClientCreateVoiceHandler extends Handler<Context> {
+    async post() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.response.template = null;
+        
+        const { clientId } = this.request.params;
+        const clientIdNum = parseInt(clientId, 10);
+        
+        if (isNaN(clientIdNum) || clientIdNum < 1) {
+            throw new ValidationError('clientId');
+        }
+
+        const client = await ClientModel.getByClientId(this.domain._id, clientIdNum);
+        if (!client) {
+            throw new NotFoundError('Client');
+        }
+
+        if (client.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        }
+
+        const audioFile = this.request.files?.audioFile;
+        if (!audioFile || Array.isArray(audioFile)) {
+            throw new ValidationError('audioFile');
+        }
+
+        const region = this.request.body.region || 'beijing';
+        let preferredName = this.request.body.preferredName;
+        const apiKey = this.request.body.apiKey || client.settings?.tts?.apiKey;
+        const targetModel = 'qwen3-tts-vc-realtime-2025-11-27'; // 声音复刻必须使用此模型
+
+        if (!apiKey) {
+            throw new ValidationError('API Key is required');
+        }
+
+        // preferred_name 验证：如果为空或无效，使用默认值或生成一个
+        if (!preferredName || preferredName.trim() === '') {
+            preferredName = `voice_${Date.now()}`;
+        }
+        // 确保 preferred_name 符合要求（只包含字母、数字、下划线、连字符）
+        preferredName = preferredName.trim().replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 50);
+
+        try {
+            // 读取音频文件并转换为base64
+            const fs = require('fs');
+            const path = require('path');
+            const audioBuffer = fs.readFileSync(audioFile.filepath);
+            const audioBase64 = audioBuffer.toString('base64');
+            
+            // 根据文件扩展名确定MIME类型
+            const ext = path.extname(audioFile.originalFilename || audioFile.filepath).toLowerCase();
+            let mimeType = 'audio/mpeg'; // 默认MP3
+            if (ext === '.wav') {
+                mimeType = 'audio/wav';
+            } else if (ext === '.m4a') {
+                mimeType = 'audio/mp4';
+            } else if (ext === '.mp3') {
+                mimeType = 'audio/mpeg';
+            }
+            
+            // 将base64编码包装成data URI格式
+            const audioDataUri = `data:${mimeType};base64,${audioBase64}`;
+            
+            // 根据region选择endpoint
+            const endpoint = region === 'singapore' 
+                ? 'https://dashscope-intl.aliyuncs.com/api/v1/services/audio/tts/customization'
+                : 'https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization';
+            
+            // 根据文档，API使用JSON格式，audio需要是对象格式，包含data字段（data URI格式）
+            const requestBody: any = {
+                model: 'qwen-voice-enrollment',
+                input: {
+                    action: 'create',
+                    target_model: targetModel,
+                    audio: {
+                        data: audioDataUri,
+                    },
+                    region: region,
+                },
+            };
+            
+            // preferred_name 是可选的，只有在有效时才添加
+            if (preferredName && preferredName.trim() !== '') {
+                requestBody.input.preferred_name = preferredName;
+            }
+            
+            logger.info('Creating voice: clientId=%d, region=%s, preferredName=%s, targetModel=%s', 
+                clientIdNum, region, preferredName, targetModel);
+            
+            const response = await request.post(endpoint)
+                .set('Authorization', `Bearer ${apiKey}`)
+                .set('Content-Type', 'application/json')
+                .send(requestBody);
+            
+            if (response.status !== 200 || !response.body || !response.body.output || !response.body.output.voice) {
+                logger.error('Voice cloning API error: status=%d, body=%o', response.status, response.body);
+                const errorMsg = response.body?.message || response.body?.error?.message || response.body?.error?.code || 'Failed to create voice';
+                throw new Error(errorMsg);
+            }
+
+            const voiceId = response.body.output.voice;
+            
+            logger.info('Voice created successfully: clientId=%d, voiceId=%s', clientIdNum, voiceId);
+
+            // 保存音色信息到数据库
+            const now = new Date();
+            const voiceInfo = {
+                voiceId,
+                preferredName,
+                region,
+                createdAt: now,
+                updatedAt: now,
+            };
+
+            const currentSettings = client.settings || {};
+            const currentVoices = currentSettings.voiceCloning?.voices || [];
+            
+            // 检查是否已存在相同voiceId的音色，如果存在则更新，否则添加
+            const existingIndex = currentVoices.findIndex((v: any) => v.voiceId === voiceId);
+            if (existingIndex >= 0) {
+                currentVoices[existingIndex] = { ...currentVoices[existingIndex], ...voiceInfo };
+            } else {
+                currentVoices.push(voiceInfo);
+            }
+
+            await ClientModel.updateSettings(this.domain._id, clientIdNum, {
+                voiceCloning: {
+                    voices: currentVoices,
+                },
+            });
+
+            this.response.body = {
+                success: true,
+                voice: voiceId,
+                voiceInfo,
+            };
+        } catch (error: any) {
+            logger.error('Failed to create voice: clientId=%d, error=%s, response=%o, stack=%s', 
+                clientIdNum, error.message, error.response?.body, error.stack);
+            
+            let errorMessage = 'Failed to create voice';
+            if (error.response?.body) {
+                errorMessage = error.response.body.message || 
+                             error.response.body.error?.message || 
+                             error.response.body.error?.code ||
+                             JSON.stringify(error.response.body);
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+            
+            throw new Error(errorMessage);
+        }
+    }
+}
+
+export class ClientListVoicesHandler extends Handler<Context> {
+    async get() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.response.template = null;
+        
+        const { clientId } = this.request.params;
+        const clientIdNum = parseInt(clientId, 10);
+        
+        if (isNaN(clientIdNum) || clientIdNum < 1) {
+            throw new ValidationError('clientId');
+        }
+
+        const client = await ClientModel.getByClientId(this.domain._id, clientIdNum);
+        if (!client) {
+            throw new NotFoundError('Client');
+        }
+
+        if (client.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        }
+
+        const voices = client.settings?.voiceCloning?.voices || [];
+        
+        this.response.body = {
+            success: true,
+            voices,
+        };
+    }
+}
+
+export class ClientDeleteVoiceHandler extends Handler<Context> {
+    async post() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.response.template = null;
+        
+        const { clientId } = this.request.params;
+        const clientIdNum = parseInt(clientId, 10);
+        
+        if (isNaN(clientIdNum) || clientIdNum < 1) {
+            throw new ValidationError('clientId');
+        }
+
+        const client = await ClientModel.getByClientId(this.domain._id, clientIdNum);
+        if (!client) {
+            throw new NotFoundError('Client');
+        }
+
+        if (client.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        }
+
+        const { voiceId } = this.request.body;
+        if (!voiceId) {
+            throw new ValidationError('voiceId');
+        }
+
+        const apiKey = client.settings?.tts?.apiKey;
+        if (!apiKey) {
+            throw new ValidationError('API Key is required');
+        }
+
+        const currentSettings = client.settings || {};
+        const currentVoices = currentSettings.voiceCloning?.voices || [];
+        const voiceIndex = currentVoices.findIndex((v: any) => v.voiceId === voiceId);
+        
+        if (voiceIndex < 0) {
+            throw new NotFoundError('Voice');
+        }
+
+        const voice = currentVoices[voiceIndex];
+        const region = voice.region || 'beijing';
+
+        try {
+            // 调用阿里云API删除音色
+            const endpoint = region === 'singapore' 
+                ? 'https://dashscope-intl.aliyuncs.com/api/v1/services/audio/tts/customization'
+                : 'https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization';
+            
+            const requestBody = {
+                model: 'qwen-voice-enrollment',
+                input: {
+                    action: 'delete',
+                    voice: voiceId,
+                },
+            };
+            
+            const response = await request.post(endpoint)
+                .set('Authorization', `Bearer ${apiKey}`)
+                .set('Content-Type', 'application/json')
+                .send(requestBody);
+            
+            if (response.status !== 200) {
+                logger.warn('Voice deletion API returned non-200 status: status=%d, body=%o', response.status, response.body);
+                // 即使API删除失败，也从数据库中删除
+            }
+
+            // 从数据库中删除
+            currentVoices.splice(voiceIndex, 1);
+            
+            await ClientModel.updateSettings(this.domain._id, clientIdNum, {
+                voiceCloning: {
+                    voices: currentVoices,
+                },
+            });
+
+            // 如果当前TTS配置使用的是被删除的音色，清空voice字段
+            if (client.settings?.tts?.voice === voiceId) {
+                await ClientModel.updateSettings(this.domain._id, clientIdNum, {
+                    tts: {
+                        ...client.settings.tts,
+                        voice: undefined,
+                    },
+                });
+            }
+
+            logger.info('Voice deleted successfully: clientId=%d, voiceId=%s', clientIdNum, voiceId);
+
+            this.response.body = {
+                success: true,
+            };
+        } catch (error: any) {
+            logger.error('Failed to delete voice: clientId=%d, voiceId=%s, error=%s', 
+                clientIdNum, voiceId, error.message);
+            
+            // 即使API调用失败，也从数据库中删除
+            currentVoices.splice(voiceIndex, 1);
+            await ClientModel.updateSettings(this.domain._id, clientIdNum, {
+                voiceCloning: {
+                    voices: currentVoices,
+                },
+            });
+
+            throw new Error(error.response?.body?.message || error.message || 'Failed to delete voice');
+        }
+    }
+}
+
+export class ClientUpdateVoiceHandler extends Handler<Context> {
+    async post() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.response.template = null;
+        
+        const { clientId } = this.request.params;
+        const clientIdNum = parseInt(clientId, 10);
+        
+        if (isNaN(clientIdNum) || clientIdNum < 1) {
+            throw new ValidationError('clientId');
+        }
+
+        const client = await ClientModel.getByClientId(this.domain._id, clientIdNum);
+        if (!client) {
+            throw new NotFoundError('Client');
+        }
+
+        if (client.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        }
+
+        const { voiceId, preferredName } = this.request.body;
+        if (!voiceId) {
+            throw new ValidationError('voiceId');
+        }
+        if (!preferredName || preferredName.trim() === '') {
+            throw new ValidationError('preferredName');
+        }
+
+        const currentSettings = client.settings || {};
+        const currentVoices = currentSettings.voiceCloning?.voices || [];
+        const voiceIndex = currentVoices.findIndex((v: any) => v.voiceId === voiceId);
+        
+        if (voiceIndex < 0) {
+            throw new NotFoundError('Voice');
+        }
+
+        // 更新音色名称
+        const cleanedName = preferredName.trim().replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 50);
+        currentVoices[voiceIndex] = {
+            ...currentVoices[voiceIndex],
+            preferredName: cleanedName,
+            updatedAt: new Date(),
+        };
+        
+        await ClientModel.updateSettings(this.domain._id, clientIdNum, {
+            voiceCloning: {
+                voices: currentVoices,
+            },
+        });
+
+        logger.info('Voice updated successfully: clientId=%d, voiceId=%s, preferredName=%s', 
+            clientIdNum, voiceId, cleanedName);
+
+        this.response.body = {
+            success: true,
+            voice: currentVoices[voiceIndex],
+        };
+    }
+}
+
 // Client WebSocket endpoint (for external clients to connect, using token authentication)
 type ClientSubscription = {
     event: string;
@@ -3258,6 +3611,10 @@ export async function apply(ctx: Context) {
     ctx.Route('client_chat_audio_download', '/client/:clientId/chat/:conversationId/audio/:messageIndex/:audioType', ClientChatAudioDownloadHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_delete_token', '/client/:clientId/delete-token', ClientDeleteTokenHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_update_settings', '/client/:clientId/update-settings', ClientUpdateSettingsHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('client_create_voice', '/client/:clientId/create-voice', ClientCreateVoiceHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('client_list_voices', '/client/:clientId/voices', ClientListVoicesHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('client_delete_voice', '/client/:clientId/delete-voice', ClientDeleteVoiceHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('client_update_voice', '/client/:clientId/update-voice', ClientUpdateVoiceHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_logs', '/client/:clientId/logs', ClientLogsHandler);
     ctx.Connection('client_conn', '/client/ws', ClientConnectionHandler);
     ctx.Connection('client_status_conn', '/client/status/ws', ClientStatusConnectionHandler);
