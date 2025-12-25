@@ -71,6 +71,26 @@ export default new AutoloadPage('client_domain,client_detail', async () => {
         $(`#settings-${tab}`).addClass('active');
     });
 
+    // ASR model selection
+    $('#asr-model-select').on('change', function() {
+        const selectedModel = $(this).val();
+        if (selectedModel) {
+            $('#asr-config-options').slideDown();
+        } else {
+            $('#asr-config-options').slideUp();
+        }
+    });
+
+    // TTS model selection
+    $('#tts-model-select').on('change', function() {
+        const selectedModel = $(this).val();
+        if (selectedModel) {
+            $('#tts-config-options').slideDown();
+        } else {
+            $('#tts-config-options').slideUp();
+        }
+    });
+
     // ASR configuration save
     $('#asr-settings-form').on('submit', function(e) {
         e.preventDefault();
