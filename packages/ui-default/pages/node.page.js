@@ -456,8 +456,12 @@ export default new AutoloadPage('node_domain,node_detail', async () => {
             console.log('MQTT not connected, using HTTP API fallback');
             const command = { [action]: value };
             console.log('Sending HTTP API control command:', { nodeId, deviceId, command, action, value });
+            
+            const domainId = (window.UiContext?.domainId || 'system');
+            const url = `/d/${domainId}/node/device/control`;
+            
             $.ajax({
-                url: '/node/device/control',
+                url: url,
                 method: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({
