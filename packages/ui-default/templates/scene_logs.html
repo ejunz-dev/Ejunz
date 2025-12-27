@@ -1,0 +1,107 @@
+{% set page_name = "scene_logs" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+    <div class="columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">{{ _('Scene Logs') }} - {{ scene.name }}</h1>
+                <div class="section__action">
+                    <a href="{{ url('scene_detail', { domainId: domainId, sid: scene.sid }) }}" class="button">{{ _('Back to Details') }}</a>
+                    <button id="clearLogs" class="button">{{ _('Clear Logs') }}</button>
+                    <button id="scrollLock" class="button">🔒 {{ _('Lock Scroll') }}</button>
+                </div>
+            </div>
+            <div class="section__body">
+                <div class="row">
+                    <div class="columns">
+                        <div class="filter-bar" style="margin-bottom: 15px; padding: 15px; background: #f5f5f5; border-radius: 4px;">
+                            <div class="row">
+                                <div class="medium-6 columns">
+                                    <label>
+                                        {{ _('Filter by Event') }}:
+                                        <select id="eventFilter" style="margin-top: 5px;">
+                                            <option value="">全部事件</option>
+                                            {% for event in events %}
+                                            <option value="{{ event.eid }}">{{ event.eid }} - {{ event.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </label>
+                                </div>
+                                <div class="medium-6 columns">
+                                    <label>
+                                        {{ _('Filter by Level') }}:
+                                        <select id="levelFilter" style="margin-top: 5px;">
+                                            <option value="">全部级别</option>
+                                            <option value="info">信息</option>
+                                            <option value="success">成功</option>
+                                            <option value="warning">警告</option>
+                                            <option value="error">错误</option>
+                                        </select>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="row" style="margin-top: 10px;">
+                                <div class="columns">
+                                    <button id="applyFilters" class="button primary">应用筛选</button>
+                                    <button id="resetFilters" class="button">重置筛选</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="log-container" id="logContainer" data-scene-id="{{ scene.sid }}" data-domain-id="{{ domainId }}" style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 13px; max-height: 600px; overflow-y: auto;">
+                    {% for log in logs %}
+                    <div class="log-entry" data-level="{{ log.level }}" data-event-id="{{ log.eventId or '' }}" style="margin-bottom: 8px; padding: 5px; border-left: 3px solid {% if log.level == 'error' %}#f44336{% elif log.level == 'warning' %}#ff9800{% elif log.level == 'success' %}#4caf50{% else %}#2196f3{% endif %};">
+                        <span class="log-time" style="color: #858585;">[{{ log.time }}]</span>
+                        <span class="log-level log-{{ log.level }}" style="margin-left: 10px; padding: 2px 6px; border-radius: 3px; font-weight: bold; {% if log.level == 'error' %}background: #f44336; color: white;{% elif log.level == 'warning' %}background: #ff9800; color: white;{% elif log.level == 'success' %}background: #4caf50; color: white;{% else %}background: #2196f3; color: white;{% endif %}">{{ log.level }}</span>
+                        {% if log.eventId %}
+                        <span class="log-event" style="margin-left: 10px; color: #4ec9b0;">[事件 {{ log.eventId }}{% if log.eventName %}: {{ log.eventName }}{% endif %}]</span>
+                        {% endif %}
+                        <span class="log-message" style="margin-left: 10px;">{{ log.message }}</span>
+                        {% if log.details %}
+                        <div class="log-details" style="margin-left: 30px; margin-top: 5px; color: #858585; font-size: 12px;">
+                            {{ log.details|safe }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.log-container {
+    scrollbar-width: thin;
+    scrollbar-color: #555 #1e1e1e;
+}
+
+.log-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.log-container::-webkit-scrollbar-track {
+    background: #1e1e1e;
+}
+
+.log-container::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.log-container::-webkit-scrollbar-thumb:hover {
+    background: #777;
+}
+
+.log-entry {
+    transition: opacity 0.3s;
+}
+
+.log-entry.hidden {
+    display: none;
+}
+</style>
+{% endblock %}
+

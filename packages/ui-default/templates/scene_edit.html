@@ -1,0 +1,68 @@
+{% import "components/form.html" as form with context %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Edit Scene') if scene else _('Create Scene') }}</h1>
+      </div>
+      <div class="section__body">
+        <form method="post">
+          <div class="row">
+            <div class="medium-12 columns">
+              <label>
+                {{ _('Scene Name') }}
+                <input 
+                  name="name" 
+                  placeholder="{{ _('Enter scene name') }}"
+                  value="{{ scene.name|default('') if scene else '' }}" 
+                  class="textbox" 
+                  required 
+                  autofocus>
+              </label>
+            </div>
+          </div>
+
+          {{ form.form_textarea({
+                columns: 12,
+                label: _('Description'),
+                name: 'description',
+                value: scene.description|default('') if scene else '',
+                hotkeys: 'ctrl+enter:submit',
+                markdown: false,
+                required: false,
+                extra_style: 'height: 200px',
+                id: 'description-textarea'
+              }) }}
+
+          <div class="row">
+            <div class="columns">
+              <button 
+                name="operation" 
+                value="{{ 'update' if scene else 'create' }}" 
+                data-default-submit 
+                type="submit" 
+                class="rounded primary button">
+                {{ _('Update') if scene else _('Create') }} (Ctrl+Enter)
+              </button>
+              <button type="button" class="rounded button" onclick="window.history.go(-1)">
+                {{ _('Cancel') }}
+              </button>
+              {% if scene %}
+              <button 
+                type="button" 
+                class="rounded danger button" 
+                onclick="deleteScene({{ scene.sid }})">
+                {{ _('Delete') }}
+              </button>
+              {% endif %}
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
