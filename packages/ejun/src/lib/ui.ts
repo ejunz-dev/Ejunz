@@ -68,6 +68,7 @@ export const MindMapAdd = (name, args, icon = 'add', text = 'Create MindMap') =>
 
 
 inject('Nav', 'homepage', { prefix: 'homepage' });
+inject('Nav', 'scene_domain', { prefix: 'scene' });
 inject('Nav', 'mindmap_domain', { prefix: 'mindmap' });
 // inject('Nav', 'base_domain', { prefix: 'base' });
 inject('Nav', 'agent_domain', { prefix: 'agent' });

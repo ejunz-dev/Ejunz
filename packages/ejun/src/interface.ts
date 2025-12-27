@@ -427,6 +427,53 @@ declare module './model/node' {
 }
 export type { NodeDoc } from './model/node';
 
+// Scene document
+declare module './model/scene' {
+    interface SceneDoc {
+        _id: ObjectId; // document 系统自动添加
+        docType: document['TYPE_SCENE'];
+        docId: ObjectId; // 由 mongo 自动生成
+        domainId: string;
+        sid: number; // Scene ID，从 1 开始（业务 ID，用于路由显示）
+        name: string;
+        description?: string;
+        enabled: boolean; // 是否启用（每个域只能有一个启用的场景）
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number; // 用户 ID
+        content?: string; // document 系统要求
+    }
+
+    interface SceneEventDoc {
+        _id: ObjectId; // document 系统自动添加
+        docType: document['TYPE_EVENT'];
+        docId: ObjectId; // 由 mongo 自动生成
+        domainId: string;
+        sceneId: number; // 所属场景 ID
+        sceneDocId: ObjectId; // 所属场景的 docId
+        parentType: document['TYPE_SCENE']; // 父类型
+        parentId: ObjectId; // 父 ID（sceneDocId）
+        eid: number; // Event ID，在场景内从 1 开始
+        name: string;
+        description?: string;
+        // 监听源：node 下的开关设备
+        sourceNodeId: number; // 监听源节点 ID
+        sourceDeviceId: string; // 监听源设备 ID
+        sourceAction?: string; // 监听的动作，如 'on', 'off', 'toggle'
+        // 触发效果：node 下的开关设备
+        targetNodeId: number; // 目标节点 ID
+        targetDeviceId: string; // 目标设备 ID
+        targetAction: string; // 触发的动作，如 'on', 'off', 'toggle'
+        targetValue?: any; // 触发的值（可选）
+        enabled: boolean; // 是否启用此事件
+        createdAt: Date;
+        updatedAt: Date;
+        owner: number; // 用户 ID
+        content?: string; // document 系统要求
+    }
+}
+export type { SceneDoc, SceneEventDoc } from './model/scene';
+
 // MCP Server document
 declare module './model/mcp' {
     interface McpServerDoc {
@@ -895,6 +942,8 @@ export interface Model {
     workflow: typeof import('./model/workflow').default,
     workflowNode: typeof import('./model/workflow_node').default,
     workflowTimer: typeof import('./model/workflow_timer').default,
+    scene: typeof import('./model/scene').default,
+    sceneEvent: typeof import('./model/scene').SceneEventModel,
 }
 
 export interface GeoIP {

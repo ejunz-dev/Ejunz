@@ -1,0 +1,575 @@
+{% set page_name = "scene_detail" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<style>
+.scene-header-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 30px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.scene-header-card h1 {
+    color: white;
+    margin: 0 0 15px 0;
+    font-size: 28px;
+    font-weight: 600;
+}
+
+.scene-header-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.scene-status-badge {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
+}
+
+.scene-status-enabled {
+    background: rgba(76, 175, 80, 0.3);
+}
+
+.scene-status-disabled {
+    background: rgba(158, 158, 158, 0.3);
+}
+
+.scene-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.scene-info-item {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 15px;
+    border-radius: 6px;
+    backdrop-filter: blur(10px);
+}
+
+.scene-info-item label {
+    display: block;
+    font-size: 12px;
+    opacity: 0.8;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.scene-info-item value {
+    display: block;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.scene-info-item code {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.events-section {
+    margin-top: 30px;
+}
+
+.events-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.events-header h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: #333;
+}
+
+.events-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    table-layout: fixed;
+}
+
+.events-table thead {
+    background: #f5f5f5;
+}
+
+.events-table th {
+    padding: 15px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 13px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid #e0e0e0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.events-table td {
+    padding: 15px;
+    border-bottom: 1px solid #f0f0f0;
+    vertical-align: top;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-width: 0;
+    overflow: hidden;
+}
+
+.events-table tbody tr {
+    transition: background-color 0.2s;
+}
+
+.events-table tbody tr:hover {
+    background-color: #f9f9f9;
+}
+
+.events-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.event-name {
+    font-weight: 500;
+    color: #333;
+}
+
+.event-source, .event-target {
+    font-size: 13px;
+    color: #666;
+    line-height: 1.5;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
+}
+
+.event-source strong, .event-target strong {
+    color: #667eea;
+    font-weight: 600;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.event-source > span, .event-target > span {
+    display: block;
+    font-size: 12px;
+    color: #999;
+    word-break: break-all;
+    margin-top: 4px;
+    overflow-wrap: break-word;
+}
+
+.event-status {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.event-status-enabled {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.event-status-disabled {
+    background: #f5f5f5;
+    color: #757575;
+}
+
+.event-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.event-actions .button {
+    padding: 6px 12px;
+    font-size: 12px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.event-actions .button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.event-empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #999;
+}
+
+.event-empty-state svg {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 20px;
+    opacity: 0.5;
+}
+
+.event-empty-state p {
+    font-size: 16px;
+    margin: 0;
+}
+
+.event-empty-state .button {
+    margin-top: 20px;
+}
+
+/* 编辑模式样式 - 默认显示模式 */
+.col--checkbox,
+.bulk-actions,
+[name="leave-edit-mode"] {
+    display: none !important;
+}
+
+[name="enter-edit-mode"] {
+    display: inline-block !important;
+}
+
+/* 编辑模式 */
+body.edit-mode .col--checkbox {
+    display: table-cell !important;
+}
+
+body.edit-mode .bulk-actions {
+    display: flex !important;
+}
+
+body.edit-mode [name="leave-edit-mode"] {
+    display: inline-block !important;
+}
+
+body.edit-mode [name="enter-edit-mode"] {
+    display: none !important;
+}
+
+/* 显示模式（默认） */
+body.display-mode .col--checkbox,
+body.display-mode .bulk-actions,
+body.display-mode [name="leave-edit-mode"] {
+    display: none !important;
+}
+
+body.display-mode [name="enter-edit-mode"] {
+    display: inline-block !important;
+}
+
+/* 多选框样式 */
+.compact.checkbox {
+    display: inline-block;
+    margin: 0;
+    cursor: pointer;
+}
+
+.compact.checkbox input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+.col--checkbox {
+    text-align: center;
+    vertical-align: middle;
+}
+
+@media (max-width: 768px) {
+    .scene-header-card {
+        padding: 20px;
+    }
+    
+    .scene-info-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .events-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 15px;
+    }
+    
+    .events-table {
+        font-size: 13px;
+    }
+    
+    .events-table th,
+    .events-table td {
+        padding: 10px;
+    }
+    
+    .event-actions {
+        flex-direction: column;
+    }
+    
+    .bulk-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+    
+    .bulk-actions .button {
+        width: 100%;
+    }
+}
+</style>
+
+<div class="row">
+    <div class="medium-12 columns">
+        <!-- 场景头部卡片 -->
+        <div class="scene-header-card">
+            <h1>{{ scene.name }}</h1>
+            {% if scene.description %}
+                <p style="margin: 0 0 20px 0; opacity: 0.9; font-size: 15px;">{{ scene.description }}</p>
+            {% endif %}
+            <div class="scene-header-actions">
+                <span class="scene-status-badge {% if scene.enabled %}scene-status-enabled{% else %}scene-status-disabled{% endif %}">
+                    {% if scene.enabled %}✓ 已启用{% else %}○ 未启用{% endif %}
+                </span>
+                <button class="button {% if scene.enabled %}warning{% else %}success{% endif %} scene-toggle-btn" data-sid="{{ scene.sid }}" data-enabled="{{ 'true' if scene.enabled else 'false' }}">
+                    {% if scene.enabled %}禁用场景{% else %}启用场景{% endif %}
+                </button>
+                <a href="{{ url('scene_edit', { domainId: domainId, sid: scene.sid }) }}" class="button secondary">编辑场景</a>
+                <a href="{{ url('scene_logs', { domainId: domainId, sid: scene.sid }) }}" class="button secondary">查看日志</a>
+            </div>
+            <div class="scene-info-grid">
+                <div class="scene-info-item">
+                    <label>场景 ID</label>
+                    <value><code>{{ scene.sid }}</code></value>
+                </div>
+                <div class="scene-info-item">
+                    <label>创建时间</label>
+                    <value>{{ datetimeSpan(scene.createdAt)|safe if scene.createdAt else 'N/A' }}</value>
+                </div>
+                <div class="scene-info-item">
+                    <label>更新时间</label>
+                    <value>{{ datetimeSpan(scene.updatedAt)|safe if scene.updatedAt else 'N/A' }}</value>
+                </div>
+            </div>
+        </div>
+
+        <!-- 事件管理区域 -->
+        <div class="section events-section">
+            <div class="events-header">
+                <h2>事件管理</h2>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <div class="bulk-actions display-mode-hide" style="display: none;">
+                        <button class="button success enable-selected-events" name="enable_selected_events">
+                            <span class="icon icon-check"></span> 启用选中
+                        </button>
+                        <button class="button warning disable-selected-events" name="disable_selected_events">
+                            <span class="icon icon-close"></span> 禁用选中
+                        </button>
+                        <button class="button danger delete-selected-events" name="delete_selected_events">
+                            <span class="icon icon-trash"></span> 删除选中
+                        </button>
+                    </div>
+                    <a href="javascript:;" class="menu__link edit-mode-hide" name="enter-edit-mode">
+                        <span class="icon icon-edit"></span> 进入编辑模式
+                    </a>
+                    <a href="javascript:;" class="menu__link display-mode-hide" name="leave-edit-mode">
+                        <span class="icon icon-edit"></span> 退出编辑模式
+                    </a>
+                    <a href="{{ url('scene_event_create', { domainId: domainId, sid: scene.sid }) }}" class="button primary">
+                        <span class="icon icon-plus"></span> 创建事件
+                    </a>
+                </div>
+            </div>
+            <div class="section__body">
+                {% if events and events.length > 0 %}
+                    <table class="events-table">
+                        <colgroup>
+                            <col class="col--checkbox display-mode-hide" style="width: 40px;">
+                            <col style="width: 60px;">
+                            <col style="width: 120px;">
+                            <col style="width: 25%;">
+                            <col style="width: 25%;">
+                            <col style="width: 80px;">
+                            <col style="width: 140px;">
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th class="col--checkbox display-mode-hide" style="display: none;">
+                                    <label class="compact checkbox">
+                                        <input type="checkbox" name="select_all" data-checkbox-toggle="event">
+                                    </label>
+                                </th>
+                                <th>ID</th>
+                                <th>名称</th>
+                                <th>监听源</th>
+                                <th>触发效果</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for event in events %}
+                                <tr data-eid="{{ event.eid }}">
+                                    <td class="col--checkbox display-mode-hide" style="display: none;">
+                                        <label class="compact checkbox">
+                                            <input type="checkbox" data-checkbox-group="event" data-checkbox-range>
+                                        </label>
+                                    </td>
+                                    <td><strong>{{ event.eid }}</strong></td>
+                                    <td><span class="event-name">{{ event.name }}</span></td>
+                                    <td>
+                                        <div class="event-source">
+                                            <strong>节点 {{ event.sourceNodeId }}</strong>
+                                            <span>{{ event.sourceDeviceId }}</span>
+                                            {% if event.sourceAction %}
+                                                <span style="display: inline-block; margin-top: 4px; padding: 2px 6px; background: #e3f2fd; color: #1976d2; border-radius: 3px; font-size: 11px;">{{ event.sourceAction }}</span>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="event-target">
+                                            <strong>节点 {{ event.targetNodeId }}</strong>
+                                            <span>{{ event.targetDeviceId }}</span>
+                                            <span style="display: inline-block; margin-top: 4px; padding: 2px 6px; background: #fff3e0; color: #f57c00; border-radius: 3px; font-size: 11px;">{{ event.targetAction }}</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="event-status {% if event.enabled %}event-status-enabled{% else %}event-status-disabled{% endif %}">
+                                            {% if event.enabled %}启用{% else %}禁用{% endif %}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="event-actions">
+                                            <a href="{{ url('scene_event_edit', { domainId: domainId, sid: scene.sid, eid: event.eid }) }}" class="button small">
+                                                <span class="icon icon-edit"></span> 编辑
+                                            </a>
+                                            <button class="button small danger delete-event-btn" data-eid="{{ event.eid }}">
+                                                <span class="icon icon-trash"></span> 删除
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <div class="event-empty-state">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                        <p>暂无事件</p>
+                        <p style="font-size: 14px; margin-top: 5px;">点击"创建事件"按钮添加第一个事件</p>
+                        <a href="{{ url('scene_event_create', { domainId: domainId, sid: scene.sid }) }}" class="button primary">
+                            创建事件
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 创建/编辑事件对话框 -->
+<div id="event-dialog" class="dialog" style="display: none;">
+    <div class="dialog__content">
+        <div class="dialog__header">
+            <h2 id="event-dialog-title">创建事件</h2>
+            <button class="dialog__close">&times;</button>
+        </div>
+        <div class="dialog__body">
+            <form id="event-form">
+                <input type="hidden" id="event-eid" name="eid">
+                <div class="form-group">
+                    <label>事件名称</label>
+                    <input type="text" id="event-name" name="name" class="textbox" required>
+                </div>
+                <div class="form-group">
+                    <label>描述</label>
+                    <textarea id="event-description" name="description" class="textbox" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>监听源节点</label>
+                    <select id="event-source-node" name="sourceNodeId" class="textbox" required onchange="loadSourceDevices()">
+                        <option value="">请选择节点</option>
+                        {% for node in nodes %}
+                            <option value="{{ node.nid }}">{{ node.name }} (ID: {{ node.nid }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>监听源设备</label>
+                    <select id="event-source-device" name="sourceDeviceId" class="textbox" required>
+                        <option value="">请先选择节点</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>监听动作（可选）</label>
+                    <select id="event-source-action" name="sourceAction" class="textbox">
+                        <option value="">任意变化</option>
+                        <option value="on">开启</option>
+                        <option value="off">关闭</option>
+                        <option value="toggle">切换</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>目标节点</label>
+                    <select id="event-target-node" name="targetNodeId" class="textbox" required onchange="loadTargetDevices()">
+                        <option value="">请选择节点</option>
+                        {% for node in nodes %}
+                            <option value="{{ node.nid }}">{{ node.name }} (ID: {{ node.nid }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>目标设备</label>
+                    <select id="event-target-device" name="targetDeviceId" class="textbox" required>
+                        <option value="">请先选择节点</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>触发动作</label>
+                    <select id="event-target-action" name="targetAction" class="textbox" required>
+                        <option value="on">开启</option>
+                        <option value="off">关闭</option>
+                        <option value="toggle">切换</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>触发值（可选）</label>
+                    <input type="text" id="event-target-value" name="targetValue" class="textbox" placeholder="例如: true, 100">
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="event-enabled" name="enabled" checked> 启用此事件
+                    </label>
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="button primary">保存</button>
+                    <button type="button" class="button cancel-event-btn">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    const nodeDevicesMap = {{ nodeDevicesMapJson|safe }};
+    const sceneId = {{ scene.sid }};
+    const domainId = '{{ domainId }}';
+    const events = {{ eventsJson|safe }};
+</script>
+{% endblock %}
+
