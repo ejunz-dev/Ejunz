@@ -649,6 +649,9 @@ Run: 运行
 Save All Changes: 保存所有修改
 Saved session expire seconds: 保存的会话的过期秒数
 Saved session: 已保存的会话
+scene_detail: 情景详情
+scene_domain: 情景
+scene_edit: 编辑情景
 Scripts: 脚本
 Search: 搜索
 Secret (visible to admins): 保密（对管理员可见）

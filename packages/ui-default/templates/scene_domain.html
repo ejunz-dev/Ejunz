@@ -1,0 +1,54 @@
+{% set page_name = "scene_domain" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+    <div class="columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">场景管理</h1>
+                <div class="section__action">
+                    <a href="{{ url('scene_create', domainId=domainId) }}" class="button primary">{{ _('Create Scene') }}</a>
+                </div>
+            </div>
+            <div class="section__body">
+                {% if scenes and scenes.length > 0 %}
+                    <div class="scene-list">
+                        {% for scene in scenes %}
+                            <div class="scene-item">
+                                <div class="scene-header">
+                                    <h3><a href="{{ url('scene_detail', { domainId: scene.domainId|default(domainId), sid: scene.sid }) }}">{{ scene.name }}</a></h3>
+                                    <div class="scene-status">
+                                        {% if scene.enabled %}
+                                            <span class="scene-status-enabled">已启用</span>
+                                        {% else %}
+                                            <span class="scene-status-disabled">未启用</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% if scene.description %}
+                                    <p class="scene-description">{{ scene.description }}</p>
+                                {% endif %}
+                                <div class="scene-info">
+                                    <div>场景 ID: <code>{{ scene.sid }}</code></div>
+                                    <div>创建时间: {{ datetimeSpan(scene.createdAt)|safe if scene.createdAt else 'N/A' }}</div>
+                                </div>
+                                <div class="scene-actions">
+                                    <a href="{{ url('scene_detail', { domainId: scene.domainId|default(domainId), sid: scene.sid }) }}" class="button">查看详情</a>
+                                    <a href="{{ url('scene_edit', { domainId: scene.domainId|default(domainId), sid: scene.sid }) }}" class="button">编辑</a>
+                                    <button class="button scene-toggle-btn" data-sid="{{ scene.sid }}" data-enabled="{{ scene.enabled|lower }}">
+                                        {% if scene.enabled %}禁用{% else %}启用{% endif %}
+                                    </button>
+                                    <button class="button danger scene-delete-btn" data-sid="{{ scene.sid }}">删除</button>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="scene-empty-message">暂无场景，<a href="{{ url('scene_create', domainId=domainId) }}">{{ _('Create Scene') }}</a></p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
