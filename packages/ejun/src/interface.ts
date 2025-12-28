@@ -460,11 +460,14 @@ declare module './model/scene' {
         sourceNodeId: number; // 监听源节点 ID
         sourceDeviceId: string; // 监听源设备 ID
         sourceAction?: string; // 监听的动作，如 'on', 'off', 'toggle'
-        // 触发效果：node 下的开关设备
-        targetNodeId: number; // 目标节点 ID
-        targetDeviceId: string; // 目标设备 ID
-        targetAction: string; // 触发的动作，如 'on', 'off', 'toggle'
-        targetValue?: any; // 触发的值（可选）
+        // 触发效果：node 下的开关设备（支持多个）
+        targets: Array<{ // 多个触发效果
+            targetNodeId: number;
+            targetDeviceId: string;
+            targetAction: string;
+            targetValue?: any;
+            order?: number; // 执行顺序
+        }>;
         enabled: boolean; // 是否启用此事件
         createdAt: Date;
         updatedAt: Date;
