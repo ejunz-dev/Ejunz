@@ -1,310 +1,25 @@
-{% import "components/form.html" as form with context %}
 {% extends "layout/basic.html" %}
 {% block content %}
 <style>
-.event-edit-container {
-    max-width: 900px;
-    margin: 0 auto;
-}
-
-.event-edit-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: 25px 30px;
-    border-radius: 8px 8px 0 0;
-    margin-bottom: 0;
-}
-
-.event-edit-header h1 {
-    color: white;
-    margin: 0;
-    font-size: 24px;
-    font-weight: 600;
-}
-
-.event-edit-body {
-    background: white;
-    padding: 30px;
-    border-radius: 0 0 8px 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.form-group {
-    margin-bottom: 20px;
-}
-
-.form-group label {
-    display: block;
-    margin-bottom: 8px;
-    font-weight: 500;
-    color: #333;
-    font-size: 14px;
-}
-
-.form-group .textbox,
-.form-group select {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 14px;
-    transition: border-color 0.3s, box-shadow 0.3s;
-}
-
-.form-group .textbox:focus,
-.form-group select:focus {
-    outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-
-.form-section {
-    margin-bottom: 30px;
-    padding-bottom: 25px;
-    border-bottom: 1px solid #eee;
-}
-
-.form-section:last-child {
-    border-bottom: none;
-}
-
-.form-section-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #667eea;
-    margin-bottom: 20px;
-    padding-bottom: 10px;
-    border-bottom: 2px solid #667eea;
-}
-
-.action-buttons {
-    display: flex;
-    gap: 10px;
-    margin-top: 30px;
-    padding-top: 20px;
-    border-top: 1px solid #eee;
-}
-
-.action-buttons .button {
-    padding: 10px 20px;
-    border-radius: 4px;
-    font-weight: 500;
-    transition: all 0.3s;
-}
-
-.action-buttons .button.primary {
-    background: #667eea;
-    color: white;
-    border: none;
-}
-
-.action-buttons .button.primary:hover {
-    background: #5568d3;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
-}
-
-.action-buttons .button.danger {
-    background: #f44336;
-    color: white;
-    border: none;
-}
-
-.action-buttons .button.danger:hover {
-    background: #d32f2f;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(244, 67, 54, 0.3);
-}
-
-.action-buttons .button.secondary {
-    background: #f5f5f5;
-    color: #333;
-    border: 1px solid #ddd;
-}
-
-.action-buttons .button.secondary:hover {
-    background: #e0e0e0;
-}
-
-.checkbox-group {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.checkbox-group input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
-    cursor: pointer;
-}
-
-.checkbox-group label {
-    margin: 0;
-    cursor: pointer;
-    user-select: none;
+#scene-event-editor {
+    height: calc(100vh - 200px);
+    min-height: 600px;
 }
 </style>
 
 <div class="row">
   <div class="columns">
-    <div class="event-edit-container">
-      <div class="section">
-        <div class="section__header event-edit-header">
-          <h1 class="section__title">{{ _('Edit Event') if event else _('Create Event') }}</h1>
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Edit Event') if event else _('Create Event') }}</h1>
+      </div>
+      <div class="section__body" style="padding: 0;">
+        <div 
+          id="scene-event-editor"
+          data-event-id="{{ event.eid if event else '' }}"
+        >
+          <!-- React 组件将在这里渲染 -->
         </div>
-        <div class="section__body event-edit-body">
-        <form method="post">
-          <!-- 基本信息 -->
-          <div class="form-section">
-            <div class="form-section-title">基本信息</div>
-            <div class="form-group">
-              <label>{{ _('Event Name') }}</label>
-              <input 
-                name="name" 
-                placeholder="{{ _('Enter event name') }}"
-                value="{{ event.name|default('') if event else '' }}" 
-                class="textbox" 
-                required 
-                autofocus>
-            </div>
-            <div class="form-group">
-              <label>{{ _('Description') }}</label>
-              {{ form.form_textarea({
-                    columns: 12,
-                    label: '',
-                    name: 'description',
-                    value: event.description|default('') if event else '',
-                    hotkeys: 'ctrl+enter:submit',
-                    markdown: false,
-                    required: false,
-                    extra_style: 'height: 100px',
-                    id: 'description-textarea'
-                  }) }}
-            </div>
-          </div>
-
-          <!-- 监听源配置 -->
-          <div class="form-section">
-            <div class="form-section-title">监听源配置</div>
-            <div class="row">
-              <div class="medium-6 columns">
-                <div class="form-group">
-                  <label>{{ _('Source Node') }}</label>
-                  <select name="sourceNodeId" id="source-node-select" class="textbox" required>
-                    <option value="">请选择节点</option>
-                    {% for node in nodes %}
-                      <option value="{{ node.nid }}" {% if event and event.sourceNodeId == node.nid %}selected{% endif %}>{{ node.name }} (ID: {{ node.nid }})</option>
-                    {% endfor %}
-                  </select>
-                </div>
-              </div>
-              <div class="medium-6 columns">
-                <div class="form-group">
-                  <label>{{ _('Source Device') }}</label>
-                  <select name="sourceDeviceId" id="source-device-select" class="textbox" required>
-                    <option value="">请先选择节点</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div class="row">
-              <div class="medium-6 columns">
-                <div class="form-group">
-                  <label>{{ _('Source Action') }} ({{ _('Optional') }})</label>
-                  <select name="sourceAction" class="textbox">
-                    <option value="">任意变化</option>
-                    <option value="on" {% if event and event.sourceAction == 'on' %}selected{% endif %}>开启</option>
-                    <option value="off" {% if event and event.sourceAction == 'off' %}selected{% endif %}>关闭</option>
-                    <option value="toggle" {% if event and event.sourceAction == 'toggle' %}selected{% endif %}>切换</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 触发效果配置 -->
-          <div class="form-section">
-            <div class="form-section-title">触发效果配置</div>
-            <div class="row">
-              <div class="medium-6 columns">
-                <div class="form-group">
-                  <label>{{ _('Target Node') }}</label>
-                  <select name="targetNodeId" id="target-node-select" class="textbox" required>
-                    <option value="">请选择节点</option>
-                    {% for node in nodes %}
-                      <option value="{{ node.nid }}" {% if event and event.targetNodeId == node.nid %}selected{% endif %}>{{ node.name }} (ID: {{ node.nid }})</option>
-                    {% endfor %}
-                  </select>
-                </div>
-              </div>
-              <div class="medium-6 columns">
-                <div class="form-group">
-                  <label>{{ _('Target Device') }}</label>
-                  <select name="targetDeviceId" id="target-device-select" class="textbox" required>
-                    <option value="">请先选择节点</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div class="row">
-              <div class="medium-6 columns">
-                <div class="form-group">
-                  <label>{{ _('Target Action') }}</label>
-                  <select name="targetAction" class="textbox" required>
-                    <option value="on" {% if event and event.targetAction == 'on' %}selected{% endif %}>开启</option>
-                    <option value="off" {% if event and event.targetAction == 'off' %}selected{% endif %}>关闭</option>
-                    <option value="toggle" {% if event and event.targetAction == 'toggle' %}selected{% endif %}>切换</option>
-                  </select>
-                </div>
-              </div>
-              <div class="medium-6 columns">
-                <div class="form-group">
-                  <label>{{ _('Target Value') }} ({{ _('Optional') }})</label>
-                  <input 
-                    type="text" 
-                    name="targetValue" 
-                    class="textbox" 
-                    placeholder="例如: true, 100"
-                    value="{{ event.targetValue|default('') if event else '' }}">
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 状态设置 -->
-          <div class="form-section">
-            <div class="form-group">
-              <div class="checkbox-group">
-                <input type="checkbox" name="enabled" value="1" id="enabled-checkbox" {% if not event or event.enabled %}checked{% endif %}> 
-                <label for="enabled-checkbox">{{ _('Enable this event') }}</label>
-              </div>
-            </div>
-          </div>
-
-          <!-- 操作按钮 -->
-          <div class="action-buttons">
-            <button 
-              name="operation" 
-              value="{{ 'update' if event else 'create' }}" 
-              data-default-submit 
-              type="submit" 
-              class="button primary">
-              {{ _('Update') if event else _('Create') }} (Ctrl+Enter)
-            </button>
-            {% if event %}
-            <button 
-              name="operation" 
-              value="delete" 
-              type="submit" 
-              class="button danger">
-              {{ _('Delete') }}
-            </button>
-            {% endif %}
-            <button type="button" class="button secondary" onclick="window.history.go(-1)">
-              {{ _('Cancel') }}
-            </button>
-          </div>
-        </form>
       </div>
     </div>
   </div>
@@ -312,13 +27,10 @@
 
 <script>
     window.nodeDevicesMap = {{ nodeDevicesMapJson|safe }};
+    window.nodes = {{ nodesJson|safe if nodesJson else '[]' }};
     window.sceneId = {{ sceneId }};
     window.domainId = '{{ domainId }}';
-    {% if event %}
-    window.currentEvent = {{ eventJson|safe }};
-    {% else %}
-    window.currentEvent = null;
-    {% endif %}
+    window.sceneEventData = {{ eventJson|safe if eventJson else 'null' }};
 </script>
 {% endblock %}
 

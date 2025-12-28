@@ -35,7 +35,7 @@
                                 <div class="scene-actions">
                                     <a href="{{ url('scene_detail', { domainId: scene.domainId|default(domainId), sid: scene.sid }) }}" class="button">查看详情</a>
                                     <a href="{{ url('scene_edit', { domainId: scene.domainId|default(domainId), sid: scene.sid }) }}" class="button">编辑</a>
-                                    <button class="button scene-toggle-btn" data-sid="{{ scene.sid }}" data-enabled="{{ scene.enabled|lower }}">
+                                    <button class="button scene-toggle-btn" data-sid="{{ scene.sid }}" data-enabled="{{ 'true' if scene.enabled else 'false' }}">
                                         {% if scene.enabled %}禁用{% else %}启用{% endif %}
                                     </button>
                                     <button class="button danger scene-delete-btn" data-sid="{{ scene.sid }}">删除</button>
