@@ -123,9 +123,7 @@ class SceneEventModel {
         name: string;
         sourceNodeId: number;
         sourceDeviceId: string;
-        targetNodeId: number;
-        targetDeviceId: string;
-        targetAction: string;
+        targets: Array<{ targetNodeId: number; targetDeviceId: string; targetAction: string; targetValue?: any; order?: number }>;
         owner: number;
     }): Promise<SceneEventDoc> {
         const eid = await this.generateNextEventId(event.domainId, event.sceneDocId);
@@ -143,10 +141,7 @@ class SceneEventModel {
             sourceNodeId: event.sourceNodeId,
             sourceDeviceId: event.sourceDeviceId,
             sourceAction: event.sourceAction,
-            targetNodeId: event.targetNodeId,
-            targetDeviceId: event.targetDeviceId,
-            targetAction: event.targetAction,
-            targetValue: event.targetValue,
+            targets: event.targets,
             enabled: event.enabled !== undefined ? event.enabled : true,
             createdAt: now,
             updatedAt: now,
