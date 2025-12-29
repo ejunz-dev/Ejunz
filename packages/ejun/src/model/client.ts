@@ -8,6 +8,22 @@ import { randomstring } from '../utils';
 
 const logger = new Logger('model/client');
 
+export interface ClientWidgetDoc {
+    _id: ObjectId;
+    clientId: number; // 使用clientId而不是ObjectId，因为clientId是业务ID
+    domainId: string;
+    widgetName: string; // 组件唯一标识
+    name: string; // 组件显示名称
+    type: string; // 组件类型，如 'switch', 'button', 'display' 等
+    state: Record<string, any>; // 组件状态，如 { visible: true }
+    capabilities: string[]; // 组件能力，如 ['show', 'hide', 'toggle']
+    lastSeen: Date;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+const collWidget = db.collection('client.widget');
+
 class ClientModel {
     static async generateNextClientId(domainId: string): Promise<number> {
         const lastClient = await document.getMulti(domainId, document.TYPE_CLIENT, {})
@@ -133,6 +149,8 @@ class ClientModel {
     static async del(domainId: string, clientId: number) {
         const client = await this.getByClientId(domainId, clientId);
         if (!client) return;
+        // 删除client时同时删除相关组件
+        await collWidget.deleteMany({ domainId, clientId });
         return await document.deleteOne(domainId, document.TYPE_CLIENT, client.docId);
     }
 
@@ -159,15 +177,131 @@ class ClientModel {
 
 }
 
+class ClientWidgetModel {
+    static coll = collWidget;
+
+    static async add(widget: Partial<ClientWidgetDoc> & { clientId: number; domainId: string; widgetName: string; name: string; type: string }) {
+        const now = new Date();
+        const doc: ClientWidgetDoc = {
+            _id: new ObjectId(),
+            clientId: widget.clientId,
+            domainId: widget.domainId,
+            widgetName: widget.widgetName,
+            name: widget.name,
+            type: widget.type,
+            state: widget.state || {},
+            capabilities: widget.capabilities || [],
+            lastSeen: now,
+            createdAt: now,
+            updatedAt: now,
+        };
+        await collWidget.insertOne(doc);
+        return doc;
+    }
+
+    static async get(_id: ObjectId) {
+        return collWidget.findOne({ _id });
+    }
+
+    static async getByClient(domainId: string, clientId: number) {
+        return collWidget.find({ domainId, clientId }).toArray();
+    }
+
+    static async getByWidgetName(domainId: string, clientId: number, widgetName: string) {
+        return collWidget.findOne({ domainId, clientId, widgetName });
+    }
+
+    static async upsertByWidgetName(domainId: string, clientId: number, widgetName: string, update: Partial<ClientWidgetDoc>) {
+        const doc = { ...update, updatedAt: new Date(), lastSeen: new Date() };
+        return collWidget.updateOne(
+            { domainId, clientId, widgetName },
+            { $set: doc },
+            { upsert: true },
+        );
+    }
+
+    static async update(_id: ObjectId, update: Partial<ClientWidgetDoc>) {
+        const doc = { ...update, updatedAt: new Date(), lastSeen: new Date() };
+        return collWidget.updateOne({ _id }, { $set: doc });
+    }
+
+    static async updateState(domainId: string, clientId: number, widgetName: string, state: Record<string, any>) {
+        return collWidget.updateOne(
+            { domainId, clientId, widgetName },
+            { $set: { state, updatedAt: new Date(), lastSeen: new Date() } },
+        );
+    }
+
+    static async del(_id: ObjectId) {
+        return collWidget.deleteOne({ _id });
+    }
+
+    static async delByClient(domainId: string, clientId: number) {
+        return collWidget.deleteMany({ domainId, clientId });
+    }
+
+    // 批量注册/更新组件列表
+    static async syncWidgets(domainId: string, clientId: number, widgets: Array<{ name: string; type?: string; capabilities?: string[] }>) {
+        const now = new Date();
+        const operations = widgets.map(widget => {
+            const widgetName = typeof widget === 'string' ? widget : widget.name;
+            const name = typeof widget === 'string' ? widget : (widget.name || widgetName);
+            const type = typeof widget === 'string' ? 'unknown' : (widget.type || 'unknown');
+            const capabilities = typeof widget === 'string' ? ['show', 'hide'] : (widget.capabilities || ['show', 'hide']);
+            
+            return {
+                updateOne: {
+                    filter: { domainId, clientId, widgetName },
+                    update: {
+                        $set: {
+                            name,
+                            type,
+                            capabilities,
+                            updatedAt: now,
+                            lastSeen: now,
+                        },
+                    },
+                    upsert: true,
+                },
+            };
+        });
+        
+        if (operations.length > 0) {
+            await collWidget.bulkWrite(operations);
+        }
+        
+        // 删除不再存在的组件（如果widgets列表中没有，说明已被移除）
+        const widgetNames = widgets.map(w => typeof w === 'string' ? w : w.name);
+        await collWidget.deleteMany({
+            domainId,
+            clientId,
+            widgetName: { $nin: widgetNames },
+        });
+        
+        return await this.getByClient(domainId, clientId);
+    }
+}
+
 export async function apply(ctx: Context) {
     ctx.on('domain/delete', async (domainId) => {
+        // 删除domain时删除所有相关组件
+        await collWidget.deleteMany({ domainId });
         // Clients are automatically deleted when domain is deleted
     });
 
     if (process.env.NODE_APP_INSTANCE !== '0') return;
+    // 创建数据库索引
+    await db.ensureIndexes(
+        collWidget,
+        { key: { domainId: 1, clientId: 1, widgetName: 1 }, name: 'client_widget', unique: true },
+        { key: { domainId: 1, clientId: 1 }, name: 'clientId' },
+        { key: { domainId: 1 }, name: 'domainId' },
+    );
 }
 
 export default ClientModel;
+export { ClientWidgetModel };
 
 (global.Ejunz.model as any).client = ClientModel;
+(global.Ejunz.model as any).clientWidget = ClientWidgetModel;
 

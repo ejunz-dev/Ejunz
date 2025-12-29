@@ -456,14 +456,18 @@ declare module './model/scene' {
         eid: number; // Event ID，在场景内从 1 开始
         name: string;
         description?: string;
-        // 监听源：node 下的开关设备
-        sourceNodeId: number; // 监听源节点 ID
-        sourceDeviceId: string; // 监听源设备 ID
-        sourceAction?: string; // 监听的动作，如 'on', 'off', 'toggle'
-        // 触发效果：node 下的开关设备（支持多个）
+        // 监听源：node 下的开关设备 或 client 组件
+        sourceNodeId?: number; // 监听源节点 ID（Node设备）
+        sourceDeviceId?: string; // 监听源设备 ID（Node设备）
+        sourceClientId?: number; // 监听源Client ID（Client组件）
+        sourceWidgetName?: string; // 监听源组件名称（Client组件）
+        sourceAction?: string; // 监听的动作，如 'on', 'off', 'toggle', 'show', 'hide'
+        // 触发效果：node 下的开关设备 或 client 组件（支持多个）
         targets: Array<{ // 多个触发效果
-            targetNodeId: number;
-            targetDeviceId: string;
+            targetNodeId?: number; // Node设备控制
+            targetDeviceId?: string; // Node设备控制
+            targetClientId?: number; // Client组件控制
+            targetWidgetName?: string; // Client组件控制
             targetAction: string;
             targetValue?: any;
             order?: number; // 执行顺序
@@ -916,6 +920,7 @@ declare module './service/db' {
         'schedule': Schedule;
         'node': import('./model/node').NodeDoc;
         'node.device': import('./model/node').NodeDeviceDoc;
+        'client.widget': import('./model/client').ClientWidgetDoc;
         'workflow_timer': import('./model/workflow_timer').WorkflowTimerDoc;
     }
 }
@@ -940,6 +945,7 @@ export interface Model {
     storage: typeof import('./model/storage').default,
     node: typeof import('./model/node').default,
     nodeDevice: typeof import('./model/node').NodeDeviceModel,
+    clientWidget: typeof import('./model/client').ClientWidgetModel,
     edge: typeof import('./model/edge').default,
     tool: typeof import('./model/tool').default,
     workflow: typeof import('./model/workflow').default,

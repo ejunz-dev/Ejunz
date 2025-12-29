@@ -121,9 +121,11 @@ class SceneEventModel {
         sceneId: number;
         sceneDocId: ObjectId;
         name: string;
-        sourceNodeId: number;
-        sourceDeviceId: string;
-        targets: Array<{ targetNodeId: number; targetDeviceId: string; targetAction: string; targetValue?: any; order?: number }>;
+        sourceNodeId?: number;
+        sourceDeviceId?: string;
+        sourceClientId?: number;
+        sourceWidgetName?: string;
+        targets: Array<{ targetNodeId?: number; targetDeviceId?: string; targetClientId?: number; targetWidgetName?: string; targetAction: string; targetValue?: any; order?: number }>;
         owner: number;
     }): Promise<SceneEventDoc> {
         const eid = await this.generateNextEventId(event.domainId, event.sceneDocId);
@@ -138,8 +140,6 @@ class SceneEventModel {
             eid,
             name: event.name,
             description: event.description,
-            sourceNodeId: event.sourceNodeId,
-            sourceDeviceId: event.sourceDeviceId,
             sourceAction: event.sourceAction,
             targets: event.targets,
             enabled: event.enabled !== undefined ? event.enabled : true,
@@ -147,6 +147,15 @@ class SceneEventModel {
             updatedAt: now,
             owner: event.owner,
         };
+        
+        // 根据源类型设置不同的字段
+        if (event.sourceClientId !== undefined) {
+            payload.sourceClientId = event.sourceClientId;
+            payload.sourceWidgetName = event.sourceWidgetName;
+        } else {
+            payload.sourceNodeId = event.sourceNodeId;
+            payload.sourceDeviceId = event.sourceDeviceId;
+        }
 
         await document.add(
             event.domainId,
