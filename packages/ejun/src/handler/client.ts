@@ -4,7 +4,7 @@ import { Handler, ConnectionHandler } from '@ejunz/framework';
 import { Context } from '../context';
 import { ValidationError, PermissionError, NotFoundError } from '../error';
 import { Logger } from '../logger';
-import ClientModel from '../model/client';
+import ClientModel, { ClientWidgetModel } from '../model/client';
 import ClientChatModel, { apply as applyClientChat } from '../model/client_chat';
 import EdgeModel from '../model/edge';
 import EdgeTokenModel from '../model/edge_token';
@@ -749,6 +749,9 @@ export class ClientWidgetControlHandler extends Handler<Context> {
         }
 
         try {
+            // 乐观更新内存中的状态（control/ack会确认）
+            handler.setWidgetState(widgetName, visible);
+            
             handler.send(controlMessage);
             logger.info('Sent widget control command via server: clientId=%d, widgetName=%s, visible=%s, traceId=%s', 
                 clientIdNum, widgetName, visible, traceId);
@@ -1161,6 +1164,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
     private pendingToolCalls: Map<string, { resolve: (value: any) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout }> = new Map();
     private pendingToolCallNames: Map<string, string> = new Map(); // Map requestId to toolName
     private widgetList: any[] | null = null; // 存储组件列表
+    private widgetStates: Map<string, boolean> = new Map(); // 存储组件状态（widgetName -> visible）
     
     static getConnection(clientId: number): ClientConnectionHandler | null {
         return ClientConnectionHandler.active.get(clientId) || null;
@@ -1168,6 +1172,14 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
     
     getWidgetList(): any[] | null {
         return this.widgetList;
+    }
+    
+    getWidgetState(widgetName: string): boolean | null {
+        return this.widgetStates.get(widgetName) ?? null;
+    }
+    
+    setWidgetState(widgetName: string, visible: boolean) {
+        this.widgetStates.set(widgetName, visible);
     }
 
     async prepare() {
@@ -1450,8 +1462,23 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 }
                 
                 if (widgetList && widgetList.length > 0) {
-                    // 存储组件列表
+                    // 存储组件列表到内存（保持向后兼容）
                     this.widgetList = widgetList;
+                    
+                    // 注册组件到数据库
+                    try {
+                        const registeredWidgets = await ClientWidgetModel.syncWidgets(
+                            this.tokenDomainId || this.domain._id,
+                            this.clientId,
+                            widgetList
+                        );
+                        logger.info('Widgets registered to database: clientId=%d, count=%d, widgets=%o', 
+                            this.clientId, registeredWidgets.length, registeredWidgets.map(w => w.widgetName));
+                    } catch (error) {
+                        logger.error('Failed to register widgets to database: clientId=%d, error=%o', 
+                            this.clientId, error);
+                    }
+                    
                     logger.info('Widget list received in handshake: clientId=%d, count=%d, widgets=%o', 
                         this.clientId, widgetList.length, widgetList);
                     // Emit event to notify status WebSocket connections
@@ -1470,6 +1497,43 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                     this.clientId, msg.action, msg.traceId);
                 // Forward to status WebSocket for UI updates
                 (this.ctx.emit as any)('client/widget/response', this.clientId, msg);
+                
+                // 如果是control/ack，发出widget状态更新事件，供场景系统监听
+                if (msg.action === 'control/ack' && msg.payload) {
+                    const widgetName = msg.payload.widgetName;
+                    const visible = msg.payload.visible;
+                    if (widgetName !== undefined && typeof visible === 'boolean') {
+                        const domainId = this.tokenDomainId || this.domain._id;
+                        
+                        // 更新内存中的组件状态
+                        this.setWidgetState(widgetName, visible);
+                        
+                        // 通过WebSocket同步状态到前端
+                        (this.ctx.emit as any)('client/widget/state/update', this.clientId, widgetName, visible);
+                        
+                        logger.info('Emitting client/widget/update event: clientId=%d, domainId=%s, widgetName=%s, visible=%s', 
+                            this.clientId, domainId, widgetName, visible);
+                        (this.ctx.emit as any)('client/widget/update', this.clientId, widgetName, visible, domainId);
+                    }
+                }
+                return;
+            }
+            
+            // Handle widget state update messages (when client actively changes widget state)
+            if (msg.action === 'state/update' || msg.action === 'widget/update') {
+                logger.info('Received widget state update: clientId=%d, action=%s, payload=%o', 
+                    this.clientId, msg.action, msg.payload);
+                
+                if (msg.payload) {
+                    const widgetName = msg.payload.widgetName;
+                    const visible = msg.payload.visible;
+                    if (widgetName !== undefined && typeof visible === 'boolean') {
+                        const domainId = this.tokenDomainId || this.domain._id;
+                        logger.info('Emitting client/widget/update event from state update: clientId=%d, domainId=%s, widgetName=%s, visible=%s', 
+                            this.clientId, domainId, widgetName, visible);
+                        (this.ctx.emit as any)('client/widget/update', this.clientId, widgetName, visible, domainId);
+                    }
+                }
                 return;
             }
         }
@@ -3597,14 +3661,41 @@ export class ClientStatusConnectionHandler extends ConnectionHandler<Context> {
         
         this.send({ type: 'init', client: clientWithActualStatus });
 
-        // 如果client已连接且有widget列表，立即发送
-        const clientHandler = ClientConnectionHandler.getConnection(clientIdNum);
-        if (clientHandler) {
-            const existingWidgetList = clientHandler.getWidgetList();
-            if (existingWidgetList && existingWidgetList.length > 0) {
-                logger.debug('Sending existing widget list to status WebSocket: clientId=%d, count=%d', 
-                    this.clientId, existingWidgetList.length);
-                this.send({ type: 'widget-list', widgets: existingWidgetList });
+        // 从数据库读取组件列表（优先），如果数据库没有则从内存读取（向后兼容）
+        try {
+            const dbWidgets = await ClientWidgetModel.getByClient(this.domain._id, clientIdNum);
+            if (dbWidgets && dbWidgets.length > 0) {
+                const widgetList = dbWidgets.map(w => ({
+                    name: w.widgetName,
+                    type: w.type,
+                    capabilities: w.capabilities,
+                }));
+                logger.debug('Sending widget list from database to status WebSocket: clientId=%d, count=%d', 
+                    this.clientId, widgetList.length);
+                this.send({ type: 'widget-list', widgets: widgetList });
+            } else {
+                // 如果数据库没有，尝试从内存读取（向后兼容）
+                const clientHandler = ClientConnectionHandler.getConnection(clientIdNum);
+                if (clientHandler) {
+                    const existingWidgetList = clientHandler.getWidgetList();
+                    if (existingWidgetList && existingWidgetList.length > 0) {
+                        logger.debug('Sending existing widget list from memory to status WebSocket: clientId=%d, count=%d', 
+                            this.clientId, existingWidgetList.length);
+                        this.send({ type: 'widget-list', widgets: existingWidgetList });
+                    }
+                }
+            }
+        } catch (error) {
+            logger.error('Failed to load widgets from database: clientId=%d, error=%o', this.clientId, error);
+            // 降级到内存读取
+            const clientHandler = ClientConnectionHandler.getConnection(clientIdNum);
+            if (clientHandler) {
+                const existingWidgetList = clientHandler.getWidgetList();
+                if (existingWidgetList && existingWidgetList.length > 0) {
+                    logger.debug('Sending existing widget list from memory (fallback): clientId=%d, count=%d', 
+                        this.clientId, existingWidgetList.length);
+                    this.send({ type: 'widget-list', widgets: existingWidgetList });
+                }
             }
         }
 
@@ -3626,6 +3717,35 @@ export class ClientStatusConnectionHandler extends ConnectionHandler<Context> {
             }
         });
         this.subscriptions.push({ dispose: dispose3 });
+        
+        // Subscribe to widget state updates
+        const dispose4 = (this.ctx as any).on('client/widget/state/update', async (updateClientId: number, widgetName: string, visible: boolean) => {
+            if (updateClientId === this.clientId) {
+                logger.debug('Forwarding widget state update to status WebSocket: clientId=%d, widgetName=%s, visible=%s', 
+                    this.clientId, widgetName, visible);
+                this.send({ type: 'widget-state-update', widgetName, visible });
+            }
+        });
+        this.subscriptions.push({ dispose: dispose4 });
+        
+        // 发送当前所有组件的状态
+        const clientHandler = ClientConnectionHandler.getConnection(clientIdNum);
+        if (clientHandler) {
+            const widgetStates: Record<string, boolean> = {};
+            const widgetList = clientHandler.getWidgetList();
+            if (widgetList) {
+                for (const widget of widgetList) {
+                    const widgetName = typeof widget === 'string' ? widget : widget.name;
+                    const state = clientHandler.getWidgetState(widgetName);
+                    if (state !== null) {
+                        widgetStates[widgetName] = state;
+                    }
+                }
+            }
+            if (Object.keys(widgetStates).length > 0) {
+                this.send({ type: 'widget-states', states: widgetStates });
+            }
+        }
 
         // Periodically check actual connection status
         let lastKnownStatus = actualStatus;

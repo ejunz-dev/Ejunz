@@ -60,16 +60,11 @@ function shouldTriggerEvent(
     const now = Date.now();
     
     if (cached) {
-        // 如果状态哈希相同，说明状态没有变化，不触发
         if (cached.stateHash === stateHash) {
-            logger.debug('Event %d: state hash unchanged, skipping trigger', eventId);
             return false;
         }
         
-        // 如果状态哈希不同，但在去重时间窗口内，也不触发（避免频繁触发）
         if (now - cached.timestamp < TRIGGER_DEBOUNCE_MS) {
-            logger.debug('Event %d: trigger debounced (last trigger was %dms ago)', 
-                eventId, now - cached.timestamp);
             return false;
         }
     }
@@ -399,6 +394,47 @@ export class SceneEventEditHandler extends Handler<Context> {
             }
         }
 
+        // 获取所有Client和组件列表（用于下拉选择）
+        const ClientModel = require('../model/client').default;
+        const clients = await ClientModel.getByDomain(this.domain._id);
+        const cleanedClients = clients.map(c => ({
+            clientId: c.clientId,
+            name: c.name,
+        }));
+        
+        // 获取每个client的widget列表（从数据库读取，优先；如果数据库没有则从内存读取，向后兼容）
+        const clientWidgetsMap: Record<number, string[]> = {};
+        const { ClientWidgetModel } = require('../model/client');
+        const ClientConnectionHandler = require('./client').ClientConnectionHandler;
+        for (const client of clients) {
+            try {
+                // 优先从数据库读取
+                const dbWidgets = await ClientWidgetModel.getByClient(this.domain._id, client.clientId);
+                if (dbWidgets && dbWidgets.length > 0) {
+                    clientWidgetsMap[client.clientId] = dbWidgets.map(w => w.widgetName);
+                } else {
+                    // 如果数据库没有，尝试从内存读取（向后兼容）
+                    const handler = ClientConnectionHandler.getConnection(client.clientId);
+                    if (handler) {
+                        const widgetList = handler.getWidgetList();
+                        if (widgetList && widgetList.length > 0) {
+                            clientWidgetsMap[client.clientId] = widgetList.map((w: any) => typeof w === 'string' ? w : w.name);
+                        }
+                    }
+                }
+            } catch (error) {
+                logger.error('Failed to load widgets for client %d: %o', client.clientId, error);
+                // 降级到内存读取
+                const handler = ClientConnectionHandler.getConnection(client.clientId);
+                if (handler) {
+                    const widgetList = handler.getWidgetList();
+                    if (widgetList && widgetList.length > 0) {
+                        clientWidgetsMap[client.clientId] = widgetList.map((w: any) => typeof w === 'string' ? w : w.name);
+                    }
+                }
+            }
+        }
+
         let event = null;
         if (eid) {
             const eidNum = parseInt(eid, 10);
@@ -421,6 +457,8 @@ export class SceneEventEditHandler extends Handler<Context> {
                         cleanedEvent.targets = cleanedEvent.targets.map((target: any) => ({
                             targetNodeId: target.targetNodeId,
                             targetDeviceId: target.targetDeviceId,
+                            targetClientId: target.targetClientId,
+                            targetWidgetName: target.targetWidgetName,
                             targetAction: target.targetAction,
                             targetValue: target.targetValue !== undefined ? target.targetValue : null,
                             order: target.order !== undefined ? target.order : 0,
@@ -428,6 +466,17 @@ export class SceneEventEditHandler extends Handler<Context> {
                     } else {
                         // 如果没有 targets，设置为空数组（不应该发生，但为了安全）
                         cleanedEvent.targets = [];
+                    }
+                    
+                    // 确保 sourceClientId 和 sourceWidgetName 被正确传递
+                    // 这些字段已经在 cleanedEvent 中（通过 ...event 展开），但确保它们存在
+                    if (cleanedEvent.sourceClientId !== undefined) {
+                        cleanedEvent.sourceClientId = cleanedEvent.sourceClientId;
+                        cleanedEvent.sourceWidgetName = cleanedEvent.sourceWidgetName;
+                    }
+                    if (cleanedEvent.sourceNodeId !== undefined) {
+                        cleanedEvent.sourceNodeId = cleanedEvent.sourceNodeId;
+                        cleanedEvent.sourceDeviceId = cleanedEvent.sourceDeviceId;
                     }
                     
                     event = cleanedEvent;
@@ -464,6 +513,10 @@ export class SceneEventEditHandler extends Handler<Context> {
             nodesJson: JSON.stringify(cleanedNodes),
             nodeDevicesMap: cleanedNodeDevicesMap,
             nodeDevicesMapJson: JSON.stringify(cleanedNodeDevicesMap),
+            clients: cleanedClients,
+            clientsJson: JSON.stringify(cleanedClients),
+            clientWidgetsMap: clientWidgetsMap,
+            clientWidgetsMapJson: JSON.stringify(clientWidgetsMap),
             sceneId: sidNum,
             domainId: this.domain._id,
         };
@@ -476,7 +529,9 @@ export class SceneEventEditHandler extends Handler<Context> {
             name, 
             description, 
             sourceNodeId, 
-            sourceDeviceId, 
+            sourceDeviceId,
+            sourceClientId,
+            sourceWidgetName,
             sourceAction,
             targetNodeId, 
             targetDeviceId, 
@@ -505,23 +560,50 @@ export class SceneEventEditHandler extends Handler<Context> {
         if (!name || typeof name !== 'string') {
             throw new ValidationError('name');
         }
-        const sourceNodeIdNum = typeof sourceNodeId === 'string' ? parseInt(sourceNodeId, 10) : sourceNodeId;
-        
-        if (!sourceNodeIdNum || isNaN(sourceNodeIdNum)) {
-            throw new ValidationError('sourceNodeId');
-        }
-        if (!sourceDeviceId || typeof sourceDeviceId !== 'string') {
-            throw new ValidationError('sourceDeviceId');
-        }
 
-        // 验证节点和设备是否存在
-        const sourceNode = await NodeModel.getByNodeId(this.domain._id, sourceNodeIdNum);
-        if (!sourceNode) {
-            throw new ValidationError('sourceNodeId');
-        }
-        const sourceDevices = await NodeDeviceModel.getByNode(sourceNode._id);
-        if (!sourceDevices.find(d => d.deviceId === sourceDeviceId)) {
-            throw new ValidationError('sourceDeviceId');
+        // 验证监听源：支持Node设备或Client组件
+        let sourceNodeIdNum: number | undefined;
+        let sourceDeviceIdStr: string | undefined;
+        let sourceClientIdNum: number | undefined;
+        let sourceWidgetNameStr: string | undefined;
+
+        if (sourceClientId !== undefined && sourceClientId !== null && sourceClientId !== '') {
+            // Client组件监听源
+            sourceClientIdNum = typeof sourceClientId === 'string' ? parseInt(sourceClientId, 10) : sourceClientId;
+            if (!sourceClientIdNum || isNaN(sourceClientIdNum)) {
+                throw new ValidationError('sourceClientId');
+            }
+            if (!sourceWidgetName || typeof sourceWidgetName !== 'string') {
+                throw new ValidationError('sourceWidgetName');
+            }
+            sourceWidgetNameStr = sourceWidgetName;
+
+            // 验证Client是否存在
+            const ClientModel = require('../model/client').default;
+            const sourceClient = await ClientModel.getByClientId(this.domain._id, sourceClientIdNum);
+            if (!sourceClient) {
+                throw new ValidationError('sourceClientId');
+            }
+        } else {
+            // Node设备监听源
+            sourceNodeIdNum = typeof sourceNodeId === 'string' ? parseInt(sourceNodeId, 10) : sourceNodeId;
+            if (!sourceNodeIdNum || isNaN(sourceNodeIdNum)) {
+                throw new ValidationError('sourceNodeId');
+            }
+            if (!sourceDeviceId || typeof sourceDeviceId !== 'string') {
+                throw new ValidationError('sourceDeviceId');
+            }
+            sourceDeviceIdStr = sourceDeviceId;
+
+            // 验证节点和设备是否存在
+            const sourceNode = await NodeModel.getByNodeId(this.domain._id, sourceNodeIdNum);
+            if (!sourceNode) {
+                throw new ValidationError('sourceNodeId');
+            }
+            const sourceDevices = await NodeDeviceModel.getByNode(sourceNode._id);
+            if (!sourceDevices.find(d => d.deviceId === sourceDeviceId)) {
+                throw new ValidationError('sourceDeviceId');
+            }
         }
 
         // 验证 targets 数组
@@ -529,75 +611,150 @@ export class SceneEventEditHandler extends Handler<Context> {
             throw new ValidationError('targets');
         }
 
-        const processedTargets: Array<{ targetNodeId: number; targetDeviceId: string; targetAction: string; targetValue?: any; order?: number }> = [];
+        const processedTargets: Array<{ targetNodeId?: number; targetDeviceId?: string; targetClientId?: number; targetWidgetName?: string; targetAction: string; targetValue?: any; order?: number }> = [];
         for (const target of targets) {
-            const targetNodeIdNum = typeof target.targetNodeId === 'string' ? parseInt(target.targetNodeId, 10) : target.targetNodeId;
-            if (!targetNodeIdNum || isNaN(targetNodeIdNum)) {
-                throw new ValidationError('target.targetNodeId');
-            }
-            if (!target.targetDeviceId || typeof target.targetDeviceId !== 'string') {
-                throw new ValidationError('target.targetDeviceId');
-            }
             if (!target.targetAction || typeof target.targetAction !== 'string') {
                 throw new ValidationError('target.targetAction');
             }
 
-            // 验证目标节点和设备是否存在
-            const targetNode = await NodeModel.getByNodeId(this.domain._id, targetNodeIdNum);
-            if (!targetNode) {
-                throw new ValidationError('target.targetNodeId');
-            }
-            const targetDevices = await NodeDeviceModel.getByNode(targetNode._id);
-            if (!targetDevices.find(d => d.deviceId === target.targetDeviceId)) {
-                throw new ValidationError('target.targetDeviceId');
-            }
+            if (target.targetClientId !== undefined && target.targetClientId !== null && target.targetClientId !== '') {
+                // Client组件触发效果
+                const targetClientIdNum = typeof target.targetClientId === 'string' ? parseInt(target.targetClientId, 10) : target.targetClientId;
+                if (!targetClientIdNum || isNaN(targetClientIdNum)) {
+                    throw new ValidationError('target.targetClientId');
+                }
+                if (!target.targetWidgetName || typeof target.targetWidgetName !== 'string') {
+                    throw new ValidationError('target.targetWidgetName');
+                }
 
-            processedTargets.push({
-                targetNodeId: targetNodeIdNum,
-                targetDeviceId: target.targetDeviceId,
-                targetAction: target.targetAction,
-                targetValue: target.targetValue,
-                order: target.order !== undefined ? target.order : processedTargets.length,
-            });
+                // 验证Client是否存在
+                const ClientModel = require('../model/client').default;
+                const targetClient = await ClientModel.getByClientId(this.domain._id, targetClientIdNum);
+                if (!targetClient) {
+                    throw new ValidationError('target.targetClientId');
+                }
+
+                processedTargets.push({
+                    targetClientId: targetClientIdNum,
+                    targetWidgetName: target.targetWidgetName,
+                    targetAction: target.targetAction,
+                    order: target.order !== undefined ? target.order : processedTargets.length,
+                });
+            } else {
+                // Node设备触发效果
+                const targetNodeIdNum = typeof target.targetNodeId === 'string' ? parseInt(target.targetNodeId, 10) : target.targetNodeId;
+                if (!targetNodeIdNum || isNaN(targetNodeIdNum)) {
+                    throw new ValidationError('target.targetNodeId');
+                }
+                if (!target.targetDeviceId || typeof target.targetDeviceId !== 'string') {
+                    throw new ValidationError('target.targetDeviceId');
+                }
+
+                // 验证目标节点和设备是否存在
+                const targetNode = await NodeModel.getByNodeId(this.domain._id, targetNodeIdNum);
+                if (!targetNode) {
+                    throw new ValidationError('target.targetNodeId');
+                }
+                const targetDevices = await NodeDeviceModel.getByNode(targetNode._id);
+                if (!targetDevices.find(d => d.deviceId === target.targetDeviceId)) {
+                    throw new ValidationError('target.targetDeviceId');
+                }
+
+                processedTargets.push({
+                    targetNodeId: targetNodeIdNum,
+                    targetDeviceId: target.targetDeviceId,
+                    targetAction: target.targetAction,
+                    targetValue: target.targetValue,
+                    order: target.order !== undefined ? target.order : processedTargets.length,
+                });
+            }
         }
 
-        // 检查是否已存在相同的事件（防止重复创建）
         const existingEvents = await SceneEventModel.getByScene(this.domain._id, scene.docId);
+        
         const duplicate = existingEvents.find(e => {
-            if (e.sourceNodeId !== sourceNodeIdNum || e.sourceDeviceId !== sourceDeviceId || e.sourceAction !== sourceAction) {
+            const eIsClient = (e.sourceClientId !== undefined && e.sourceClientId !== null);
+            const newIsClient = (sourceClientIdNum !== undefined);
+            
+            if (eIsClient !== newIsClient) {
                 return false;
             }
-            // 比较 targets 数组
+            
+            if (newIsClient) {
+                const eClientId = typeof e.sourceClientId === 'number' ? e.sourceClientId : (e.sourceClientId ? parseInt(String(e.sourceClientId), 10) : undefined);
+                if (eClientId !== sourceClientIdNum || e.sourceWidgetName !== sourceWidgetNameStr) {
+                    return false;
+                }
+                const eAction = e.sourceAction || '';
+                const newAction = sourceAction || '';
+                if (eAction !== newAction) {
+                    return false;
+                }
+            } else {
+                const eNodeId = typeof e.sourceNodeId === 'number' ? e.sourceNodeId : (e.sourceNodeId ? parseInt(String(e.sourceNodeId), 10) : undefined);
+                if (eNodeId !== sourceNodeIdNum || e.sourceDeviceId !== sourceDeviceIdStr) {
+                    return false;
+                }
+                const eAction = e.sourceAction || '';
+                const newAction = sourceAction || '';
+                if (eAction !== newAction) {
+                    return false;
+                }
+            }
+            
             if (!e.targets || !Array.isArray(e.targets) || e.targets.length === 0) {
                 return false;
             }
-            if (processedTargets.length !== e.targets.length) return false;
-            return e.targets.every((et: any, idx: number) => 
-                et.targetNodeId === processedTargets![idx].targetNodeId &&
-                et.targetDeviceId === processedTargets![idx].targetDeviceId &&
-                et.targetAction === processedTargets![idx].targetAction
-            );
+            if (processedTargets.length !== e.targets.length) {
+                return false;
+            }
+            
+            return e.targets.every((et: any, idx: number) => {
+                const pt = processedTargets[idx];
+                if (pt.targetClientId !== undefined) {
+                    const etClientId = typeof et.targetClientId === 'number' ? et.targetClientId : (et.targetClientId ? parseInt(String(et.targetClientId), 10) : undefined);
+                    return etClientId === pt.targetClientId &&
+                        et.targetWidgetName === pt.targetWidgetName &&
+                        et.targetAction === pt.targetAction;
+                } else {
+                    const etNodeId = typeof et.targetNodeId === 'number' ? et.targetNodeId : (et.targetNodeId ? parseInt(String(et.targetNodeId), 10) : undefined);
+                    return etNodeId === pt.targetNodeId &&
+                        et.targetDeviceId === pt.targetDeviceId &&
+                        et.targetAction === pt.targetAction;
+                }
+            });
         });
         
         if (duplicate) {
-            logger.warn(`Duplicate event creation attempted for scene ${sidNum}`);
-            this.response.redirect = this.url('scene_detail', { domainId: this.domain._id, sid: sidNum });
+            this.response.redirect = this.url('scene_event_edit', { 
+                domainId: this.domain._id, 
+                sid: sidNum, 
+                eid: duplicate.eid 
+            });
             return;
         }
 
-        const event = await SceneEventModel.add({
+        const eventData: any = {
             domainId: this.domain._id,
             sceneId: sidNum,
             sceneDocId: scene.docId,
             name,
             description,
-            sourceNodeId: sourceNodeIdNum,
-            sourceDeviceId,
             sourceAction,
             targets: processedTargets,
             enabled: enabled !== undefined ? (enabled === true || enabled === 'true' || enabled === '1') : true,
             owner: this.user._id,
-        });
+        };
+
+        if (sourceClientIdNum !== undefined) {
+            eventData.sourceClientId = sourceClientIdNum;
+            eventData.sourceWidgetName = sourceWidgetNameStr;
+        } else {
+            eventData.sourceNodeId = sourceNodeIdNum;
+            eventData.sourceDeviceId = sourceDeviceIdStr;
+        }
+
+        const event = await SceneEventModel.add(eventData);
 
         this.response.redirect = this.url('scene_detail', { domainId: this.domain._id, sid: sidNum });
     }
@@ -872,7 +1029,9 @@ export class SceneEventHandler extends Handler<Context> {
             name, 
             description, 
             sourceNodeId, 
-            sourceDeviceId, 
+            sourceDeviceId,
+            sourceClientId,
+            sourceWidgetName,
             sourceAction,
             targets,
             enabled,
@@ -905,26 +1064,61 @@ export class SceneEventHandler extends Handler<Context> {
         const update: any = {};
         if (name !== undefined) update.name = name;
         if (description !== undefined) update.description = description;
-        if (sourceNodeId !== undefined) {
-            const sourceNodeIdNum = typeof sourceNodeId === 'string' ? parseInt(sourceNodeId, 10) : sourceNodeId;
-            update.sourceNodeId = sourceNodeIdNum;
-        }
-        if (sourceDeviceId !== undefined) update.sourceDeviceId = sourceDeviceId;
         if (sourceAction !== undefined) update.sourceAction = sourceAction;
         if (enabled !== undefined) update.enabled = enabled === true || enabled === 'true';
 
-        // 如果更新了节点或设备，验证它们是否存在
-        if (update.sourceNodeId || update.sourceDeviceId) {
-            const sourceNodeId = update.sourceNodeId || event.sourceNodeId;
-            const sourceDeviceId = update.sourceDeviceId || event.sourceDeviceId;
-            const sourceNode = await NodeModel.getByNodeId(this.domain._id, sourceNodeId);
+        // 处理监听源：支持Node设备或Client组件
+        if (sourceClientId !== undefined && sourceClientId !== null && sourceClientId !== '') {
+            // Client组件监听源
+            const sourceClientIdNum = typeof sourceClientId === 'string' ? parseInt(sourceClientId, 10) : sourceClientId;
+            if (!sourceClientIdNum || isNaN(sourceClientIdNum)) {
+                throw new ValidationError('sourceClientId');
+            }
+            if (!sourceWidgetName || typeof sourceWidgetName !== 'string') {
+                throw new ValidationError('sourceWidgetName');
+            }
+
+            // 验证Client是否存在
+            const ClientModel = require('../model/client').default;
+            const sourceClient = await ClientModel.getByClientId(this.domain._id, sourceClientIdNum);
+            if (!sourceClient) {
+                throw new ValidationError('sourceClientId');
+            }
+
+            update.sourceClientId = sourceClientIdNum;
+            update.sourceWidgetName = sourceWidgetName;
+            // 清除Node设备相关字段
+            update.sourceNodeId = undefined;
+            update.sourceDeviceId = undefined;
+        } else if (sourceNodeId !== undefined || sourceDeviceId !== undefined) {
+            // Node设备监听源
+            const sourceNodeIdNum = sourceNodeId !== undefined 
+                ? (typeof sourceNodeId === 'string' ? parseInt(sourceNodeId, 10) : sourceNodeId)
+                : event.sourceNodeId;
+            const sourceDeviceIdStr = sourceDeviceId !== undefined ? sourceDeviceId : event.sourceDeviceId;
+
+            if (!sourceNodeIdNum || isNaN(sourceNodeIdNum)) {
+                throw new ValidationError('sourceNodeId');
+            }
+            if (!sourceDeviceIdStr || typeof sourceDeviceIdStr !== 'string') {
+                throw new ValidationError('sourceDeviceId');
+            }
+
+            // 验证节点和设备是否存在
+            const sourceNode = await NodeModel.getByNodeId(this.domain._id, sourceNodeIdNum);
             if (!sourceNode) {
                 throw new ValidationError('sourceNodeId');
             }
             const sourceDevices = await NodeDeviceModel.getByNode(sourceNode._id);
-            if (!sourceDevices.find(d => d.deviceId === sourceDeviceId)) {
+            if (!sourceDevices.find(d => d.deviceId === sourceDeviceIdStr)) {
                 throw new ValidationError('sourceDeviceId');
             }
+
+            update.sourceNodeId = sourceNodeIdNum;
+            update.sourceDeviceId = sourceDeviceIdStr;
+            // 清除Client组件相关字段
+            update.sourceClientId = undefined;
+            update.sourceWidgetName = undefined;
         }
 
         // 处理 targets 数组
@@ -932,35 +1126,62 @@ export class SceneEventHandler extends Handler<Context> {
             if (!Array.isArray(targets) || targets.length === 0) {
                 throw new ValidationError('targets');
             }
-            const processedTargets: Array<{ targetNodeId: number; targetDeviceId: string; targetAction: string; targetValue?: any; order?: number }> = [];
+            const processedTargets: Array<{ targetNodeId?: number; targetDeviceId?: string; targetClientId?: number; targetWidgetName?: string; targetAction: string; targetValue?: any; order?: number }> = [];
             for (const target of targets) {
-                const targetNodeIdNum = typeof target.targetNodeId === 'string' ? parseInt(target.targetNodeId, 10) : target.targetNodeId;
-                if (!targetNodeIdNum || isNaN(targetNodeIdNum)) {
-                    throw new ValidationError('target.targetNodeId');
-                }
-                if (!target.targetDeviceId || typeof target.targetDeviceId !== 'string') {
-                    throw new ValidationError('target.targetDeviceId');
-                }
                 if (!target.targetAction || typeof target.targetAction !== 'string') {
                     throw new ValidationError('target.targetAction');
                 }
 
-                const targetNode = await NodeModel.getByNodeId(this.domain._id, targetNodeIdNum);
-                if (!targetNode) {
-                    throw new ValidationError('target.targetNodeId');
-                }
-                const targetDevices = await NodeDeviceModel.getByNode(targetNode._id);
-                if (!targetDevices.find(d => d.deviceId === target.targetDeviceId)) {
-                    throw new ValidationError('target.targetDeviceId');
-                }
+                if (target.targetClientId !== undefined && target.targetClientId !== null && target.targetClientId !== '') {
+                    // Client组件触发效果
+                    const targetClientIdNum = typeof target.targetClientId === 'string' ? parseInt(target.targetClientId, 10) : target.targetClientId;
+                    if (!targetClientIdNum || isNaN(targetClientIdNum)) {
+                        throw new ValidationError('target.targetClientId');
+                    }
+                    if (!target.targetWidgetName || typeof target.targetWidgetName !== 'string') {
+                        throw new ValidationError('target.targetWidgetName');
+                    }
 
-                processedTargets.push({
-                    targetNodeId: targetNodeIdNum,
-                    targetDeviceId: target.targetDeviceId,
-                    targetAction: target.targetAction,
-                    targetValue: target.targetValue,
-                    order: target.order !== undefined ? target.order : processedTargets.length,
-                });
+                    // 验证Client是否存在
+                    const ClientModel = require('../model/client').default;
+                    const targetClient = await ClientModel.getByClientId(this.domain._id, targetClientIdNum);
+                    if (!targetClient) {
+                        throw new ValidationError('target.targetClientId');
+                    }
+
+                    processedTargets.push({
+                        targetClientId: targetClientIdNum,
+                        targetWidgetName: target.targetWidgetName,
+                        targetAction: target.targetAction,
+                        order: target.order !== undefined ? target.order : processedTargets.length,
+                    });
+                } else {
+                    // Node设备触发效果
+                    const targetNodeIdNum = typeof target.targetNodeId === 'string' ? parseInt(target.targetNodeId, 10) : target.targetNodeId;
+                    if (!targetNodeIdNum || isNaN(targetNodeIdNum)) {
+                        throw new ValidationError('target.targetNodeId');
+                    }
+                    if (!target.targetDeviceId || typeof target.targetDeviceId !== 'string') {
+                        throw new ValidationError('target.targetDeviceId');
+                    }
+
+                    const targetNode = await NodeModel.getByNodeId(this.domain._id, targetNodeIdNum);
+                    if (!targetNode) {
+                        throw new ValidationError('target.targetNodeId');
+                    }
+                    const targetDevices = await NodeDeviceModel.getByNode(targetNode._id);
+                    if (!targetDevices.find(d => d.deviceId === target.targetDeviceId)) {
+                        throw new ValidationError('target.targetDeviceId');
+                    }
+
+                    processedTargets.push({
+                        targetNodeId: targetNodeIdNum,
+                        targetDeviceId: target.targetDeviceId,
+                        targetAction: target.targetAction,
+                        targetValue: target.targetValue,
+                        order: target.order !== undefined ? target.order : processedTargets.length,
+                    });
+                }
             }
             update.targets = processedTargets;
         }
@@ -1222,7 +1443,7 @@ async function executeTargetAction(
     sceneId: number,
     eventId: number,
     eventName: string,
-    target: { targetNodeId: number; targetDeviceId: string; targetAction: string; targetValue?: any },
+    target: { targetNodeId?: number; targetDeviceId?: string; targetClientId?: number; targetWidgetName?: string; targetAction: string; targetValue?: any },
     domainId: string,
     ctx: Context
 ) {
@@ -1236,107 +1457,205 @@ async function executeTargetAction(
             return;
         }
 
-        const targetNode = await NodeModel.getByNodeId(domainId, target.targetNodeId);
-        if (!targetNode) {
-            logger.warn('Target node not found: sceneId=%d, eventId=%d, targetNodeId=%d, domainId=%s', 
-                sceneId, eventId, target.targetNodeId, ctx.domain._id);
-            addSceneLog(sceneId, 'error', 
-                `执行触发效果失败: 目标节点 ${target.targetNodeId} 不存在`, 
-                eventId, eventName);
-            return;
-        }
-
-        if (!targetNode._id) {
-            logger.error('Target node missing _id: sceneId=%d, eventId=%d, targetNodeId=%d, node=%O', 
-                sceneId, eventId, target.targetNodeId, targetNode);
-            addSceneLog(sceneId, 'error', 
-                `执行触发效果失败: 目标节点数据无效`, 
-                eventId, eventName);
-            return;
-        }
-
-        const targetDevice = await NodeDeviceModel.getByDeviceId(targetNode._id, target.targetDeviceId);
-        if (!targetDevice) {
-            logger.warn('Target device not found: sceneId=%d, eventId=%d, targetDeviceId=%s, nodeId=%s', 
-                sceneId, eventId, target.targetDeviceId, targetNode._id.toString());
-            addSceneLog(sceneId, 'error', 
-                `执行触发效果失败: 目标设备 ${target.targetDeviceId} 不存在`, 
-                eventId, eventName);
-            return;
-        }
-
-        if (!targetDevice._id) {
-            logger.error('Target device missing _id: sceneId=%d, eventId=%d, targetDeviceId=%s, device=%O', 
-                sceneId, eventId, target.targetDeviceId, targetDevice);
-            addSceneLog(sceneId, 'error', 
-                `执行触发效果失败: 目标设备数据无效`, 
-                eventId, eventName);
-            return;
-        }
-
-        // 构建控制命令
-        let command: Record<string, any> = {};
-        
-        if (target.targetAction === 'on' || target.targetAction === '开') {
-            command.on = true;
-        } else if (target.targetAction === 'off' || target.targetAction === '关') {
-            command.on = false;
-        } else if (target.targetAction === 'toggle' || target.targetAction === '切换') {
-            // 切换：取当前状态的相反值
-            const currentState = targetDevice.state?.on ?? false;
-            command.on = !currentState;
-        } else {
-            // 其他动作或自定义值
-            if (target.targetValue !== undefined && target.targetValue !== null && target.targetValue !== '') {
-                try {
-                    // 尝试解析 JSON
-                    const parsed = typeof target.targetValue === 'string' 
-                        ? JSON.parse(target.targetValue) 
-                        : target.targetValue;
-                    command = { ...command, ...parsed };
-                } catch {
-                    // 如果不是 JSON，直接使用 targetValue
-                    command = { ...command, [target.targetAction]: target.targetValue };
-                }
-            } else {
-                command[target.targetAction] = true;
-            }
-        }
-
-        // 保存变量到局部作用域，确保在回调中可用
-        const targetNodeId = targetNode._id;
-        const targetDeviceId = targetDevice._id;
-        const deviceState = targetDevice.state || {};
-        
-        // 通过 MQTT 发送控制命令
-        await ctx.inject(['mqtt'], async ({ mqtt }) => {
-            if (mqtt) {
-                logger.info('Executing target action: sceneId=%d, eventId=%d, targetNode=%s, targetDevice=%s, command=%O',
-                    sceneId, eventId, targetNodeId.toString(), target.targetDeviceId, command);
-                
-                try {
-                    await (mqtt as any).sendDeviceControlViaMqtt(targetNodeId, target.targetDeviceId, command);
-                    
-                    // 更新设备状态
-                    await NodeDeviceModel.updateState(targetDeviceId, { ...deviceState, ...command });
-                    
-                    addSceneLog(sceneId, 'success', 
-                        `触发效果执行成功: 目标设备 ${target.targetDeviceId} 执行动作 ${target.targetAction}`, 
-                        eventId, eventName, { command, targetNodeId: target.targetNodeId, targetDeviceId: target.targetDeviceId });
-                } catch (mqttError: any) {
-                    logger.error('MQTT execution error: sceneId=%d, eventId=%d, error=%s', 
-                        sceneId, eventId, mqttError.message);
-                    addSceneLog(sceneId, 'error', 
-                        `执行触发效果失败: ${mqttError.message}`, 
-                        eventId, eventName);
-                }
-            } else {
-                logger.warn('MQTT service not available for scene event execution');
+        // 判断是Client组件控制还是Node设备控制
+        if (target.targetClientId !== undefined && target.targetClientId !== null) {
+            // Client组件控制
+            if (!target.targetWidgetName) {
+                logger.warn('Target widget name missing: sceneId=%d, eventId=%d, targetClientId=%d', 
+                    sceneId, eventId, target.targetClientId);
                 addSceneLog(sceneId, 'error', 
-                    `执行触发效果失败: MQTT 服务不可用`, 
+                    `执行触发效果失败: 组件名称未指定`, 
+                    eventId, eventName);
+                return;
+            }
+
+            const ClientModel = require('../model/client').default;
+            const targetClient = await ClientModel.getByClientId(domainId, target.targetClientId);
+            if (!targetClient) {
+                logger.warn('Target client not found: sceneId=%d, eventId=%d, targetClientId=%d', 
+                    sceneId, eventId, target.targetClientId);
+                addSceneLog(sceneId, 'error', 
+                    `执行触发效果失败: 目标Client ${target.targetClientId} 不存在`, 
+                    eventId, eventName);
+                return;
+            }
+
+            // 确定visible值
+            let visible: boolean;
+            if (target.targetAction === 'on' || target.targetAction === 'show' || target.targetAction === '显示') {
+                visible = true;
+            } else if (target.targetAction === 'off' || target.targetAction === 'hide' || target.targetAction === '隐藏') {
+                visible = false;
+            } else if (target.targetAction === 'toggle' || target.targetAction === '切换') {
+                // 切换：从ClientConnectionHandler的内存状态获取当前状态，然后取反
+                const ClientConnectionHandler = require('./client').ClientConnectionHandler;
+                const handler = ClientConnectionHandler.getConnection(target.targetClientId);
+                const currentVisible = handler?.getWidgetState(target.targetWidgetName) ?? false;
+                visible = !currentVisible;
+                logger.info('Toggle widget state: sceneId=%d, eventId=%d, widgetName=%s, currentVisible=%s, newVisible=%s',
+                    sceneId, eventId, target.targetWidgetName, currentVisible, visible);
+            } else {
+                logger.warn('Invalid target action for client widget: sceneId=%d, eventId=%d, action=%s', 
+                    sceneId, eventId, target.targetAction);
+                addSceneLog(sceneId, 'error', 
+                    `执行触发效果失败: 无效的动作 ${target.targetAction}`, 
+                    eventId, eventName);
+                return;
+            }
+
+            // 通过ClientConnectionHandler发送控制命令
+            const ClientConnectionHandler = require('./client').ClientConnectionHandler;
+            const handler = ClientConnectionHandler.getConnection(target.targetClientId);
+            if (!handler) {
+                logger.warn('Target client not connected: sceneId=%d, eventId=%d, targetClientId=%d', 
+                    sceneId, eventId, target.targetClientId);
+                addSceneLog(sceneId, 'error', 
+                    `执行触发效果失败: 目标Client ${target.targetClientId} 未连接`, 
+                    eventId, eventName);
+                return;
+            }
+
+            const traceId = `scene-event-${sceneId}-${eventId}-${Date.now()}`;
+            const controlMessage = {
+                protocol: 'ejunz',
+                action: 'control',
+                payload: {
+                    widgetName: target.targetWidgetName,
+                    visible: visible
+                },
+                traceId: traceId,
+                direction: 'inbound'
+            };
+
+            try {
+                // 更新内存中的状态（乐观更新，control/ack会确认）
+                handler.setWidgetState(target.targetWidgetName, visible);
+                
+                handler.send(controlMessage);
+                logger.info('Executing client widget control: sceneId=%d, eventId=%d, targetClientId=%d, widgetName=%s, visible=%s',
+                    sceneId, eventId, target.targetClientId, target.targetWidgetName, visible);
+                addSceneLog(sceneId, 'success', 
+                    `触发效果执行成功: Client ${target.targetClientId} 组件 ${target.targetWidgetName} ${visible ? '显示' : '隐藏'}`, 
+                    eventId, eventName, { targetClientId: target.targetClientId, targetWidgetName: target.targetWidgetName, visible });
+            } catch (error: any) {
+                logger.error('Client widget control error: sceneId=%d, eventId=%d, error=%s', 
+                    sceneId, eventId, error.message);
+                addSceneLog(sceneId, 'error', 
+                    `执行触发效果失败: ${error.message}`, 
                     eventId, eventName);
             }
-        });
+        } else {
+            // Node设备控制（原有逻辑）
+            if (!target.targetNodeId || !target.targetDeviceId) {
+                logger.warn('Target node/device missing: sceneId=%d, eventId=%d', sceneId, eventId);
+                addSceneLog(sceneId, 'error', 
+                    `执行触发效果失败: 目标节点或设备未指定`, 
+                    eventId, eventName);
+                return;
+            }
+
+            const targetNode = await NodeModel.getByNodeId(domainId, target.targetNodeId);
+            if (!targetNode) {
+                logger.warn('Target node not found: sceneId=%d, eventId=%d, targetNodeId=%d, domainId=%s', 
+                    sceneId, eventId, target.targetNodeId, ctx.domain._id);
+                addSceneLog(sceneId, 'error', 
+                    `执行触发效果失败: 目标节点 ${target.targetNodeId} 不存在`, 
+                    eventId, eventName);
+                return;
+            }
+
+            if (!targetNode._id) {
+                logger.error('Target node missing _id: sceneId=%d, eventId=%d, targetNodeId=%d, node=%O', 
+                    sceneId, eventId, target.targetNodeId, targetNode);
+                addSceneLog(sceneId, 'error', 
+                    `执行触发效果失败: 目标节点数据无效`, 
+                    eventId, eventName);
+                return;
+            }
+
+            const targetDevice = await NodeDeviceModel.getByDeviceId(targetNode._id, target.targetDeviceId);
+            if (!targetDevice) {
+                logger.warn('Target device not found: sceneId=%d, eventId=%d, targetDeviceId=%s, nodeId=%s', 
+                    sceneId, eventId, target.targetDeviceId, targetNode._id.toString());
+                addSceneLog(sceneId, 'error', 
+                    `执行触发效果失败: 目标设备 ${target.targetDeviceId} 不存在`, 
+                    eventId, eventName);
+                return;
+            }
+
+            if (!targetDevice._id) {
+                logger.error('Target device missing _id: sceneId=%d, eventId=%d, targetDeviceId=%s, device=%O', 
+                    sceneId, eventId, target.targetDeviceId, targetDevice);
+                addSceneLog(sceneId, 'error', 
+                    `执行触发效果失败: 目标设备数据无效`, 
+                    eventId, eventName);
+                return;
+            }
+
+            // 构建控制命令
+            let command: Record<string, any> = {};
+            
+            if (target.targetAction === 'on' || target.targetAction === '开') {
+                command.on = true;
+            } else if (target.targetAction === 'off' || target.targetAction === '关') {
+                command.on = false;
+            } else if (target.targetAction === 'toggle' || target.targetAction === '切换') {
+                // 切换：取当前状态的相反值
+                const currentState = targetDevice.state?.on ?? false;
+                command.on = !currentState;
+            } else {
+                // 其他动作或自定义值
+                if (target.targetValue !== undefined && target.targetValue !== null && target.targetValue !== '') {
+                    try {
+                        // 尝试解析 JSON
+                        const parsed = typeof target.targetValue === 'string' 
+                            ? JSON.parse(target.targetValue) 
+                            : target.targetValue;
+                        command = { ...command, ...parsed };
+                    } catch {
+                        // 如果不是 JSON，直接使用 targetValue
+                        command = { ...command, [target.targetAction]: target.targetValue };
+                    }
+                } else {
+                    command[target.targetAction] = true;
+                }
+            }
+
+            // 保存变量到局部作用域，确保在回调中可用
+            const targetNodeId = targetNode._id;
+            const targetDeviceId = targetDevice._id;
+            const deviceState = targetDevice.state || {};
+            
+            // 通过 MQTT 发送控制命令
+            await ctx.inject(['mqtt'], async ({ mqtt }) => {
+                if (mqtt) {
+                    logger.info('Executing target action: sceneId=%d, eventId=%d, targetNode=%s, targetDevice=%s, command=%O',
+                        sceneId, eventId, targetNodeId.toString(), target.targetDeviceId, command);
+                    
+                    try {
+                        await (mqtt as any).sendDeviceControlViaMqtt(targetNodeId, target.targetDeviceId, command);
+                        
+                        // 更新设备状态
+                        await NodeDeviceModel.updateState(targetDeviceId, { ...deviceState, ...command });
+                        
+                        addSceneLog(sceneId, 'success', 
+                            `触发效果执行成功: 目标设备 ${target.targetDeviceId} 执行动作 ${target.targetAction}`, 
+                            eventId, eventName, { command, targetNodeId: target.targetNodeId, targetDeviceId: target.targetDeviceId });
+                    } catch (mqttError: any) {
+                        logger.error('MQTT execution error: sceneId=%d, eventId=%d, error=%s', 
+                            sceneId, eventId, mqttError.message);
+                        addSceneLog(sceneId, 'error', 
+                            `执行触发效果失败: ${mqttError.message}`, 
+                            eventId, eventName);
+                    }
+                } else {
+                    logger.warn('MQTT service not available for scene event execution');
+                    addSceneLog(sceneId, 'error', 
+                        `执行触发效果失败: MQTT 服务不可用`, 
+                        eventId, eventName);
+                }
+            });
+        }
     } catch (error: any) {
         logger.error('Error executing target action: sceneId=%d, eventId=%d, error=%s', 
             sceneId, eventId, error.message);
@@ -1378,77 +1697,158 @@ async function executeSceneEvent(event: any, domainId: string, ctx: Context) {
 
 
 export async function apply(ctx: Context) {
+    // 监听Client组件状态更新事件，执行场景事件
+    (ctx.on as any)('client/widget/update', async (clientId: number, widgetName: string, visible: boolean, domainId?: string) => {
+        try {
+            logger.info('Scene handler received client/widget/update: clientId=%d, widgetName=%s, visible=%s, domainId=%s', 
+                clientId, widgetName, visible, domainId || 'not provided');
+            
+            const ClientModel = require('../model/client').default;
+            let client = null;
+            let finalDomainId = domainId || 'system';
+            
+            // 如果提供了domainId，直接使用；否则尝试查找
+            if (domainId) {
+                client = await ClientModel.getByClientId(domainId, clientId);
+            } else {
+                // 尝试从system域查找
+                client = await ClientModel.getByClientId('system', clientId);
+                if (client) {
+                    finalDomainId = client.domainId || 'system';
+                } else {
+                    logger.warn('Client not found: clientId=%d, tried domain=system', clientId);
+                    return;
+                }
+            }
+            
+            if (!client) {
+                logger.warn('Client not found: clientId=%d, domainId=%s', clientId, finalDomainId);
+                return;
+            }
+            
+            logger.info('Found client: clientId=%d, domainId=%s', clientId, finalDomainId);
+            
+            const enabledScene = await SceneModel.getEnabled(finalDomainId);
+            if (!enabledScene) {
+                logger.info('No enabled scene found for domain: %s', finalDomainId);
+                return;
+            }
+            
+            logger.info('Found enabled scene: sceneId=%d', enabledScene.sid);
+
+            const events = await SceneEventModel.getBySceneId(finalDomainId, enabledScene.sid);
+            const enabledEvents = events.filter(e => e.enabled);
+            
+            logger.info('Checking %d enabled events for clientId=%d, widgetName=%s', 
+                enabledEvents.length, clientId, widgetName);
+
+            for (const event of enabledEvents) {
+                if (event.sourceClientId === undefined || event.sourceClientId === null) {
+                    continue;
+                }
+                
+                logger.info('Checking event %d: sourceClientId=%d, sourceWidgetName=%s', 
+                    event.eid, event.sourceClientId, event.sourceWidgetName);
+                
+                if (event.sourceClientId !== clientId) {
+                    logger.info('Event %d: clientId mismatch (expected %d, got %d)', 
+                        event.eid, event.sourceClientId, clientId);
+                    continue;
+                }
+
+                if (event.sourceWidgetName !== widgetName) {
+                    logger.info('Event %d: widgetName mismatch (expected %s, got %s)', 
+                        event.eid, event.sourceWidgetName, widgetName);
+                    continue;
+                }
+                
+                logger.info('Event %d: matched clientId and widgetName, checking action condition', event.eid);
+
+                // 检查动作是否匹配事件条件
+                let shouldTrigger = false;
+                
+                if (!event.sourceAction) {
+                    shouldTrigger = true;
+                } else {
+                    const sourceAction = event.sourceAction.toLowerCase();
+                    
+                    if (sourceAction === 'on' || sourceAction === 'show' || sourceAction === '显示') {
+                        shouldTrigger = visible === true;
+                    } else if (sourceAction === 'off' || sourceAction === 'hide' || sourceAction === '隐藏') {
+                        shouldTrigger = visible === false;
+                    } else if (sourceAction === 'toggle' || sourceAction === '切换') {
+                        // 切换：任何状态变化都触发
+                        shouldTrigger = true;
+                    } else {
+                        shouldTrigger = true;
+                    }
+                }
+
+                if (shouldTrigger) {
+                    logger.info('Triggering scene event: sceneId=%d, eventId=%d, eventName=%s, clientId=%d, widgetName=%s, visible=%s',
+                        enabledScene.sid, event.eid, event.name, clientId, widgetName, visible);
+                    addSceneLog(enabledScene.sid, 'info', 
+                        `事件触发: 监听源Client ${clientId} 组件 ${widgetName} 状态变化 (${visible ? '显示' : '隐藏'})`, 
+                        event.eid, event.name, {
+                            sourceClientId: clientId,
+                            sourceWidgetName: widgetName,
+                            visible: visible
+                        });
+                    await executeSceneEvent(event, finalDomainId, ctx);
+                }
+            }
+        } catch (error: any) {
+            logger.error('Error handling client widget update: clientId=%d, widgetName=%s, error=%s', 
+                clientId, widgetName, error.message);
+        }
+    });
+
     // 监听设备状态更新事件，执行场景事件
     (ctx.on as any)('node/device/update', async (nodeId: ObjectId, deviceId: string, newState: Record<string, any>) => {
         try {
-            logger.debug('Scene handler received device update: nodeId=%s, deviceId=%s, newState=%O', 
-                nodeId, deviceId, newState);
-            
             const node = await NodeModel.get(nodeId);
             if (!node) {
-                logger.debug('Node not found: nodeId=%s', nodeId);
                 return;
             }
 
             const domainId = node.domainId;
-            logger.debug('Checking scene events for domain: %s, node: %d', domainId, node.nid);
             
-            // 获取启用的场景
             const enabledScene = await SceneModel.getEnabled(domainId);
             if (!enabledScene) {
-                logger.debug('No enabled scene found for domain: %s', domainId);
-                return; // 没有启用的场景，不处理
+                return;
             }
 
-            logger.debug('Found enabled scene: sceneId=%d', enabledScene.sid);
-
-            // 获取场景的所有启用事件
             const events = await SceneEventModel.getBySceneId(domainId, enabledScene.sid);
             const enabledEvents = events.filter(e => e.enabled);
             
-            logger.debug('Found %d enabled events for scene %d', enabledEvents.length, enabledScene.sid);
-            // 验证每个事件都有 targets 字段
             for (const event of enabledEvents) {
                 if (!event.targets || !Array.isArray(event.targets) || event.targets.length === 0) {
                     logger.warn('Event %d (sceneId=%d) has no valid targets array: %O', 
                         event.eid, enabledScene.sid, event);
-                } else {
-                    logger.debug('Event %d has %d targets', event.eid, event.targets.length);
                 }
             }
-            logger.debug('Checking events for sourceNodeId=%d, sourceDeviceId=%s', node.nid, deviceId);
 
-            // 检查每个事件是否匹配
             for (const event of enabledEvents) {
-                logger.debug('Checking event %d: sourceNodeId=%d, sourceDeviceId=%s', 
-                    event.eid, event.sourceNodeId, event.sourceDeviceId);
+                if (event.sourceClientId !== undefined && event.sourceClientId !== null) {
+                    continue;
+                }
                 
-                // 检查节点 ID 是否匹配
                 if (event.sourceNodeId !== node.nid) {
-                    logger.debug('Event %d: node ID mismatch (expected %d, got %d)', 
-                        event.eid, event.sourceNodeId, node.nid);
                     continue;
                 }
 
-                // 检查设备 ID 是否匹配（支持部分匹配，如 0xa4c138197c862f7b_l1 匹配 0xa4c138197c862f7b）
                 const deviceIdMatches = event.sourceDeviceId === deviceId || 
                     deviceId.startsWith(event.sourceDeviceId) || 
                     event.sourceDeviceId.startsWith(deviceId);
                 
                 if (!deviceIdMatches) {
-                    logger.debug('Event %d: device ID mismatch (expected %s, got %s)', 
-                        event.eid, event.sourceDeviceId, deviceId);
                     continue;
                 }
-
-                logger.debug('Event %d: device ID matched! Checking state condition...', event.eid);
 
                 // 检查状态是否匹配事件条件
                 let shouldTrigger = false;
                 
                 if (!event.sourceAction) {
-                    // 如果没有指定 sourceAction，任何状态变化都匹配
-                    logger.debug('Event %d: no sourceAction specified, triggering on any state change', event.eid);
                     shouldTrigger = true;
                 } else {
                     const sourceAction = event.sourceAction.toLowerCase();
@@ -1473,8 +1873,6 @@ export async function apply(ctx: Context) {
                         }
                     }
                     
-                    logger.debug('Event %d: sourceAction=%s, currentOn=%s', event.eid, sourceAction, currentOn);
-                    
                     if (sourceAction === 'on' || sourceAction === '开') {
                         shouldTrigger = currentOn === true;
                     } else if (sourceAction === 'off' || sourceAction === '关') {
@@ -1493,9 +1891,7 @@ export async function apply(ctx: Context) {
                     // 生成状态哈希
                     const stateHash = getStateHash(newState);
                     
-                    // 检查是否应该触发（去重）
                     if (!shouldTriggerEvent(enabledScene.sid, event.eid, node.nid, deviceId, stateHash)) {
-                        logger.debug('Event %d: trigger skipped due to debounce or duplicate state', event.eid);
                         continue;
                     }
                     
@@ -1512,10 +1908,7 @@ export async function apply(ctx: Context) {
                             sourceAction: event.sourceAction
                         });
 
-                    // 执行事件（传递 domainId）
                     await executeSceneEvent(event, domainId, ctx);
-                } else {
-                    logger.debug('Event %d: state condition not met', event.eid);
                 }
             }
         } catch (error) {
