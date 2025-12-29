@@ -253,16 +253,25 @@ export default new AutoloadPage('client_domain,client_detail', async () => {
                         renderWidgets();
                     }
 
-                    // 检查是否有组件状态更新
-                    if (msg.widgetStates && typeof msg.widgetStates === 'object') {
-                        widgetStates = { ...widgetStates, ...msg.widgetStates };
+                    // 检查是否有组件状态更新（批量）
+                    if (msg.type === 'widget-states' && msg.states && typeof msg.states === 'object') {
+                        widgetStates = { ...widgetStates, ...msg.states };
                         // 更新所有开关状态
-                        Object.keys(widgetStates).forEach(widgetName => {
+                        Object.keys(msg.states).forEach(widgetName => {
                             const $toggle = $(`#widget-${widgetName}`);
                             if ($toggle.length) {
-                                $toggle.prop('checked', widgetStates[widgetName] === true);
+                                $toggle.prop('checked', msg.states[widgetName] === true);
                             }
                         });
+                    }
+                    
+                    // 检查是否有单个组件状态更新
+                    if (msg.type === 'widget-state-update' && msg.widgetName && typeof msg.visible === 'boolean') {
+                        widgetStates[msg.widgetName] = msg.visible;
+                        const $toggle = $(`#widget-${msg.widgetName}`);
+                        if ($toggle.length) {
+                            $toggle.prop('checked', msg.visible === true);
+                        }
                     }
                 }
 

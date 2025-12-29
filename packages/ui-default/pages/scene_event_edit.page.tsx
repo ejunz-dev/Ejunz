@@ -23,8 +23,10 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 interface TargetAction {
-  targetNodeId: number;
-  targetDeviceId: string;
+  targetNodeId?: number; // Node设备控制
+  targetDeviceId?: string; // Node设备控制
+  targetClientId?: number; // Client组件控制
+  targetWidgetName?: string; // Client组件控制
   targetAction: string;
   targetValue?: any;
   order?: number;
@@ -33,8 +35,10 @@ interface TargetAction {
 interface SceneEventData {
   name: string;
   description?: string;
-  sourceNodeId: number;
-  sourceDeviceId: string;
+  sourceNodeId?: number; // Node设备监听
+  sourceDeviceId?: string; // Node设备监听
+  sourceClientId?: number; // Client组件监听
+  sourceWidgetName?: string; // Client组件监听
   sourceAction?: string;
   targets?: TargetAction[];
   targetNodeId?: number; // 向后兼容
@@ -48,6 +52,8 @@ declare global {
   interface Window {
     nodeDevicesMap?: Record<number, Array<{ deviceId: string; name: string }>>;
     nodes?: Array<{ nid: number; name: string }>;
+    clients?: Array<{ clientId: number; name: string }>;
+    clientWidgetsMap?: Record<number, Array<string>>; // clientId -> widget names
     domainId?: string;
     sceneId?: number;
   }
@@ -133,10 +139,22 @@ const TargetActionNode = ({ data, selected }: { data: any; selected: boolean }) 
             触发效果
           </div>
           <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
+            {config.targetClientId ? (
+              <>
+                <div>类型: Client组件</div>
+                <div>Client: {config.targetClientName || config.targetClientId}</div>
+                <div>组件: {config.targetWidgetName || '-'}</div>
+                <div>动作: {config.targetAction === 'on' ? '显示' : config.targetAction === 'off' ? '隐藏' : '切换'}</div>
+              </>
+            ) : (
+              <>
+                <div>类型: Node设备</div>
             <div>节点: {config.targetNodeName || config.targetNodeId}</div>
             <div>设备: {config.targetDeviceName || config.targetDeviceId}</div>
             <div>动作: {config.targetAction === 'on' ? '开启' : config.targetAction === 'off' ? '关闭' : '切换'}</div>
             {config.targetValue && <div>值: {String(config.targetValue)}</div>}
+              </>
+            )}
           </div>
           <button
             onClick={handleEdit}
@@ -158,6 +176,27 @@ const TargetActionNode = ({ data, selected }: { data: any; selected: boolean }) 
         </>
       ) : (
         <div>
+          <div style={{ marginBottom: '8px' }}>
+            <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>目标类型</label>
+            <select
+              value={config.targetType || (config.targetClientId ? 'client' : 'node')}
+              onChange={(e) => {
+                const newType = e.target.value;
+                if (newType === 'client') {
+                  setConfig({ ...config, targetType: 'client', targetNodeId: undefined, targetDeviceId: undefined });
+                } else {
+                  setConfig({ ...config, targetType: 'node', targetClientId: undefined, targetWidgetName: undefined });
+                }
+              }}
+              style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+            >
+              <option value="node">Node设备</option>
+              <option value="client">Client组件</option>
+            </select>
+          </div>
+          
+          {(!config.targetType || config.targetType === 'node') ? (
+            <>
           <div style={{ marginBottom: '8px' }}>
             <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>节点</label>
             <select
@@ -209,6 +248,56 @@ const TargetActionNode = ({ data, selected }: { data: any; selected: boolean }) 
               style={{ width: '100%', padding: '4px', fontSize: '11px' }}
             />
           </div>
+            </>
+          ) : (
+            <>
+              <div style={{ marginBottom: '8px' }}>
+                <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>Client</label>
+                <select
+                  value={config.targetClientId || ''}
+                  onChange={(e) => {
+                    const clientId = e.target.value ? parseInt(e.target.value, 10) : undefined;
+                    setConfig({ ...config, targetClientId: clientId, targetWidgetName: undefined });
+                  }}
+                  style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                >
+                  <option value="">请选择</option>
+                  {(window.clients || []).map((client: any) => (
+                    <option key={client.clientId} value={client.clientId}>
+                      {client.name} (ID: {client.clientId})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ marginBottom: '8px' }}>
+                <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>组件</label>
+                <select
+                  value={config.targetWidgetName || ''}
+                  onChange={(e) => setConfig({ ...config, targetWidgetName: e.target.value })}
+                  style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                >
+                  <option value="">请先选择Client</option>
+                  {config.targetClientId && window.clientWidgetsMap?.[config.targetClientId]?.map((widget: string) => (
+                    <option key={widget} value={widget}>
+                      {widget}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ marginBottom: '8px' }}>
+                <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>动作</label>
+                <select
+                  value={config.targetAction || ''}
+                  onChange={(e) => setConfig({ ...config, targetAction: e.target.value })}
+                  style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                >
+                  <option value="on">显示</option>
+                  <option value="off">隐藏</option>
+                  <option value="toggle">切换</option>
+                </select>
+              </div>
+            </>
+          )}
           <button
             onClick={handleSave}
             onMouseDown={(e) => e.stopPropagation()}
@@ -277,9 +366,21 @@ const SourceNode = ({ data, selected }: { data: any; selected: boolean }) => {
       {!isEditing ? (
         <>
           <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
-            <div>节点: {config.sourceNodeName || config.sourceNodeId}</div>
-            <div>设备: {config.sourceDeviceName || config.sourceDeviceId}</div>
+            {(config.sourceClientId !== undefined && config.sourceClientId !== null) ? (
+              <>
+                <div>类型: Client组件</div>
+                <div>Client: {config.sourceClientName || `Client-${config.sourceClientId}`}</div>
+                <div>组件: {config.sourceWidgetName || '-'}</div>
             <div>动作: {config.sourceAction || '任意变化'}</div>
+              </>
+            ) : (
+              <>
+                <div>类型: Node设备</div>
+                <div>节点: {config.sourceNodeName || (config.sourceNodeId !== undefined ? `Node ${config.sourceNodeId}` : '-')}</div>
+                <div>设备: {config.sourceDeviceName || (config.sourceDeviceId || '-')}</div>
+                <div>动作: {config.sourceAction || '任意变化'}</div>
+              </>
+            )}
           </div>
           <button
             onClick={handleEdit}
@@ -301,6 +402,27 @@ const SourceNode = ({ data, selected }: { data: any; selected: boolean }) => {
         </>
       ) : (
         <div>
+          <div style={{ marginBottom: '8px' }}>
+            <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>源类型</label>
+            <select
+              value={config.sourceType || (config.sourceClientId ? 'client' : 'node')}
+              onChange={(e) => {
+                const newType = e.target.value;
+                if (newType === 'client') {
+                  setConfig({ ...config, sourceType: 'client', sourceNodeId: undefined, sourceDeviceId: undefined });
+                } else {
+                  setConfig({ ...config, sourceType: 'node', sourceClientId: undefined, sourceWidgetName: undefined });
+                }
+              }}
+              style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+            >
+              <option value="node">Node设备</option>
+              <option value="client">Client组件</option>
+            </select>
+          </div>
+          
+          {(!config.sourceType || config.sourceType === 'node') ? (
+            <>
           <div style={{ marginBottom: '8px' }}>
             <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>节点</label>
             <select
@@ -343,6 +465,57 @@ const SourceNode = ({ data, selected }: { data: any; selected: boolean }) => {
               <option value="toggle">切换</option>
             </select>
           </div>
+            </>
+          ) : (
+            <>
+              <div style={{ marginBottom: '8px' }}>
+                <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>Client</label>
+                <select
+                  value={config.sourceClientId || ''}
+                  onChange={(e) => {
+                    const clientId = e.target.value ? parseInt(e.target.value, 10) : undefined;
+                    setConfig({ ...config, sourceClientId: clientId, sourceWidgetName: undefined });
+                  }}
+                  style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                >
+                  <option value="">请选择</option>
+                  {(window.clients || []).map((client: any) => (
+                    <option key={client.clientId} value={client.clientId}>
+                      {client.name} (ID: {client.clientId})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ marginBottom: '8px' }}>
+                <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>组件</label>
+                <select
+                  value={config.sourceWidgetName || ''}
+                  onChange={(e) => setConfig({ ...config, sourceWidgetName: e.target.value })}
+                  style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                >
+                  <option value="">请先选择Client</option>
+                  {config.sourceClientId && window.clientWidgetsMap?.[config.sourceClientId]?.map((widget: string) => (
+                    <option key={widget} value={widget}>
+                      {widget}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ marginBottom: '8px' }}>
+                <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>动作（可选）</label>
+                <select
+                  value={config.sourceAction || ''}
+                  onChange={(e) => setConfig({ ...config, sourceAction: e.target.value })}
+                  style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                >
+                  <option value="">任意变化</option>
+                  <option value="on">显示</option>
+                  <option value="off">隐藏</option>
+                  <option value="toggle">切换</option>
+                </select>
+              </div>
+            </>
+          )}
           <button
             onClick={handleSave}
             onMouseDown={(e) => e.stopPropagation()}
@@ -389,6 +562,7 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
   const [eventName, setEventName] = useState(initialData?.name || '');
   const [eventDescription, setEventDescription] = useState(initialData?.description || '');
   const [eventEnabled, setEventEnabled] = useState(initialData?.enabled !== false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // 初始化节点
   const initialNodes = useMemo(() => {
@@ -403,11 +577,15 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
         data: {
           label: '监听源',
           config: {
+            sourceType: (initialData.sourceClientId !== undefined && initialData.sourceClientId !== null) ? 'client' : 'node',
             sourceNodeId: initialData.sourceNodeId,
             sourceDeviceId: initialData.sourceDeviceId,
+            sourceClientId: initialData.sourceClientId,
+            sourceWidgetName: initialData.sourceWidgetName,
             sourceAction: initialData.sourceAction,
             sourceNodeName: window.nodes?.find((n: any) => n.nid === initialData.sourceNodeId)?.name,
             sourceDeviceName: window.nodeDevicesMap?.[initialData.sourceNodeId]?.find((d: any) => d.deviceId === initialData.sourceDeviceId)?.name,
+            sourceClientName: window.clients?.find((c: any) => c.clientId === initialData.sourceClientId)?.name,
           },
           onUpdate: (config: any) => {
             // 更新节点配置
@@ -443,12 +621,16 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
           data: {
             label: `触发效果 ${index + 1}`,
             config: {
+              targetType: target.targetClientId ? 'client' : 'node',
               targetNodeId: target.targetNodeId,
               targetDeviceId: target.targetDeviceId,
+              targetClientId: target.targetClientId,
+              targetWidgetName: target.targetWidgetName,
               targetAction: target.targetAction,
               targetValue: target.targetValue,
               targetNodeName: window.nodes?.find((n: any) => n.nid === target.targetNodeId)?.name,
               targetDeviceName: window.nodeDevicesMap?.[target.targetNodeId]?.find((d: any) => d.deviceId === target.targetDeviceId)?.name,
+              targetClientName: window.clients?.find((c: any) => c.clientId === target.targetClientId)?.name,
             },
             onUpdate: (config: any) => {
               setNodes((nds) =>
@@ -566,9 +748,23 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
   // 保存事件
   const handleSave = useCallback(async () => {
     const sourceNode = nodes.find((n) => n.id === 'source');
-    if (!sourceNode || !sourceNode.data.config.sourceNodeId || !sourceNode.data.config.sourceDeviceId) {
+    if (!sourceNode) {
       Notification.error('请配置监听源');
       return;
+    }
+
+    const sourceConfig = sourceNode.data.config;
+    // 验证监听源配置
+    if (sourceConfig.sourceType === 'client') {
+      if (!sourceConfig.sourceClientId || !sourceConfig.sourceWidgetName) {
+        Notification.error('请配置监听源（Client和组件）');
+        return;
+      }
+    } else {
+      if (!sourceConfig.sourceNodeId || !sourceConfig.sourceDeviceId) {
+        Notification.error('请配置监听源（节点和设备）');
+        return;
+      }
     }
 
     const targetNodes = nodes.filter((n) => n.type === 'target');
@@ -577,23 +773,49 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
       return;
     }
 
-    const targets: TargetAction[] = targetNodes.map((node, index) => ({
-      targetNodeId: node.data.config.targetNodeId,
-      targetDeviceId: node.data.config.targetDeviceId,
-      targetAction: node.data.config.targetAction || 'on',
-      targetValue: node.data.config.targetValue,
+    const targets: TargetAction[] = targetNodes.map((node, index) => {
+      const targetConfig = node.data.config;
+      if (targetConfig.targetType === 'client') {
+        return {
+          targetClientId: targetConfig.targetClientId,
+          targetWidgetName: targetConfig.targetWidgetName,
+          targetAction: targetConfig.targetAction || 'on',
       order: index,
-    }));
+        };
+      } else {
+        return {
+          targetNodeId: targetConfig.targetNodeId,
+          targetDeviceId: targetConfig.targetDeviceId,
+          targetAction: targetConfig.targetAction || 'on',
+          targetValue: targetConfig.targetValue,
+          order: index,
+        };
+      }
+    });
 
-    const eventData = {
+    const eventData: any = {
       name: eventName,
       description: eventDescription,
-      sourceNodeId: sourceNode.data.config.sourceNodeId,
-      sourceDeviceId: sourceNode.data.config.sourceDeviceId,
-      sourceAction: sourceNode.data.config.sourceAction || '',
       targets,
       enabled: eventEnabled,
     };
+
+    // 根据源类型设置不同的字段
+    if (sourceConfig.sourceType === 'client') {
+      eventData.sourceClientId = sourceConfig.sourceClientId;
+      eventData.sourceWidgetName = sourceConfig.sourceWidgetName;
+      eventData.sourceAction = sourceConfig.sourceAction || '';
+    } else {
+      eventData.sourceNodeId = sourceConfig.sourceNodeId;
+      eventData.sourceDeviceId = sourceConfig.sourceDeviceId;
+      eventData.sourceAction = sourceConfig.sourceAction || '';
+    }
+
+    // 防止重复提交
+    if (isSaving) {
+      return;
+    }
+    setIsSaving(true);
 
     try {
       const domainId = window.domainId || 'system';
@@ -607,18 +829,21 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
         ...eventData,
       });
 
-      if (response.error) {
-        Notification.error(response.error);
+      if (response.error || response.message) {
+        Notification.error(response.message || response.error || '操作失败');
+        setIsSaving(false); // 失败时重置状态
+        return; // 失败时不跳转
       } else {
         Notification.success(eventId ? '事件更新成功' : '事件创建成功');
-        setTimeout(() => {
+        // 创建成功后立即跳转，避免重复提交
           window.location.href = `/d/${domainId}/scene/${sceneId}`;
-        }, 1000);
+        return; // 跳转后不需要继续执行
       }
     } catch (error: any) {
       Notification.error('保存失败: ' + (error.message || '未知错误'));
+      setIsSaving(false); // 出错时重置状态
     }
-  }, [nodes, eventName, eventDescription, eventEnabled, eventId]);
+  }, [nodes, eventName, eventDescription, eventEnabled, eventId, isSaving]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -694,17 +919,19 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
       <div style={{ padding: '15px', background: '#f5f5f5', borderTop: '1px solid #ddd', display: 'flex', gap: '10px' }}>
         <button
           onClick={handleSave}
+          disabled={isSaving}
           style={{
             padding: '10px 20px',
-            background: '#2196f3',
+            background: isSaving ? '#ccc' : '#2196f3',
             color: '#fff',
             border: 'none',
             borderRadius: '4px',
-            cursor: 'pointer',
+            cursor: isSaving ? 'not-allowed' : 'pointer',
             fontWeight: 'bold',
+            opacity: isSaving ? 0.6 : 1,
           }}
         >
-          {eventId ? '更新' : '创建'} (Ctrl+Enter)
+          {isSaving ? '保存中...' : (eventId ? '更新' : '创建')} (Ctrl+Enter)
         </button>
         <button
           onClick={() => window.history.go(-1)}
@@ -789,8 +1016,9 @@ const page = new NamedPage('scene_event_edit', async () => {
     if (parsed && typeof parsed === 'object') {
       // 确保必要字段存在
       if (!parsed.name) parsed.name = '';
-      if (!parsed.sourceNodeId) parsed.sourceNodeId = 0;
-      if (!parsed.sourceDeviceId) parsed.sourceDeviceId = '';
+      // 保留所有源字段，不要覆盖它们
+      // sourceClientId, sourceWidgetName, sourceNodeId, sourceDeviceId 都应该保留原值
+      // 不需要额外处理，直接使用原值
       
       // 确保 targets 数组存在且格式正确
       if (!parsed.targets || !Array.isArray(parsed.targets)) {
@@ -808,10 +1036,12 @@ const page = new NamedPage('scene_event_edit', async () => {
         }
       }
       
-      // 验证 targets 数组中的每个元素
+      // 验证 targets 数组中的每个元素，保留 client 相关字段
       parsed.targets = parsed.targets.map((target: any, index: number) => ({
-        targetNodeId: target.targetNodeId || 0,
-        targetDeviceId: target.targetDeviceId || '',
+        targetNodeId: target.targetNodeId,
+        targetDeviceId: target.targetDeviceId,
+        targetClientId: target.targetClientId,
+        targetWidgetName: target.targetWidgetName,
         targetAction: target.targetAction || '',
         targetValue: target.targetValue !== undefined ? target.targetValue : null,
         order: target.order !== undefined ? target.order : index,
@@ -830,6 +1060,13 @@ const page = new NamedPage('scene_event_edit', async () => {
     
     if (initialData) {
       console.log('Successfully loaded event data:', initialData);
+      console.log('Source info:', {
+        sourceClientId: initialData.sourceClientId,
+        sourceWidgetName: initialData.sourceWidgetName,
+        sourceNodeId: initialData.sourceNodeId,
+        sourceDeviceId: initialData.sourceDeviceId,
+        sourceAction: initialData.sourceAction,
+      });
     } else {
       console.log('No event data found, creating new event');
     }
