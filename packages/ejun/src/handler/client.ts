@@ -377,6 +377,41 @@ export class ClientDetailHandler extends Handler<Context> {
     }
 }
 
+export class ClientSettingsHandler extends Handler<Context> {
+    async get() {
+        const { clientId } = this.request.params;
+        const clientIdNum = parseInt(clientId, 10);
+        
+        if (isNaN(clientIdNum) || clientIdNum < 1) {
+            throw new ValidationError('clientId');
+        }
+
+        const client = await ClientModel.getByClientId(this.domain._id, clientIdNum);
+        if (!client) {
+            throw new NotFoundError('Client');
+        }
+
+        if (client.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        }
+
+        // Get all agents in domain for selection
+        const agents = await AgentModel.getMulti(this.domain._id, {}).toArray();
+
+        // Get agent info if configured
+        let agentInfo = null;
+        if (client.settings?.agent?.agentId) {
+            const selectedAgents = agents.filter(a => a.aid === client.settings.agent.agentId);
+            if (selectedAgents.length > 0) {
+                agentInfo = selectedAgents[0];
+            }
+        }
+
+        this.response.template = 'client_settings.html';
+        this.response.body = { client, domainId: this.domain._id, agentInfo, agents };
+    }
+}
+
 export class ClientDeleteHandler extends Handler<Context> {
     async post() {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
@@ -652,6 +687,85 @@ export class ClientUpdateSettingsHandler extends Handler<Context> {
         await ClientModel.updateSettings(this.domain._id, clientIdNum, settingsUpdate);
 
         this.response.body = { success: true };
+    }
+}
+
+export class ClientWidgetControlHandler extends Handler<Context> {
+    async post() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.response.template = null;
+        
+        const { clientId } = this.request.params;
+        const clientIdNum = parseInt(clientId, 10);
+        
+        if (isNaN(clientIdNum) || clientIdNum < 1) {
+            throw new ValidationError('clientId');
+        }
+
+        const client = await ClientModel.getByClientId(this.domain._id, clientIdNum);
+        if (!client) {
+            throw new NotFoundError('Client');
+        }
+
+        if (client.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        }
+
+        const { widgetName, visible } = this.request.body;
+        
+        if (!widgetName || typeof widgetName !== 'string') {
+            throw new ValidationError('widgetName');
+        }
+        
+        if (typeof visible !== 'boolean') {
+            throw new ValidationError('visible');
+        }
+
+        // 生成唯一的traceId
+        const traceId = `widget-control-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // 构建Ejunz协议格式的控制消息
+        const controlMessage = {
+            protocol: 'ejunz',
+            action: 'control',
+            payload: {
+                widgetName: widgetName,
+                visible: visible
+            },
+            traceId: traceId,
+            direction: 'inbound'
+        };
+
+        // 通过ClientConnectionHandler发送消息给下游client
+        const handler = ClientConnectionHandler.getConnection(clientIdNum);
+        if (!handler) {
+            this.response.status = 503;
+            this.response.body = { 
+                success: false, 
+                error: 'Client not connected',
+                message: '下游客户端未连接'
+            };
+            return;
+        }
+
+        try {
+            handler.send(controlMessage);
+            logger.info('Sent widget control command via server: clientId=%d, widgetName=%s, visible=%s, traceId=%s', 
+                clientIdNum, widgetName, visible, traceId);
+            
+            this.response.body = { 
+                success: true, 
+                traceId: traceId,
+                message: 'Control command sent successfully'
+            };
+        } catch (error) {
+            logger.error('Failed to send widget control command: %s', (error as Error).message);
+            this.response.status = 500;
+            this.response.body = { 
+                success: false, 
+                error: (error as Error).message 
+            };
+        }
     }
 }
 
@@ -1046,9 +1160,14 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
     private outboundBridgeDisposer: (() => void) | null = null;
     private pendingToolCalls: Map<string, { resolve: (value: any) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout }> = new Map();
     private pendingToolCallNames: Map<string, string> = new Map(); // Map requestId to toolName
+    private widgetList: any[] | null = null; // 存储组件列表
     
     static getConnection(clientId: number): ClientConnectionHandler | null {
         return ClientConnectionHandler.active.get(clientId) || null;
+    }
+    
+    getWidgetList(): any[] | null {
+        return this.widgetList;
     }
 
     async prepare() {
@@ -1307,6 +1426,52 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
 
         if (!msg || typeof msg !== 'object') {
             return;
+        }
+
+        // Support Ejunz protocol (widget control)
+        if (msg.protocol === 'ejunz') {
+            logger.debug('Received ejunz protocol message: clientId=%d, action=%s', 
+                this.clientId, msg.action);
+            
+            // Handle handshake message from projection system
+            if (msg.action === 'handshake') {
+                logger.info('Received ejunz handshake from client: clientId=%d, payload=%o', 
+                    this.clientId, msg.payload);
+                
+                // Extract widget list from handshake payload if available
+                // Support multiple possible locations for widget list
+                let widgetList = null;
+                if (msg.payload?.widgets && Array.isArray(msg.payload.widgets)) {
+                    widgetList = msg.payload.widgets;
+                } else if (msg.widgets && Array.isArray(msg.widgets)) {
+                    widgetList = msg.widgets;
+                } else if (msg.payload?.widgetList && Array.isArray(msg.payload.widgetList)) {
+                    widgetList = msg.payload.widgetList;
+                }
+                
+                if (widgetList && widgetList.length > 0) {
+                    // 存储组件列表
+                    this.widgetList = widgetList;
+                    logger.info('Widget list received in handshake: clientId=%d, count=%d, widgets=%o', 
+                        this.clientId, widgetList.length, widgetList);
+                    // Emit event to notify status WebSocket connections
+                    (this.ctx.emit as any)('client/widget/list', this.clientId, widgetList);
+                } else {
+                    logger.debug('No widget list found in handshake message: clientId=%d', this.clientId);
+                }
+                
+                // Send handshake acknowledgment (optional, if needed by protocol)
+                return;
+            }
+            
+            // Handle control/ack messages (responses from projection system)
+            if (msg.action === 'control/ack' || msg.action === 'error') {
+                logger.debug('Received widget control response: clientId=%d, action=%s, traceId=%s', 
+                    this.clientId, msg.action, msg.traceId);
+                // Forward to status WebSocket for UI updates
+                (this.ctx.emit as any)('client/widget/response', this.clientId, msg);
+                return;
+            }
         }
 
         // Support MCP Envelope protocol (same as node/provider)
@@ -3432,6 +3597,36 @@ export class ClientStatusConnectionHandler extends ConnectionHandler<Context> {
         
         this.send({ type: 'init', client: clientWithActualStatus });
 
+        // 如果client已连接且有widget列表，立即发送
+        const clientHandler = ClientConnectionHandler.getConnection(clientIdNum);
+        if (clientHandler) {
+            const existingWidgetList = clientHandler.getWidgetList();
+            if (existingWidgetList && existingWidgetList.length > 0) {
+                logger.debug('Sending existing widget list to status WebSocket: clientId=%d, count=%d', 
+                    this.clientId, existingWidgetList.length);
+                this.send({ type: 'widget-list', widgets: existingWidgetList });
+            }
+        }
+
+        // Subscribe to widget list updates
+        const dispose2 = (this.ctx as any).on('client/widget/list', async (updateClientId: number, widgets: any[]) => {
+            if (updateClientId === this.clientId) {
+                logger.debug('Sending widget list to status WebSocket: clientId=%d, count=%d', 
+                    this.clientId, widgets.length);
+                this.send({ type: 'widget-list', widgets });
+            }
+        });
+        this.subscriptions.push({ dispose: dispose2 });
+
+        // Subscribe to widget control responses
+        const dispose3 = (this.ctx as any).on('client/widget/response', async (updateClientId: number, response: any) => {
+            if (updateClientId === this.clientId) {
+                logger.debug('Forwarding widget response to status WebSocket: clientId=%d', this.clientId);
+                this.send({ type: 'widget-response', response });
+            }
+        });
+        this.subscriptions.push({ dispose: dispose3 });
+
         // Periodically check actual connection status
         let lastKnownStatus = actualStatus;
         const checkInterval = setInterval(() => {
@@ -3604,6 +3799,7 @@ export async function apply(ctx: Context) {
     ctx.Route('client_edit', '/client/:clientId/edit', ClientEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_delete', '/client/delete', ClientDeleteHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_detail', '/client/:clientId', ClientDetailHandler);
+    ctx.Route('client_settings', '/client/:clientId/settings', ClientSettingsHandler, PRIV.PRIV_USER_PROFILE);
     // Token 生成路由已迁移到 edge 模块
     ctx.Route('client_chat_list', '/client/:clientId/chats', ClientChatListHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_chat_detail', '/client/:clientId/chat/:conversationId', ClientChatDetailHandler, PRIV.PRIV_USER_PROFILE);
@@ -3611,6 +3807,7 @@ export async function apply(ctx: Context) {
     ctx.Route('client_chat_audio_download', '/client/:clientId/chat/:conversationId/audio/:messageIndex/:audioType', ClientChatAudioDownloadHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_delete_token', '/client/:clientId/delete-token', ClientDeleteTokenHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_update_settings', '/client/:clientId/update-settings', ClientUpdateSettingsHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('client_widget_control', '/client/:clientId/widget/control', ClientWidgetControlHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_create_voice', '/client/:clientId/create-voice', ClientCreateVoiceHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_list_voices', '/client/:clientId/voices', ClientListVoicesHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_delete_voice', '/client/:clientId/delete-voice', ClientDeleteVoiceHandler, PRIV.PRIV_USER_PROFILE);

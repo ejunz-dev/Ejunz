@@ -40,3 +40,77 @@
         &.client-status-badge-error
             background: #f48771
 
+    // Widget control styles
+    .widget-control-section
+        margin-top: 30px
+        padding-top: 30px
+        border-top: 1px solid #e0e0e0
+
+    .widget-controls-container
+        margin-top: 15px
+
+    .widget-controls-grid
+        display: grid
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr))
+        gap: 15px
+
+    .widget-control-item
+        padding: 10px
+        border: 1px solid #e0e0e0
+        border-radius: 4px
+        background: #f9f9f9
+
+    // Switch control styles (similar to node.page.styl)
+    .switch-control
+        display: flex
+        align-items: center
+        justify-content: space-between
+        gap: 12px
+
+    .switch-text
+        font-size: 14px
+        color: #333
+        flex: 1
+
+    .switch-label
+        position: relative
+        display: inline-block
+        width: 50px
+        height: 26px
+        cursor: pointer
+
+    .widget-switch-toggle
+        opacity: 0
+        width: 0
+        height: 0
+        position: absolute
+
+    .switch-slider
+        position: absolute
+        top: 0
+        left: 0
+        right: 0
+        bottom: 0
+        background: #ccc
+        border-radius: 13px
+        transition: background 0.3s ease
+        cursor: pointer
+
+        &::before
+            position: absolute
+            content: ""
+            height: 22px
+            width: 22px
+            left: 2px
+            bottom: 2px
+            background: white
+            border-radius: 50%
+            transition: transform 0.3s ease
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2)
+
+    .widget-switch-toggle:checked + .switch-slider
+        background: #4caf50
+
+        &::before
+            transform: translateX(24px)
+
