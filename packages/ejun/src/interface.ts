@@ -456,11 +456,14 @@ declare module './model/scene' {
         eid: number; // Event ID，在场景内从 1 开始
         name: string;
         description?: string;
-        // 监听源：node 下的开关设备 或 client 组件
+        // 监听源：node 下的开关设备 或 client 组件 或 GSI 数据
         sourceNodeId?: number; // 监听源节点 ID（Node设备）
         sourceDeviceId?: string; // 监听源设备 ID（Node设备）
-        sourceClientId?: number; // 监听源Client ID（Client组件）
+        sourceClientId?: number; // 监听源Client ID（Client组件 或 GSI数据）
         sourceWidgetName?: string; // 监听源组件名称（Client组件）
+        sourceGsiPath?: string; // GSI数据路径，如 "player.state.health", "round.phase", "bomb.state" 等
+        sourceGsiOperator?: string; // 比较操作符: "eq"(等于), "ne"(不等于), "gt"(大于), "gte"(大于等于), "lt"(小于), "lte"(小于等于), "in"(包含), "contains"(字符串包含)
+        sourceGsiValue?: any; // 比较值（阈值或具体值）
         sourceAction?: string; // 监听的动作，如 'on', 'off', 'toggle', 'show', 'hide'
         // 触发效果：node 下的开关设备 或 client 组件（支持多个）
         targets: Array<{ // 多个触发效果
@@ -473,6 +476,8 @@ declare module './model/scene' {
             order?: number; // 执行顺序
         }>;
         enabled: boolean; // 是否启用此事件
+        triggerLimit?: number; // 触发次数限制（0表示不限制，-1表示只触发一次）
+        triggerDelay?: number; // 延时触发时间（毫秒）
         createdAt: Date;
         updatedAt: Date;
         owner: number; // 用户 ID
@@ -921,6 +926,7 @@ declare module './service/db' {
         'node': import('./model/node').NodeDoc;
         'node.device': import('./model/node').NodeDeviceDoc;
         'client.widget': import('./model/client').ClientWidgetDoc;
+        'client.gsifield': import('./model/client').ClientGsiFieldDoc;
         'workflow_timer': import('./model/workflow_timer').WorkflowTimerDoc;
     }
 }

@@ -4,7 +4,7 @@ import { Handler, ConnectionHandler } from '@ejunz/framework';
 import { Context } from '../context';
 import { ValidationError, PermissionError, NotFoundError } from '../error';
 import { Logger } from '../logger';
-import ClientModel, { ClientWidgetModel } from '../model/client';
+import ClientModel, { ClientWidgetModel, ClientGsiFieldModel } from '../model/client';
 import ClientChatModel, { apply as applyClientChat } from '../model/client_chat';
 import EdgeModel from '../model/edge';
 import EdgeTokenModel from '../model/edge_token';
@@ -687,6 +687,42 @@ export class ClientUpdateSettingsHandler extends Handler<Context> {
         await ClientModel.updateSettings(this.domain._id, clientIdNum, settingsUpdate);
 
         this.response.body = { success: true };
+    }
+}
+
+export class ClientGsiFieldsHandler extends Handler<Context> {
+    async get() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.response.template = null;
+        
+        const { clientId } = this.request.params;
+        const clientIdNum = parseInt(clientId, 10);
+        
+        if (isNaN(clientIdNum) || clientIdNum < 1) {
+            throw new ValidationError('clientId');
+        }
+
+        const client = await ClientModel.getByClientId(this.domain._id, clientIdNum);
+        if (!client) {
+            throw new NotFoundError('Client');
+        }
+
+        if (client.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        }
+
+        const gsiFields = await ClientGsiFieldModel.getByClient(this.domain._id, clientIdNum);
+        this.response.body = {
+            fields: gsiFields.map(f => ({
+                path: f.fieldPath,
+                type: f.type,
+                description: f.description,
+                values: f.values,
+                range: f.range,
+                nullable: f.nullable,
+                currentValue: f.currentValue,
+            })),
+        };
     }
 }
 
@@ -1487,6 +1523,25 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                     logger.debug('No widget list found in handshake message: clientId=%d', this.clientId);
                 }
                 
+                // 处理GSI字段定义
+                const gsiFields = msg.payload?.gsiFields;
+                if (gsiFields && typeof gsiFields === 'object') {
+                    try {
+                        const registeredFields = await ClientGsiFieldModel.syncGsiFields(
+                            this.tokenDomainId || this.domain._id,
+                            this.clientId,
+                            gsiFields
+                        );
+                        logger.info('GSI fields registered to database: clientId=%d, count=%d', 
+                            this.clientId, registeredFields.length);
+                    } catch (error) {
+                        logger.error('Failed to register GSI fields to database: clientId=%d, error=%o', 
+                            this.clientId, error);
+                    }
+                } else {
+                    logger.debug('No GSI fields found in handshake message: clientId=%d', this.clientId);
+                }
+                
                 // Send handshake acknowledgment (optional, if needed by protocol)
                 return;
             }
@@ -1529,10 +1584,41 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                     const visible = msg.payload.visible;
                     if (widgetName !== undefined && typeof visible === 'boolean') {
                         const domainId = this.tokenDomainId || this.domain._id;
+                        
+                        // 更新内存中的组件状态
+                        this.setWidgetState(widgetName, visible);
+                        
+                        // 通过WebSocket同步状态到前端
+                        (this.ctx.emit as any)('client/widget/state/update', this.clientId, widgetName, visible);
+                        
                         logger.info('Emitting client/widget/update event from state update: clientId=%d, domainId=%s, widgetName=%s, visible=%s', 
                             this.clientId, domainId, widgetName, visible);
                         (this.ctx.emit as any)('client/widget/update', this.clientId, widgetName, visible, domainId);
                     }
+                }
+                return;
+            }
+            
+            // Handle GSI data update messages
+            if (msg.action === 'gsi/update') {
+                logger.debug('Received GSI update: clientId=%d, payload=%o', this.clientId, msg.payload);
+                
+                if (msg.payload && msg.payload.data) {
+                    const domainId = this.tokenDomainId || this.domain._id;
+                    const gsiData = msg.payload.data;
+                    const timestamp = msg.payload.timestamp || Date.now();
+                    
+                    // 更新GSI字段的当前值
+                    try {
+                        await ClientGsiFieldModel.updateFieldValues(domainId, this.clientId, gsiData);
+                    } catch (error) {
+                        logger.error('Failed to update GSI field values: clientId=%d, error=%o', 
+                            this.clientId, error);
+                    }
+                    
+                    logger.info('Emitting client/gsi/update event: clientId=%d, domainId=%s', 
+                        this.clientId, domainId);
+                    (this.ctx.emit as any)('client/gsi/update', this.clientId, gsiData, timestamp, domainId);
                 }
                 return;
             }
@@ -3728,6 +3814,15 @@ export class ClientStatusConnectionHandler extends ConnectionHandler<Context> {
         });
         this.subscriptions.push({ dispose: dispose4 });
         
+        // Subscribe to GSI data updates
+        const dispose5 = (this.ctx as any).on('client/gsi/update', async (updateClientId: number, gsiData: any, timestamp: number) => {
+            if (updateClientId === this.clientId) {
+                logger.debug('Forwarding GSI data update to status WebSocket: clientId=%d', this.clientId);
+                this.send({ type: 'gsi-update', data: gsiData, timestamp });
+            }
+        });
+        this.subscriptions.push({ dispose: dispose5 });
+        
         // 发送当前所有组件的状态
         const clientHandler = ClientConnectionHandler.getConnection(clientIdNum);
         if (clientHandler) {
@@ -3928,6 +4023,7 @@ export async function apply(ctx: Context) {
     ctx.Route('client_delete_token', '/client/:clientId/delete-token', ClientDeleteTokenHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_update_settings', '/client/:clientId/update-settings', ClientUpdateSettingsHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_widget_control', '/client/:clientId/widget/control', ClientWidgetControlHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('client_gsi_fields', '/client/:clientId/gsi/fields', ClientGsiFieldsHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_create_voice', '/client/:clientId/create-voice', ClientCreateVoiceHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_list_voices', '/client/:clientId/voices', ClientListVoicesHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('client_delete_voice', '/client/:clientId/delete-voice', ClientDeleteVoiceHandler, PRIV.PRIV_USER_PROFILE);

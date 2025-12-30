@@ -35,6 +35,153 @@ interface TriggerCacheEntry {
 const triggerCache: Map<string, TriggerCacheEntry> = new Map();
 const TRIGGER_DEBOUNCE_MS = 2000; // 2秒内的重复触发会被忽略
 
+// GSI事件触发去重缓存
+interface GsiTriggerCacheEntry {
+    sceneId: number;
+    eventId: number;
+    sourceClientId: number;
+    sourceGsiPath: string;
+    valueHash: string;
+    timestamp: number;
+}
+
+const gsiTriggerCache: Map<string, GsiTriggerCacheEntry> = new Map();
+
+// 事件触发次数统计缓存
+interface EventTriggerCountEntry {
+    sceneId: number;
+    eventId: number;
+    count: number;
+    firstTriggerTime: number;
+}
+
+const eventTriggerCountCache: Map<string, EventTriggerCountEntry> = new Map();
+
+// GSI值变化缓存（用于string类型：只在值从非目标值变成目标值时触发）
+interface GsiValueChangeEntry {
+    sceneId: number;
+    eventId: number;
+    sourceClientId: number;
+    sourceGsiPath: string;
+    lastValue: any; // 上一次的值
+    timestamp: number;
+}
+
+const gsiValueChangeCache: Map<string, GsiValueChangeEntry> = new Map();
+
+function shouldTriggerGsiEvent(
+    sceneId: number,
+    eventId: number,
+    sourceClientId: number,
+    sourceGsiPath: string,
+    valueHash: string
+): boolean {
+    const cacheKey = `${sceneId}_${eventId}_${sourceClientId}_${sourceGsiPath}`;
+    const cached = gsiTriggerCache.get(cacheKey);
+    const now = Date.now();
+    
+    if (cached) {
+        if (cached.valueHash === valueHash) {
+            return false;
+        }
+        
+        if (now - cached.timestamp < TRIGGER_DEBOUNCE_MS) {
+            return false;
+        }
+    }
+    
+    gsiTriggerCache.set(cacheKey, {
+        sceneId,
+        eventId,
+        sourceClientId,
+        sourceGsiPath,
+        valueHash,
+        timestamp: now,
+    });
+    
+    if (gsiTriggerCache.size > 100) {
+        const oneMinuteAgo = now - 60000;
+        for (const [key, entry] of gsiTriggerCache.entries()) {
+            if (entry.timestamp < oneMinuteAgo) {
+                gsiTriggerCache.delete(key);
+            }
+        }
+    }
+    
+    return true;
+}
+
+// 从对象路径获取值，支持嵌套路径如 "player.state.health"
+function getValueByPath(obj: any, path: string): any {
+    if (!path || !obj) return undefined;
+    const parts = path.split('.');
+    let current = obj;
+    for (const part of parts) {
+        if (current === null || current === undefined) return undefined;
+        current = current[part];
+    }
+    return current;
+}
+
+// 检查GSI数据是否满足条件
+function checkGsiCondition(
+    gsiData: any,
+    sourceGsiPath: string,
+    sourceGsiOperator: string,
+    sourceGsiValue: any
+): boolean {
+    if (!sourceGsiPath) return false;
+    
+    const actualValue = getValueByPath(gsiData, sourceGsiPath);
+    if (actualValue === undefined) {
+        logger.debug('GSI condition check failed: actualValue is undefined for path=%s', sourceGsiPath);
+        return false;
+    }
+    
+    const operator = (sourceGsiOperator || 'eq').toLowerCase();
+    
+    logger.debug('GSI condition check: path=%s, actualValue=%o (type: %s), expectedValue=%o (type: %s), operator=%s', 
+        sourceGsiPath, actualValue, typeof actualValue, sourceGsiValue, typeof sourceGsiValue, operator);
+    
+    switch (operator) {
+        case 'eq':
+        case '==':
+        case '===':
+            // 使用 == 进行宽松比较，支持字符串和数字的自动转换
+            const result = actualValue == sourceGsiValue;
+            logger.debug('GSI eq comparison: %o == %o = %s', actualValue, sourceGsiValue, result);
+            return result;
+        case 'ne':
+        case '!=':
+        case '!==':
+            return actualValue != sourceGsiValue;
+        case 'gt':
+        case '>':
+            return Number(actualValue) > Number(sourceGsiValue);
+        case 'gte':
+        case '>=':
+            return Number(actualValue) >= Number(sourceGsiValue);
+        case 'lt':
+        case '<':
+            return Number(actualValue) < Number(sourceGsiValue);
+        case 'lte':
+        case '<=':
+            return Number(actualValue) <= Number(sourceGsiValue);
+        case 'in':
+            if (Array.isArray(sourceGsiValue)) {
+                return sourceGsiValue.includes(actualValue);
+            }
+            return false;
+        case 'contains':
+            if (typeof actualValue === 'string' && typeof sourceGsiValue === 'string') {
+                return actualValue.includes(sourceGsiValue);
+            }
+            return false;
+        default:
+            return false;
+    }
+}
+
 // 生成状态哈希（用于判断状态是否真的变化了）
 function getStateHash(state: Record<string, any>): string {
     // 只关注关键状态字段
@@ -404,7 +551,7 @@ export class SceneEventEditHandler extends Handler<Context> {
         
         // 获取每个client的widget列表（从数据库读取，优先；如果数据库没有则从内存读取，向后兼容）
         const clientWidgetsMap: Record<number, string[]> = {};
-        const { ClientWidgetModel } = require('../model/client');
+        const { ClientWidgetModel, ClientGsiFieldModel } = require('../model/client');
         const ClientConnectionHandler = require('./client').ClientConnectionHandler;
         for (const client of clients) {
             try {
@@ -432,6 +579,25 @@ export class SceneEventEditHandler extends Handler<Context> {
                         clientWidgetsMap[client.clientId] = widgetList.map((w: any) => typeof w === 'string' ? w : w.name);
                     }
                 }
+            }
+        }
+        
+        // 获取每个client的GSI字段列表（用于下拉选择）
+        const clientGsiFieldsMap: Record<number, Array<{ path: string; type: string; values?: string[]; range?: [number, number]; nullable?: boolean }>> = {};
+        for (const client of clients) {
+            try {
+                const gsiFields = await ClientGsiFieldModel.getByClient(this.domain._id, client.clientId);
+                if (gsiFields && gsiFields.length > 0) {
+                    clientGsiFieldsMap[client.clientId] = gsiFields.map(f => ({
+                        path: f.fieldPath,
+                        type: f.type,
+                        values: f.values,
+                        range: f.range,
+                        nullable: f.nullable,
+                    }));
+                }
+            } catch (error) {
+                logger.error('Failed to load GSI fields for client %d: %o', client.clientId, error);
             }
         }
 
@@ -517,6 +683,8 @@ export class SceneEventEditHandler extends Handler<Context> {
             clientsJson: JSON.stringify(cleanedClients),
             clientWidgetsMap: clientWidgetsMap,
             clientWidgetsMapJson: JSON.stringify(clientWidgetsMap),
+            clientGsiFieldsMap: clientGsiFieldsMap,
+            clientGsiFieldsMapJson: JSON.stringify(clientGsiFieldsMap),
             sceneId: sidNum,
             domainId: this.domain._id,
         };
@@ -532,6 +700,9 @@ export class SceneEventEditHandler extends Handler<Context> {
             sourceDeviceId,
             sourceClientId,
             sourceWidgetName,
+            sourceGsiPath,
+            sourceGsiOperator,
+            sourceGsiValue,
             sourceAction,
             targetNodeId, 
             targetDeviceId, 
@@ -561,13 +732,38 @@ export class SceneEventEditHandler extends Handler<Context> {
             throw new ValidationError('name');
         }
 
-        // 验证监听源：支持Node设备或Client组件
+        // 验证监听源：支持Node设备、Client组件或GSI数据
         let sourceNodeIdNum: number | undefined;
         let sourceDeviceIdStr: string | undefined;
         let sourceClientIdNum: number | undefined;
         let sourceWidgetNameStr: string | undefined;
+        let sourceGsiPathStr: string | undefined;
+        let sourceGsiOperatorStr: string | undefined;
+        let sourceGsiValueAny: any = undefined;
 
-        if (sourceClientId !== undefined && sourceClientId !== null && sourceClientId !== '') {
+        if (sourceGsiPath !== undefined && sourceGsiPath !== null && sourceGsiPath !== '') {
+            // GSI数据监听源
+            sourceGsiPathStr = typeof sourceGsiPath === 'string' ? sourceGsiPath : String(sourceGsiPath);
+            if (!sourceGsiPathStr) {
+                throw new ValidationError('sourceGsiPath');
+            }
+            if (sourceClientId === undefined || sourceClientId === null || sourceClientId === '') {
+                throw new ValidationError('sourceClientId for GSI');
+            }
+            sourceClientIdNum = typeof sourceClientId === 'string' ? parseInt(sourceClientId, 10) : sourceClientId;
+            if (!sourceClientIdNum || isNaN(sourceClientIdNum)) {
+                throw new ValidationError('sourceClientId');
+            }
+            sourceGsiOperatorStr = sourceGsiOperator || 'eq';
+            sourceGsiValueAny = sourceGsiValue;
+
+            // 验证Client是否存在
+            const ClientModel = require('../model/client').default;
+            const sourceClient = await ClientModel.getByClientId(this.domain._id, sourceClientIdNum);
+            if (!sourceClient) {
+                throw new ValidationError('sourceClientId');
+            }
+        } else if (sourceClientId !== undefined && sourceClientId !== null && sourceClientId !== '') {
             // Client组件监听源
             sourceClientIdNum = typeof sourceClientId === 'string' ? parseInt(sourceClientId, 10) : sourceClientId;
             if (!sourceClientIdNum || isNaN(sourceClientIdNum)) {
@@ -746,10 +942,18 @@ export class SceneEventEditHandler extends Handler<Context> {
             owner: this.user._id,
         };
 
-        if (sourceClientIdNum !== undefined) {
+        if (sourceGsiPathStr !== undefined) {
+            // GSI数据监听源
+            eventData.sourceClientId = sourceClientIdNum;
+            eventData.sourceGsiPath = sourceGsiPathStr;
+            eventData.sourceGsiOperator = sourceGsiOperatorStr;
+            eventData.sourceGsiValue = sourceGsiValueAny;
+        } else if (sourceClientIdNum !== undefined) {
+            // Client组件监听源
             eventData.sourceClientId = sourceClientIdNum;
             eventData.sourceWidgetName = sourceWidgetNameStr;
         } else {
+            // Node设备监听源
             eventData.sourceNodeId = sourceNodeIdNum;
             eventData.sourceDeviceId = sourceDeviceIdStr;
         }
@@ -793,7 +997,12 @@ export class SceneEventEditHandler extends Handler<Context> {
             name, 
             description, 
             sourceNodeId, 
-            sourceDeviceId, 
+            sourceDeviceId,
+            sourceClientId,
+            sourceWidgetName,
+            sourceGsiPath,
+            sourceGsiOperator,
+            sourceGsiValue,
             sourceAction,
             targets,
             enabled,
@@ -823,28 +1032,86 @@ export class SceneEventEditHandler extends Handler<Context> {
             throw new ValidationError('eid');
         }
 
-        const sourceNodeIdNum = sourceNodeId ? (typeof sourceNodeId === 'string' ? parseInt(sourceNodeId, 10) : sourceNodeId) : event.sourceNodeId;
-
         const update: any = {};
         if (name !== undefined) update.name = name;
         if (description !== undefined) update.description = description;
-        if (sourceNodeId !== undefined) update.sourceNodeId = sourceNodeIdNum;
-        if (sourceDeviceId !== undefined) update.sourceDeviceId = sourceDeviceId;
         if (sourceAction !== undefined) update.sourceAction = sourceAction;
         if (enabled !== undefined) update.enabled = enabled === true || enabled === 'true' || enabled === '1';
 
-        // 如果更新了节点或设备，验证它们是否存在
-        if (update.sourceNodeId || update.sourceDeviceId) {
-            const sourceNodeId = update.sourceNodeId || event.sourceNodeId;
-            const sourceDeviceId = update.sourceDeviceId || event.sourceDeviceId;
-            const sourceNode = await NodeModel.getByNodeId(this.domain._id, sourceNodeId);
+        // 处理监听源更新：支持GSI、Client组件或Node设备
+        // 优先判断GSI数据：如果request.body中存在sourceGsiPath字段，就认为是GSI类型
+        const isGsiSource = 'sourceGsiPath' in this.request.body;
+        if (isGsiSource) {
+            // 验证sourceGsiPath是否有值
+            if (!sourceGsiPath || sourceGsiPath === '') {
+                throw new ValidationError('sourceGsiPath');
+            }
+            // GSI数据监听源
+            if (!sourceClientId) {
+                throw new ValidationError('sourceClientId for GSI');
+            }
+            const sourceClientIdNum = typeof sourceClientId === 'string' ? parseInt(sourceClientId, 10) : sourceClientId;
+            if (!sourceClientIdNum || isNaN(sourceClientIdNum)) {
+                throw new ValidationError('sourceClientId');
+            }
+            const ClientModel = require('../model/client').default;
+            const sourceClient = await ClientModel.getByClientId(this.domain._id, sourceClientIdNum);
+            if (!sourceClient) {
+                throw new ValidationError('sourceClientId');
+            }
+            update.sourceClientId = sourceClientIdNum;
+            update.sourceGsiPath = sourceGsiPath;
+            update.sourceGsiOperator = sourceGsiOperator || 'eq';
+            update.sourceGsiValue = sourceGsiValue;
+            update.sourceWidgetName = undefined; // 清除widget相关字段
+            update.sourceNodeId = undefined;
+            update.sourceDeviceId = undefined;
+        } else if (sourceClientId !== undefined && sourceClientId !== null && sourceClientId !== '') {
+            // Client组件监听源
+            const sourceClientIdNum = typeof sourceClientId === 'string' ? parseInt(sourceClientId, 10) : sourceClientId;
+            if (!sourceClientIdNum || isNaN(sourceClientIdNum)) {
+                throw new ValidationError('sourceClientId');
+            }
+            if (!sourceWidgetName || typeof sourceWidgetName !== 'string') {
+                throw new ValidationError('sourceWidgetName');
+            }
+            const ClientModel = require('../model/client').default;
+            const sourceClient = await ClientModel.getByClientId(this.domain._id, sourceClientIdNum);
+            if (!sourceClient) {
+                throw new ValidationError('sourceClientId');
+            }
+            update.sourceClientId = sourceClientIdNum;
+            update.sourceWidgetName = sourceWidgetName;
+            update.sourceGsiPath = undefined; // 清除GSI相关字段
+            update.sourceGsiOperator = undefined;
+            update.sourceGsiValue = undefined;
+            update.sourceNodeId = undefined;
+            update.sourceDeviceId = undefined;
+        } else if (sourceNodeId !== undefined || sourceDeviceId !== undefined) {
+            // Node设备监听源
+            const sourceNodeIdNum = sourceNodeId ? (typeof sourceNodeId === 'string' ? parseInt(sourceNodeId, 10) : sourceNodeId) : event.sourceNodeId;
+            const sourceDeviceIdStr = sourceDeviceId || event.sourceDeviceId;
+            if (!sourceNodeIdNum || isNaN(sourceNodeIdNum)) {
+                throw new ValidationError('sourceNodeId');
+            }
+            if (!sourceDeviceIdStr || typeof sourceDeviceIdStr !== 'string') {
+                throw new ValidationError('sourceDeviceId');
+            }
+            const sourceNode = await NodeModel.getByNodeId(this.domain._id, sourceNodeIdNum);
             if (!sourceNode) {
                 throw new ValidationError('sourceNodeId');
             }
             const sourceDevices = await NodeDeviceModel.getByNode(sourceNode._id);
-            if (!sourceDevices.find(d => d.deviceId === sourceDeviceId)) {
+            if (!sourceDevices.find(d => d.deviceId === sourceDeviceIdStr)) {
                 throw new ValidationError('sourceDeviceId');
             }
+            update.sourceNodeId = sourceNodeIdNum;
+            update.sourceDeviceId = sourceDeviceIdStr;
+            update.sourceClientId = undefined; // 清除client相关字段
+            update.sourceWidgetName = undefined;
+            update.sourceGsiPath = undefined;
+            update.sourceGsiOperator = undefined;
+            update.sourceGsiValue = undefined;
         }
 
         // 处理 targets 数组
@@ -852,36 +1119,69 @@ export class SceneEventEditHandler extends Handler<Context> {
             if (!Array.isArray(targets) || targets.length === 0) {
                 throw new ValidationError('targets');
             }
-            const processedTargets: Array<{ targetNodeId: number; targetDeviceId: string; targetAction: string; targetValue?: any; order?: number }> = [];
+            const processedTargets: Array<{ targetNodeId?: number; targetDeviceId?: string; targetClientId?: number; targetWidgetName?: string; targetAction: string; targetValue?: any; order?: number }> = [];
             for (const target of targets) {
-                const targetNodeIdNum = typeof target.targetNodeId === 'string' ? parseInt(target.targetNodeId, 10) : target.targetNodeId;
-                if (!targetNodeIdNum || isNaN(targetNodeIdNum)) {
-                    throw new ValidationError('target.targetNodeId');
-                }
-                if (!target.targetDeviceId || typeof target.targetDeviceId !== 'string') {
-                    throw new ValidationError('target.targetDeviceId');
-                }
                 if (!target.targetAction || typeof target.targetAction !== 'string') {
                     throw new ValidationError('target.targetAction');
                 }
 
-                // 验证目标节点和设备是否存在
-                const targetNode = await NodeModel.getByNodeId(this.domain._id, targetNodeIdNum);
-                if (!targetNode) {
-                    throw new ValidationError('target.targetNodeId');
-                }
-                const targetDevices = await NodeDeviceModel.getByNode(targetNode._id);
-                if (!targetDevices.find(d => d.deviceId === target.targetDeviceId)) {
-                    throw new ValidationError('target.targetDeviceId');
-                }
+                // 判断是否为Client类型：targetClientId存在且不为空字符串
+                const hasTargetClientId = target.targetClientId !== undefined && 
+                                         target.targetClientId !== null && 
+                                         target.targetClientId !== '';
+                
+                if (hasTargetClientId) {
+                    // Client组件触发效果
+                    const targetClientIdNum = typeof target.targetClientId === 'string' ? parseInt(target.targetClientId, 10) : target.targetClientId;
+                    if (isNaN(targetClientIdNum) || targetClientIdNum < 1) {
+                        throw new ValidationError('target.targetClientId');
+                    }
+                    if (!target.targetWidgetName || typeof target.targetWidgetName !== 'string') {
+                        throw new ValidationError('target.targetWidgetName');
+                    }
 
-                processedTargets.push({
-                    targetNodeId: targetNodeIdNum,
-                    targetDeviceId: target.targetDeviceId,
-                    targetAction: target.targetAction,
-                    targetValue: target.targetValue,
-                    order: target.order !== undefined ? target.order : processedTargets.length,
-                });
+                    // 验证Client是否存在
+                    const ClientModel = require('../model/client').default;
+                    const targetClient = await ClientModel.getByClientId(this.domain._id, targetClientIdNum);
+                    if (!targetClient) {
+                        throw new ValidationError('target.targetClientId');
+                    }
+
+                    processedTargets.push({
+                        targetClientId: targetClientIdNum,
+                        targetWidgetName: target.targetWidgetName,
+                        targetAction: target.targetAction,
+                        targetValue: target.targetValue,
+                        order: target.order !== undefined ? target.order : processedTargets.length,
+                    });
+                } else {
+                    // Node设备触发效果
+                    const targetNodeIdNum = typeof target.targetNodeId === 'string' ? parseInt(target.targetNodeId, 10) : target.targetNodeId;
+                    if (!targetNodeIdNum || isNaN(targetNodeIdNum)) {
+                        throw new ValidationError('target.targetNodeId');
+                    }
+                    if (!target.targetDeviceId || typeof target.targetDeviceId !== 'string') {
+                        throw new ValidationError('target.targetDeviceId');
+                    }
+
+                    // 验证目标节点和设备是否存在
+                    const targetNode = await NodeModel.getByNodeId(this.domain._id, targetNodeIdNum);
+                    if (!targetNode) {
+                        throw new ValidationError('target.targetNodeId');
+                    }
+                    const targetDevices = await NodeDeviceModel.getByNode(targetNode._id);
+                    if (!targetDevices.find(d => d.deviceId === target.targetDeviceId)) {
+                        throw new ValidationError('target.targetDeviceId');
+                    }
+
+                    processedTargets.push({
+                        targetNodeId: targetNodeIdNum,
+                        targetDeviceId: target.targetDeviceId,
+                        targetAction: target.targetAction,
+                        targetValue: target.targetValue,
+                        order: target.order !== undefined ? target.order : processedTargets.length,
+                    });
+                }
             }
             update.targets = processedTargets;
         }
@@ -1785,8 +2085,34 @@ export async function apply(ctx: Context) {
                 }
 
                 if (shouldTrigger) {
-                    logger.info('Triggering scene event: sceneId=%d, eventId=%d, eventName=%s, clientId=%d, widgetName=%s, visible=%s',
-                        enabledScene.sid, event.eid, event.name, clientId, widgetName, visible);
+                    // 检查触发次数限制
+                    const triggerLimit = event.triggerLimit;
+                    if (triggerLimit !== undefined && triggerLimit !== null && triggerLimit !== 0) {
+                        const countKey = `${event.sceneId}_${event.eid}`;
+                        const countEntry = eventTriggerCountCache.get(countKey);
+                        const currentCount = countEntry ? countEntry.count : 0;
+                        
+                        if (triggerLimit > 0 && currentCount >= triggerLimit) {
+                            logger.debug('Event %d skipped due to trigger limit: current=%d, limit=%d', 
+                                event.eid, currentCount, triggerLimit);
+                            continue;
+                        }
+                        
+                        // 更新触发次数
+                        if (!countEntry) {
+                            eventTriggerCountCache.set(countKey, {
+                                sceneId: event.sceneId,
+                                eventId: event.eid,
+                                count: 1,
+                                firstTriggerTime: Date.now(),
+                            });
+                        } else {
+                            countEntry.count = currentCount + 1;
+                        }
+                    }
+                    
+                    logger.info('Triggering scene event: sceneId=%d, eventId=%d, eventName=%s, clientId=%d, widgetName=%s, visible=%s, triggerLimit=%o, triggerDelay=%o',
+                        enabledScene.sid, event.eid, event.name, clientId, widgetName, visible, triggerLimit, event.triggerDelay);
                     addSceneLog(enabledScene.sid, 'info', 
                         `事件触发: 监听源Client ${clientId} 组件 ${widgetName} 状态变化 (${visible ? '显示' : '隐藏'})`, 
                         event.eid, event.name, {
@@ -1794,7 +2120,17 @@ export async function apply(ctx: Context) {
                             sourceWidgetName: widgetName,
                             visible: visible
                         });
-                    await executeSceneEvent(event, finalDomainId, ctx);
+                    
+                    // 延时触发
+                    const triggerDelay = event.triggerDelay || 0;
+                    if (triggerDelay > 0) {
+                        logger.debug('Event %d will be executed after %d ms delay', event.eid, triggerDelay);
+                        setTimeout(async () => {
+                            await executeSceneEvent(event, finalDomainId, ctx);
+                        }, triggerDelay);
+                    } else {
+                        await executeSceneEvent(event, finalDomainId, ctx);
+                    }
                 }
             }
         } catch (error: any) {
@@ -1895,8 +2231,34 @@ export async function apply(ctx: Context) {
                         continue;
                     }
                     
-                    logger.info('Scene event triggered: sceneId=%d, eventId=%d, sourceNode=%d, sourceDevice=%s (matched %s), newState=%O',
-                        enabledScene.sid, event.eid, node.nid, deviceId, event.sourceDeviceId, newState);
+                    // 检查触发次数限制
+                    const triggerLimit = event.triggerLimit;
+                    if (triggerLimit !== undefined && triggerLimit !== null && triggerLimit !== 0) {
+                        const countKey = `${event.sceneId}_${event.eid}`;
+                        const countEntry = eventTriggerCountCache.get(countKey);
+                        const currentCount = countEntry ? countEntry.count : 0;
+                        
+                        if (triggerLimit > 0 && currentCount >= triggerLimit) {
+                            logger.debug('Event %d skipped due to trigger limit: current=%d, limit=%d', 
+                                event.eid, currentCount, triggerLimit);
+                            continue;
+                        }
+                        
+                        // 更新触发次数
+                        if (!countEntry) {
+                            eventTriggerCountCache.set(countKey, {
+                                sceneId: event.sceneId,
+                                eventId: event.eid,
+                                count: 1,
+                                firstTriggerTime: Date.now(),
+                            });
+                        } else {
+                            countEntry.count = currentCount + 1;
+                        }
+                    }
+                    
+                    logger.info('Scene event triggered: sceneId=%d, eventId=%d, sourceNode=%d, sourceDevice=%s (matched %s), newState=%O, triggerLimit=%o, triggerDelay=%o',
+                        enabledScene.sid, event.eid, node.nid, deviceId, event.sourceDeviceId, newState, triggerLimit, event.triggerDelay);
                     
                     addSceneLog(enabledScene.sid, 'info', 
                         `事件触发: 监听源设备 ${deviceId} (匹配 ${event.sourceDeviceId}) 状态变化 (${event.sourceAction || 'any'})`, 
@@ -1908,12 +2270,223 @@ export async function apply(ctx: Context) {
                             sourceAction: event.sourceAction
                         });
 
-                    await executeSceneEvent(event, domainId, ctx);
+                    // 延时触发
+                    const triggerDelay = event.triggerDelay || 0;
+                    if (triggerDelay > 0) {
+                        logger.debug('Event %d will be executed after %d ms delay', event.eid, triggerDelay);
+                        setTimeout(async () => {
+                            await executeSceneEvent(event, domainId, ctx);
+                        }, triggerDelay);
+                    } else {
+                        await executeSceneEvent(event, domainId, ctx);
+                    }
                 }
             }
         } catch (error) {
             logger.error('Error handling device update event for scene trigger: %s', (error as Error).message);
             logger.error('Error stack: %s', (error as Error).stack);
+        }
+    });
+    
+    // 监听GSI数据更新事件，执行场景事件
+    (ctx.on as any)('client/gsi/update', async (clientId: number, gsiData: any, timestamp: number, domainId?: string) => {
+        try {
+            logger.info('Scene handler received client/gsi/update: clientId=%d, domainId=%s', 
+                clientId, domainId || 'not provided');
+            
+            const ClientModel = require('../model/client').default;
+            let client = null;
+            let finalDomainId = domainId || 'system';
+            
+            if (domainId) {
+                client = await ClientModel.getByClientId(domainId, clientId);
+            } else {
+                client = await ClientModel.getByClientId('system', clientId);
+                if (client) {
+                    finalDomainId = client.domainId || 'system';
+                } else {
+                    logger.warn('Client not found: clientId=%d, tried domain=system', clientId);
+                    return;
+                }
+            }
+            
+            if (!client) {
+                logger.warn('Client not found: clientId=%d, domainId=%s', clientId, finalDomainId);
+                return;
+            }
+            
+            const enabledScene = await SceneModel.getEnabled(finalDomainId);
+            if (!enabledScene) {
+                logger.info('No enabled scene found for domain: %s', finalDomainId);
+                return;
+            }
+            
+            const events = await SceneEventModel.getBySceneId(finalDomainId, enabledScene.sid);
+            const enabledEvents = events.filter(e => e.enabled);
+            
+            logger.info('Checking %d enabled events for GSI data: clientId=%d', 
+                enabledEvents.length, clientId);
+            
+            for (const event of enabledEvents) {
+                // 只处理GSI数据源的事件
+                if (!event.sourceGsiPath || event.sourceClientId !== clientId) {
+                    logger.debug('Event %d skipped: sourceGsiPath=%s, sourceClientId=%d, clientId=%d', 
+                        event.eid, event.sourceGsiPath, event.sourceClientId, clientId);
+                    continue;
+                }
+                
+                // 获取实际值用于调试和去重
+                const actualValue = getValueByPath(gsiData, event.sourceGsiPath);
+                logger.debug('Checking event %d: path=%s, actualValue=%o, expectedValue=%o, operator=%s', 
+                    event.eid, event.sourceGsiPath, actualValue, event.sourceGsiValue, event.sourceGsiOperator || 'eq');
+                
+                // 检查GSI条件是否满足
+                const conditionMet = checkGsiCondition(
+                    gsiData,
+                    event.sourceGsiPath,
+                    event.sourceGsiOperator || 'eq',
+                    event.sourceGsiValue
+                );
+                
+                logger.debug('Event %d condition check result: %s', event.eid, conditionMet);
+                
+                if (!conditionMet) {
+                    // 条件不满足时，更新上一次的值（用于string类型的值变化检测）
+                    const changeKey = `${event.sceneId}_${event.eid}_${clientId}_${event.sourceGsiPath}`;
+                    gsiValueChangeCache.set(changeKey, {
+                        sceneId: event.sceneId,
+                        eventId: event.eid,
+                        sourceClientId: clientId,
+                        sourceGsiPath: event.sourceGsiPath,
+                        lastValue: actualValue,
+                        timestamp: Date.now(),
+                    });
+                    continue;
+                }
+                
+                // 对于string类型的GSI值，检查值是否发生变化（从非目标值变成目标值）
+                const isStringValue = typeof event.sourceGsiValue === 'string' && typeof actualValue === 'string';
+                let shouldSkipStringValueCheck = false;
+                
+                if (isStringValue) {
+                    const changeKey = `${event.sceneId}_${event.eid}_${clientId}_${event.sourceGsiPath}`;
+                    const lastEntry = gsiValueChangeCache.get(changeKey);
+                    
+                    if (lastEntry) {
+                        // 如果上一次的值也是目标值，说明值没有变化，不触发
+                        // 直接比较上一次的值和目标值
+                        const lastValueMatches = (event.sourceGsiOperator || 'eq').toLowerCase() === 'eq' 
+                            ? lastEntry.lastValue == event.sourceGsiValue
+                            : checkGsiCondition(
+                                { [event.sourceGsiPath]: lastEntry.lastValue },
+                                event.sourceGsiPath,
+                                event.sourceGsiOperator || 'eq',
+                                event.sourceGsiValue
+                            );
+                        
+                        if (lastValueMatches) {
+                            logger.debug('Event %d skipped: string value unchanged (lastValue=%o, currentValue=%o, both match target=%o)', 
+                                event.eid, lastEntry.lastValue, actualValue, event.sourceGsiValue);
+                            // 更新缓存中的值（即使不触发也要更新，以便下次比较）
+                            lastEntry.lastValue = actualValue;
+                            lastEntry.timestamp = Date.now();
+                            shouldSkipStringValueCheck = true;
+                        } else {
+                            // 如果上一次的值不是目标值，现在变成目标值了，应该触发
+                            logger.debug('Event %d will trigger: string value changed from %o to %o (target=%o)', 
+                                event.eid, lastEntry.lastValue, actualValue, event.sourceGsiValue);
+                        }
+                    } else {
+                        // 第一次检测到string类型值匹配，应该触发
+                        logger.debug('Event %d will trigger: string value first time match (currentValue=%o, target=%o)', 
+                            event.eid, actualValue, event.sourceGsiValue);
+                    }
+                    
+                    if (shouldSkipStringValueCheck) {
+                        continue;
+                    }
+                    
+                    // 更新缓存
+                    gsiValueChangeCache.set(changeKey, {
+                        sceneId: event.sceneId,
+                        eventId: event.eid,
+                        sourceClientId: clientId,
+                        sourceGsiPath: event.sourceGsiPath,
+                        lastValue: actualValue,
+                        timestamp: Date.now(),
+                    });
+                }
+                
+                // 生成值哈希用于去重（非string类型或string类型但值已变化）
+                const valueHash = JSON.stringify(actualValue);
+                
+                // 对于string类型，如果已经通过值变化检测，使用包含时间戳的唯一哈希以确保能触发
+                // 对于非string类型，使用标准去重逻辑
+                const finalValueHash = isStringValue ? `${valueHash}_${Date.now()}` : valueHash;
+                
+                // 检查是否应该触发（去重）
+                if (!shouldTriggerGsiEvent(
+                    event.sceneId,
+                    event.eid,
+                    clientId,
+                    event.sourceGsiPath,
+                    finalValueHash
+                )) {
+                    logger.debug('Event %d skipped by shouldTriggerGsiEvent', event.eid);
+                    continue;
+                }
+                
+                // 检查触发次数限制
+                const triggerLimit = event.triggerLimit;
+                if (triggerLimit !== undefined && triggerLimit !== null && triggerLimit !== 0) {
+                    const countKey = `${event.sceneId}_${event.eid}`;
+                    const countEntry = eventTriggerCountCache.get(countKey);
+                    const currentCount = countEntry ? countEntry.count : 0;
+                    
+                    if (triggerLimit > 0 && currentCount >= triggerLimit) {
+                        logger.debug('Event %d skipped due to trigger limit: current=%d, limit=%d', 
+                            event.eid, currentCount, triggerLimit);
+                        continue;
+                    }
+                    
+                    // 更新触发次数
+                    if (!countEntry) {
+                        eventTriggerCountCache.set(countKey, {
+                            sceneId: event.sceneId,
+                            eventId: event.eid,
+                            count: 1,
+                            firstTriggerTime: Date.now(),
+                        });
+                    } else {
+                        countEntry.count = currentCount + 1;
+                    }
+                }
+                
+                logger.info('GSI condition met, executing scene event: sceneId=%d, eventId=%d, eventName=%s, gsiPath=%s, value=%o, triggerLimit=%o, triggerDelay=%o',
+                    event.sceneId, event.eid, event.name, event.sourceGsiPath, actualValue, triggerLimit, event.triggerDelay);
+                
+                addSceneLog(event.sceneId, 'info',
+                    `GSI数据触发: ${event.sourceGsiPath} = ${JSON.stringify(actualValue)}`,
+                    event.eid, event.name, { 
+                        sourceGsiPath: event.sourceGsiPath,
+                        actualValue: actualValue,
+                        operator: event.sourceGsiOperator,
+                        expectedValue: event.sourceGsiValue
+                    });
+                
+                // 延时触发
+                const triggerDelay = event.triggerDelay || 0;
+                if (triggerDelay > 0) {
+                    logger.debug('Event %d will be executed after %d ms delay', event.eid, triggerDelay);
+                    setTimeout(async () => {
+                        await executeSceneEvent(event, finalDomainId, ctx);
+                    }, triggerDelay);
+                } else {
+                    await executeSceneEvent(event, finalDomainId, ctx);
+                }
+            }
+        } catch (error: any) {
+            logger.error('Error handling GSI update: %s', error.message);
         }
     });
 
