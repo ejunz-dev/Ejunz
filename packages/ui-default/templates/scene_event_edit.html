@@ -30,6 +30,7 @@
     window.nodes = {{ nodesJson|safe if nodesJson else '[]' }};
     window.clients = {{ clientsJson|safe if clientsJson else '[]' }};
     window.clientWidgetsMap = {{ clientWidgetsMapJson|safe if clientWidgetsMapJson else '{}' }};
+    window.clientGsiFieldsMap = {{ clientGsiFieldsMapJson|safe if clientGsiFieldsMapJson else '{}' }};
     window.sceneId = {{ sceneId }};
     window.domainId = '{{ domainId }}';
     window.sceneEventData = {{ eventJson|safe if eventJson else 'null' }};

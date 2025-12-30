@@ -3,12 +3,10 @@ import Notification from 'vj/components/notification';
 import { AutoloadPage } from 'vj/misc/Page';
 import { i18n } from 'vj/utils';
 
-export default new AutoloadPage('client_domain,client_detail', async () => {
+export default new AutoloadPage('client_detail', async () => {
     const [{ default: Sock }] = await Promise.all([
         import('../components/socket'),
     ]);
-
-    // Token 生成功能已迁移到 edge 页面
 
     function deleteToken(clientId) {
         if (!confirm(i18n('Are you sure you want to delete the Token? Connections using this Token will be disconnected.'))) return;
@@ -37,24 +35,12 @@ export default new AutoloadPage('client_domain,client_detail', async () => {
         });
     }
 
-    function copyBaseEndpoint() {
-        const endpoint = $('#client-endpoint-base').text();
-        navigator.clipboard.writeText(endpoint).then(() => {
-            Notification.success(i18n('Copied to clipboard'));
-        }).catch(() => {
-            Notification.error(i18n('Copy failed'));
-        });
-    }
-
-    // Token 生成按钮已移除，请使用 edge 页面生成
-
     $(document).on('click', '.client-delete-token-btn', function() {
         const clientId = $(this).data('client-id');
         deleteToken(clientId);
     });
 
     $(document).on('click', '.client-copy-endpoint-btn', copyEndpoint);
-    $(document).on('click', '.client-copy-base-endpoint-btn', copyBaseEndpoint);
 
     $(document).on('submit', '.client-delete-form', function(e) {
         if (!confirm(i18n('Are you sure you want to delete this client?'))) {
@@ -169,11 +155,11 @@ export default new AutoloadPage('client_domain,client_detail', async () => {
 
     // Widget control for client detail page
     const $widgetControlsContainer = $('#widget-controls-container');
-    if ($widgetControlsContainer.length) {
-        // 存储组件列表和状态
-        let widgets = [];
-        let widgetStates = {}; // widgetName -> visible
+    // 存储组件列表和状态（在外部定义，以便 sendControlCommand 可以访问）
+    let widgets = [];
+    let widgetStates = {}; // widgetName -> visible
 
+    if ($widgetControlsContainer.length) {
         // 渲染组件控制UI
         function renderWidgets() {
             if (widgets.length === 0) {
@@ -273,64 +259,180 @@ export default new AutoloadPage('client_domain,client_detail', async () => {
                             $toggle.prop('checked', msg.visible === true);
                         }
                     }
+                    
                 }
 
                 connectStatusWs();
             }
         }
-
-        function sendControlCommand(widgetName, visible) {
-            const clientId = window.location.pathname.match(/\/client\/(\d+)/)?.[1];
+    }
+    
+    // GSI字段列表展示
+    const $gsiFieldsContainer = $('#gsi-fields-container');
+    if ($gsiFieldsContainer.length) {
+        const $clientStatusWs = $('#client-status-ws');
+        const clientId = $clientStatusWs.data('client-id') || window.location.pathname.match(/\/client\/(\d+)/)?.[1];
+        
+        // 从API加载GSI字段列表
+        function loadGsiFields() {
             if (!clientId) {
-                Notification.error(i18n('Client ID not found'));
+                $gsiFieldsContainer.html('<p class="text-gray">无法获取客户端ID</p>');
                 return;
             }
             
-            const domainId = (window.UiContext?.domainId || 'system');
-            
-            $.ajax({
-                url: `/d/${domainId}/client/${clientId}/widget/control`,
-                method: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({
-                    widgetName: widgetName,
-                    visible: visible
-                }),
-            }).then((response) => {
-                if (response.success) {
-                    console.log('Widget control command sent successfully:', response);
-                    // 乐观更新UI
-                    widgetStates[widgetName] = visible;
-                    const $toggle = $(`#widget-${widgetName}`);
-                    if ($toggle.length) {
-                        $toggle.prop('checked', visible);
+            const domainId = $clientStatusWs.data('domain-id') || (window.UiContext?.domainId || 'system');
+            $.get(`/d/${domainId}/client/${clientId}/gsi/fields`)
+                .done((data) => {
+                    if (data.fields && data.fields.length > 0) {
+                        renderFieldList(data.fields);
+                    } else {
+                        $gsiFieldsContainer.html('<p class="text-gray">暂无GSI字段数据，请等待客户端连接并完成握手</p>');
                     }
-                } else {
-                    Notification.error(i18n('Widget control failed: {0}').replace('{0}', response.error || response.message || 'Unknown error'));
-                }
-            }).catch((error) => {
-                console.error('Failed to send control command:', error);
-                Notification.error(i18n('Failed to send control command: {0}').replace('{0}', error.responseJSON?.error || error.message || 'Unknown error'));
-            });
+                })
+                .fail((xhr) => {
+                    if (xhr.status === 404) {
+                        $gsiFieldsContainer.html('<p class="text-gray">暂无GSI字段数据，请等待客户端连接并完成握手</p>');
+                    } else {
+                        $gsiFieldsContainer.html('<p class="text-red">加载GSI字段失败</p>');
+                    }
+                });
         }
-
-        // 绑定开关事件（使用事件委托，因为组件是动态生成的）
-        $(document).on('change', '.widget-switch-toggle', function() {
-            const $toggle = $(this);
-            const widgetName = $toggle.data('widget-name');
-            const isChecked = $toggle.is(':checked');
+        
+        // 渲染字段列表
+        function renderFieldList(fields) {
+            let html = '<div class="gsi-field-list-content">';
+            html += '<table class="data-table" style="width: 100%; font-size: 0.9em; table-layout: auto;">';
+            html += '<thead><tr><th style="width: 25%;">字段路径</th><th style="width: 8%;">类型</th><th style="width: 35%; min-width: 200px;">可监听的值</th><th style="width: 32%;">说明</th></tr></thead>';
+            html += '<tbody>';
             
-            console.log('Widget toggle changed:', { widgetName, isChecked });
+            fields.forEach(field => {
+                let desc = field.description || '';
+                if (field.range && field.range.length === 2) {
+                    desc += ` (范围: ${field.range[0]}-${field.range[1]})`;
+                }
+                if (field.nullable) {
+                    desc += ' (可为null)';
+                }
+                
+                // 显示可监听的值
+                let valuesDisplay = '-';
+                if (field.values && field.values.length > 0) {
+                    // 显示所有可监听的值，每个值可点击复制，允许换行
+                    valuesDisplay = field.values.map(val => {
+                        const escapedVal = String(val).replace(/"/g, '&quot;');
+                        return `<code class="gsi-field-value-item" style="background: #e8f5e9; padding: 2px 6px; border-radius: 3px; color: #2e7d32; font-weight: 500; cursor: pointer; margin: 2px 4px 2px 0; display: inline-block; white-space: nowrap;" 
+                            data-path="${field.path.replace(/"/g, '&quot;')}" 
+                            data-value="${escapedVal}">${val}</code>`;
+                    }).join('');
+                } else if (field.type === 'number' && field.range && field.range.length === 2) {
+                    // 数值类型且有范围，显示范围提示
+                    valuesDisplay = `<span style="color: #666;">范围: ${field.range[0]} - ${field.range[1]}</span>`;
+                } else if (field.type === 'boolean') {
+                    // 布尔类型，显示 true/false
+                    valuesDisplay = `<code class="gsi-field-value-item" style="background: #e8f5e9; padding: 2px 6px; border-radius: 3px; color: #2e7d32; font-weight: 500; cursor: pointer; margin: 2px; display: inline-block;" 
+                        data-path="${field.path.replace(/"/g, '&quot;')}" 
+                        data-value="true">true</code> 
+                        <code class="gsi-field-value-item" style="background: #e8f5e9; padding: 2px 6px; border-radius: 3px; color: #2e7d32; font-weight: 500; cursor: pointer; margin: 2px; display: inline-block;" 
+                        data-path="${field.path.replace(/"/g, '&quot;')}" 
+                        data-value="false">false</code>`;
+                } else {
+                    valuesDisplay = '<span style="color: #999;">任意值</span>';
+                }
+                
+                html += `<tr>
+                    <td style="vertical-align: top; padding: 8px;"><code class="gsi-field-path" style="background: #f5f5f5; padding: 2px 6px; border-radius: 3px; cursor: pointer;" 
+                        data-path="${field.path.replace(/"/g, '&quot;')}">${field.path}</code></td>
+                    <td style="vertical-align: top; padding: 8px;"><span style="color: #666;">${field.type}</span></td>
+                    <td style="vertical-align: top; padding: 8px; word-wrap: break-word; line-height: 1.8;">${valuesDisplay}</td>
+                    <td style="vertical-align: top; padding: 8px;"><span style="color: #666;">${desc || '-'}</span></td>
+                </tr>`;
+            });
             
-            if (widgetName) {
-                sendControlCommand(widgetName, isChecked);
-            } else {
-                console.error('Missing widget name');
+            html += '</tbody></table>';
+            html += '<div style="margin-top: 15px; padding: 10px; background: #f9f9f9; border-radius: 4px; font-size: 0.85em; color: #666;">';
+            html += '<strong>提示：</strong>点击字段路径可复制路径，点击可监听的值可复制该值。这些字段和值由客户端在握手时注册，可用于场景事件系统中作为监听源和条件值。';
+            html += '</div>';
+            html += '</div>';
+            $gsiFieldsContainer.html(html);
+        }
+        
+        // 初始化加载
+        loadGsiFields();
+        
+        // 绑定字段路径复制事件（使用事件委托）
+        $(document).on('click', '.gsi-field-path', function() {
+            const path = $(this).data('path');
+            if (path) {
+                navigator.clipboard.writeText(path).then(() => {
+                    Notification.success('已复制字段路径: ' + path);
+                }).catch(() => {
+                    Notification.error('复制失败');
+                });
             }
         });
-
-        // 初始渲染（空列表）
-        renderWidgets();
+        
+        // 绑定可监听值复制事件
+        $(document).on('click', '.gsi-field-value-item', function() {
+            const value = $(this).data('value');
+            const path = $(this).data('path');
+            if (value !== undefined && value !== null && value !== '') {
+                navigator.clipboard.writeText(String(value)).then(() => {
+                    Notification.success(`已复制监听值: ${path} = ${value}`);
+                }).catch(() => {
+                    Notification.error('复制失败');
+                });
+            }
+        });
     }
+
+    function sendControlCommand(widgetName, visible) {
+        const clientId = window.location.pathname.match(/\/client\/(\d+)/)?.[1];
+        if (!clientId) {
+            Notification.error(i18n('Client ID not found'));
+            return;
+        }
+        
+        const domainId = (window.UiContext?.domainId || 'system');
+        
+        $.ajax({
+            url: `/d/${domainId}/client/${clientId}/widget/control`,
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                widgetName: widgetName,
+                visible: visible
+            }),
+        }).then((response) => {
+            if (response.success) {
+                console.log('Widget control command sent successfully:', response);
+                // 乐观更新UI
+                widgetStates[widgetName] = visible;
+                const $toggle = $(`#widget-${widgetName}`);
+                if ($toggle.length) {
+                    $toggle.prop('checked', visible);
+                }
+            } else {
+                Notification.error(i18n('Widget control failed: {0}').replace('{0}', response.error || response.message || 'Unknown error'));
+            }
+        }).catch((error) => {
+            console.error('Failed to send control command:', error);
+            Notification.error(i18n('Failed to send control command: {0}').replace('{0}', error.responseJSON?.error || error.message || 'Unknown error'));
+        });
+    }
+
+    // 绑定开关事件（使用事件委托，因为组件是动态生成的）
+    $(document).on('change', '.widget-switch-toggle', function() {
+        const $toggle = $(this);
+        const widgetName = $toggle.data('widget-name');
+        const isChecked = $toggle.is(':checked');
+        
+        console.log('Widget toggle changed:', { widgetName, isChecked });
+        
+        if (widgetName) {
+            sendControlCommand(widgetName, isChecked);
+        } else {
+            console.error('Missing widget name');
+        }
+    });
 });
 

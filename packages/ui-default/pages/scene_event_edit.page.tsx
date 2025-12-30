@@ -37,8 +37,11 @@ interface SceneEventData {
   description?: string;
   sourceNodeId?: number; // Node设备监听
   sourceDeviceId?: string; // Node设备监听
-  sourceClientId?: number; // Client组件监听
+  sourceClientId?: number; // Client组件监听 或 GSI数据监听
   sourceWidgetName?: string; // Client组件监听
+  sourceGsiPath?: string; // GSI数据路径
+  sourceGsiOperator?: string; // GSI比较操作符
+  sourceGsiValue?: any; // GSI比较值
   sourceAction?: string;
   targets?: TargetAction[];
   targetNodeId?: number; // 向后兼容
@@ -46,6 +49,8 @@ interface SceneEventData {
   targetAction?: string; // 向后兼容
   targetValue?: any; // 向后兼容
   enabled: boolean;
+  triggerLimit?: number; // 触发次数限制（0表示不限制，-1表示只触发一次）
+  triggerDelay?: number; // 延时触发时间（毫秒）
 }
 
 declare global {
@@ -54,6 +59,7 @@ declare global {
     nodes?: Array<{ nid: number; name: string }>;
     clients?: Array<{ clientId: number; name: string }>;
     clientWidgetsMap?: Record<number, Array<string>>; // clientId -> widget names
+    clientGsiFieldsMap?: Record<number, Array<{ path: string; type: string; values?: string[]; range?: [number, number]; nullable?: boolean }>>; // clientId -> GSI fields
     domainId?: string;
     sceneId?: number;
   }
@@ -63,6 +69,13 @@ declare global {
 const TargetActionNode = ({ data, selected }: { data: any; selected: boolean }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [config, setConfig] = useState(data.config || {});
+
+  // 当data.config更新时，同步更新本地state（如果不在编辑状态）
+  useEffect(() => {
+    if (!isEditing && data.config) {
+      setConfig(data.config);
+    }
+  }, [data.config, isEditing]);
 
   const handleEdit = useCallback(() => {
     setIsEditing(true);
@@ -366,12 +379,24 @@ const SourceNode = ({ data, selected }: { data: any; selected: boolean }) => {
       {!isEditing ? (
         <>
           <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
-            {(config.sourceClientId !== undefined && config.sourceClientId !== null) ? (
+            {config.sourceClientId !== undefined && config.sourceClientId !== null ? (
               <>
-                <div>类型: Client组件</div>
+                <div>类型: Client</div>
                 <div>Client: {config.sourceClientName || `Client-${config.sourceClientId}`}</div>
-                <div>组件: {config.sourceWidgetName || '-'}</div>
-            <div>动作: {config.sourceAction || '任意变化'}</div>
+                {config.sourceGsiPath ? (
+                  <>
+                    <div>Client类型: GSI数据</div>
+                    <div>路径: {config.sourceGsiPath || '-'}</div>
+                    <div>操作符: {config.sourceGsiOperator || 'eq'}</div>
+                    <div>值: {JSON.stringify(config.sourceGsiValue) || '-'}</div>
+                  </>
+                ) : (
+                  <>
+                    <div>Client类型: 组件状态</div>
+                    <div>组件: {config.sourceWidgetName || '-'}</div>
+                    <div>动作: {config.sourceAction || '任意变化'}</div>
+                  </>
+                )}
               </>
             ) : (
               <>
@@ -409,19 +434,261 @@ const SourceNode = ({ data, selected }: { data: any; selected: boolean }) => {
               onChange={(e) => {
                 const newType = e.target.value;
                 if (newType === 'client') {
-                  setConfig({ ...config, sourceType: 'client', sourceNodeId: undefined, sourceDeviceId: undefined });
+                  setConfig({ 
+                    ...config, 
+                    sourceType: 'client', 
+                    sourceNodeId: undefined, 
+                    sourceDeviceId: undefined,
+                    sourceClientType: config.sourceClientType || 'widget' // 默认组件状态
+                  });
                 } else {
-                  setConfig({ ...config, sourceType: 'node', sourceClientId: undefined, sourceWidgetName: undefined });
+                  setConfig({ 
+                    ...config, 
+                    sourceType: 'node', 
+                    sourceClientId: undefined, 
+                    sourceWidgetName: undefined,
+                    sourceGsiPath: undefined,
+                    sourceGsiOperator: undefined,
+                    sourceGsiValue: undefined,
+                    sourceClientType: undefined
+                  });
                 }
               }}
               style={{ width: '100%', padding: '4px', fontSize: '11px' }}
             >
               <option value="node">Node设备</option>
-              <option value="client">Client组件</option>
+              <option value="client">Client</option>
             </select>
           </div>
           
-          {(!config.sourceType || config.sourceType === 'node') ? (
+          {config.sourceType === 'client' ? (
+            <>
+              <div style={{ marginBottom: '8px' }}>
+                <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>Client类型</label>
+                <select
+                  value={config.sourceClientType || (config.sourceGsiPath ? 'gsi' : 'widget')}
+                  onChange={(e) => {
+                    const newClientType = e.target.value;
+                    if (newClientType === 'gsi') {
+                      setConfig({ 
+                        ...config, 
+                        sourceClientType: 'gsi',
+                        sourceWidgetName: undefined,
+                        sourceAction: undefined
+                      });
+                    } else {
+                      setConfig({ 
+                        ...config, 
+                        sourceClientType: 'widget',
+                        sourceGsiPath: undefined,
+                        sourceGsiOperator: undefined,
+                        sourceGsiValue: undefined
+                      });
+                    }
+                  }}
+                  style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                >
+                  <option value="widget">组件状态</option>
+                  <option value="gsi">GSI数据</option>
+                </select>
+              </div>
+              <div style={{ marginBottom: '8px' }}>
+                <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>Client</label>
+                <select
+                  value={config.sourceClientId || ''}
+                  onChange={(e) => {
+                    const clientId = e.target.value ? parseInt(e.target.value, 10) : undefined;
+                    setConfig({ ...config, sourceClientId: clientId });
+                  }}
+                  style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                >
+                  <option value="">请选择</option>
+                  {(window.clients || []).map((client: any) => (
+                    <option key={client.clientId} value={client.clientId}>
+                      {client.name} (ID: {client.clientId})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              {config.sourceClientType === 'gsi' ? (
+                <>
+                  <div style={{ marginBottom: '8px' }}>
+                    <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>GSI字段</label>
+                    <select
+                      value={config.sourceGsiPath || ''}
+                      onChange={(e) => {
+                        const selectedPath = e.target.value;
+                        const selectedField = config.sourceClientId 
+                          ? window.clientGsiFieldsMap?.[config.sourceClientId]?.find((f: any) => f.path === selectedPath)
+                          : undefined;
+                        setConfig({ 
+                          ...config, 
+                          sourceGsiPath: selectedPath || undefined,
+                          sourceGsiValue: undefined, // 清空值，让用户重新选择
+                        });
+                      }}
+                      style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                    >
+                      <option value="">请选择字段</option>
+                      {config.sourceClientId && window.clientGsiFieldsMap?.[config.sourceClientId]?.map((field: any) => (
+                        <option key={field.path} value={field.path}>
+                          {field.path} ({field.type})
+                        </option>
+                      ))}
+                    </select>
+                    {!config.sourceClientId && (
+                      <div style={{ fontSize: '10px', color: '#999', marginTop: '2px' }}>
+                        请先选择Client
+                      </div>
+                    )}
+                    {config.sourceClientId && (!window.clientGsiFieldsMap?.[config.sourceClientId] || window.clientGsiFieldsMap[config.sourceClientId].length === 0) && (
+                      <div style={{ fontSize: '10px', color: '#f44336', marginTop: '2px' }}>
+                        该Client暂无GSI字段，请等待客户端连接并完成握手
+                      </div>
+                    )}
+                  </div>
+                  
+                  {config.sourceGsiPath && (() => {
+                    const selectedField = config.sourceClientId 
+                      ? window.clientGsiFieldsMap?.[config.sourceClientId]?.find((f: any) => f.path === config.sourceGsiPath)
+                      : undefined;
+                    
+                    return (
+                      <>
+                        <div style={{ marginBottom: '8px' }}>
+                          <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>操作符</label>
+                          <select
+                            value={config.sourceGsiOperator || 'eq'}
+                            onChange={(e) => setConfig({ ...config, sourceGsiOperator: e.target.value })}
+                            style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                          >
+                            <option value="eq">等于 (==)</option>
+                            <option value="ne">不等于 (!=)</option>
+                            <option value="gt">大于 (&gt;)</option>
+                            <option value="gte">大于等于 (&gt;=)</option>
+                            <option value="lt">小于 (&lt;)</option>
+                            <option value="lte">小于等于 (&lt;=)</option>
+                            <option value="in">包含在数组中</option>
+                            <option value="contains">字符串包含</option>
+                          </select>
+                        </div>
+                        
+                        <div style={{ marginBottom: '8px' }}>
+                          <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>比较值</label>
+                          {selectedField?.values && selectedField.values.length > 0 ? (
+                            // 如果有枚举值，显示下拉选择
+                            <select
+                              value={config.sourceGsiValue !== undefined && config.sourceGsiValue !== null ? String(config.sourceGsiValue) : ''}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                let parsedValue: any = value;
+                                if (value === '') {
+                                  parsedValue = undefined;
+                                } else if (selectedField.type === 'number' && !isNaN(Number(value))) {
+                                  parsedValue = Number(value);
+                                } else if (selectedField.type === 'boolean') {
+                                  parsedValue = value === 'true';
+                                }
+                                setConfig({ ...config, sourceGsiValue: parsedValue });
+                              }}
+                              style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                            >
+                              <option value="">请选择值</option>
+                              {selectedField.values.map((val: any) => (
+                                <option key={val} value={String(val)}>
+                                  {String(val)}
+                                </option>
+                              ))}
+                            </select>
+                          ) : selectedField?.type === 'boolean' ? (
+                            // 布尔类型，显示 true/false 选择
+                            <select
+                              value={config.sourceGsiValue !== undefined && config.sourceGsiValue !== null ? String(config.sourceGsiValue) : ''}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setConfig({ ...config, sourceGsiValue: value === '' ? undefined : value === 'true' });
+                              }}
+                              style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                            >
+                              <option value="">请选择值</option>
+                              <option value="true">true</option>
+                              <option value="false">false</option>
+                            </select>
+                          ) : (
+                            // 其他类型，显示文本输入
+                            <input
+                              type="text"
+                              value={config.sourceGsiValue !== undefined && config.sourceGsiValue !== null ? String(config.sourceGsiValue) : ''}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                let parsedValue: any = value;
+                                if (value === '') {
+                                  parsedValue = undefined;
+                                } else if (selectedField?.type === 'number' && !isNaN(Number(value)) && value.trim() !== '') {
+                                  parsedValue = Number(value);
+                                } else if (value.startsWith('[') || value.startsWith('{')) {
+                                  try {
+                                    parsedValue = JSON.parse(value);
+                                  } catch {
+                                    parsedValue = value;
+                                  }
+                                }
+                                setConfig({ ...config, sourceGsiValue: parsedValue });
+                              }}
+                              placeholder={selectedField?.range ? `范围: ${selectedField.range[0]}-${selectedField.range[1]}` : "例如: 100 或 'live' 或 [1,2,3]"}
+                              style={{ width: '100%', padding: '4px', fontSize: '11px', boxSizing: 'border-box' }}
+                            />
+                          )}
+                          {selectedField?.range && (
+                            <div style={{ fontSize: '10px', color: '#999', marginTop: '2px' }}>
+                              范围: {selectedField.range[0]} - {selectedField.range[1]}
+                            </div>
+                          )}
+                          {selectedField?.values && selectedField.values.length > 0 && (
+                            <div style={{ fontSize: '10px', color: '#999', marginTop: '2px' }}>
+                              可监听的值: {selectedField.values.join(', ')}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </>
+              ) : (
+                <>
+                  <div style={{ marginBottom: '8px' }}>
+                    <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>组件</label>
+                    <select
+                      value={config.sourceWidgetName || ''}
+                      onChange={(e) => setConfig({ ...config, sourceWidgetName: e.target.value })}
+                      style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                    >
+                      <option value="">请先选择Client</option>
+                      {config.sourceClientId && window.clientWidgetsMap?.[config.sourceClientId]?.map((widget: string) => (
+                        <option key={widget} value={widget}>
+                          {widget}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ marginBottom: '8px' }}>
+                    <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>动作（可选）</label>
+                    <select
+                      value={config.sourceAction || ''}
+                      onChange={(e) => setConfig({ ...config, sourceAction: e.target.value })}
+                      style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                    >
+                      <option value="">任意变化</option>
+                      <option value="on">显示</option>
+                      <option value="off">隐藏</option>
+                      <option value="toggle">切换</option>
+                    </select>
+                  </div>
+                </>
+              )}
+            </>
+          ) : (!config.sourceType || config.sourceType === 'node') ? (
             <>
           <div style={{ marginBottom: '8px' }}>
             <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>节点</label>
@@ -562,6 +829,8 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
   const [eventName, setEventName] = useState(initialData?.name || '');
   const [eventDescription, setEventDescription] = useState(initialData?.description || '');
   const [eventEnabled, setEventEnabled] = useState(initialData?.enabled !== false);
+  const [triggerLimit, setTriggerLimit] = useState<number | ''>(initialData?.triggerLimit ?? '');
+  const [triggerDelay, setTriggerDelay] = useState<number | ''>(initialData?.triggerDelay ?? '');
   const [isSaving, setIsSaving] = useState(false);
 
   // 初始化节点
@@ -577,11 +846,15 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
         data: {
           label: '监听源',
           config: {
-            sourceType: (initialData.sourceClientId !== undefined && initialData.sourceClientId !== null) ? 'client' : 'node',
+            sourceType: (initialData.sourceClientId !== undefined && initialData.sourceClientId !== null) ? 'client' : (initialData.sourceNodeId !== undefined && initialData.sourceNodeId !== null ? 'node' : 'node'),
             sourceNodeId: initialData.sourceNodeId,
             sourceDeviceId: initialData.sourceDeviceId,
             sourceClientId: initialData.sourceClientId,
             sourceWidgetName: initialData.sourceWidgetName,
+            sourceGsiPath: initialData.sourceGsiPath,
+            sourceGsiOperator: initialData.sourceGsiOperator,
+            sourceGsiValue: initialData.sourceGsiValue,
+            sourceClientType: initialData.sourceGsiPath ? 'gsi' : 'widget', // 根据是否有sourceGsiPath判断类型
             sourceAction: initialData.sourceAction,
             sourceNodeName: window.nodes?.find((n: any) => n.nid === initialData.sourceNodeId)?.name,
             sourceDeviceName: window.nodeDevicesMap?.[initialData.sourceNodeId]?.find((d: any) => d.deviceId === initialData.sourceDeviceId)?.name,
@@ -755,16 +1028,54 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
 
     const sourceConfig = sourceNode.data.config;
     // 验证监听源配置
-    if (sourceConfig.sourceType === 'client') {
-      if (!sourceConfig.sourceClientId || !sourceConfig.sourceWidgetName) {
-        Notification.error('请配置监听源（Client和组件）');
-        return;
+    // 优先根据实际数据判断类型，而不是依赖 sourceType
+    const hasClientId = sourceConfig.sourceClientId !== undefined && sourceConfig.sourceClientId !== null;
+    const hasGsiPath = sourceConfig.sourceGsiPath !== undefined && sourceConfig.sourceGsiPath !== null && sourceConfig.sourceGsiPath !== '';
+    const hasNodeId = sourceConfig.sourceNodeId !== undefined && sourceConfig.sourceNodeId !== null;
+    
+    if (hasClientId) {
+      // Client类型监听源
+      // 优先判断GSI：如果有sourceGsiPath，或者sourceClientType是'gsi'，就认为是GSI类型
+      // 注意：如果sourceClientType是'gsi'，即使sourceGsiPath为空，也应该认为是GSI类型
+      const isGsiType = hasGsiPath || sourceConfig.sourceClientType === 'gsi';
+      if (isGsiType) {
+        // GSI数据监听
+        if (!sourceConfig.sourceClientId) {
+          Notification.error('请配置监听源（Client）');
+          return;
+        }
+        if (!sourceConfig.sourceGsiPath || sourceConfig.sourceGsiPath === '') {
+          Notification.error('请配置监听源（GSI字段）');
+          return;
+        }
+        // 操作符有默认值 'eq'，所以这里不需要强制验证
+        // 但为了明确，我们仍然检查，如果为空则使用默认值
+        const operator = sourceConfig.sourceGsiOperator || 'eq';
+        if (sourceConfig.sourceGsiValue === undefined || sourceConfig.sourceGsiValue === null || sourceConfig.sourceGsiValue === '') {
+          Notification.error('请选择或输入比较值');
+          return;
+        }
+      } else {
+        // 组件状态监听
+        if (!sourceConfig.sourceClientId) {
+          Notification.error('请配置监听源（Client）');
+          return;
+        }
+        if (!sourceConfig.sourceWidgetName) {
+          Notification.error('请配置监听源（组件）');
+          return;
+        }
       }
-    } else {
+    } else if (hasNodeId) {
+      // Node设备监听
       if (!sourceConfig.sourceNodeId || !sourceConfig.sourceDeviceId) {
         Notification.error('请配置监听源（节点和设备）');
         return;
       }
+    } else {
+      // 无法确定类型
+      Notification.error('请配置监听源');
+      return;
     }
 
     const targetNodes = nodes.filter((n) => n.type === 'target');
@@ -773,22 +1084,75 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
       return;
     }
 
+    // 验证每个触发效果节点
+    for (let i = 0; i < targetNodes.length; i++) {
+      const node = targetNodes[i];
+      const targetConfig = node.data.config || {};
+      const targetType = targetConfig.targetType || (targetConfig.targetClientId ? 'client' : 'node');
+      
+      // 调试信息
+      console.log(`Target ${i + 1} config:`, {
+        targetType,
+        targetClientId: targetConfig.targetClientId,
+        targetWidgetName: targetConfig.targetWidgetName,
+        targetNodeId: targetConfig.targetNodeId,
+        targetDeviceId: targetConfig.targetDeviceId,
+        targetAction: targetConfig.targetAction,
+        fullConfig: targetConfig,
+      });
+      
+      if (targetType === 'client') {
+        if (!targetConfig.targetClientId || !targetConfig.targetWidgetName) {
+          Notification.error(`请配置第 ${i + 1} 个触发效果（Client和组件），并点击"保存"按钮`);
+          return;
+        }
+      } else {
+        if (!targetConfig.targetNodeId || !targetConfig.targetDeviceId) {
+          Notification.error(`请配置第 ${i + 1} 个触发效果（节点和设备），并点击"保存"按钮`);
+          return;
+        }
+      }
+      // 验证动作：如果为空字符串、null或undefined，都认为是未配置
+      if (!targetConfig.targetAction || targetConfig.targetAction === '') {
+        console.error(`Target ${i + 1} action is missing:`, targetConfig.targetAction);
+        Notification.error(`请配置第 ${i + 1} 个触发效果的动作，并点击"保存"按钮`);
+        return;
+      }
+    }
+
     const targets: TargetAction[] = targetNodes.map((node, index) => {
-      const targetConfig = node.data.config;
-      if (targetConfig.targetType === 'client') {
+      const targetConfig = node.data.config || {};
+      const targetType = targetConfig.targetType || (targetConfig.targetClientId ? 'client' : 'node');
+      
+      // 调试信息
+      console.log(`Building target ${index + 1}:`, {
+        targetType,
+        targetAction: targetConfig.targetAction,
+        fullConfig: targetConfig,
+      });
+      
+      if (targetType === 'client') {
+        // Client组件类型：只发送Client相关字段，明确排除Node相关字段
         return {
           targetClientId: targetConfig.targetClientId,
           targetWidgetName: targetConfig.targetWidgetName,
           targetAction: targetConfig.targetAction || 'on',
-      order: index,
+          order: index,
+          // 明确排除Node相关字段
+          targetNodeId: undefined,
+          targetDeviceId: undefined,
         };
       } else {
+        // Node设备类型：只发送Node相关字段，明确排除Client相关字段
         return {
           targetNodeId: targetConfig.targetNodeId,
           targetDeviceId: targetConfig.targetDeviceId,
           targetAction: targetConfig.targetAction || 'on',
           targetValue: targetConfig.targetValue,
           order: index,
+          // 明确排除Client相关字段
+          targetClientId: undefined,
+          targetWidgetName: undefined,
         };
       }
     });
@@ -798,17 +1162,42 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
       description: eventDescription,
       targets,
       enabled: eventEnabled,
+      triggerLimit: triggerLimit === '' ? undefined : (triggerLimit === 0 ? 0 : triggerLimit),
+      triggerDelay: triggerDelay === '' ? undefined : (triggerDelay === 0 ? 0 : triggerDelay),
     };
 
     // 根据源类型设置不同的字段
     if (sourceConfig.sourceType === 'client') {
       eventData.sourceClientId = sourceConfig.sourceClientId;
-      eventData.sourceWidgetName = sourceConfig.sourceWidgetName;
-      eventData.sourceAction = sourceConfig.sourceAction || '';
+      if (sourceConfig.sourceClientType === 'gsi') {
+        // GSI数据监听源：明确设置GSI相关字段，排除组件相关字段
+        // 确保sourceGsiPath被发送，即使可能是空字符串
+        eventData.sourceGsiPath = sourceConfig.sourceGsiPath || '';
+        eventData.sourceGsiOperator = sourceConfig.sourceGsiOperator || 'eq';
+        eventData.sourceGsiValue = sourceConfig.sourceGsiValue;
+        // 明确排除组件相关字段（不发送这些字段）
+        delete eventData.sourceWidgetName;
+        delete eventData.sourceAction;
+      } else {
+        // Client组件监听源：明确设置组件相关字段，排除GSI相关字段
+        eventData.sourceWidgetName = sourceConfig.sourceWidgetName;
+        eventData.sourceAction = sourceConfig.sourceAction || '';
+        // 明确排除GSI相关字段（不发送这些字段）
+        delete eventData.sourceGsiPath;
+        delete eventData.sourceGsiOperator;
+        delete eventData.sourceGsiValue;
+      }
     } else {
+      // Node设备监听源
       eventData.sourceNodeId = sourceConfig.sourceNodeId;
       eventData.sourceDeviceId = sourceConfig.sourceDeviceId;
       eventData.sourceAction = sourceConfig.sourceAction || '';
+      // 明确排除Client相关字段（不发送这些字段）
+      delete eventData.sourceClientId;
+      delete eventData.sourceWidgetName;
+      delete eventData.sourceGsiPath;
+      delete eventData.sourceGsiOperator;
+      delete eventData.sourceGsiValue;
     }
 
     // 防止重复提交
@@ -843,7 +1232,7 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
       Notification.error('保存失败: ' + (error.message || '未知错误'));
       setIsSaving(false); // 出错时重置状态
     }
-  }, [nodes, eventName, eventDescription, eventEnabled, eventId, isSaving]);
+  }, [nodes, eventName, eventDescription, eventEnabled, triggerLimit, triggerDelay, eventId, isSaving]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -868,7 +1257,7 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
             style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px', minHeight: '60px' }}
           />
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <input
               type="checkbox"
@@ -877,6 +1266,30 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
             />
             <span>启用此事件</span>
           </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: '20px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ whiteSpace: 'nowrap' }}>触发次数限制:</span>
+              <input
+                type="number"
+                value={triggerLimit}
+                onChange={(e) => setTriggerLimit(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                placeholder="0=不限制"
+                min="0"
+                style={{ width: '80px', padding: '4px', border: '1px solid #ddd', borderRadius: '4px' }}
+              />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ whiteSpace: 'nowrap' }}>延时触发(ms):</span>
+              <input
+                type="number"
+                value={triggerDelay}
+                onChange={(e) => setTriggerDelay(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                placeholder="0=立即"
+                min="0"
+                style={{ width: '80px', padding: '4px', border: '1px solid #ddd', borderRadius: '4px' }}
+              />
+            </label>
+          </div>
           <button
             onClick={handleAddTarget}
             style={{
