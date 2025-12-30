@@ -22,7 +22,24 @@ export interface ClientWidgetDoc {
     updatedAt: Date;
 }
 
-const collWidget = db.collection('client.widget');
+export interface ClientGsiFieldDoc {
+    _id: ObjectId;
+    clientId: number;
+    domainId: string;
+    fieldPath: string; // 字段路径，如 'round.phase', 'player.state.health'
+    type: string; // 字段类型: 'string', 'number', 'boolean', 'object', 'array'
+    description?: string; // 字段描述
+    values?: string[]; // 可能的值（枚举类型）
+    range?: [number, number]; // 数值范围 [min, max]
+    nullable?: boolean; // 是否可为null
+    currentValue?: any; // 当前实际值
+    lastSeen: Date;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+const collWidget = db.collection('client.widget' as any);
+const collGsiField = db.collection('client.gsifield' as any);
 
 class ClientModel {
     static async generateNextClientId(domainId: string): Promise<number> {
@@ -149,8 +166,9 @@ class ClientModel {
     static async del(domainId: string, clientId: number) {
         const client = await this.getByClientId(domainId, clientId);
         if (!client) return;
-        // 删除client时同时删除相关组件
+        // 删除client时同时删除相关组件和GSI字段
         await collWidget.deleteMany({ domainId, clientId });
+        await collGsiField.deleteMany({ domainId, clientId });
         return await document.deleteOne(domainId, document.TYPE_CLIENT, client.docId);
     }
 
@@ -282,11 +300,171 @@ class ClientWidgetModel {
     }
 }
 
+class ClientGsiFieldModel {
+    static coll = collGsiField;
+
+    static async add(field: Partial<ClientGsiFieldDoc> & { clientId: number; domainId: string; fieldPath: string; type: string }) {
+        const now = new Date();
+        const doc: ClientGsiFieldDoc = {
+            _id: new ObjectId(),
+            clientId: field.clientId,
+            domainId: field.domainId,
+            fieldPath: field.fieldPath,
+            type: field.type,
+            description: field.description,
+            values: field.values,
+            range: field.range,
+            nullable: field.nullable,
+            lastSeen: now,
+            createdAt: now,
+            updatedAt: now,
+        };
+        await collGsiField.insertOne(doc);
+        return doc;
+    }
+
+    static async get(_id: ObjectId) {
+        return collGsiField.findOne({ _id });
+    }
+
+    static async getByClient(domainId: string, clientId: number) {
+        return collGsiField.find({ domainId, clientId }).sort({ fieldPath: 1 }).toArray();
+    }
+
+    static async getByFieldPath(domainId: string, clientId: number, fieldPath: string) {
+        return collGsiField.findOne({ domainId, clientId, fieldPath });
+    }
+
+    static async del(_id: ObjectId) {
+        return collGsiField.deleteOne({ _id });
+    }
+
+    static async delByClient(domainId: string, clientId: number) {
+        return collGsiField.deleteMany({ domainId, clientId });
+    }
+
+    // 从对象路径获取值，支持嵌套路径如 "player.state.health"
+    static getValueByPath(obj: any, path: string): any {
+        if (!path || !obj) return undefined;
+        const parts = path.split('.');
+        let current = obj;
+        for (const part of parts) {
+            if (current === null || current === undefined) return undefined;
+            current = current[part];
+        }
+        return current;
+    }
+
+    // 批量更新GSI字段的当前值
+    static async updateFieldValues(domainId: string, clientId: number, gsiData: Record<string, any>) {
+        // 获取所有已注册的GSI字段
+        const fields = await this.getByClient(domainId, clientId);
+        if (fields.length === 0) {
+            return;
+        }
+
+        const now = new Date();
+        const operations = fields.map(field => {
+            const currentValue = this.getValueByPath(gsiData, field.fieldPath);
+            return {
+                updateOne: {
+                    filter: { domainId, clientId, fieldPath: field.fieldPath },
+                    update: {
+                        $set: {
+                            currentValue,
+                            updatedAt: now,
+                            lastSeen: now,
+                        },
+                    },
+                },
+            };
+        });
+
+        if (operations.length > 0) {
+            await collGsiField.bulkWrite(operations);
+        }
+    }
+
+    // 将嵌套的gsiFields对象扁平化为路径列表
+    static flattenGsiFields(gsiFields: Record<string, any>, prefix = ''): Array<{ path: string; type: string; description?: string; values?: string[]; range?: [number, number]; nullable?: boolean }> {
+        const fields: Array<{ path: string; type: string; description?: string; values?: string[]; range?: [number, number]; nullable?: boolean }> = [];
+        
+        for (const [key, value] of Object.entries(gsiFields)) {
+            const currentPath = prefix ? `${prefix}.${key}` : key;
+            
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                // 检查是否是字段定义对象（有type属性）
+                if ('type' in value) {
+                    // 这是一个字段定义
+                    fields.push({
+                        path: currentPath,
+                        type: value.type || 'unknown',
+                        description: value.description,
+                        values: value.values,
+                        range: value.range,
+                        nullable: value.nullable,
+                    });
+                } else {
+                    // 这是一个嵌套对象，递归处理
+                    fields.push(...this.flattenGsiFields(value, currentPath));
+                }
+            }
+        }
+        
+        return fields;
+    }
+
+    // 批量注册/更新GSI字段列表
+    static async syncGsiFields(domainId: string, clientId: number, gsiFields: Record<string, any>) {
+        const now = new Date();
+        const flattenedFields = this.flattenGsiFields(gsiFields);
+        
+        const operations = flattenedFields.map(field => {
+            return {
+                updateOne: {
+                    filter: { domainId, clientId, fieldPath: field.path },
+                    update: {
+                        $set: {
+                            type: field.type,
+                            description: field.description,
+                            values: field.values,
+                            range: field.range,
+                            nullable: field.nullable,
+                            updatedAt: now,
+                            lastSeen: now,
+                        },
+                    },
+                    upsert: true,
+                },
+            };
+        });
+        
+        if (operations.length > 0) {
+            await collGsiField.bulkWrite(operations);
+        }
+        
+        // 删除不再存在的字段（如果gsiFields中没有，说明已被移除）
+        const fieldPaths = flattenedFields.map(f => f.path);
+        await collGsiField.deleteMany({
+            domainId,
+            clientId,
+            fieldPath: { $nin: fieldPaths },
+        });
+        
+        return await this.getByClient(domainId, clientId);
+    }
+}
+
 export async function apply(ctx: Context) {
     ctx.on('domain/delete', async (domainId) => {
         // 删除domain时删除所有相关组件
         await collWidget.deleteMany({ domainId });
         // Clients are automatically deleted when domain is deleted
+    });
+
+    ctx.on('domain/delete', async (domainId) => {
+        // 删除domain时删除所有相关GSI字段
+        await collGsiField.deleteMany({ domainId });
     });
 
     if (process.env.NODE_APP_INSTANCE !== '0') return;
@@ -297,11 +475,18 @@ export async function apply(ctx: Context) {
         { key: { domainId: 1, clientId: 1 }, name: 'clientId' },
         { key: { domainId: 1 }, name: 'domainId' },
     );
+    await db.ensureIndexes(
+        collGsiField,
+        { key: { domainId: 1, clientId: 1, fieldPath: 1 }, name: 'client_gsifield', unique: true },
+        { key: { domainId: 1, clientId: 1 }, name: 'clientId' },
+        { key: { domainId: 1 }, name: 'domainId' },
+    );
 }
 
 export default ClientModel;
-export { ClientWidgetModel };
+export { ClientWidgetModel, ClientGsiFieldModel };
 
 (global.Ejunz.model as any).client = ClientModel;
 (global.Ejunz.model as any).clientWidget = ClientWidgetModel;
+(global.Ejunz.model as any).clientGsiField = ClientGsiFieldModel;
 
