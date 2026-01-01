@@ -1542,7 +1542,56 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                     logger.debug('No GSI fields found in handshake message: clientId=%d', this.clientId);
                 }
                 
+                // 处理组件配置
+                const widgetConfigs = msg.payload?.widgetConfigs;
+                if (widgetConfigs && typeof widgetConfigs === 'object') {
+                    try {
+                        const updatedWidgets = await ClientWidgetModel.syncWidgetConfigs(
+                            this.tokenDomainId || this.domain._id,
+                            this.clientId,
+                            widgetConfigs
+                        );
+                        logger.info('Widget configs synced to database: clientId=%d, count=%d', 
+                            this.clientId, Object.keys(widgetConfigs).length);
+                        // 发出配置更新事件，通知前端
+                        (this.ctx.emit as any)('client/widget/config/update', this.clientId, widgetConfigs);
+                    } catch (error) {
+                        logger.error('Failed to sync widget configs to database: clientId=%d, error=%o', 
+                            this.clientId, error);
+                    }
+                } else {
+                    logger.debug('No widget configs found in handshake message: clientId=%d', this.clientId);
+                }
+                
                 // Send handshake acknowledgment (optional, if needed by protocol)
+                return;
+            }
+            
+            // Handle widget/config/update message from projection system
+            if (msg.action === 'widget/config/update') {
+                logger.info('Received widget config update from client: clientId=%d, payload=%o', 
+                    this.clientId, msg.payload);
+                
+                const widgetConfigs = msg.payload?.widgetConfigs;
+                if (widgetConfigs && typeof widgetConfigs === 'object') {
+                    try {
+                        const updatedWidgets = await ClientWidgetModel.syncWidgetConfigs(
+                            this.tokenDomainId || this.domain._id,
+                            this.clientId,
+                            widgetConfigs
+                        );
+                        logger.info('Widget configs updated in database: clientId=%d, count=%d', 
+                            this.clientId, Object.keys(widgetConfigs).length);
+                        // 发出配置更新事件，通知前端
+                        (this.ctx.emit as any)('client/widget/config/update', this.clientId, widgetConfigs);
+                    } catch (error) {
+                        logger.error('Failed to update widget configs in database: clientId=%d, error=%o', 
+                            this.clientId, error);
+                    }
+                } else {
+                    logger.warn('Invalid widget config update message: clientId=%d, payload=%o', 
+                        this.clientId, msg.payload);
+                }
                 return;
             }
             
@@ -3822,6 +3871,16 @@ export class ClientStatusConnectionHandler extends ConnectionHandler<Context> {
             }
         });
         this.subscriptions.push({ dispose: dispose5 });
+        
+        // Subscribe to widget config updates
+        const dispose6 = (this.ctx as any).on('client/widget/config/update', async (updateClientId: number, widgetConfigs: Record<string, any>) => {
+            if (updateClientId === this.clientId) {
+                logger.debug('Forwarding widget config update to status WebSocket: clientId=%d, count=%d', 
+                    this.clientId, Object.keys(widgetConfigs).length);
+                this.send({ type: 'widget-config-update', configs: widgetConfigs });
+            }
+        });
+        this.subscriptions.push({ dispose: dispose6 });
         
         // 发送当前所有组件的状态
         const clientHandler = ClientConnectionHandler.getConnection(clientIdNum);

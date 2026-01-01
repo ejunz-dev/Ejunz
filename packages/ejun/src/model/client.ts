@@ -17,6 +17,7 @@ export interface ClientWidgetDoc {
     type: string; // 组件类型，如 'switch', 'button', 'display' 等
     state: Record<string, any>; // 组件状态，如 { visible: true }
     capabilities: string[]; // 组件能力，如 ['show', 'hide', 'toggle']
+    config?: Record<string, any>; // 组件配置，包含 style、stylePreset 等
     lastSeen: Date;
     createdAt: Date;
     updatedAt: Date;
@@ -295,6 +296,31 @@ class ClientWidgetModel {
             clientId,
             widgetName: { $nin: widgetNames },
         });
+        
+        return await this.getByClient(domainId, clientId);
+    }
+
+    // 批量更新组件配置
+    static async syncWidgetConfigs(domainId: string, clientId: number, widgetConfigs: Record<string, any>) {
+        const now = new Date();
+        const operations = Object.entries(widgetConfigs).map(([widgetName, config]) => {
+            return {
+                updateOne: {
+                    filter: { domainId, clientId, widgetName },
+                    update: {
+                        $set: {
+                            config: config || {},
+                            updatedAt: now,
+                            lastSeen: now,
+                        },
+                    },
+                },
+            };
+        });
+        
+        if (operations.length > 0) {
+            await collWidget.bulkWrite(operations);
+        }
         
         return await this.getByClient(domainId, clientId);
     }
