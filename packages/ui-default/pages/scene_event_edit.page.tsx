@@ -77,16 +77,47 @@ const TargetActionNode = ({ data, selected }: { data: any; selected: boolean }) 
     }
   }, [data.config, isEditing]);
 
+  // 当config变化且不在编辑状态时，立即更新父组件（确保保存后的状态同步）
+  useEffect(() => {
+    if (data.onUpdate && !isEditing && config) {
+      // 使用setTimeout确保状态更新完成后再调用onUpdate
+      const timer = setTimeout(() => {
+        data.onUpdate(config);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [config, data.onUpdate, isEditing]);
+
   const handleEdit = useCallback(() => {
     setIsEditing(true);
   }, []);
 
   const handleSave = useCallback(() => {
-    if (data.onUpdate) {
-      data.onUpdate(config);
-    }
+    // 使用函数式更新确保获取最新的config值
+    setConfig((currentConfig) => {
+      // 确保config中有targetAction（如果选择了的话）
+      const finalConfig = { ...currentConfig };
+      if (!finalConfig.targetAction) {
+        if (finalConfig.targetType === 'client') {
+          // Client组件类型，如果没有选择动作，默认使用'on'
+          finalConfig.targetAction = 'on';
+        } else if (finalConfig.targetType === 'node') {
+          // Node设备类型，如果没有选择动作，默认使用'on'
+          finalConfig.targetAction = 'on';
+        }
+      }
+      
+      // 立即更新父组件状态
+      if (data.onUpdate) {
+        data.onUpdate(finalConfig);
+      }
+      
+      return finalConfig;
+    });
+    
+    // 然后退出编辑状态
     setIsEditing(false);
-  }, [data, config]);
+  }, [data]);
 
   const handleDelete = useCallback(() => {
     if (data.onDelete) {
@@ -1113,8 +1144,10 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
         }
       }
       // 验证动作：如果为空字符串、null或undefined，都认为是未配置
-      if (!targetConfig.targetAction || targetConfig.targetAction === '') {
-        console.error(`Target ${i + 1} action is missing:`, targetConfig.targetAction);
+      // 但是，如果targetAction是'0'（字符串），也应该认为是有效的
+      const targetAction = targetConfig.targetAction;
+      if (targetAction === undefined || targetAction === null || targetAction === '') {
+        console.error(`Target ${i + 1} action is missing:`, targetAction, 'full config:', targetConfig);
         Notification.error(`请配置第 ${i + 1} 个触发效果的动作，并点击"保存"按钮`);
         return;
       }
