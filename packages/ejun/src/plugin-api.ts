@@ -31,6 +31,7 @@ export { default as DomainModel } from './model/domain';
 export { default as StorageModel } from './model/storage';
 export { default as TaskModel } from './model/task';
 export { default as AgentModel } from './model/agent';
+export { default as ClientModel, ClientWidgetModel, ClientGsiFieldModel } from './model/client';
 export * from './model/builtin';
 export { Collections } from './service/db';
 export { ConnectionHandler, Handler, requireSudo } from './service/server';
