@@ -3,6 +3,9 @@ import React from 'react';
 import { i18n, tpl } from 'vj/utils';
 import DomDialog, { DialogOptions } from './DomDialog';
 
+export { default as DomDialog } from './DomDialog';
+export type { DialogOptions };
+
 export class Dialog {
   options: DialogOptions;
   $dom: JQuery<any>;
