@@ -58,5 +58,9 @@
         "webpack": "^5.102.1",
         "wtfnode": "^0.10.1"
     },
-    "packageManager": "yarn@4.10.3"
+    "packageManager": "yarn@4.10.3",
+    "dependencies": {
+        "react-activity-calendar": "^3.0.5",
+        "react-github-calendar": "^5.0.4"
+    }
 }
