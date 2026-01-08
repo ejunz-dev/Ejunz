@@ -7,6 +7,7 @@
   {{ paginator.render(page, totalPages, position='top', add_qs=('q=' + qs if qs else '')) }}
   <table class="data-table">
     <colgroup>
+      <col class="col--checkbox display-mode-hide">
       <col class="col--mmid">
       <col class="col--title">
       <col class="col--nodes">
@@ -15,6 +16,11 @@
     </colgroup>
     <thead>
       <tr>
+        <th class="col--checkbox display-mode-hide">
+          <label class="compact checkbox">
+            <input type="checkbox" name="select_all" data-checkbox-toggle="mindmap">
+          </label>
+        </th>
         <th class="col--mmid">{{ _('ID') }}</th>
         <th class="col--title">{{ _('MindMap') }}</th>
         <th class="col--nodes">{{ _('Nodes') }}</th>
@@ -25,6 +31,11 @@
     <tbody>
       {%- for mindMap in mindMaps -%}
       <tr data-mmid="{{ mindMap.mmid }}" data-doc-id="{{ mindMap.docId }}">
+        <td class="col--checkbox display-mode-hide">
+          <label class="compact checkbox">
+            <input type="checkbox" data-checkbox-group="mindmap" data-checkbox-range>
+          </label>
+        </td>
         <td class="col--mmid">{{ mindMap.mmid }}</td>
         <td class="col--title">
           <a href="{{ url('mindmap_detail', domainId=domainId, docId=mindMap.docId) }}">
