@@ -30,3 +30,21 @@
 
         .sort-indicator
           opacity: 1 !important
+
+.page--mindmap_files, .page--mindmap_files_mmid, .page--mindmap_files_branch, .page--mindmap_files_branch_mmid
+  .section
+    display: flex
+    flex-direction: column
+    height: calc(100vh - 120px)
+
+    .section__header
+      flex-shrink: 0
+
+    .section__body
+      flex-shrink: 0
+
+  .files
+    overflow-y: auto
+    overflow-x: hidden
+    flex: 1
+    min-height: 0

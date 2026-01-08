@@ -2741,7 +2741,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
   }, [docId]); // 只依赖 docId，避免频繁重建连接
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', backgroundColor: '#fff' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', backgroundColor: '#fff', overflow: 'hidden' }}>
       {/* 工具栏 */}
       <div style={{
         padding: '10px 20px',
@@ -2750,6 +2750,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
         display: 'flex',
         alignItems: 'center',
         gap: '10px',
+        flexShrink: 0,
       }}>
         <a
           href={(() => {
@@ -2839,7 +2840,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
       </div>
 
       {/* 主内容区域 */}
-      <div style={{ display: 'flex', flex: 1, width: '100%', position: 'relative', backgroundColor: '#fff' }}>
+      <div style={{ display: 'flex', flex: 1, width: '100%', position: 'relative', backgroundColor: '#fff', minHeight: 0, overflow: 'hidden' }}>
         {/* 缓存管理侧边栏 - 暂时注释掉 */}
         {/* {showCachePanel && (
           <div style={{
@@ -2994,17 +2995,21 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialDa
           width: isMobile ? '280px' : '300px',
           borderRight: '1px solid #e0e0e0',
           backgroundColor: '#f6f8fa',
-          overflow: 'auto',
+          overflowY: 'auto',
+          overflowX: 'hidden',
           flexShrink: 0,
           ...(isMobile ? {
             position: 'fixed',
             left: isExplorerOpen ? 0 : '-280px',
             top: 0,
             bottom: 0,
+            height: '100vh',
             zIndex: 999,
             transition: 'left 0.3s ease',
             boxShadow: isExplorerOpen ? '2px 0 8px rgba(0,0,0,0.15)' : 'none',
-          } : {}),
+          } : {
+            alignSelf: 'stretch',
+          }),
         }}>
           <div style={{ padding: '8px' }} data-file-tree-container>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', padding: '0 8px' }}>
