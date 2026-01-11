@@ -36,38 +36,64 @@ interface MindMapItem {
   nodes?: any[];
 }
 
+// 获取主题
+const getTheme = (): 'light' | 'dark' => {
+  try {
+    if ((window as any).Ejunz?.utils?.getTheme) {
+      return (window as any).Ejunz.utils.getTheme();
+    }
+    if ((window as any).UserContext?.theme) {
+      return (window as any).UserContext.theme === 'dark' ? 'dark' : 'light';
+    }
+    // 检查 body 或 html 的 class
+    if (document.body?.classList?.contains('dark') || document.documentElement?.classList?.contains('dark')) {
+      return 'dark';
+    }
+  } catch (e) {
+    console.warn('Failed to get theme:', e);
+  }
+  return 'light';
+};
+
 // 自定义节点组件
 const MindMapDomainNode = ({ data, selected }: { data: any; selected: boolean }) => {
   const mindMap = data.mindMap as MindMapItem;
+  const theme = getTheme();
+  const isDark = theme === 'dark';
   
   return (
     <div
       style={{
         padding: '12px 16px',
-        background: selected ? '#e3f2fd' : '#fff',
-        border: `2px solid ${selected ? '#2196f3' : '#ddd'}`,
+        background: isDark 
+          ? (selected ? '#1e3a5f' : '#323334')
+          : (selected ? '#e3f2fd' : '#fff'),
+        border: `2px solid ${isDark 
+          ? (selected ? '#55b6e2' : '#555')
+          : (selected ? '#2196f3' : '#ddd')}`,
         borderRadius: '8px',
         minWidth: '200px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+        boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.1)',
         cursor: 'default',
         transition: 'all 0.2s',
         position: 'relative',
+        color: isDark ? '#eee' : '#24292e',
       }}
     >
-      <Handle type="target" position={Position.Top} style={{ background: '#555' }} />
-      <div style={{ fontWeight: 'bold', marginBottom: '4px', fontSize: '14px' }}>
+      <Handle type="target" position={Position.Top} style={{ background: isDark ? '#888' : '#555' }} />
+      <div style={{ fontWeight: 'bold', marginBottom: '4px', fontSize: '14px', color: isDark ? '#eee' : '#24292e' }}>
         {mindMap.title}
       </div>
       {mindMap.content && (
-        <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+        <div style={{ fontSize: '12px', color: isDark ? '#bdbdbd' : '#666', marginTop: '4px' }}>
           {mindMap.content.length > 50 ? mindMap.content.substring(0, 50) + '...' : mindMap.content}
         </div>
       )}
-      <div style={{ fontSize: '11px', color: '#999', marginTop: '8px', display: 'flex', gap: '12px' }}>
+      <div style={{ fontSize: '11px', color: isDark ? '#999' : '#999', marginTop: '8px', display: 'flex', gap: '12px' }}>
         <span>ID: {mindMap.mmid}</span>
         {mindMap.views !== undefined && <span>浏览: {mindMap.views}</span>}
       </div>
-      <Handle type="source" position={Position.Bottom} style={{ background: '#555' }} />
+      <Handle type="source" position={Position.Bottom} style={{ background: isDark ? '#888' : '#555' }} />
     </div>
   );
 };
@@ -82,6 +108,12 @@ const CustomDottedEdge = ({ id, sourceX, sourceY, targetX, targetY, sourcePositi
     sourcePosition: sourcePosition || Position.Bottom,
     targetPosition: targetPosition || Position.Top,
   });
+
+  const theme = getTheme();
+  const isDark = theme === 'dark';
+  // 黑色主题用亮色，浅色主题用深色（使用更深的颜色确保可见性）
+  const strokeColor = isDark ? '#55b6e2' : '#333';
+  const strokeWidth = isDark ? 2.5 : 2.5; // 两种主题下都使用稍粗的线条，更容易看到
 
   return (
     <g>
@@ -100,8 +132,8 @@ const CustomDottedEdge = ({ id, sourceX, sourceY, targetX, targetY, sourcePositi
         id={id}
         d={edgePath}
         fill="none"
-        stroke="#fff"
-        strokeWidth={2}
+        stroke={strokeColor}
+        strokeWidth={strokeWidth}
         strokeDasharray="8,4"
         style={{
           animation: `dash-${id.replace(/[^a-zA-Z0-9]/g, '-')} 1s linear infinite`,
@@ -398,7 +430,7 @@ function MindMapDomainView() {
             alignItems: 'center', 
             justifyContent: 'center', 
             height: '100%',
-            color: '#999',
+            color: getTheme() === 'dark' ? '#bdbdbd' : '#999',
             fontSize: '16px'
           }}>
             暂无思维导图
@@ -424,7 +456,7 @@ function MindMapDomainView() {
               zoomOnScroll={true}
               zoomOnPinch={true}
               style={{
-                background: '#fafafa',
+                background: getTheme() === 'dark' ? '#121212' : '#fafafa',
               }}
             >
               <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
