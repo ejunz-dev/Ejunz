@@ -38,6 +38,8 @@ interface MindMapItem {
   nodes?: any[];
 }
 
+const getTheme = (): 'light' | 'dark' => UserContext.theme === 'dark' ? 'dark' : 'light';
+
 // 自定义节点组件（可编辑）
 const MindMapDomainEditNode = ({ data, selected, id }: { data: any; selected: boolean; id: string }) => {
   const mindMap = data.mindMap as MindMapItem;
@@ -120,22 +122,34 @@ const MindMapDomainEditNode = ({ data, selected, id }: { data: any; selected: bo
     }
   };
 
+  const theme = getTheme();
+  const isDark = theme === 'dark';
+
   return (
     <div
       style={{
         padding: '12px 16px',
-        background: isPending ? '#fff3cd' : (selected ? '#e3f2fd' : '#fff'),
-        border: `2px solid ${isPending ? '#ffc107' : (selected ? '#2196f3' : '#ddd')}`,
+        background: isPending 
+          ? (isDark ? '#4a3a1a' : '#fff3cd')
+          : (isDark 
+            ? (selected ? '#1e3a5f' : '#323334')
+            : (selected ? '#e3f2fd' : '#fff')),
+        border: `2px solid ${isPending 
+          ? (isDark ? '#ffc107' : '#ffc107')
+          : (isDark 
+            ? (selected ? '#55b6e2' : '#555')
+            : (selected ? '#2196f3' : '#ddd'))}`,
         borderRadius: '8px',
         minWidth: '200px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+        boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.1)',
         cursor: 'default',
         transition: 'all 0.2s',
         position: 'relative',
+        color: isDark ? '#eee' : '#24292e',
       }}
       onDoubleClick={handleDoubleClick}
     >
-      {!isPending && <Handle type="target" position={Position.Top} style={{ background: '#555' }} />}
+      {!isPending && <Handle type="target" position={Position.Top} style={{ background: isDark ? '#888' : '#555' }} />}
       {isEditing ? (
         <input
           ref={inputRef}
@@ -148,34 +162,36 @@ const MindMapDomainEditNode = ({ data, selected, id }: { data: any; selected: bo
           style={{
             width: '100%',
             padding: '4px 8px',
-            border: '2px solid #2196f3',
+            border: `2px solid ${isDark ? '#55b6e2' : '#2196f3'}`,
             borderRadius: '4px',
             fontSize: '14px',
             fontWeight: 'bold',
+            background: isDark ? '#424242' : '#fff',
+            color: isDark ? '#eee' : '#24292e',
           }}
         />
       ) : (
-        <div style={{ fontWeight: 'bold', marginBottom: '4px', fontSize: '14px' }}>
+        <div style={{ fontWeight: 'bold', marginBottom: '4px', fontSize: '14px', color: isDark ? '#eee' : '#24292e' }}>
           {mindMap.title}
         </div>
       )}
       {mindMap.content && !isEditing && !isPending && (
-        <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+        <div style={{ fontSize: '12px', color: isDark ? '#bdbdbd' : '#666', marginTop: '4px' }}>
           {mindMap.content.length > 50 ? mindMap.content.substring(0, 50) + '...' : mindMap.content}
         </div>
       )}
       {!isEditing && !isPending && (
-        <div style={{ fontSize: '11px', color: '#999', marginTop: '8px', display: 'flex', gap: '12px' }}>
+        <div style={{ fontSize: '11px', color: isDark ? '#999' : '#999', marginTop: '8px', display: 'flex', gap: '12px' }}>
           <span>ID: {mindMap.mmid}</span>
           {mindMap.views !== undefined && <span>浏览: {mindMap.views}</span>}
         </div>
       )}
       {isPending && (
-        <div style={{ fontSize: '11px', color: '#999', marginTop: '8px', fontStyle: 'italic' }}>
+        <div style={{ fontSize: '11px', color: isDark ? '#bdbdbd' : '#999', marginTop: '8px', fontStyle: 'italic' }}>
           按 Enter 确认，ESC 取消
         </div>
       )}
-      {!isPending && <Handle type="source" position={Position.Bottom} style={{ background: '#555' }} />}
+      {!isPending && <Handle type="source" position={Position.Bottom} style={{ background: isDark ? '#888' : '#555' }} />}
     </div>
   );
 };
@@ -190,6 +206,11 @@ const CustomDottedEdge = ({ id, sourceX, sourceY, targetX, targetY, sourcePositi
     sourcePosition: sourcePosition || Position.Bottom,
     targetPosition: targetPosition || Position.Top,
   });
+
+  const theme = getTheme();
+  const isDark = theme === 'dark';
+  const strokeColor = isDark ? '#55b6e2' : '#333';
+  const strokeWidth = isDark ? 2.5 : 2.5;
 
   return (
     <g>
@@ -208,8 +229,8 @@ const CustomDottedEdge = ({ id, sourceX, sourceY, targetX, targetY, sourcePositi
         id={id}
         d={edgePath}
         fill="none"
-        stroke="#fff"
-        strokeWidth={2}
+        stroke={strokeColor}
+        strokeWidth={strokeWidth}
         strokeDasharray="8,4"
         style={{
           animation: `dash-${id.replace(/[^a-zA-Z0-9]/g, '-')} 1s linear infinite`,
@@ -641,7 +662,7 @@ function MindMapDomainEditView() {
             alignItems: 'center', 
             justifyContent: 'center', 
             height: '100%',
-            color: '#999',
+            color: getTheme() === 'dark' ? '#bdbdbd' : '#999',
             fontSize: '16px'
           }}>
             暂无思维导图，右键点击画布创建新节点
@@ -669,7 +690,7 @@ function MindMapDomainEditView() {
               zoomOnPinch={true}
               deleteKeyCode="Delete"
               style={{
-                background: '#fafafa',
+                background: getTheme() === 'dark' ? '#121212' : '#fafafa',
               }}
             >
               <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
