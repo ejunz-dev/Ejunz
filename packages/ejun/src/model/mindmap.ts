@@ -36,7 +36,8 @@ export class MindMapModel {
         content: string = '',
         rpid?: number,
         branch?: string,
-        ip?: string
+        ip?: string,
+        parentId?: ObjectId
     ): Promise<{ docId: ObjectId; mmid: number }> {
         const newMmid = await this.generateNextMmid(domainId);
 
@@ -75,6 +76,7 @@ export class MindMapModel {
             ip,
             rpid,
             branch,
+            parentId, // 设置父思维导图ID
         };
 
         const docId = await document.add(
@@ -129,7 +131,7 @@ export class MindMapModel {
     static async update(
         domainId: string,
         docId: ObjectId,
-        updates: Partial<Pick<MindMapDoc, 'title' | 'content' | 'layout' | 'viewport' | 'theme' | 'files'>>
+        updates: Partial<Pick<MindMapDoc, 'title' | 'content' | 'layout' | 'viewport' | 'theme' | 'files' | 'parentId' | 'domainPosition'>>
     ): Promise<void> {
         await document.set(domainId, TYPE_MM, docId, {
             ...updates,

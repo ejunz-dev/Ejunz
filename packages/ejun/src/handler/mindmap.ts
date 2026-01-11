@@ -670,12 +670,14 @@ class MindMapCreateHandler extends Handler {
     @param('content', Types.String, true)
     @param('rpid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
+    @param('parentId', Types.ObjectId, true)
     async post(
         domainId: string,
         title: string,
         content: string = '',
         rpid?: number,
-        branch?: string
+        branch?: string,
+        parentId?: ObjectId
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
@@ -690,7 +692,8 @@ class MindMapCreateHandler extends Handler {
             content,
             rpid,
             branch,
-            this.request.ip
+            this.request.ip,
+            parentId
         );
 
         console.log(`[MindMap Create] Created mindmap with docId: ${docId.toString()}, mmid: ${mmid}, domainId: ${actualDomainId}`);
@@ -765,19 +768,29 @@ class MindMapEditHandler extends Handler {
     @param('docId', Types.ObjectId)
     @param('title', Types.String, true)
     @param('content', Types.String, true)
+    @param('parentId', Types.ObjectId, true)
+    @post('domainPosition', Types.Any, true)
     async postUpdate(
         domainId: string,
         docId: ObjectId,
         title?: string,
-        content?: string
+        content?: string,
+        parentId?: ObjectId,
+        domainPosition?: { x: number; y: number }
     ) {
         const updates: any = {};
         if (title !== undefined) updates.title = title;
         if (content !== undefined) updates.content = content;
+        if (parentId !== undefined) updates.parentId = parentId;
+        if (domainPosition !== undefined) updates.domainPosition = domainPosition;
 
         await MindMapModel.update(domainId, docId, updates);
         this.response.body = { docId };
-        this.response.redirect = this.url('mindmap_detail', { docId: docId.toString() });
+        // 如果是通过 operation 参数调用的，不重定向
+        const operation = this.request.body?.operation;
+        if (operation !== 'update') {
+            this.response.redirect = this.url('mindmap_detail', { docId: docId.toString() });
+        }
     }
 
     @param('docId', Types.ObjectId)
@@ -1419,7 +1432,8 @@ class MindMapDomainHandler extends Handler {
     @param('page', Types.PositiveInt, true)
     @param('q', Types.Content, true)
     @param('pjax', Types.Boolean)
-    async get(domainId: string, page = 1, q = '', pjax = false) {
+    @param('all', Types.Boolean, true)
+    async get(domainId: string, page = 1, q = '', pjax = false, all = false) {
         const limit = 20;
         const skip = (page - 1) * limit;
         
@@ -1458,12 +1472,23 @@ class MindMapDomainHandler extends Handler {
         // 按 mmid 排序
         allMindMaps.sort((a, b) => (a.mmid || 0) - (b.mmid || 0));
         
-        // 分页
+        // 计算统计信息
         const total = allMindMaps.length;
         const totalPages = Math.ceil(total / limit);
-        const mindMaps = allMindMaps.slice(skip, skip + limit);
         
-        // 计算统计信息
+        // 如果 all=true，返回所有数据（用于导图模式）
+        const mindMapsRaw = all ? allMindMaps : allMindMaps.slice(skip, skip + limit);
+        
+        // 清理数据，将 ObjectId 转换为字符串以便 JSON 序列化（特别是当 all=true 时，用于前端 API）
+        const mindMaps = mindMapsRaw.map((mm: any) => ({
+            ...mm,
+            docId: mm.docId.toString(),
+            parentId: mm.parentId ? mm.parentId.toString() : undefined,
+            domainPosition: mm.domainPosition || undefined, // 保留 domainPosition
+            createdAt: mm.createdAt instanceof Date ? mm.createdAt.toISOString() : mm.createdAt,
+            updateAt: mm.updateAt instanceof Date ? mm.updateAt.toISOString() : mm.updateAt,
+        }));
+        
         const totalNodes = allMindMaps.reduce((sum, mm) => sum + (mm.nodes?.length || 0), 0);
         const totalViews = allMindMaps.reduce((sum, mm) => sum + (mm.views || 0), 0);
         
@@ -4171,9 +4196,66 @@ class MindMapConnectionHandler extends ConnectionHandler {
     }
 }
 
+/**
+ * MindMap Domain Edit Handler
+ * 用于编辑导图结构（新建、删除、编辑节点，连线等）
+ */
+class MindMapDomainEditHandler extends Handler {
+    @param('q', Types.Content, true)
+    async get(domainId: string, q = '') {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        let allMindMaps = await MindMapModel.getAll(domainId);
+        
+        // 使用 SearchParser 解析搜索查询
+        const parsed = parser.parse(q || '', {
+            keywords: ['category'],
+            offsets: false,
+            alwaysArray: true,
+            tokenize: true,
+        });
+        
+        const category = parsed.category || [];
+        const text = (parsed.text || []).join(' ').trim();
+        
+        // 搜索过滤
+        if (text || category.length > 0) {
+            if (text) {
+                const searchTerm = text.toLowerCase();
+                allMindMaps = allMindMaps.filter(mindMap => 
+                    mindMap.title.toLowerCase().includes(searchTerm) ||
+                    (mindMap.content && mindMap.content.toLowerCase().includes(searchTerm)) ||
+                    String(mindMap.mmid).includes(searchTerm)
+                );
+            }
+        }
+        
+        // 按 mmid 排序
+        allMindMaps.sort((a, b) => (a.mmid || 0) - (b.mmid || 0));
+        
+        // 清理数据，将 ObjectId 转换为字符串以便 JSON 序列化
+        const mindMaps = allMindMaps.map((mm: any) => ({
+            ...mm,
+            docId: mm.docId.toString(),
+            parentId: mm.parentId ? mm.parentId.toString() : undefined,
+            domainPosition: mm.domainPosition || undefined, // 保留 domainPosition
+            createdAt: mm.createdAt instanceof Date ? mm.createdAt.toISOString() : mm.createdAt,
+            updateAt: mm.updateAt instanceof Date ? mm.updateAt.toISOString() : mm.updateAt,
+        }));
+        
+        this.response.template = 'mindmap_domain_edit.html';
+        this.response.body = { 
+            mindMaps, 
+            domainId,
+            qs: q ? q.trim() : '',
+        };
+    }
+}
+
 export async function apply(ctx: Context) {
     // 注册路由
     ctx.Route('mindmap_domain', '/mindmap', MindMapDomainHandler);
+    ctx.Route('mindmap_domain_edit', '/mindmap/edit', MindMapDomainEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_list', '/mindmap/list', MindMapListHandler);
     ctx.Route('mindmap_create', '/mindmap/create', MindMapCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_detail', '/mindmap/:docId', MindMapDetailHandler);
