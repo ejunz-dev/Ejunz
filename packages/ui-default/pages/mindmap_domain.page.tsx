@@ -10,6 +10,7 @@ import ReactFlow, {
   Controls,
   Background,
   BackgroundVariant,
+  MiniMap,
   useNodesState,
   useEdgesState,
   ReactFlowInstance,
@@ -452,15 +453,30 @@ function MindMapDomainView() {
               nodesDraggable={true}
               nodesConnectable={false}
               elementsSelectable={true}
-              panOnDrag={[1, 2]} // 只在鼠标中键和右键时拖拽，左键用于点击
+              panOnDrag={true} // 允许左键拖动画布以查看边界外的节点
               zoomOnScroll={true}
               zoomOnPinch={true}
+              minZoom={0.1} // 允许缩小到 0.1 倍，方便查看大范围
+              maxZoom={2} // 最大放大到 2 倍
+              defaultViewport={{ x: 0, y: 0, zoom: 1 }}
               style={{
                 background: getTheme() === 'dark' ? '#121212' : '#fafafa',
               }}
             >
               <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
               <Controls />
+              <MiniMap 
+                pannable={true}
+                zoomable={true}
+                nodeColor={(node) => {
+                  const theme = getTheme();
+                  return theme === 'dark' ? '#55b6e2' : '#2196f3';
+                }}
+                maskColor={getTheme() === 'dark' ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0, 0, 0, 0.1)'}
+                style={{
+                  backgroundColor: getTheme() === 'dark' ? '#1e1e1e' : '#fff',
+                }}
+              />
             </ReactFlow>
 
             {/* 右键菜单 */}
