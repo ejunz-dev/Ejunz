@@ -67,22 +67,6 @@ function MindMapList() {
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h1 style={{ margin: 0 }}>思维导图列表</h1>
-        <a
-          href={(() => {
-            const domainId = (window as any).UiContext?.domainId || 'system';
-            return `/d/${domainId}/mindmap/create`;
-          })()}
-          style={{
-            padding: '8px 16px',
-            background: '#2196f3',
-            color: '#fff',
-            textDecoration: 'none',
-            borderRadius: '4px',
-            display: 'inline-block',
-          }}
-        >
-          创建思维导图
-        </a>
       </div>
 
       {loading ? (
