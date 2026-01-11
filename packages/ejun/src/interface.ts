@@ -303,6 +303,7 @@ export interface MindMapNode {
     children?: string[]; // 子节点ID列表
     expanded?: boolean; // 是否展开（用于折叠/展开功能）
     level?: number; // 节点层级（从根节点开始，0为根节点）
+    order?: number; // 节点在同级中的排序顺序
     style?: Record<string, any>; // 自定义样式
     data?: Record<string, any>; // 自定义数据
 }
@@ -322,7 +323,6 @@ export interface MindMapDoc {
     docType: document['TYPE_MINDMAP'];
     docId: ObjectId;
     domainId: string;
-    mmid: number; // MindMap ID，从1开始（业务ID，用于路由显示）
     owner: number;
     title: string;
     content: string; // 描述性内容（可选）
@@ -383,7 +383,7 @@ export interface CardDoc {
     docType: document['TYPE_CARD'];
     docId: ObjectId;
     domainId: string;
-    mmid: number; // 关联的 mindmap ID
+    mindMapDocId: ObjectId; // 关联的 mindmap docId
     nodeId: string; // 关联的 node ID
     cid: number; // Card ID，从1开始（在 node 内唯一）
     owner: number;

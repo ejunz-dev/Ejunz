@@ -31,10 +31,10 @@ interface MindMapEdge {
 }
 
 interface MindMapDoc {
-  docId: string;
-  mmid: number;
-  title: string;
-  content: string;
+  docId?: string;
+  mmid?: number;
+  title?: string;
+  content?: string;
   nodes: MindMapNode[];
   edges: MindMapEdge[];
   currentBranch?: string;
@@ -839,7 +839,7 @@ function migrateOrderFields(mindMap: MindMapDoc): { mindMap: MindMapDoc; needsSa
   };
 }
 
-function MindMapEditorMode({ docId, initialData }: { docId: string; initialData: MindMapDoc }) {
+function MindMapEditorMode({ docId, initialData }: { docId: string | undefined; initialData: MindMapDoc }) {
   // 主题检测
   const getTheme = useCallback(() => {
     try {
@@ -919,8 +919,9 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       const saveMigration = async () => {
         try {
           const domainId = (window as any).UiContext?.domainId || 'system';
-          const getMindMapUrl = (path: string, docId: string): string => {
-            return `/d/${domainId}/mindmap/${docId}${path}`;
+          const getMindMapUrl = (path: string, docId?: string): string => {
+            // 不再需要 docId，直接使用 /mindmap 路径
+            return `/d/${domainId}/mindmap${path}`;
           };
           
           // 保存nodes的order
@@ -932,7 +933,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             !e.id.startsWith('temp-edge-')
           );
           
-          await request.post(getMindMapUrl('/save', docId), {
+          await request.post(getMindMapUrl('/save'), {
             nodes: migrationNodes,
             edges: migrationEdges,
             operationDescription: '自动迁移：为节点和卡片添加order字段',
@@ -998,6 +999,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
   const lastDragOverFileRef = useRef<FileItem | null>(null); // 上次悬停的文件
   const lastDropPositionRef = useRef<'before' | 'after' | 'into'>('after'); // 上次的放置位置
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null); // 右键菜单
+  const [emptyAreaContextMenu, setEmptyAreaContextMenu] = useState<{ x: number; y: number } | null>(null); // 空白区域右键菜单
   const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; items: FileItem[] } | null>(null); // 剪贴板（支持多个项目）
   const [sortWindow, setSortWindow] = useState<{ nodeId: string } | null>(null); // 排序窗口
   // AI 聊天相关状态
@@ -1128,9 +1130,10 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
   }, []);
 
   // 获取带 domainId 的 mindmap URL
-  const getMindMapUrl = (path: string, docId: string): string => {
+  const getMindMapUrl = (path: string, docId?: string): string => {
     const domainId = (window as any).UiContext?.domainId || 'system';
-    return `/d/${domainId}/mindmap/${docId}${path}`;
+    // 不再需要 docId，直接使用 /mindmap 路径
+    return `/d/${domainId}/mindmap${path}`;
   };
 
   // 构建文件树（支持折叠）
@@ -1435,7 +1438,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
           !e.id.startsWith('temp-edge-')
         );
         
-        await request.post(getMindMapUrl('/save', docId), {
+        await request.post(getMindMapUrl('/save'), {
           nodes: filteredNodes,
           edges: filteredEdges,
           operationDescription: '自动保存展开状态',
@@ -2065,7 +2068,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             const finalTitle = renameRecord ? renameRecord.newName : (create.title || tempCard?.title || '新卡片');
             const finalProblems = tempCard?.problems;
 
-            const response = await request.post(getMindMapUrl('/card', docId), {
+            const response = await request.post(getMindMapUrl('/card'), {
               nodeId: createNodeId,
               title: finalTitle,
               content: finalContent,
@@ -2378,11 +2381,15 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
       if (hasDragChanges) {
         const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
         
-        // 保存所有被拖动过的卡片
+        // 收集所有需要更新的 nodes 和 cards
+        const nodeOrderUpdates = new Set<string>();
+        const cardOrderUpdates = new Set<string>();
+        
         for (const cardId of pendingDragChanges) {
           if (cardId.startsWith('node-')) {
-            // 节点拖动，保存 edges
+            // 节点拖动，保存 edges 和 order
             const nodeId = cardId.replace('node-', '');
+            nodeOrderUpdates.add(nodeId);
             
             // 从本地 mindMap.edges 中获取新的父节点连接
             const newEdges = mindMap.edges.filter(e => e.target === nodeId);
@@ -2391,7 +2398,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             if (newEdge) {
               try {
                 // 获取数据库中该节点的所有 edges（作为 target 的边）
-                const currentMindMap = await request.get(getMindMapUrl('/data', docId));
+                const currentMindMap = await request.get(getMindMapUrl('/data'));
                 const oldEdges = (currentMindMap.edges || []).filter(
                   (e: MindMapEdge) => e.target === nodeId
                 );
@@ -2413,7 +2420,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
                     
                     // 尝试删除旧的 edge，如果失败（edge 可能已经被删除），忽略错误
                     try {
-                      await request.post(getMindMapUrl('/edge', docId), {
+                      await request.post(getMindMapUrl('/edge'), {
                         operation: 'delete',
                         edgeId: oldEdge.id,
                       });
@@ -2426,7 +2433,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
                 // 如果新边不存在，创建它
                 if (!edgeExists) {
                   try {
-                    await request.post(getMindMapUrl('/edge', docId), {
+                    await request.post(getMindMapUrl('/edge'), {
                       operation: 'add',
                       source: newEdge.source,
                       target: newEdge.target,
@@ -2438,7 +2445,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
               } catch (error: any) {
                 // If update fails, try to create edge directly
                 try {
-                  await request.post(getMindMapUrl('/edge', docId), {
+                  await request.post(getMindMapUrl('/edge'), {
                     operation: 'add',
                     source: newEdge.source,
                     target: newEdge.target,
@@ -2449,51 +2456,39 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
               }
             }
           } else {
-            // 卡片拖动，保存 nodeId 和 order
-            // 在所有节点中查找这个卡片
-            let foundCard: Card | null = null;
-            let foundNodeId: string | null = null;
-            
-            for (const nodeId in nodeCardsMap) {
-              const cards = nodeCardsMap[nodeId];
-              const card = cards.find((c: Card) => c.docId === cardId);
-              if (card) {
-                foundCard = card;
-                foundNodeId = nodeId; // 使用 nodeCardsMap 的 key 作为 nodeId
-                break;
-              }
-            }
-            
-            if (foundCard && foundNodeId) {
-              // 临时卡片（尚未真正创建），不调用后端更新接口，拖动顺序将在创建后再通过真实 ID 进行保存
-              if (String(cardId).startsWith('temp-card-')) {
-                continue;
-              }
-              // 使用找到的 nodeId（nodeCardsMap 的 key）和 card 的 order
-              await request.post(`/d/${domainId}/mindmap/card/${cardId}`, {
+            // 卡片拖动，收集需要更新的卡片
+            cardOrderUpdates.add(cardId);
+          }
+        }
+        
+        // 通过 /mindmap/save 一次性保存所有 nodes（包括 order）和 cards（包括 order）
+        // 过滤掉临时节点和边
+        const sortedNodes = mindMap.nodes.filter(n => !n.id.startsWith('temp-node-'));
+        const sortedEdges = mindMap.edges.filter(e => 
+          !e.source.startsWith('temp-node-') && 
+          !e.target.startsWith('temp-node-') &&
+          !e.id.startsWith('temp-edge-')
+        );
+        
+        // 保存所有 nodes（包括 order 字段）
+        await request.post(getMindMapUrl('/save'), {
+          nodes: sortedNodes,
+          edges: sortedEdges,
+          operationDescription: '拖动排序更新',
+        });
+        
+        // 保存所有 cards 的 order
+        for (const nodeId in nodeCardsMap) {
+          const cards = nodeCardsMap[nodeId] || [];
+          for (const card of cards) {
+            // 跳过临时卡片
+            if (String(card.docId).startsWith('temp-card-')) continue;
+            if (card.order !== undefined && card.order !== null) {
+              await request.post(`/d/${domainId}/mindmap/card/${card.docId}`, {
                 operation: 'update',
-                nodeId: foundNodeId, // 使用 nodeCardsMap 的 key，确保是正确的 nodeId
-                order: foundCard.order,
+                nodeId: nodeId,
+                order: card.order,
               });
-              
-              // 更新同一节点下所有受影响卡片的 order
-              // 只更新那些在拖动操作中被修改了 order 的卡片，保持用户指定的位置
-              const nodeCards = nodeCardsMap[foundNodeId] || [];
-              
-              // 保存所有卡片的 order（按当前 order 值保存，不重新计算）
-              // 这样可以保持用户拖动时指定的位置
-              for (const card of nodeCards) {
-                // 跳过临时卡片
-                if (String(card.docId).startsWith('temp-card-')) continue;
-                if (card.order !== undefined && card.order !== null) {
-                  // 只更新那些 order 确实需要保存的卡片
-                  // 这里我们保存所有卡片的当前 order，因为它们可能都在拖动操作中被修改了
-                  await request.post(`/d/${domainId}/mindmap/card/${card.docId}`, {
-                    operation: 'update',
-                    order: card.order,
-                  });
-                }
-              }
             }
           }
         }
@@ -2604,7 +2599,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             
             for (const edge of nodeEdges) {
               try {
-                await request.post(getMindMapUrl('/edge', docId), {
+                await request.post(getMindMapUrl('/edge'), {
                   operation: 'delete',
                   edgeId: edge.id,
                 });
@@ -2621,7 +2616,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
             
             for (const edge of nodeEdges) {
               try {
-                await request.post(getMindMapUrl('/edge', docId), {
+                await request.post(getMindMapUrl('/edge'), {
                   operation: 'delete',
                   edgeId: edge.id,
                 });
@@ -2633,7 +2628,7 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
           }
           
           // 删除节点
-          await request.post(getMindMapUrl(`/node/${del.id}`, docId), {
+          await request.post(getMindMapUrl(`/node/${del.id}`), {
             operation: 'delete',
           });
         }
@@ -3017,6 +3012,97 @@ function MindMapEditorMode({ docId, initialData }: { docId: string; initialData:
     
     setContextMenu(null);
   }, [triggerExpandAutoSave]);
+
+  // 创建根节点（没有父节点的节点）
+  const handleNewRootNode = useCallback(() => {
+    const tempId = `temp-node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // 计算所有根节点的maxOrder
+    const rootNodes = mindMap.nodes.filter(node => 
+      !mindMap.edges.some(edge => edge.target === node.id)
+    );
+    const maxOrder = rootNodes.length > 0
+      ? Math.max(...rootNodes.map(n => n.order || 0))
+      : 0;
+    
+    const newRootNode: PendingCreate = {
+      type: 'node',
+      nodeId: '', // 根节点没有父节点
+      text: '新节点',
+      tempId,
+    };
+    
+    pendingCreatesRef.current.set(tempId, newRootNode);
+    setPendingCreatesCount(pendingCreatesRef.current.size);
+    
+    // 更新 mindMap（前端显示）
+    const tempNode: MindMapNode = {
+      id: tempId,
+      text: '新节点',
+      order: maxOrder + 1,
+    };
+    
+    // 更新 mindMap（前端显示）
+    setMindMap(prev => {
+      const updated = {
+        ...prev,
+        nodes: [...prev.nodes, tempNode],
+      };
+      mindMapRef.current = updated;
+      return updated;
+    });
+    
+    setEmptyAreaContextMenu(null);
+  }, [mindMap.nodes, mindMap.edges]);
+
+  // 创建根卡片（需要先找到或创建一个根节点）
+  const handleNewRootCard = useCallback(() => {
+    // 找到第一个根节点
+    const rootNodes = mindMap.nodes.filter(node => 
+      !mindMap.edges.some(edge => edge.target === node.id)
+    );
+    
+    let targetNodeId: string;
+    
+    if (rootNodes.length === 0) {
+      // 如果没有根节点，先创建一个
+      const tempNodeId = `temp-node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const newRootNode: PendingCreate = {
+        type: 'node',
+        nodeId: '', // 根节点没有父节点
+        text: '新节点',
+        tempId: tempNodeId,
+      };
+      
+      pendingCreatesRef.current.set(tempNodeId, newRootNode);
+      setPendingCreatesCount(pendingCreatesRef.current.size);
+      
+      // 更新 mindMap（前端显示）
+      const tempNode: MindMapNode = {
+        id: tempNodeId,
+        text: '新节点',
+        order: 0,
+      };
+      
+      setMindMap(prev => {
+        const updated = {
+          ...prev,
+          nodes: [...prev.nodes, tempNode],
+        };
+        mindMapRef.current = updated;
+        return updated;
+      });
+      
+      targetNodeId = tempNodeId;
+    } else {
+      // 使用第一个根节点
+      targetNodeId = rootNodes[0].id;
+    }
+    
+    // 在目标节点下创建卡片
+    handleNewCard(targetNodeId);
+    setEmptyAreaContextMenu(null);
+  }, [mindMap.nodes, mindMap.edges, handleNewCard]);
 
   // 复制节点或卡片（支持多选）
   const handleCopy = useCallback((file?: FileItem) => {
@@ -6767,6 +6853,7 @@ ${currentCardContext}
             return (
               <div
                 key={file.id}
+                data-file-item
                 draggable={true}
                 onDragStart={(e) => handleDragStart(e, file)}
                 onDragEnd={handleDragEnd}
@@ -7690,8 +7777,63 @@ ${currentCardContext}
         </div>
       )}
 
+      {/* 空白区域右键菜单 */}
+      {emptyAreaContextMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            left: emptyAreaContextMenu.x,
+            top: emptyAreaContextMenu.y,
+            backgroundColor: themeStyles.bgPrimary,
+            border: `1px solid ${themeStyles.borderSecondary}`,
+            borderRadius: '4px',
+            boxShadow: theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.15)',
+            zIndex: 1000,
+            minWidth: '180px',
+            padding: '4px 0',
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <div
+            style={{
+              padding: '6px 16px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              color: themeStyles.textPrimary,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+            onClick={() => handleNewRootNode()}
+          >
+            新建 Node
+          </div>
+          <div
+            style={{
+              padding: '6px 16px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              color: themeStyles.textPrimary,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+            onClick={() => handleNewRootCard()}
+          >
+            新建 Card
+          </div>
+        </div>
+      )}
+
       {/* 点击外部关闭右键菜单 */}
-      {contextMenu && (
+      {(contextMenu || emptyAreaContextMenu) && (
         <div
           style={{
             position: 'fixed',
@@ -7701,7 +7843,10 @@ ${currentCardContext}
             bottom: 0,
             zIndex: 999,
           }}
-          onClick={() => setContextMenu(null)}
+          onClick={() => {
+            setContextMenu(null);
+            setEmptyAreaContextMenu(null);
+          }}
         />
       )}
 
@@ -7721,9 +7866,6 @@ ${currentCardContext}
               const domainId = (window as any).UiContext?.domainId || 'system';
               const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
               
-              // 更新node的order和card的order
-              const updatePromises = [];
-              
               // 更新mindMap中的nodes的order（包括临时节点）
               const updatedNodes = mindMap.nodes.map(node => {
                 const sortedItem = sortedItems.find(item => item.type === 'node' && item.id === node.id);
@@ -7739,36 +7881,14 @@ ${currentCardContext}
                 nodes: updatedNodes,
               }));
               
-              // 批量更新card的order
+              // 更新card的order（只更新前端状态，不调用后端API）
               for (const sortedItem of sortedItems) {
                 if (sortedItem.type === 'card') {
                   const card = (nodeCardsMap[sortWindow.nodeId] || []).find((c: Card) => c.docId === sortedItem.id);
                   if (card && card.order !== sortedItem.order) {
-                    // 如果是临时卡片，只更新前端状态，不调用后端API
-                    if (sortedItem.id.startsWith('temp-card-')) {
-                      card.order = sortedItem.order;
-                    } else {
-                      // 已存在的卡片，调用后端API更新
-                      updatePromises.push(
-                        request.post(`/d/${domainId}/mindmap/card/${sortedItem.id}`, {
-                          operation: 'update',
-                          nodeId: sortWindow.nodeId,
-                          order: sortedItem.order,
-                        }).then(() => {
-                          card.order = sortedItem.order;
-                        }).catch((error: any) => {
-                          console.error(`Failed to update card ${sortedItem.id} order:`, error);
-                          throw new Error(`更新卡片「${card.title || sortedItem.id}」顺序失败: ${error?.message || '未知错误'}`);
-                        })
-                      );
-                    }
+                    card.order = sortedItem.order;
                   }
                 }
-              }
-              
-              // 等待所有更新完成
-              if (updatePromises.length > 0) {
-                await Promise.all(updatePromises);
               }
               
               // 更新nodeCardsMap并排序
@@ -7780,27 +7900,7 @@ ${currentCardContext}
               // 触发重新渲染
               setNodeCardsMapVersion(prev => prev + 1);
               
-              // 保存mindMap以持久化node的order字段
-              try {
-                // 过滤掉临时节点和边，确保不会保存临时数据
-                const sortedNodes = updatedNodes.filter(n => !n.id.startsWith('temp-node-'));
-                const sortedEdges = mindMap.edges.filter(e => 
-                  !e.source.startsWith('temp-node-') && 
-                  !e.target.startsWith('temp-node-') &&
-                  !e.id.startsWith('temp-edge-')
-                );
-                
-                await request.post(getMindMapUrl('/save', docId), {
-                  nodes: sortedNodes,
-                  edges: sortedEdges,
-                  operationDescription: '排序更新',
-                });
-              } catch (error: any) {
-                console.warn('Failed to save mindMap after sort:', error);
-                // 不阻止排序保存，只是警告
-              }
-              
-              // 记录更改，以便在保存时一起保存
+              // 记录更改，以便在点击"保存更改"时一起保存
               setPendingDragChanges(prev => {
                 const newSet = new Set(prev);
                 sortedItems.forEach(item => {
@@ -7813,7 +7913,7 @@ ${currentCardContext}
                 return newSet;
               });
               
-              Notification.success('排序已保存');
+              Notification.success('排序已更新，请点击"保存更改"按钮保存');
               setSortWindow(null);
             } catch (error: any) {
               console.error('Failed to save sort order:', error);
@@ -8729,24 +8829,26 @@ const page = new NamedPage('mindmap_editor', async () => {
       return;
     }
 
-    const docId = $container.data('doc-id') || $container.attr('data-doc-id');
-    if (!docId) {
-      Notification.error('思维导图ID未找到');
-      return;
-    }
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    const docId = $container.data('doc-id') || $container.attr('data-doc-id') || '';
 
-    // 加载思维导图数据
+    // 加载思维导图数据（不依赖 docId，直接通过 domainId 获取）
     let initialData: MindMapDoc;
     try {
-      const response = await request.get(getMindMapUrl('/data', docId));
+      // 使用 /mindmap/data 路由，不需要 docId
+      const response = await request.get(`/d/${domainId}/mindmap/data`);
       initialData = response;
+      // 如果响应中没有 docId，使用空字符串
+      if (!initialData.docId) {
+        initialData.docId = docId || '';
+      }
     } catch (error: any) {
       Notification.error('加载思维导图失败: ' + (error.message || '未知错误'));
       return;
     }
 
     ReactDOM.render(
-      <MindMapEditorMode docId={docId} initialData={initialData} />,
+      <MindMapEditorMode docId={initialData.docId || ''} initialData={initialData} />,
       $container[0]
     );
   } catch (error: any) {
