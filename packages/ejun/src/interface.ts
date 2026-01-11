@@ -355,6 +355,8 @@ export interface MindMapDoc {
     githubRepo?: string; // GitHub 仓库地址，如 git@github.com:user/repo.git
     branches?: string[]; // 分支列表
     currentBranch?: string; // 当前分支
+    parentId?: ObjectId; // 父思维导图ID（用于建立思维导图之间的层级关系）
+    domainPosition?: { x: number; y: number }; // 在导图域中的位置（用于 mindmap_domain 页面）
     history?: MindMapHistoryEntry[]; // 操作历史记录（最多50条）
     files?: FileInfo[]; // 文件列表
 }
