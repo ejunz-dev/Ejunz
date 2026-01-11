@@ -15,19 +15,15 @@ export const TYPE_CARD: 71 = 71;
  */
 export class MindMapModel {
     /**
-     * 生成下一个思维导图ID
+     * 通过 domainId 获取思维导图（一个 domain 一个 mindmap）
      */
-    static async generateNextMmid(domainId: string): Promise<number> {
-        const lastMindMap = await document.getMulti(domainId, TYPE_MM, {})
-            .sort({ mmid: -1 })
-            .limit(1)
-            .project({ mmid: 1 })
-            .toArray();
-        return (lastMindMap[0]?.mmid || 0) + 1;
+    static async getByDomain(domainId: string): Promise<MindMapDoc | null> {
+        const result = await document.getMulti(domainId, TYPE_MM, {}).limit(1).toArray();
+        return result.length > 0 ? result[0] : null;
     }
 
     /**
-     * 创建思维导图
+     * 创建或获取思维导图（一个 domain 一个 mindmap）
      */
     static async create(
         domainId: string,
@@ -38,8 +34,19 @@ export class MindMapModel {
         branch?: string,
         ip?: string,
         parentId?: ObjectId
-    ): Promise<{ docId: ObjectId; mmid: number }> {
-        const newMmid = await this.generateNextMmid(domainId);
+    ): Promise<{ docId: ObjectId }> {
+        // 检查 domain 是否已有 mindmap
+        const existing = await this.getByDomain(domainId);
+        if (existing) {
+            // 如果已存在，更新标题和内容（如果需要）
+            if (title && title !== existing.title) {
+                await this.update(domainId, existing.docId, { title });
+            }
+            if (content !== undefined && content !== existing.content) {
+                await this.update(domainId, existing.docId, { content });
+            }
+            return { docId: existing.docId };
+        }
 
         // 创建根节点
         const rootNode: MindMapNode = {
@@ -54,7 +61,6 @@ export class MindMapModel {
         const payload: Partial<MindMapDoc> = {
             docType: TYPE_MM,
             domainId,
-            mmid: newMmid,
             title: title || '未命名思维导图',
             content: content || '',
             owner,
@@ -90,7 +96,7 @@ export class MindMapModel {
             _.omit(payload, ['domainId', 'content', 'owner'])
         );
 
-        return { docId, mmid: newMmid };
+        return { docId };
     }
 
     /**
@@ -101,19 +107,11 @@ export class MindMapModel {
     }
 
     /**
-     * 通过 mmid 获取思维导图
-     */
-    static async getByMmid(domainId: string, mmid: number): Promise<MindMapDoc | null> {
-        const result = await document.getMulti(domainId, TYPE_MM, { mmid }).limit(1).toArray();
-        return result.length > 0 ? result[0] : null;
-    }
-
-    /**
-     * 获取所有思维导图
+     * 获取所有思维导图（向后兼容，现在一个 domain 只有一个）
      */
     static async getAll(domainId: string, query?: Filter<MindMapDoc>): Promise<MindMapDoc[]> {
-        const baseQuery = query || {};
-        return await document.getMulti(domainId, TYPE_MM, baseQuery).toArray();
+        const mindMap = await this.getByDomain(domainId);
+        return mindMap ? [mindMap] : [];
     }
 
     /**
@@ -345,7 +343,7 @@ export class MindMapModel {
             // 为了幂等性，如果节点不存在，仍然尝试删除该节点的所有卡片，然后返回成功
             // 这样可以确保即使节点不存在，其卡片也能被删除
             try {
-                const cards = await CardModel.getByNodeId(domainId, mindMap.mmid, nodeId);
+                const cards = await CardModel.getByNodeId(domainId, mindMap.docId, nodeId);
                 for (const card of cards) {
                     await CardModel.delete(domainId, card.docId);
                 }
@@ -757,8 +755,8 @@ export class CardModel {
     /**
      * 生成下一个 Card ID（在 node 内唯一）
      */
-    static async generateNextCid(domainId: string, mmid: number, nodeId: string): Promise<number> {
-        const lastCard = await document.getMulti(domainId, TYPE_CARD, { mmid, nodeId })
+    static async generateNextCid(domainId: string, mindMapDocId: ObjectId, nodeId: string): Promise<number> {
+        const lastCard = await document.getMulti(domainId, TYPE_CARD, { mindMapDocId, nodeId })
             .sort({ cid: -1 })
             .limit(1)
             .project({ cid: 1 })
@@ -771,7 +769,7 @@ export class CardModel {
      */
     static async create(
         domainId: string,
-        mmid: number,
+        mindMapDocId: ObjectId,
         nodeId: string,
         owner: number,
         title: string,
@@ -779,12 +777,12 @@ export class CardModel {
         ip?: string,
         problems?: CardDoc['problems'],
     ): Promise<ObjectId> {
-        const newCid = await this.generateNextCid(domainId, mmid, nodeId);
+        const newCid = await this.generateNextCid(domainId, mindMapDocId, nodeId);
 
         const payload: Partial<CardDoc> = {
             docType: TYPE_CARD,
             domainId,
-            mmid,
+            mindMapDocId,
             nodeId,
             cid: newCid,
             title: title || '未命名卡片',
@@ -823,8 +821,8 @@ export class CardModel {
     /**
      * 获取 node 下的所有 cards
      */
-    static async getByNodeId(domainId: string, mmid: number, nodeId: string): Promise<CardDoc[]> {
-        const cards = await document.getMulti(domainId, TYPE_CARD, { mmid, nodeId })
+    static async getByNodeId(domainId: string, mindMapDocId: ObjectId, nodeId: string): Promise<CardDoc[]> {
+        const cards = await document.getMulti(domainId, TYPE_CARD, { mindMapDocId, nodeId })
             .sort({ order: 1, cid: 1 })
             .toArray();
         return cards;
@@ -837,11 +835,11 @@ export class CardModel {
         domainId: string,
         nodeId: string,
         cid: number,
-        mmid?: number
+        mindMapDocId?: ObjectId
     ): Promise<CardDoc | null> {
         const filter: any = { nodeId, cid };
-        if (mmid !== undefined) {
-            filter.mmid = mmid;
+        if (mindMapDocId) {
+            filter.mindMapDocId = mindMapDocId;
         }
         const cards = await document
             .getMulti(domainId, TYPE_CARD, filter)

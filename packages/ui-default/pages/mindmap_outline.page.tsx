@@ -715,7 +715,7 @@ const OutlineView = ({
   );
 };
 
-function MindMapOutlineEditor({ docId, initialData }: { docId: string; initialData: MindMapDoc }) {
+function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefined; initialData: MindMapDoc }) {
   const [mindMap, setMindMap] = useState<MindMapDoc>(initialData);
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -3727,24 +3727,26 @@ const page = new NamedPage('mindmap_outline', async () => {
       return;
     }
 
-    const docId = $container.data('doc-id') || $container.attr('data-doc-id');
-    if (!docId) {
-      Notification.error('思维导图ID未找到');
-      return;
-    }
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    const docId = $container.data('doc-id') || $container.attr('data-doc-id') || '';
 
-    // 加载思维导图数据
+    // 加载思维导图数据（不依赖 docId，直接通过 domainId 获取）
     let initialData: MindMapDoc;
     try {
-      const response = await request.get(getMindMapUrl('/data', docId));
+      // 使用 /mindmap/data 路由，不需要 docId
+      const response = await request.get(`/d/${domainId}/mindmap/data`);
       initialData = response;
+      // 如果响应中没有 docId，使用空字符串
+      if (!initialData.docId) {
+        initialData.docId = docId || '';
+      }
     } catch (error: any) {
       Notification.error('加载思维导图失败: ' + (error.message || '未知错误'));
       return;
     }
 
     ReactDOM.render(
-      <MindMapOutlineEditor docId={docId} initialData={initialData} />,
+      <MindMapOutlineEditor docId={initialData.docId || ''} initialData={initialData} />,
       $container[0]
     );
   } catch (error: any) {
