@@ -18,6 +18,9 @@ import { verifyTFA } from '../lib/verifyTFA';
 import BlackListModel from '../model/blacklist';
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import domain from '../model/domain';
+import * as document from '../model/document';
+import * as node from '../model/node';
+import * as mindmap from '../model/mindmap';
 import * as oplog from '../model/oplog';
 import ScheduleModel from '../model/schedule';
 import system from '../model/system';
@@ -389,12 +392,387 @@ class UserDetailHandler extends Handler {
             token.getMostRecentSessionByUid(uid, ['createAt', 'updateAt']),
         ]);
         if (!udoc) throw new UserNotFoundError(uid);
+
+        // 获取用户加入的域
+        const dudict = await domain.getDictUserByDomainId(uid);
+        const domainIds = Object.keys(dudict).filter(did => dudict[did].join);
+        const domains = await Promise.all(
+            domainIds.map(async (did) => {
+                const ddoc = await domain.get(did);
+                return ddoc ? { id: did, name: ddoc.name, role: dudict[did].role } : null;
+            })
+        );
+        const joinedDomains = domains.filter(d => d !== null);
+
+        // 获取用户创建的 node 和 card（跨所有域）
+        const contributions: Array<{ date: string; type: 'node' | 'card' | 'problem'; count: number }> = [];
+        const nodeCounts: Record<string, number> = {};
+        const cardCounts: Record<string, number> = {};
+        const problemCounts: Record<string, number> = {};
+        
+        // 详细的贡献数据，按日期和域分组
+        const contributionDetails: Record<string, Array<{
+            domainId: string;
+            domainName: string;
+            nodes: number;
+            cards: number;
+            problems: number;
+        }>> = {};
+
+        for (const did of domainIds) {
+            const ddoc = await domain.get(did);
+            const domainName = ddoc?.name || did;
+            // 获取独立的 nodes（document.TYPE_NODE）
+            const independentNodes = await document.getMulti(did, document.TYPE_NODE, { owner: uid })
+                .project({ createdAt: 1 })
+                .toArray();
+            for (const nodeDoc of independentNodes) {
+                if (nodeDoc.createdAt) {
+                    const date = moment(nodeDoc.createdAt).format('YYYY-MM-DD');
+                    nodeCounts[date] = (nodeCounts[date] || 0) + 1;
+                    
+                    // 记录详细信息
+                    if (!contributionDetails[date]) {
+                        contributionDetails[date] = [];
+                    }
+                    let detail = contributionDetails[date].find(d => d.domainId === did);
+                    if (!detail) {
+                        detail = { domainId: did, domainName, nodes: 0, cards: 0, problems: 0 };
+                        contributionDetails[date].push(detail);
+                    }
+                    detail.nodes += 1;
+                }
+            }
+
+            // 获取思维导图中的节点（MindMapDoc 中的 nodes）
+            // 注意：思维导图中的节点存储在 MindMapDoc 的 nodes 数组中，不是独立的文档
+            const mindMaps = await document.getMulti(did, document.TYPE_MINDMAP, { owner: uid })
+                .project({ nodes: 1, branchData: 1, updateAt: 1, createdAt: 1 })
+                .toArray();
+            for (const mindMapDoc of mindMaps) {
+                let totalNodesInMindMap = 0;
+                const nodeIds = new Set<string>(); // 用于去重（不同分支可能有相同节点）
+                
+                // 统计主分支的节点
+                if (mindMapDoc.nodes && Array.isArray(mindMapDoc.nodes)) {
+                    for (const node of mindMapDoc.nodes) {
+                        if (node && node.id) {
+                            nodeIds.add(node.id);
+                        }
+                    }
+                }
+                
+                // 统计分支数据中的节点
+                if (mindMapDoc.branchData && typeof mindMapDoc.branchData === 'object') {
+                    for (const branch in mindMapDoc.branchData) {
+                        const branchNodes = mindMapDoc.branchData[branch]?.nodes;
+                        if (branchNodes && Array.isArray(branchNodes)) {
+                            for (const node of branchNodes) {
+                                if (node && node.id) {
+                                    nodeIds.add(node.id);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                totalNodesInMindMap = nodeIds.size;
+                
+                // 使用 updateAt 作为节点更新的日期（因为节点没有独立的时间戳）
+                // 如果 MindMap 被更新，说明节点可能被添加或修改
+                if (totalNodesInMindMap > 0) {
+                    const date = mindMapDoc.updateAt 
+                        ? moment(mindMapDoc.updateAt).format('YYYY-MM-DD')
+                        : (mindMapDoc.createdAt ? moment(mindMapDoc.createdAt).format('YYYY-MM-DD') : null);
+                    if (date) {
+                        // 只记录节点数量的变化，而不是累加所有节点
+                        // 这里我们记录 MindMap 更新时的节点总数
+                        nodeCounts[date] = (nodeCounts[date] || 0) + totalNodesInMindMap;
+                        
+                        // 记录详细信息
+                        if (!contributionDetails[date]) {
+                            contributionDetails[date] = [];
+                        }
+                        let detail = contributionDetails[date].find(d => d.domainId === did);
+                        if (!detail) {
+                            detail = { domainId: did, domainName, nodes: 0, cards: 0, problems: 0 };
+                            contributionDetails[date].push(detail);
+                        }
+                        detail.nodes += totalNodesInMindMap;
+                    }
+                }
+            }
+
+            // 获取 cards
+            const cards = await document.getMulti(did, document.TYPE_CARD, { owner: uid })
+                .project({ createdAt: 1, problems: 1 })
+                .toArray();
+            for (const cardDoc of cards) {
+                if (cardDoc.createdAt) {
+                    const date = moment(cardDoc.createdAt).format('YYYY-MM-DD');
+                    cardCounts[date] = (cardCounts[date] || 0) + 1;
+                    
+                    // 记录详细信息
+                    if (!contributionDetails[date]) {
+                        contributionDetails[date] = [];
+                    }
+                    let detail = contributionDetails[date].find(d => d.domainId === did);
+                    if (!detail) {
+                        detail = { domainId: did, domainName, nodes: 0, cards: 0, problems: 0 };
+                        contributionDetails[date].push(detail);
+                    }
+                    detail.cards += 1;
+                    
+                    // 统计 problems
+                    if (cardDoc.problems && Array.isArray(cardDoc.problems)) {
+                        const problemCount = cardDoc.problems.length;
+                        problemCounts[date] = (problemCounts[date] || 0) + problemCount;
+                        detail.problems += problemCount;
+                    }
+                }
+            }
+        }
+
+        // 合并贡献数据
+        const allDates = new Set([...Object.keys(nodeCounts), ...Object.keys(cardCounts), ...Object.keys(problemCounts)]);
+        for (const date of allDates) {
+            if (nodeCounts[date]) {
+                contributions.push({ date, type: 'node', count: nodeCounts[date] });
+            }
+            if (cardCounts[date]) {
+                contributions.push({ date, type: 'card', count: cardCounts[date] });
+            }
+            if (problemCounts[date]) {
+                contributions.push({ date, type: 'problem', count: problemCounts[date] });
+            }
+        }
+
+        // 统计总数（需要重新计算，因为 nodeCounts 可能包含重复）
+        // 重新统计所有 MindMap 中的节点总数
+        let totalNodes = 0;
+        for (const did of domainIds) {
+            // 独立的 nodes
+            const independentNodes = await document.getMulti(did, document.TYPE_NODE, { owner: uid })
+                .project({ _id: 1 })
+                .toArray();
+            totalNodes += independentNodes.length;
+            
+            // 思维导图中的节点
+            const mindMaps = await document.getMulti(did, document.TYPE_MINDMAP, { owner: uid })
+                .project({ nodes: 1, branchData: 1 })
+                .toArray();
+            for (const mindMapDoc of mindMaps) {
+                const nodeIds = new Set<string>();
+                
+                // 统计主分支的节点
+                if (mindMapDoc.nodes && Array.isArray(mindMapDoc.nodes)) {
+                    for (const node of mindMapDoc.nodes) {
+                        if (node && node.id) {
+                            nodeIds.add(node.id);
+                        }
+                    }
+                }
+                
+                // 统计分支数据中的节点
+                if (mindMapDoc.branchData && typeof mindMapDoc.branchData === 'object') {
+                    for (const branch in mindMapDoc.branchData) {
+                        const branchNodes = mindMapDoc.branchData[branch]?.nodes;
+                        if (branchNodes && Array.isArray(branchNodes)) {
+                            for (const node of branchNodes) {
+                                if (node && node.id) {
+                                    nodeIds.add(node.id);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                totalNodes += nodeIds.size;
+            }
+        }
+        
+        const totalCards = Object.values(cardCounts).reduce((sum, count) => sum + count, 0);
+        const totalProblems = Object.values(problemCounts).reduce((sum, count) => sum + count, 0);
+
         this.response.template = 'user_detail.html';
         this.response.body = {
             isSelfProfile, udoc, sdoc,
+            joinedDomains,
+            contributions,
+            contributionDetails,
+            stats: {
+                totalNodes,
+                totalCards,
+                totalProblems,
+            },
+        };
+
+        // 设置 UiContext 数据供前端使用
+        this.UiContext.joinedDomains = joinedDomains;
+        this.UiContext.contributions = contributions;
+        this.UiContext.contributionDetails = contributionDetails;
+        this.UiContext.stats = {
+            totalNodes,
+            totalCards,
+            totalProblems,
         };
 
         this.UiContext.extraTitleContent = udoc.uname;
+    }
+}
+
+class UserContributionDetailHandler extends Handler {
+    @param('uid', Types.Int)
+    @param('date', Types.String)
+    @param('domainId', Types.String)
+    async get(domainId: string, uid: number, date: string, targetDomainId: string) {
+        if (uid === 0) throw new UserNotFoundError(0);
+        const udoc = await user.getById(domainId, uid);
+        if (!udoc) throw new UserNotFoundError(uid);
+
+        // 验证日期格式
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            throw new ValidationError('Invalid date format');
+        }
+
+        // 验证目标域是否存在
+        const targetDomain = await domain.get(targetDomainId);
+        if (!targetDomain) {
+            throw new NotFoundError(`Domain ${targetDomainId} not found`);
+        }
+
+        // 验证用户是否加入了该域
+        const dudict = await domain.getDictUserByDomainId(uid);
+        if (!dudict[targetDomainId]?.join) {
+            throw new ForbiddenError('User has not joined this domain');
+        }
+
+        // 获取该日期在该域的具体贡献
+        const contributions: {
+            nodes: Array<{ id: string; name: string; createdAt: Date; type: 'independent' | 'mindmap' }>;
+            cards: Array<{ docId: string; title: string; nodeId: string; createdAt: Date; problems?: number }>;
+            problems: Array<{ cardId: string; cardTitle: string; pid: string; stem: string; createdAt: Date }>;
+        } = {
+            nodes: [],
+            cards: [],
+            problems: [],
+        };
+
+        // 获取独立的节点
+        const independentNodes = await document.getMulti(targetDomainId, document.TYPE_NODE, { owner: uid })
+            .project({ nid: 1, name: 1, createdAt: 1 })
+            .toArray();
+        for (const nodeDoc of independentNodes) {
+            if (nodeDoc.createdAt) {
+                const nodeDate = moment(nodeDoc.createdAt).format('YYYY-MM-DD');
+                if (nodeDate === date) {
+                    contributions.nodes.push({
+                        id: nodeDoc.nid?.toString() || nodeDoc._id.toString(),
+                        name: nodeDoc.name || '未命名节点',
+                        createdAt: nodeDoc.createdAt,
+                        type: 'independent',
+                    });
+                }
+            }
+        }
+
+        // 获取思维导图中的节点（使用 updateAt 作为日期）
+        const mindMaps = await document.getMulti(targetDomainId, document.TYPE_MINDMAP, { owner: uid })
+            .project({ docId: 1, title: 1, nodes: 1, branchData: 1, updateAt: 1, createdAt: 1 })
+            .toArray();
+        for (const mindMapDoc of mindMaps) {
+            const mapDate = mindMapDoc.updateAt 
+                ? moment(mindMapDoc.updateAt).format('YYYY-MM-DD')
+                : (mindMapDoc.createdAt ? moment(mindMapDoc.createdAt).format('YYYY-MM-DD') : null);
+            
+            if (mapDate === date) {
+                // 收集所有节点
+                const nodeIds = new Set<string>();
+                const nodeMap = new Map<string, any>();
+                
+                if (mindMapDoc.nodes && Array.isArray(mindMapDoc.nodes)) {
+                    for (const node of mindMapDoc.nodes) {
+                        if (node && node.id) {
+                            nodeIds.add(node.id);
+                            nodeMap.set(node.id, node);
+                        }
+                    }
+                }
+                
+                if (mindMapDoc.branchData && typeof mindMapDoc.branchData === 'object') {
+                    for (const branch in mindMapDoc.branchData) {
+                        const branchNodes = mindMapDoc.branchData[branch]?.nodes;
+                        if (branchNodes && Array.isArray(branchNodes)) {
+                            for (const node of branchNodes) {
+                                if (node && node.id) {
+                                    nodeIds.add(node.id);
+                                    if (!nodeMap.has(node.id)) {
+                                        nodeMap.set(node.id, node);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // 添加节点到贡献列表
+                for (const nodeId of nodeIds) {
+                    const node = nodeMap.get(nodeId);
+                    contributions.nodes.push({
+                        id: nodeId,
+                        name: node?.text || node?.name || '未命名节点',
+                        createdAt: mindMapDoc.updateAt || mindMapDoc.createdAt,
+                        type: 'mindmap',
+                    });
+                }
+            }
+        }
+
+        // 获取卡片
+        const cards = await document.getMulti(targetDomainId, document.TYPE_CARD, { owner: uid })
+            .project({ docId: 1, title: 1, nodeId: 1, createdAt: 1, problems: 1 })
+            .toArray();
+        for (const cardDoc of cards) {
+            if (cardDoc.createdAt) {
+                const cardDate = moment(cardDoc.createdAt).format('YYYY-MM-DD');
+                if (cardDate === date) {
+                    contributions.cards.push({
+                        docId: cardDoc.docId.toString(),
+                        title: cardDoc.title || '未命名卡片',
+                        nodeId: cardDoc.nodeId || '',
+                        createdAt: cardDoc.createdAt,
+                        problems: cardDoc.problems?.length || 0,
+                    });
+
+                    // 添加题目
+                    if (cardDoc.problems && Array.isArray(cardDoc.problems)) {
+                        for (const problem of cardDoc.problems) {
+                            contributions.problems.push({
+                                cardId: cardDoc.docId.toString(),
+                                cardTitle: cardDoc.title || '未命名卡片',
+                                pid: problem.pid || '',
+                                stem: problem.stem || '无题干',
+                                createdAt: cardDoc.createdAt,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // 获取思维导图信息（用于显示节点链接）
+        const mindMap = await mindmap.MindMapModel.getByDomain(targetDomainId);
+
+        this.response.template = 'user_contribution_detail.html';
+        this.response.body = {
+            udoc,
+            targetDomain,
+            date,
+            contributions,
+            mindMapDocId: mindMap?.docId,
+        };
+
+        this.UiContext.extraTitleContent = `${udoc.uname} - ${date} 在 ${targetDomain.name} 的贡献`;
     }
 }
 
@@ -578,6 +956,7 @@ export async function apply(ctx: Context) {
     ctx.Route('user_lostpass_with_code', '/lostpass/:code', UserLostPassWithCodeHandler);
     ctx.Route('user_delete', '/user/delete', UserDeleteHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('user_detail', '/user/:uid', UserDetailHandler);
+    ctx.Route('user_contribution_detail', '/user/:uid/contributions/:date/:domainId', UserContributionDetailHandler);
     if (system.get('server.contestmode')) {
         ctx.Route('contest_mode', '/contestmode', ContestModeHandler, PRIV.PRIV_EDIT_SYSTEM);
     }

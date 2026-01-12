@@ -191,16 +191,28 @@ __langname: English
 agent_detail: Agent Detail
 agent_domain: Agent
 agent_edit: Edit Agent
+Back to: Back to
 base_domain: Base
+Belongs to card: Belongs to card
 block_create: Create Block
 block_detail: Block Detail
 block_edit: Edit Block
 Can be Extended For: Extension
+cards: cards
+Cards: Cards
 client_create: Create Client
 client_detail: Client Detail
 client_domain: Client
 client_edit: Edit Client
 client_logs: Connection Logs
+Close: Close
+'Contains {0} problems': Contains {0} problems
+Contribution Wall: Contribution Wall
+Contributions in the past year: Contributions in the past year
+'Contributions on {0} in {1}': Contributions on {0} in {1}
+'Contributions on {0}': Contributions on {0}
+Contributions: Contributions
+Created at: Created at
 discussion_create: Create Discussion
 discussion_detail: Discussion Detail
 discussion_edit: Discussion Edit
@@ -237,6 +249,9 @@ homework_detail_problem_submit: Submit Homework Problem
 homework_edit: Homework Edit
 homework_main: Homework
 homework_scoreboard: Scoreboard
+Independent Node: Independent Node
+Joined Domains: Joined Domains
+Less: Less
 main: Home
 manage_config: System Configurations
 manage_dashboard: System Dashboard
@@ -251,6 +266,7 @@ mcp_detail: MCP Detail
 mcp_domain: MCP
 mcp_edit: Edit MCP
 mcp_logs: MCP Logs
+MindMap Node: MindMap Node
 mindmap_create: Create MindMap
 mindmap_data: MindMap Data
 mindmap_delete: Delete MindMap
@@ -258,16 +274,25 @@ mindmap_detail: MindMap Detail
 mindmap_domain: MindMap
 mindmap_edge: MindMap Edge
 mindmap_edit: Edit MindMap
+mindmap_editor: MindMap Editor
 mindmap_list: MindMap List
 mindmap_node: MindMap Node
+mindmap_outline: MindMap
 mindmap_save: Save MindMap
 mindmap_study: Study MindMap
+More: More
+No contribution records on this day: No contribution records on this day
+No domains joined.: No domains joined.
+No stem: No stem
 no_translation_warn: <blockquote class="warn">This part of content is under translation.</blockquote>
+Node ID: Node ID
 node_create: Create Node
 node_detail: Node Detail
 node_domain: Node
 node_edit: Edit Node
 node_logs: Node Logs
+nodes: nodes
+Nodes: Nodes
 Offline: Offline
 Online: Online
 page.problem_detail.sidebar.show_category: Click to Show
@@ -286,6 +311,10 @@ perm_problem: Problems
 perm_ranking: Ranking
 perm_record: Records
 perm_training: Trainings
+Problem ID: Problem ID
+problems: problems
+Problems: Problems
+Publish Statistics: Publish Statistics
 record_main: Record
 repo_config: Repo Config
 repo_create: Create Repo
@@ -307,16 +336,21 @@ setting_smtp: SMTP Settings
 setting_usage: Usage Preference
 timeago_locale: en_US
 tool_domain: Tool
+Total: Total
 training_create: Training Create
 training_detail: Training Detail
 training_edit: Training Edit
 training_main: Training
+Type: Type
+Unnamed Card: Unnamed Card
+Unnamed Node: Unnamed Node
 user_detail: User Detail
 user_login: Login
 user_logout: Logout
 user_lostpass: Lost Password
 user_register: Register
 user_sudo: Entering Sudo Mode
+View Card: View Card
 wiki_about: About
 wiki_help: Helpz
 workflow_domain: Workflow
