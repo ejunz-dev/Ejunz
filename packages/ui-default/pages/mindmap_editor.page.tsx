@@ -1944,18 +1944,12 @@ function MindMapEditorMode({ docId, initialData }: { docId: string | undefined; 
                 setPendingCreatesCount(pendingCreatesRef.current.size);
                 
                 if (renameRecord) {
+                  // 创建node时已经使用了重命名后的文本，所以不需要再次更新
+                  // 直接清除重命名记录，避免在保存时重复调用更新API
                   setPendingRenames(prev => {
                     const next = new Map(prev);
                     next.delete(create.tempId);
-                    next.set(newNodeId, {
-                      file: {
-                        ...renameRecord.file,
-                        id: newNodeId,
-                        nodeId: newNodeId,
-                      },
-                      newName: renameRecord.newName,
-                      originalName: renameRecord.originalName,
-                    });
+                    // 不需要再次添加到pendingRenames，因为创建时已经使用了正确的文本
                     return next;
                   });
                 }
@@ -2384,7 +2378,9 @@ function MindMapEditorMode({ docId, initialData }: { docId: string | undefined; 
         // 收集所有需要更新的 nodes 和 cards
         const nodeOrderUpdates = new Set<string>();
         const cardOrderUpdates = new Set<string>();
+        const nodeEdgeUpdates = new Map<string, { newEdge: MindMapEdge | null; oldEdges: MindMapEdge[] }>();
         
+        // 先收集所有需要更新的node信息（不立即调用API）
         for (const cardId of pendingDragChanges) {
           if (cardId.startsWith('node-')) {
             // 节点拖动，保存 edges 和 order
@@ -2395,87 +2391,107 @@ function MindMapEditorMode({ docId, initialData }: { docId: string | undefined; 
             const newEdges = mindMap.edges.filter(e => e.target === nodeId);
             const newEdge = newEdges.length > 0 ? newEdges[0] : null;
             
-            if (newEdge) {
-              try {
-                // 获取数据库中该节点的所有 edges（作为 target 的边）
-                const currentMindMap = await request.get(getMindMapUrl('/data'));
-                const oldEdges = (currentMindMap.edges || []).filter(
-                  (e: MindMapEdge) => e.target === nodeId
-                );
-                
-                // 检查新边是否已存在（通过 source 和 target 匹配）
-                const edgeExists = oldEdges.some(
-                  (e: MindMapEdge) => e.source === newEdge.source && e.target === newEdge.target
-                );
-                
-                // 删除所有旧的父节点连接（如果新边已存在，则不删除它）
-                for (const oldEdge of oldEdges) {
-                  // 检查是否是我们要保留的新边（通过 source 和 target 匹配）
-                  const isNewEdge = oldEdge.source === newEdge.source && oldEdge.target === newEdge.target;
-                  if (!isNewEdge && oldEdge.id) {
-                    // 跳过临时 edge（前端生成的临时 ID）
-                    if (oldEdge.id.startsWith('temp-') || oldEdge.id.startsWith('edge-')) {
-                      continue;
-                    }
-                    
-                    // 尝试删除旧的 edge，如果失败（edge 可能已经被删除），忽略错误
-                    try {
-                      await request.post(getMindMapUrl('/edge'), {
-                        operation: 'delete',
-                        edgeId: oldEdge.id,
-                      });
-                    } catch (deleteError: any) {
-                      // Ignore delete errors
-                    }
-                  }
-                }
-                
-                // 如果新边不存在，创建它
-                if (!edgeExists) {
-                  try {
-                    await request.post(getMindMapUrl('/edge'), {
-                      operation: 'add',
-                      source: newEdge.source,
-                      target: newEdge.target,
-                    });
-                  } catch (addError: any) {
-                    // Ignore edge creation errors
-                  }
-                }
-              } catch (error: any) {
-                // If update fails, try to create edge directly
-                try {
-                  await request.post(getMindMapUrl('/edge'), {
-                    operation: 'add',
-                    source: newEdge.source,
-                    target: newEdge.target,
-                  });
-                } catch (err: any) {
-                  // Ignore edge creation errors
-                }
-              }
-            }
+            // 从本地 mindMap.edges 中获取旧的父节点连接（作为target的边）
+            const oldEdges = mindMap.edges.filter(
+              (e: MindMapEdge) => e.target === nodeId
+            );
+            
+            nodeEdgeUpdates.set(nodeId, { newEdge, oldEdges });
           } else {
             // 卡片拖动，收集需要更新的卡片
             cardOrderUpdates.add(cardId);
           }
         }
         
-        // 通过 /mindmap/save 一次性保存所有 nodes（包括 order）和 cards（包括 order）
-        // 过滤掉临时节点和边
-        const sortedNodes = mindMap.nodes.filter(n => !n.id.startsWith('temp-node-'));
-        const sortedEdges = mindMap.edges.filter(e => 
-          !e.source.startsWith('temp-node-') && 
-          !e.target.startsWith('temp-node-') &&
-          !e.id.startsWith('temp-edge-')
-        );
+        // 只获取一次最新的mindmap数据（用于验证edges）
+        let currentMindMap: MindMapDoc | null = null;
+        if (nodeEdgeUpdates.size > 0) {
+          try {
+            currentMindMap = await request.get(getMindMapUrl('/data', docId));
+          } catch (error: any) {
+            console.warn('Failed to get current mindmap data for edge updates:', error);
+          }
+        }
         
-        // 保存所有 nodes（包括 order 字段）
-        await request.post(getMindMapUrl('/save'), {
-          nodes: sortedNodes,
-          edges: sortedEdges,
-          operationDescription: '拖动排序更新',
-        });
+        // 批量处理所有node的edges更新
+        for (const [nodeId, { newEdge, oldEdges: localOldEdges }] of nodeEdgeUpdates) {
+          if (!newEdge) continue;
+          
+          try {
+            // 使用获取到的最新数据，如果没有则使用本地数据
+            const edgesToCheck = currentMindMap?.edges || localOldEdges;
+            const oldEdges = edgesToCheck.filter(
+              (e: MindMapEdge) => e.target === nodeId
+            );
+            
+            // 检查新边是否已存在（通过 source 和 target 匹配）
+            const edgeExists = oldEdges.some(
+              (e: MindMapEdge) => e.source === newEdge.source && e.target === newEdge.target
+            );
+            
+            // 删除所有旧的父节点连接（如果新边已存在，则不删除它）
+            for (const oldEdge of oldEdges) {
+              // 检查是否是我们要保留的新边（通过 source 和 target 匹配）
+              const isNewEdge = oldEdge.source === newEdge.source && oldEdge.target === newEdge.target;
+              if (!isNewEdge && oldEdge.id) {
+                // 跳过临时 edge（前端生成的临时 ID）
+                if (oldEdge.id.startsWith('temp-') || oldEdge.id.startsWith('edge-')) {
+                  continue;
+                }
+                
+                // 尝试删除旧的 edge，如果失败（edge 可能已经被删除），忽略错误
+                try {
+                  await request.post(getMindMapUrl('/edge'), {
+                    operation: 'delete',
+                    edgeId: oldEdge.id,
+                  });
+                } catch (deleteError: any) {
+                  // Ignore delete errors
+                }
+              }
+            }
+            
+            // 如果新边不存在，创建它
+            if (!edgeExists) {
+              try {
+                await request.post(getMindMapUrl('/edge'), {
+                  operation: 'add',
+                  source: newEdge.source,
+                  target: newEdge.target,
+                });
+              } catch (addError: any) {
+                // Ignore edge creation errors
+              }
+            }
+          } catch (error: any) {
+            // If update fails, try to create edge directly
+            try {
+              await request.post(getMindMapUrl('/edge'), {
+                operation: 'add',
+                source: newEdge.source,
+                target: newEdge.target,
+              });
+            } catch (err: any) {
+              // Ignore edge creation errors
+            }
+          }
+        }
+        
+        // 对每个需要更新order的node单独调用更新API（类似card的处理方式）
+        // 只更新被拖动过的nodes的order，而不是保存所有nodes
+        for (const nodeId of nodeOrderUpdates) {
+          const node = mindMap.nodes.find(n => n.id === nodeId);
+          if (node && !node.id.startsWith('temp-node-')) {
+            try {
+              await request.post(getMindMapUrl(`/node/${nodeId}`, docId), {
+                operation: 'update',
+                order: node.order !== undefined ? node.order : 0,
+              });
+            } catch (error: any) {
+              console.warn(`Failed to update node order for ${nodeId}:`, error);
+            }
+          }
+        }
         
         // 保存所有 cards 的 order
         for (const nodeId in nodeCardsMap) {
@@ -2491,6 +2507,15 @@ function MindMapEditorMode({ docId, initialData }: { docId: string | undefined; 
               });
             }
           }
+        }
+        
+        // 保存拖动更改后，重新加载数据以确保同步
+        try {
+          const response = await request.get(getMindMapUrl('/data'));
+          setMindMap(response);
+          console.log('Reloaded mindmap data after drag save, nodes count:', response.nodes.length);
+        } catch (error) {
+          console.warn('Failed to reload mindmap data after drag save:', error);
         }
       }
       
@@ -2583,21 +2608,33 @@ function MindMapEditorMode({ docId, initialData }: { docId: string | undefined; 
         }
         
         // 删除所有node
-        for (const del of nodeDeletes) {
-          // 临时节点（尚未真正创建），只需要在前端移除，不调用后端删除接口
-          if (!del.id || String(del.id).startsWith('temp-node-')) {
-            continue;
-          }
+        if (nodeDeletes.length > 0) {
+          // 先过滤掉临时节点
+          const realNodeDeletes = nodeDeletes.filter(del => 
+            del.id && !String(del.id).startsWith('temp-node-')
+          );
           
-          // 删除节点（需要先删除所有相关的 edges）
-          // 从后端获取最新的 edges，因为前端可能已经删除了这些 edges
-          try {
-            const currentMindMap = await request.get(getMindMapUrl('/data', docId));
-            const nodeEdges = (currentMindMap.edges || []).filter(
-              (e: MindMapEdge) => e.source === del.id || e.target === del.id
+          if (realNodeDeletes.length > 0) {
+            // 批量获取所有要删除的node IDs
+            const nodeIdsToDelete = new Set(realNodeDeletes.map(del => del.id));
+            
+            // 只获取一次最新的 edges，而不是每个node都获取一次
+            let allEdges: MindMapEdge[] = [];
+            try {
+              const currentMindMap = await request.get(getMindMapUrl('/data', docId));
+              allEdges = currentMindMap.edges || [];
+            } catch (error: any) {
+              // 如果获取数据失败，使用前端的 mindMap.edges（向后兼容）
+              allEdges = mindMap.edges;
+            }
+            
+            // 收集所有需要删除的 edges（与要删除的node相关的edges）
+            const edgesToDelete = allEdges.filter(
+              (e: MindMapEdge) => nodeIdsToDelete.has(e.source) || nodeIdsToDelete.has(e.target)
             );
             
-            for (const edge of nodeEdges) {
+            // 批量删除所有相关的 edges
+            for (const edge of edgesToDelete) {
               try {
                 await request.post(getMindMapUrl('/edge'), {
                   operation: 'delete',
@@ -2608,29 +2645,19 @@ function MindMapEditorMode({ docId, initialData }: { docId: string | undefined; 
                 console.warn('Failed to delete edge:', edge.id, deleteError);
               }
             }
-          } catch (error: any) {
-            // 如果获取数据失败，尝试直接从 mindMap 中查找（向后兼容）
-            const nodeEdges = mindMap.edges.filter(
-              e => e.source === del.id || e.target === del.id
-            );
             
-            for (const edge of nodeEdges) {
+            // 批量删除所有 nodes
+            for (const del of realNodeDeletes) {
               try {
-                await request.post(getMindMapUrl('/edge'), {
+                await request.post(getMindMapUrl(`/node/${del.id}`), {
                   operation: 'delete',
-                  edgeId: edge.id,
                 });
               } catch (deleteError: any) {
-                // 如果删除失败，可能是 edge 已经被删除，继续处理
-                console.warn('Failed to delete edge:', edge.id, deleteError);
+                // 如果删除失败，可能是 node 已经被删除，继续处理
+                console.warn('Failed to delete node:', del.id, deleteError);
               }
             }
           }
-          
-          // 删除节点
-          await request.post(getMindMapUrl(`/node/${del.id}`), {
-            operation: 'delete',
-          });
         }
       }
 
