@@ -1,0 +1,39 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-8 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Learn Settings') }}</h1>
+      </div>
+      <div class="section__body">
+        <form method="post">
+          <div class="form__row">
+            <label class="form__label">{{ _('MindMap') }}</label>
+            <div class="form__item">
+              <input type="text" value="{{ mindMapTitle }}" disabled class="form__control">
+            </div>
+          </div>
+          <div class="form__row">
+            <label class="form__label">{{ _('Branch') }}</label>
+            <div class="form__item">
+              <select name="branch" class="form__control">
+                {% for branch in branches %}
+                <option value="{{ branch }}" {% if branch == currentBranch %}selected{% endif %}>
+                  {{ branch }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form__help">{{ _('Select the branch to use for learning') }}</div>
+          </div>
+          <div class="form__row">
+            <button type="submit" class="primary button">{{ _('Save') }}</button>
+            <a href="{{ url('learn') }}" class="button">{{ _('Cancel') }}</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
