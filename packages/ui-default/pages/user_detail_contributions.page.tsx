@@ -188,7 +188,6 @@ function ContributionWall({ contributions, theme, contributionDetails, onDateCli
 function UserDetailContributionsPage() {
   const contributions = (window as any).UiContext?.contributions || [];
   const contributionDetails = (window as any).UiContext?.contributionDetails || {};
-  const joinedDomains = (window as any).UiContext?.joinedDomains || [];
   const stats = (window as any).UiContext?.stats || { totalNodes: 0, totalCards: 0, totalProblems: 0 };
   
   const getLatestContributionDate = useCallback(() => {
@@ -263,45 +262,6 @@ function UserDetailContributionsPage() {
 
   return (
     <div style={{ padding: '20px' }}>
-      <div style={{ marginBottom: '30px' }}>
-        <h2 style={{ fontSize: '18px', marginBottom: '15px', fontWeight: 'bold', color: themeStyles.textPrimary }}>{i18n('Joined Domains')}</h2>
-        {joinedDomains.length > 0 ? (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-            {joinedDomains.map((domain: any) => (
-              <a
-                key={domain.id}
-                href={`/d/${domain.id}/`}
-                style={{
-                  display: 'inline-block',
-                  padding: '8px 16px',
-                  background: themeStyles.bgButton,
-                  borderRadius: '4px',
-                  textDecoration: 'none',
-                  color: themeStyles.textPrimary,
-                  transition: 'background 0.2s',
-                  border: `1px solid ${themeStyles.border}`,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = themeStyles.bgButtonHover;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = themeStyles.bgButton;
-                }}
-              >
-                {domain.name || domain.id}
-                {domain.role && domain.role !== 'default' && (
-                  <span style={{ marginLeft: '8px', fontSize: '12px', color: themeStyles.textSecondary }}>
-                    ({domain.role})
-                  </span>
-                )}
-              </a>
-            ))}
-          </div>
-        ) : (
-          <div style={{ color: themeStyles.textTertiary }}>{i18n('No domains joined.')}</div>
-        )}
-      </div>
-
       <div style={{ marginBottom: '30px' }}>
         <h2 style={{ fontSize: '18px', marginBottom: '15px', fontWeight: 'bold', color: themeStyles.textPrimary }}>{i18n('Publish Statistics')}</h2>
         <div style={{ display: 'flex', gap: '30px' }}>
