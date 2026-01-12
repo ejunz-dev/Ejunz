@@ -1,3 +1,4 @@
+
 __id: zh
 __langname: 简体中文
 '-- Please Select Agent --': -- 请选择 Agent --
@@ -246,11 +247,12 @@ Argument {0} is invalid.: 非法的参数 {0} 。
 Arguments: 参数
 author: 作者
 Avatar: 头像
-base_domain: 知识库
+Back to: 返回
 Be Copied: 被复制
 Begin at: 开始于
 Begin Date: 开始日期
 Begin Time: 开始时间
+Belongs to card: 所属卡片
 Belongs to: 属于
 Bio Visibility: 个人简介可见性
 Bio: 个人简介
@@ -267,6 +269,8 @@ By Username / UID: 由用户名或 UID
 Calendar View: 日历视图
 Calendar: 日历
 Cancel: 取消
+Cards: 卡片
+cards: 张卡片
 Categories: 分类
 Category: 分类
 CDN Prefix: CDN 路径前缀
@@ -282,6 +286,7 @@ client_detail: 客户端详情
 client_domain: 客户端管理
 client_edit: 编辑客户端
 client_logs: 连接日志
+Close: 关闭
 CLOSE: 关闭
 collapse: 收缩
 Comment: 评论
@@ -296,8 +301,14 @@ Confirm removing the selected users?: 您确定将所选用户移除吗？
 Confirmation mail has been sent to your new email.: 确认邮件已经发送到您的新电子邮箱。
 Contact Us: 联系我们
 Contact: 联系
+'Contains {0} problems': 包含 {0} 道题目
 content: 内容
 Content: 内容
+Contribution Wall: 贡献墙
+Contributions in the past year: 过去一年的贡献
+'Contributions on {0} in {1}': '{0} 在 {1} 的贡献'
+'Contributions on {0}': '{0} 的详细贡献'
+Contributions: 贡献
 Copy Email: 复制电子邮件
 Copy from: 复制自
 Copy QQ Number: 复制QQ号
@@ -313,6 +324,7 @@ Create Domain: 创建域
 Create Link: 创建链接
 Create Role: 创建角色
 Create: 创建
+Created at: 创建时间
 Created By: 创建人
 current domain: 当前域
 Current Email: 当前电子邮件
@@ -460,6 +472,7 @@ In 1 week: 一周后
 In 3 days: 三天后
 In 3 hours: 三个小时后
 In Progress: 进行中
+Independent Node: 独立节点
 Information: 信息
 Init Discussion Nodes: 初始化讨论结点
 Initialize: 初始化
@@ -477,6 +490,7 @@ Invalid: 无效
 Invitation Code: 邀请码
 IO: 输入输出
 Italic: 斜体
+Joined Domains: 加入的域
 Language: 语言
 last active at: 最后活动于
 last login at: 最后登录于
@@ -485,6 +499,7 @@ Last Update At: 最后活动时间
 LaTeX Expressions: LaTeX 表达式
 Learn More: 了解更多
 Leave Edit Mode: 离开编辑模式
+Less: 少
 Limit And Hint: 数据范围与提示
 Limitations: 限制
 Links: 链接
@@ -521,6 +536,7 @@ Memory: 内存
 Message {0} not found.: 消息 {0} 不存在。
 Messages: 消息
 Method: 方法
+MindMap Node: 思维导图节点
 mindmap_create: 创建知识库
 mindmap_data: 知识库数据
 mindmap_delete: 删除知识库
@@ -528,11 +544,14 @@ mindmap_detail: 知识库详情
 mindmap_domain: 知识库
 mindmap_edge: 知识库边
 mindmap_edit: 编辑知识库
+mindmap_editor: 编辑器
 mindmap_list: 知识库列表
 mindmap_node: 知识库节点
+mindmap_outline: 知识库
 mindmap_save: 保存知识库
 mindmap_study: 学习知识库
 Month: 月
+More: 多
 My Domains: 我加入的域
 My Files: 我的文件
 My Profile: 我的资料
@@ -547,8 +566,14 @@ New Email: 新电子邮件
 New file: 新文件
 New Password: 新密码
 New: 创建
+No contribution records on this day: 这一天没有贡献记录
+No domains joined.: 未加入任何域
+No stem: 无题干
 no_translation_warn: ''
+Node ID: 节点ID
 node_domain: 节点管理
+nodes: 个节点
+Nodes: 节点
 None: 无
 Not Attended: 未参加
 Not available: 不可用
@@ -600,10 +625,14 @@ Plugins: 插件
 preferredEditorType: 首选编辑模式
 Preview: 预览
 Privacy: 隐私
+Problem ID: 题目ID
+problems: 道题目
+Problems: 题目
 Profile Background Image: 背景图片
 Progress: 进度
 Properties: 属性
 Public: 公开
+Publish Statistics: 发布统计
 Published at: 发表于
 QQ Group: QQ 群
 QQ Visibility: QQ 可见性
@@ -758,6 +787,7 @@ Timezone: 时区
 title: 标题
 Title: 标题
 tool_domain: 工具
+Total: 总计
 Type: 类型
 UI Language: 用户界面语言
 Uncompleted: 未完成
@@ -766,6 +796,8 @@ Unique: 唯一
 Unknown field {0}.: 未知字段 {0}。
 Unknown: 未知
 Unlock Topic: 解锁主题
+Unnamed Card: 未命名卡片
+Unnamed Node: 未命名节点
 Unordered List: 无序列表
 Unsaved session expire seconds: 未保存的会话的过期秒数
 Unstar Topic: 取消收藏
@@ -803,6 +835,7 @@ Valid for registered users who are not members of the domain: 对域外注册用
 Valid for visitors: 对未登录的游客有效
 Verify register email: 注册需邮件验证
 Version: 版本
+View Card: 查看卡片
 View Details: 查看详情
 View Discussions: 查看讨论
 View domain user displayname: 显示域中用户的显示名
