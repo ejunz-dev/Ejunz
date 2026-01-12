@@ -1,0 +1,13 @@
+{% set page_name = "lessonPage" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<script>
+  {{ set(UiContext, 'card', card) }}
+  {{ set(UiContext, 'node', node) }}
+  {{ set(UiContext, 'cards', cards or []) }}
+  {{ set(UiContext, 'currentIndex', currentIndex or 0) }}
+  {{ set(UiContext, 'domainId', domainId) }}
+  {{ set(UiContext, 'mindMapDocId', mindMapDocId) }}
+</script>
+<div id="lesson-container"></div>
+{% endblock %}
