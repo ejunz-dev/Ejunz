@@ -1490,14 +1490,15 @@ class MindMapSaveHandler extends Handler {
                 const oldNode = oldMindMap.nodes.find(n => n.id === newNode.id);
                 if (!oldNode) return true; // 新节点
 
-                // 比较非位置属性
+                // 比较非位置属性（包括 order）
                 if (
                     oldNode.text !== newNode.text ||
                     oldNode.color !== newNode.color ||
                     oldNode.backgroundColor !== newNode.backgroundColor ||
                     oldNode.fontSize !== newNode.fontSize ||
                     oldNode.expanded !== newNode.expanded ||
-                    oldNode.shape !== newNode.shape
+                    oldNode.shape !== newNode.shape ||
+                    oldNode.order !== newNode.order
                 ) {
                     return true;
                 }
