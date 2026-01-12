@@ -5,6 +5,7 @@ __langname: English
 '{0} parts': '{0} parts'
 '{0} units': '{0} units'
 'Access Point Type': Access Point Type
+'Accuracy': Accuracy
 'Actions': Actions
 'Add Root Doc': Add Root Doc
 'After successful connection, configure ASR, TTS and Agent services': After successful connection, configure ASR, TTS and Agent services
@@ -23,6 +24,7 @@ __langname: English
 'ASR configuration saved successfully': ASR configuration saved successfully
 'ASR Configuration': ASR Configuration
 'Back to Details': Back to Details
+'Back to Learn': Back to Learn
 'Back to List': Back to List
 'Base URL': Base URL
 'Behind remote by {0} commit(s)': Behind remote by {0} commit(s)
@@ -41,6 +43,7 @@ __langname: English
 'Commit Message': Commit Message
 'commits': commits
 'Configuration': Configuration
+'Congratulations! You have completed all practice questions correctly.': Congratulations! You have completed all practice questions correctly.
 'Connect to the WebSocket URL above using the generated Token': Connect to the WebSocket URL above using the generated Token
 'Connected': Connected
 'Connection URL': Connection URL
@@ -54,6 +57,7 @@ __langname: English
 'Copied to clipboard': Copied to clipboard
 'Copy failed': Copy failed
 'Copy': Copy
+'Correct Answer': Correct Answer
 'Correct': Correct
 'Create Client': Create Client
 'Create remote branch': Create remote branch
@@ -116,15 +120,18 @@ __langname: English
 'Last Connected': Last Connected
 'Last Disconnected Time': Last Disconnected Time
 'Learn Settings': Learn Settings
+'Lesson Passed': Lesson Passed
 'Local branch not found': Local branch not found
 'Local Branch': Local Branch
 'Local Repository': Local Repository
 'Lock Scroll': Lock Scroll
+'Locked': Locked
 'Manuscript Mode': Manuscript Mode
 'MCP Tools': MCP Tools
 'Model': Model
 'New Content Block': New Content Block
 'New Folder': New Folder
+'Next Card': Next Card
 'Next': Next
 'No audio available': No audio available
 'No cards available in this section.': No cards available in this section.
@@ -153,6 +160,7 @@ __langname: English
 'Please select a conversation from the left sidebar to view chat details': Please select a conversation from the left sidebar to view chat details
 'Please select': Please select
 'Practice Questions': Practice Questions
+'Practice Results': Practice Results
 'Practice': Practice
 'Previous': Previous
 'Provider (MCP)': Provider (MCP)
@@ -164,6 +172,7 @@ __langname: English
 'Pushing...': Pushing...
 'Question': Question
 'Refresh Tools List': Refresh Tools List
+'Remaining': Remaining
 'Remote branch exists. Use Pull to sync with remote changes.': Remote branch exists. Use Pull to sync with remote changes.
 'Remote branch not found': Remote branch not found
 'Remote Branch Status': Remote Branch Status
@@ -176,6 +185,7 @@ __langname: English
 'Save TTS Configuration': Save TTS Configuration
 'Save': Save
 'Saved successfully': Saved successfully
+'Saving progress...': Saving progress...
 'Saving': Saving
 'Sections': Sections
 'Select a conversation to view details': Select a conversation to view details
@@ -222,6 +232,7 @@ __langname: English
 'WebSocket Token Management': WebSocket Token Management
 'WebSocket URL': WebSocket URL
 'Working': Working
+'Your Answer': Your Answer
 'your custom message': your custom message
 # Client chat translations
 # Client management translations

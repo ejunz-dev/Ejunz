@@ -26,10 +26,10 @@
                       {{ section.cards|length }} {{ _('cards') }}
                     </p>
                     <div style="display: flex; gap: 10px; flex-direction: column;">
-                      <a href="/{{ domainId }}/learn?sectionId={{ section._id }}" class="button primary" style="width: 100%;">
+                      <a href="/d/{{ domainId }}/learn?sectionId={{ section._id }}" class="button primary" style="width: 100%;">
                         {% if currentSectionId == section._id %}{{ _('Continue Learning') }}{% else %}{{ _('Start Learning') }}{% endif %}
                       </a>
-                      <a href="/{{ domainId }}/learn?sectionId={{ section._id }}" class="button secondary" style="width: 100%;">
+                      <a href="/d/{{ domainId }}/learn?sectionId={{ section._id }}" class="button secondary" style="width: 100%;">
                         {{ _('View Section') }}
                       </a>
                     </div>

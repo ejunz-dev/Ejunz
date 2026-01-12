@@ -37,9 +37,21 @@
                 <tbody>
                   {%- for card in node.cards -%}
                     <tr>
-                      <td class="col--name">{{ card.title }}</td>
+                      <td class="col--name">
+                        {{ card.title }}
+                        {% if card.passed %}
+                          <span style="color: #4caf50; margin-left: 8px;">✓</span>
+                        {% endif %}
+                        {% if not card.unlocked %}
+                          <span style="color: #999; margin-left: 8px;">🔒</span>
+                        {% endif %}
+                      </td>
                       <td class="col--action">
-                        <a href="/learn/lesson/{{ domainId }}/{{ node._id }}/{{ card.cardId }}" class="button">{{ _('Practice') }}</a>
+                        {% if card.unlocked %}
+                          <a href="/d/{{ domainId }}/learn/lesson" class="button">{{ _('Practice') }}</a>
+                        {% else %}
+                          <span class="button" style="opacity: 0.5; cursor: not-allowed;">{{ _('Locked') }}</span>
+                        {% endif %}
                       </td>
                     </tr>
                   {%- endfor -%}
