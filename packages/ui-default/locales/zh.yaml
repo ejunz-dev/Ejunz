@@ -18,6 +18,7 @@ __langname: 简体中文
 '↓ Update Time': '↓ 更新时间'
 'A domain ID cannot be changed after creation. It is supposed to be:': '创建后将无法更改 ID。ID 必须满足以下条件：'
 'Access Point Type': 接入点类型
+'Accuracy': 正确率
 'Add Root Doc': 添加根文档
 'After successful connection, configure ASR, TTS and Agent services': 连接成功后，可以配置 ASR、TTS 和 Agent 服务
 'Agent configuration cleared successfully': Agent 配置已清除
@@ -36,6 +37,7 @@ __langname: 简体中文
 'ASR configuration saved successfully': ASR 配置已保存
 'ASR Configuration': ASR 配置
 'Back to Details': 返回详情
+'Back to Learn': 返回学习
 'Back to List': 返回列表
 'Base URL': Base URL
 'Behind remote by {0} commit(s)': 落后远程 {0} 个提交
@@ -53,6 +55,7 @@ __langname: 简体中文
 'Commit Message': 提交消息
 'commits': 提交
 'Configuration': 配置
+'Congratulations! You have completed all practice questions correctly.': 恭喜！您已正确完成所有练习题。
 'Connect to the WebSocket URL above using the generated Token': 使用生成的 Token 连接到上述 WebSocket URL
 'Connected': 已连接
 'Connection URL': 连接 URL
@@ -66,6 +69,7 @@ __langname: 简体中文
 'Copied to clipboard': 已复制到剪贴板
 'Copy "{data}" failed :(': '复制“{data}”失败 :('
 'Copy failed :(': '复制失败 :('
+'Correct Answer': 正确答案
 'Correct': 正确
 'Create Client': 创建客户端
 'Create remote branch': 创建远程分支
@@ -129,15 +133,18 @@ __langname: 简体中文
 'Last Connected': 最后连接
 'Last Disconnected Time': 最后断开时间
 'Learn Settings': 学习设置
+'Lesson Passed': 课程通过
 'Local branch not found': 本地分支未找到
 'Local Branch': 本地分支
 'Local Repository': 本地仓库
 'Lock Scroll': 锁定滚动
+'Locked': 已锁定
 'Manuscript Mode': 文稿模式
 'MCP Tools': MCP 工具
 'Model': 模型
 'New Content Block': 新建内容块
 'New Folder': 新建文件夹
+'Next Card': 下一张卡片
 'Next': 下一题
 'No audio available': 无音频可用
 'No cards available in this section.': 此章节暂无可用卡片。
@@ -168,6 +175,7 @@ __langname: 简体中文
 'Please select a conversation from the left sidebar to view chat details': 请从左侧边栏选择一个对话以查看聊天详情
 'Please select': 请选择
 'Practice Questions': 练习题
+'Practice Results': 练习结果
 'Practice': 练习
 'Previous': 上一题
 'Provider (MCP)': Provider (MCP)
@@ -179,6 +187,7 @@ __langname: 简体中文
 'Pushing...': 推送中...
 'Question': 题目
 'Refresh Tools List': 刷新工具列表
+'Remaining': 剩余
 'Remote branch exists. Use Pull to sync with remote changes.': 远程分支存在。使用 Pull 同步远程更改。
 'Remote branch not found': 远程分支未找到
 'Remote Branch Status': 远程分支状态
@@ -192,6 +201,7 @@ __langname: 简体中文
 'Save TTS Configuration': 保存 TTS 配置
 'Save': 保存
 'Saved successfully': 保存成功
+'Saving progress...': 正在保存进度...
 'Saving': 保存中
 'Sections': 章节
 'Select a conversation to view details': 选择对话以查看详情
@@ -238,6 +248,7 @@ __langname: 简体中文
 'WebSocket URL': WebSocket URL
 'Working': 工作中
 'Yes': 是
+'Your Answer': 您的答案
 'your custom message': 您的自定义消息
 (None): (无)
 (Not changed): 未更改
