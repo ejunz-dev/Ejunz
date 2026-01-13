@@ -31,6 +31,36 @@ function LessonPage() {
   const currentIndex = (window.UiContext?.currentIndex || 0) as number;
   const domainId = (window.UiContext?.domainId || '') as string;
   const mindMapDocId = (window.UiContext?.mindMapDocId || '') as string;
+  const isAlonePractice = (window.UiContext?.isAlonePractice || false) as boolean;
+  
+  const [renderedContent, setRenderedContent] = useState<string>('');
+
+  useEffect(() => {
+    if (card.content) {
+      fetch('/markdown', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: card.content,
+          inline: false,
+        }),
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Failed to render markdown');
+          }
+          return response.text();
+        })
+        .then(html => {
+          setRenderedContent(html);
+        })
+        .catch(error => {
+          setRenderedContent(card.content);
+        });
+    }
+  }, [card.content]);
 
   const allProblems = useMemo(() => {
     return (card.problems || []).map(p => ({ ...p, cardId: card.docId }));
@@ -42,7 +72,10 @@ function LessonPage() {
   const [isAnswered, setIsAnswered] = useState(false);
   const [isPassed, setIsPassed] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
-  const [answerHistory, setAnswerHistory] = useState<Array<{ problem: Problem & { cardId: string }; selected: number; correct: boolean }>>([]);
+  const [answerHistory, setAnswerHistory] = useState<Array<{ problem: Problem & { cardId: string }; selected: number; correct: boolean; timeSpent: number; attempts: number }>>([]);
+  const [problemStartTime, setProblemStartTime] = useState<number>(Date.now());
+  const [problemAttempts, setProblemAttempts] = useState<Record<string, number>>({});
+  const [sessionStartTime] = useState<number>(Date.now());
 
   useEffect(() => {
     if (allProblems.length > 0 && problemQueue.length === 0 && answerHistory.length === 0) {
@@ -63,15 +96,37 @@ function LessonPage() {
       setSelectedAnswer(null);
       setIsAnswered(false);
       setShowAnalysis(false);
+      setProblemStartTime(Date.now());
     }
   }, [currentProblemIndex, currentProblem]);
 
   const handlePass = async () => {
     if (isPassed) return;
+    
+    if (isAlonePractice) {
+      setIsPassed(true);
+      return;
+    }
+    
     try {
-      await request.post(`/d/${domainId}/learn/lesson/pass`, {});
+      const totalTime = Date.now() - sessionStartTime;
+      const result = await request.post(`/d/${domainId}/learn/lesson/pass`, {
+        answerHistory: answerHistory.map(h => ({
+          problemId: h.problem.pid,
+          selected: h.selected,
+          correct: h.correct,
+          timeSpent: h.timeSpent,
+          attempts: h.attempts,
+        })),
+        totalTime,
+      });
+      if (result && (result.redirect || result.body?.redirect)) {
+        window.location.href = result.redirect || result.body.redirect;
+        return;
+      }
       setIsPassed(true);
     } catch (error: any) {
+      setIsPassed(true);
     }
   };
 
@@ -79,22 +134,42 @@ function LessonPage() {
     if (allCorrect && !isPassed && allProblems.length > 0) {
       handlePass();
     }
-  }, [allCorrect, isPassed, allProblems.length, domainId, node.id, card.docId]);
+  }, [allCorrect, isPassed, allProblems.length, domainId, node.id, card.docId, isAlonePractice]);
 
   const handleAnswerSelect = (answerIndex: number) => {
     if (isAnswered || !currentProblem) return;
     const isCorrect = answerIndex === currentProblem.answer;
+    const timeSpent = Date.now() - problemStartTime;
+    const problemId = currentProblem.pid;
+    const currentAttempts = (problemAttempts[problemId] || 0) + 1;
+    
     setSelectedAnswer(answerIndex);
     setIsAnswered(true);
     setShowAnalysis(true);
-
-    setAnswerHistory(prev => [...prev, {
-      problem: currentProblem,
-      selected: answerIndex,
-      correct: isCorrect,
-    }]);
+    setProblemAttempts(prev => ({ ...prev, [problemId]: currentAttempts }));
 
     if (isCorrect) {
+      setAnswerHistory(prev => {
+        const existingIndex = prev.findIndex(h => h.problem.pid === problemId && h.correct);
+        if (existingIndex >= 0) {
+          const updated = [...prev];
+          updated[existingIndex] = {
+            problem: currentProblem,
+            selected: answerIndex,
+            correct: isCorrect,
+            timeSpent: updated[existingIndex].timeSpent + timeSpent,
+            attempts: currentAttempts,
+          };
+          return updated;
+        }
+        return [...prev, {
+          problem: currentProblem,
+          selected: answerIndex,
+          correct: isCorrect,
+          timeSpent,
+          attempts: currentAttempts,
+        }];
+      });
       setTimeout(() => {
         handleNextProblem();
       }, 1500);
@@ -137,10 +212,30 @@ function LessonPage() {
     setCurrentProblemIndex(nextIndex);
   };
 
-  if (allCorrect) {
+  if (allCorrect && !isPassed) {
+    handlePass();
+    return (
+      <div style={{
+        maxWidth: '900px',
+        margin: '0 auto',
+        padding: '20px',
+        textAlign: 'center',
+      }}>
+        <div style={{
+          padding: '40px',
+          color: '#999',
+        }}>
+          {i18n('Saving progress...')}
+        </div>
+      </div>
+    );
+  }
+
+  if (allCorrect && isPassed) {
     const correctCount = answerHistory.filter(h => h.correct).length;
     const totalCount = allProblems.length;
     const accuracy = totalCount > 0 ? Math.round((correctCount / totalCount) * 100) : 0;
+    const totalTime = Date.now() - sessionStartTime;
 
     return (
       <div style={{
@@ -179,7 +274,7 @@ function LessonPage() {
                 lineHeight: '1.6',
                 color: '#555',
               }}
-              dangerouslySetInnerHTML={{ __html: card.content }}
+              dangerouslySetInnerHTML={{ __html: renderedContent || card.content }}
             />
           </div>
         )}
@@ -214,46 +309,70 @@ function LessonPage() {
               </div>
               <div style={{ fontSize: '14px', color: '#666' }}>{i18n('Accuracy')}</div>
             </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#ff9800', marginBottom: '8px' }}>
+                {(totalTime / 1000).toFixed(1)}s
+              </div>
+              <div style={{ fontSize: '14px', color: '#666' }}>{i18n('Total Time')}</div>
+            </div>
           </div>
 
           <div style={{ marginTop: '20px' }}>
-            {answerHistory.map((history, idx) => (
-              <div
-                key={idx}
-                style={{
-                  padding: '12px',
-                  marginBottom: '12px',
-                  borderRadius: '6px',
-                  backgroundColor: history.correct ? '#e8f5e9' : '#ffebee',
-                  border: `1px solid ${history.correct ? '#4caf50' : '#f44336'}`,
-                }}
-              >
-                <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '4px' }}>
-                  {i18n('Question')} {idx + 1}: {history.problem.stem}
-                </div>
-                <div style={{ fontSize: '12px', color: '#666' }}>
-                  {i18n('Your Answer')}: {history.problem.options[history.selected]} 
-                  {history.correct ? (
-                    <span style={{ color: '#4caf50', marginLeft: '8px' }}>✓</span>
-                  ) : (
-                    <span style={{ color: '#f44336', marginLeft: '8px' }}>✗</span>
+            <h3 style={{ fontSize: '16px', marginBottom: '16px', color: '#333' }}>
+              {i18n('Question Details')}
+            </h3>
+            {answerHistory.map((history, idx) => {
+              let cumulativeTime = 0;
+              for (let i = 0; i <= idx; i++) {
+                cumulativeTime += answerHistory[i].timeSpent;
+              }
+              return (
+                <div
+                  key={idx}
+                  style={{
+                    padding: '16px',
+                    marginBottom: '12px',
+                    borderRadius: '6px',
+                    backgroundColor: history.correct ? '#e8f5e9' : '#ffebee',
+                    border: `1px solid ${history.correct ? '#4caf50' : '#f44336'}`,
+                  }}
+                >
+                  <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px' }}>
+                    {i18n('Question')} {idx + 1}: {history.problem.stem}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
+                    {i18n('Time Spent')}: {(history.timeSpent / 1000).toFixed(1)}s
+                    {idx > 0 && (
+                      <> ({i18n('Cumulative')}: {(cumulativeTime / 1000).toFixed(1)}s)</>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
+                    {i18n('Attempts')}: {history.attempts}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
+                    {i18n('Your Answer')}: {history.problem.options[history.selected]} 
+                    {history.correct ? (
+                      <span style={{ color: '#4caf50', marginLeft: '8px' }}>✓</span>
+                    ) : (
+                      <span style={{ color: '#f44336', marginLeft: '8px' }}>✗</span>
+                    )}
+                  </div>
+                  {!history.correct && (
+                    <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                      {i18n('Correct Answer')}: {history.problem.options[history.problem.answer]}
+                    </div>
                   )}
                 </div>
-                {!history.correct && (
-                  <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
-                    {i18n('Correct Answer')}: {history.problem.options[history.problem.answer]}
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
-        {isPassed ? (
-          <div style={{
-            textAlign: 'center',
-            padding: '20px',
-          }}>
+        <div style={{
+          textAlign: 'center',
+          padding: '20px',
+        }}>
+          {!isAlonePractice && (
             <div style={{
               padding: '40px',
               backgroundColor: '#e8f5e9',
@@ -269,7 +388,9 @@ function LessonPage() {
                 {i18n('Congratulations! You have completed all practice questions correctly.')}
               </p>
             </div>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+          )}
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+            {!isAlonePractice && (
               <button
                 onClick={() => {
                   window.location.href = `/d/${domainId}/learn/lesson`;
@@ -287,41 +408,26 @@ function LessonPage() {
               >
                 {i18n('Next Card')}
               </button>
-              <button
-                onClick={() => {
-                  window.location.href = `/d/${domainId}/learn`;
-                }}
-                style={{
-                  padding: '12px 32px',
-                  border: 'none',
-                  borderRadius: '6px',
-                  backgroundColor: '#4caf50',
-                  color: '#fff',
-                  cursor: 'pointer',
-                  fontSize: '16px',
-                  fontWeight: 'bold',
-                }}
-              >
-                {i18n('Back to Learn')}
-              </button>
-            </div>
+            )}
+            <button
+              onClick={() => {
+                window.location.href = `/d/${domainId}/learn`;
+              }}
+              style={{
+                padding: '12px 32px',
+                border: 'none',
+                borderRadius: '6px',
+                backgroundColor: '#4caf50',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '16px',
+                fontWeight: 'bold',
+              }}
+            >
+              {i18n('Back to Learn')}
+            </button>
           </div>
-        ) : (
-          <div style={{
-            textAlign: 'center',
-            padding: '20px',
-          }}>
-            <div style={{
-              padding: '20px',
-              backgroundColor: '#fff3cd',
-              borderRadius: '8px',
-              border: '1px solid #ffc107',
-              color: '#856404',
-            }}>
-              {i18n('Saving progress...')}
-            </div>
-          </div>
-        )}
+        </div>
       </div>
     );
   }
