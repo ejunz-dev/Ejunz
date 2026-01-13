@@ -568,11 +568,55 @@ class LessonHandler extends Handler {
         throw new MethodNotAllowedError('POST');
     }
 
-    async get(domainId: string) {
+    @param('resultId', Types.ObjectId, true)
+    async get(domainId: string, resultId?: ObjectId) {
+        if (resultId) {
+            return this.getResult(domainId, resultId);
+        }
+        
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const mindMap = await MindMapModel.getByDomain(finalDomainId);
         if (!mindMap) {
             throw new NotFoundError('MindMap not found for this domain');
+        }
+
+        const queryCardId = this.request.query?.cardId;
+        if (queryCardId) {
+            let cardId: ObjectId;
+            try {
+                cardId = new ObjectId(queryCardId as string);
+            } catch {
+                throw new ValidationError('Invalid cardId');
+            }
+
+            const card = await CardModel.get(finalDomainId, cardId);
+            if (!card) {
+                throw new NotFoundError('Card not found');
+            }
+
+            if (!card.problems || card.problems.length === 0) {
+                throw new NotFoundError('Card has no practice questions');
+            }
+
+            const node = (getBranchData(mindMap, 'main').nodes || []).find(n => n.id === card.nodeId);
+            if (!node) {
+                throw new NotFoundError('Node not found');
+            }
+
+            const cards = await CardModel.getByNodeId(finalDomainId, mindMap.docId, card.nodeId);
+            const currentIndex = cards.findIndex(c => c.docId.toString() === cardId.toString());
+
+            this.response.template = 'lesson.html';
+            this.response.body = {
+                card,
+                node,
+                cards,
+                currentIndex: currentIndex >= 0 ? currentIndex : 0,
+                domainId: finalDomainId,
+                mindMapDocId: mindMap.docId.toString(),
+                isAlonePractice: true,
+            };
+            return;
         }
 
         const branch = 'main';
@@ -727,6 +771,10 @@ class LessonHandler extends Handler {
 
     async postPass(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+        const body: any = this.request?.body || {};
+        const answerHistory = body.answerHistory || [];
+        const totalTime = body.totalTime || 0;
+        
         const mindMap = await MindMapModel.getByDomain(finalDomainId);
         if (!mindMap) {
             throw new NotFoundError('MindMap not found for this domain');
@@ -877,7 +925,92 @@ class LessonHandler extends Handler {
             { upsert: true }
         );
 
-        this.response.body = { success: true };
+        const node = (getBranchData(mindMap, 'main').nodes || []).find(n => n.id === currentCard.nodeId);
+        const cards = await CardModel.getByNodeId(finalDomainId, mindMap.docId, currentCard.nodeId);
+        const cardIndex = cards.findIndex(c => c.docId.toString() === currentCard.cardId);
+        const currentCardDoc = cards[cardIndex];
+
+        const resultData = {
+            card: currentCardDoc,
+            node: node,
+            answerHistory: answerHistory,
+            totalTime: totalTime,
+            domainId: finalDomainId,
+            mindMapDocId: mindMap.docId.toString(),
+        };
+
+        const resultId = new ObjectId();
+        const resultColl = this.ctx.db.db.collection('learn_result');
+        await resultColl.insertOne({
+            _id: resultId,
+            domainId: finalDomainId,
+            userId: this.user._id,
+            cardId: new ObjectId(currentCard.cardId),
+            nodeId: currentCard.nodeId,
+            answerHistory: answerHistory,
+            totalTime: totalTime,
+            createdAt: new Date(),
+        });
+
+        this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn/lesson/result/${resultId}` };
+    }
+
+    async getResult(domainId: string, resultId: ObjectId) {
+        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+        const resultColl = this.ctx.db.db.collection('learn_result');
+        const result = await resultColl.findOne({
+            _id: resultId,
+            domainId: finalDomainId,
+            userId: this.user._id,
+        });
+
+        if (!result) {
+            throw new NotFoundError('Result not found');
+        }
+
+        const mindMap = await MindMapModel.getByDomain(finalDomainId);
+        if (!mindMap) {
+            throw new NotFoundError('MindMap not found for this domain');
+        }
+
+        const node = (getBranchData(mindMap, 'main').nodes || []).find(n => n.id === result.nodeId);
+        if (!node) {
+            throw new NotFoundError('Node not found');
+        }
+
+        const card = await CardModel.get(finalDomainId, result.cardId);
+        if (!card) {
+            throw new NotFoundError('Card not found');
+        }
+
+        const allProblems = (card.problems || []).map((p, idx) => ({
+            ...p,
+            index: idx,
+        }));
+
+        const problemStats = allProblems.map(problem => {
+            const history = result.answerHistory.filter((h: any) => h.problemId === problem.pid);
+            const correctHistory = history.filter((h: any) => h.correct);
+            const totalTime = history.reduce((sum: number, h: any) => sum + (h.timeSpent || 0), 0);
+            const attempts = history.length > 0 ? Math.max(...history.map((h: any) => h.attempts || 1)) : 0;
+            
+            return {
+                problem,
+                totalTime,
+                attempts,
+                correct: correctHistory.length > 0,
+            };
+        });
+
+        this.response.template = 'lesson_result.html';
+        this.response.body = {
+            card,
+            node,
+            problemStats,
+            totalTime: result.totalTime,
+            domainId: finalDomainId,
+            mindMapDocId: mindMap.docId.toString(),
+        };
     }
 }
 

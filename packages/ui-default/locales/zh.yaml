@@ -36,6 +36,7 @@ __langname: 简体中文
 'ASR (Speech Recognition) Configuration': ASR (语音识别) 配置
 'ASR configuration saved successfully': ASR 配置已保存
 'ASR Configuration': ASR 配置
+'Attempts': 尝试数量
 'Back to Details': 返回详情
 'Back to Learn': 返回学习
 'Back to List': 返回列表
@@ -75,6 +76,7 @@ __langname: 简体中文
 'Create remote branch': 创建远程分支
 'Created Clients': 已创建的客户端
 'Created Time': 创建时间
+'Cumulative': 累计
 'Current dataset: {0}': '当前测试数据: {0}'
 'Current Progress': 当前进度
 'Currently Selected Agent': 当前选择的 Agent
@@ -174,6 +176,7 @@ __langname: 简体中文
 'Please generate token on': 请在
 'Please select a conversation from the left sidebar to view chat details': 请从左侧边栏选择一个对话以查看聊天详情
 'Please select': 请选择
+'Practice Alone': 单独练习
 'Practice Questions': 练习题
 'Practice Results': 练习结果
 'Practice': 练习
@@ -185,6 +188,7 @@ __langname: 简体中文
 'Push will create a new remote branch': 推送将创建新的远程分支
 'Pushing to GitHub...': 正在推送到 GitHub...
 'Pushing...': 推送中...
+'Question Details': 题目详情
 'Question': 题目
 'Refresh Tools List': 刷新工具列表
 'Remaining': 剩余
@@ -218,6 +222,7 @@ __langname: 简体中文
 'The value `{1}` of {0} already exists.': '{0} 的值 `{1}` 已经存在。'
 'This branch is behind remote by {0} commit(s). Please use Pull to sync.': 此分支落后远程 {0} 个提交。请使用 Pull 同步。
 'This section requires completion of the following sections first': 此章节需要先完成以下章节
+'Time Spent': 用时
 'Token deleted successfully': Token 已删除
 'Token generated successfully': Token 已生成
 'Token not generated yet': 尚未生成 Token
@@ -227,6 +232,7 @@ __langname: 简体中文
 'Tool': 工具
 'Tools Count': 工具数量
 'Tools List': 工具列表
+'Total Time': 总用时
 'TTS (Text-to-Speech) Configuration': TTS (文本转语音) 配置
 'TTS configuration saved successfully': TTS 配置已保存
 'TTS Configuration': TTS 配置

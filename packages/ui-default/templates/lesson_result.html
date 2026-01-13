@@ -1,0 +1,95 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div data-fragment-id="lesson_result">
+  <div class="section">
+    <div class="section__header">
+      <div style="margin-bottom: '20px';">
+        <div style="font-size: '14px'; color: '#666'; margin-bottom: '8px';">
+          {{ node.text or _('Unnamed Node') }}
+        </div>
+        <h1 class="section__title" style="font-size: '24px'; font-weight: 'bold'; margin: 0;">
+          {{ card.title or _('Unnamed Card') }}
+        </h1>
+      </div>
+    </div>
+    <div class="section__body">
+      {% if card.content %}
+        <div style="margin-bottom: 30px; padding: 20px; background-color: #fff; border-radius: 8px; border: 1px solid #e0e0e0;">
+          <h2 style="font-size: 18px; margin-bottom: 12px; color: #333;">
+            {{ _('Content') }}
+          </h2>
+          <div style="font-size: 16px; line-height: 1.6; color: #555;">
+            {{ card.content | markdown }}
+          </div>
+        </div>
+      {% endif %}
+
+      <div style="margin-bottom: 30px; padding: 30px; background-color: #fff; border-radius: 8px; border: 1px solid #e0e0e0;">
+        <h2 style="font-size: 20px; margin-bottom: 20px; color: #333;">
+          {{ _('Practice Results') }}
+        </h2>
+        
+        <div style="display: flex; justify-content: space-around; margin-bottom: 30px; padding: 20px; background-color: #f5f5f5; border-radius: 8px;">
+          <div style="text-align: center;">
+            <div style="font-size: 32px; font-weight: bold; color: #4caf50; margin-bottom: 8px;">
+              {{ problemStats | selectattr('correct') | list | length }}/{{ problemStats | length }}
+            </div>
+            <div style="font-size: 14px; color: #666;">{{ _('Correct') }}</div>
+          </div>
+          <div style="text-align: center;">
+            <div style="font-size: 32px; font-weight: bold; color: #2196f3; margin-bottom: 8px;">
+              {% if problemStats | length > 0 %}
+                {{ ((problemStats | selectattr('correct') | list | length / problemStats | length) * 100) | round }}%
+              {% else %}
+                0%
+              {% endif %}
+            </div>
+            <div style="font-size: 14px; color: #666;">{{ _('Accuracy') }}</div>
+          </div>
+          <div style="text-align: center;">
+            <div style="font-size: 32px; font-weight: bold; color: #ff9800; margin-bottom: 8px;">
+              {{ (totalTime / 1000) | round(1) }}s
+            </div>
+            <div style="font-size: 14px; color: #666;">{{ _('Total Time') }}</div>
+          </div>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <h3 style="font-size: 16px; margin-bottom: 16px; color: #333;">
+            {{ _('Question Details') }}
+          </h3>
+          {% set cumulativeTime = 0 %}
+          {% for stat in problemStats %}
+            {% set cumulativeTime = cumulativeTime + stat.totalTime %}
+            <div style="padding: 16px; margin-bottom: 12px; border-radius: 6px; background-color: {% if stat.correct %}#e8f5e9{% else %}#ffebee{% endif %}; border: 1px solid {% if stat.correct %}#4caf50{% else %}#f44336{% endif %};">
+              <div style="font-size: 14px; font-weight: 500; margin-bottom: 8px;">
+                {{ _('Question') }} {{ loop.index }}: {{ stat.problem.stem }}
+              </div>
+              <div style="font-size: 12px; color: #666; margin-bottom: 4px;">
+                {{ _('Time Spent') }}: {{ (stat.totalTime / 1000) | round(1) }}s
+                {% if loop.index > 1 %}
+                  ({{ _('Cumulative') }}: {{ (cumulativeTime / 1000) | round(1) }}s)
+                {% endif %}
+              </div>
+              <div style="font-size: 12px; color: #666;">
+                {{ _('Attempts') }}: {{ stat.attempts }}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div style="text-align: center; padding: 20px;">
+        <div style="display: flex; gap: 12px; justify-content: center;">
+          <a href="/d/{{ domainId }}/learn/lesson" class="button primary" style="padding: 12px 32px; font-size: 16px; font-weight: bold;">
+            {{ _('Next Card') }}
+          </a>
+          <a href="/d/{{ domainId }}/learn" class="button" style="padding: 12px 32px; font-size: 16px; font-weight: bold;">
+            {{ _('Back to Learn') }}
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
