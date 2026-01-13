@@ -8,6 +8,7 @@ import { NotFoundError, ValidationError } from '../error';
 import { MethodNotAllowedError } from '@ejunz/framework';
 import { ObjectId } from 'mongodb';
 import db from '../service/db';
+import moment from 'moment-timezone';
 
 function getBranchData(mindMap: MindMapDoc, branch: string): { nodes: MindMapNode[]; edges: MindMapEdge[] } {
     const branchName = branch || 'main';
@@ -774,6 +775,8 @@ class LessonHandler extends Handler {
         const body: any = this.request?.body || {};
         const answerHistory = body.answerHistory || [];
         const totalTime = body.totalTime || 0;
+        const isAlonePractice = body.isAlonePractice || false;
+        const cardIdFromBody = body.cardId;
         
         const mindMap = await MindMapModel.getByDomain(finalDomainId);
         if (!mindMap) {
@@ -890,44 +893,70 @@ class LessonHandler extends Handler {
         flatCards.sort((a, b) => a.order - b.order);
 
         let currentCard: { nodeId: string; cardId: string } | null = null;
-        for (let i = 0; i < flatCards.length; i++) {
-            if (!passedCardIds.has(flatCards[i].cardId)) {
-                currentCard = flatCards[i];
-                break;
+        let currentCardId: ObjectId | null = null;
+        let currentCardNodeId: string | null = null;
+
+        if (isAlonePractice) {
+            const cardIdStr = cardIdFromBody || this.request.query?.cardId;
+            if (cardIdStr) {
+                try {
+                    currentCardId = new ObjectId(cardIdStr as string);
+                    const card = await CardModel.get(finalDomainId, currentCardId);
+                    if (!card) {
+                        throw new NotFoundError('Card not found');
+                    }
+                    currentCardNodeId = card.nodeId;
+                } catch {
+                    throw new ValidationError('Invalid cardId');
+                }
+            } else {
+                throw new ValidationError('cardId is required for alone practice');
             }
+        } else {
+            for (let i = 0; i < flatCards.length; i++) {
+                if (!passedCardIds.has(flatCards[i].cardId)) {
+                    currentCard = flatCards[i];
+                    break;
+                }
+            }
+
+            if (!currentCard) {
+                throw new NotFoundError('No available card to practice');
+            }
+
+            currentCardId = new ObjectId(currentCard.cardId);
+            currentCardNodeId = currentCard.nodeId;
         }
 
-        if (!currentCard) {
-            throw new NotFoundError('No available card to practice');
-        }
-
-        const card = await CardModel.get(finalDomainId, new ObjectId(currentCard.cardId));
+        const card = await CardModel.get(finalDomainId, currentCardId);
         if (!card) {
             throw new NotFoundError('Card not found');
         }
 
-        await learnProgressColl.updateOne(
-            {
-                domainId: finalDomainId,
-                userId: this.user._id,
-                cardId: new ObjectId(currentCard.cardId),
-            },
-            {
-                $set: {
+        if (!isAlonePractice) {
+            await learnProgressColl.updateOne(
+                {
                     domainId: finalDomainId,
                     userId: this.user._id,
-                    cardId: new ObjectId(currentCard.cardId),
-                    nodeId: currentCard.nodeId,
-                    passed: true,
-                    passedAt: new Date(),
+                    cardId: currentCardId,
                 },
-            },
-            { upsert: true }
-        );
+                {
+                    $set: {
+                        domainId: finalDomainId,
+                        userId: this.user._id,
+                        cardId: currentCardId,
+                        nodeId: currentCardNodeId,
+                        passed: true,
+                        passedAt: new Date(),
+                    },
+                },
+                { upsert: true }
+            );
+        }
 
-        const node = (getBranchData(mindMap, 'main').nodes || []).find(n => n.id === currentCard.nodeId);
-        const cards = await CardModel.getByNodeId(finalDomainId, mindMap.docId, currentCard.nodeId);
-        const cardIndex = cards.findIndex(c => c.docId.toString() === currentCard.cardId);
+        const node = (getBranchData(mindMap, 'main').nodes || []).find(n => n.id === currentCardNodeId);
+        const cards = await CardModel.getByNodeId(finalDomainId, mindMap.docId, currentCardNodeId);
+        const cardIndex = cards.findIndex(c => c.docId.toString() === currentCardId.toString());
         const currentCardDoc = cards[cardIndex];
 
         const resultData = {
@@ -945,12 +974,47 @@ class LessonHandler extends Handler {
             _id: resultId,
             domainId: finalDomainId,
             userId: this.user._id,
-            cardId: new ObjectId(currentCard.cardId),
-            nodeId: currentCard.nodeId,
+            cardId: currentCardId,
+            nodeId: currentCardNodeId,
             answerHistory: answerHistory,
             totalTime: totalTime,
             createdAt: new Date(),
         });
+
+        const today = moment().format('YYYY-MM-DD');
+        const uniqueProblemIds = new Set<string>();
+        for (const history of answerHistory) {
+            if (history.problemId) {
+                uniqueProblemIds.add(history.problemId);
+            }
+        }
+        const problemCount = uniqueProblemIds.size;
+
+        const consumptionStatsColl = this.ctx.db.db.collection('learn_consumption_stats');
+        const timeToAdd = (totalTime && typeof totalTime === 'number' && totalTime > 0) ? totalTime : 0;
+        const updateData: any = {
+            $inc: {
+                nodes: currentCardNodeId ? 1 : 0,
+                cards: 1,
+                problems: problemCount,
+                practices: 1,
+            },
+            $set: {
+                updateAt: new Date(),
+            },
+        };
+        if (timeToAdd > 0) {
+            updateData.$inc.totalTime = timeToAdd;
+        }
+        await consumptionStatsColl.updateOne(
+            {
+                userId: this.user._id,
+                domainId: finalDomainId,
+                date: today,
+            },
+            updateData,
+            { upsert: true }
+        );
 
         this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn/lesson/result/${resultId}` };
     }
