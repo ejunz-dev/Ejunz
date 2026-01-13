@@ -636,26 +636,130 @@ class UserDetailHandler extends Handler {
         const totalCards = Object.values(cardCounts).reduce((sum, count) => sum + count, 0);
         const totalProblems = Object.values(problemCounts).reduce((sum, count) => sum + count, 0);
 
+        const consumptions: Array<{ date: string; type: 'node' | 'card' | 'problem' | 'practice'; count: number }> = [];
+        const consumptionNodeCounts: Record<string, number> = {};
+        const consumptionCardCounts: Record<string, number> = {};
+        const consumptionProblemCounts: Record<string, number> = {};
+        const consumptionPracticeCounts: Record<string, number> = {};
+        let totalConsumptionTime = 0;
+        
+        const consumptionDetails: Record<string, Array<{
+            domainId: string;
+            domainName: string;
+            nodes: number;
+            cards: number;
+            problems: number;
+            practices: number;
+        }>> = {};
+
+        const consumptionStatsColl = this.ctx.db.db.collection('learn_consumption_stats');
+        const allStatsRecords = await consumptionStatsColl.find({
+            userId: uid,
+        }).toArray();
+
+        for (const stat of allStatsRecords) {
+            const date = stat.date;
+            const did = stat.domainId;
+            const ddoc = await domain.get(did);
+            const domainName = ddoc?.name || did;
+
+            if (!consumptionDetails[date]) {
+                consumptionDetails[date] = [];
+            }
+            let detail = consumptionDetails[date].find(d => d.domainId === did);
+            if (!detail) {
+                detail = { domainId: did, domainName, nodes: 0, cards: 0, problems: 0, practices: 0 };
+                consumptionDetails[date].push(detail);
+            }
+
+            const nodes = stat.nodes || 0;
+            const cards = stat.cards || 0;
+            const problems = stat.problems || 0;
+            const practices = stat.practices || 0;
+            const time = stat.totalTime || 0;
+
+            if (nodes > 0) {
+                consumptionNodeCounts[date] = (consumptionNodeCounts[date] || 0) + nodes;
+                detail.nodes += nodes;
+            }
+            if (cards > 0) {
+                consumptionCardCounts[date] = (consumptionCardCounts[date] || 0) + cards;
+                detail.cards += cards;
+            }
+            if (problems > 0) {
+                consumptionProblemCounts[date] = (consumptionProblemCounts[date] || 0) + problems;
+                detail.problems += problems;
+            }
+            if (practices > 0) {
+                consumptionPracticeCounts[date] = (consumptionPracticeCounts[date] || 0) + practices;
+                detail.practices += practices;
+            }
+            if (time && typeof time === 'number' && time > 0) {
+                totalConsumptionTime += time;
+            }
+        }
+
+        const allConsumptionDates = new Set([
+            ...Object.keys(consumptionNodeCounts),
+            ...Object.keys(consumptionCardCounts),
+            ...Object.keys(consumptionProblemCounts),
+            ...Object.keys(consumptionPracticeCounts),
+        ]);
+        for (const date of allConsumptionDates) {
+            if (consumptionNodeCounts[date]) {
+                consumptions.push({ date, type: 'node', count: consumptionNodeCounts[date] });
+            }
+            if (consumptionCardCounts[date]) {
+                consumptions.push({ date, type: 'card', count: consumptionCardCounts[date] });
+            }
+            if (consumptionProblemCounts[date]) {
+                consumptions.push({ date, type: 'problem', count: consumptionProblemCounts[date] });
+            }
+            if (consumptionPracticeCounts[date]) {
+                consumptions.push({ date, type: 'practice', count: consumptionPracticeCounts[date] });
+            }
+        }
+
+        const totalConsumptionNodes = Object.values(consumptionNodeCounts).reduce((sum, count) => sum + count, 0);
+        const totalConsumptionCards = Object.values(consumptionCardCounts).reduce((sum, count) => sum + count, 0);
+        const totalConsumptionProblems = Object.values(consumptionProblemCounts).reduce((sum, count) => sum + count, 0);
+        const totalConsumptionTimeInSeconds = Math.round(totalConsumptionTime / 1000);
+
         this.response.template = 'user_detail.html';
         this.response.body = {
             isSelfProfile, udoc, sdoc,
             joinedDomains,
             contributions,
             contributionDetails,
+            consumptions,
+            consumptionDetails,
             stats: {
                 totalNodes,
                 totalCards,
                 totalProblems,
+            },
+            consumptionStats: {
+                totalNodes: totalConsumptionNodes,
+                totalCards: totalConsumptionCards,
+                totalProblems: totalConsumptionProblems,
             },
         };
 
         this.UiContext.joinedDomains = joinedDomains;
         this.UiContext.contributions = contributions;
         this.UiContext.contributionDetails = contributionDetails;
+        this.UiContext.consumptions = consumptions;
+        this.UiContext.consumptionDetails = consumptionDetails;
         this.UiContext.stats = {
             totalNodes,
             totalCards,
             totalProblems,
+        };
+        this.UiContext.consumptionStats = {
+            totalNodes: totalConsumptionNodes,
+            totalCards: totalConsumptionCards,
+            totalProblems: totalConsumptionProblems,
+            totalTime: totalConsumptionTimeInSeconds,
         };
 
         this.UiContext.extraTitleContent = udoc.uname;
@@ -803,6 +907,152 @@ class UserContributionDetailHandler extends Handler {
         };
 
         this.UiContext.extraTitleContent = this.translate('Contributions on {0} in {1}').format(date, targetDomain.name);
+    }
+}
+
+class UserConsumptionDetailHandler extends Handler {
+    @param('uid', Types.Int)
+    @param('date', Types.String)
+    @param('domainId', Types.String)
+    async get(domainId: string, uid: number, date: string, targetDomainId: string) {
+        if (uid === 0) throw new UserNotFoundError(0);
+        const udoc = await user.getById(domainId, uid);
+        if (!udoc) throw new UserNotFoundError(uid);
+        const targetDomain = await domain.get(targetDomainId);
+        if (!targetDomain) throw new NotFoundError('Domain not found');
+
+        const learnProgressColl = this.ctx.db.db.collection('learn_progress');
+        const learnResultsColl = this.ctx.db.db.collection('learn_result');
+
+        const startOfDay = moment(date).startOf('day').toDate();
+        const endOfDay = moment(date).endOf('day').toDate();
+
+        const progressRecords = await learnProgressColl.find({
+            domainId: targetDomainId,
+            userId: uid,
+            passedAt: { $gte: startOfDay, $lte: endOfDay },
+        }).toArray();
+
+        const resultRecords = await learnResultsColl.find({
+            domainId: targetDomainId,
+            userId: uid,
+            createdAt: { $gte: startOfDay, $lte: endOfDay },
+        }).toArray();
+
+        const mindMap = await mindmap.MindMapModel.getByDomain(targetDomainId);
+        const mindMapDocId = mindMap?.docId;
+
+        const contributions: {
+            nodes: Array<{ id: string; name: string; createdAt: Date; type: string }>;
+            cards: Array<{ docId: string; title: string; nodeId: string; createdAt: Date; totalTime?: number }>;
+            problems: Array<{ cardId: string; cardTitle: string; pid: string; stem: string; createdAt: Date }>;
+            practices: Array<{ cardId: string; cardTitle: string; nodeId: string; passedAt: Date; totalTime?: number }>;
+        } = {
+            nodes: [],
+            cards: [],
+            problems: [],
+            practices: [],
+        };
+
+        const nodeMap = new Map<string, any>();
+        const cardMap = new Map<string, any>();
+
+        for (const result of resultRecords) {
+            if (result.nodeId) {
+                if (!nodeMap.has(result.nodeId)) {
+                    const mindMapNodes = mindMap ? (mindMap.nodes || []).filter((n: any) => n.id === result.nodeId) : [];
+                    const nodeData = mindMapNodes[0] || { id: result.nodeId, text: result.nodeId };
+                    nodeMap.set(result.nodeId, nodeData);
+                }
+                const node = nodeMap.get(result.nodeId);
+                contributions.nodes.push({
+                    id: result.nodeId,
+                    name: node.text || this.translate('Unnamed Node'),
+                    createdAt: result.createdAt,
+                    type: 'mindmap',
+                });
+            }
+
+            if (result.cardId) {
+                const cardIdStr = result.cardId.toString();
+                if (!cardMap.has(cardIdStr)) {
+                    const card = await document.get(targetDomainId, document.TYPE_CARD, result.cardId);
+                    if (card) {
+                        cardMap.set(cardIdStr, card);
+                    }
+                }
+                const card = cardMap.get(cardIdStr);
+                if (card) {
+                    contributions.cards.push({
+                        docId: cardIdStr,
+                        title: card.title || this.translate('Unnamed Card'),
+                        nodeId: result.nodeId || '',
+                        createdAt: result.createdAt,
+                        totalTime: result.totalTime,
+                    });
+
+                    if (result.answerHistory && Array.isArray(result.answerHistory)) {
+                        for (const history of result.answerHistory) {
+                            if (history.problemId) {
+                                const cardDoc = await document.get(targetDomainId, document.TYPE_CARD, result.cardId);
+                                if (cardDoc && cardDoc.problems) {
+                                    const problem = cardDoc.problems.find((p: any) => p.pid === history.problemId);
+                                    if (problem) {
+                                        contributions.problems.push({
+                                            cardId: cardIdStr,
+                                            cardTitle: card.title || this.translate('Unnamed Card'),
+                                            pid: history.problemId,
+                                            stem: problem.stem || this.translate('No stem'),
+                                            createdAt: result.createdAt,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for (const progress of progressRecords) {
+            if (progress.passedAt) {
+                const passedDate = moment(progress.passedAt).format('YYYY-MM-DD');
+                if (progress.cardId) {
+                    const cardIdStr = progress.cardId.toString();
+                    if (!cardMap.has(cardIdStr)) {
+                        const card = await document.get(targetDomainId, document.TYPE_CARD, progress.cardId);
+                        if (card) {
+                            cardMap.set(cardIdStr, card);
+                        }
+                    }
+                    const card = cardMap.get(cardIdStr);
+                    if (card) {
+                        const resultForPractice = resultRecords.find(r => 
+                            r.cardId && r.cardId.toString() === cardIdStr &&
+                            moment(r.createdAt).format('YYYY-MM-DD') === passedDate
+                        );
+                        contributions.practices.push({
+                            cardId: cardIdStr,
+                            cardTitle: card.title || this.translate('Unnamed Card'),
+                            nodeId: progress.nodeId || '',
+                            passedAt: progress.passedAt,
+                            totalTime: resultForPractice?.totalTime,
+                        });
+                    }
+                }
+            }
+        }
+
+        this.response.template = 'user_consumption_detail.html';
+        this.response.body = {
+            udoc,
+            targetDomain,
+            date,
+            contributions,
+            mindMapDocId: mindMap?.docId,
+        };
+
+        this.UiContext.extraTitleContent = this.translate('Consumption on {0} in {1}').format(date, targetDomain.name);
     }
 }
 
@@ -987,6 +1237,7 @@ export async function apply(ctx: Context) {
     ctx.Route('user_delete', '/user/delete', UserDeleteHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('user_detail', '/user/:uid', UserDetailHandler);
     ctx.Route('user_contribution_detail', '/user/:uid/contributions/:date/:domainId', UserContributionDetailHandler);
+    ctx.Route('user_consumption_detail', '/user/:uid/consumption/:date/:domainId', UserConsumptionDetailHandler);
     if (system.get('server.contestmode')) {
         ctx.Route('contest_mode', '/contestmode', ContestModeHandler, PRIV.PRIV_EDIT_SYSTEM);
     }

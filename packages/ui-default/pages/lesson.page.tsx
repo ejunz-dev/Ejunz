@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n, request } from 'vj/utils';
@@ -71,7 +71,9 @@ function LessonPage() {
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
   const [isPassed, setIsPassed] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
+  const hasCalledPassRef = useRef(false);
   const [answerHistory, setAnswerHistory] = useState<Array<{ problem: Problem & { cardId: string }; selected: number; correct: boolean; timeSpent: number; attempts: number }>>([]);
   const [problemStartTime, setProblemStartTime] = useState<number>(Date.now());
   const [problemAttempts, setProblemAttempts] = useState<Record<string, number>>({});
@@ -101,13 +103,10 @@ function LessonPage() {
   }, [currentProblemIndex, currentProblem]);
 
   const handlePass = async () => {
-    if (isPassed) return;
+    if (isPassed || isSubmitting || hasCalledPassRef.current) return;
     
-    if (isAlonePractice) {
-      setIsPassed(true);
-      return;
-    }
-    
+    hasCalledPassRef.current = true;
+    setIsSubmitting(true);
     try {
       const totalTime = Date.now() - sessionStartTime;
       const result = await request.post(`/d/${domainId}/learn/lesson/pass`, {
@@ -119,22 +118,27 @@ function LessonPage() {
           attempts: h.attempts,
         })),
         totalTime,
+        isAlonePractice: isAlonePractice,
+        cardId: isAlonePractice ? card.docId : undefined,
       });
-      if (result && (result.redirect || result.body?.redirect)) {
+      setIsPassed(true);
+      if (!isAlonePractice && result && (result.redirect || result.body?.redirect)) {
         window.location.href = result.redirect || result.body.redirect;
         return;
       }
-      setIsPassed(true);
     } catch (error: any) {
+      console.error('Failed to submit practice result:', error);
       setIsPassed(true);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   useEffect(() => {
-    if (allCorrect && !isPassed && allProblems.length > 0) {
+    if (allCorrect && !isPassed && !isSubmitting && allProblems.length > 0) {
       handlePass();
     }
-  }, [allCorrect, isPassed, allProblems.length, domainId, node.id, card.docId, isAlonePractice]);
+  }, [allCorrect, isPassed, isSubmitting, allProblems.length]);
 
   const handleAnswerSelect = (answerIndex: number) => {
     if (isAnswered || !currentProblem) return;
@@ -212,8 +216,10 @@ function LessonPage() {
     setCurrentProblemIndex(nextIndex);
   };
 
-  if (allCorrect && !isPassed) {
-    handlePass();
+  if (allCorrect && !isPassed && !isSubmitting) {
+    if (!hasCalledPassRef.current) {
+      handlePass();
+    }
     return (
       <div style={{
         maxWidth: '900px',
@@ -350,7 +356,7 @@ function LessonPage() {
                     {i18n('Attempts')}: {history.attempts}
                   </div>
                   <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
-                    {i18n('Your Answer')}: {history.problem.options[history.selected]} 
+                    {i18n('Your Answer')}: {history.problem?.options?.[history.selected] || i18n('N/A')} 
                     {history.correct ? (
                       <span style={{ color: '#4caf50', marginLeft: '8px' }}>✓</span>
                     ) : (
@@ -359,7 +365,7 @@ function LessonPage() {
                   </div>
                   {!history.correct && (
                     <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
-                      {i18n('Correct Answer')}: {history.problem.options[history.problem.answer]}
+                      {i18n('Correct Answer')}: {history.problem?.options?.[history.problem?.answer] || i18n('N/A')}
                     </div>
                   )}
                 </div>
@@ -450,6 +456,27 @@ function LessonPage() {
     );
   }
 
+  if (!currentProblem || !currentProblem.options) {
+    if (allCorrect) {
+      return null;
+    }
+    return (
+      <div style={{
+        maxWidth: '900px',
+        margin: '0 auto',
+        padding: '20px',
+        textAlign: 'center',
+      }}>
+        <div style={{
+          padding: '40px',
+          color: '#999',
+        }}>
+          {i18n('Loading...')}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       maxWidth: '900px',
@@ -515,7 +542,7 @@ function LessonPage() {
           color: '#333',
           lineHeight: '1.6',
         }}>
-          {currentProblem.stem}
+          {currentProblem?.stem || i18n('No stem')}
         </div>
 
         <div style={{ marginBottom: '20px' }}>
@@ -549,7 +576,7 @@ function LessonPage() {
 
             return (
               <div
-                key={`${currentProblem?.pid || currentProblemIndex}-${optIndex}`}
+                key={`${currentProblem.pid || currentProblemIndex}-${optIndex}`}
                 onClick={() => !isAnswered && handleAnswerSelect(optIndex)}
                 style={optionStyle}
               >

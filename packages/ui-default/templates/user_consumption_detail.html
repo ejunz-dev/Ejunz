@@ -1,0 +1,28 @@
+{% import "components/home.html" as home with context %}
+{% extends "layout/basic.html" %}
+{% block content %}
+{{ set(UiContext, 'udoc', udoc) }}
+{{ set(UiContext, 'targetDomain', targetDomain) }}
+{{ set(UiContext, 'date', date) }}
+{{ set(UiContext, 'contributions', contributions) }}
+{{ set(UiContext, 'mindMapDocId', mindMapDocId) }}
+
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">
+          <a href="{{ url('user_detail', uid=udoc._id) }}">{{ udoc.uname }}</a>
+          <span style="margin: 0 10px;">/</span>
+          <a href="{{ url('homepage', domainId=targetDomain._id) }}">{{ targetDomain.name }}</a>
+          <span style="margin: 0 10px;">/</span>
+          {{ date }}
+        </h1>
+      </div>
+      <div class="section__body">
+        <div id="consumption-detail-container"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
