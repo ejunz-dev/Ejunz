@@ -23,6 +23,7 @@ __langname: English
 'ASR (Speech Recognition) Configuration': ASR (Speech Recognition) Configuration
 'ASR configuration saved successfully': ASR configuration saved successfully
 'ASR Configuration': ASR Configuration
+'Attempts': Attempts
 'Back to Details': Back to Details
 'Back to Learn': Back to Learn
 'Back to List': Back to List
@@ -64,6 +65,7 @@ __langname: English
 'Create': Create
 'Created Clients': Created Clients
 'Created Time': Created Time
+'Cumulative': Cumulative
 'Current Progress': Current Progress
 'Currently Selected Agent': Currently Selected Agent
 'Default message': Default message
@@ -159,6 +161,7 @@ __langname: English
 'Please generate token on': Please generate token on
 'Please select a conversation from the left sidebar to view chat details': Please select a conversation from the left sidebar to view chat details
 'Please select': Please select
+'Practice Alone': Practice Alone
 'Practice Questions': Practice Questions
 'Practice Results': Practice Results
 'Practice': Practice
@@ -170,6 +173,7 @@ __langname: English
 'Push will create a new remote branch': Push will create a new remote branch
 'Pushing to GitHub...': Pushing to GitHub...
 'Pushing...': Pushing...
+'Question Details': Question Details
 'Question': Question
 'Refresh Tools List': Refresh Tools List
 'Remaining': Remaining
@@ -202,6 +206,7 @@ __langname: English
 'Table of Contents': Table of Contents
 'This branch is behind remote by {0} commit(s). Please use Pull to sync.': This branch is behind remote by {0} commit(s). Please use Pull to sync.
 'This section requires completion of the following sections first': This section requires completion of the following sections first
+'Time Spent': Time Spent
 'Token deleted successfully': Token deleted successfully
 'Token generated successfully': Token generated successfully
 'Token not generated yet': Token not generated yet
@@ -211,6 +216,7 @@ __langname: English
 'Tool': Tool
 'Tools Count': Tools Count
 'Tools List': Tools List
+'Total Time': Total Time
 'TTS (Text-to-Speech) Configuration': TTS (Text-to-Speech) Configuration
 'TTS configuration saved successfully': TTS configuration saved successfully
 'TTS Configuration': TTS Configuration

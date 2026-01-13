@@ -49,6 +49,7 @@
                       <td class="col--action">
                         {% if card.unlocked %}
                           <a href="/d/{{ domainId }}/learn/lesson" class="button">{{ _('Practice') }}</a>
+                          <a href="/d/{{ domainId }}/learn/lesson?cardId={{ card.cardId }}" class="button" style="margin-left: 8px;">{{ _('Practice Alone') }}</a>
                         {% else %}
                           <span class="button" style="opacity: 0.5; cursor: not-allowed;">{{ _('Locked') }}</span>
                         {% endif %}
