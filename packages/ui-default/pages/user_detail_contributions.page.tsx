@@ -16,6 +16,9 @@ interface ContributionDetail {
   nodes: number;
   cards: number;
   problems: number;
+  nodeStats?: { created: number; modified: number; deleted: number };
+  cardStats?: { created: number; modified: number; deleted: number };
+  problemStats?: { created: number; modified: number; deleted: number };
 }
 
 interface ContributionsProps {
@@ -353,6 +356,7 @@ function UserDetailContributionsPage() {
                       gap: '20px', 
                       fontSize: '14px',
                       color: themeStyles.textSecondary,
+                      marginBottom: '8px',
                     }}>
                       {detail.nodes > 0 && (
                         <span>
@@ -373,6 +377,60 @@ function UserDetailContributionsPage() {
                         <span style={{ color: themeStyles.textTertiary }}>{i18n('No contributions')}</span>
                       )}
                     </div>
+                    {(detail.nodeStats || detail.cardStats || detail.problemStats) && (
+                      <div style={{ 
+                        display: 'flex', 
+                        flexDirection: 'column',
+                        gap: '8px',
+                        fontSize: '12px',
+                        color: themeStyles.textTertiary,
+                        paddingTop: '8px',
+                        borderTop: `1px solid ${themeStyles.border}`,
+                      }}>
+                        {detail.nodeStats && (detail.nodeStats.created > 0 || detail.nodeStats.modified > 0 || detail.nodeStats.deleted > 0) && (
+                          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                            <span style={{ color: themeStyles.statNode, minWidth: '60px' }}>{i18n('Nodes')}:</span>
+                            {detail.nodeStats.created > 0 && (
+                              <span>{i18n('Created')}: <span style={{ fontWeight: 'bold' }}>{detail.nodeStats.created}</span></span>
+                            )}
+                            {detail.nodeStats.modified > 0 && (
+                              <span>{i18n('Modified')}: <span style={{ fontWeight: 'bold' }}>{detail.nodeStats.modified}</span></span>
+                            )}
+                            {detail.nodeStats.deleted > 0 && (
+                              <span>{i18n('Deleted')}: <span style={{ fontWeight: 'bold' }}>{detail.nodeStats.deleted}</span></span>
+                            )}
+                          </div>
+                        )}
+                        {detail.cardStats && (detail.cardStats.created > 0 || detail.cardStats.modified > 0 || detail.cardStats.deleted > 0) && (
+                          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                            <span style={{ color: themeStyles.statCard, minWidth: '60px' }}>{i18n('Cards')}:</span>
+                            {detail.cardStats.created > 0 && (
+                              <span>{i18n('Created')}: <span style={{ fontWeight: 'bold' }}>{detail.cardStats.created}</span></span>
+                            )}
+                            {detail.cardStats.modified > 0 && (
+                              <span>{i18n('Modified')}: <span style={{ fontWeight: 'bold' }}>{detail.cardStats.modified}</span></span>
+                            )}
+                            {detail.cardStats.deleted > 0 && (
+                              <span>{i18n('Deleted')}: <span style={{ fontWeight: 'bold' }}>{detail.cardStats.deleted}</span></span>
+                            )}
+                          </div>
+                        )}
+                        {detail.problemStats && (detail.problemStats.created > 0 || detail.problemStats.modified > 0 || detail.problemStats.deleted > 0) && (
+                          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                            <span style={{ color: themeStyles.statProblem, minWidth: '60px' }}>{i18n('Problems')}:</span>
+                            {detail.problemStats.created > 0 && (
+                              <span>{i18n('Created')}: <span style={{ fontWeight: 'bold' }}>{detail.problemStats.created}</span></span>
+                            )}
+                            {detail.problemStats.modified > 0 && (
+                              <span>{i18n('Modified')}: <span style={{ fontWeight: 'bold' }}>{detail.problemStats.modified}</span></span>
+                            )}
+                            {detail.problemStats.deleted > 0 && (
+                              <span>{i18n('Deleted')}: <span style={{ fontWeight: 'bold' }}>{detail.problemStats.deleted}</span></span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
