@@ -70,6 +70,7 @@ function UserConsumptionDetailPage() {
   const date = (window as any).UiContext?.date;
   const contributions: Consumptions = (window as any).UiContext?.contributions || { nodes: [], cards: [], problems: [], practices: [] };
   const mindMapDocId = (window as any).UiContext?.mindMapDocId;
+  const totalTimeInSeconds = (window as any).UiContext?.totalTimeInSeconds || 0;
 
   const getTheme = useCallback(() => {
     try {
@@ -133,26 +134,6 @@ function UserConsumptionDetailPage() {
   };
 
   const totalConsumptions = contributions.nodes.length + contributions.cards.length + contributions.problems.length + contributions.practices.length;
-  
-  const totalTimeInSeconds = useMemo(() => {
-    let total = 0;
-    contributions.cards.forEach(card => {
-      if (card.totalTime) {
-        total += Math.round(card.totalTime / 1000);
-      }
-    });
-    contributions.problems.forEach(problem => {
-      if (problem.totalTime) {
-        total += Math.round(problem.totalTime / 1000);
-      }
-    });
-    contributions.practices.forEach(practice => {
-      if (practice.totalTime) {
-        total += Math.round(practice.totalTime / 1000);
-      }
-    });
-    return total;
-  }, [contributions]);
 
   return (
     <div style={{ padding: '20px' }}>

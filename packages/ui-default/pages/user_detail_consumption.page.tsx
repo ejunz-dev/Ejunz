@@ -38,6 +38,7 @@ interface ConsumptionDetail {
   cards: number;
   problems: number;
   practices: number;
+  totalTime?: number;
 }
 
 interface ConsumptionsProps {
@@ -352,10 +353,33 @@ function UserDetailConsumptionPage() {
               {i18n('Consumption on {0}', moment(selectedDateForDetails).format('YYYY-MM-DD'))}
             </h3>
             {consumptionDetails[selectedDateForDetails].length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {consumptionDetails[selectedDateForDetails].map((detail: ConsumptionDetail, idx: number) => {
-                  const total = detail.nodes + detail.cards + detail.problems + detail.practices;
-                  if (total === 0) return null;
+              <>
+                {(() => {
+                  const totalTimeForDate = consumptionDetails[selectedDateForDetails].reduce((sum, detail) => sum + ((detail.totalTime || 0) / 1000), 0);
+                  return totalTimeForDate > 0 ? (
+                    <div style={{ 
+                      marginBottom: '15px', 
+                      padding: '12px', 
+                      background: themeStyles.bgPrimary, 
+                      borderRadius: '6px',
+                      border: `1px solid ${themeStyles.border}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                    }}>
+                      <span style={{ fontSize: '14px', color: themeStyles.textSecondary }}>
+                        {i18n('Total Practice Time')}:
+                      </span>
+                      <span style={{ fontSize: '16px', fontWeight: 'bold', color: themeStyles.statTime }}>
+                        {formatTime(Math.round(totalTimeForDate))}
+                      </span>
+                    </div>
+                  ) : null;
+                })()}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {consumptionDetails[selectedDateForDetails].map((detail: ConsumptionDetail, idx: number) => {
+                    const total = detail.nodes + detail.cards + detail.problems + detail.practices;
+                    if (total === 0) return null;
                   
                   return (
                     <div
@@ -406,6 +430,20 @@ function UserDetailConsumptionPage() {
                           {i18n('Total')}: <span style={{ fontWeight: 'bold' }}>{total}</span>
                         </span>
                       </div>
+                      {detail.totalTime && detail.totalTime > 0 && (
+                        <div style={{ 
+                          marginTop: '8px',
+                          paddingTop: '8px',
+                          borderTop: `1px solid ${themeStyles.border}`,
+                          fontSize: '13px',
+                          color: themeStyles.textSecondary,
+                        }}>
+                          <span>{i18n('Practice Time')}: </span>
+                          <span style={{ color: themeStyles.statTime, fontWeight: 'bold' }}>
+                            {formatTime(Math.round((detail.totalTime || 0) / 1000))}
+                          </span>
+                        </div>
+                      )}
                       <div style={{ marginTop: '12px' }}>
                         <a
                           href={`/user/${(window as any).UiContext?.udoc?._id || ''}/consumption/${selectedDateForDetails}/${detail.domainId}`}
@@ -421,7 +459,8 @@ function UserDetailConsumptionPage() {
                     </div>
                   );
                 })}
-              </div>
+                </div>
+              </>
             ) : (
               <div style={{ 
                 padding: '20px', 
