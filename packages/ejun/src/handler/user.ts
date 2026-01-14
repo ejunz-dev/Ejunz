@@ -490,7 +490,7 @@ class UserDetailHandler extends Handler {
                 .toArray();
             for (const nodeDoc of independentNodes) {
                 if (nodeDoc.createdAt) {
-                    const date = moment(nodeDoc.createdAt).format('YYYY-MM-DD');
+                    const date = moment.utc(nodeDoc.createdAt).format('YYYY-MM-DD');
                     nodeCounts[date] = (nodeCounts[date] || 0) + 1;
                     
                     if (!contributionDetails[date]) {
@@ -537,8 +537,8 @@ class UserDetailHandler extends Handler {
                 
                 if (totalNodesInMindMap > 0) {
                     const date = mindMapDoc.updateAt 
-                        ? moment(mindMapDoc.updateAt).format('YYYY-MM-DD')
-                        : (mindMapDoc.createdAt ? moment(mindMapDoc.createdAt).format('YYYY-MM-DD') : null);
+                        ? moment.utc(mindMapDoc.updateAt).format('YYYY-MM-DD')
+                        : (mindMapDoc.createdAt ? moment.utc(mindMapDoc.createdAt).format('YYYY-MM-DD') : null);
                     if (date) {
                         nodeCounts[date] = (nodeCounts[date] || 0) + totalNodesInMindMap;
                         
@@ -560,7 +560,7 @@ class UserDetailHandler extends Handler {
                 .toArray();
             for (const cardDoc of cards) {
                 if (cardDoc.createdAt) {
-                    const date = moment(cardDoc.createdAt).format('YYYY-MM-DD');
+                    const date = moment.utc(cardDoc.createdAt).format('YYYY-MM-DD');
                     cardCounts[date] = (cardCounts[date] || 0) + 1;
                     
                     if (!contributionDetails[date]) {
@@ -582,59 +582,55 @@ class UserDetailHandler extends Handler {
             }
         }
 
-        const allDates = new Set([...Object.keys(nodeCounts), ...Object.keys(cardCounts), ...Object.keys(problemCounts)]);
+        const allDates = new Set([
+            ...Object.keys(nodeCounts),
+            ...Object.keys(cardCounts),
+            ...Object.keys(problemCounts),
+            ...Object.keys(contributionDetails)
+        ]);
+        
         for (const date of allDates) {
-            if (nodeCounts[date]) {
-                contributions.push({ date, type: 'node', count: nodeCounts[date] });
+            const nodeCount = nodeCounts[date] || 0;
+            const cardCount = cardCounts[date] || 0;
+            const problemCount = problemCounts[date] || 0;
+            
+            let finalNodeCount = nodeCount;
+            let finalCardCount = cardCount;
+            let finalProblemCount = problemCount;
+            
+            if (contributionDetails[date] && nodeCount === 0 && cardCount === 0 && problemCount === 0) {
+                const details = contributionDetails[date];
+                for (const detail of details) {
+                    finalNodeCount += detail.nodes || 0;
+                    finalCardCount += detail.cards || 0;
+                    finalProblemCount += detail.problems || 0;
+                }
             }
-            if (cardCounts[date]) {
-                contributions.push({ date, type: 'card', count: cardCounts[date] });
+            
+            // 只有当有数据时才添加到 contributions
+            if (finalNodeCount > 0) {
+                contributions.push({ date, type: 'node', count: finalNodeCount });
             }
-            if (problemCounts[date]) {
-                contributions.push({ date, type: 'problem', count: problemCounts[date] });
+            if (finalCardCount > 0) {
+                contributions.push({ date, type: 'card', count: finalCardCount });
+            }
+            if (finalProblemCount > 0) {
+                contributions.push({ date, type: 'problem', count: finalProblemCount });
             }
         }
 
         let totalNodes = 0;
-        for (const did of domainIds) {
-            const independentNodes = await document.getMulti(did, document.TYPE_NODE, { owner: uid })
-                .project({ _id: 1 })
-                .toArray();
-            totalNodes += independentNodes.length;
-            
-            const mindMaps = await document.getMulti(did, document.TYPE_MINDMAP, { owner: uid })
-                .project({ nodes: 1, branchData: 1 })
-                .toArray();
-            for (const mindMapDoc of mindMaps) {
-                const nodeIds = new Set<string>();
-                
-                if (mindMapDoc.nodes && Array.isArray(mindMapDoc.nodes)) {
-                    for (const node of mindMapDoc.nodes) {
-                        if (node && node.id) {
-                            nodeIds.add(node.id);
-                        }
-                    }
-                }
-                
-                if (mindMapDoc.branchData && typeof mindMapDoc.branchData === 'object') {
-                    for (const branch in mindMapDoc.branchData) {
-                        const branchNodes = mindMapDoc.branchData[branch]?.nodes;
-                        if (branchNodes && Array.isArray(branchNodes)) {
-                            for (const node of branchNodes) {
-                                if (node && node.id) {
-                                    nodeIds.add(node.id);
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                totalNodes += nodeIds.size;
+        let totalCards = 0;
+        let totalProblems = 0;
+        
+        for (const date of Object.keys(contributionDetails)) {
+            const details = contributionDetails[date];
+            for (const detail of details) {
+                totalNodes += detail.nodes || 0;
+                totalCards += detail.cards || 0;
+                totalProblems += detail.problems || 0;
             }
         }
-        
-        const totalCards = Object.values(cardCounts).reduce((sum, count) => sum + count, 0);
-        const totalProblems = Object.values(problemCounts).reduce((sum, count) => sum + count, 0);
 
         const consumptions: Array<{ date: string; type: 'node' | 'card' | 'problem' | 'practice'; count: number }> = [];
         const consumptionNodeCounts: Record<string, number> = {};
@@ -804,7 +800,7 @@ class UserContributionDetailHandler extends Handler {
             .toArray();
         for (const nodeDoc of independentNodes) {
             if (nodeDoc.createdAt) {
-                const nodeDate = moment(nodeDoc.createdAt).format('YYYY-MM-DD');
+                const nodeDate = moment.utc(nodeDoc.createdAt).format('YYYY-MM-DD');
                 if (nodeDate === date) {
                     contributions.nodes.push({
                         id: nodeDoc.nid?.toString() || nodeDoc._id.toString(),
@@ -821,8 +817,8 @@ class UserContributionDetailHandler extends Handler {
             .toArray();
         for (const mindMapDoc of mindMaps) {
             const mapDate = mindMapDoc.updateAt 
-                ? moment(mindMapDoc.updateAt).format('YYYY-MM-DD')
-                : (mindMapDoc.createdAt ? moment(mindMapDoc.createdAt).format('YYYY-MM-DD') : null);
+                ? moment.utc(mindMapDoc.updateAt).format('YYYY-MM-DD')
+                : (mindMapDoc.createdAt ? moment.utc(mindMapDoc.createdAt).format('YYYY-MM-DD') : null);
             
             if (mapDate === date) {
                 const nodeIds = new Set<string>();
@@ -868,9 +864,9 @@ class UserContributionDetailHandler extends Handler {
         const cards = await document.getMulti(targetDomainId, document.TYPE_CARD, { owner: uid })
             .project({ docId: 1, title: 1, nodeId: 1, createdAt: 1, problems: 1 })
             .toArray();
-        for (const cardDoc of cards) {
-            if (cardDoc.createdAt) {
-                const cardDate = moment(cardDoc.createdAt).format('YYYY-MM-DD');
+            for (const cardDoc of cards) {
+                if (cardDoc.createdAt) {
+                    const cardDate = moment.utc(cardDoc.createdAt).format('YYYY-MM-DD');
                 if (cardDate === date) {
                     contributions.cards.push({
                         docId: cardDoc.docId.toString(),
@@ -1023,7 +1019,7 @@ class UserConsumptionDetailHandler extends Handler {
 
         for (const progress of progressRecords) {
             if (progress.passedAt) {
-                const passedDate = moment(progress.passedAt).format('YYYY-MM-DD');
+                const passedDate = moment.utc(progress.passedAt).format('YYYY-MM-DD');
                 if (progress.cardId) {
                     const cardIdStr = progress.cardId.toString();
                     if (!cardMap.has(cardIdStr)) {
@@ -1036,7 +1032,7 @@ class UserConsumptionDetailHandler extends Handler {
                     if (card) {
                         const resultForPractice = resultRecords.find(r => 
                             r.cardId && r.cardId.toString() === cardIdStr &&
-                            moment(r.createdAt).format('YYYY-MM-DD') === passedDate
+                            moment.utc(r.createdAt).format('YYYY-MM-DD') === passedDate
                         );
                         contributions.practices.push({
                             cardId: cardIdStr,
