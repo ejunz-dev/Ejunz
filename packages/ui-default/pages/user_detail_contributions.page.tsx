@@ -69,15 +69,16 @@ function ContributionWall({ contributions, theme, contributionDetails, onDateCli
 
     const contributionMap: Record<string, { nodes: number; cards: number; problems: number }> = {};
     contributions.forEach((contrib) => {
+      if (!contrib.date) return;
       if (!contributionMap[contrib.date]) {
         contributionMap[contrib.date] = { nodes: 0, cards: 0, problems: 0 };
       }
       if (contrib.type === 'node') {
-        contributionMap[contrib.date].nodes += contrib.count;
+        contributionMap[contrib.date].nodes += contrib.count || 0;
       } else if (contrib.type === 'card') {
-        contributionMap[contrib.date].cards += contrib.count;
+        contributionMap[contrib.date].cards += contrib.count || 0;
       } else if (contrib.type === 'problem') {
-        contributionMap[contrib.date].problems += contrib.count;
+        contributionMap[contrib.date].problems += contrib.count || 0;
       }
     });
 
