@@ -26,6 +26,7 @@ import ScheduleModel from '../model/schedule';
 import system from '../model/system';
 import token from '../model/token';
 import user, { deleteUserCache } from '../model/user';
+import db from '../service/db';
 import {
     Handler, param, post, Query, Types,
 } from '../service/server';
@@ -480,17 +481,25 @@ class UserDetailHandler extends Handler {
             nodes: number;
             cards: number;
             problems: number;
+            nodeStats: { created: number; modified: number; deleted: number };
+            cardStats: { created: number; modified: number; deleted: number };
+            problemStats: { created: number; modified: number; deleted: number };
         }>> = {};
 
         for (const did of domainIds) {
             const ddoc = await domain.get(did);
             const domainName = ddoc?.name || did;
             const independentNodes = await document.getMulti(did, document.TYPE_NODE, { owner: uid })
-                .project({ createdAt: 1 })
+                .project({ createdAt: 1, updateAt: 1 })
                 .toArray();
             for (const nodeDoc of independentNodes) {
                 if (nodeDoc.createdAt) {
-                    const date = moment.utc(nodeDoc.createdAt).format('YYYY-MM-DD');
+                    const createDate = moment.utc(nodeDoc.createdAt).format('YYYY-MM-DD');
+                    const updateDate = nodeDoc.updateAt ? moment.utc(nodeDoc.updateAt).format('YYYY-MM-DD') : createDate;
+                    const isCreated = createDate === updateDate && nodeDoc.updateAt && 
+                        Math.abs(moment.utc(nodeDoc.updateAt).diff(moment.utc(nodeDoc.createdAt), 'minutes')) < 5;
+                    
+                    const date = isCreated ? createDate : updateDate;
                     nodeCounts[date] = (nodeCounts[date] || 0) + 1;
                     
                     if (!contributionDetails[date]) {
@@ -498,10 +507,24 @@ class UserDetailHandler extends Handler {
                     }
                     let detail = contributionDetails[date].find(d => d.domainId === did);
                     if (!detail) {
-                        detail = { domainId: did, domainName, nodes: 0, cards: 0, problems: 0 };
+                        detail = { 
+                            domainId: did, 
+                            domainName, 
+                            nodes: 0, 
+                            cards: 0, 
+                            problems: 0,
+                            nodeStats: { created: 0, modified: 0, deleted: 0 },
+                            cardStats: { created: 0, modified: 0, deleted: 0 },
+                            problemStats: { created: 0, modified: 0, deleted: 0 }
+                        };
                         contributionDetails[date].push(detail);
                     }
                     detail.nodes += 1;
+                    if (isCreated) {
+                        detail.nodeStats.created += 1;
+                    } else if (updateDate !== createDate) {
+                        detail.nodeStats.modified += 1;
+                    }
                 }
             }
 
@@ -545,22 +568,44 @@ class UserDetailHandler extends Handler {
                         if (!contributionDetails[date]) {
                             contributionDetails[date] = [];
                         }
-                        let detail = contributionDetails[date].find(d => d.domainId === did);
-                        if (!detail) {
-                            detail = { domainId: did, domainName, nodes: 0, cards: 0, problems: 0 };
-                            contributionDetails[date].push(detail);
-                        }
-                        detail.nodes += totalNodesInMindMap;
+                    let detail = contributionDetails[date].find(d => d.domainId === did);
+                    if (!detail) {
+                        detail = { 
+                            domainId: did, 
+                            domainName, 
+                            nodes: 0, 
+                            cards: 0, 
+                            problems: 0,
+                            nodeStats: { created: 0, modified: 0, deleted: 0 },
+                            cardStats: { created: 0, modified: 0, deleted: 0 },
+                            problemStats: { created: 0, modified: 0, deleted: 0 }
+                        };
+                        contributionDetails[date].push(detail);
+                    }
+                    detail.nodes += totalNodesInMindMap;
+                    const createDate = mindMapDoc.createdAt ? moment.utc(mindMapDoc.createdAt).format('YYYY-MM-DD') : null;
+                    const isCreated = createDate === date && mindMapDoc.updateAt && 
+                        Math.abs(moment.utc(mindMapDoc.updateAt).diff(moment.utc(mindMapDoc.createdAt), 'minutes')) < 5;
+                    if (isCreated) {
+                        detail.nodeStats.created += totalNodesInMindMap;
+                    } else if (createDate && createDate !== date) {
+                        detail.nodeStats.modified += totalNodesInMindMap;
+                    }
                     }
                 }
             }
 
             const cards = await document.getMulti(did, document.TYPE_CARD, { owner: uid })
-                .project({ createdAt: 1, problems: 1 })
+                .project({ createdAt: 1, updateAt: 1, problems: 1 })
                 .toArray();
             for (const cardDoc of cards) {
                 if (cardDoc.createdAt) {
-                    const date = moment.utc(cardDoc.createdAt).format('YYYY-MM-DD');
+                    const createDate = moment.utc(cardDoc.createdAt).format('YYYY-MM-DD');
+                    const updateDate = cardDoc.updateAt ? moment.utc(cardDoc.updateAt).format('YYYY-MM-DD') : createDate;
+                    const isCreated = createDate === updateDate && cardDoc.updateAt && 
+                        Math.abs(moment.utc(cardDoc.updateAt).diff(moment.utc(cardDoc.createdAt), 'minutes')) < 5;
+                    
+                    const date = isCreated ? createDate : updateDate;
                     cardCounts[date] = (cardCounts[date] || 0) + 1;
                     
                     if (!contributionDetails[date]) {
@@ -568,17 +613,99 @@ class UserDetailHandler extends Handler {
                     }
                     let detail = contributionDetails[date].find(d => d.domainId === did);
                     if (!detail) {
-                        detail = { domainId: did, domainName, nodes: 0, cards: 0, problems: 0 };
+                        detail = { 
+                            domainId: did, 
+                            domainName, 
+                            nodes: 0, 
+                            cards: 0, 
+                            problems: 0,
+                            nodeStats: { created: 0, modified: 0, deleted: 0 },
+                            cardStats: { created: 0, modified: 0, deleted: 0 },
+                            problemStats: { created: 0, modified: 0, deleted: 0 }
+                        };
                         contributionDetails[date].push(detail);
                     }
                     detail.cards += 1;
+                    if (isCreated) {
+                        detail.cardStats.created += 1;
+                    } else if (updateDate !== createDate) {
+                        detail.cardStats.modified += 1;
+                    }
                     
                     if (cardDoc.problems && Array.isArray(cardDoc.problems)) {
                         const problemCount = cardDoc.problems.length;
                         problemCounts[date] = (problemCounts[date] || 0) + problemCount;
                         detail.problems += problemCount;
+                        detail.problemStats.created += problemCount;
                     }
                 }
+            }
+        }
+
+        const oplogColl = db.collection('oplog');
+        const deleteStats: Record<string, Record<string, { nodes: number; cards: number; problems: number }>> = {};
+        
+        for (const did of domainIds) {
+            const deleteOps = await oplogColl.find({
+                operator: uid,
+                domainId: did,
+                type: { $regex: /delete/i },
+            }).toArray();
+            
+            for (const op of deleteOps) {
+                const deleteDate = moment.utc(op.time).format('YYYY-MM-DD');
+                if (!deleteStats[deleteDate]) {
+                    deleteStats[deleteDate] = {};
+                }
+                if (!deleteStats[deleteDate][did]) {
+                    deleteStats[deleteDate][did] = { nodes: 0, cards: 0, problems: 0 };
+                }
+                
+                const opType = op.type?.toLowerCase() || '';
+                const args = op.args || {};
+                const json = op.json || {};
+                
+                if (opType.includes('node') || opType.includes('mindmap.node') || args.nodeId || json.nodeId) {
+                    deleteStats[deleteDate][did].nodes += 1;
+                } else if (opType.includes('card') || args.cardId || json.cardId || args.cid || json.cid) {
+                    deleteStats[deleteDate][did].cards += 1;
+                    if (args.problems || json.problems) {
+                        const problemCount = Array.isArray(args.problems || json.problems) 
+                            ? (args.problems || json.problems).length 
+                            : 0;
+                        deleteStats[deleteDate][did].problems += problemCount;
+                    }
+                } else if (opType.includes('problem') || args.problemId || json.problemId || args.pid || json.pid) {
+                    deleteStats[deleteDate][did].problems += 1;
+                }
+            }
+        }
+        
+        for (const date of Object.keys(deleteStats)) {
+            if (!contributionDetails[date]) {
+                contributionDetails[date] = [];
+            }
+            for (const did of Object.keys(deleteStats[date])) {
+                const ddoc = await domain.get(did);
+                const domainName = ddoc?.name || did;
+                let detail = contributionDetails[date].find(d => d.domainId === did);
+                if (!detail) {
+                    detail = { 
+                        domainId: did, 
+                        domainName, 
+                        nodes: 0, 
+                        cards: 0, 
+                        problems: 0,
+                        nodeStats: { created: 0, modified: 0, deleted: 0 },
+                        cardStats: { created: 0, modified: 0, deleted: 0 },
+                        problemStats: { created: 0, modified: 0, deleted: 0 }
+                    };
+                    contributionDetails[date].push(detail);
+                }
+                const stats = deleteStats[date][did];
+                detail.nodeStats.deleted += stats.nodes;
+                detail.cardStats.deleted += stats.cards;
+                detail.problemStats.deleted += stats.problems;
             }
         }
 
@@ -586,7 +713,8 @@ class UserDetailHandler extends Handler {
             ...Object.keys(nodeCounts),
             ...Object.keys(cardCounts),
             ...Object.keys(problemCounts),
-            ...Object.keys(contributionDetails)
+            ...Object.keys(contributionDetails),
+            ...Object.keys(deleteStats)
         ]);
         
         for (const date of allDates) {
