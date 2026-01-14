@@ -774,52 +774,103 @@ class UserDetailHandler extends Handler {
             cards: number;
             problems: number;
             practices: number;
+            totalTime: number;
         }>> = {};
 
-        const consumptionStatsColl = this.ctx.db.db.collection('learn_consumption_stats');
-        const allStatsRecords = await consumptionStatsColl.find({
+        const learnResultColl = this.ctx.db.db.collection('learn_result');
+        const allResultRecords = await learnResultColl.find({
             userId: uid,
         }).toArray();
 
-        for (const stat of allStatsRecords) {
-            const date = stat.date;
-            const did = stat.domainId;
-            const ddoc = await domain.get(did);
-            const domainName = ddoc?.name || did;
+        const learnProgressColl = this.ctx.db.db.collection('learn_progress');
+        const allProgressRecords = await learnProgressColl.find({
+            userId: uid,
+        }).toArray();
 
-            if (!consumptionDetails[date]) {
-                consumptionDetails[date] = [];
-            }
-            let detail = consumptionDetails[date].find(d => d.domainId === did);
-            if (!detail) {
-                detail = { domainId: did, domainName, nodes: 0, cards: 0, problems: 0, practices: 0 };
-                consumptionDetails[date].push(detail);
-            }
+        const resultStatsByDate: Record<string, Record<string, {
+            totalTime: number;
+            nodes: Set<string>;
+            cards: Set<string>;
+            problems: Set<string>;
+        }>> = {};
 
-            const nodes = stat.nodes || 0;
-            const cards = stat.cards || 0;
-            const problems = stat.problems || 0;
-            const practices = stat.practices || 0;
-            const time = stat.totalTime || 0;
+        for (const result of allResultRecords) {
+            if (result.createdAt) {
+                const date = moment.utc(result.createdAt).format('YYYY-MM-DD');
+                const did = result.domainId || '';
+                if (!resultStatsByDate[date]) {
+                    resultStatsByDate[date] = {};
+                }
+                if (!resultStatsByDate[date][did]) {
+                    resultStatsByDate[date][did] = {
+                        totalTime: 0,
+                        nodes: new Set<string>(),
+                        cards: new Set<string>(),
+                        problems: new Set<string>(),
+                    };
+                }
+                const stats = resultStatsByDate[date][did];
+                if (result.totalTime) {
+                    stats.totalTime += result.totalTime || 0;
+                }
+                if (result.nodeId) {
+                    stats.nodes.add(result.nodeId);
+                }
+                if (result.cardId) {
+                    stats.cards.add(result.cardId.toString());
+                }
+                if (result.answerHistory && Array.isArray(result.answerHistory)) {
+                    for (const history of result.answerHistory) {
+                        if (history.problemId) {
+                            stats.problems.add(history.problemId);
+                        }
+                    }
+                }
+            }
+        }
 
-            if (nodes > 0) {
-                consumptionNodeCounts[date] = (consumptionNodeCounts[date] || 0) + nodes;
-                detail.nodes += nodes;
+        const progressStatsByDate: Record<string, Record<string, Set<string>>> = {};
+        for (const progress of allProgressRecords) {
+            if (progress.passedAt) {
+                const date = moment.utc(progress.passedAt).format('YYYY-MM-DD');
+                const did = progress.domainId || '';
+                if (!progressStatsByDate[date]) {
+                    progressStatsByDate[date] = {};
+                }
+                if (!progressStatsByDate[date][did]) {
+                    progressStatsByDate[date][did] = new Set<string>();
+                }
+                if (progress.cardId) {
+                    progressStatsByDate[date][did].add(progress.cardId.toString());
+                }
             }
-            if (cards > 0) {
-                consumptionCardCounts[date] = (consumptionCardCounts[date] || 0) + cards;
-                detail.cards += cards;
-            }
-            if (problems > 0) {
-                consumptionProblemCounts[date] = (consumptionProblemCounts[date] || 0) + problems;
-                detail.problems += problems;
-            }
-            if (practices > 0) {
-                consumptionPracticeCounts[date] = (consumptionPracticeCounts[date] || 0) + practices;
-                detail.practices += practices;
-            }
-            if (time && typeof time === 'number' && time > 0) {
-                totalConsumptionTime += time;
+        }
+
+        for (const date of Object.keys(resultStatsByDate)) {
+            for (const did of Object.keys(resultStatsByDate[date])) {
+                if (!consumptionDetails[date]) {
+                    consumptionDetails[date] = [];
+                }
+                let detail = consumptionDetails[date].find(d => d.domainId === did);
+                if (!detail) {
+                    const ddoc = await domain.get(did);
+                    const domainName = ddoc?.name || did;
+                    detail = { domainId: did, domainName, nodes: 0, cards: 0, problems: 0, practices: 0, totalTime: 0 };
+                    consumptionDetails[date].push(detail);
+                }
+                const stats = resultStatsByDate[date][did];
+                detail.totalTime = stats.totalTime;
+                detail.nodes = stats.nodes.size;
+                detail.cards = stats.cards.size;
+                detail.problems = stats.problems.size;
+                if (progressStatsByDate[date] && progressStatsByDate[date][did]) {
+                    detail.practices = progressStatsByDate[date][did].size;
+                }
+                consumptionNodeCounts[date] = (consumptionNodeCounts[date] || 0) + detail.nodes;
+                consumptionCardCounts[date] = (consumptionCardCounts[date] || 0) + detail.cards;
+                consumptionProblemCounts[date] = (consumptionProblemCounts[date] || 0) + detail.problems;
+                consumptionPracticeCounts[date] = (consumptionPracticeCounts[date] || 0) + detail.practices;
+                totalConsumptionTime += detail.totalTime;
             }
         }
 
@@ -866,6 +917,7 @@ class UserDetailHandler extends Handler {
                 totalNodes: totalConsumptionNodes,
                 totalCards: totalConsumptionCards,
                 totalProblems: totalConsumptionProblems,
+                totalTime: totalConsumptionTimeInSeconds,
             },
         };
 
@@ -1048,8 +1100,8 @@ class UserConsumptionDetailHandler extends Handler {
         const learnProgressColl = this.ctx.db.db.collection('learn_progress');
         const learnResultsColl = this.ctx.db.db.collection('learn_result');
 
-        const startOfDay = moment(date).startOf('day').toDate();
-        const endOfDay = moment(date).endOf('day').toDate();
+        const startOfDay = moment.utc(date).startOf('day').toDate();
+        const endOfDay = moment.utc(date).endOf('day').toDate();
 
         const progressRecords = await learnProgressColl.find({
             domainId: targetDomainId,
@@ -1174,6 +1226,24 @@ class UserConsumptionDetailHandler extends Handler {
             }
         }
 
+        let totalTimeInMilliseconds = 0;
+        const cardTimeMap = new Map<string, number>();
+        for (const card of contributions.cards) {
+            if (card.totalTime) {
+                const currentTime = cardTimeMap.get(card.docId) || 0;
+                cardTimeMap.set(card.docId, currentTime + card.totalTime);
+            }
+        }
+        for (const practice of contributions.practices) {
+            if (practice.totalTime) {
+                const currentTime = cardTimeMap.get(practice.cardId) || 0;
+                cardTimeMap.set(practice.cardId, currentTime + practice.totalTime);
+            }
+        }
+        for (const time of cardTimeMap.values()) {
+            totalTimeInMilliseconds += time;
+        }
+
         this.response.template = 'user_consumption_detail.html';
         this.response.body = {
             udoc,
@@ -1181,6 +1251,7 @@ class UserConsumptionDetailHandler extends Handler {
             date,
             contributions,
             mindMapDocId: mindMap?.docId,
+            totalTimeInSeconds: Math.round(totalTimeInMilliseconds / 1000),
         };
 
         this.UiContext.extraTitleContent = this.translate('Consumption on {0} in {1}').format(date, targetDomain.name);
