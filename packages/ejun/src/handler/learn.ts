@@ -981,7 +981,7 @@ class LessonHandler extends Handler {
             createdAt: new Date(),
         });
 
-        const today = moment().format('YYYY-MM-DD');
+        const today = moment.utc().format('YYYY-MM-DD');
         const uniqueProblemIds = new Set<string>();
         for (const history of answerHistory) {
             if (history.problemId) {
