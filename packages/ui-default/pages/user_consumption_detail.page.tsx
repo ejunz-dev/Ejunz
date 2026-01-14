@@ -4,6 +4,27 @@ import moment from 'moment';
 import { NamedPage } from '../misc/Page';
 import { i18n } from 'vj/utils';
 
+function formatTime(seconds: number): string {
+  if (seconds < 60) {
+    return `${seconds}s`;
+  } else if (seconds < 3600) {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+  } else {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+    if (minutes === 0 && remainingSeconds === 0) {
+      return `${hours}h`;
+    } else if (remainingSeconds === 0) {
+      return `${hours}h ${minutes}m`;
+    } else {
+      return `${hours}h ${minutes}m ${remainingSeconds}s`;
+    }
+  }
+}
+
 interface ConsumptionNode {
   id: string;
   name: string;
@@ -25,6 +46,7 @@ interface ConsumptionProblem {
   pid: string;
   stem: string;
   createdAt: Date;
+  totalTime?: number;
 }
 
 interface ConsumptionPractice {
@@ -111,6 +133,26 @@ function UserConsumptionDetailPage() {
   };
 
   const totalConsumptions = contributions.nodes.length + contributions.cards.length + contributions.problems.length + contributions.practices.length;
+  
+  const totalTimeInSeconds = useMemo(() => {
+    let total = 0;
+    contributions.cards.forEach(card => {
+      if (card.totalTime) {
+        total += Math.round(card.totalTime / 1000);
+      }
+    });
+    contributions.problems.forEach(problem => {
+      if (problem.totalTime) {
+        total += Math.round(problem.totalTime / 1000);
+      }
+    });
+    contributions.practices.forEach(practice => {
+      if (practice.totalTime) {
+        total += Math.round(practice.totalTime / 1000);
+      }
+    });
+    return total;
+  }, [contributions]);
 
   return (
     <div style={{ padding: '20px' }}>
@@ -128,6 +170,7 @@ function UserConsumptionDetailPage() {
           color: themeStyles.textSecondary,
           display: 'flex',
           gap: '20px',
+          flexWrap: 'wrap',
         }}>
           <span>
             <span style={{ color: themeStyles.statNode, fontWeight: 'bold' }}>{contributions.nodes.length}</span> {i18n('nodes')}
@@ -144,6 +187,11 @@ function UserConsumptionDetailPage() {
           <span>
             {i18n('Total')}: <span style={{ fontWeight: 'bold' }}>{totalConsumptions}</span>
           </span>
+          {totalTimeInSeconds > 0 && (
+            <span>
+              {i18n('Total Time')}: <span style={{ fontWeight: 'bold', color: themeStyles.statProblem }}>{formatTime(totalTimeInSeconds)}</span>
+            </span>
+          )}
         </div>
       </div>
 
@@ -312,9 +360,15 @@ function UserConsumptionDetailPage() {
                     color: themeStyles.textSecondary,
                     display: 'flex',
                     gap: '12px',
+                    flexWrap: 'wrap',
                   }}>
                     <span>{i18n('Card')}: {problem.cardTitle}</span>
                     <span>{moment(problem.createdAt).format('HH:mm:ss')}</span>
+                    {problem.totalTime !== undefined && problem.totalTime > 0 && (
+                      <span style={{ color: themeStyles.statProblem, fontWeight: '500' }}>
+                        {i18n('Time')}: {formatTime(Math.round(problem.totalTime / 1000))}
+                      </span>
+                    )}
                     {cardLink && (
                       <a
                         href={cardLink}
@@ -387,11 +441,6 @@ function UserConsumptionDetailPage() {
                     color: themeStyles.textSecondary,
                   }}>
                     {i18n('Passed at')} {moment(practice.passedAt).format('HH:mm:ss')}
-                    {practice.totalTime !== undefined && (
-                      <span style={{ marginLeft: '8px' }}>
-                        · {i18n('Time')}: {Math.round(practice.totalTime / 1000)}s
-                      </span>
-                    )}
                   </div>
                 </div>
               );

@@ -945,7 +945,7 @@ class UserConsumptionDetailHandler extends Handler {
         const contributions: {
             nodes: Array<{ id: string; name: string; createdAt: Date; type: string }>;
             cards: Array<{ docId: string; title: string; nodeId: string; createdAt: Date; totalTime?: number }>;
-            problems: Array<{ cardId: string; cardTitle: string; pid: string; stem: string; createdAt: Date }>;
+            problems: Array<{ cardId: string; cardTitle: string; pid: string; stem: string; createdAt: Date; totalTime?: number }>;
             practices: Array<{ cardId: string; cardTitle: string; nodeId: string; passedAt: Date; totalTime?: number }>;
         } = {
             nodes: [],
@@ -992,20 +992,27 @@ class UserConsumptionDetailHandler extends Handler {
                     });
 
                     if (result.answerHistory && Array.isArray(result.answerHistory)) {
+                        const problemTimeMap = new Map<string, number>();
                         for (const history of result.answerHistory) {
                             if (history.problemId) {
-                                const cardDoc = await document.get(targetDomainId, document.TYPE_CARD, result.cardId);
-                                if (cardDoc && cardDoc.problems) {
-                                    const problem = cardDoc.problems.find((p: any) => p.pid === history.problemId);
-                                    if (problem) {
-                                        contributions.problems.push({
-                                            cardId: cardIdStr,
-                                            cardTitle: card.title || this.translate('Unnamed Card'),
-                                            pid: history.problemId,
-                                            stem: problem.stem || this.translate('No stem'),
-                                            createdAt: result.createdAt,
-                                        });
-                                    }
+                                const problemId = history.problemId;
+                                const timeSpent = history.timeSpent || 0;
+                                problemTimeMap.set(problemId, (problemTimeMap.get(problemId) || 0) + timeSpent);
+                            }
+                        }
+                        const cardDoc = await document.get(targetDomainId, document.TYPE_CARD, result.cardId);
+                        if (cardDoc && cardDoc.problems) {
+                            for (const [problemId, totalTime] of problemTimeMap.entries()) {
+                                const problem = cardDoc.problems.find((p: any) => p.pid === problemId);
+                                if (problem) {
+                                    contributions.problems.push({
+                                        cardId: cardIdStr,
+                                        cardTitle: card.title || this.translate('Unnamed Card'),
+                                        pid: problemId,
+                                        stem: problem.stem || this.translate('No stem'),
+                                        createdAt: result.createdAt,
+                                        totalTime: totalTime,
+                                    });
                                 }
                             }
                         }
