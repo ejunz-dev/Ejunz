@@ -227,6 +227,12 @@ class LearnHandler extends Handler {
                 checker: () => true,
             },
             {
+                name: 'user_task',
+                args: { uid: this.user._id },
+                displayName: this.translate('My Task'),
+                checker: () => true,
+            },
+            {
                 name: 'learn_sections',
                 args: {},
                 displayName: this.translate('Sections'),
