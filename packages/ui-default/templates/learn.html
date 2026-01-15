@@ -1,83 +1,13 @@
 {% set page_name = "learnPage" %}
 {% extends "layout/basic.html" %}
 {% block content %}
-<div data-fragment-id="learn_detail">
-  {% if dag and dag|length > 0 %}
-    {%- for node in dag -%}
-      <div class="section" style="margin-bottom: 20px;">
-        <div class="section__header clearfix">
-          <div class="float-left">
-            <h1 class="section__title">{{ node.title }}</h1>
-          </div>
-        </div>
-        <div class="section__body">
-          {% if node.requireNids and node.requireNids|length > 0 %}
-            <blockquote class="typo note">
-              <p>{{ _('This section requires completion of the following sections first') }}:</p>
-              <ul>
-                {%- for nid in node.requireNids -%}
-                  <li>{{ _('Section') }} {{ nid }}</li>
-                {%- endfor -%}
-              </ul>
-            </blockquote>
-          {% endif %}
-          {% if node.cards and node.cards|length > 0 %}
-            <div class="section__body no-padding">
-              <table class="data-table">
-                <colgroup>
-                  <col class="col--name">
-                  <col class="col--action">
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th class="col--name">{{ _('Card') }}</th>
-                    <th class="col--action">{{ _('Action') }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {%- for card in node.cards -%}
-                    <tr>
-                      <td class="col--name">
-                        {{ card.title }}
-                        {% if card.passed %}
-                          <span style="color: #4caf50; margin-left: 8px;">✓</span>
-                        {% endif %}
-                        {% if not card.unlocked %}
-                          <span style="color: #999; margin-left: 8px;">🔒</span>
-                        {% endif %}
-                      </td>
-                      <td class="col--action">
-                        {% if card.unlocked %}
-                          <a href="/d/{{ domainId }}/learn/lesson" class="button">{{ _('Practice') }}</a>
-                          <a href="/d/{{ domainId }}/learn/lesson?cardId={{ card.cardId }}" class="button" style="margin-left: 8px;">{{ _('Practice Alone') }}</a>
-                        {% else %}
-                          <span class="button" style="opacity: 0.5; cursor: not-allowed;">{{ _('Locked') }}</span>
-                        {% endif %}
-                      </td>
-                    </tr>
-                  {%- endfor -%}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <div class="section__body">
-              <blockquote class="typo note">
-                <p>{{ _('No cards available in this section.') }}</p>
-              </blockquote>
-            </div>
-          {% endif %}
-        </div>
-      </div>
-    {%- endfor -%}
-  {% else %}
-    <div class="section">
-      <div class="section__body">
-        <blockquote class="typo note">
-          <p>{{ _('No nodes available.') }}</p>
-          <p>{{ _('Please create a mindmap first.') }}</p>
-        </blockquote>
-      </div>
-    </div>
-  {% endif %}
-</div>
+<script>
+  {{ set(UiContext, 'domainId', domainId) }}
+  {{ set(UiContext, 'currentProgress', currentProgress) }}
+  {{ set(UiContext, 'totalCards', totalCards) }}
+  {{ set(UiContext, 'consecutiveDays', consecutiveDays) }}
+  {{ set(UiContext, 'dailyGoal', dailyGoal) }}
+  {{ set(UiContext, 'nextCard', nextCard) }}
+</script>
+<div id="learn-container"></div>
 {% endblock %}

@@ -235,6 +235,26 @@ class LearnHandler extends Handler {
         ];
     }
 
+    async post(domainId: string) {
+        if (this.request.path.includes('/daily-goal')) {
+            return this.postSetDailyGoal(domainId);
+        }
+    }
+
+    async postSetDailyGoal(domainId: string) {
+        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+        const body: any = this.request?.body || {};
+        const dailyGoal = parseInt(body.dailyGoal || '0', 10);
+        
+        if (isNaN(dailyGoal) || dailyGoal < 0) {
+            throw new ValidationError('Invalid daily goal');
+        }
+        
+        await domain.setUserInDomain(finalDomainId, this.user._id, { dailyGoal });
+        
+        this.response.body = { success: true, dailyGoal };
+    }
+
     @param('sectionId', Types.String, true)
     async get(domainId: string, sectionId?: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
@@ -346,6 +366,7 @@ class LearnHandler extends Handler {
 
         const dudoc = await domain.getDomainUser(finalDomainId, { _id: this.user._id, priv: this.user.priv });
         const savedSectionId = (dudoc as any)?.currentLearnSectionId;
+        const dailyGoal = (dudoc as any)?.dailyGoal || 0;
         
         let finalSectionId: string | null = null;
         if (sectionId) {
@@ -429,6 +450,38 @@ class LearnHandler extends Handler {
             });
         });
 
+        const totalCards = flatCards.length;
+        const passedCardsCount = passedCardIds.size;
+        const currentProgress = totalCards > 0 ? passedCardsCount : 0;
+
+        const learnResultColl = this.ctx.db.db.collection('learn_result');
+        const allResults = await learnResultColl.find({
+            domainId: finalDomainId,
+            userId: this.user._id,
+        }).toArray();
+
+        const practiceDates = new Set<string>();
+        for (const result of allResults) {
+            if (result.createdAt) {
+                const date = moment.utc(result.createdAt).format('YYYY-MM-DD');
+                practiceDates.add(date);
+            }
+        }
+
+        let consecutiveDays = 0;
+        const today = moment.utc();
+        let checkDate = moment.utc(today);
+        
+        while (true) {
+            const dateStr = checkDate.format('YYYY-MM-DD');
+            if (practiceDates.has(dateStr)) {
+                consecutiveDays++;
+                checkDate = checkDate.subtract(1, 'day');
+            } else {
+                break;
+            }
+        }
+
         const dagWithProgress = dag.map((node, nodeIndex) => ({
             ...node,
             cards: (node.cards || []).map((card, cardIndex) => {
@@ -453,6 +506,14 @@ class LearnHandler extends Handler {
             }),
         }));
 
+        let nextCard: { nodeId: string; cardId: string } | null = null;
+        for (let i = 0; i < flatCards.length; i++) {
+            if (!passedCardIds.has(flatCards[i].cardId)) {
+                nextCard = { nodeId: flatCards[i].nodeId, cardId: flatCards[i].cardId };
+                break;
+            }
+        }
+
         this.response.template = 'learn.html';
         this.response.body = {
             dag: dagWithProgress,
@@ -460,6 +521,11 @@ class LearnHandler extends Handler {
             currentSectionId: finalSectionId,
             domainId: finalDomainId,
             mindMapDocId: mindMap.docId.toString(),
+            currentProgress,
+            totalCards,
+            consecutiveDays,
+            dailyGoal,
+            nextCard,
         };
     }
 
@@ -1190,6 +1256,7 @@ class LearnSectionsHandler extends Handler {
 
 export async function apply(ctx: Context) {
     ctx.Route('learn', '/learn', LearnHandler);
+    ctx.Route('learn_set_daily_goal', '/learn/daily-goal', LearnHandler);
     ctx.Route('learn_sections', '/learn/sections', LearnSectionsHandler);
     ctx.Route('learn_edit', '/learn/edit', LearnEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_lesson', '/learn/lesson', LessonHandler);
