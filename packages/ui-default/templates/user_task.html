@@ -1,0 +1,10 @@
+{% set page_name = "userTaskPage" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<script>
+  {{ set(UiContext, 'udoc', udoc) }}
+  {{ set(UiContext, 'domainTasks', domainTasks) }}
+  {{ set(UiContext, 'summary', summary) }}
+</script>
+<div id="user-task-container"></div>
+{% endblock %}
