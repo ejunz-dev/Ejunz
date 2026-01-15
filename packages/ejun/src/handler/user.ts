@@ -1258,6 +1258,116 @@ class UserConsumptionDetailHandler extends Handler {
     }
 }
 
+class UserTaskHandler extends Handler {
+    @param('uid', Types.Int)
+    async get(domainId: string, uid: number) {
+        if (uid === 0) throw new UserNotFoundError(0);
+        const udoc = await user.getById(domainId, uid);
+        if (!udoc) throw new UserNotFoundError(uid);
+        
+        if (uid !== this.user._id) {
+            throw new ForbiddenError();
+        }
+
+        const dudict = await domain.getDictUserByDomainId(uid);
+        const domainIds = Object.keys(dudict).filter(did => dudict[did].join);
+        const domains = await Promise.all(
+            domainIds.map(async (did) => {
+                const ddoc = await domain.get(did);
+                if (!ddoc) return null;
+                
+                const dudoc = dudict[did];
+                const dailyGoal = (dudoc as any)?.dailyGoal || 0;
+                
+                const learnResultColl = this.ctx.db.db.collection('learn_result');
+                const today = moment.utc().format('YYYY-MM-DD');
+                const startOfToday = moment.utc(today).startOf('day').toDate();
+                const endOfToday = moment.utc(today).endOf('day').toDate();
+                
+                const todayResults = await learnResultColl.find({
+                    domainId: did,
+                    userId: uid,
+                    createdAt: { $gte: startOfToday, $lte: endOfToday },
+                }).toArray();
+                
+                const todayCards = new Set<string>();
+                for (const result of todayResults) {
+                    if (result.cardId) {
+                        todayCards.add(result.cardId.toString());
+                    }
+                }
+                const todayCompleted = todayCards.size;
+                
+                const allResults = await learnResultColl.find({
+                    domainId: did,
+                    userId: uid,
+                }).toArray();
+                
+                const practiceDates = new Set<string>();
+                for (const result of allResults) {
+                    if (result.createdAt) {
+                        const date = moment.utc(result.createdAt).format('YYYY-MM-DD');
+                        practiceDates.add(date);
+                    }
+                }
+                
+                let consecutiveDays = 0;
+                const checkDate = moment.utc();
+                
+                while (true) {
+                    const dateStr = checkDate.format('YYYY-MM-DD');
+                    if (practiceDates.has(dateStr)) {
+                        consecutiveDays++;
+                        checkDate.subtract(1, 'day');
+                    } else {
+                        break;
+                    }
+                }
+                
+                return {
+                    domainId: did,
+                    domainName: ddoc.name,
+                    domainAvatar: ddoc.avatar ? avatar(ddoc.avatar, 32) : '/img/team_avatar.png',
+                    dailyGoal,
+                    todayCompleted,
+                    consecutiveDays,
+                };
+            })
+        );
+        
+        const domainTasks = domains.filter(d => d !== null);
+        
+        // 计算汇总信息
+        let totalDailyGoal = 0;
+        let totalTodayCompleted = 0;
+        let maxConsecutiveDays = 0;
+        
+        for (const task of domainTasks) {
+            totalDailyGoal += task.dailyGoal;
+            totalTodayCompleted += task.todayCompleted;
+            if (task.consecutiveDays > maxConsecutiveDays) {
+                maxConsecutiveDays = task.consecutiveDays;
+            }
+        }
+        
+        const summary = {
+            totalDomains: domainTasks.length,
+            totalDailyGoal,
+            totalTodayCompleted,
+            maxConsecutiveDays,
+        };
+        
+        this.response.template = 'user_task.html';
+        this.response.body = {
+            udoc,
+            domainTasks,
+            summary,
+        };
+        
+        this.UiContext.extraTitleContent = this.translate('My Tasks');
+    }
+}
+
 class UserDeleteHandler extends Handler {
     async post({ password }) {
         await this.user.checkPassword(password);
@@ -1438,6 +1548,7 @@ export async function apply(ctx: Context) {
     ctx.Route('user_lostpass_with_code', '/lostpass/:code', UserLostPassWithCodeHandler);
     ctx.Route('user_delete', '/user/delete', UserDeleteHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('user_detail', '/user/:uid', UserDetailHandler);
+    ctx.Route('user_task', '/user/:uid/task', UserTaskHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('user_contribution_detail', '/user/:uid/contributions/:date/:domainId', UserContributionDetailHandler);
     ctx.Route('user_consumption_detail', '/user/:uid/consumption/:date/:domainId', UserConsumptionDetailHandler);
     if (system.get('server.contestmode')) {
