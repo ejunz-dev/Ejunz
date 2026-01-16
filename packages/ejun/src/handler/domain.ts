@@ -22,20 +22,132 @@ import {
 } from '../service/server';
 import { log2 } from '../utils';
 
+// 更新域排名数据（每道题目 +5 分 ELO）
+export async function updateDomainRanking(ctx: Context, domainId: string) {
+    const domainUserColl = ctx.db.db.collection('domain.user');
+    const domainUsers = await domainUserColl.find({ 
+        domainId, 
+        join: true,
+        uid: { $gt: 1 }
+    }).toArray();
+    
+    const allUserIds = domainUsers.map((du: any) => du.uid);
+    
+    if (allUserIds.length === 0) {
+        return;
+    }
+    
+    const learnResultColl = ctx.db.db.collection('learn_result');
+    
+    const practiceStats = await learnResultColl.aggregate([
+        {
+            $match: {
+                domainId,
+                userId: { $in: allUserIds },
+            },
+        },
+        {
+            $group: {
+                _id: '$userId',
+                totalScore: { $sum: { $ifNull: ['$score', 0] } },
+            },
+        },
+    ]).toArray();
+    
+    const userEloMap = new Map<number, number>();
+    practiceStats.forEach((stat: any) => {
+        userEloMap.set(stat._id, stat.totalScore);
+    });
+    
+    const userRankings: Array<{ uid: number; eloScore: number }> = [];
+    allUserIds.forEach((uid: number) => {
+        userRankings.push({
+            uid,
+            eloScore: userEloMap.get(uid) || 0,
+        });
+    });
+    
+    userRankings.sort((a, b) => b.eloScore - a.eloScore);
+    
+    const rankingColl = ctx.db.db.collection('domain.ranking');
+    
+    await rankingColl.deleteMany({ domainId });
+    
+    const rankingDocs = userRankings.map((ranking, index) => ({
+        domainId,
+        uid: ranking.uid,
+        eloScore: ranking.eloScore,
+        rank: index + 1,
+        updatedAt: new Date(),
+    }));
+    
+    if (rankingDocs.length > 0) {
+        await rankingColl.insertMany(rankingDocs);
+    }
+}
+
 class DomainRankHandler extends Handler {
     @query('page', Types.PositiveInt, true)
     async get(domainId: string, page = 1) {
-        const [dudocs, upcount, ucount] = await this.paginate(
-            domain.getMultiUserInDomain(domainId, { uid: { $gt: 1 }, rp: { $gt: 0 } }).sort({ rp: -1 }),
-            page,
-            'ranking',
-        );
-        const udict = await user.getList(domainId, dudocs.map((dudoc) => dudoc.uid));
-        const udocs = dudocs.map((i) => udict[i.uid]);
+        // 从数据库读取排名数据
+        const rankingColl = this.ctx.db.db.collection('domain.ranking');
+        let allRankings = await rankingColl.find({ domainId })
+            .sort({ eloScore: -1, rank: 1 })
+            .toArray();
+        
+        // 如果排名数据为空，检查是否有加入域的用户，如果有则初始化排名
+        if (allRankings.length === 0) {
+            const domainUserColl = this.ctx.db.db.collection('domain.user');
+            const domainUsers = await domainUserColl.find({ 
+                domainId, 
+                join: true,
+                uid: { $gt: 1 }
+            }).toArray();
+            
+            // 如果有用户但排名数据为空，初始化排名
+            if (domainUsers.length > 0) {
+                await updateDomainRanking(this.ctx, domainId);
+                allRankings = await rankingColl.find({ domainId })
+                    .sort({ eloScore: -1, rank: 1 })
+                    .toArray();
+            }
+        }
+        
+        if (allRankings.length === 0) {
+            this.response.template = 'ranking.html';
+            this.response.body = {
+                udocs: [], upcount: 0, ucount: 0, page: 1,
+            };
+            return;
+        }
+        
+        // 分页
+        const pageSize = 100;
+        const startIndex = (page - 1) * pageSize;
+        const endIndex = startIndex + pageSize;
+        const paginatedRankings = allRankings.slice(startIndex, endIndex);
+        
+        // 获取用户信息
+        const uids = paginatedRankings.map((r: any) => r.uid);
+        const udict = await user.getList(domainId, uids);
+        const udocs = paginatedRankings.map((ranking: any) => {
+            const udoc = udict[ranking.uid];
+            if (!udoc) return null;
+            return {
+                ...udoc,
+                eloScore: ranking.eloScore,
+            };
+        }).filter(udoc => udoc !== null);
+        
+        const upcount = Math.ceil(allRankings.length / pageSize);
+        const ucount = allRankings.length;
+        
         this.response.template = 'ranking.html';
         this.response.body = {
             udocs, upcount, ucount, page,
         };
+        
+        this.UiContext.extraTitleContent = this.translate('Ranking');
     }
 }
 
@@ -476,6 +588,24 @@ declare module '@ejunz/framework' {
 }
 
 export async function apply(ctx: Context) {
+    const rankingUpdateTimers = new Map<string, NodeJS.Timeout>();
+    
+    ctx.on('learn_result/add', async (domainId: string) => {
+        if (rankingUpdateTimers.has(domainId)) {
+            clearTimeout(rankingUpdateTimers.get(domainId)!);
+        }
+        
+        const timer = setTimeout(async () => {
+            rankingUpdateTimers.delete(domainId);
+            await new Promise(resolve => setTimeout(resolve, 200));
+            updateDomainRanking(ctx, domainId).catch((err) => {
+                console.error('Failed to update domain ranking:', err);
+            });
+        }, 500);
+        
+        rankingUpdateTimers.set(domainId, timer);
+    });
+    
     ctx.Route('ranking', '/ranking', DomainRankHandler, PERM.PERM_VIEW_RANKING);
     ctx.Route('domain_dashboard', '/domain/dashboard', DomainDashboardHandler);
     ctx.Route('domain_edit', '/domain/edit', DomainEditHandler);

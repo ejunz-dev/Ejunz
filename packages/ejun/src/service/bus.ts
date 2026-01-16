@@ -92,6 +92,9 @@ export interface EventMap {
     'workflow/trigger': (domainId: string, workflowId: number, triggerData?: Record<string, any>) => VoidReturn;
     'workflow/timer': (domainId: string, workflowId: number, nodeId: number, triggerData?: Record<string, any>) => VoidReturn;
     'edge/ws/outbound': (token: string, envelope: EdgeBridgeEnvelope) => VoidReturn;
+
+    // Learn events
+    'learn_result/add': (domainId: string) => VoidReturn;
 }
 
 export function apply(ctx: Context) {
