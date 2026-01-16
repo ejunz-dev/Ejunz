@@ -9,6 +9,7 @@ import { MethodNotAllowedError } from '@ejunz/framework';
 import { ObjectId } from 'mongodb';
 import db from '../service/db';
 import moment from 'moment-timezone';
+import { updateDomainRanking } from './domain';
 
 function getBranchData(mindMap: MindMapDoc, branch: string): { nodes: MindMapNode[]; edges: MindMapEdge[] } {
     const branchName = branch || 'main';
@@ -1040,6 +1041,8 @@ class LessonHandler extends Handler {
             mindMapDocId: mindMap.docId.toString(),
         };
 
+        const score = answerHistory.length * 5;
+        
         const resultId = new ObjectId();
         const resultColl = this.ctx.db.db.collection('learn_result');
         await resultColl.insertOne({
@@ -1050,8 +1053,12 @@ class LessonHandler extends Handler {
             nodeId: currentCardNodeId,
             answerHistory: answerHistory,
             totalTime: totalTime,
+            score: score,
             createdAt: new Date(),
         });
+
+        // 触发事件通知更新排名
+        await bus.parallel('learn_result/add', finalDomainId);
 
         const today = moment.utc().format('YYYY-MM-DD');
         const uniqueProblemIds = new Set<string>();
