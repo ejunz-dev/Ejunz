@@ -2773,9 +2773,9 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
         </a>
         <a
           href={(() => {
-            const domainId = (window as any).UiContext?.domainId || 'system';
+            const domainId = (window as any).UiContext?.domainId;
             const branch = mindMap.currentBranch || 'main';
-            return `/d/${domainId}/mindmap/${docId}/branch/${branch}/editor`;
+            return `/d/${domainId}/mindmap/branch/${branch}/editor`;
           })()}
           style={{
             padding: '6px 12px',
