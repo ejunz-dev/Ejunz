@@ -4,7 +4,7 @@ import { Handler, param, route, post, Types, ConnectionHandler } from '../servic
 import { NotFoundError, ForbiddenError, BadRequestError, ValidationError, FileLimitExceededError, FileUploadError, FileExistsError } from '../error';
 import { PRIV, PERM } from '../model/builtin';
 import { MindMapModel, CardModel, TYPE_CARD, TYPE_MM } from '../model/mindmap';
-import type { MindMapDoc, MindMapNode, MindMapEdge, CardDoc, MindMapHistoryEntry } from '../interface';
+import type { MindMapDoc, MindMapNode, MindMapEdge, CardDoc } from '../interface';
 import * as document from '../model/document';
 import { exec as execCb } from 'child_process';
 import fs from 'fs';
@@ -1407,27 +1407,6 @@ class MindMapSaveHandler extends Handler {
             edges
         );
 
-        // 记录操作历史
-        const historyEntry: MindMapHistoryEntry = {
-            id: `hist_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            type: 'save',
-            timestamp: new Date(),
-            userId: this.user._id,
-            username: this.user.uname || 'unknown',
-            description: operationDescription || '自动保存',
-            snapshot: {
-                nodes: JSON.parse(JSON.stringify(nodes || currentBranchData.nodes)),
-                edges: JSON.parse(JSON.stringify(edges || currentBranchData.edges)),
-                viewport: viewport || mindMap.viewport,
-            },
-        };
-
-        // 更新历史记录（最多保留50条）
-        const history = mindMap.history || [];
-        history.unshift(historyEntry);
-        if (history.length > 50) {
-            history.splice(50);
-        }
 
         // 更新当前分支的数据（使用过滤后的nodes和edges）
         setBranchData(mindMap, currentBranch, nodes || [], edges || []);
@@ -1439,7 +1418,6 @@ class MindMapSaveHandler extends Handler {
             layout,
             viewport,
             theme,
-            history,
         });
         
         // 如果有非位置改变，立即同步到git（这样git status可以立即检测到）
@@ -1459,7 +1437,6 @@ class MindMapSaveHandler extends Handler {
         // 触发更新事件，通知所有连接的 WebSocket 客户端
         (this.ctx.emit as any)('mindmap/update', docId);
         (this.ctx.emit as any)('mindmap/git/status/update', docId);
-        (this.ctx.emit as any)('mindmap/history/update', docId);
         
         this.response.body = { success: true, hasNonPositionChanges };
     }
@@ -3694,36 +3671,9 @@ class MindMapCommitHandler extends Handler {
                 this.user.uname || 'unknown'
             );
 
-            // 记录commit历史（保存完整的commit消息，包括prefix）
-            const historyEntry: MindMapHistoryEntry = {
-                id: `hist_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                type: 'commit',
-                timestamp: new Date(),
-                userId: this.user._id,
-                username: this.user.uname || 'unknown',
-                description: finalCommitMessage,
-                snapshot: {
-                    nodes: JSON.parse(JSON.stringify(mindMap.nodes || [])),
-                    edges: JSON.parse(JSON.stringify(mindMap.edges || [])),
-                    viewport: mindMap.viewport,
-                },
-            };
-
-            // 更新历史记录（最多保留50条）
-            const history = mindMap.history || [];
-            history.unshift(historyEntry);
-            if (history.length > 50) {
-                history.splice(50);
-            }
-
-            await MindMapModel.updateFull(domainId, mindMap.docId, {
-                history,
-            });
-
             // 触发更新事件，通知所有连接的 WebSocket 客户端
             (this.ctx.emit as any)('mindmap/update', mindMap.docId, mindMap.mmid);
             (this.ctx.emit as any)('mindmap/git/status/update', mindMap.docId, mindMap.mmid);
-            (this.ctx.emit as any)('mindmap/history/update', mindMap.docId, mindMap.mmid);
 
             this.response.body = { ok: true, message: 'Changes committed successfully' };
         } catch (err: any) {
@@ -3734,73 +3684,6 @@ class MindMapCommitHandler extends Handler {
     }
 }
 
-/**
- * MindMap History Handler
- * 获取历史记录和恢复
- */
-class MindMapHistoryHandler extends Handler {
-    @param('docId', Types.ObjectId, true)
-    @param('branch', Types.String, true)
-    async get(domainId: string, docId: ObjectId, branch?: string) {
-        // TODO: 重构为通过 domainId 获取 mindmap
-        // const mindMap = await MindMapModel.getByDomain(domainId);
-        // if (!mindMap) {
-        //     this.response.body = { history: [] };
-        //     return;
-        // }
-        // 
-        // if (!this.user.own(mindMap)) {
-        //     this.checkPerm(PERM.PERM_VIEW_DISCUSSION);
-        // }
-        //
-        // const history = mindMap.history || [];
-        // this.response.body = { history };
-        
-        // 临时返回空历史记录
-        this.response.body = { history: [] };
-    }
-
-    @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
-    @param('branch', Types.String, true)
-    @param('historyId', Types.String)
-    async post(domainId: string, docId: ObjectId, mmid: number, branch: string, historyId: string) {
-        // TODO: 重构为通过 domainId 获取 mindmap
-        // const mindMap = await MindMapModel.getByDomain(domainId);
-        // if (!mindMap) {
-        //     throw new NotFoundError('MindMap not found');
-        // }
-        // 
-        // if (!this.user.own(mindMap)) {
-        //     this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
-        // }
-        //
-        // const currentBranch = branch || (mindMap as any).currentBranch || 'main';
-        // const history = mindMap.history || [];
-        // const historyEntry = history.find(h => h.id === historyId);
-        // if (!historyEntry) {
-        //     throw new NotFoundError('History entry not found');
-        // }
-        //
-        // // 恢复快照数据到当前分支
-        // setBranchData(mindMap, currentBranch, 
-        //     historyEntry.snapshot.nodes || [],
-        //     historyEntry.snapshot.edges || []
-        // );
-        //
-        // await MindMapModel.updateFull(domainId, mindMap.docId, {
-        //     branchData: mindMap.branchData,
-        //     nodes: mindMap.nodes, // 向后兼容
-        //     edges: mindMap.edges, // 向后兼容
-        //     viewport: historyEntry.snapshot.viewport,
-        // });
-        //
-        // this.response.body = { success: true };
-        
-        // 临时返回成功
-        this.response.body = { success: true };
-    }
-}
 
 /**
  * Import mindmap data from git file structure to database
@@ -4128,7 +4011,7 @@ class MindMapGithubConfigHandler extends Handler {
 
 /**
  * MindMap WebSocket Connection Handler
- * 用于实时推送 mindmap 的更新（git status, history 等）
+ * 用于实时推送 mindmap 的更新（git status 等）
  */
 class MindMapConnectionHandler extends ConnectionHandler {
     private docId?: ObjectId;
@@ -4182,14 +4065,6 @@ class MindMapConnectionHandler extends ConnectionHandler {
         });
         this.subscriptions.push({ dispose: dispose2 });
 
-        // 订阅 history 更新事件
-        const dispose3 = (this.ctx.on as any)('mindmap/history/update', async (...args: any[]) => {
-            const [updateDocId, updateMmid] = args;
-            if (updateDocId && updateDocId.toString() === this.docId!.toString()) {
-                await this.sendHistory(domainId);
-            }
-        });
-        this.subscriptions.push({ dispose: dispose3 });
     }
 
     async message(msg: any) {
@@ -4308,12 +4183,10 @@ class MindMapConnectionHandler extends ConnectionHandler {
         try {
             const branch = (mindMap as any).currentBranch || 'main';
             const gitStatus = await getMindMapGitStatus(domainId, mindMap.docId, branch).catch(() => null);
-            const history = mindMap.history || [];
 
             this.send({
                 type: 'init',
                 gitStatus,
-                history,
                 branch,
             });
         } catch (err) {
@@ -4328,12 +4201,10 @@ class MindMapConnectionHandler extends ConnectionHandler {
 
             const branch = (mindMap as any).currentBranch || 'main';
             const gitStatus = await getMindMapGitStatus(domainId, mindMap.docId, branch).catch(() => null);
-            const history = mindMap.history || [];
 
             this.send({
                 type: 'update',
                 gitStatus,
-                history,
                 branch,
             });
         } catch (err) {
@@ -4359,21 +4230,6 @@ class MindMapConnectionHandler extends ConnectionHandler {
         }
     }
 
-    private async sendHistory(domainId: string) {
-        try {
-            const mindMap = await MindMapModel.get(domainId, this.docId!);
-            if (!mindMap) return;
-
-            const history = mindMap.history || [];
-
-            this.send({
-                type: 'history',
-                history,
-            });
-        } catch (err) {
-            logger.error('Failed to send history:', err);
-        }
-    }
 }
 
 /**
@@ -4486,10 +4342,6 @@ export async function apply(ctx: Context) {
     ctx.Route('mindmap_github_push_branch', '/mindmap/branch/:branch/github/push', MindMapGithubPushHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_github_pull', '/mindmap/github/pull', MindMapGithubPullHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('mindmap_github_pull_branch', '/mindmap/branch/:branch/github/pull', MindMapGithubPullHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_history', '/mindmap/history', MindMapHistoryHandler);
-    ctx.Route('mindmap_history_branch', '/mindmap/branch/:branch/history', MindMapHistoryHandler);
-    ctx.Route('mindmap_history_restore', '/mindmap/history/:historyId/restore', MindMapHistoryHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_history_restore_branch', '/mindmap/branch/:branch/history/:historyId/restore', MindMapHistoryHandler, PRIV.PRIV_USER_PROFILE);
     // 参数路由放在最后
     ctx.Route('mindmap_detail', '/mindmap/:docId', MindMapDetailHandler);
     ctx.Route('mindmap_detail_branch', '/mindmap/:docId/branch/:branch', MindMapDetailHandler);
