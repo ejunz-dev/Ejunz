@@ -1413,8 +1413,6 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
   }, [docId, mindMap.mmid, mindMap.currentBranch]);
   const [gitStatus, setGitStatus] = useState<any>(null); // Git 状态
   const [gitStatusLoading, setGitStatusLoading] = useState(false); // Git 状态加载中
-  const [history, setHistory] = useState<any[]>([]); // 操作历史记录
-  const [historyLoading, setHistoryLoading] = useState(false); // 历史记录加载中
   const lastOperationRef = useRef<string>(''); // 记录最后一次操作类型
 
   // 使用 ref 存储回调函数，避免在依赖数组中引起无限循环
@@ -1958,15 +1956,6 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       
       // 保存后刷新历史记录和 Git 状态
       if (response.hasNonPositionChanges) {
-        // 延迟加载历史记录，避免在函数定义之前调用
-        setTimeout(() => {
-          const domainId = (window as any).UiContext?.domainId || 'system';
-          request.get(getMindMapUrl('/history', docId)).then((response) => {
-            setHistory(response.history || []);
-          }).catch((error) => {
-            console.error('Failed to load history:', error);
-          });
-        }, 100);
         
         if (mindMap.githubRepo) {
           const retryLoadGitStatus = async (retries = 3) => {
@@ -2181,7 +2170,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       saveTimerRef.current = null;
       // 注意：Git 状态和历史记录的刷新已经在 handleSave 中处理了
     }, 1500);
-  }, [handleSave, mindMap.githubRepo, loadGitStatus, loadHistory]);
+  }, [handleSave, mindMap.githubRepo, loadGitStatus]);
 
   useEffect(() => {
     let ws: any = null;
@@ -2257,7 +2246,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         }
       }
     };
-  }, [docId, mindMap.githubRepo, loadHistory, loadGitStatus]);
+  }, [docId, mindMap.githubRepo, loadGitStatus]);
 
   // 包装 onEdgesChange 以在边变化时触发自动保存（特别是删除边）
   const handleEdgesChange = useCallback((changes: any) => {
