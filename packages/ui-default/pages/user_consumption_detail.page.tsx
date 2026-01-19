@@ -29,7 +29,7 @@ interface ConsumptionNode {
   id: string;
   name: string;
   createdAt: Date;
-  type: 'mindmap';
+  type: 'base';
 }
 
 interface ConsumptionCard {
@@ -120,15 +120,15 @@ function UserConsumptionDetailPage() {
   }, [theme]);
 
   const getNodeLink = (node: ConsumptionNode) => {
-    if (node.type === 'mindmap' && mindMapDocId) {
-      return `/d/${targetDomain._id}/mindmap/${mindMapDocId}?nodeId=${node.id}`;
+    if (node.type === 'base' && mindMapDocId) {
+      return `/d/${targetDomain._id}/base/${mindMapDocId}?nodeId=${node.id}`;
     }
     return null;
   };
 
   const getCardLink = (card: ConsumptionCard) => {
     if (mindMapDocId && card.nodeId) {
-      return `/d/${targetDomain._id}/mindmap/${mindMapDocId}/branch/main/node/${card.nodeId}/cards?cardId=${card.docId}`;
+      return `/d/${targetDomain._id}/base/${mindMapDocId}/branch/main/node/${card.nodeId}/cards?cardId=${card.docId}`;
     }
     return null;
   };

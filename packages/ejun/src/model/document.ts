@@ -27,7 +27,7 @@ export const TYPE_CLIENT: 40 = 40;
 export const TYPE_CLIENT_CHAT: 41 = 41;
 export const TYPE_WORKFLOW: 60 = 60;
 export const TYPE_WORKFLOW_NODE: 61 = 61;
-export const TYPE_MINDMAP: 70 = 70;
+export const TYPE_BASE: 70 = 70;
 export const TYPE_CARD: 71 = 71;
 export const TYPE_SCENE: 80 = 80;
 export const TYPE_EVENT: 81 = 81;
@@ -46,7 +46,7 @@ export interface DocType {
     [TYPE_TOOL]: ToolDoc;
     [TYPE_WORKFLOW]: WorkflowDoc;
     [TYPE_WORKFLOW_NODE]: WorkflowNodeDoc;
-    [TYPE_MINDMAP]: MindMapDoc;
+    [TYPE_BASE]: MindMapDoc;
     [TYPE_CARD]: CardDoc;
     [TYPE_SCENE]: SceneDoc;
     [TYPE_EVENT]: SceneEventDoc;
@@ -543,6 +543,6 @@ global.Ejunz.model.document = {
     TYPE_TOOL,
     TYPE_WORKFLOW,
     TYPE_WORKFLOW_NODE,
-    TYPE_MINDMAP,
+    TYPE_BASE,
     TYPE_CARD,
 };

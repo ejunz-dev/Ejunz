@@ -1,14 +1,14 @@
 {% import "components/paginator.html" as paginator with context %}
 {% import "components/nothing.html" as nothing with context %}
-<div data-fragment-id="mindmap_list">
+<div data-fragment-id="base_list">
 {% if not mindMaps or mindMaps.length == 0 %}
-  {{ nothing.render('Sorry, there are no mindmaps in the base.') }}
+  {{ nothing.render('Sorry, there are no bases in the base.') }}
 {% else %}
   {{ paginator.render(page, totalPages, position='top', add_qs=('q=' + qs if qs else '')) }}
   <table class="data-table">
     <colgroup>
       <col class="col--checkbox display-mode-hide">
-      <col class="col--mmid">
+      <col class="col--bid">
       <col class="col--title">
       <col class="col--nodes">
       <col class="col--views">
@@ -18,11 +18,11 @@
       <tr>
         <th class="col--checkbox display-mode-hide">
           <label class="compact checkbox">
-            <input type="checkbox" name="select_all" data-checkbox-toggle="mindmap">
+            <input type="checkbox" name="select_all" data-checkbox-toggle="base">
           </label>
         </th>
-        <th class="col--mmid">{{ _('ID') }}</th>
-        <th class="col--title">{{ _('MindMap') }}</th>
+        <th class="col--bid">{{ _('ID') }}</th>
+        <th class="col--title">{{ _('Base') }}</th>
         <th class="col--nodes">{{ _('Nodes') }}</th>
         <th class="col--views">{{ _('Views') }}</th>
         <th class="col--updated">{{ _('Updated') }}</th>
@@ -30,15 +30,15 @@
     </thead>
     <tbody>
       {%- for mindMap in mindMaps -%}
-      <tr data-mmid="{{ mindMap.mmid }}" data-doc-id="{{ mindMap.docId }}">
+      <tr data-bid="{{ mindMap.bid }}" data-doc-id="{{ mindMap.docId }}">
         <td class="col--checkbox display-mode-hide">
           <label class="compact checkbox">
-            <input type="checkbox" data-checkbox-group="mindmap" data-checkbox-range>
+            <input type="checkbox" data-checkbox-group="base" data-checkbox-range>
           </label>
         </td>
-        <td class="col--mmid">{{ mindMap.mmid }}</td>
+        <td class="col--bid">{{ mindMap.bid }}</td>
         <td class="col--title">
-          <a href="{{ url('mindmap_detail', domainId=domainId, docId=mindMap.docId) }}">
+          <a href="{{ url('base_detail', domainId=domainId, docId=mindMap.docId) }}">
             {{ mindMap.title }}
           </a>
         </td>

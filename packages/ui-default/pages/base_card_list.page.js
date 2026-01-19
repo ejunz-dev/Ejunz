@@ -2,7 +2,7 @@ import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
 import { request } from 'vj/utils';
 
-const page = new NamedPage('mindmap_card_list', () => {
+const page = new NamedPage('base_card_list', () => {
   // 从 UiContext 获取数据
   let cards = window.UiContext?.cards || [];
   const baseUrl = window.UiContext?.baseUrl || '';
@@ -26,7 +26,7 @@ const page = new NamedPage('mindmap_card_list', () => {
   async function initImageCache() {
     if ('caches' in window && !imageCache) {
       try {
-        imageCache = await caches.open('mindmap-card-images-v1');
+        imageCache = await caches.open('base-card-images-v1');
       } catch (error) {
         console.error('Failed to open cache:', error);
       }
@@ -244,8 +244,8 @@ const page = new NamedPage('mindmap_card_list', () => {
   
   // 加载当前节点的所有卡片（分批加载并预渲染内容）
   async function loadAllNodeCards() {
-    if (!mindMap.mmid && !mindMap.docId) {
-      console.warn('MindMap data not found');
+    if (!mindMap.bid && !mindMap.docId) {
+      console.warn('Base data not found');
       return;
     }
     
@@ -258,12 +258,12 @@ const page = new NamedPage('mindmap_card_list', () => {
       const domainId = window.UiContext?.domainId || 'system';
       const branch = window.UiContext?.currentBranch || 'main';
       const docId = mindMap.docId;
-      const mmid = mindMap.mmid;
+      const bid = mindMap.bid;
       
       // 先获取卡片总数（通过 API 获取）
       const cardApiUrl = docId
-        ? `/d/${domainId}/mindmap/${docId}/card?nodeId=${encodeURIComponent(nodeId)}`
-        : `/d/${domainId}/mindmap/mmid/${mmid}/card?nodeId=${encodeURIComponent(nodeId)}`;
+        ? `/d/${domainId}/base/${docId}/card?nodeId=${encodeURIComponent(nodeId)}`
+        : `/d/${domainId}/base/bid/${bid}/card?nodeId=${encodeURIComponent(nodeId)}`;
       
       const cardResponse = await request.get(cardApiUrl);
       const allNodeCards = cardResponse.cards || [];
@@ -359,19 +359,19 @@ const page = new NamedPage('mindmap_card_list', () => {
     const progressBar = document.getElementById('card-loading-progress');
     
     const cardItem = document.createElement('div');
-    cardItem.className = 'mindmap-card-list__item card-item';
+    cardItem.className = 'base-card-list__item card-item';
     cardItem.setAttribute('data-card-id', card.docId);
     cardItem.setAttribute('data-order', card.order || order);
     
     cardItem.innerHTML = `
-      <div class="mindmap-card-list__item-content">
+      <div class="base-card-list__item-content">
         <input 
           type="checkbox" 
-          class="mindmap-card-list__checkbox card-checkbox" 
+          class="base-card-list__checkbox card-checkbox" 
           data-card-id="${card.docId}"
         />
-        <span class="mindmap-card-list__drag-handle drag-handle">⋮⋮</span>
-        <div class="mindmap-card-list__item-title">
+        <span class="base-card-list__drag-handle drag-handle">⋮⋮</span>
+        <div class="base-card-list__item-title">
           ${card.title || '未命名卡片'}
         </div>
       </div>
@@ -552,13 +552,13 @@ const page = new NamedPage('mindmap_card_list', () => {
       const domainId = window.UiContext?.domainId || 'system';
       const branch = window.UiContext?.currentBranch || 'main';
       const docId = mindMap.docId;
-      const mmid = mindMap.mmid;
+      const bid = mindMap.bid;
       
       let editUrl;
       if (docId) {
-        editUrl = `/d/${domainId}/mindmap/${docId}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit`;
-      } else if (mmid) {
-        editUrl = `/d/${domainId}/mindmap/mmid/${mmid}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit`;
+        editUrl = `/d/${domainId}/base/${docId}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit`;
+      } else if (bid) {
+        editUrl = `/d/${domainId}/base/bid/${bid}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit`;
       }
       
       if (editUrl) {
@@ -644,7 +644,7 @@ const page = new NamedPage('mindmap_card_list', () => {
       
       // 批量删除
       for (const cardId of selectedCardIds) {
-        const url = `/d/${domainId}/mindmap/card/${cardId}`;
+        const url = `/d/${domainId}/base/card/${cardId}`;
         await request.post(url, {
           operation: 'delete'
         });
@@ -722,7 +722,7 @@ const page = new NamedPage('mindmap_card_list', () => {
       const domainId = window.UiContext?.domainId || 'system';
       for (const update of updates) {
         // 使用正确的路由格式，确保 operation 在请求体中
-        const url = `/d/${domainId}/mindmap/card/${update.cardId}`;
+        const url = `/d/${domainId}/base/card/${update.cardId}`;
         await request.post(url, {
           nodeId: nodeId,
           operation: 'update',
@@ -803,7 +803,7 @@ const page = new NamedPage('mindmap_card_list', () => {
         if (draggedElement && draggedElement !== newItem) {
           const rect = newItem.getBoundingClientRect();
           const mouseY = e.clientY;
-          const itemMiddle = rect.top + rect.height / 2;
+          const itebiddle = rect.top + rect.height / 2;
           
           // 清除之前的样式
           document.querySelectorAll('.card-item').forEach(el => {
@@ -813,7 +813,7 @@ const page = new NamedPage('mindmap_card_list', () => {
             }
           });
           
-          if (mouseY < itemMiddle) {
+          if (mouseY < itebiddle) {
             // 拖到上方
             newItem.style.borderTop = '3px solid #2196f3';
             newItem.style.borderBottom = '';
@@ -845,9 +845,9 @@ const page = new NamedPage('mindmap_card_list', () => {
           if (draggedIdx !== -1 && targetIdx !== -1 && draggedIdx !== targetIdx) {
             const rect = newItem.getBoundingClientRect();
             const mouseY = e.clientY;
-            const itemMiddle = rect.top + rect.height / 2;
+            const itebiddle = rect.top + rect.height / 2;
             
-            if (mouseY < itemMiddle) {
+            if (mouseY < itebiddle) {
               // 插入到目标元素之前
               container.insertBefore(draggedElement, newItem);
             } else {

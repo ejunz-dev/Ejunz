@@ -149,7 +149,7 @@ function handleClickSort(ev) {
   $tbody.empty().append($rows);
 }
 
-const page = new NamedPage(['home_files', 'mindmap_files', 'mindmap_files_mmid', 'mindmap_files_branch', 'mindmap_files_branch_mmid'], (pagename, loadPage) => {
+const page = new NamedPage(['home_files', 'base_files', 'base_files_bid', 'base_files_branch', 'base_files_branch_bid'], (pagename, loadPage) => {
   $('.files [data-copyfilelink]').each(function() {
     const $row = $(this).closest('tr');
     const filename = $row.attr('data-filename') || '';

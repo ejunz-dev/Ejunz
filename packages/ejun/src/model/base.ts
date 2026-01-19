@@ -10,12 +10,12 @@ export const TYPE_MM: 70 = 70;
 export const TYPE_CARD: 71 = 71;
 
 /**
- * MindMap Model
+ * Base Model
  * 提供思维导图的 CRUD 操作
  */
 export class MindMapModel {
     /**
-     * 通过 domainId 获取思维导图（一个 domain 一个 mindmap）
+     * 通过 domainId 获取思维导图（一个 domain 一个 base）
      */
     static async getByDomain(domainId: string): Promise<MindMapDoc | null> {
         const result = await document.getMulti(domainId, TYPE_MM, {}).limit(1).toArray();
@@ -23,7 +23,7 @@ export class MindMapModel {
     }
 
     /**
-     * 创建或获取思维导图（一个 domain 一个 mindmap）
+     * 创建或获取思维导图（一个 domain 一个 base）
      */
     static async create(
         domainId: string,
@@ -35,7 +35,7 @@ export class MindMapModel {
         ip?: string,
         parentId?: ObjectId
     ): Promise<{ docId: ObjectId }> {
-        // 检查 domain 是否已有 mindmap
+        // 检查 domain 是否已有 base
         const existing = await this.getByDomain(domainId);
         if (existing) {
             // 如果已存在，更新标题和内容（如果需要）
@@ -147,7 +147,7 @@ export class MindMapModel {
         updates: Partial<MindMapNode>
     ): Promise<void> {
         const mindMap = await this.get(domainId, docId);
-        if (!mindMap) throw new Error('MindMap not found');
+        if (!mindMap) throw new Error('Base not found');
 
         const nodeIndex = mindMap.nodes.findIndex(n => n.id === nodeId);
         if (nodeIndex === -1) throw new Error('Node not found');
@@ -201,7 +201,7 @@ export class MindMapModel {
         edgeSourceId?: string
     ): Promise<{ nodeId: string; edgeId?: string }> {
         const mindMap = await this.get(domainId, docId);
-        if (!mindMap) throw new Error('MindMap not found');
+        if (!mindMap) throw new Error('Base not found');
 
         // 获取分支名称（优先使用传入的分支，否则使用 mindMap 中的分支，最后默认为 'main'）
         const branchName = branch || (mindMap as any).currentBranch || (mindMap as any).branch || 'main';
@@ -311,7 +311,7 @@ export class MindMapModel {
      */
     static async deleteNode(domainId: string, docId: ObjectId, nodeId: string, branch?: string): Promise<void> {
         const mindMap = await this.get(domainId, docId);
-        if (!mindMap) throw new Error('MindMap not found');
+        if (!mindMap) throw new Error('Base not found');
 
         // 获取分支名称（优先使用传入的分支，否则使用 mindMap 中的分支，最后默认为 'main'）
         const branchName = branch || (mindMap as any).currentBranch || (mindMap as any).branch || 'main';
@@ -396,7 +396,7 @@ export class MindMapModel {
         for (const nodeIdToDelete of nodesToDelete) {
             try {
                 // 获取该节点在所有分支下的所有卡片
-                const cards = await CardModel.getByNodeId(domainId, mindMap.mmid, nodeIdToDelete);
+                const cards = await CardModel.getByNodeId(domainId, mindMap.bid, nodeIdToDelete);
                 for (const card of cards) {
                     await CardModel.delete(domainId, card.docId);
                 }
@@ -503,7 +503,7 @@ export class MindMapModel {
                 mindMap = await this.get(domainId, docId);
                 if (!mindMap) {
                     // 如果仍然获取失败，抛出错误
-                    throw new Error('MindMap not found');
+                    throw new Error('Base not found');
                 }
             }
         }
@@ -615,7 +615,7 @@ export class MindMapModel {
      */
     static async deleteEdge(domainId: string, docId: ObjectId, edgeId: string): Promise<void> {
         const mindMap = await this.get(domainId, docId);
-        if (!mindMap) throw new Error('MindMap not found');
+        if (!mindMap) throw new Error('Base not found');
 
         // 获取当前分支
         const currentBranch = (mindMap as any).currentBranch || 'main';
@@ -657,7 +657,7 @@ export class MindMapModel {
         nodes: MindMapNode[]
     ): Promise<void> {
         const mindMap = await this.get(domainId, docId);
-        if (!mindMap) throw new Error('MindMap not found');
+        if (!mindMap) throw new Error('Base not found');
 
         // 验证所有节点ID都存在
         const nodeIds = new Set(mindMap.nodes.map(n => n.id));
@@ -686,7 +686,7 @@ export class MindMapModel {
         edges: MindMapEdge[]
     ): Promise<void> {
         const mindMap = await this.get(domainId, docId);
-        if (!mindMap) throw new Error('MindMap not found');
+        if (!mindMap) throw new Error('Base not found');
 
         // 验证所有连接ID都存在
         const edgeIds = new Set(mindMap.edges.map(e => e.id));
@@ -878,7 +878,7 @@ export class CardModel {
 }
 
 // @ts-ignore
-global.Ejunz.model.mindmap = MindMapModel;
+global.Ejunz.model.base = MindMapModel;
 // @ts-ignore
 global.Ejunz.model.card = CardModel;
 export default { MindMapModel, CardModel };

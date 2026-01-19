@@ -155,9 +155,9 @@ __langname: English
 'Operations': Operations
 'Play Audio': Play Audio
 'Play Recording': Play Recording
-'Please create a mindmap first.': Please create a mindmap first.
-'Please create a mindmap with at least one section.': Please create a mindmap with at least one section.
-'Please create a mindmap with course structure (course -> section -> unit -> lesson)': Please create a mindmap with course structure (course -> section -> unit -> lesson)
+'Please create a base first.': Please create a base first.
+'Please create a base with at least one section.': Please create a base with at least one section.
+'Please create a base with course structure (course -> section -> unit -> lesson)': Please create a base with course structure (course -> section -> unit -> lesson)
 'Please generate token on': Please generate token on
 'Please select a conversation from the left sidebar to view chat details': Please select a conversation from the left sidebar to view chat details
 'Please select': Please select
@@ -246,7 +246,6 @@ agent_detail: Agent Detail
 agent_domain: Agent
 agent_edit: Edit Agent
 Back to: Back to
-base_domain: Base
 Belongs to card: Belongs to card
 block_create: Create Block
 block_detail: Block Detail
@@ -321,20 +320,20 @@ mcp_domain: MCP
 mcp_edit: Edit MCP
 mcp_logs: MCP Logs
 Members: Members
-MindMap Node: MindMap Node
-mindmap_create: Create MindMap
-mindmap_data: MindMap Data
-mindmap_delete: Delete MindMap
-mindmap_detail: MindMap Detail
-mindmap_domain: MindMap
-mindmap_edge: MindMap Edge
-mindmap_edit: Edit MindMap
-mindmap_editor: MindMap Editor
-mindmap_list: MindMap List
-mindmap_node: MindMap Node
-mindmap_outline: MindMap
-mindmap_save: Save MindMap
-mindmap_study: Study MindMap
+Base Node: Base Node
+base_create: Create Base
+base_data: Base Data
+base_delete: Delete Base
+base_detail: Base Detail
+base_domain: Base
+base_edge: Base Edge
+base_edit: Edit Base
+base_editor: Base Editor
+base_list: Base List
+base_node: Base Node
+base_outline: Base
+base_save: Save Base
+base_study: Study Base
 More: More
 No contribution records on this day: No contribution records on this day
 No domains joined.: No domains joined.
