@@ -33,7 +33,8 @@ export class MindMapModel {
         rpid?: number,
         branch?: string,
         ip?: string,
-        parentId?: ObjectId
+        parentId?: ObjectId,
+        domainName?: string
     ): Promise<{ docId: ObjectId }> {
         // 检查 domain 是否已有 base
         const existing = await this.getByDomain(domainId);
@@ -48,10 +49,11 @@ export class MindMapModel {
             return { docId: existing.docId };
         }
 
-        // 创建根节点
+        // 创建根节点，使用域名字作为默认名称
+        const rootNodeText = title || domainName || '根节点';
         const rootNode: MindMapNode = {
             id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            text: title || '根节点',
+            text: rootNodeText,
             x: 0,
             y: 0,
             level: 0,
