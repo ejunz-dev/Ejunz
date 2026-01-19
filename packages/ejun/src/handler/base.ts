@@ -409,11 +409,13 @@ class MindMapOutlineHandler extends Handler {
             const { docId } = await MindMapModel.create(
                 domainId,
                 this.user._id,
-                '思维导图',
+                this.domain.name || '知识库',
                 '',
                 undefined,
                 requestedBranch,
-                this.request.ip
+                this.request.ip,
+                undefined,
+                this.domain.name
             );
             mindMap = await MindMapModel.get(domainId, docId);
             if (!mindMap) {
@@ -434,7 +436,7 @@ class MindMapOutlineHandler extends Handler {
         // 如果没有节点，自动创建一个根节点
         if (nodes.length === 0) {
             const rootNode: Omit<MindMapNode, 'id'> = {
-                text: '根节点',
+                text: this.domain.name || '根节点',
                 level: 0,
             };
             const result = await MindMapModel.addNode(
@@ -609,11 +611,13 @@ class MindMapEditorHandler extends Handler {
             const { docId } = await MindMapModel.create(
                 domainId,
                 this.user._id,
-                '思维导图',
+                this.domain.name || '知识库',
                 '',
                 undefined,
                 requestedBranch,
-                this.request.ip
+                this.request.ip,
+                undefined,
+                this.domain.name
             );
             mindMap = await MindMapModel.get(domainId, docId);
             if (!mindMap) {
@@ -642,7 +646,7 @@ class MindMapEditorHandler extends Handler {
         // 如果没有节点，自动创建一个根节点
         if (nodes.length === 0) {
             const rootNode: Omit<MindMapNode, 'id'> = {
-                text: '根节点',
+                text: this.domain.name,
                 level: 0,
             };
             const result = await MindMapModel.addNode(
@@ -744,7 +748,8 @@ class MindMapCreateHandler extends Handler {
             rpid,
             branch,
             this.request.ip,
-            parentId
+            parentId,
+            this.domain.name
         );
 
         console.log(`[Base Create] Created/Updated base with docId: ${docId.toString()}, domainId: ${actualDomainId}`);
@@ -1265,17 +1270,18 @@ class MindMapSaveHandler extends Handler {
             const data = this.request.body || {};
             const { nodes = [], edges = [] } = data;
             
-            // 如果没有节点，创建一个默认根节点
+            // 如果没有节点，创建一个默认根节点，使用域名字
+            const rootNodeText = this.domain.name;
             const finalNodes = nodes.length > 0 ? nodes : [{
                 id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                text: '根节点',
+                text: rootNodeText,
                 level: 0,
             }];
             
             const payload: Partial<MindMapDoc> = {
                 docType: TYPE_MM,
                 domainId,
-                title: '思维导图',
+                title: this.domain.name || '知识库',
                 content: '',
                 owner: this.user._id,
                 nodes: finalNodes,
@@ -1671,7 +1677,7 @@ class MindMapDataHandler extends Handler {
         // 如果没有节点，自动创建一个根节点
         if (nodes.length === 0) {
             const rootNode: Omit<MindMapNode, 'id'> = {
-                text: '根节点',
+                text: this.domain.name,
                 level: 0,
             };
             const result = await MindMapModel.addNode(
