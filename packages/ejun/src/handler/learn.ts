@@ -1,7 +1,7 @@
 import type { Context } from '../context';
 import { Handler, param, post, Types } from '../service/server';
-import { MindMapModel, CardModel } from '../model/base';
-import type { MindMapDoc, MindMapNode, MindMapEdge } from '../interface';
+import { BaseModel, CardModel } from '../model/base';
+import type { BaseDoc, BaseNode, BaseEdge } from '../interface';
 import domain from '../model/domain';
 import { PRIV } from '../model/builtin';
 import { NotFoundError, ValidationError } from '../error';
@@ -11,20 +11,20 @@ import db from '../service/db';
 import moment from 'moment-timezone';
 import { updateDomainRanking } from './domain';
 
-function getBranchData(mindMap: MindMapDoc, branch: string): { nodes: MindMapNode[]; edges: MindMapEdge[] } {
+function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edges: BaseEdge[] } {
     const branchName = branch || 'main';
     
-    if (mindMap.branchData && mindMap.branchData[branchName]) {
+    if (base.branchData && base.branchData[branchName]) {
         return {
-            nodes: mindMap.branchData[branchName].nodes || [],
-            edges: mindMap.branchData[branchName].edges || [],
+            nodes: base.branchData[branchName].nodes || [],
+            edges: base.branchData[branchName].edges || [],
         };
     }
     
     if (branchName === 'main') {
         return {
-            nodes: mindMap.nodes || [],
-            edges: mindMap.edges || [],
+            nodes: base.nodes || [],
+            edges: base.edges || [],
         };
     }
     
@@ -33,13 +33,13 @@ function getBranchData(mindMap: MindMapDoc, branch: string): { nodes: MindMapNod
 
 async function generateDAG(
     domainId: string,
-    mindMapDocId: ObjectId,
-    nodes: MindMapNode[],
-    edges: MindMapEdge[],
+    baseDocId: ObjectId,
+    nodes: BaseNode[],
+    edges: BaseEdge[],
     translate: (key: string) => string
 ): Promise<{ sections: LearnDAGNode[]; dag: LearnDAGNode[] }> {
     
-    const nodeMap = new Map<string, MindMapNode>();
+    const nodeMap = new Map<string, BaseNode>();
     nodes.forEach(node => nodeMap.set(node.id, node));
 
     const parentMap = new Map<string, string>();
@@ -67,7 +67,7 @@ async function generateDAG(
         const node = nodeMap.get(nodeId);
         if (!node) return;
 
-        const cards = await CardModel.getByNodeId(domainId, mindMapDocId, nodeId);
+        const cards = await CardModel.getByNodeId(domainId, baseDocId, nodeId);
         for (const card of cards) {
             collectedCards.push({
                 cardId: card.docId.toString(),
@@ -95,7 +95,7 @@ async function generateDAG(
             await collectAllCards(nodeId, allCards);
             cardList = allCards.sort((a, b) => (a.order || 0) - (b.order || 0));
         } else {
-            const cards = await CardModel.getByNodeId(domainId, mindMapDocId, nodeId);
+            const cards = await CardModel.getByNodeId(domainId, baseDocId, nodeId);
             cardList = cards.map(card => ({
                 cardId: card.docId.toString(),
                 title: card.title || translate('Unnamed Card'),
@@ -135,7 +135,7 @@ async function generateDAG(
             
             if (allOtherNodes.length > 0) {
                 for (const otherNode of allOtherNodes) {
-                    const cards = await CardModel.getByNodeId(domainId, mindMapDocId, otherNode.id);
+                    const cards = await CardModel.getByNodeId(domainId, baseDocId, otherNode.id);
                     const cardList = cards.map(card => ({
                         cardId: card.docId.toString(),
                         title: card.title || translate('Unnamed Card'),
@@ -152,7 +152,7 @@ async function generateDAG(
                 }
             } else {
                 
-                const rootCards = await CardModel.getByNodeId(domainId, mindMapDocId, rootNode.id);
+                const rootCards = await CardModel.getByNodeId(domainId, baseDocId, rootNode.id);
                 if (rootCards.length > 0) {
                     const rootCardList = rootCards.map(card => ({
                         cardId: card.docId.toString(),
@@ -178,7 +178,7 @@ async function generateDAG(
     return { sections, dag: dagNodes };
 }
 
-interface MindMapNodeWithCards {
+interface BaseNodeWithCards {
     id: string;
     text: string;
     level?: number;
@@ -190,7 +190,7 @@ interface MindMapNodeWithCards {
         cardDocId: string;
         order?: number;
     }>;
-    children?: MindMapNodeWithCards[];
+    children?: BaseNodeWithCards[];
 }
 
 interface LearnDAGNode {
@@ -208,7 +208,7 @@ interface LearnDAGNode {
 
 interface LearnDAGDoc {
     domainId: string;
-    mindMapDocId: ObjectId;
+    baseDocId: ObjectId;
     branch: string;
     sections: LearnDAGNode[];
     dag: LearnDAGNode[];
@@ -265,50 +265,50 @@ class LearnHandler extends Handler {
     @param('sectionId', Types.String, true)
     async get(domainId: string, sectionId?: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
-        let mindMap = await MindMapModel.getByDomain(finalDomainId);
+        let base = await BaseModel.getByDomain(finalDomainId);
         
-        if (!mindMap) {
+        if (!base) {
             this.response.template = 'learn.html';
             this.response.body = {
                 dag: [],
                 domainId: finalDomainId,
-                mindMapDocId: null,
+                baseDocId: null,
             };
             return;
         }
 
         
-        const initialNodes = mindMap.nodes?.length || 0;
-        const initialEdges = mindMap.edges?.length || 0;
-        const branchDataNodes = mindMap.branchData?.['main']?.nodes?.length || 0;
-        const branchDataEdges = mindMap.branchData?.['main']?.edges?.length || 0;
+        const initialNodes = base.nodes?.length || 0;
+        const initialEdges = base.edges?.length || 0;
+        const branchDataNodes = base.branchData?.['main']?.nodes?.length || 0;
+        const branchDataEdges = base.branchData?.['main']?.edges?.length || 0;
         
         if ((initialNodes <= 1 && initialEdges === 0 && branchDataNodes <= 1 && branchDataEdges === 0)) {
-            const reloadedMindMap = await MindMapModel.get(finalDomainId, mindMap.docId);
-            if (reloadedMindMap) {
-                mindMap = reloadedMindMap;
+            const reloadedBase = await BaseModel.get(finalDomainId, base.docId);
+            if (reloadedBase) {
+                base = reloadedBase;
             }
         }
 
-        const dbMindMap = await this.ctx.db.db.collection('document').findOne({
+        const dbBase = await this.ctx.db.db.collection('document').findOne({
             domainId: finalDomainId,
             docType: 70,
-            docId: mindMap.docId,
+            docId: base.docId,
         });
-        if (dbMindMap) {
-            const dbNodes = dbMindMap.branchData?.['main']?.nodes || dbMindMap.nodes || [];
-            const dbEdges = dbMindMap.branchData?.['main']?.edges || dbMindMap.edges || [];
-            if (dbNodes.length > (mindMap.nodes?.length || 0) || dbEdges.length > (mindMap.edges?.length || 0)) {
-                mindMap.nodes = dbNodes;
-                mindMap.edges = dbEdges;
-                if (dbMindMap.branchData) {
-                    mindMap.branchData = dbMindMap.branchData;
+        if (dbBase) {
+            const dbNodes = dbBase.branchData?.['main']?.nodes || dbBase.nodes || [];
+            const dbEdges = dbBase.branchData?.['main']?.edges || dbBase.edges || [];
+            if (dbNodes.length > (base.nodes?.length || 0) || dbEdges.length > (base.edges?.length || 0)) {
+                base.nodes = dbNodes;
+                base.edges = dbEdges;
+                if (dbBase.branchData) {
+                    base.branchData = dbBase.branchData;
                 }
             }
         }
         
         const branch = 'main';
-        const branchData = getBranchData(mindMap, branch);
+        const branchData = getBranchData(base, branch);
         const nodes = branchData.nodes || [];
         const edges = branchData.edges || [];
         
@@ -318,7 +318,7 @@ class LearnHandler extends Handler {
                 dag: [],
                 sections: [],
                 domainId: finalDomainId,
-                mindMapDocId: mindMap.docId.toString() || null,
+                baseDocId: base.docId.toString() || null,
             };
             return;
         }
@@ -327,13 +327,13 @@ class LearnHandler extends Handler {
         const learnDAGColl = this.ctx.db.db.collection('learn_dag');
         const existingDAG = await learnDAGColl.findOne({
             domainId: finalDomainId,
-            mindMapDocId: mindMap.docId,
+            baseDocId: base.docId,
             branch: branch,
         });
 
         
-        const mindMapVersion = mindMap.updateAt ? mindMap.updateAt.getTime() : 0;
-        const needsUpdate = !existingDAG || (existingDAG.version || 0) < mindMapVersion;
+        const baseVersion = base.updateAt ? base.updateAt.getTime() : 0;
+        const needsUpdate = !existingDAG || (existingDAG.version || 0) < baseVersion;
         
         const hasEmptySections = existingDAG && (!existingDAG.sections || existingDAG.sections.length === 0);
         const cachedNodesCount = existingDAG ? ((existingDAG.dag?.length || 0) + (existingDAG.sections?.length || 0)) : 0;
@@ -343,24 +343,24 @@ class LearnHandler extends Handler {
         let allDagNodes: LearnDAGNode[] = [];
 
         if (shouldRegenerate) {
-            const result = await generateDAG(finalDomainId, mindMap.docId, nodes, edges, (key: string) => this.translate(key));
+            const result = await generateDAG(finalDomainId, base.docId, nodes, edges, (key: string) => this.translate(key));
             sections = result.sections;
             allDagNodes = result.dag;
             
             await learnDAGColl.updateOne(
                 {
                     domainId: finalDomainId,
-                    mindMapDocId: mindMap.docId,
+                    baseDocId: base.docId,
                     branch: branch,
                 },
                 {
                     $set: {
                         domainId: finalDomainId,
-                        mindMapDocId: mindMap.docId,
+                        baseDocId: base.docId,
                         branch: branch,
                         sections: sections,
                         dag: allDagNodes,
-                        version: mindMapVersion,
+                        version: baseVersion,
                         updateAt: new Date(),
                     },
                 },
@@ -527,7 +527,7 @@ class LearnHandler extends Handler {
             sections: sections,
             currentSectionId: finalSectionId,
             domainId: finalDomainId,
-            mindMapDocId: mindMap.docId.toString(),
+            baseDocId: base.docId.toString(),
             currentProgress,
             totalCards,
             consecutiveDays,
@@ -566,41 +566,41 @@ class LearnEditHandler extends Handler {
 
     async get(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
-        const mindMap = await MindMapModel.getByDomain(finalDomainId);
+        const base = await BaseModel.getByDomain(finalDomainId);
         
-        if (!mindMap) {
+        if (!base) {
             throw new NotFoundError('Base not found for this domain');
         }
 
-        const branches = Array.isArray((mindMap as any)?.branches) 
-            ? (mindMap as any).branches 
+        const branches = Array.isArray((base as any)?.branches) 
+            ? (base as any).branches 
             : ['main'];
         if (!branches.includes('main')) {
             branches.unshift('main');
         }
 
         const dudoc = await domain.getDomainUser(domainId, { _id: this.user._id, priv: this.user.priv });
-        const currentBranch = (dudoc as any)?.learnBranch || (mindMap as any)?.currentBranch || 'main';
+        const currentBranch = (dudoc as any)?.learnBranch || (base as any)?.currentBranch || 'main';
 
         this.response.template = 'learn_edit.html';
         this.response.body = {
             domainId,
             branches,
             currentBranch,
-            mindMapTitle: mindMap.title,
+            baseTitle: base.title,
         };
     }
 
     @post('branch', Types.String)
     async postSetBranch(domainId: string, branch: string) {
-        const mindMap = await MindMapModel.getByDomain(domainId);
+        const base = await BaseModel.getByDomain(domainId);
         
-        if (!mindMap) {
+        if (!base) {
             throw new NotFoundError('Base not found for this domain');
         }
 
-        const branches = Array.isArray((mindMap as any)?.branches) 
-            ? (mindMap as any).branches 
+        const branches = Array.isArray((base as any)?.branches) 
+            ? (base as any).branches 
             : ['main'];
         if (!branches.includes('main')) {
             branches.unshift('main');
@@ -649,8 +649,8 @@ class LessonHandler extends Handler {
         }
         
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
-        const mindMap = await MindMapModel.getByDomain(finalDomainId);
-        if (!mindMap) {
+        const base = await BaseModel.getByDomain(finalDomainId);
+        if (!base) {
             throw new NotFoundError('Base not found for this domain');
         }
 
@@ -672,12 +672,12 @@ class LessonHandler extends Handler {
                 throw new NotFoundError('Card has no practice questions');
             }
 
-            const node = (getBranchData(mindMap, 'main').nodes || []).find(n => n.id === card.nodeId);
+            const node = (getBranchData(base, 'main').nodes || []).find(n => n.id === card.nodeId);
             if (!node) {
                 throw new NotFoundError('Node not found');
             }
 
-            const cards = await CardModel.getByNodeId(finalDomainId, mindMap.docId, card.nodeId);
+            const cards = await CardModel.getByNodeId(finalDomainId, base.docId, card.nodeId);
             const currentIndex = cards.findIndex(c => c.docId.toString() === cardId.toString());
 
             this.response.template = 'lesson.html';
@@ -687,14 +687,14 @@ class LessonHandler extends Handler {
                 cards,
                 currentIndex: currentIndex >= 0 ? currentIndex : 0,
                 domainId: finalDomainId,
-                mindMapDocId: mindMap.docId.toString(),
+                baseDocId: base.docId.toString(),
                 isAlonePractice: true,
             };
             return;
         }
 
         const branch = 'main';
-        const branchData = getBranchData(mindMap, branch);
+        const branchData = getBranchData(base, branch);
         const nodes = branchData.nodes || [];
         const edges = branchData.edges || [];
         
@@ -705,12 +705,12 @@ class LessonHandler extends Handler {
         const learnDAGColl = this.ctx.db.db.collection('learn_dag');
         const existingDAG = await learnDAGColl.findOne({
             domainId: finalDomainId,
-            mindMapDocId: mindMap.docId,
+            baseDocId: base.docId,
             branch: branch,
         });
 
-        const mindMapVersion = mindMap.updateAt ? mindMap.updateAt.getTime() : 0;
-        const needsUpdate = !existingDAG || (existingDAG.version || 0) < mindMapVersion;
+        const baseVersion = base.updateAt ? base.updateAt.getTime() : 0;
+        const needsUpdate = !existingDAG || (existingDAG.version || 0) < baseVersion;
         const hasEmptySections = existingDAG && (!existingDAG.sections || existingDAG.sections.length === 0);
         const cachedNodesCount = existingDAG ? ((existingDAG.dag?.length || 0) + (existingDAG.sections?.length || 0)) : 0;
         const shouldRegenerate = needsUpdate || !existingDAG || hasEmptySections || (nodes.length > 0 && cachedNodesCount === 0);
@@ -719,24 +719,24 @@ class LessonHandler extends Handler {
         let allDagNodes: LearnDAGNode[] = [];
 
         if (shouldRegenerate) {
-            const result = await generateDAG(finalDomainId, mindMap.docId, nodes, edges, (key: string) => this.translate(key));
+            const result = await generateDAG(finalDomainId, base.docId, nodes, edges, (key: string) => this.translate(key));
             sections = result.sections;
             allDagNodes = result.dag;
             
             await learnDAGColl.updateOne(
                 {
                     domainId: finalDomainId,
-                    mindMapDocId: mindMap.docId,
+                    baseDocId: base.docId,
                     branch: branch,
                 },
                 {
                     $set: {
                         domainId: finalDomainId,
-                        mindMapDocId: mindMap.docId,
+                        baseDocId: base.docId,
                         branch: branch,
                         sections: sections,
                         dag: allDagNodes,
-                        version: mindMapVersion,
+                        version: baseVersion,
                         updateAt: new Date(),
                     },
                 },
@@ -824,12 +824,12 @@ class LessonHandler extends Handler {
             throw new NotFoundError('Card not found');
         }
 
-        const node = (getBranchData(mindMap, 'main').nodes || []).find(n => n.id === nextCard!.nodeId);
+        const node = (getBranchData(base, 'main').nodes || []).find(n => n.id === nextCard!.nodeId);
         if (!node) {
             throw new NotFoundError('Node not found');
         }
 
-        const cards = await CardModel.getByNodeId(finalDomainId, mindMap.docId, nextCard.nodeId);
+        const cards = await CardModel.getByNodeId(finalDomainId, base.docId, nextCard.nodeId);
         const currentIndex = cards.findIndex(c => c.docId.toString() === nextCard!.cardId);
 
         this.response.template = 'lesson.html';
@@ -839,7 +839,7 @@ class LessonHandler extends Handler {
             cards,
             currentIndex: currentIndex >= 0 ? currentIndex : 0,
             domainId: finalDomainId,
-            mindMapDocId: mindMap.docId.toString(),
+            baseDocId: base.docId.toString(),
         };
     }
 
@@ -851,13 +851,13 @@ class LessonHandler extends Handler {
         const isAlonePractice = body.isAlonePractice || false;
         const cardIdFromBody = body.cardId;
         
-        const mindMap = await MindMapModel.getByDomain(finalDomainId);
-        if (!mindMap) {
+        const base = await BaseModel.getByDomain(finalDomainId);
+        if (!base) {
             throw new NotFoundError('Base not found for this domain');
         }
 
         const branch = 'main';
-        const branchData = getBranchData(mindMap, branch);
+        const branchData = getBranchData(base, branch);
         const nodes = branchData.nodes || [];
         const edges = branchData.edges || [];
         
@@ -868,12 +868,12 @@ class LessonHandler extends Handler {
         const learnDAGColl = this.ctx.db.db.collection('learn_dag');
         const existingDAG = await learnDAGColl.findOne({
             domainId: finalDomainId,
-            mindMapDocId: mindMap.docId,
+            baseDocId: base.docId,
             branch: branch,
         });
 
-        const mindMapVersion = mindMap.updateAt ? mindMap.updateAt.getTime() : 0;
-        const needsUpdate = !existingDAG || (existingDAG.version || 0) < mindMapVersion;
+        const baseVersion = base.updateAt ? base.updateAt.getTime() : 0;
+        const needsUpdate = !existingDAG || (existingDAG.version || 0) < baseVersion;
         const hasEmptySections = existingDAG && (!existingDAG.sections || existingDAG.sections.length === 0);
         const cachedNodesCount = existingDAG ? ((existingDAG.dag?.length || 0) + (existingDAG.sections?.length || 0)) : 0;
         const shouldRegenerate = needsUpdate || !existingDAG || hasEmptySections || (nodes.length > 0 && cachedNodesCount === 0);
@@ -882,24 +882,24 @@ class LessonHandler extends Handler {
         let allDagNodes: LearnDAGNode[] = [];
 
         if (shouldRegenerate) {
-            const result = await generateDAG(finalDomainId, mindMap.docId, nodes, edges, (key: string) => this.translate(key));
+            const result = await generateDAG(finalDomainId, base.docId, nodes, edges, (key: string) => this.translate(key));
             sections = result.sections;
             allDagNodes = result.dag;
             
             await learnDAGColl.updateOne(
                 {
                     domainId: finalDomainId,
-                    mindMapDocId: mindMap.docId,
+                    baseDocId: base.docId,
                     branch: branch,
                 },
                 {
                     $set: {
                         domainId: finalDomainId,
-                        mindMapDocId: mindMap.docId,
+                        baseDocId: base.docId,
                         branch: branch,
                         sections: sections,
                         dag: allDagNodes,
-                        version: mindMapVersion,
+                        version: baseVersion,
                         updateAt: new Date(),
                     },
                 },
@@ -1027,8 +1027,8 @@ class LessonHandler extends Handler {
             );
         }
 
-        const node = (getBranchData(mindMap, 'main').nodes || []).find(n => n.id === currentCardNodeId);
-        const cards = await CardModel.getByNodeId(finalDomainId, mindMap.docId, currentCardNodeId);
+        const node = (getBranchData(base, 'main').nodes || []).find(n => n.id === currentCardNodeId);
+        const cards = await CardModel.getByNodeId(finalDomainId, base.docId, currentCardNodeId);
         const cardIndex = cards.findIndex(c => c.docId.toString() === currentCardId.toString());
         const currentCardDoc = cards[cardIndex];
 
@@ -1038,7 +1038,7 @@ class LessonHandler extends Handler {
             answerHistory: answerHistory,
             totalTime: totalTime,
             domainId: finalDomainId,
-            mindMapDocId: mindMap.docId.toString(),
+            baseDocId: base.docId.toString(),
         };
 
         const score = answerHistory.length * 5;
@@ -1111,12 +1111,12 @@ class LessonHandler extends Handler {
             throw new NotFoundError('Result not found');
         }
 
-        const mindMap = await MindMapModel.getByDomain(finalDomainId);
-        if (!mindMap) {
+        const base = await BaseModel.getByDomain(finalDomainId);
+        if (!base) {
             throw new NotFoundError('Base not found for this domain');
         }
 
-        const node = (getBranchData(mindMap, 'main').nodes || []).find(n => n.id === result.nodeId);
+        const node = (getBranchData(base, 'main').nodes || []).find(n => n.id === result.nodeId);
         if (!node) {
             throw new NotFoundError('Node not found');
         }
@@ -1152,7 +1152,7 @@ class LessonHandler extends Handler {
             problemStats,
             totalTime: result.totalTime,
             domainId: finalDomainId,
-            mindMapDocId: mindMap.docId.toString(),
+            baseDocId: base.docId.toString(),
         };
     }
 }
@@ -1179,20 +1179,20 @@ class LearnSectionsHandler extends Handler {
 
     async get(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
-        const mindMap = await MindMapModel.getByDomain(finalDomainId);
+        const base = await BaseModel.getByDomain(finalDomainId);
         
-        if (!mindMap) {
+        if (!base) {
             this.response.template = 'learn_sections.html';
             this.response.body = {
                 sections: [],
                 domainId: finalDomainId,
-                mindMapDocId: null,
+                baseDocId: null,
             };
             return;
         }
 
         const branch = 'main';
-        const branchData = getBranchData(mindMap, branch);
+        const branchData = getBranchData(base, branch);
         const nodes = branchData.nodes || [];
         const edges = branchData.edges || [];
         
@@ -1201,7 +1201,7 @@ class LearnSectionsHandler extends Handler {
             this.response.body = {
                 sections: [],
                 domainId: finalDomainId,
-                mindMapDocId: mindMap.docId.toString() || null,
+                baseDocId: base.docId.toString() || null,
             };
             return;
         }
@@ -1210,12 +1210,12 @@ class LearnSectionsHandler extends Handler {
         const learnDAGColl = this.ctx.db.db.collection('learn_dag');
         const existingDAG = await learnDAGColl.findOne({
             domainId: finalDomainId,
-            mindMapDocId: mindMap.docId,
+            baseDocId: base.docId,
             branch: branch,
         });
 
-        const mindMapVersion = mindMap.updateAt ? mindMap.updateAt.getTime() : 0;
-        const needsUpdate = !existingDAG || (existingDAG.version || 0) < mindMapVersion;
+        const baseVersion = base.updateAt ? base.updateAt.getTime() : 0;
+        const needsUpdate = !existingDAG || (existingDAG.version || 0) < baseVersion;
         
         const hasSectionsWithoutCards = existingDAG && existingDAG.sections && 
             existingDAG.sections.some((s: any) => !s.cards || s.cards.length === 0);
@@ -1223,23 +1223,23 @@ class LearnSectionsHandler extends Handler {
         let sections: LearnDAGNode[] = [];
 
         if (needsUpdate || !existingDAG || hasSectionsWithoutCards) {
-            const result = await generateDAG(finalDomainId, mindMap.docId, nodes, edges, (key: string) => this.translate(key));
+            const result = await generateDAG(finalDomainId, base.docId, nodes, edges, (key: string) => this.translate(key));
             sections = result.sections;
             
             await learnDAGColl.updateOne(
                 {
                     domainId: finalDomainId,
-                    mindMapDocId: mindMap.docId,
+                    baseDocId: base.docId,
                     branch: branch,
                 },
                 {
                     $set: {
                         domainId: finalDomainId,
-                        mindMapDocId: mindMap.docId,
+                        baseDocId: base.docId,
                         branch: branch,
                         sections: sections,
                         dag: result.dag,
-                        version: mindMapVersion,
+                        version: baseVersion,
                         updateAt: new Date(),
                     },
                 },
@@ -1261,7 +1261,7 @@ class LearnSectionsHandler extends Handler {
         this.response.body = {
             sections: sections,
             domainId: finalDomainId,
-            mindMapDocId: mindMap.docId.toString(),
+            baseDocId: base.docId.toString(),
             currentSectionId: currentSectionId,
         };
     }

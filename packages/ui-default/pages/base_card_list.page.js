@@ -7,7 +7,7 @@ const page = new NamedPage('base_card_list', () => {
   let cards = window.UiContext?.cards || [];
   const baseUrl = window.UiContext?.baseUrl || '';
   const nodeId = window.UiContext?.nodeId || '';
-  const mindMap = window.UiContext?.mindMap || {};
+  const base = window.UiContext?.base || {};
   
   if (!baseUrl) {
     console.warn('Card list data not found');
@@ -244,7 +244,7 @@ const page = new NamedPage('base_card_list', () => {
   
   // 加载当前节点的所有卡片（分批加载并预渲染内容）
   async function loadAllNodeCards() {
-    if (!mindMap.bid && !mindMap.docId) {
+    if (!base.bid && !base.docId) {
       console.warn('Base data not found');
       return;
     }
@@ -257,8 +257,8 @@ const page = new NamedPage('base_card_list', () => {
     try {
       const domainId = window.UiContext?.domainId || 'system';
       const branch = window.UiContext?.currentBranch || 'main';
-      const docId = mindMap.docId;
-      const bid = mindMap.bid;
+      const docId = base.docId;
+      const bid = base.bid;
       
       // 先获取卡片总数（通过 API 获取）
       const cardApiUrl = docId
@@ -551,8 +551,8 @@ const page = new NamedPage('base_card_list', () => {
     if (editBtn) {
       const domainId = window.UiContext?.domainId || 'system';
       const branch = window.UiContext?.currentBranch || 'main';
-      const docId = mindMap.docId;
-      const bid = mindMap.bid;
+      const docId = base.docId;
+      const bid = base.bid;
       
       let editUrl;
       if (docId) {

@@ -28,7 +28,7 @@ import ReactFlow, {
 import dagre from 'dagre';
 import 'reactflow/dist/style.css';
 
-interface MindMapNode {
+interface BaseNode {
   id: string;
   text: string;
   x?: number;
@@ -47,7 +47,7 @@ interface MindMapNode {
   data?: Record<string, any>;
 }
 
-interface MindMapEdge {
+interface BaseEdge {
   id: string;
   source: string;
   target: string;
@@ -58,13 +58,13 @@ interface MindMapEdge {
   width?: number;
 }
 
-interface MindMapDoc {
+interface BaseDoc {
   docId: string;
   bid: number;
   title: string;
   content: string;
-  nodes: MindMapNode[];
-  edges: MindMapEdge[];
+  nodes: BaseNode[];
+  edges: BaseEdge[];
   layout?: {
     type: 'hierarchical' | 'force' | 'manual';
     direction?: 'LR' | 'RL' | 'TB' | 'BT';
@@ -91,8 +91,8 @@ interface MindMapDoc {
   currentBranch?: string;
 }
 
-const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boolean; id: string }) => {
-  const node = data.originalNode as MindMapNode;
+const BaseNodeComponent = ({ data, selected, id }: { data: any; selected: boolean; id: string }) => {
+  const node = data.originalNode as BaseNode;
   const shape = node.shape || 'rectangle';
   const fontSize = node.fontSize || 14;
   const isNewNode = data.isNewNode || false; // 是否是新创建的节点（还未保存）
@@ -162,7 +162,7 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
     }
     
     // 从 UiContext 获取文件列表（思维导图级别的文件）
-    const filesList = (window as any).UiContext?.mindMap?.files || (window as any).UiContext?.files || [];
+    const filesList = (window as any).UiContext?.base?.files || (window as any).UiContext?.files || [];
     setFileCount(filesList.length || 0);
     setFiles(filesList);
   }, [isRootNode, isNewNode, id]);
@@ -176,7 +176,7 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
     if (fileCount > 0 && isRootNode) {
       setShowFilePopup(true);
       // 从 UiContext 获取文件列表（思维导图级别的文件）
-      const filesList = (window as any).UiContext?.mindMap?.files || (window as any).UiContext?.files || [];
+      const filesList = (window as any).UiContext?.base?.files || (window as any).UiContext?.files || [];
       setFiles(filesList);
     }
   }, [fileCount, isRootNode]);
@@ -1057,7 +1057,7 @@ const FloatingToolbar = ({
 
   if (!node) return null;
 
-  const originalNode = node.data.originalNode as MindMapNode;
+  const originalNode = node.data.originalNode as BaseNode;
   const currentFontSize = originalNode?.fontSize || 14;
   // 确保颜色格式是完整的 6 位十六进制（color input 要求）
   const currentColor = originalNode?.color 
@@ -1213,7 +1213,7 @@ const FloatingToolbar = ({
           cursor: 'pointer',
           fontSize: '12px',
         }}
-        title="管理思维导图文件"
+        title="管理知识库文件"
       >
         文件
       </button>
@@ -1242,7 +1242,7 @@ const FloatingToolbar = ({
 };
 
 // 自定义边缘组件：根据节点状态显示不同的样式
-const CustomMindMapEdge = ({ id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, data, markerEnd, markerStart }: EdgeProps) => {
+const CustomBaseEdge = ({ id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, data, markerEnd, markerStart }: EdgeProps) => {
   // 从边缘的 data 中获取源节点和目标节点的状态
   const sourceIsNewNode = data?.sourceIsNewNode as boolean | undefined;
   const targetIsNewNode = data?.targetIsNewNode as boolean | undefined;
@@ -1317,11 +1317,11 @@ const CustomMindMapEdge = ({ id, source, target, sourceX, sourceY, targetX, targ
 };
 
 const customNodeTypes: NodeTypes = {
-  base: MindMapNodeComponent,
+  base: BaseNodeComponent,
 };
 
 const customEdgeTypes: EdgeTypes = {
-  custom: CustomMindMapEdge,
+  custom: CustomBaseEdge,
 };
 
 // 使用 dagre 自动布局
@@ -1362,8 +1362,8 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], direction: 'TB' | 'LR
 
 // 大纲视图组件
 
-function MindMapEditor({ docId, initialData }: { docId: string; initialData: MindMapDoc }) {
-  const [mindMap, setMindMap] = useState<MindMapDoc>(initialData);
+function BaseEditor({ docId, initialData }: { docId: string; initialData: BaseDoc }) {
+  const [base, setBase] = useState<BaseDoc>(initialData);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -1395,22 +1395,22 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
   // 处理卡片管理：跳转到卡片列表页面
   const handleManageCards = useCallback((nodeId: string) => {
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const branch = mindMap.currentBranch || 'main';
+    const branch = base.currentBranch || 'main';
     const url = docId 
       ? `/d/${domainId}/base/${docId}/branch/${branch}/node/${nodeId}/cards`
-      : `/d/${domainId}/base/bid/${mindMap.bid}/branch/${branch}/node/${nodeId}/cards`;
+      : `/d/${domainId}/base/bid/${base.bid}/branch/${branch}/node/${nodeId}/cards`;
     window.open(url, '_blank');
-  }, [docId, mindMap.bid, mindMap.currentBranch]);
+  }, [docId, base.bid, base.currentBranch]);
   // 处理文件管理：跳转到思维导图文件页面（文件是思维导图级别的，不依赖节点ID）
   const handleManageFiles = useCallback(() => {
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const branch = mindMap.currentBranch || 'main';
+    const branch = base.currentBranch || 'main';
     const url = docId 
       ? `/d/${domainId}/base/${docId}/branch/${branch}/files`
-      : `/d/${domainId}/base/bid/${mindMap.bid}/branch/${branch}/files`;
+      : `/d/${domainId}/base/bid/${base.bid}/branch/${branch}/files`;
     console.log('handleManageFiles called, opening URL:', url);
     window.open(url, '_blank');
-  }, [docId, mindMap.bid, mindMap.currentBranch]);
+  }, [docId, base.bid, base.currentBranch]);
   const [gitStatus, setGitStatus] = useState<any>(null); // Git 状态
   const [gitStatusLoading, setGitStatusLoading] = useState(false); // Git 状态加载中
   const lastOperationRef = useRef<string>(''); // 记录最后一次操作类型
@@ -1556,7 +1556,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         for (const [tempNodeId, createData] of nodesToCreateThisRound) {
           try {
             const { node, parentId, siblingId, mode } = createData;
-            const originalNode = node.data.originalNode as MindMapNode;
+            const originalNode = node.data.originalNode as BaseNode;
             const text = originalNode.text;
             
             if (!text || !text.trim()) {
@@ -1629,7 +1629,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
               requestBody.parentId = realParentId;
             }
             
-            const response = await request.post(getMindMapUrl('/node', docId), requestBody);
+            const response = await request.post(getBaseUrl('/node', docId), requestBody);
             
             if (response && response.nodeId) {
               const newNodeId = response.nodeId;
@@ -1767,7 +1767,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       const deletesToProcess = Array.from(pendingDeletesRef.current);
       for (const nodeId of deletesToProcess) {
         try {
-          await request.post(getMindMapUrl(`/node/${nodeId}`, docId), {
+          await request.post(getBaseUrl(`/node/${nodeId}`, docId), {
             operation: 'delete',
           });
         } catch (error: any) {
@@ -1786,7 +1786,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       const updatedNodes = currentNodes
         .filter((node) => !pendingDeletesRef.current.has(node.id))
         .map((node) => {
-        const originalNode = node.data.originalNode as MindMapNode;
+        const originalNode = node.data.originalNode as BaseNode;
         // 确保位置是有效的数字
         const x = typeof node.position.x === 'number' && !isNaN(node.position.x) 
           ? node.position.x 
@@ -1827,7 +1827,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       // 生成操作描述
       const operationDescription = lastOperationRef.current || '自动保存';
       
-      const response = await request.post(getMindMapUrl('/save', docId), {
+      const response = await request.post(getBaseUrl('/save', docId), {
         nodes: updatedNodes,
         edges: updatedEdges,
         viewport: viewport ? {
@@ -1842,16 +1842,16 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       if (response.hasNonPositionChanges) {
         loadHistory();
         // 如果有非位置改变，立即刷新 Git 状态（因为后端已经同步到 git）
-        if (mindMap.githubRepo) {
+        if (base.githubRepo) {
           // 延迟一点时间，确保后端同步完成，然后刷新 Git 状态
           // 使用多次重试，确保能获取到最新的状态
           const retryLoadGitStatus = async (retries = 3) => {
             for (let i = 0; i < retries; i++) {
               await new Promise(resolve => setTimeout(resolve, 500 + i * 300));
               try {
-                const branch = mindMap.currentBranch || 'main';
+                const branch = base.currentBranch || 'main';
                 const domainId = (window as any).UiContext?.domainId || 'system';
-                const statusResponse = await request.get(`${getMindMapUrl('/git/status', docId)}?branch=${branch}`);
+                const statusResponse = await request.get(`${getBaseUrl('/git/status', docId)}?branch=${branch}`);
                 const newGitStatus = statusResponse.gitStatus;
                 setGitStatus(newGitStatus);
                 // 如果检测到有未提交的更改，说明同步成功，可以停止重试
@@ -1865,7 +1865,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           };
           retryLoadGitStatus();
         }
-      } else if (mindMap.githubRepo) {
+      } else if (base.githubRepo) {
         // 即使只有位置改变，也刷新一下 Git 状态（虽然可能没有变化）
         loadGitStatus();
       }
@@ -1880,7 +1880,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
 
       // 只有手动保存时才显示成功提示并刷新页面
       if (!isAutoSave) {
-        Notification.success('思维导图已保存');
+        Notification.success('知识库已保存');
         // 保存成功后自动刷新页面
         setTimeout(() => {
           window.location.reload();
@@ -1895,7 +1895,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
   }, [docId, reactFlowInstance]);
 
   // 从 YAML 保存的函数（支持卡片）
-  const handleSaveFromYaml = useCallback(async (newNodes: MindMapNode[], newEdges: MindMapEdge[], cardsData?: Array<{ nodeId: string; cards: Card[] }>) => {
+  const handleSaveFromYaml = useCallback(async (newNodes: BaseNode[], newEdges: BaseEdge[], cardsData?: Array<{ nodeId: string; cards: Card[] }>) => {
     setIsSaving(true);
     try {
       // 合并新节点和现有节点
@@ -1905,7 +1905,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         if (existingNodeIds.has(node.id)) {
           const existingNode = nodesRef.current.find(n => n.id === node.id);
           if (existingNode) {
-            const originalNode = existingNode.data.originalNode as MindMapNode;
+            const originalNode = existingNode.data.originalNode as BaseNode;
             return {
               ...node,
               x: originalNode.x || node.x || 0,
@@ -1943,7 +1943,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       // 生成操作描述
       lastOperationRef.current = 'YAML 模式保存';
       
-      const response = await request.post(getMindMapUrl('/save', docId), {
+      const response = await request.post(getBaseUrl('/save', docId), {
         nodes: updatedNodes,
         edges: updatedEdges,
         viewport: viewport ? {
@@ -1957,14 +1957,14 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       // 保存后刷新历史记录和 Git 状态
       if (response.hasNonPositionChanges) {
         
-        if (mindMap.githubRepo) {
+        if (base.githubRepo) {
           const retryLoadGitStatus = async (retries = 3) => {
             for (let i = 0; i < retries; i++) {
               await new Promise(resolve => setTimeout(resolve, 500 + i * 300));
               try {
-                const branch = mindMap.currentBranch || 'main';
+                const branch = base.currentBranch || 'main';
                 const domainId = (window as any).UiContext?.domainId || 'system';
-                const statusResponse = await request.get(`${getMindMapUrl('/git/status', docId)}?branch=${branch}`);
+                const statusResponse = await request.get(`${getBaseUrl('/git/status', docId)}?branch=${branch}`);
                 const newGitStatus = statusResponse.gitStatus;
                 setGitStatus(newGitStatus);
                 if (newGitStatus?.uncommittedChanges) {
@@ -1977,11 +1977,11 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           };
           retryLoadGitStatus();
         }
-      } else if (mindMap.githubRepo) {
+      } else if (base.githubRepo) {
         setTimeout(() => {
-          const branch = mindMap.currentBranch || 'main';
+          const branch = base.currentBranch || 'main';
           const domainId = (window as any).UiContext?.domainId || 'system';
-          request.get(`${getMindMapUrl('/git/status', docId)}?branch=${branch}`).then((response) => {
+          request.get(`${getBaseUrl('/git/status', docId)}?branch=${branch}`).then((response) => {
             setGitStatus(response.gitStatus);
           }).catch((error) => {
             console.error('Failed to load git status:', error);
@@ -1994,7 +1994,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       // 处理卡片数据
       if (cardsData && cardsData.length > 0) {
         const domainId = (window as any).UiContext?.domainId || 'system';
-        const bid = mindMap.bid;
+        const bid = base.bid;
         
         for (const nodeCardData of cardsData) {
           const { nodeId, cards } = nodeCardData;
@@ -2087,15 +2087,15 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
 
       // 重新加载数据以更新节点和边
       const domainId = (window as any).UiContext?.domainId || 'system';
-      const responseData = await request.get(getMindMapUrl('/data', docId));
-      if (responseData?.mindMap) {
-        setMindMap(responseData.mindMap);
+      const responseData = await request.get(getBaseUrl('/data', docId));
+      if (responseData?.base) {
+        setBase(responseData.base);
       } else {
-        setMindMap(responseData);
+        setBase(responseData);
       }
       if ((window as any).UiContext) {
         const updatedMap = responseData?.nodeCardsMap
-          || responseData?.mindMap?.nodeCardsMap
+          || responseData?.base?.nodeCardsMap
           || {};
         (window as any).UiContext.nodeCardsMap = updatedMap;
       }
@@ -2106,17 +2106,17 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       Notification.error('保存失败: ' + (error.message || '未知错误'));
       setIsSaving(false);
     }
-  }, [docId, reactFlowInstance, mindMap.githubRepo, mindMap.currentBranch]);
+  }, [docId, reactFlowInstance, base.githubRepo, base.currentBranch]);
 
   // 加载 Git 状态
   const loadGitStatus = useCallback(async () => {
-    if (!mindMap.githubRepo) return;
+    if (!base.githubRepo) return;
     
     setGitStatusLoading(true);
     try {
-      const branch = mindMap.currentBranch || 'main';
+      const branch = base.currentBranch || 'main';
       const domainId = (window as any).UiContext?.domainId || 'system';
-      const response = await request.get(`${getMindMapUrl('/git/status', docId)}?branch=${branch}`);
+      const response = await request.get(`${getBaseUrl('/git/status', docId)}?branch=${branch}`);
       setGitStatus(response.gitStatus);
     } catch (error: any) {
       console.error('Failed to load git status:', error);
@@ -2124,14 +2124,14 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     } finally {
       setGitStatusLoading(false);
     }
-  }, [docId, mindMap.githubRepo, mindMap.currentBranch]);
+  }, [docId, base.githubRepo, base.currentBranch]);
 
   // 加载历史记录
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
       const domainId = (window as any).UiContext?.domainId || 'system';
-      const response = await request.get(getMindMapUrl('/history', docId));
+      const response = await request.get(getBaseUrl('/history', docId));
       setHistory(response.history || []);
     } catch (error: any) {
       console.error('Failed to load history:', error);
@@ -2146,7 +2146,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     if (!confirm('确定要恢复到该历史节点吗？当前未保存的更改将丢失。')) return;
     
     try {
-      await request.post(getMindMapUrl(`/history/${historyId}/restore`, docId));
+      await request.post(getBaseUrl(`/history/${historyId}/restore`, docId));
       Notification.success('恢复成功，页面将刷新');
       setTimeout(() => window.location.reload(), 1000);
     } catch (error: any) {
@@ -2170,7 +2170,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       saveTimerRef.current = null;
       // 注意：Git 状态和历史记录的刷新已经在 handleSave 中处理了
     }, 1500);
-  }, [handleSave, mindMap.githubRepo, loadGitStatus]);
+  }, [handleSave, base.githubRepo, loadGitStatus]);
 
   useEffect(() => {
     let ws: any = null;
@@ -2179,7 +2179,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
 
     // 初始加载
     loadHistory();
-    if (mindMap.githubRepo) {
+    if (base.githubRepo) {
       loadGitStatus();
     }
 
@@ -2246,7 +2246,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         }
       }
     };
-  }, [docId, mindMap.githubRepo, loadGitStatus]);
+  }, [docId, base.githubRepo, loadGitStatus]);
 
   // 包装 onEdgesChange 以在边变化时触发自动保存（特别是删除边）
   const handleEdgesChange = useCallback((changes: any) => {
@@ -2284,7 +2284,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         const updatedNodes = currentNodes.map((n) => {
           const layoutedNode = layoutedNodes.find(ln => ln.id === n.id);
           if (layoutedNode) {
-            const originalNode = n.data.originalNode as MindMapNode;
+            const originalNode = n.data.originalNode as BaseNode;
             return {
               ...n,
               position: layoutedNode.position,
@@ -2407,7 +2407,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
 
   // 编辑节点 - 直接进入编辑模式
   const handleEditNode = useCallback((node: Node) => {
-    const originalNode = node.data.originalNode as MindMapNode;
+    const originalNode = node.data.originalNode as BaseNode;
     if (!originalNode) return;
 
     // 直接进入编辑模式，不弹出对话框
@@ -2429,7 +2429,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
 
   // 旧的编辑节点函数（保留但不再使用，以防需要）
   const handleEditNodeOld = useCallback(async (node: Node) => {
-    const originalNode = node.data.originalNode as MindMapNode;
+    const originalNode = node.data.originalNode as BaseNode;
     if (!originalNode) return;
 
     try {
@@ -2484,7 +2484,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       if (result) {
         lastOperationRef.current = `编辑节点: ${result.text}`;
         
-        await request.post(getMindMapUrl(`/node/${originalNode.id}`, docId), {
+        await request.post(getBaseUrl(`/node/${originalNode.id}`, docId), {
           operation: 'update',
           ...result,
         });
@@ -2512,7 +2512,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         triggerAutoSave();
         
         // 立即刷新Git状态
-        if (mindMap.githubRepo) {
+        if (base.githubRepo) {
           setTimeout(() => {
             loadGitStatus();
           }, 1000);
@@ -2521,20 +2521,20 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     } catch (error: any) {
       Notification.error('更新节点失败: ' + (error.message || '未知错误'));
     }
-  }, [docId, setNodes, triggerAutoSave, mindMap.githubRepo, loadGitStatus]);
+  }, [docId, setNodes, triggerAutoSave, base.githubRepo, loadGitStatus]);
 
   // 更新节点字体大小
   const handleUpdateFontSize = useCallback(async (nodeId: string, fontSize: number) => {
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return;
     
-    const originalNode = node.data.originalNode as MindMapNode;
+    const originalNode = node.data.originalNode as BaseNode;
     if (!originalNode) return;
 
     try {
       lastOperationRef.current = `修改字体大小: ${originalNode.text}`;
       
-      await request.post(getMindMapUrl(`/node/${originalNode.id}`, docId), {
+      await request.post(getBaseUrl(`/node/${originalNode.id}`, docId), {
         operation: 'update',
         fontSize,
       });
@@ -2559,7 +2559,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       triggerAutoSave();
       
       // 立即刷新Git状态
-      if (mindMap.githubRepo) {
+      if (base.githubRepo) {
         setTimeout(() => {
           loadGitStatus();
         }, 1000);
@@ -2567,20 +2567,20 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     } catch (error: any) {
       Notification.error('更新字体大小失败: ' + (error.message || '未知错误'));
     }
-  }, [docId, nodes, setNodes, triggerAutoSave, mindMap.githubRepo, loadGitStatus]);
+  }, [docId, nodes, setNodes, triggerAutoSave, base.githubRepo, loadGitStatus]);
 
   // 更新节点字体颜色
   const handleUpdateColor = useCallback(async (nodeId: string, color: string) => {
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return;
     
-    const originalNode = node.data.originalNode as MindMapNode;
+    const originalNode = node.data.originalNode as BaseNode;
     if (!originalNode) return;
 
     try {
       lastOperationRef.current = `修改颜色: ${originalNode.text}`;
       
-      await request.post(getMindMapUrl(`/node/${originalNode.id}`, docId), {
+      await request.post(getBaseUrl(`/node/${originalNode.id}`, docId), {
         operation: 'update',
         color,
       });
@@ -2605,7 +2605,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       triggerAutoSave();
       
       // 立即刷新Git状态
-      if (mindMap.githubRepo) {
+      if (base.githubRepo) {
         setTimeout(() => {
           loadGitStatus();
         }, 1000);
@@ -2620,7 +2620,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return;
     
-    const originalNode = node.data.originalNode as MindMapNode;
+    const originalNode = node.data.originalNode as BaseNode;
     if (!originalNode) return;
 
     const newExpanded = !(originalNode.expanded !== false); // 切换状态，默认为 true
@@ -2732,7 +2732,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     if (!node) return;
     
     const isNewNode = node.data.isNewNode || false;
-    const originalNode = node.data.originalNode as MindMapNode;
+    const originalNode = node.data.originalNode as BaseNode;
     
     // 如果是新节点且有文本，标记为待创建（不再立即保存）
     if (isNewNode && newText.trim()) {
@@ -3042,8 +3042,8 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         isRootNode,
         edges: edges,
         docId: docId, // 传递 docId 用于获取卡片
-        bid: mindMap.bid, // 传递 bid 用于获取卡片
-        branch: mindMap.currentBranch || 'main', // 传递 branch 用于跳转
+        bid: base.bid, // 传递 bid 用于获取卡片
+        branch: base.currentBranch || 'main', // 传递 branch 用于跳转
         onDelete: (nodeId: string) => callbacksRef.current?.onDelete(nodeId),
         onEdit: (node: Node) => callbacksRef.current?.onEdit(node),
         onAddChild: (nodeId: string) => callbacksRef.current?.onAddChild(nodeId),
@@ -3225,21 +3225,21 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     };
   }, [handleEditNode, handleAddChild, handleAddSibling, handleDeleteNode, handleToggleExpand]);
 
-  // 将 MindMapNode 转换为 ReactFlow Node
+  // 将 BaseNode 转换为 ReactFlow Node
   const initialFlowNodes = useMemo(() => {
-    const flowEdges = mindMap.edges.map((edge) => ({
+    const flowEdges = base.edges.map((edge) => ({
       id: edge.id,
       source: edge.source,
       target: edge.target,
     })) as Edge[];
     
     const rootNodeIds = new Set(
-      mindMap.nodes
-        .filter(node => !mindMap.edges.some(edge => edge.target === node.id))
+      base.nodes
+        .filter(node => !base.edges.some(edge => edge.target === node.id))
         .map(node => node.id)
     );
     
-    return mindMap.nodes.map((node) => {
+    return base.nodes.map((node) => {
       const x = typeof node.x === 'number' && !isNaN(node.x) ? node.x : 0;
       const y = typeof node.y === 'number' && !isNaN(node.y) ? node.y : 0;
       const isRootNode = rootNodeIds.has(node.id);
@@ -3254,8 +3254,8 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           edges: flowEdges,
           isRootNode,
           docId: docId, // 传递 docId 用于获取卡片
-          bid: mindMap.bid, // 传递 bid 用于获取卡片
-          branch: mindMap.currentBranch || 'main', // 传递 branch 用于跳转
+          bid: base.bid, // 传递 bid 用于获取卡片
+          branch: base.currentBranch || 'main', // 传递 branch 用于跳转
           onDelete: (nodeId: string) => callbacksRef.current?.onDelete(nodeId),
           onEdit: (node: Node) => callbacksRef.current?.onEdit(node),
           onAddChild: (nodeId: string) => callbacksRef.current?.onAddChild(nodeId),
@@ -3273,7 +3273,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       } as Node;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mindMap.nodes, mindMap.edges]);
+  }, [base.nodes, base.edges]);
 
   // 计算每个边应该使用的颜色
   // 规则：如果边已经有保存的颜色，就使用保存的颜色；否则随机分配一个颜色
@@ -3309,8 +3309,8 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     };
     
     // 找到根节点（没有父节点的节点）
-    const rootNodes = mindMap.nodes.filter(node => {
-      return !mindMap.edges.some(edge => edge.target === node.id);
+    const rootNodes = base.nodes.filter(node => {
+      return !base.edges.some(edge => edge.target === node.id);
     });
     
     if (rootNodes.length === 0) {
@@ -3322,12 +3322,12 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     // parentColor: 父分支的颜色（如果已保存）
     const assignColorToBranch = (nodeId: string, parentColor: string | null) => {
       // 获取该节点的所有子边（按顺序）
-      const childEdges = mindMap.edges
+      const childEdges = base.edges
         .filter(e => e.source === nodeId)
         .sort((a, b) => {
           // 尝试按目标节点的位置排序，保持一致性
-          const nodeA = mindMap.nodes.find(n => n.id === a.target);
-          const nodeB = mindMap.nodes.find(n => n.id === b.target);
+          const nodeA = base.nodes.find(n => n.id === a.target);
+          const nodeB = base.nodes.find(n => n.id === b.target);
           if (nodeA && nodeB) {
             // 优先按 y 坐标排序（从上到下），如果 y 相同则按 x 排序（从左到右）
             if (nodeA.y !== undefined && nodeB.y !== undefined) {
@@ -3376,11 +3376,11 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     // 为每个根节点分配颜色
     rootNodes.forEach((rootNode) => {
       // 获取根节点的所有直接子边，按顺序
-      const rootChildEdges = mindMap.edges
+      const rootChildEdges = base.edges
         .filter(e => e.source === rootNode.id)
         .sort((a, b) => {
-          const nodeA = mindMap.nodes.find(n => n.id === a.target);
-          const nodeB = mindMap.nodes.find(n => n.id === b.target);
+          const nodeA = base.nodes.find(n => n.id === a.target);
+          const nodeB = base.nodes.find(n => n.id === b.target);
           if (nodeA && nodeB) {
             // 优先按 y 坐标排序（从上到下），如果 y 相同则按 x 排序（从左到右）
             if (nodeA.y !== undefined && nodeB.y !== undefined) {
@@ -3566,9 +3566,9 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     });
     
     return colorMap;
-  }, [mindMap.nodes, mindMap.edges]);
+  }, [base.nodes, base.edges]);
 
-  // 将 MindMapEdge 转换为 ReactFlow Edge
+  // 将 BaseEdge 转换为 ReactFlow Edge
   const initialFlowEdges = useMemo(() => {
     // 定义颜色数组（与 edgeColorMap 中的一致）
     const colors = [
@@ -3583,8 +3583,8 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     ];
     
     // 找到根节点
-    const rootNodes = mindMap.nodes.filter(node => {
-      return !mindMap.edges.some(edge => edge.target === node.id);
+    const rootNodes = base.nodes.filter(node => {
+      return !base.edges.some(edge => edge.target === node.id);
     });
     
     // 基于边的ID生成稳定的随机颜色
@@ -3599,7 +3599,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     };
     
     // 如果 edgeColorMap 中没有颜色，动态计算
-    const getColorForEdge = (edge: MindMapEdge): string => {
+    const getColorForEdge = (edge: BaseEdge): string => {
       // 优先使用 edgeColorMap 中的颜色
       const mappedColor = edgeColorMap.get(edge.id);
       if (mappedColor) return mappedColor;
@@ -3609,7 +3609,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       return colors[randomIndex];
     };
     
-    return mindMap.edges.map((edge) => {
+    return base.edges.map((edge) => {
       const color = getColorForEdge(edge);
       
       return {
@@ -3630,7 +3630,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         },
       } as Edge;
     });
-  }, [mindMap.edges, edgeColorMap, mindMap.nodes]);
+  }, [base.edges, edgeColorMap, base.nodes]);
 
   // 初始化节点和边
   useEffect(() => {
@@ -3639,7 +3639,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       
       // 更新 originalNode 的位置
       const nodesWithUpdatedOriginal = layoutedNodes.map((n) => {
-        const originalNode = n.data.originalNode as MindMapNode;
+        const originalNode = n.data.originalNode as BaseNode;
         if (originalNode) {
           return {
             ...n,
@@ -3712,7 +3712,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         const hasPendingCreate = sourceNode?.data?.pendingCreate || targetNode?.data?.pendingCreate || sourceNode?.data?.isNewNode || targetNode?.data?.isNewNode;
         const hasPendingUpdate = sourceNode?.data?.pendingUpdate || targetNode?.data?.pendingUpdate;
         
-        // 如果有状态变化，不更新颜色（状态颜色会在 CustomMindMapEdge 中设置）
+        // 如果有状态变化，不更新颜色（状态颜色会在 CustomBaseEdge 中设置）
         if (hasPendingDelete || hasPendingCreate || hasPendingUpdate) {
           return edge;
         }
@@ -3736,7 +3736,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     );
   }, [edgeColorMap, setEdges, nodes]);
 
-  // 当 mindMap 数据更新时，确保所有边都应用正确的颜色（但不覆盖状态颜色）
+  // 当 base 数据更新时，确保所有边都应用正确的颜色（但不覆盖状态颜色）
   useEffect(() => {
     if (edgeColorMap.size === 0) return;
     
@@ -3751,7 +3751,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           const hasPendingCreate = sourceNode?.data?.pendingCreate || targetNode?.data?.pendingCreate || sourceNode?.data?.isNewNode || targetNode?.data?.isNewNode;
           const hasPendingUpdate = sourceNode?.data?.pendingUpdate || targetNode?.data?.pendingUpdate;
           
-          // 如果有状态变化，不更新颜色（状态颜色会在 CustomMindMapEdge 中设置）
+          // 如果有状态变化，不更新颜色（状态颜色会在 CustomBaseEdge 中设置）
           if (hasPendingDelete || hasPendingCreate || hasPendingUpdate) {
             return edge;
           }
@@ -3772,7 +3772,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     }, 0);
     
     return () => clearTimeout(timer);
-  }, [mindMap.nodes, mindMap.edges, edgeColorMap, setEdges, nodes]);
+  }, [base.nodes, base.edges, edgeColorMap, setEdges, nodes]);
 
   // 当节点状态变化时，更新边缘的 data，以便边缘组件能够根据节点状态显示不同的样式
   // 更新所有 'custom' 类型的边缘（包括临时边缘和永久边缘）
@@ -3808,7 +3808,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             ...edge,
             style: {
               ...edge.style,
-              // 如果颜色映射中有该边的颜色且没有状态变化，使用映射中的颜色；否则保持原有颜色（状态颜色会在 CustomMindMapEdge 中设置）
+              // 如果颜色映射中有该边的颜色且没有状态变化，使用映射中的颜色；否则保持原有颜色（状态颜色会在 CustomBaseEdge 中设置）
               ...(edgeColor ? { stroke: edgeColor } : {}),
             },
             data: {
@@ -3860,8 +3860,8 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             isRootNode,
             edges: edgesRefForNodes.current,
             docId: n.data.docId || docId, // 保留或设置 docId
-            bid: n.data.bid || mindMap.bid, // 保留或设置 bid
-            branch: n.data.branch || mindMap.currentBranch || 'main', // 保留或设置 branch
+            bid: n.data.bid || base.bid, // 保留或设置 bid
+            branch: n.data.branch || base.currentBranch || 'main', // 保留或设置 branch
             onTextChange: (nodeId: string, newText: string) => {
               handleNodeTextChangeRef.current(nodeId, newText);
             },
@@ -3973,7 +3973,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       if (!params.source || !params.target) return;
 
       try {
-        const response = await request.post(getMindMapUrl('/edge', docId), {
+        const response = await request.post(getBaseUrl('/edge', docId), {
           operation: 'add',
           source: params.source,
           target: params.target,
@@ -3987,7 +3987,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             return parentEdge.style.stroke as string;
           }
           // 如果找不到，尝试从 edgeColorMap 中获取（基于边的ID）
-          const parentEdgeFromMap = mindMap.edges.find(e => e.target === sourceId);
+          const parentEdgeFromMap = base.edges.find(e => e.target === sourceId);
           if (parentEdgeFromMap) {
             const colorFromMap = edgeColorMap.get(parentEdgeFromMap.id);
             if (colorFromMap) {
@@ -4168,7 +4168,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     // 更新所有节点的 originalNode 位置，以便下次拖动时使用新位置
     setNodes((nds) =>
       nds.map((n) => {
-        const originalNode = n.data.originalNode as MindMapNode;
+        const originalNode = n.data.originalNode as BaseNode;
         if (originalNode) {
           return {
             ...n,
@@ -4264,7 +4264,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       const node = nodes.find(n => n.id === nodeId);
       if (!node) return;
       
-      const originalNode = node.data.originalNode as MindMapNode;
+      const originalNode = node.data.originalNode as BaseNode;
       const expanded = originalNode?.expanded !== false; // 默认为 true
       
       if (expanded) {
@@ -4323,7 +4323,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           position: 'relative',
         }}>
           <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#333' }}>
-            {mindMap.title} - 沉浸模式
+            {base.title} - 沉浸模式
           </div>
           <button
             onClick={(e) => {
@@ -4380,10 +4380,10 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             deleteKeyCode="Delete"
             multiSelectionKeyCode="Shift"
             connectionLineStyle={{ stroke: '#2196f3', strokeWidth: 2 }}
-            defaultViewport={mindMap.viewport ? {
-              x: mindMap.viewport.x,
-              y: mindMap.viewport.y,
-              zoom: (mindMap.viewport.zoom || 1) * 1.5, // 沉浸模式下放大1.5倍
+            defaultViewport={base.viewport ? {
+              x: base.viewport.x,
+              y: base.viewport.y,
+              zoom: (base.viewport.zoom || 1) * 1.5, // 沉浸模式下放大1.5倍
             } : { x: 0, y: 0, zoom: 1.5 }}
             style={{
               background: '#f5f5f5',
@@ -4448,7 +4448,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         <a
           href={(() => {
             const domainId = (window as any).UiContext?.domainId || 'system';
-            const branch = mindMap.currentBranch || 'main';
+            const branch = base.currentBranch || 'main';
             return `/d/${domainId}/base/${docId}/branch/${branch}/outline`;
           })()}
           style={{
@@ -4467,10 +4467,10 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         <a
           href={(() => {
             const domainId = (window as any).UiContext?.domainId || 'system';
-            const branch = mindMap.currentBranch || 'main';
+            const branch = base.currentBranch || 'main';
             return docId 
               ? `/d/${domainId}/base/${docId}/branch/${branch}/study`
-              : `/d/${domainId}/base/bid/${mindMap.bid}/branch/${branch}/study`;
+              : `/d/${domainId}/base/bid/${base.bid}/branch/${branch}/study`;
           })()}
           style={{
             padding: '6px 12px',
@@ -4570,10 +4570,10 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
               deleteKeyCode="Delete"
               multiSelectionKeyCode="Shift"
               connectionLineStyle={{ stroke: '#2196f3', strokeWidth: 2 }}
-              defaultViewport={mindMap.viewport ? {
-                x: mindMap.viewport.x,
-                y: mindMap.viewport.y,
-                zoom: mindMap.viewport.zoom,
+              defaultViewport={base.viewport ? {
+                x: base.viewport.x,
+                y: base.viewport.y,
+                zoom: base.viewport.zoom,
               } : undefined}
               style={{
                 background: '#f5f5f5',
@@ -4649,7 +4649,7 @@ const convertNodesToYaml = (nodes: Node[], edges: Edge[]): string => {
     if (!nodeData) return '';
 
     const { node, children } = nodeData;
-    const originalNode = node.data.originalNode as MindMapNode;
+    const originalNode = node.data.originalNode as BaseNode;
     const nodeText = originalNode?.text || '';
     const indentStr = '  '.repeat(indent);
 
@@ -4712,7 +4712,7 @@ const convertNodesToYaml = (nodes: Node[], edges: Edge[]): string => {
 };
 
 // YAML 到节点的解析函数（合法 YAML 结构，支持 cards）
-const parseYamlToNodes = (yamlText: string, existingNodes: Node[], existingEdges: Edge[]): { nodes: MindMapNode[]; edges: MindMapEdge[]; cards: Array<{ nodeId: string; cards: Card[] }> } => {
+const parseYamlToNodes = (yamlText: string, existingNodes: Node[], existingEdges: Edge[]): { nodes: BaseNode[]; edges: BaseEdge[]; cards: Array<{ nodeId: string; cards: Card[] }> } => {
   try {
     const yamlData = yaml.load(yamlText) as any;
     if (!yamlData || !Array.isArray(yamlData)) {
@@ -4720,8 +4720,8 @@ const parseYamlToNodes = (yamlText: string, existingNodes: Node[], existingEdges
       return { nodes: [], edges: [], cards: [] };
     }
 
-    const newNodes: MindMapNode[] = [];
-    const newEdges: MindMapEdge[] = [];
+    const newNodes: BaseNode[] = [];
+    const newEdges: BaseEdge[] = [];
     const cardsMap = new Map<string, Card[]>();
     let nodeIdCounter = 0;
 
@@ -4734,21 +4734,21 @@ const parseYamlToNodes = (yamlText: string, existingNodes: Node[], existingEdges
     const getExistingNode = (text: string, parentId: string | null) => {
       if (parentId) {
         return existingNodes.find(n => {
-          const orig = n.data.originalNode as MindMapNode;
+          const orig = n.data.originalNode as BaseNode;
           return orig.text === text && orig.parentId === parentId;
-        })?.data.originalNode as MindMapNode | undefined;
+        })?.data.originalNode as BaseNode | undefined;
       }
       return existingNodes.find(n => {
-        const orig = n.data.originalNode as MindMapNode;
+        const orig = n.data.originalNode as BaseNode;
         return orig.text === text && !orig.parentId;
-      })?.data.originalNode as MindMapNode | undefined;
+      })?.data.originalNode as BaseNode | undefined;
     };
 
     const createNode = (text: string, parentId: string | null): string => {
       const existingNode = getExistingNode(text, parentId);
       const finalNodeId = existingNode?.id || `node_${nodeIdCounter++}`;
 
-      const newNode: MindMapNode = {
+      const newNode: BaseNode = {
         id: finalNodeId,
         text,
         parentId: parentId || undefined,
@@ -4893,7 +4893,7 @@ const parseYamlToNodes = (yamlText: string, existingNodes: Node[], existingEdges
 };
 
 // 行解析（兼容旧格式，主要用于回退，卡片不会被解析）
-const parseYamlLinesToNodes = (yamlText: string, existingNodes: Node[], existingEdges: Edge[]): { nodes: MindMapNode[]; edges: MindMapEdge[]; cards: Array<{ nodeId: string; cards: Card[] }> } => {
+const parseYamlLinesToNodes = (yamlText: string, existingNodes: Node[], existingEdges: Edge[]): { nodes: BaseNode[]; edges: BaseEdge[]; cards: Array<{ nodeId: string; cards: Card[] }> } => {
   const lines = yamlText.split('\n').filter(line => line.trim());
   if (lines.length === 0) {
     Notification.error('YAML 内容为空');
@@ -4921,8 +4921,8 @@ const parseYamlLinesToNodes = (yamlText: string, existingNodes: Node[], existing
     return { nodes: [], edges: [], cards: [] };
   }
 
-  const newNodes: MindMapNode[] = [];
-  const newEdges: MindMapEdge[] = [];
+  const newNodes: BaseNode[] = [];
+  const newEdges: BaseEdge[] = [];
   let nodeIdCounter = 0;
 
   interface NodeStackItem {
@@ -4939,22 +4939,22 @@ const parseYamlLinesToNodes = (yamlText: string, existingNodes: Node[], existing
     const parentId = stack.length > 0 ? stack[stack.length - 1].nodeId : null;
     const nodeId = `node_${nodeIdCounter++}`;
 
-    let existingNode: MindMapNode | undefined;
+    let existingNode: BaseNode | undefined;
     if (parentId) {
       existingNode = existingNodes.find(n => {
-        const orig = n.data.originalNode as MindMapNode;
+        const orig = n.data.originalNode as BaseNode;
         return orig.text === lineInfo.text && orig.parentId === parentId;
-      })?.data.originalNode as MindMapNode;
+      })?.data.originalNode as BaseNode;
     } else {
       existingNode = existingNodes.find(n => {
-        const orig = n.data.originalNode as MindMapNode;
+        const orig = n.data.originalNode as BaseNode;
         return orig.text === lineInfo.text && !orig.parentId;
-      })?.data.originalNode as MindMapNode;
+      })?.data.originalNode as BaseNode;
     }
 
     const finalNodeId = existingNode?.id || nodeId;
 
-    const newNode: MindMapNode = {
+    const newNode: BaseNode = {
       id: finalNodeId,
       text: lineInfo.text,
       parentId: parentId || undefined,
@@ -5009,7 +5009,7 @@ const YamlView = ({
 }: {
   nodes: Node[];
   edges: Edge[];
-  onSave: (nodes: MindMapNode[], edges: MindMapEdge[], cardsData?: Array<{ nodeId: string; cards: Card[] }>) => Promise<void>;
+  onSave: (nodes: BaseNode[], edges: BaseEdge[], cardsData?: Array<{ nodeId: string; cards: Card[] }>) => Promise<void>;
   docId: string;
   isSaving: boolean;
 }) => {
@@ -5396,7 +5396,7 @@ const YamlView = ({
       }));
 
       // 构建系统提示，让 AI 理解 YAML 结构
-      const systemPrompt = `你是一个思维导图架构生成助手，专门负责帮助用户生成和优化思维导图的整体架构。
+      const systemPrompt = `你是一个知识库架构生成助手，专门负责帮助用户生成和优化知识库的整体架构。
 
 【你的核心职责】
 1. **架构生成**：根据用户的需求，设计清晰、层次合理的节点结构
@@ -5891,7 +5891,7 @@ ${yamlText}
 };
 
 // 辅助函数：获取带 domainId 的 base URL
-const getMindMapUrl = (path: string, docId: string): string => {
+const getBaseUrl = (path: string, docId: string): string => {
   const domainId = (window as any).UiContext?.domainId || 'system';
   return `/d/${domainId}/base/${docId}${path}`;
 };
@@ -5905,27 +5905,27 @@ const page = new NamedPage('base_detail', async () => {
 
     const docId = $container.data('doc-id') || $container.attr('data-doc-id');
     if (!docId) {
-      Notification.error('思维导图ID未找到');
+      Notification.error('知识库ID未找到');
       return;
     }
 
-    // 加载思维导图数据
-    let initialData: MindMapDoc;
+    // 加载知识库数据
+    let initialData: BaseDoc;
     try {
-      const response = await request.get(getMindMapUrl('/data', docId));
+      const response = await request.get(getBaseUrl('/data', docId));
       initialData = response;
     } catch (error: any) {
-      Notification.error('加载思维导图失败: ' + (error.message || '未知错误'));
+      Notification.error('加载知识库失败: ' + (error.message || '未知错误'));
       return;
     }
 
     ReactDOM.render(
-      <MindMapEditor docId={docId} initialData={initialData} />,
+      <BaseEditor docId={docId} initialData={initialData} />,
       $container[0]
     );
   } catch (error: any) {
     console.error('Failed to initialize base editor:', error);
-    Notification.error('初始化思维导图编辑器失败: ' + (error.message || '未知错误'));
+    Notification.error('初始化知识库编辑器失败: ' + (error.message || '未知错误'));
   }
 });
 

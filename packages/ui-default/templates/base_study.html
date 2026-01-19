@@ -2,14 +2,14 @@
 {% block content %}
 <script>
   {{ set(UiContext, 'currentBranch', currentBranch) }}
-  {{ set(UiContext, 'mindMap', {
-    domainId: mindMap.domainId,
-    docId: mindMap.docId,
-    bid: mindMap.bid,
+  {{ set(UiContext, 'base', {
+    domainId: base.domainId,
+    docId: base.docId,
+    bid: base.bid,
     currentBranch: currentBranch,
-    nodes: mindMap.nodes or [],
-    edges: mindMap.edges or [],
-    title: mindMap.title
+    nodes: base.nodes or [],
+    edges: base.edges or [],
+    title: base.title
   }) }}
   {{ set(UiContext, 'units', units or []) }}
 </script>

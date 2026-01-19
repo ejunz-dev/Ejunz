@@ -1,7 +1,7 @@
 {% import "components/paginator.html" as paginator with context %}
 {% import "components/nothing.html" as nothing with context %}
 <div data-fragment-id="base_list">
-{% if not mindMaps or mindMaps.length == 0 %}
+{% if not bases or bases.length == 0 %}
   {{ nothing.render('Sorry, there are no bases in the base.') }}
 {% else %}
   {{ paginator.render(page, totalPages, position='top', add_qs=('q=' + qs if qs else '')) }}
@@ -29,22 +29,22 @@
       </tr>
     </thead>
     <tbody>
-      {%- for mindMap in mindMaps -%}
-      <tr data-bid="{{ mindMap.bid }}" data-doc-id="{{ mindMap.docId }}">
+      {%- for base in bases -%}
+      <tr data-bid="{{ base.bid }}" data-doc-id="{{ base.docId }}">
         <td class="col--checkbox display-mode-hide">
           <label class="compact checkbox">
             <input type="checkbox" data-checkbox-group="base" data-checkbox-range>
           </label>
         </td>
-        <td class="col--bid">{{ mindMap.bid }}</td>
+        <td class="col--bid">{{ base.bid }}</td>
         <td class="col--title">
-          <a href="{{ url('base_detail', domainId=domainId, docId=mindMap.docId) }}">
-            {{ mindMap.title }}
+          <a href="{{ url('base_detail', domainId=domainId, docId=base.docId) }}">
+            {{ base.title }}
           </a>
         </td>
-        <td class="col--nodes">{{ mindMap.nodes|length if mindMap.nodes else 0 }}</td>
-        <td class="col--views">{{ mindMap.views|default(0) }}</td>
-        <td class="col--updated">{{ datetimeSpan(mindMap.updateAt)|safe if mindMap.updateAt else 'N/A' }}</td>
+        <td class="col--nodes">{{ base.nodes|length if base.nodes else 0 }}</td>
+        <td class="col--views">{{ base.views|default(0) }}</td>
+        <td class="col--updated">{{ datetimeSpan(base.updateAt)|safe if base.updateAt else 'N/A' }}</td>
       </tr>
       {%- endfor -%}
     </tbody>

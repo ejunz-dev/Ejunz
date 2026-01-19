@@ -56,8 +56,8 @@ export const RepoAdd = (name, args, icon = 'add', text = 'Create Repository') =>
 export const AgentAdd = (name, args, icon = 'add', text = 'Create Agent') => {
     inject('AgentAdd', name, { ...args, icon, text });
 };
-export const MindMapAdd = (name, args, icon = 'add', text = 'Create Base') => {
-    inject('MindMapAdd', name, { ...args, icon, text });
+export const BaseAdd = (name, args, icon = 'add', text = 'Create Base') => {
+    inject('BaseAdd', name, { ...args, icon, text });
 };
 // inject('NavMainDropdown', 'homepage', { prefix: 'homepage' });
 // inject('NavMainDropdown', 'workspace_main', { prefix: 'workspace' });
@@ -89,7 +89,7 @@ inject('NavDropdown', 'manage_dashboard', { prefix: 'manage' }, PRIV.PRIV_EDIT_S
 inject('ProblemAdd', 'problem_create', { icon: 'add', text: 'Create Problem' });
 inject('RepoAdd', 'repo_create', { icon: 'add', text: 'Create Repository' });
 inject('AgentAdd', 'agent_create', { icon: 'add', text: 'Create Agent' });
-inject('MindMapAdd', 'base_create', { icon: 'add', text: 'Create Base' });
+inject('BaseAdd', 'base_create', { icon: 'add', text: 'Create Base' });
 inject('ControlPanel', 'manage_dashboard');
 inject('ControlPanel', 'manage_script');
 inject('ControlPanel', 'manage_user_import');

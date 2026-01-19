@@ -30,7 +30,7 @@ function LessonPage() {
   const cards = (window.UiContext?.cards || []) as Card[];
   const currentIndex = (window.UiContext?.currentIndex || 0) as number;
   const domainId = (window.UiContext?.domainId || '') as string;
-  const mindMapDocId = (window.UiContext?.mindMapDocId || '') as string;
+  const baseDocId = (window.UiContext?.baseDocId || '') as string;
   const isAlonePractice = (window.UiContext?.isAlonePractice || false) as boolean;
   
   const [renderedContent, setRenderedContent] = useState<string>('');

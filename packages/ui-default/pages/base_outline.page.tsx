@@ -5,7 +5,7 @@ import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
 import { request } from 'vj/utils';
 
-interface MindMapNode {
+interface BaseNode {
   id: string;
   text: string;
   x?: number;
@@ -26,7 +26,7 @@ interface MindMapNode {
   data?: Record<string, any>;
 }
 
-interface MindMapEdge {
+interface BaseEdge {
   id: string;
   source: string;
   target: string;
@@ -37,13 +37,13 @@ interface MindMapEdge {
   width?: number;
 }
 
-interface MindMapDoc {
+interface BaseDoc {
   docId: string;
   bid: number;
   title: string;
   content: string;
-  nodes: MindMapNode[];
-  edges: MindMapEdge[];
+  nodes: BaseNode[];
+  edges: BaseEdge[];
   layout?: {
     type: 'hierarchical' | 'force' | 'manual';
     direction?: 'LR' | 'RL' | 'TB' | 'BT';
@@ -102,7 +102,7 @@ interface ReactFlowNode {
   position: { x: number; y: number };
   data: {
     label?: string;
-    originalNode: MindMapNode;
+    originalNode: BaseNode;
     [key: string]: any;
   };
 }
@@ -113,7 +113,7 @@ interface ReactFlowEdge {
   target: string;
   type?: string;
   data?: {
-    originalEdge: MindMapEdge;
+    originalEdge: BaseEdge;
     [key: string]: any;
   };
 }
@@ -162,8 +162,8 @@ const OutlineView = ({
   
   // 卡片展开状态管理（使用 localStorage 持久化）
   const getStorageKey = useCallback(() => {
-    const docId = (window as any).UiContext?.mindMap?.docId;
-    const bid = (window as any).UiContext?.mindMap?.bid;
+    const docId = (window as any).UiContext?.base?.docId;
+    const bid = (window as any).UiContext?.base?.bid;
     const domainId = (window as any).UiContext?.domainId || 'system';
     if (docId) {
       return `base_cards_expanded_${domainId}_${docId}`;
@@ -281,13 +281,13 @@ const OutlineView = ({
       }
     });
 
-    // 为每个节点的子节点按照order排序（保持和原始mindMap中的顺序一致）
+    // 为每个节点的子节点按照order排序（保持和原始base中的顺序一致）
     nodeMap.forEach((nodeData) => {
       nodeData.children.sort((a, b) => {
         const nodeA = nodes.find(n => n.id === a);
         const nodeB = nodes.find(n => n.id === b);
-        const originalNodeA = nodeA?.data.originalNode as MindMapNode | undefined;
-        const originalNodeB = nodeB?.data.originalNode as MindMapNode | undefined;
+        const originalNodeA = nodeA?.data.originalNode as BaseNode | undefined;
+        const originalNodeB = nodeB?.data.originalNode as BaseNode | undefined;
         const orderA = originalNodeA?.order || 0;
         const orderB = originalNodeB?.order || 0;
         return orderA - orderB;
@@ -318,7 +318,7 @@ const OutlineView = ({
     
     const rootNodeData = buildTree.nodeMap.get(targetRootNodeId);
     if (!rootNodeData) return null;
-    const originalNode = rootNodeData.node.data.originalNode as MindMapNode;
+    const originalNode = rootNodeData.node.data.originalNode as BaseNode;
     return {
       id: targetRootNodeId,
       text: originalNode?.text || '未命名节点',
@@ -350,7 +350,7 @@ const OutlineView = ({
   const getNodeCards = useCallback((nodeId: string): Card[] => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const cards = nodeCardsMap[nodeId] || [];
-    // 按order排序，保持和原始mindMap中的顺序一致
+    // 按order排序，保持和原始base中的顺序一致
     return [...cards].sort((a, b) => {
       const orderA = (a.order as number) || 0;
       const orderB = (b.order as number) || 0;
@@ -362,8 +362,8 @@ const OutlineView = ({
   const getCardUrl = useCallback((card: Card, nodeId: string): string => {
     const domainId = (window as any).UiContext?.domainId || 'system';
     const branch = (window as any).UiContext?.currentBranch || 'main';
-    const docId = (window as any).UiContext?.mindMap?.docId;
-    const bid = (window as any).UiContext?.mindMap?.bid;
+    const docId = (window as any).UiContext?.base?.docId;
+    const bid = (window as any).UiContext?.base?.bid;
     
     if (docId) {
       return `/d/${domainId}/base/${docId}/branch/${branch}/node/${nodeId}/cards?cardId=${card.docId}`;
@@ -380,7 +380,7 @@ const OutlineView = ({
       if (!nodeData) return null;
 
       const { node, children } = nodeData;
-      const originalNode = node.data.originalNode as MindMapNode;
+      const originalNode = node.data.originalNode as BaseNode;
       // 大纲默认折叠（使用独立的展开状态，不与文件结构同步）
       const expanded = expandedNodesOutline.has(nodeId);
       const hasChildren = children.length > 0;
@@ -393,7 +393,7 @@ const OutlineView = ({
       const childNodes = children.map(childId => {
         const childNodeData = buildTree.nodeMap.get(childId);
         if (!childNodeData) return null;
-        const childOriginalNode = childNodeData.node.data.originalNode as MindMapNode;
+        const childOriginalNode = childNodeData.node.data.originalNode as BaseNode;
         return {
           id: childId,
           order: childOriginalNode?.order || 0,
@@ -622,7 +622,7 @@ const OutlineView = ({
             const rootChildNodes = rootNodeInfo.children.map(childId => {
               const childNodeData = buildTree.nodeMap.get(childId);
               if (!childNodeData) return null;
-              const childOriginalNode = childNodeData.node.data.originalNode as MindMapNode;
+              const childOriginalNode = childNodeData.node.data.originalNode as BaseNode;
               return {
                 id: childId,
                 order: childOriginalNode?.order || 0,
@@ -715,8 +715,8 @@ const OutlineView = ({
   );
 };
 
-function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefined; initialData: MindMapDoc }) {
-  const [mindMap, setMindMap] = useState<MindMapDoc>(initialData);
+function BaseOutlineEditor({ docId, initialData }: { docId: string | undefined; initialData: BaseDoc }) {
+  const [base, setBase] = useState<BaseDoc>(initialData);
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   // 标记是否正在手动设置选择（避免useEffect干扰）
@@ -746,7 +746,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
 
   // 保存展开状态的 ref（用于自动保存和 WebSocket 更新时保留状态）
   const expandedNodesRef = useRef<Set<string>>(expandedNodes);
-  const mindMapRef = useRef<MindMapDoc>(mindMap);
+  const baseRef = useRef<BaseDoc>(base);
   
   // 同步 refs
   useEffect(() => {
@@ -754,8 +754,8 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
   }, [expandedNodes]);
   
   useEffect(() => {
-    mindMapRef.current = mindMap;
-  }, [mindMap]);
+    baseRef.current = base;
+  }, [base]);
 
   // 自动保存展开状态到数据库（带防抖，参考 editor 的实现）
   const expandSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -770,10 +770,10 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
       try {
         // 使用 ref 获取最新的展开状态和节点数据
         const currentExpandedNodes = expandedNodesRef.current;
-        const currentMindMap = mindMapRef.current;
+        const currentBase = baseRef.current;
         
         // 更新所有节点的 expandedOutline 字段，匹配当前的展开状态
-        const updatedNodes = currentMindMap.nodes.map((node) => {
+        const updatedNodes = currentBase.nodes.map((node) => {
           const isExpanded = currentExpandedNodes.has(node.id);
           return {
             ...node,
@@ -781,29 +781,29 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
           };
         });
 
-        // 调用 /save 接口保存整个 mindMap（包含 expandedOutline 状态）
+        // 调用 /save 接口保存整个 base（包含 expandedOutline 状态）
         // 过滤掉临时节点和边，确保不会保存临时数据
         const filteredNodes = updatedNodes.filter(n => !n.id.startsWith('temp-node-'));
-        const filteredEdges = currentMindMap.edges.filter(e => 
+        const filteredEdges = currentBase.edges.filter(e => 
           !e.source.startsWith('temp-node-') && 
           !e.target.startsWith('temp-node-') &&
           !e.id.startsWith('temp-edge-')
         );
         
         const domainId = (window as any).UiContext?.domainId || 'system';
-        const getMindMapUrl = (path: string, docId: string) => {
+        const getBaseUrl = (path: string, docId: string) => {
           return `/d/${domainId}/base/${docId}${path}`;
         };
         
-        await request.post(getMindMapUrl('/save', docId), {
+        await request.post(getBaseUrl('/save', docId), {
           nodes: filteredNodes,
           edges: filteredEdges,
           operationDescription: '自动保存 outline 展开状态',
         });
         
-        // 更新本地 mindMap 状态（确保与后端同步）
-        // 注意：这里更新 mindMap 不会触发 useEffect 重置展开状态，因为 useEffect 只依赖 bid
-        setMindMap(prev => ({
+        // 更新本地 base 状态（确保与后端同步）
+        // 注意：这里更新 base 不会触发 useEffect 重置展开状态，因为 useEffect 只依赖 bid
+        setBase(prev => ({
           ...prev,
           nodes: updatedNodes,
         }));
@@ -1126,34 +1126,34 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
   }, [isCheckingCache]);
 
   // 跟踪已初始化的 base（通过 bid），避免重复初始化
-  const initializedMindMapRef = useRef<number | null>(null);
+  const initializedBaseRef = useRef<number | null>(null);
   
   // 只在初始化时或切换 base 时设置展开状态，之后完全由用户操作控制
   useEffect(() => {
-    const currentbid = mindMap?.bid;
+    const currentbid = base?.bid;
     
     // 如果是新的 base（bid 变化），重新初始化
-    if (currentbid && currentbid !== initializedMindMapRef.current) {
+    if (currentbid && currentbid !== initializedBaseRef.current) {
       // 从数据库加载展开状态
       const expanded = new Set<string>();
-      mindMap.nodes.forEach(node => {
+      base.nodes.forEach(node => {
         if (node.expandedOutline !== false) {
           expanded.add(node.id);
         }
       });
       setExpandedNodes(expanded);
       expandedNodesRef.current = expanded;
-      initializedMindMapRef.current = currentbid;
+      initializedBaseRef.current = currentbid;
     }
     
-    // 当 mindMap 更新时，自动检查缓存状态（延迟一下，确保 nodeCardsMap 已更新）
+    // 当 base 更新时，自动检查缓存状态（延迟一下，确保 nodeCardsMap 已更新）
     const timer = setTimeout(() => {
       if (cachedCardsRef.current.size > 0) {
         checkCacheStatus();
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [mindMap?.bid, checkCacheStatus]); // 只依赖 bid，避免频繁触发
+  }, [base?.bid, checkCacheStatus]); // 只依赖 bid，避免频繁触发
 
   // 递归检查 node 及其所有子节点和子卡片是否都已缓存
   const checkNodeCachedRef = useRef<((nodeId: string) => boolean) | null>(null);
@@ -1174,13 +1174,13 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
     }
     
     // 检查该 node 下的所有子 node 是否都已缓存（递归）
-    const nodeData = mindMap.nodes.find(n => n.id === nodeId);
+    const nodeData = base.nodes.find(n => n.id === nodeId);
     if (!nodeData) {
       return allCardsCached;
     }
     
     // 获取所有子节点
-    const childNodeIds = mindMap.edges
+    const childNodeIds = base.edges
       .filter(edge => edge.source === nodeId)
       .map(edge => edge.target);
     
@@ -1195,7 +1195,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
     });
     
     return allCardsCached && allChildNodesCached;
-  }, [mindMap]);
+  }, [base]);
   
   // 将函数存储到 ref 中，用于递归调用
   useEffect(() => {
@@ -1206,16 +1206,16 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
   const expandedNodesArray = useMemo(() => Array.from(expandedNodes), [expandedNodes]);
   const fileTree = useMemo(() => {
     const items: FileItem[] = [];
-    const nodeMap = new Map<string, { node: MindMapNode; children: string[] }>();
+    const nodeMap = new Map<string, { node: BaseNode; children: string[] }>();
     const rootNodes: string[] = [];
 
     // 初始化节点映射
-    mindMap.nodes.forEach((node) => {
+    base.nodes.forEach((node) => {
       nodeMap.set(node.id, { node, children: [] });
     });
 
     // 构建父子关系
-    mindMap.edges.forEach((edge) => {
+    base.edges.forEach((edge) => {
       const parent = nodeMap.get(edge.source);
       if (parent) {
         parent.children.push(edge.target);
@@ -1223,8 +1223,8 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
     });
 
     // 找到根节点（优化：使用 Set 来快速查找）
-    const hasParentSet = new Set(mindMap.edges.map(e => e.target));
-    mindMap.nodes.forEach((node) => {
+    const hasParentSet = new Set(base.edges.map(e => e.target));
+    base.nodes.forEach((node) => {
       if (!hasParentSet.has(node.id)) {
         rootNodes.push(node.id);
       }
@@ -1271,7 +1271,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
             return { id: childId, node: childNode, order: childNode.order || 0 };
           })
           .filter(Boolean)
-          .sort((a, b) => (a!.order || 0) - (b!.order || 0)) as Array<{ id: string; node: MindMapNode; order: number }>;
+          .sort((a, b) => (a!.order || 0) - (b!.order || 0)) as Array<{ id: string; node: BaseNode; order: number }>;
 
         // 合并node和card，按照order混合排序（直接使用editor的逻辑）
         const allChildren: Array<{ type: 'node' | 'card'; id: string; order: number; data: any }> = [
@@ -1309,7 +1309,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
     });
 
     return items;
-  }, [mindMap.nodes, mindMap.edges, expandedNodesArray]);
+  }, [base.nodes, base.edges, expandedNodesArray]);
 
   // 切换节点展开/折叠（保存到数据库的 expandedOutline 字段）
   const toggleNodeExpanded = useCallback((nodeId: string) => {
@@ -1321,8 +1321,8 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
         newSet.add(nodeId);
       }
       
-      // 立即更新本地 mindMap 状态（实现即时 UI 响应）
-      setMindMap(prev => {
+      // 立即更新本地 base 状态（实现即时 UI 响应）
+      setBase(prev => {
         const updated = {
           ...prev,
           nodes: prev.nodes.map(n =>
@@ -1332,7 +1332,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
           ),
         };
         // 立即更新 ref，确保自动保存时能获取最新值
-        mindMapRef.current = updated;
+        baseRef.current = updated;
         return updated;
       });
       
@@ -1348,8 +1348,8 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
 
   // 构建选中node及其子节点的nodes和edges（用于OutlineView）
   const getNodeSubgraph = useCallback((nodeId: string): { nodes: ReactFlowNode[]; edges: ReactFlowEdge[] } => {
-    const nodeMap = new Map<string, MindMapNode>();
-    const edgeMap = new Map<string, MindMapEdge>();
+    const nodeMap = new Map<string, BaseNode>();
+    const edgeMap = new Map<string, BaseEdge>();
     const visitedNodes = new Set<string>();
 
     // 递归收集节点及其所有子节点（包括子节点的子节点）
@@ -1357,13 +1357,13 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
       if (visitedNodes.has(id)) return;
       visitedNodes.add(id);
 
-      const node = mindMap.nodes.find(n => n.id === id);
+      const node = base.nodes.find(n => n.id === id);
     if (!node) return;
     
       nodeMap.set(id, node);
 
       // 收集所有子节点（递归）
-      const childEdges = mindMap.edges.filter(e => e.source === id);
+      const childEdges = base.edges.filter(e => e.source === id);
       childEdges.forEach(edge => {
         edgeMap.set(edge.id, edge);
         // 递归收集子节点的子节点
@@ -1399,12 +1399,12 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
       }));
 
     return { nodes: reactFlowNodes, edges: reactFlowEdges };
-  }, [mindMap]);
+  }, [base]);
 
   // 处理node展开/折叠（用于OutlineView）
   const handleNodeToggleExpand = useCallback((nodeId: string) => {
-    // 更新mindMap中对应node的expanded状态
-    setMindMap(prev => ({
+    // 更新base中对应node的expanded状态
+    setBase(prev => ({
       ...prev,
       nodes: prev.nodes.map(node =>
         node.id === nodeId
@@ -1670,7 +1670,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
     });
     
     // 递归清除子节点的缓存
-    const childNodeIds = mindMap.edges
+    const childNodeIds = base.edges
       .filter(edge => edge.source === nodeId)
       .map(edge => edge.target);
     
@@ -1691,7 +1691,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
     if (cacheStatus) {
       checkCacheStatus();
     }
-  }, [mindMap.edges, selectedCard, cacheStatus, checkCacheStatus]);
+  }, [base.edges, selectedCard, cacheStatus, checkCacheStatus]);
 
   // 一键更新所有过期缓存
   const updateOutdatedCache = useCallback(async () => {
@@ -2019,8 +2019,8 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
       }
     } else if (nodeId) {
       // 在fileTree中查找对应的node（如果fileTree已生成）
-      // 如果fileTree还未生成，等待mindMap加载完成
-      if (mindMap.nodes.length > 0) {
+      // 如果fileTree还未生成，等待base加载完成
+      if (base.nodes.length > 0) {
         const nodeFile = fileTree.find(f => f.type === 'node' && f.nodeId === nodeId);
         if (nodeFile && (!selectedNodeId || selectedNodeId !== nodeId)) {
           // 先清除所有之前的高亮样式
@@ -2040,7 +2040,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
       setSelectedCard(null);
       setSelectedNodeId(null);
     }
-  }, [fileTree, selectedCard, selectedNodeId, handleSelectCard, expandedNodes, mindMap.nodes]);
+  }, [fileTree, selectedCard, selectedNodeId, handleSelectCard, expandedNodes, base.nodes]);
 
   // 滚动到选中项的函数（可复用）
   const scrollToSelectedItem = useCallback(() => {
@@ -2492,15 +2492,15 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
       
       // 重新加载数据
       const domainId = (window as any).UiContext?.domainId || 'system';
-      request.get(getMindMapUrl('/data', docId)).then((responseData) => {
-        if (responseData?.mindMap) {
-          setMindMap(responseData.mindMap);
+      request.get(getBaseUrl('/data', docId)).then((responseData) => {
+        if (responseData?.base) {
+          setBase(responseData.base);
         } else {
-          setMindMap(responseData);
+          setBase(responseData);
         }
         if ((window as any).UiContext) {
           const updatedMap = responseData?.nodeCardsMap
-            || responseData?.mindMap?.nodeCardsMap
+            || responseData?.base?.nodeCardsMap
             || {};
           (window as any).UiContext.nodeCardsMap = updatedMap;
           
@@ -2614,14 +2614,14 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
             // 使用 setTimeout 将数据重新加载操作推迟到下一个事件循环，避免阻塞 onmessage 处理器
             setTimeout(() => {
               const domainId = (window as any).UiContext?.domainId || 'system';
-              request.get(getMindMapUrl('/data', docId)).then((responseData) => {
-                const newMindMap = responseData?.mindMap || responseData;
+              request.get(getBaseUrl('/data', docId)).then((responseData) => {
+                const newBase = responseData?.base || responseData;
                 
                 // 保存当前的展开状态，避免被覆盖
                 const currentExpandedNodes = expandedNodesRef.current;
                 
                 // 合并展开状态：完全保留当前的展开状态，不根据数据库的 expandedOutline 覆盖
-                const mergedNodes = newMindMap.nodes.map((node: MindMapNode) => {
+                const mergedNodes = newBase.nodes.map((node: BaseNode) => {
                   const isCurrentlyExpanded = currentExpandedNodes.has(node.id);
                   // 如果当前状态中有这个节点，使用当前状态；否则使用数据库中的 expandedOutline
                   return {
@@ -2630,8 +2630,8 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
                   };
                 });
                 
-                setMindMap({
-                  ...newMindMap,
+                setBase({
+                  ...newBase,
                   nodes: mergedNodes,
                 });
                 
@@ -2640,7 +2640,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
                 setExpandedNodes(prev => {
                   const newSet = new Set(prev);
                   let changed = false;
-                  mergedNodes.forEach((node: MindMapNode) => {
+                  mergedNodes.forEach((node: BaseNode) => {
                     // 只处理新节点（不在 prev 中的），根据 expandedOutline 字段决定是否展开
                     if (!prev.has(node.id)) {
                       if (node.expandedOutline !== false) {
@@ -2658,7 +2658,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
                 
                 if ((window as any).UiContext) {
                   const updatedMap = responseData?.nodeCardsMap
-                    || responseData?.mindMap?.nodeCardsMap
+                    || responseData?.base?.nodeCardsMap
                     || {};
                   (window as any).UiContext.nodeCardsMap = updatedMap;
                   
@@ -2755,7 +2755,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
         <a
           href={(() => {
             const domainId = (window as any).UiContext?.domainId || 'system';
-            const branch = mindMap.currentBranch || 'main';
+            const branch = base.currentBranch || 'main';
             return `/d/${domainId}/base/${docId}/branch/${branch}`;
           })()}
           style={{
@@ -2774,7 +2774,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
         <a
           href={(() => {
             const domainId = (window as any).UiContext?.domainId;
-            const branch = mindMap.currentBranch || 'main';
+            const branch = base.currentBranch || 'main';
             return `/d/${domainId}/base/branch/${branch}/editor`;
           })()}
           style={{
@@ -2835,7 +2835,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
           </button>
         )}
         <div style={{ marginLeft: 'auto', fontSize: '14px', color: '#666' }}>
-          {mindMap.title} - 文件模式
+          {base.title} - 文件模式
         </div>
       </div>
 
@@ -3456,15 +3456,15 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
                   href={(() => {
                     const domainId = (window as any).UiContext?.domainId || 'system';
                     const branch = (window as any).UiContext?.currentBranch || 'main';
-                    const mindMapDocId = (window as any).UiContext?.mindMap?.docId;
-                    const mindMapbid = (window as any).UiContext?.mindMap?.bid;
+                    const baseDocId = (window as any).UiContext?.base?.docId;
+                    const basebid = (window as any).UiContext?.base?.bid;
                     const nodeId = selectedCard.nodeId || '';
                     const cardId = selectedCard.docId;
                     
-                    if (mindMapDocId) {
-                      return `/d/${domainId}/base/${mindMapDocId}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit?returnUrl=${encodeURIComponent(window.location.href)}`;
-                    } else if (mindMapbid) {
-                      return `/d/${domainId}/base/bid/${mindMapbid}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit?returnUrl=${encodeURIComponent(window.location.href)}`;
+                    if (baseDocId) {
+                      return `/d/${domainId}/base/${baseDocId}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit?returnUrl=${encodeURIComponent(window.location.href)}`;
+                    } else if (basebid) {
+                      return `/d/${domainId}/base/bid/${basebid}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit?returnUrl=${encodeURIComponent(window.location.href)}`;
                     }
                     return '#';
                   })()}
@@ -3557,7 +3557,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: '#333' }}>
-                  {mindMap.nodes.find(n => n.id === selectedNodeId)?.text || '未命名节点'}
+                  {base.nodes.find(n => n.id === selectedNodeId)?.text || '未命名节点'}
                 </h3>
               </div>
             </div>
@@ -3715,7 +3715,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
 }
 
 // 辅助函数：获取带 domainId 的 base URL
-const getMindMapUrl = (path: string, docId: string): string => {
+const getBaseUrl = (path: string, docId: string): string => {
   const domainId = (window as any).UiContext?.domainId || 'system';
   return `/d/${domainId}/base/${docId}${path}`;
 };
@@ -3731,7 +3731,7 @@ const page = new NamedPage('base_outline', async () => {
     const docId = $container.data('doc-id') || $container.attr('data-doc-id') || '';
 
     // 加载思维导图数据（不依赖 docId，直接通过 domainId 获取）
-    let initialData: MindMapDoc;
+    let initialData: BaseDoc;
     try {
       // 使用 /base/data 路由，不需要 docId
       const response = await request.get(`/d/${domainId}/base/data`);
@@ -3741,12 +3741,12 @@ const page = new NamedPage('base_outline', async () => {
         initialData.docId = docId || '';
       }
     } catch (error: any) {
-      Notification.error('加载思维导图失败: ' + (error.message || '未知错误'));
+      Notification.error('加载知识库失败: ' + (error.message || '未知错误'));
       return;
     }
 
     ReactDOM.render(
-      <MindMapOutlineEditor docId={initialData.docId || ''} initialData={initialData} />,
+      <BaseOutlineEditor docId={initialData.docId || ''} initialData={initialData} />,
       $container[0]
     );
   } catch (error: any) {

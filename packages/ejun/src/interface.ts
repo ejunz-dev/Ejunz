@@ -288,7 +288,7 @@ export interface BlockDoc {
 }
 
 // Base document
-export interface MindMapNode {
+export interface BaseNode {
     id: string; // 节点唯一标识
     text: string; // 节点文本内容
     x?: number; // X坐标（可选，用于布局）
@@ -308,7 +308,7 @@ export interface MindMapNode {
     data?: Record<string, any>; // 自定义数据
 }
 
-export interface MindMapEdge {
+export interface BaseEdge {
     id: string; // 连接唯一标识
     source: string; // 源节点ID
     target: string; // 目标节点ID
@@ -319,16 +319,16 @@ export interface MindMapEdge {
     width?: number; // 连接宽度
 }
 
-export interface MindMapDoc {
+export interface BaseDoc {
     docType: document['TYPE_BASE'];
     docId: ObjectId;
     domainId: string;
     owner: number;
     title: string;
     content: string; // 描述性内容（可选）
-    nodes: MindMapNode[]; // 节点列表（向后兼容，新数据存储在 branchData 中）
-    edges: MindMapEdge[]; // 连接列表（向后兼容，新数据存储在 branchData 中）
-    branchData?: { [branch: string]: { nodes: MindMapNode[]; edges: MindMapEdge[] } }; // 按分支存储的数据
+    nodes: BaseNode[]; // 节点列表（向后兼容，新数据存储在 branchData 中）
+    edges: BaseEdge[]; // 连接列表（向后兼容，新数据存储在 branchData 中）
+    branchData?: { [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] } }; // 按分支存储的数据
     layout?: {
         type: 'hierarchical' | 'force' | 'manual'; // 布局类型
         direction?: 'LR' | 'RL' | 'TB' | 'BT'; // 布局方向（用于层级布局）
@@ -357,11 +357,11 @@ export interface MindMapDoc {
     currentBranch?: string; // 当前分支
     parentId?: ObjectId; // 父思维导图ID（用于建立思维导图之间的层级关系）
     domainPosition?: { x: number; y: number }; // 在导图域中的位置（用于 base_domain 页面）
-    history?: MindMapHistoryEntry[]; // 操作历史记录（最多50条）
+    history?: BaseHistoryEntry[]; // 操作历史记录（最多50条）
     files?: FileInfo[]; // 文件列表
 }
 
-export interface MindMapHistoryEntry {
+export interface BaseHistoryEntry {
     id: string; // 历史记录ID
     type: 'save' | 'commit'; // 操作类型
     timestamp: Date; // 操作时间
@@ -369,8 +369,8 @@ export interface MindMapHistoryEntry {
     username: string; // 操作用户名
     description: string; // 操作描述
     snapshot: { // 数据快照
-        nodes: MindMapNode[];
-        edges: MindMapEdge[];
+        nodes: BaseNode[];
+        edges: BaseEdge[];
         viewport?: {
             x: number;
             y: number;
@@ -383,7 +383,7 @@ export interface CardDoc {
     docType: document['TYPE_CARD'];
     docId: ObjectId;
     domainId: string;
-    mindMapDocId: ObjectId; // 关联的 base docId
+    baseDocId: ObjectId; // 关联的 base docId
     nodeId: string; // 关联的 node ID
     cid: number; // Card ID，从1开始（在 node 内唯一）
     owner: number;
@@ -986,7 +986,7 @@ export interface Lib {
 
 
 export type UIInjectableFields = 
-    'RepoAdd' | 'AgentAdd' | 'MindMapAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel' | 'ProfileHeaderContact' | 'Home_Domain' | 'NavDropdown' | 'NavMainDropdown'
+    'RepoAdd' | 'AgentAdd' | 'BaseAdd' | 'Notification' | 'Nav' | 'UserDropdown' | 'DomainManage' | 'ControlPanel' | 'ProfileHeaderContact' | 'Home_Domain' | 'NavDropdown' | 'NavMainDropdown'
 export interface UI {
     nodes: Record<UIInjectableFields, any[]>,
     getNodes: typeof import('./lib/ui').getNodes,
