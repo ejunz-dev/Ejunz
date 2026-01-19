@@ -7,7 +7,7 @@ import { request } from 'vj/utils';
 
 interface MindMapItem {
   docId: string;
-  mmid: number;
+  bid: number;
   title: string;
   content: string;
   owner: number;
@@ -36,7 +36,7 @@ function MindMapList() {
       if (rpid) params.rpid = rpid;
       if (branch) params.branch = branch;
 
-      const response = await request.get(`/d/${domainId}/mindmap`, { params });
+      const response = await request.get(`/d/${domainId}/base`, { params });
       setMindMaps(response.mindMaps || []);
     } catch (error: any) {
       Notification.error('加载思维导图列表失败: ' + (error.message || '未知错误'));
@@ -53,7 +53,7 @@ function MindMapList() {
     try {
       // 删除操作
       const domainId = (window as any).UiContext?.domainId || 'system';
-      await request.post(`/d/${domainId}/mindmap/${docId}/edit`, {
+      await request.post(`/d/${domainId}/base/${docId}/edit`, {
         operation: 'delete',
       });
       Notification.success('思维导图已删除');
@@ -79,7 +79,7 @@ function MindMapList() {
           <a
             href={(() => {
               const domainId = (window as any).UiContext?.domainId || 'system';
-              return `/d/${domainId}/mindmap/create`;
+              return `/d/${domainId}/base/create`;
             })()}
             style={{
               padding: '8px 16px',
@@ -118,7 +118,7 @@ function MindMapList() {
               }}
               onClick={() => {
                 const domainId = (window as any).UiContext?.domainId || '';
-                window.location.href = `/d/${domainId}/mindmap/${mindMap.docId}`;
+                window.location.href = `/d/${domainId}/base/${mindMap.docId}`;
               }}
             >
               <h3 style={{ margin: '0 0 10px 0', fontSize: '18px', color: '#333' }}>
@@ -137,7 +137,7 @@ function MindMapList() {
                 <a
                   href={(() => {
                     const domainId = (window as any).UiContext?.domainId || 'system';
-                    return `/d/${domainId}/mindmap/${mindMap.docId}`;
+                    return `/d/${domainId}/base/${mindMap.docId}`;
                   })()}
                   onClick={(e) => e.stopPropagation()}
                   style={{
@@ -154,7 +154,7 @@ function MindMapList() {
                 <a
                   href={(() => {
                     const domainId = (window as any).UiContext?.domainId || 'system';
-                    return `/d/${domainId}/mindmap/${mindMap.docId}/edit`;
+                    return `/d/${domainId}/base/${mindMap.docId}/edit`;
                   })()}
                   onClick={(e) => e.stopPropagation()}
                   style={{
@@ -194,9 +194,9 @@ function MindMapList() {
   );
 }
 
-const page = new NamedPage('mindmap_list', async () => {
+const page = new NamedPage('base_list', async () => {
   try {
-    const $container = $('#mindmap-list');
+    const $container = $('#base-list');
     if (!$container.length) {
       return;
     }
@@ -209,7 +209,7 @@ const page = new NamedPage('mindmap_list', async () => {
       $container[0]
     );
   } catch (error: any) {
-    console.error('Failed to initialize mindmap list:', error);
+    console.error('Failed to initialize base list:', error);
     Notification.error('初始化思维导图列表失败: ' + (error.message || '未知错误'));
   }
 });

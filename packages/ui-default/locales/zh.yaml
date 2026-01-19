@@ -170,9 +170,9 @@ __langname: 简体中文
 'Original score: {0}': '原得分: {0}'
 'Play Audio': 播放音频
 'Play Recording': 播放录音
-'Please create a mindmap first.': 请先创建思维导图。
-'Please create a mindmap with at least one section.': 请创建至少包含一个章节的思维导图。
-'Please create a mindmap with course structure (course -> section -> unit -> lesson)': 请创建包含课程结构的思维导图（课程 -> 阶段 -> 单元 -> 课程）
+'Please create a base first.': 请先创建知识库。
+'Please create a base with at least one section.': 请创建至少包含一个章节的知识库。
+'Please create a base with course structure (course -> section -> unit -> lesson)': 请创建包含课程结构的知识库（课程 -> 阶段 -> 单元 -> 课程）
 'Please generate token on': 请在
 'Please select a conversation from the left sidebar to view chat details': 请从左侧边栏选择一个对话以查看聊天详情
 'Please select': 请选择
@@ -591,20 +591,20 @@ Memory: 内存
 Message {0} not found.: 消息 {0} 不存在。
 Messages: 消息
 Method: 方法
-MindMap Node: 思维导图节点
-mindmap_create: 创建知识库
-mindmap_data: 知识库数据
-mindmap_delete: 删除知识库
-mindmap_detail: 知识库详情
-mindmap_domain: 知识库
-mindmap_edge: 知识库边
-mindmap_edit: 编辑知识库
-mindmap_editor: 编辑器
-mindmap_list: 知识库列表
-mindmap_node: 知识库节点
-mindmap_outline: 知识库
-mindmap_save: 保存知识库
-mindmap_study: 学习知识库
+Base Node: 知识库节点
+base_create: 创建知识库
+base_data: 知识库数据
+base_delete: 删除知识库
+base_detail: 知识库详情
+base_domain: 知识库
+base_edge: 知识库边
+base_edit: 编辑知识库
+base_editor: 编辑器
+base_list: 知识库列表
+base_node: 知识库节点
+base_outline: 知识库
+base_save: 保存知识库
+base_study: 学习知识库
 Month: 月
 More: 多
 My Domains: 我加入的域

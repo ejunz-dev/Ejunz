@@ -5,7 +5,7 @@
   {{ set(UiContext, 'mindMap', {
     domainId: mindMap.domainId,
     docId: mindMap.docId,
-    mmid: mindMap.mmid,
+    bid: mindMap.bid,
     currentBranch: branch
   }) }}
 </script>
@@ -14,7 +14,7 @@
     <div class="section">
       <div class="section__header">
         <h1 class="section__title">
-          <a href="{{ url('mindmap_detail_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch) }}">
+          <a href="{{ url('base_detail_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch) }}">
             {{ mindMap.title if mindMap else '思维导图' }}
           </a>
           <span style="margin: 0 10px;">/</span>
@@ -39,7 +39,7 @@
           <div style="display: flex; flex-direction: column; gap: 8px;">
             {% for c in cards %}
               <a 
-                href="{{ url('mindmap_card_detail_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId, cardId=c.docId) }}"
+                href="{{ url('base_card_detail_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId, cardId=c.docId) }}"
                 style="
                   padding: 12px 16px;
                   border-radius: 6px;

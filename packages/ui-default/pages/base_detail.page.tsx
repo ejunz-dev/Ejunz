@@ -60,7 +60,7 @@ interface MindMapEdge {
 
 interface MindMapDoc {
   docId: string;
-  mmid: number;
+  bid: number;
   title: string;
   content: string;
   nodes: MindMapNode[];
@@ -188,12 +188,12 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
     const docId = data.docId as string;
     // 构建预览 URL（添加 noDisposition=1 参数）
     let url = docId 
-      ? `/d/${domainId}/mindmap/${docId}/file/${encodeURIComponent(file.name)}`
-      : `/d/${domainId}/mindmap/mmid/${data.mmid}/file/${encodeURIComponent(file.name)}`;
+      ? `/d/${domainId}/base/${docId}/file/${encodeURIComponent(file.name)}`
+      : `/d/${domainId}/base/bid/${data.bid}/file/${encodeURIComponent(file.name)}`;
     // 添加 noDisposition=1 参数以启用预览
     url = url.includes('?') ? `${url}&noDisposition=1` : `${url}?noDisposition=1`;
     window.open(url, '_blank');
-  }, [data.docId, data.mmid, data.branch]);
+  }, [data.docId, data.bid, data.branch]);
   
   // 点击外部关闭文件悬浮窗
   React.useEffect(() => {
@@ -261,10 +261,10 @@ const MindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boo
     const branch = data.branch || 'main';
     const docId = data.docId as string;
     const url = docId 
-      ? `/d/${domainId}/mindmap/${docId}/branch/${branch}/node/${id}/cards?cardId=${card.docId}`
-      : `/d/${domainId}/mindmap/mmid/${data.mmid}/branch/${branch}/node/${id}/cards?cardId=${card.docId}`;
+      ? `/d/${domainId}/base/${docId}/branch/${branch}/node/${id}/cards?cardId=${card.docId}`
+      : `/d/${domainId}/base/bid/${data.bid}/branch/${branch}/node/${id}/cards?cardId=${card.docId}`;
     window.open(url, '_blank');
-  }, [id, data.docId, data.mmid, data.branch]);
+  }, [id, data.docId, data.bid, data.branch]);
   
   // 点击外部关闭悬浮窗
   React.useEffect(() => {
@@ -1317,7 +1317,7 @@ const CustomMindMapEdge = ({ id, source, target, sourceX, sourceY, targetX, targ
 };
 
 const customNodeTypes: NodeTypes = {
-  mindmap: MindMapNodeComponent,
+  base: MindMapNodeComponent,
 };
 
 const customEdgeTypes: EdgeTypes = {
@@ -1391,26 +1391,26 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isImmersive]);
-  const [viewMode, setViewMode] = useState<'mindmap' | 'yaml'>('mindmap');
+  const [viewMode, setViewMode] = useState<'base' | 'yaml'>('base');
   // 处理卡片管理：跳转到卡片列表页面
   const handleManageCards = useCallback((nodeId: string) => {
     const domainId = (window as any).UiContext?.domainId || 'system';
     const branch = mindMap.currentBranch || 'main';
     const url = docId 
-      ? `/d/${domainId}/mindmap/${docId}/branch/${branch}/node/${nodeId}/cards`
-      : `/d/${domainId}/mindmap/mmid/${mindMap.mmid}/branch/${branch}/node/${nodeId}/cards`;
+      ? `/d/${domainId}/base/${docId}/branch/${branch}/node/${nodeId}/cards`
+      : `/d/${domainId}/base/bid/${mindMap.bid}/branch/${branch}/node/${nodeId}/cards`;
     window.open(url, '_blank');
-  }, [docId, mindMap.mmid, mindMap.currentBranch]);
+  }, [docId, mindMap.bid, mindMap.currentBranch]);
   // 处理文件管理：跳转到思维导图文件页面（文件是思维导图级别的，不依赖节点ID）
   const handleManageFiles = useCallback(() => {
     const domainId = (window as any).UiContext?.domainId || 'system';
     const branch = mindMap.currentBranch || 'main';
     const url = docId 
-      ? `/d/${domainId}/mindmap/${docId}/branch/${branch}/files`
-      : `/d/${domainId}/mindmap/mmid/${mindMap.mmid}/branch/${branch}/files`;
+      ? `/d/${domainId}/base/${docId}/branch/${branch}/files`
+      : `/d/${domainId}/base/bid/${mindMap.bid}/branch/${branch}/files`;
     console.log('handleManageFiles called, opening URL:', url);
     window.open(url, '_blank');
-  }, [docId, mindMap.mmid, mindMap.currentBranch]);
+  }, [docId, mindMap.bid, mindMap.currentBranch]);
   const [gitStatus, setGitStatus] = useState<any>(null); // Git 状态
   const [gitStatusLoading, setGitStatusLoading] = useState(false); // Git 状态加载中
   const lastOperationRef = useRef<string>(''); // 记录最后一次操作类型
@@ -1994,7 +1994,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       // 处理卡片数据
       if (cardsData && cardsData.length > 0) {
         const domainId = (window as any).UiContext?.domainId || 'system';
-        const mmid = mindMap.mmid;
+        const bid = mindMap.bid;
         
         for (const nodeCardData of cardsData) {
           const { nodeId, cards } = nodeCardData;
@@ -2025,10 +2025,10 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
 
             if (matchedCard && matchedCard.docId) {
               try {
-                await request.post(`/d/${domainId}/mindmap/card/${matchedCard.docId}`, {
+                await request.post(`/d/${domainId}/base/card/${matchedCard.docId}`, {
                   operation: 'update',
                   nodeId,
-                  mmid,
+                  bid,
                   cid: desiredCard.cid,
                   title: desiredCard.title,
                   content: desiredCard.content,
@@ -2040,14 +2040,14 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
               }
             } else {
               try {
-                const createResponse = await request.post(`/d/${domainId}/mindmap/mmid/${mmid}/card`, {
+                const createResponse = await request.post(`/d/${domainId}/base/bid/${bid}/card`, {
                   nodeId,
                   title: desiredCard.title,
                   content: desiredCard.content,
                 });
                 const newCardId = createResponse?.cardId;
                 if (newCardId) {
-                  await request.post(`/d/${domainId}/mindmap/card/${newCardId}`, {
+                  await request.post(`/d/${domainId}/base/card/${newCardId}`, {
                     operation: 'update',
                     order: index + 1,
                   });
@@ -2063,10 +2063,10 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             if (!processedCids.has(existingCard.cid) && (existingCard.docId || existingCard.cid)) {
               const identifier = existingCard.docId || String(existingCard.cid);
               try {
-                await request.post(`/d/${domainId}/mindmap/card/${identifier}`, {
+                await request.post(`/d/${domainId}/base/card/${identifier}`, {
                   operation: 'delete',
                   nodeId,
-                  mmid,
+                  bid,
                   cid: existingCard.cid,
                 });
               } catch (error: any) {
@@ -2175,7 +2175,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
   useEffect(() => {
     let ws: any = null;
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const wsUrl = `/d/${domainId}/mindmap/${docId}/ws`;
+    const wsUrl = `/d/${domainId}/base/${docId}/ws`;
 
     // 初始加载
     loadHistory();
@@ -2189,13 +2189,13 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         ws = new WebSocket(wsUrl, false, true);
 
         ws.onopen = () => {
-          console.log('[MindMap] WebSocket connected');
+          console.log('[Base] WebSocket connected');
         };
 
         ws.onmessage = (_: any, data: string) => {
           try {
             const msg = JSON.parse(data);
-            console.log('[MindMap] WebSocket message:', msg);
+            console.log('[Base] WebSocket message:', msg);
 
             if (msg.type === 'init' || msg.type === 'update') {
               // 更新 git status 和 history
@@ -2217,20 +2217,20 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
               }
             }
           } catch (error) {
-            console.error('[MindMap] Failed to parse WebSocket message:', error);
+            console.error('[Base] Failed to parse WebSocket message:', error);
           }
         };
 
         ws.onclose = () => {
-          console.log('[MindMap] WebSocket closed');
+          console.log('[Base] WebSocket closed');
           ws = null;
         };
 
         ws.onerror = (error: any) => {
-          console.error('[MindMap] WebSocket error:', error);
+          console.error('[Base] WebSocket error:', error);
         };
       }).catch((error) => {
-        console.error('[MindMap] Failed to load WebSocket:', error);
+        console.error('[Base] Failed to load WebSocket:', error);
       });
     };
 
@@ -3024,7 +3024,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
     const isRootNode = !parentId && !siblingId;
     const newFlowNode: Node = {
       id: tempNodeId,
-      type: 'mindmap',
+      type: 'base',
       position,
       draggable: false, // 禁止拖动根节点
       data: {
@@ -3042,7 +3042,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
         isRootNode,
         edges: edges,
         docId: docId, // 传递 docId 用于获取卡片
-        mmid: mindMap.mmid, // 传递 mmid 用于获取卡片
+        bid: mindMap.bid, // 传递 bid 用于获取卡片
         branch: mindMap.currentBranch || 'main', // 传递 branch 用于跳转
         onDelete: (nodeId: string) => callbacksRef.current?.onDelete(nodeId),
         onEdit: (node: Node) => callbacksRef.current?.onEdit(node),
@@ -3246,7 +3246,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       
       return {
         id: node.id,
-        type: 'mindmap',
+        type: 'base',
         position: { x, y },
         draggable: false, // 禁止拖动根节点
         data: {
@@ -3254,7 +3254,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           edges: flowEdges,
           isRootNode,
           docId: docId, // 传递 docId 用于获取卡片
-          mmid: mindMap.mmid, // 传递 mmid 用于获取卡片
+          bid: mindMap.bid, // 传递 bid 用于获取卡片
           branch: mindMap.currentBranch || 'main', // 传递 branch 用于跳转
           onDelete: (nodeId: string) => callbacksRef.current?.onDelete(nodeId),
           onEdit: (node: Node) => callbacksRef.current?.onEdit(node),
@@ -3860,7 +3860,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             isRootNode,
             edges: edgesRefForNodes.current,
             docId: n.data.docId || docId, // 保留或设置 docId
-            mmid: n.data.mmid || mindMap.mmid, // 保留或设置 mmid
+            bid: n.data.bid || mindMap.bid, // 保留或设置 bid
             branch: n.data.branch || mindMap.currentBranch || 'main', // 保留或设置 branch
             onTextChange: (nodeId: string, newText: string) => {
               handleNodeTextChangeRef.current(nodeId, newText);
@@ -4432,13 +4432,13 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
       }}>
         {/* 模式切换按钮 */}
         <button
-          onClick={() => setViewMode('mindmap')}
+          onClick={() => setViewMode('base')}
           style={{
             padding: '6px 12px',
             border: '1px solid #ddd',
             borderRadius: '4px',
-            background: viewMode === 'mindmap' ? '#2196f3' : '#fff',
-            color: viewMode === 'mindmap' ? '#fff' : '#333',
+            background: viewMode === 'base' ? '#2196f3' : '#fff',
+            color: viewMode === 'base' ? '#fff' : '#333',
             cursor: 'pointer',
             fontWeight: 'bold',
           }}
@@ -4449,7 +4449,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
           href={(() => {
             const domainId = (window as any).UiContext?.domainId || 'system';
             const branch = mindMap.currentBranch || 'main';
-            return `/d/${domainId}/mindmap/${docId}/branch/${branch}/outline`;
+            return `/d/${domainId}/base/${docId}/branch/${branch}/outline`;
           })()}
           style={{
             padding: '6px 12px',
@@ -4469,8 +4469,8 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
             const domainId = (window as any).UiContext?.domainId || 'system';
             const branch = mindMap.currentBranch || 'main';
             return docId 
-              ? `/d/${domainId}/mindmap/${docId}/branch/${branch}/study`
-              : `/d/${domainId}/mindmap/mmid/${mindMap.mmid}/branch/${branch}/study`;
+              ? `/d/${domainId}/base/${docId}/branch/${branch}/study`
+              : `/d/${domainId}/base/bid/${mindMap.bid}/branch/${branch}/study`;
           })()}
           style={{
             padding: '6px 12px',
@@ -4546,7 +4546,7 @@ function MindMapEditor({ docId, initialData }: { docId: string; initialData: Min
 
       {/* 思维导图画布或大纲视图 */}
       <div ref={reactFlowWrapper} style={{ flex: 1, width: '100%', position: 'relative' }}>
-        {viewMode === 'mindmap' ? (
+        {viewMode === 'base' ? (
           <>
             <ReactFlow
               nodes={filteredNodesAndEdges.filteredNodes}
@@ -5084,7 +5084,7 @@ const YamlView = ({
         monacoRef.current = monaco;
 
         // 检查 model 是否已存在
-        const modelUri = monaco.Uri.parse(`yaml://mindmap-${docId}.yaml`);
+        const modelUri = monaco.Uri.parse(`yaml://base-${docId}.yaml`);
         model = monaco.editor.getModel(modelUri);
         
         // 使用初始 YAML 内容
@@ -5890,15 +5890,15 @@ ${yamlText}
   );
 };
 
-// 辅助函数：获取带 domainId 的 mindmap URL
+// 辅助函数：获取带 domainId 的 base URL
 const getMindMapUrl = (path: string, docId: string): string => {
   const domainId = (window as any).UiContext?.domainId || 'system';
-  return `/d/${domainId}/mindmap/${docId}${path}`;
+  return `/d/${domainId}/base/${docId}${path}`;
 };
 
-const page = new NamedPage('mindmap_detail', async () => {
+const page = new NamedPage('base_detail', async () => {
   try {
-    const $container = $('#mindmap-editor');
+    const $container = $('#base-editor');
     if (!$container.length) {
       return;
     }
@@ -5924,7 +5924,7 @@ const page = new NamedPage('mindmap_detail', async () => {
       $container[0]
     );
   } catch (error: any) {
-    console.error('Failed to initialize mindmap editor:', error);
+    console.error('Failed to initialize base editor:', error);
     Notification.error('初始化思维导图编辑器失败: ' + (error.message || '未知错误'));
   }
 });

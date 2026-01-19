@@ -20,7 +20,7 @@ import { PERM, PRIV, STATUS } from '../model/builtin';
 import domain from '../model/domain';
 import * as document from '../model/document';
 import * as node from '../model/node';
-import * as mindmap from '../model/mindmap';
+import * as base from '../model/base';
 import * as oplog from '../model/oplog';
 import ScheduleModel from '../model/schedule';
 import system from '../model/system';
@@ -413,7 +413,7 @@ class UserDetailHandler extends Handler {
                 
                 const independentNodeCount = await document.count(did, document.TYPE_NODE, { owner: uid });
                 
-                const mindMaps = await document.getMulti(did, document.TYPE_MINDMAP, { owner: uid })
+                const mindMaps = await document.getMulti(did, document.TYPE_BASE, { owner: uid })
                     .project({ nodes: 1, branchData: 1 })
                     .toArray();
                 let mindMapNodeCount = 0;
@@ -528,7 +528,7 @@ class UserDetailHandler extends Handler {
                 }
             }
 
-            const mindMaps = await document.getMulti(did, document.TYPE_MINDMAP, { owner: uid })
+            const mindMaps = await document.getMulti(did, document.TYPE_BASE, { owner: uid })
                 .project({ nodes: 1, branchData: 1, updateAt: 1, createdAt: 1 })
                 .toArray();
             for (const mindMapDoc of mindMaps) {
@@ -665,7 +665,7 @@ class UserDetailHandler extends Handler {
                 const args = op.args || {};
                 const json = op.json || {};
                 
-                if (opType.includes('node') || opType.includes('mindmap.node') || args.nodeId || json.nodeId) {
+                if (opType.includes('node') || opType.includes('base.node') || args.nodeId || json.nodeId) {
                     deleteStats[deleteDate][did].nodes += 1;
                 } else if (opType.includes('card') || args.cardId || json.cardId || args.cid || json.cid) {
                     deleteStats[deleteDate][did].cards += 1;
@@ -966,7 +966,7 @@ class UserContributionDetailHandler extends Handler {
         }
 
         const contributions: {
-            nodes: Array<{ id: string; name: string; createdAt: Date; type: 'independent' | 'mindmap' }>;
+            nodes: Array<{ id: string; name: string; createdAt: Date; type: 'independent' | 'base' }>;
             cards: Array<{ docId: string; title: string; nodeId: string; createdAt: Date; problems?: number }>;
             problems: Array<{ cardId: string; cardTitle: string; pid: string; stem: string; createdAt: Date }>;
         } = {
@@ -992,7 +992,7 @@ class UserContributionDetailHandler extends Handler {
             }
         }
 
-        const mindMaps = await document.getMulti(targetDomainId, document.TYPE_MINDMAP, { owner: uid })
+        const mindMaps = await document.getMulti(targetDomainId, document.TYPE_BASE, { owner: uid })
             .project({ docId: 1, title: 1, nodes: 1, branchData: 1, updateAt: 1, createdAt: 1 })
             .toArray();
         for (const mindMapDoc of mindMaps) {
@@ -1035,7 +1035,7 @@ class UserContributionDetailHandler extends Handler {
                         id: nodeId,
                         name: node?.text || node?.name || this.translate('Unnamed Node'),
                         createdAt: mindMapDoc.updateAt || mindMapDoc.createdAt,
-                        type: 'mindmap',
+                        type: 'base',
                     });
                 }
             }
@@ -1071,7 +1071,7 @@ class UserContributionDetailHandler extends Handler {
             }
         }
 
-        const mindMap = await mindmap.MindMapModel.getByDomain(targetDomainId);
+        const mindMap = await base.MindMapModel.getByDomain(targetDomainId);
 
         this.response.template = 'user_contribution_detail.html';
         this.response.body = {
@@ -1115,7 +1115,7 @@ class UserConsumptionDetailHandler extends Handler {
             createdAt: { $gte: startOfDay, $lte: endOfDay },
         }).toArray();
 
-        const mindMap = await mindmap.MindMapModel.getByDomain(targetDomainId);
+        const mindMap = await base.MindMapModel.getByDomain(targetDomainId);
         const mindMapDocId = mindMap?.docId;
 
         const contributions: {
@@ -1145,7 +1145,7 @@ class UserConsumptionDetailHandler extends Handler {
                     id: result.nodeId,
                     name: node.text || this.translate('Unnamed Node'),
                     createdAt: result.createdAt,
-                    type: 'mindmap',
+                    type: 'base',
                 });
             }
 

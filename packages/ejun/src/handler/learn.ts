@@ -1,6 +1,6 @@
 import type { Context } from '../context';
 import { Handler, param, post, Types } from '../service/server';
-import { MindMapModel, CardModel } from '../model/mindmap';
+import { MindMapModel, CardModel } from '../model/base';
 import type { MindMapDoc, MindMapNode, MindMapEdge } from '../interface';
 import domain from '../model/domain';
 import { PRIV } from '../model/builtin';
@@ -569,7 +569,7 @@ class LearnEditHandler extends Handler {
         const mindMap = await MindMapModel.getByDomain(finalDomainId);
         
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found for this domain');
+            throw new NotFoundError('Base not found for this domain');
         }
 
         const branches = Array.isArray((mindMap as any)?.branches) 
@@ -596,7 +596,7 @@ class LearnEditHandler extends Handler {
         const mindMap = await MindMapModel.getByDomain(domainId);
         
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found for this domain');
+            throw new NotFoundError('Base not found for this domain');
         }
 
         const branches = Array.isArray((mindMap as any)?.branches) 
@@ -651,7 +651,7 @@ class LessonHandler extends Handler {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const mindMap = await MindMapModel.getByDomain(finalDomainId);
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found for this domain');
+            throw new NotFoundError('Base not found for this domain');
         }
 
         const queryCardId = this.request.query?.cardId;
@@ -853,7 +853,7 @@ class LessonHandler extends Handler {
         
         const mindMap = await MindMapModel.getByDomain(finalDomainId);
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found for this domain');
+            throw new NotFoundError('Base not found for this domain');
         }
 
         const branch = 'main';
@@ -1113,7 +1113,7 @@ class LessonHandler extends Handler {
 
         const mindMap = await MindMapModel.getByDomain(finalDomainId);
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found for this domain');
+            throw new NotFoundError('Base not found for this domain');
         }
 
         const node = (getBranchData(mindMap, 'main').nodes || []).find(n => n.id === result.nodeId);

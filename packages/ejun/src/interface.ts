@@ -287,7 +287,7 @@ export interface BlockDoc {
     order?: number;
 }
 
-// MindMap document
+// Base document
 export interface MindMapNode {
     id: string; // 节点唯一标识
     text: string; // 节点文本内容
@@ -320,7 +320,7 @@ export interface MindMapEdge {
 }
 
 export interface MindMapDoc {
-    docType: document['TYPE_MINDMAP'];
+    docType: document['TYPE_BASE'];
     docId: ObjectId;
     domainId: string;
     owner: number;
@@ -356,7 +356,7 @@ export interface MindMapDoc {
     branches?: string[]; // 分支列表
     currentBranch?: string; // 当前分支
     parentId?: ObjectId; // 父思维导图ID（用于建立思维导图之间的层级关系）
-    domainPosition?: { x: number; y: number }; // 在导图域中的位置（用于 mindmap_domain 页面）
+    domainPosition?: { x: number; y: number }; // 在导图域中的位置（用于 base_domain 页面）
     history?: MindMapHistoryEntry[]; // 操作历史记录（最多50条）
     files?: FileInfo[]; // 文件列表
 }
@@ -383,7 +383,7 @@ export interface CardDoc {
     docType: document['TYPE_CARD'];
     docId: ObjectId;
     domainId: string;
-    mindMapDocId: ObjectId; // 关联的 mindmap docId
+    mindMapDocId: ObjectId; // 关联的 base docId
     nodeId: string; // 关联的 node ID
     cid: number; // Card ID，从1开始（在 node 内唯一）
     owner: number;

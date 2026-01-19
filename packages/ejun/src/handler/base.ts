@@ -3,7 +3,7 @@ import type { Context } from '../context';
 import { Handler, param, route, post, Types, ConnectionHandler } from '../service/server';
 import { NotFoundError, ForbiddenError, BadRequestError, ValidationError, FileLimitExceededError, FileUploadError, FileExistsError } from '../error';
 import { PRIV, PERM } from '../model/builtin';
-import { MindMapModel, CardModel, TYPE_CARD, TYPE_MM } from '../model/mindmap';
+import { MindMapModel, CardModel, TYPE_CARD, TYPE_MM } from '../model/base';
 import type { MindMapDoc, MindMapNode, MindMapEdge, CardDoc } from '../interface';
 import * as document from '../model/document';
 import { exec as execCb } from 'child_process';
@@ -20,10 +20,10 @@ import storage from '../model/storage';
 import { sortFiles } from '@ejunz/utils/lib/common';
 
 const exec = promisify(execCb);
-const logger = new Logger('mindmap');
+const logger = new Logger('base');
 
 /**
- * MindMap Detail Handler
+ * Base Detail Handler
  */
 class MindMapDetailHandler extends Handler {
     mindMap?: MindMapDoc;
@@ -38,12 +38,12 @@ class MindMapDetailHandler extends Handler {
         if (docId) {
             this.mindMap = await MindMapModel.get(domainId, docId);
         } else {
-            // 如果没有 docId，通过 domainId 获取（一个 domain 一个 mindmap）
+            // 如果没有 docId，通过 domainId 获取（一个 domain 一个 base）
             this.mindMap = await MindMapModel.getByDomain(domainId);
         }
         
         if (!this.mindMap) {
-            throw new NotFoundError('MindMap not found');
+            throw new NotFoundError('Base not found');
         }
         
         await MindMapModel.incrementViews(domainId, this.mindMap.docId);
@@ -54,7 +54,7 @@ class MindMapDetailHandler extends Handler {
     async get(domainId: string, docId: ObjectId, branch?: string) {
         // If no branch parameter, redirect to branch URL
         if (!branch || !String(branch).trim()) {
-            const target = this.url('mindmap_detail_branch', { 
+            const target = this.url('base_detail_branch', { 
                 domainId, 
                 docId: docId || this.mindMap!.docId, 
                 branch: 'main' 
@@ -63,7 +63,7 @@ class MindMapDetailHandler extends Handler {
             return;
         }
         
-        this.response.template = 'mindmap_detail.html';
+        this.response.template = 'base_detail.html';
         
         // Handle branch parameter
         const requestedBranch = branch;
@@ -71,7 +71,7 @@ class MindMapDetailHandler extends Handler {
         
         // Update currentBranch if different and checkout git branch
         if (requestedBranch !== currentMindMapBranch) {
-            await document.set(domainId, document.TYPE_MINDMAP, this.mindMap!.docId, { 
+            await document.set(domainId, document.TYPE_BASE, this.mindMap!.docId, { 
                 currentBranch: requestedBranch 
             });
             (this.mindMap as any).currentBranch = requestedBranch;
@@ -245,20 +245,20 @@ function setBranchData(mindMap: MindMapDoc, branch: string, nodes: MindMapNode[]
 }
 
 /**
- * MindMap Study Handler
+ * Base Study Handler
  */
 class MindMapStudyHandler extends Handler {
     mindMap?: MindMapDoc;
 
     @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
-    async _prepare(domainId: string, docId: ObjectId, mmid: number) {
+    @param('bid', Types.PositiveInt, true)
+    async _prepare(domainId: string, docId: ObjectId, bid: number) {
         if (docId) {
             this.mindMap = await MindMapModel.get(domainId, docId);
-        } else if (mmid) {
-            this.mindMap = await MindMapModel.getByMmid(domainId, mmid);
+        } else if (bid) {
+            this.mindMap = await MindMapModel.getBybid(domainId, bid);
         }
-        if (!this.mindMap) throw new NotFoundError('MindMap not found');
+        if (!this.mindMap) throw new NotFoundError('Base not found');
     }
 
     @param('docId', Types.ObjectId, true)
@@ -321,7 +321,7 @@ class MindMapStudyHandler extends Handler {
                     for (const card of cards) {
                         if (card.problems && card.problems.length > 0) {
                             // 构建卡片 URL
-                            const cardUrl = `/d/${domainId}/mindmap/${docId}/branch/${currentBranch}/node/${node.id}/cards?cardId=${card.docId}`;
+                            const cardUrl = `/d/${domainId}/base/${docId}/branch/${currentBranch}/node/${node.id}/cards?cardId=${card.docId}`;
                             
                             for (const problem of card.problems) {
                                 allProblems.push({
@@ -368,7 +368,7 @@ class MindMapStudyHandler extends Handler {
             }
         }
 
-        this.response.template = 'mindmap_study.html';
+        this.response.template = 'base_study.html';
         this.response.body = {
             mindMap: {
                 ...this.mindMap,
@@ -382,14 +382,14 @@ class MindMapStudyHandler extends Handler {
 }
 
 /**
- * MindMap Outline Handler (文件模式)
+ * Base Outline Handler (文件模式)
  */
 class MindMapOutlineHandler extends Handler {
     @param('branch', Types.String, true)
     async get(domainId: string, branch?: string) {
         // If no branch parameter, redirect to branch URL
         if (!branch || !String(branch).trim()) {
-            const target = this.url('mindmap_outline_branch', { 
+            const target = this.url('base_outline_branch', { 
                 domainId, 
                 branch: 'main' 
             });
@@ -397,14 +397,14 @@ class MindMapOutlineHandler extends Handler {
             return;
         }
         
-        this.response.template = 'mindmap_outline.html';
+        this.response.template = 'base_outline.html';
         
         const requestedBranch = branch || 'main';
         
-        // 直接获取该域下的 mindmap（如果存在），用于获取 nodes 和 edges
+        // 直接获取该域下的 base（如果存在），用于获取 nodes 和 edges
         let mindMap = await MindMapModel.getByDomain(domainId);
         
-        // 如果没有 mindmap，创建一个
+        // 如果没有 base，创建一个
         if (!mindMap) {
             const { docId } = await MindMapModel.create(
                 domainId,
@@ -417,11 +417,11 @@ class MindMapOutlineHandler extends Handler {
             );
             mindMap = await MindMapModel.get(domainId, docId);
             if (!mindMap) {
-                throw new Error('Failed to create mindmap');
+                throw new Error('Failed to create base');
             }
         }
         
-        // 获取 nodes 和 edges（从 mindmap 或返回空数组）
+        // 获取 nodes 和 edges（从 base 或返回空数组）
         let nodes: MindMapNode[] = [];
         let edges: MindMapEdge[] = [];
         
@@ -445,7 +445,7 @@ class MindMapOutlineHandler extends Handler {
                 requestedBranch
             );
             
-            // 重新获取 mindmap 以获取新创建的节点
+            // 重新获取 base 以获取新创建的节点
             mindMap = await MindMapModel.get(domainId, mindMap!.docId);
             if (mindMap) {
                 const branchData = getBranchData(mindMap, requestedBranch);
@@ -454,7 +454,7 @@ class MindMapOutlineHandler extends Handler {
             }
         }
         
-        // 获取该域下的所有 cards（不依赖 mindmap 是否存在）
+        // 获取该域下的所有 cards（不依赖 base 是否存在）
         // 先获取所有 cards，然后按 nodeId 分组
         const allCards = await document.getMulti(domainId, document.TYPE_CARD, {})
             .sort({ order: 1, cid: 1 })
@@ -506,7 +506,7 @@ class MindMapOutlineHandler extends Handler {
             }
         }
         
-        // 获取分支列表（如果 mindmap 存在）
+        // 获取分支列表（如果 base 存在）
         const branches = mindMap && Array.isArray((mindMap as any)?.branches) 
             ? (mindMap as any).branches 
             : ['main'];
@@ -514,7 +514,7 @@ class MindMapOutlineHandler extends Handler {
             branches.unshift('main');
         }
         
-        // Get git status（如果 mindmap 存在）
+        // Get git status（如果 base 存在）
         let gitStatus: any = null;
         if (mindMap) {
             const githubRepo = (mindMap.githubRepo || '') as string;
@@ -557,7 +557,7 @@ class MindMapOutlineHandler extends Handler {
             }
         }
         
-        // 即使 mindmap 不存在，也返回一个基本结构，包含 nodes 和 edges
+        // 即使 base 不存在，也返回一个基本结构，包含 nodes 和 edges
         this.response.body = {
             mindMap: mindMap ? {
                 ...mindMap,
@@ -580,7 +580,7 @@ class MindMapOutlineHandler extends Handler {
 }
 
 /**
- * MindMap Editor Handler (类似GitHub Web Editor)
+ * Base Editor Handler (类似GitHub Web Editor)
  */
 class MindMapEditorHandler extends Handler {
     @param('branch', Types.String, true)
@@ -589,7 +589,7 @@ class MindMapEditorHandler extends Handler {
         
         // If no branch parameter, redirect to branch URL
         if (!branch || !String(branch).trim()) {
-            const target = this.url('mindmap_editor_branch', { 
+            const target = this.url('base_editor_branch', { 
                 domainId, 
                 branch: 'main' 
             });
@@ -597,14 +597,14 @@ class MindMapEditorHandler extends Handler {
             return;
         }
         
-        this.response.template = 'mindmap_editor.html';
+        this.response.template = 'base_editor.html';
         
         const requestedBranch = branch || 'main';
         
-        // 直接获取该域下的 mindmap（如果存在），用于获取 nodes 和 edges
+        // 直接获取该域下的 base（如果存在），用于获取 nodes 和 edges
         let mindMap = await MindMapModel.getByDomain(domainId);
         
-        // 如果没有 mindmap，创建一个
+        // 如果没有 base，创建一个
         if (!mindMap) {
             const { docId } = await MindMapModel.create(
                 domainId,
@@ -617,11 +617,11 @@ class MindMapEditorHandler extends Handler {
             );
             mindMap = await MindMapModel.get(domainId, docId);
             if (!mindMap) {
-                throw new Error('Failed to create mindmap');
+                throw new Error('Failed to create base');
             }
         }
         
-        // 获取 nodes 和 edges（从 mindmap 或返回空数组）
+        // 获取 nodes 和 edges（从 base 或返回空数组）
         let nodes: MindMapNode[] = [];
         let edges: MindMapEdge[] = [];
         
@@ -633,7 +633,7 @@ class MindMapEditorHandler extends Handler {
             // Update currentBranch if different
             const currentMindMapBranch = (mindMap as any)?.currentBranch || 'main';
             if (requestedBranch !== currentMindMapBranch) {
-                await document.set(domainId, document.TYPE_MINDMAP, mindMap.docId, { 
+                await document.set(domainId, document.TYPE_BASE, mindMap.docId, { 
                     currentBranch: requestedBranch 
                 });
             }
@@ -653,7 +653,7 @@ class MindMapEditorHandler extends Handler {
                 requestedBranch
             );
             
-            // 重新获取 mindmap 以获取新创建的节点
+            // 重新获取 base 以获取新创建的节点
             mindMap = await MindMapModel.get(domainId, mindMap!.docId);
             if (mindMap) {
                 const branchData = getBranchData(mindMap, requestedBranch);
@@ -662,7 +662,7 @@ class MindMapEditorHandler extends Handler {
             }
         }
         
-        // 获取该域下的所有 cards（不依赖 mindmap 是否存在）
+        // 获取该域下的所有 cards（不依赖 base 是否存在）
         // 先获取所有 cards，然后按 nodeId 分组
         const allCards = await document.getMulti(domainId, TYPE_CARD, {})
             .sort({ order: 1, cid: 1 })
@@ -679,7 +679,7 @@ class MindMapEditorHandler extends Handler {
             }
         }
         
-        // 获取分支列表（如果 mindmap 存在）
+        // 获取分支列表（如果 base 存在）
         const branches = mindMap && Array.isArray((mindMap as any)?.branches) 
             ? (mindMap as any).branches 
             : ['main'];
@@ -687,7 +687,7 @@ class MindMapEditorHandler extends Handler {
             branches.unshift('main');
         }
         
-        // 即使 mindmap 不存在，也返回一个基本结构，包含 nodes 和 edges
+        // 即使 base 不存在，也返回一个基本结构，包含 nodes 和 edges
         this.response.body = {
             mindMap: mindMap ? {
                 ...mindMap,
@@ -709,11 +709,11 @@ class MindMapEditorHandler extends Handler {
 }
 
 /**
- * MindMap Create Handler
+ * Base Create Handler
  */
 class MindMapCreateHandler extends Handler {
     async get() {
-        this.response.template = 'mindmap_create.html';
+        this.response.template = 'base_create.html';
         this.response.body = {};
     }
 
@@ -734,7 +734,7 @@ class MindMapCreateHandler extends Handler {
         
         // 确保使用正确的 domainId（优先使用 this.args.domainId，因为它来自 ctx.domainId，是最准确的）
         const actualDomainId = this.args.domainId || domainId || 'system';
-        console.log(`[MindMap Create] domainId param: ${domainId}, this.args.domainId: ${this.args.domainId}, actualDomainId: ${actualDomainId}`);
+        console.log(`[Base Create] domainId param: ${domainId}, this.args.domainId: ${this.args.domainId}, actualDomainId: ${actualDomainId}`);
         
         const { docId } = await MindMapModel.create(
             actualDomainId,
@@ -747,9 +747,9 @@ class MindMapCreateHandler extends Handler {
             parentId
         );
 
-        console.log(`[MindMap Create] Created/Updated mindmap with docId: ${docId.toString()}, domainId: ${actualDomainId}`);
+        console.log(`[Base Create] Created/Updated base with docId: ${docId.toString()}, domainId: ${actualDomainId}`);
 
-        // 验证 mindmap 是否已成功创建
+        // 验证 base 是否已成功创建
         let createdMindMap = await MindMapModel.get(actualDomainId, docId);
         if (!createdMindMap) {
             // 再等待一下，可能是数据库同步延迟
@@ -758,11 +758,11 @@ class MindMapCreateHandler extends Handler {
         }
         
         if (!createdMindMap) {
-            console.error(`[MindMap Create] Failed to find mindmap after creation: docId=${docId.toString()}, domainId=${actualDomainId}`);
-            throw new Error(`Failed to create mindmap: record not found after creation (docId: ${docId.toString()}, domainId: ${actualDomainId})`);
+            console.error(`[Base Create] Failed to find base after creation: docId=${docId.toString()}, domainId=${actualDomainId}`);
+            throw new Error(`Failed to create base: record not found after creation (docId: ${docId.toString()}, domainId: ${actualDomainId})`);
         }
         
-        console.log(`[MindMap Create] Successfully verified mindmap: docId=${createdMindMap.docId.toString()}`);
+        console.log(`[Base Create] Successfully verified base: docId=${createdMindMap.docId.toString()}`);
 
         // 自动创建 GitHub 仓库（异步处理，不阻塞重定向）
         try {
@@ -772,15 +772,15 @@ class MindMapCreateHandler extends Handler {
                 await createAndPushToGitHubOrgForMindMap(this, actualDomainId, docId, title, this.user);
             } catch (err) {
                 console.error('Failed to create remote GitHub repo:', err);
-                // 即使 GitHub 仓库创建失败，也不影响 mindmap 的使用
+                // 即使 GitHub 仓库创建失败，也不影响 base 的使用
             }
         } catch (err) {
             console.error('Failed to create git repo:', err);
-            // 即使 git repo 创建失败，也不影响 mindmap 的使用
+            // 即使 git repo 创建失败，也不影响 base 的使用
         }
 
         this.response.body = { docId };
-        this.response.redirect = this.url('mindmap_detail', { domainId: actualDomainId, docId: docId.toString() });
+        this.response.redirect = this.url('base_detail', { domainId: actualDomainId, docId: docId.toString() });
     }
 }
 
@@ -790,7 +790,7 @@ const nodeCreationDedupCache = new Map<string, number>();
 const DEDUP_WINDOW_MS = 2000; // 2秒内的相同请求视为重复
 
 /**
- * MindMap Edit Handler
+ * Base Edit Handler
  */
 class MindMapEditHandler extends Handler {
     mindMap?: MindMapDoc;
@@ -798,7 +798,7 @@ class MindMapEditHandler extends Handler {
     @param('docId', Types.ObjectId)
     async _prepare(domainId: string, docId: ObjectId) {
         this.mindMap = await MindMapModel.get(domainId, docId);
-        if (!this.mindMap) throw new NotFoundError('MindMap not found');
+        if (!this.mindMap) throw new NotFoundError('Base not found');
         
         if (!this.user.own(this.mindMap)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
@@ -806,7 +806,7 @@ class MindMapEditHandler extends Handler {
     }
 
     async get() {
-        this.response.template = 'mindmap_edit.html';
+        this.response.template = 'base_edit.html';
         this.response.body = { mindMap: this.mindMap };
     }
 
@@ -834,7 +834,7 @@ class MindMapEditHandler extends Handler {
         // 如果是通过 operation 参数调用的，不重定向
         const operation = this.request.body?.operation;
         if (operation !== 'update') {
-            this.response.redirect = this.url('mindmap_detail', { docId: docId.toString() });
+            this.response.redirect = this.url('base_detail', { docId: docId.toString() });
         }
     }
 
@@ -847,12 +847,12 @@ class MindMapEditHandler extends Handler {
         
         await MindMapModel.delete(domainId, docId);
         this.response.body = { success: true };
-        this.response.redirect = this.url('mindmap_list');
+        this.response.redirect = this.url('base_list');
     }
 }
 
 /**
- * MindMap Node Handler
+ * Base Node Handler
  * 节点操作API
  */
 class MindMapNodeHandler extends Handler {
@@ -864,7 +864,7 @@ class MindMapNodeHandler extends Handler {
     @post('operation', Types.String, true)
     @param('nodeId', Types.String, true)
     @post('branch', Types.String, true)
-    // 通过 domainId 获取 mindmap，不再需要 docId
+    // 通过 domainId 获取 base，不再需要 docId
     async post(
         domainId: string,
         text?: string,
@@ -876,10 +876,10 @@ class MindMapNodeHandler extends Handler {
         nodeId?: string,
         branch?: string,
     ) {
-        // 通过 domainId 获取 mindmap
+        // 通过 domainId 获取 base
         const mindMap = await MindMapModel.getByDomain(domainId);
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found');
+            throw new NotFoundError('Base not found');
         }
         
         if (operation === 'delete' && nodeId) {
@@ -920,11 +920,11 @@ class MindMapNodeHandler extends Handler {
         
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        // 通过 domainId 获取 mindmap
+        // 通过 domainId 获取 base
         const actualDomainId = this.args.domainId || domainId || 'system';
         const mindMap = await MindMapModel.getByDomain(actualDomainId);
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found');
+            throw new NotFoundError('Base not found');
         }
         const docId = mindMap.docId;
         
@@ -1127,10 +1127,10 @@ class MindMapNodeHandler extends Handler {
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        // 通过 domainId 获取 mindmap
+        // 通过 domainId 获取 base
         const mindMap = await MindMapModel.getByDomain(domainId);
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found');
+            throw new NotFoundError('Base not found');
         }
         const docId = mindMap.docId;
         
@@ -1169,10 +1169,10 @@ class MindMapNodeHandler extends Handler {
     async postDelete(domainId: string, nodeId: string, branch?: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        // 通过 domainId 获取 mindmap
+        // 通过 domainId 获取 base
         const mindMap = await MindMapModel.getByDomain(domainId);
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found');
+            throw new NotFoundError('Base not found');
         }
         const docId = mindMap.docId;
         
@@ -1189,7 +1189,7 @@ class MindMapNodeHandler extends Handler {
 }
 
 /**
- * MindMap Edge Handler
+ * Base Edge Handler
  */
 class MindMapEdgeHandler extends Handler {
     @param('source', Types.String)
@@ -1203,10 +1203,10 @@ class MindMapEdgeHandler extends Handler {
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        // 通过 domainId 获取 mindmap
+        // 通过 domainId 获取 base
         const mindMap = await MindMapModel.getByDomain(domainId);
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found');
+            throw new NotFoundError('Base not found');
         }
         const docId = mindMap.docId;
         
@@ -1233,10 +1233,10 @@ class MindMapEdgeHandler extends Handler {
     async postDelete(domainId: string, edgeId: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        // 通过 domainId 获取 mindmap
+        // 通过 domainId 获取 base
         const mindMap = await MindMapModel.getByDomain(domainId);
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found');
+            throw new NotFoundError('Base not found');
         }
         const docId = mindMap.docId;
         
@@ -1250,13 +1250,13 @@ class MindMapEdgeHandler extends Handler {
 }
 
 /**
- * MindMap Save Handler
+ * Base Save Handler
  */
 class MindMapSaveHandler extends Handler {
     async post(domainId: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        // 直接获取或创建包含 nodes 和 edges 的文档（不依赖 mindmap 实体）
+        // 直接获取或创建包含 nodes 和 edges 的文档（不依赖 base 实体）
         let mindMap = await MindMapModel.getByDomain(domainId);
         let docId: ObjectId;
         
@@ -1354,7 +1354,7 @@ class MindMapSaveHandler extends Handler {
                 edges: mindMap.edges, // 向后兼容
             });
             
-            (this.ctx.emit as any)('mindmap/update', docId);
+            (this.ctx.emit as any)('base/update', docId);
             
             this.response.body = { success: true, hasNonPositionChanges: false };
             return;
@@ -1435,8 +1435,8 @@ class MindMapSaveHandler extends Handler {
         }
         
         // 触发更新事件，通知所有连接的 WebSocket 客户端
-        (this.ctx.emit as any)('mindmap/update', docId);
-        (this.ctx.emit as any)('mindmap/git/status/update', docId);
+        (this.ctx.emit as any)('base/update', docId);
+        (this.ctx.emit as any)('base/git/status/update', docId);
         
         this.response.body = { success: true, hasNonPositionChanges };
     }
@@ -1497,7 +1497,7 @@ class MindMapSaveHandler extends Handler {
 }
 
 /**
- * MindMap List Handler
+ * Base List Handler
  */
 class MindMapListHandler extends Handler {
     @param('rpid', Types.PositiveInt, true)
@@ -1511,14 +1511,14 @@ class MindMapListHandler extends Handler {
             mindMaps = await MindMapModel.getAll(domainId);
         }
 
-        this.response.template = 'mindmap_list.html';
+        this.response.template = 'base_list.html';
         this.response.body = { mindMaps, rpid, branch };
     }
 }
 
 /**
- * MindMap Domain Handler
- * 显示当前 mindmap 的第一层节点
+ * Base Domain Handler
+ * 显示当前 base 的第一层节点
  */
 class MindMapDomainHandler extends Handler {
     @param('page', Types.PositiveInt, true)
@@ -1526,11 +1526,11 @@ class MindMapDomainHandler extends Handler {
     @param('pjax', Types.Boolean)
     @param('all', Types.Boolean, true)
     async get(domainId: string, page = 1, q = '', pjax = false, all = false) {
-        // 获取当前 domain 的 mindmap（一个 domain 一个 mindmap）
+        // 获取当前 domain 的 base（一个 domain 一个 base）
         const mindMap = await MindMapModel.getByDomain(domainId);
         
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found for this domain');
+            throw new NotFoundError('Base not found for this domain');
         }
         
         const branch = (mindMap as any)?.currentBranch || 'main';
@@ -1544,7 +1544,7 @@ class MindMapDomainHandler extends Handler {
         
         if (!rootNode) {
             // 如果没有节点，返回空数据
-            this.response.template = 'mindmap_domain.html';
+            this.response.template = 'base_domain.html';
             this.response.body = {
                 mindMap: {
                     ...mindMap,
@@ -1605,15 +1605,15 @@ class MindMapDomainHandler extends Handler {
         const totalViews = mindMap.views || 0;
         
         if (pjax) {
-            const html = await this.renderHTML('partials/mindmap_list.html', {
+            const html = await this.renderHTML('partials/base_list.html', {
                 page, totalPages, total, nodes, qs: q ? q.trim() : '', domainId,
             });
             this.response.body = {
-                title: this.renderTitle(this.translate('MindMap Domain')),
+                title: this.renderTitle(this.translate('Base Domain')),
                 fragments: [{ html: html || '' }],
             };
         } else {
-            this.response.template = 'mindmap_domain.html';
+            this.response.template = 'base_domain.html';
             this.response.body = { 
                 mindMap: {
                     ...mindMap,
@@ -1636,10 +1636,10 @@ class MindMapDomainHandler extends Handler {
 class MindMapDataHandler extends Handler {
     @param('branch', Types.String, true)
     async get(domainId: string, branch?: string) {
-        // 直接获取该域下的 mindmap（如果存在）
+        // 直接获取该域下的 base（如果存在）
         let mindMap = await MindMapModel.getByDomain(domainId);
         
-        // 如果没有 mindmap，创建一个
+        // 如果没有 base，创建一个
         if (!mindMap) {
             const { docId } = await MindMapModel.create(
                 domainId,
@@ -1652,13 +1652,13 @@ class MindMapDataHandler extends Handler {
             );
             mindMap = await MindMapModel.get(domainId, docId);
             if (!mindMap) {
-                throw new Error('Failed to create mindmap');
+                throw new Error('Failed to create base');
             }
         }
         
         const currentBranch = branch || (mindMap as any)?.currentBranch || 'main';
         
-        // 获取 nodes 和 edges（从 mindmap 或返回空数组）
+        // 获取 nodes 和 edges（从 base 或返回空数组）
         let nodes: MindMapNode[] = [];
         let edges: MindMapEdge[] = [];
         
@@ -1682,7 +1682,7 @@ class MindMapDataHandler extends Handler {
                 currentBranch
             );
             
-            // 重新获取 mindmap 以获取新创建的节点
+            // 重新获取 base 以获取新创建的节点
             mindMap = await MindMapModel.get(domainId, mindMap!.docId);
             if (mindMap) {
                 const branchData = getBranchData(mindMap, currentBranch);
@@ -1691,7 +1691,7 @@ class MindMapDataHandler extends Handler {
             }
         }
         
-        // 获取该域下的所有 cards（不依赖 mindmap 是否存在）
+        // 获取该域下的所有 cards（不依赖 base 是否存在）
         const allCards = await document.getMulti(domainId, TYPE_CARD, {})
             .sort({ order: 1, cid: 1 })
             .toArray() as CardDoc[];
@@ -1707,7 +1707,7 @@ class MindMapDataHandler extends Handler {
             }
         }
         
-        // 返回当前分支的数据（即使 mindmap 不存在也返回基本结构）
+        // 返回当前分支的数据（即使 base 不存在也返回基本结构）
         this.response.body = mindMap ? {
             ...mindMap,
             nodes,
@@ -1725,14 +1725,14 @@ class MindMapDataHandler extends Handler {
 }
 
 /**
- * Get git repository path for mindmap
+ * Get git repository path for base
  */
 function getMindMapGitPath(domainId: string, docId: ObjectId): string {
-    return path.join('/data/git/ejunz', domainId, 'mindmap', String(docId));
+    return path.join('/data/git/ejunz', domainId, 'base', String(docId));
 }
 
 /**
- * Initialize or get git repository for mindmap
+ * Initialize or get git repository for base
  */
 async function ensureMindMapGitRepo(domainId: string, docId: ObjectId, remoteUrl?: string): Promise<string> {
     const repoPath = getMindMapGitPath(domainId, docId);
@@ -1770,7 +1770,7 @@ async function ensureMindMapGitRepo(domainId: string, docId: ObjectId, remoteUrl
 }
 
 /**
- * Export mindmap to file structure (node as folder, card as md file)
+ * Export base to file structure (node as folder, card as md file)
  * Root node is NOT exported as folder, only its children are exported
  */
 async function exportMindMapToFile(mindMap: MindMapDoc, outputDir: string, branch?: string): Promise<void> {
@@ -1784,7 +1784,7 @@ async function exportMindMapToFile(mindMap: MindMapDoc, outputDir: string, branc
     const nodes = branchData.nodes;
     const edges = branchData.edges;
     
-    // Create README.md for mindmap root (only contains the content, no metadata)
+    // Create README.md for base root (only contains the content, no metadata)
     const readmePath = path.join(outputDir, 'README.md');
     const contentText = mindMap.content || '';
     await fs.promises.writeFile(readmePath, contentText, 'utf-8');
@@ -1969,7 +1969,7 @@ async function createAndPushToGitHubOrgForMindMap(
         .toLowerCase()
         .replace(/[^a-z0-9-]/g, '-')
         .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '') || `mindmap-${mmid}`;
+        .replace(/^-|-$/g, '') || `base-${bid}`;
 
     try {
         const remoteUrl = await createGitHubRepoForMindMap(orgName, repoName, mindMapTitle, GH_TOKEN, false);
@@ -1992,30 +1992,30 @@ async function createAndPushToGitHubOrgForMindMap(
             repoUrlForStorage = remoteUrl.replace(/^https:\/\/[^@]+@github\.com\//, 'https://github.com/');
         }
 
-        let mindMap = await MindMapModel.getByMmid(domainId, mmid);
+        let mindMap = await MindMapModel.getBybid(domainId, bid);
         if (!mindMap) {
             await new Promise(resolve => setTimeout(resolve, 100));
-            mindMap = await MindMapModel.getByMmid(domainId, mmid);
+            mindMap = await MindMapModel.getBybid(domainId, bid);
         }
         
         if (mindMap) {
-            await document.set(domainId, document.TYPE_MINDMAP, mindMap.docId, {
+            await document.set(domainId, document.TYPE_BASE, mindMap.docId, {
                 githubRepo: repoUrlForStorage,
             });
         } else {
-            console.warn(`MindMap with mmid ${mmid} not found, skipping GitHub repo setup`);
+            console.warn(`Base with bid ${bid} not found, skipping GitHub repo setup`);
             return;
         }
 
-        const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-mindmap-create-'));
+        const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-base-create-'));
         try {
-            const mindMapForExport = await MindMapModel.getByMmid(domainId, mmid);
+            const mindMapForExport = await MindMapModel.getBybid(domainId, bid);
             if (mindMapForExport) {
                 await exportMindMapToFile(mindMapForExport, tmpDir, 'main');
                 const commitMessage = `${domainId}/${user._id}/${user.uname || 'unknown'}: Initial commit`;
-                await gitInitAndPushMindMap(domainId, mmid, mindMapForExport, REPO_URL, 'main', commitMessage);
+                await gitInitAndPushMindMap(domainId, bid, mindMapForExport, REPO_URL, 'main', commitMessage);
             } else {
-                console.warn(`MindMap with mmid ${mmid} not found for export, skipping`);
+                console.warn(`Base with bid ${bid} not found for export, skipping`);
             }
         } finally {
             try {
@@ -2029,7 +2029,7 @@ async function createAndPushToGitHubOrgForMindMap(
 }
 
 /**
- * Git init and push for mindmap
+ * Git init and push for base
  */
 async function gitInitAndPushMindMap(
     domainId: string,
@@ -2037,7 +2037,7 @@ async function gitInitAndPushMindMap(
     mindMap: MindMapDoc,
     remoteUrlWithAuth: string, 
     branch: string = 'main', 
-    commitMessage: string = 'chore: sync mindmap from ejunz'
+    commitMessage: string = 'chore: sync base from ejunz'
 ) {
     const repoGitPath = await ensureMindMapGitRepo(domainId, docId, remoteUrlWithAuth);
     
@@ -2092,7 +2092,7 @@ async function gitInitAndPushMindMap(
         
         if (isNewRepo) {
             try {
-                const tmpCloneDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-mindmap-clone-'));
+                const tmpCloneDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-base-clone-'));
                 try {
                     await exec(`git clone ${remoteUrlWithAuth} .`, { cwd: tmpCloneDir, env: gitEnv } as any);
                     await fs.promises.cp(path.join(tmpCloneDir, '.git'), path.join(repoGitPath, '.git'), { recursive: true });
@@ -2133,7 +2133,7 @@ async function gitInitAndPushMindMap(
             }
         }
         
-        // Export mindmap to files (use the branch parameter from function signature)
+        // Export base to files (use the branch parameter from function signature)
         await exportMindMapToFile(mindMap, repoGitPath, branch);
         
         await exec('git add -A', execOptions);
@@ -2168,18 +2168,18 @@ async function gitInitAndPushMindMap(
 }
 
 /**
- * MindMap GitHub Push Handler
+ * Base GitHub Push Handler
  */
 class MindMapGithubPushHandler extends Handler {
     @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
-    async post(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
+    async post(domainId: string, docId: ObjectId, bid: number, branch?: string) {
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
-            : await MindMapModel.getByMmid(domainId, mmid);
+            : await MindMapModel.getBybid(domainId, bid);
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found');
+            throw new NotFoundError('Base not found');
         }
         
         if (!this.user.own(mindMap)) {
@@ -2195,7 +2195,7 @@ class MindMapGithubPushHandler extends Handler {
         
         const githubRepo = (mindMap.githubRepo || '') as string;
         if (!githubRepo) {
-            throw new Error('GitHub repository not configured. Please configure it in mindmap settings.');
+            throw new Error('GitHub repository not configured. Please configure it in base settings.');
         }
         
         let REPO_URL = githubRepo;
@@ -2228,14 +2228,14 @@ class MindMapGithubPushHandler extends Handler {
         
         // 先 commit 本地更改
         try {
-            const commitMessage = this.request.body?.commitMessage || `${domainId}/${this.user._id}/${this.user.uname || 'unknown'}: Update mindmap`;
+            const commitMessage = this.request.body?.commitMessage || `${domainId}/${this.user._id}/${this.user.uname || 'unknown'}: Update base`;
             await commitMindMapChanges(domainId, mindMap.docId, mindMap, commitMessage, this.user._id, this.user.uname || 'unknown');
         } catch (err: any) {
             console.warn('Commit before push failed (may be no changes):', err?.message || err);
         }
         
         // 然后 push
-        const commitMessage = `${domainId}/${this.user._id}/${this.user.uname || 'unknown'}: Update mindmap`;
+        const commitMessage = `${domainId}/${this.user._id}/${this.user.uname || 'unknown'}: Update base`;
         
         try {
             await gitInitAndPushMindMap(domainId, mindMap.docId, mindMap, REPO_URL, effectiveBranch, commitMessage);
@@ -2250,12 +2250,12 @@ class MindMapGithubPushHandler extends Handler {
     @param('docId', Types.ObjectId, true)
     @param('branch', Types.String, true)
     async get(domainId: string, docId: ObjectId, branch?: string) {
-        return this.post(domainId, docId, mmid, branch);
+        return this.post(domainId, docId, bid, branch);
     }
 }
 
 /**
- * MindMap Card Handler
+ * Base Card Handler
  */
 class MindMapCardHandler extends Handler {
     @param('nodeId', Types.String, true)
@@ -2288,10 +2288,10 @@ class MindMapCardHandler extends Handler {
             throw new ValidationError('nodeId and title are required for creating a card');
         }
         
-        // 通过 domainId 获取 mindmap
+        // 通过 domainId 获取 base
         const mindMap = await MindMapModel.getByDomain(domainId);
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found');
+            throw new NotFoundError('Base not found');
         }
         
         if (!this.user.own(mindMap)) {
@@ -2313,13 +2313,13 @@ class MindMapCardHandler extends Handler {
     }
     
     @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
-    async get(domainId: string, docId: ObjectId, mmid: number, nodeId: string) {
+    async get(domainId: string, docId: ObjectId, bid: number, nodeId: string) {
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
-            : await MindMapModel.getByMmid(domainId, mmid);
-        if (!mindMap) throw new NotFoundError('MindMap not found');
+            : await MindMapModel.getBybid(domainId, bid);
+        if (!mindMap) throw new NotFoundError('Base not found');
         
         const cards = await CardModel.getByNodeId(domainId, mindMap.docId, nodeId);
         this.response.body = { cards };
@@ -2332,7 +2332,7 @@ class MindMapCardHandler extends Handler {
     @param('order', Types.PositiveInt, true)
     @param('operation', Types.String, true)
     @param('cid', Types.PositiveInt, true)
-    @param('mmid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('docId', Types.ObjectId, true)
     async postUpdate(
         domainId: string,
@@ -2343,7 +2343,7 @@ class MindMapCardHandler extends Handler {
         order?: number,
         _operation?: string,
         cidParam?: number,
-        mmidParam?: number,
+        bidParam?: number,
         docIdParam?: ObjectId,
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
@@ -2354,7 +2354,7 @@ class MindMapCardHandler extends Handler {
             content,
             order,
             cidParam,
-            mmidParam,
+            bidParam,
             docIdParam,
         });
     }
@@ -2366,7 +2366,7 @@ class MindMapCardHandler extends Handler {
     @param('order', Types.PositiveInt, true)
     @param('operation', Types.String, true)
     @param('cid', Types.PositiveInt, true)
-    @param('mmid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('docId', Types.ObjectId, true)
     async postDelete(
         domainId: string,
@@ -2377,7 +2377,7 @@ class MindMapCardHandler extends Handler {
         order?: number,
         _operation?: string,
         cidParam?: number,
-        mmidParam?: number,
+        bidParam?: number,
         docIdParam?: ObjectId
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
@@ -2388,7 +2388,7 @@ class MindMapCardHandler extends Handler {
             content,
             order,
             cidParam,
-            mmidParam,
+            bidParam,
             docIdParam,
         });
     }
@@ -2403,11 +2403,11 @@ class MindMapCardHandler extends Handler {
             content?: string;
             order?: number;
             cidParam?: number;
-            mmidParam?: number;
+            bidParam?: number;
             docIdParam?: ObjectId;
         },
     ) {
-        const { cardIdParam, nodeId, title, content, order, cidParam, mmidParam, docIdParam } = params;
+        const { cardIdParam, nodeId, title, content, order, cidParam, bidParam, docIdParam } = params;
 
         const parseObjectId = (value?: string): ObjectId | null => {
             if (value && ObjectId.isValid(value)) {
@@ -2435,12 +2435,12 @@ class MindMapCardHandler extends Handler {
         const cidFromPath = parseCid(cardIdParam);
         const resolvedCid = cidParam ?? cidFromPath;
 
-        // 通过 domainId 获取 mindmap
+        // 通过 domainId 获取 base
         const getMindMapByArgs = async (): Promise<MindMapDoc | null> => {
             if (docIdParam) {
                 return await MindMapModel.get(domainId, docIdParam);
             }
-            // 不再使用 mmid，直接通过 domainId 获取
+            // 不再使用 bid，直接通过 domainId 获取
             return await MindMapModel.getByDomain(domainId);
         };
 
@@ -2453,7 +2453,7 @@ class MindMapCardHandler extends Handler {
             if (!nodeId) {
                 throw new ValidationError('nodeId is required when using cid to locate a card');
             }
-            // 通过 domainId 获取 mindmap，然后使用其 docId 查找卡片
+            // 通过 domainId 获取 base，然后使用其 docId 查找卡片
             const mindMap = await getMindMapByArgs();
             if (mindMap) {
                 targetCard = await CardModel.getByCid(domainId, nodeId, resolvedCid, mindMap.docId);
@@ -2462,9 +2462,9 @@ class MindMapCardHandler extends Handler {
 
         if (!targetCard) throw new NotFoundError('Card not found');
 
-        // 通过 domainId 获取 mindmap，不再使用 mmid
+        // 通过 domainId 获取 base，不再使用 bid
         const mindMap = await MindMapModel.getByDomain(domainId);
-        if (!mindMap) throw new NotFoundError('MindMap not found');
+        if (!mindMap) throw new NotFoundError('Base not found');
         if (!this.user.own(mindMap)) {
             const perm = action === 'delete' ? PERM.PERM_DELETE_DISCUSSION : PERM.PERM_EDIT_DISCUSSION;
             this.checkPerm(perm);
@@ -2493,20 +2493,20 @@ class MindMapCardHandler extends Handler {
 }
 
 /**
- * MindMap Card List Handler
+ * Base Card List Handler
  * 卡片列表页面
  */
 class MindMapCardListHandler extends Handler {
     @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
     @param('branch', Types.String, true)
     @param('cardId', Types.ObjectId, true)
-    async get(domainId: string, docId: ObjectId, mmid: number, nodeId: string, branch?: string, cardId?: ObjectId) {
+    async get(domainId: string, docId: ObjectId, bid: number, nodeId: string, branch?: string, cardId?: ObjectId) {
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
-            : await MindMapModel.getByMmid(domainId, mmid);
-        if (!mindMap) throw new NotFoundError('MindMap not found');
+            : await MindMapModel.getBybid(domainId, bid);
+        if (!mindMap) throw new NotFoundError('Base not found');
         
         const effectiveBranch = branch || 'main';
         const branchData = getBranchData(mindMap, effectiveBranch);
@@ -2560,7 +2560,7 @@ class MindMapCardListHandler extends Handler {
         
         const extraTitleContent = `${reversedPathNodes.map(p => p.text).join(' / ')} - ${mindMap.title}`;
         
-        this.response.template = 'mindmap_card_list.html';
+        this.response.template = 'base_card_list.html';
         this.response.body = {
             mindMap,
             cards,
@@ -2575,22 +2575,22 @@ class MindMapCardListHandler extends Handler {
 }
 
 /**
- * MindMap Files Handler
+ * Base Files Handler
  * 思维导图文件管理
  */
 class MindMapFilesHandler extends Handler {
     mindMap?: MindMapDoc;
 
     @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
-    async _prepare(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
+    async _prepare(domainId: string, docId: ObjectId, bid: number, branch?: string) {
         if (docId) {
             this.mindMap = await MindMapModel.get(domainId, docId);
-        } else if (mmid) {
-            this.mindMap = await MindMapModel.getByMmid(domainId, mmid);
+        } else if (bid) {
+            this.mindMap = await MindMapModel.getBybid(domainId, bid);
         }
-        if (!this.mindMap) throw new NotFoundError('MindMap not found');
+        if (!this.mindMap) throw new NotFoundError('Base not found');
         if (!this.user.own(this.mindMap)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
@@ -2614,29 +2614,29 @@ class MindMapFilesHandler extends Handler {
             files,
             urlForFile: (filename: string) => {
                 if (docId) {
-                    return this.url('mindmap_file_download', { docId, filename });
+                    return this.url('base_file_download', { docId, filename });
                 } else {
-                    return this.url('mindmap_file_download_mmid', { mmid, filename });
+                    return this.url('base_file_download_bid', { bid, filename });
                 }
             },
             urlForFilePreview: (filename: string) => {
                 if (docId) {
-                    return this.url('mindmap_file_download', { docId, filename, noDisposition: 1 });
+                    return this.url('base_file_download', { docId, filename, noDisposition: 1 });
                 } else {
-                    return this.url('mindmap_file_download_mmid', { mmid, filename, noDisposition: 1 });
+                    return this.url('base_file_download_bid', { bid, filename, noDisposition: 1 });
                 }
             },
             branch: branch || 'main',
         };
         this.response.pjax = 'partials/files.html';
-        this.response.template = 'mindmap_files.html';
+        this.response.template = 'base_files.html';
     }
 
     @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
     @post('filename', Types.Filename, true)
-    async postUploadFile(domainId: string, docId: ObjectId, mmid: number, branch?: string, filename?: string) {
+    async postUploadFile(domainId: string, docId: ObjectId, bid: number, branch?: string, filename?: string) {
         if ((this.mindMap!.files?.length || 0) >= system.get('limit.user_files')) {
             if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('count');
         }
@@ -2648,7 +2648,7 @@ class MindMapFilesHandler extends Handler {
         }
         const finalFilename = filename || file.originalFilename || 'untitled';
         if (this.mindMap!.files?.find((i) => i.name === finalFilename)) throw new FileExistsError(finalFilename);
-        const storagePath = `mindmap/${domainId}/${this.mindMap!.docId.toString()}/${finalFilename}`;
+        const storagePath = `base/${domainId}/${this.mindMap!.docId.toString()}/${finalFilename}`;
         await storage.put(storagePath, file.filepath, this.user._id);
         const meta = await storage.getMeta(storagePath);
         const payload = { _id: finalFilename, name: finalFilename, ...pick(meta, ['size', 'lastModified', 'etag']) };
@@ -2659,11 +2659,11 @@ class MindMapFilesHandler extends Handler {
     }
 
     @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
     @post('files', Types.ArrayOf(Types.Filename))
-    async postDeleteFiles(domainId: string, docId: ObjectId, mmid: number, branch: string, files: string[]) {
-        const storagePaths = files.map((t) => `mindmap/${domainId}/${this.mindMap!.mmid}/${t}`);
+    async postDeleteFiles(domainId: string, docId: ObjectId, bid: number, branch: string, files: string[]) {
+        const storagePaths = files.map((t) => `base/${domainId}/${this.mindMap!.bid}/${t}`);
         await Promise.all([
             storage.del(storagePaths, this.user._id),
             MindMapModel.update(domainId, this.mindMap!.docId, { 
@@ -2675,23 +2675,23 @@ class MindMapFilesHandler extends Handler {
 }
 
 /**
- * MindMap File Download Handler
+ * Base File Download Handler
  * 思维导图文件下载
  */
 class MindMapFileDownloadHandler extends Handler {
     noCheckPermView = true;
 
     @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('filename', Types.Filename)
     @param('noDisposition', Types.Boolean)
-    async get(domainId: string, docId: ObjectId, mmid: number, filename: string, noDisposition = false) {
+    async get(domainId: string, docId: ObjectId, bid: number, filename: string, noDisposition = false) {
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
-            : await MindMapModel.getByMmid(domainId, mmid);
-        if (!mindMap) throw new NotFoundError('MindMap not found');
+            : await MindMapModel.getBybid(domainId, bid);
+        if (!mindMap) throw new NotFoundError('Base not found');
         
-        const target = `mindmap/${domainId}/${mindMap.mmid}/${filename}`;
+        const target = `base/${domainId}/${mindMap.bid}/${filename}`;
         const file = await storage.getMeta(target);
         if (!file) throw new NotFoundError(filename);
         
@@ -2708,20 +2708,20 @@ class MindMapFileDownloadHandler extends Handler {
 }
 
 /**
- * MindMap Card Edit Handler
+ * Base Card Edit Handler
  * 卡片编辑页面
  */
 class MindMapCardEditHandler extends Handler {
     @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
     @param('cardId', Types.ObjectId, true)
     @param('branch', Types.String, true)
-    async get(domainId: string, docId: ObjectId, mmid: number, nodeId: string, cardId?: ObjectId, branch?: string) {
+    async get(domainId: string, docId: ObjectId, bid: number, nodeId: string, cardId?: ObjectId, branch?: string) {
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
-            : await MindMapModel.getByMmid(domainId, mmid);
-        if (!mindMap) throw new NotFoundError('MindMap not found');
+            : await MindMapModel.getBybid(domainId, bid);
+        if (!mindMap) throw new NotFoundError('Base not found');
         
         let card = null;
         if (cardId) {
@@ -2730,7 +2730,7 @@ class MindMapCardEditHandler extends Handler {
             if (card.nodeId !== nodeId) throw new NotFoundError('Card does not belong to this node');
         }
         
-        this.response.template = 'mindmap_card_edit.html';
+        this.response.template = 'base_card_edit.html';
         const returnUrl = this.request.query.returnUrl;
         this.response.body = {
             mindMap,
@@ -2744,7 +2744,7 @@ class MindMapCardEditHandler extends Handler {
     
     // 处理创建新卡片（没有 cardId 的路由）
     @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
     @param('branch', Types.String, true)
     // 创建/更新时仅要求 title 存在，其它字段从表单 body 中按需读取
@@ -2755,7 +2755,7 @@ class MindMapCardEditHandler extends Handler {
     async post(
         domainId: string,
         docId: ObjectId,
-        mmid: number,
+        bid: number,
         nodeId: string,
         branch?: string,
         title?: string,
@@ -2767,8 +2767,8 @@ class MindMapCardEditHandler extends Handler {
         
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
-            : await MindMapModel.getByMmid(domainId, mmid);
-        if (!mindMap) throw new NotFoundError('MindMap not found');
+            : await MindMapModel.getBybid(domainId, bid);
+        if (!mindMap) throw new NotFoundError('Base not found');
         
         if (!this.user.own(mindMap)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
@@ -2784,14 +2784,14 @@ class MindMapCardEditHandler extends Handler {
             await CardModel.update(domainId, cardId, updates);
             // 重定向到更新后的卡片URL
             if (docId) {
-            this.response.redirect = this.url('mindmap_card_list_branch', { 
+            this.response.redirect = this.url('base_card_list_branch', { 
                 docId: docId.toString(), 
                 branch: effectiveBranch, 
                 nodeId 
                 }) + `?cardId=${cardId.toString()}`;
         } else {
-                this.response.redirect = this.url('mindmap_card_list_branch_mmid', { 
-                    mmid: mmid.toString(), 
+                this.response.redirect = this.url('base_card_list_branch_bid', { 
+                    bid: bid.toString(), 
                     branch: effectiveBranch, 
                     nodeId 
                 }) + `?cardId=${cardId.toString()}`;
@@ -2814,14 +2814,14 @@ class MindMapCardEditHandler extends Handler {
             );
         // 重定向到新创建的卡片URL
         if (docId) {
-            this.response.redirect = this.url('mindmap_card_list_branch', { 
+            this.response.redirect = this.url('base_card_list_branch', { 
                 docId: docId.toString(), 
                 branch: effectiveBranch, 
                 nodeId 
             }) + `?cardId=${newCardId.toString()}`;
         } else {
-            this.response.redirect = this.url('mindmap_card_list_branch_mmid', { 
-                mmid: mmid.toString(), 
+            this.response.redirect = this.url('base_card_list_branch_bid', { 
+                bid: bid.toString(), 
                 branch: effectiveBranch, 
                 nodeId 
             }) + `?cardId=${newCardId.toString()}`;
@@ -2829,7 +2829,7 @@ class MindMapCardEditHandler extends Handler {
     }
     
     @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
     @route('cardId', Types.ObjectId, true)
     @param('branch', Types.String, true)
@@ -2840,7 +2840,7 @@ class MindMapCardEditHandler extends Handler {
     async postUpdate(
         domainId: string,
         docId: ObjectId,
-        mmid: number,
+        bid: number,
         nodeId: string,
         cardId?: ObjectId,
         branch?: string,
@@ -2852,8 +2852,8 @@ class MindMapCardEditHandler extends Handler {
         
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
-            : await MindMapModel.getByMmid(domainId, mmid);
-        if (!mindMap) throw new NotFoundError('MindMap not found');
+            : await MindMapModel.getBybid(domainId, bid);
+        if (!mindMap) throw new NotFoundError('Base not found');
         
         if (!this.user.own(mindMap)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
@@ -2867,7 +2867,7 @@ class MindMapCardEditHandler extends Handler {
                 const card = await CardModel.get(domainId, cardId);
                 if (!card) throw new NotFoundError('Card not found');
                 await CardModel.delete(domainId, cardId);
-            this.response.redirect = this.url('mindmap_card_list_branch', { 
+            this.response.redirect = this.url('base_card_list_branch', { 
                 docId: docId.toString(), 
                 branch: effectiveBranch, 
                 nodeId 
@@ -2890,14 +2890,14 @@ class MindMapCardEditHandler extends Handler {
                 this.response.redirect = returnUrlObj.pathname + returnUrlObj.search;
             } else {
             if (docId) {
-                this.response.redirect = this.url('mindmap_card_list_branch', { 
+                this.response.redirect = this.url('base_card_list_branch', { 
                     docId: docId.toString(), 
                     branch: effectiveBranch, 
                     nodeId 
                 }) + `?cardId=${cardId.toString()}`;
             } else {
-                this.response.redirect = this.url('mindmap_card_list_branch_mmid', { 
-                    mmid: mmid.toString(), 
+                this.response.redirect = this.url('base_card_list_branch_bid', { 
+                    bid: bid.toString(), 
                     branch: effectiveBranch, 
                     nodeId 
                 }) + `?cardId=${cardId.toString()}`;
@@ -2910,20 +2910,20 @@ class MindMapCardEditHandler extends Handler {
 }
 
 /**
- * MindMap Card Detail Handler
+ * Base Card Detail Handler
  * 卡片详情页面
  */
 class MindMapCardDetailHandler extends Handler {
     @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
     @param('cardId', Types.ObjectId)
     @param('branch', Types.String, true)
-    async get(domainId: string, docId: ObjectId, mmid: number, nodeId: string, cardId: ObjectId, branch?: string) {
+    async get(domainId: string, docId: ObjectId, bid: number, nodeId: string, cardId: ObjectId, branch?: string) {
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
-            : await MindMapModel.getByMmid(domainId, mmid);
-        if (!mindMap) throw new NotFoundError('MindMap not found');
+            : await MindMapModel.getBybid(domainId, bid);
+        if (!mindMap) throw new NotFoundError('Base not found');
         
         const effectiveBranch = branch || 'main';
         const branchData = getBranchData(mindMap, effectiveBranch);
@@ -2943,7 +2943,7 @@ class MindMapCardDetailHandler extends Handler {
         const cards = await CardModel.getByNodeId(domainId, mindMap.docId, nodeId);
         const currentIndex = cards.findIndex(c => c.docId.toString() === cardId.toString());
         
-        this.response.template = 'mindmap_card_detail.html';
+        this.response.template = 'base_card_detail.html';
         this.response.body = {
             mindMap,
             card,
@@ -2976,8 +2976,8 @@ class MindMapCardDetailHandler extends Handler {
             const card = await CardModel.get(domainId, cardId);
             if (!card) throw new NotFoundError('Card not found');
             
-            const mindMap = await MindMapModel.getByMmid(domainId, card.mmid);
-            if (!mindMap) throw new NotFoundError('MindMap not found');
+            const mindMap = await MindMapModel.getBybid(domainId, card.bid);
+            if (!mindMap) throw new NotFoundError('Base not found');
             if (!this.user.own(mindMap)) {
                 this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
             }
@@ -2991,8 +2991,8 @@ class MindMapCardDetailHandler extends Handler {
         const card = await CardModel.get(domainId, cardId);
         if (!card) throw new NotFoundError('Card not found');
         
-        const mindMap = await MindMapModel.getByMmid(domainId, card.mmid);
-        if (!mindMap) throw new NotFoundError('MindMap not found');
+        const mindMap = await MindMapModel.getBybid(domainId, card.bid);
+        if (!mindMap) throw new NotFoundError('Base not found');
         if (!this.user.own(mindMap)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
@@ -3009,15 +3009,15 @@ class MindMapCardDetailHandler extends Handler {
 }
 
 /**
- * Sync mindmap data to git repository (without committing)
+ * Sync base data to git repository (without committing)
  */
-async function syncMindMapToGit(domainId: string, mmid: number, branch: string): Promise<void> {
-    const mindMap = await MindMapModel.getByMmid(domainId, mmid);
+async function syncMindMapToGit(domainId: string, bid: number, branch: string): Promise<void> {
+    const mindMap = await MindMapModel.getBybid(domainId, bid);
     if (!mindMap) {
         return;
     }
     
-    const repoGitPath = getMindMapGitPath(domainId, mmid);
+    const repoGitPath = getMindMapGitPath(domainId, bid);
     
     try {
         await exec('git rev-parse --git-dir', { cwd: repoGitPath });
@@ -3034,7 +3034,7 @@ async function syncMindMapToGit(domainId: string, mmid: number, branch: string):
     }
     
     // Export to temp directory first
-    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-mindmap-sync-'));
+    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-base-sync-'));
     try {
         const branch = (mindMap as any).currentBranch || 'main';
         await exportMindMapToFile(mindMap, tmpDir, branch);
@@ -3096,7 +3096,7 @@ async function syncMindMapToGit(domainId: string, mmid: number, branch: string):
 }
 
 /**
- * Get git status for mindmap
+ * Get git status for base
  */
 async function getMindMapGitStatus(
     domainId: string,
@@ -3149,7 +3149,7 @@ async function getMindMapGitStatus(
             return defaultStatus;
         }
         
-        // Sync latest mindmap data to git repository before checking status
+        // Sync latest base data to git repository before checking status
         // First checkout to the correct branch
         try {
             try {
@@ -3174,7 +3174,7 @@ async function getMindMapGitStatus(
         try {
             await syncMindMapToGit(domainId, docId, branch);
         } catch (err) {
-            console.error('Failed to sync mindmap to git:', err);
+            console.error('Failed to sync base to git:', err);
             // Continue even if sync fails
         }
         
@@ -3319,7 +3319,7 @@ async function getMindMapGitStatus(
 }
 
 /**
- * Commit mindmap changes to git
+ * Commit base changes to git
  */
 async function commitMindMapChanges(
     domainId: string,
@@ -3356,7 +3356,7 @@ async function commitMindMapChanges(
         }
     }
     
-    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-mindmap-commit-'));
+    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-base-commit-'));
     try {
         const branch = (mindMap as any).currentBranch || 'main';
         await exportMindMapToFile(mindMap, tmpDir, branch);
@@ -3479,13 +3479,13 @@ async function commitMindMapChanges(
 }
 
 /**
- * MindMap Branch Create Handler
+ * Base Branch Create Handler
  */
 class MindMapBranchCreateHandler extends Handler {
     @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
-    async post(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
+    async post(domainId: string, docId: ObjectId, bid: number, branch?: string) {
         // Support both POST body and URL parameter
         const newBranch = branch || this.request.body?.branch || '';
         if (!newBranch || !newBranch.trim()) {
@@ -3499,9 +3499,9 @@ class MindMapBranchCreateHandler extends Handler {
         
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
-            : await MindMapModel.getByMmid(domainId, mmid);
+            : await MindMapModel.getBybid(domainId, bid);
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found');
+            throw new NotFoundError('Base not found');
         }
         
         if (!this.user.own(mindMap)) {
@@ -3525,14 +3525,14 @@ class MindMapBranchCreateHandler extends Handler {
             JSON.parse(JSON.stringify(mainBranchData.edges))
         );
         
-        await document.set(domainId, document.TYPE_MINDMAP, mindMap.docId, { 
+        await document.set(domainId, document.TYPE_BASE, mindMap.docId, { 
             branches, 
             currentBranch: branchName,
             branchData: mindMap.branchData,
         });
         
         try {
-            const repoGitPath = await ensureMindMapGitRepo(domainId, mmid);
+            const repoGitPath = await ensureMindMapGitRepo(domainId, bid);
             
             // Ensure main branch exists first
             try {
@@ -3564,7 +3564,7 @@ class MindMapBranchCreateHandler extends Handler {
         
         // Redirect to branch detail page
         const redirectDocId = docId || mindMap.docId;
-        this.response.redirect = this.url('mindmap_detail_branch', { 
+        this.response.redirect = this.url('base_detail_branch', { 
             docId: redirectDocId.toString(), 
             branch: branchName 
         });
@@ -3574,12 +3574,12 @@ class MindMapBranchCreateHandler extends Handler {
     @param('branch', Types.String, true)
     async get(domainId: string, docId: ObjectId, branch?: string) {
         // Support GET request for URL-based branch creation
-        return this.post(domainId, docId, mmid, branch);
+        return this.post(domainId, docId, bid, branch);
     }
 }
 
 /**
- * MindMap Git Status Handler
+ * Base Git Status Handler
  */
 class MindMapGitStatusHandler extends Handler {
     @param('docId', Types.ObjectId, true)
@@ -3589,7 +3589,7 @@ class MindMapGitStatusHandler extends Handler {
             ? await MindMapModel.get(domainId, docId)
             : await MindMapModel.getByDomain(domainId);
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found');
+            throw new NotFoundError('Base not found');
         }
         
         const effectiveBranch = branch || (mindMap as any).currentBranch || 'main';
@@ -3633,7 +3633,7 @@ class MindMapGitStatusHandler extends Handler {
 }
 
 /**
- * MindMap Commit Handler
+ * Base Commit Handler
  */
 class MindMapCommitHandler extends Handler {
     @param('docId', Types.ObjectId, true)
@@ -3648,7 +3648,7 @@ class MindMapCommitHandler extends Handler {
             ? await MindMapModel.get(domainId, docId)
             : await MindMapModel.getByDomain(domainId);
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found');
+            throw new NotFoundError('Base not found');
         }
         
         if (!this.user.own(mindMap)) {
@@ -3672,8 +3672,8 @@ class MindMapCommitHandler extends Handler {
             );
 
             // 触发更新事件，通知所有连接的 WebSocket 客户端
-            (this.ctx.emit as any)('mindmap/update', mindMap.docId, mindMap.mmid);
-            (this.ctx.emit as any)('mindmap/git/status/update', mindMap.docId, mindMap.mmid);
+            (this.ctx.emit as any)('base/update', mindMap.docId, mindMap.bid);
+            (this.ctx.emit as any)('base/git/status/update', mindMap.docId, mindMap.bid);
 
             this.response.body = { ok: true, message: 'Changes committed successfully' };
         } catch (err: any) {
@@ -3686,7 +3686,7 @@ class MindMapCommitHandler extends Handler {
 
 
 /**
- * Import mindmap data from git file structure to database
+ * Import base data from git file structure to database
  */
 async function importMindMapFromFileStructure(
     domainId: string,
@@ -3700,7 +3700,7 @@ async function importMindMapFromFileStructure(
     
     const sanitize = (name: string) => (name || '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'untitled';
     
-    // Read README.md as mindmap content (but we don't update it here, just for reference)
+    // Read README.md as base content (but we don't update it here, just for reference)
     const readmePath = path.join(localDir, 'README.md');
     try {
         await fs.promises.readFile(readmePath, 'utf-8');
@@ -3722,7 +3722,7 @@ async function importMindMapFromFileStructure(
     
     // Recursively import nodes from directory structure
     async function importNode(parentNodeId: string, dirPath: string, dirName: string, level: number = 0): Promise<void> {
-        const nodeId = `node_${mmid}_${++nodeCounter}`;
+        const nodeId = `node_${bid}_${++nodeCounter}`;
         const nodeText = sanitize(dirName);
         
         // Create node
@@ -3750,7 +3750,7 @@ async function importMindMapFromFileStructure(
         try {
             const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
             // 先取出该节点下现有的所有卡片，用于后续精确对齐（新增、更新、删除）
-            const existingCards = await CardModel.getByNodeId(domainId, mmid, nodeId);
+            const existingCards = await CardModel.getByNodeId(domainId, bid, nodeId);
             const existingCardsByTitle = new Map<string, CardDoc>();
             const processedCardIds = new Set<string>();
 
@@ -3841,38 +3841,38 @@ async function importMindMapFromFileStructure(
 }
 
 /**
- * Cleanup all cards of a mindmap before re-importing from Git.
+ * Cleanup all cards of a base before re-importing from Git.
  * 拉取前删除该思维导图下的所有卡片，后续完全按照仓库结构重建。
  */
 async function cleanupMindMapCards(
     domainId: string,
-    mmid: number,
+    bid: number,
     _nodes: MindMapNode[] // 兼容旧签名，暂不使用 nodes
 ): Promise<void> {
     try {
         // 直接删除该思维导图下所有旧卡片，完全按照本次拉取结果重建
-        await document.deleteMulti(domainId, TYPE_CARD as any, { mmid } as any);
+        await document.deleteMulti(domainId, TYPE_CARD as any, { bid } as any);
     } catch (err) {
         console.error(
-            `cleanupMindMapCards failed for mmid=${mmid}:`,
+            `cleanupMindMapCards failed for bid=${bid}:`,
             (err as any)?.message || err
         );
     }
 }
 
 /**
- * MindMap GitHub Pull Handler
+ * Base GitHub Pull Handler
  */
 class MindMapGithubPullHandler extends Handler {
     @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
-    async post(domainId: string, docId: ObjectId, mmid: number, branch?: string) {
+    async post(domainId: string, docId: ObjectId, bid: number, branch?: string) {
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
-            : await MindMapModel.getByMmid(domainId, mmid);
+            : await MindMapModel.getBybid(domainId, bid);
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found');
+            throw new NotFoundError('Base not found');
         }
         
         if (!this.user.own(mindMap)) {
@@ -3881,7 +3881,7 @@ class MindMapGithubPullHandler extends Handler {
         
         const githubRepo = (mindMap.githubRepo || '') as string;
         if (!githubRepo) {
-            throw new Error('GitHub repository not configured. Please configure it in mindmap settings.');
+            throw new Error('GitHub repository not configured. Please configure it in base settings.');
         }
         
         const settingValue = this.ctx.setting.get('ejunzrepo.github_token');
@@ -3937,7 +3937,7 @@ class MindMapGithubPullHandler extends Handler {
             // 在从 Git 导入结构前，先清空旧卡片，确保后续严格以仓库为准重建
             await cleanupMindMapCards(domainId, mindMap.docId, []);
 
-            // Import mindmap structure from git file system（会根据目录和 .md 文件重新创建卡片）
+            // Import base structure from git file system（会根据目录和 .md 文件重新创建卡片）
             const { nodes, edges } = await importMindMapFromFileStructure(
                 domainId,
                 mindMap.docId,
@@ -3972,18 +3972,18 @@ class MindMapGithubPullHandler extends Handler {
 }
 
 /**
- * MindMap GitHub Config Handler
+ * Base GitHub Config Handler
  */
 class MindMapGithubConfigHandler extends Handler {
     mindMap?: MindMapDoc;
 
     @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
-    async _prepare(domainId: string, docId: ObjectId, mmid: number) {
+    @param('bid', Types.PositiveInt, true)
+    async _prepare(domainId: string, docId: ObjectId, bid: number) {
         this.mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
-            : await MindMapModel.getByMmid(domainId, mmid);
-        if (!this.mindMap) throw new NotFoundError('MindMap not found');
+            : await MindMapModel.getBybid(domainId, bid);
+        if (!this.mindMap) throw new NotFoundError('Base not found');
         
         if (!this.user.own(this.mindMap)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
@@ -3991,16 +3991,16 @@ class MindMapGithubConfigHandler extends Handler {
     }
 
     @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('githubRepo', Types.String, true)
-    async post(domainId: string, docId: ObjectId, mmid: number, githubRepo?: string) {
+    async post(domainId: string, docId: ObjectId, bid: number, githubRepo?: string) {
         if (githubRepo !== undefined) {
             let repoUrlForStorage = githubRepo;
             if (repoUrlForStorage && repoUrlForStorage.startsWith('https://') && repoUrlForStorage.includes('@github.com')) {
                 repoUrlForStorage = repoUrlForStorage.replace(/^https:\/\/[^@]+@github\.com\//, 'https://github.com/');
             }
             
-            await document.set(domainId, document.TYPE_MINDMAP, this.mindMap!.docId, {
+            await document.set(domainId, document.TYPE_BASE, this.mindMap!.docId, {
                 githubRepo: repoUrlForStorage || null,
             });
         }
@@ -4010,28 +4010,28 @@ class MindMapGithubConfigHandler extends Handler {
 }
 
 /**
- * MindMap WebSocket Connection Handler
- * 用于实时推送 mindmap 的更新（git status 等）
+ * Base WebSocket Connection Handler
+ * 用于实时推送 base 的更新（git status 等）
  */
 class MindMapConnectionHandler extends ConnectionHandler {
     private docId?: ObjectId;
-    private mmid?: number;
+    private bid?: number;
     private subscriptions: Array<{ dispose: () => void }> = [];
 
     @param('docId', Types.ObjectId, true)
-    @param('mmid', Types.PositiveInt, true)
-    async prepare(domainId: string, docId?: ObjectId, mmid?: number) {
-        if (!docId && !mmid) {
-            this.close(1000, 'docId or mmid is required');
+    @param('bid', Types.PositiveInt, true)
+    async prepare(domainId: string, docId?: ObjectId, bid?: number) {
+        if (!docId && !bid) {
+            this.close(1000, 'docId or bid is required');
             return;
         }
 
         const mindMap = docId 
             ? await MindMapModel.get(domainId, docId)
-            : await MindMapModel.getByMmid(domainId, mmid!);
+            : await MindMapModel.getBybid(domainId, bid!);
         
         if (!mindMap) {
-            this.close(1000, 'MindMap not found');
+            this.close(1000, 'Base not found');
             return;
         }
 
@@ -4042,14 +4042,14 @@ class MindMapConnectionHandler extends ConnectionHandler {
             this.checkPerm(PERM.PERM_VIEW_DISCUSSION);
         }
 
-        logger.info('MindMap WebSocket connected: docId=%s', this.docId);
+        logger.info('Base WebSocket connected: docId=%s', this.docId);
 
         // 发送初始数据
         await this.sendInitialData(domainId, mindMap);
 
-        // 订阅 mindmap 更新事件
-        const dispose1 = (this.ctx.on as any)('mindmap/update', async (...args: any[]) => {
-            const [updateDocId, updateMmid] = args;
+        // 订阅 base 更新事件
+        const dispose1 = (this.ctx.on as any)('base/update', async (...args: any[]) => {
+            const [updateDocId, updatebid] = args;
             if (updateDocId && updateDocId.toString() === this.docId!.toString()) {
                 await this.sendUpdate(domainId);
             }
@@ -4057,8 +4057,8 @@ class MindMapConnectionHandler extends ConnectionHandler {
         this.subscriptions.push({ dispose: dispose1 });
 
         // 订阅 git status 更新事件
-        const dispose2 = (this.ctx.on as any)('mindmap/git/status/update', async (...args: any[]) => {
-            const [updateDocId, updateMmid] = args;
+        const dispose2 = (this.ctx.on as any)('base/git/status/update', async (...args: any[]) => {
+            const [updateDocId, updatebid] = args;
             if (updateDocId && updateDocId.toString() === this.docId!.toString()) {
                 await this.sendGitStatus(domainId);
             }
@@ -4233,7 +4233,7 @@ class MindMapConnectionHandler extends ConnectionHandler {
 }
 
 /**
- * MindMap Domain Edit Handler
+ * Base Domain Edit Handler
  * 用于编辑导图结构（新建、删除、编辑节点，连线等）
  */
 class MindMapDomainEditHandler extends Handler {
@@ -4241,11 +4241,11 @@ class MindMapDomainEditHandler extends Handler {
     async get(domainId: string, q = '') {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        // 获取当前 domain 的 mindmap（一个 domain 一个 mindmap）
+        // 获取当前 domain 的 base（一个 domain 一个 base）
         const mindMap = await MindMapModel.getByDomain(domainId);
         
         if (!mindMap) {
-            throw new NotFoundError('MindMap not found for this domain');
+            throw new NotFoundError('Base not found for this domain');
         }
         
         const branch = (mindMap as any)?.currentBranch || 'main';
@@ -4259,7 +4259,7 @@ class MindMapDomainEditHandler extends Handler {
         
         if (!rootNode) {
             // 如果没有节点，返回空数据
-            this.response.template = 'mindmap_domain_edit.html';
+            this.response.template = 'base_domain_edit.html';
             this.response.body = { 
                 mindMap: {
                     ...mindMap,
@@ -4304,7 +4304,7 @@ class MindMapDomainEditHandler extends Handler {
             domainPosition: node.position || { x: 0, y: 0 },
         }));
         
-        this.response.template = 'mindmap_domain_edit.html';
+        this.response.template = 'base_domain_edit.html';
         this.response.body = { 
             mindMap: {
                 ...mindMap,
@@ -4320,49 +4320,49 @@ class MindMapDomainEditHandler extends Handler {
 
 export async function apply(ctx: Context) {
     // 注册路由
-    // /mindmap 路由现在指向 outline 页面（一个域一个 mindmap，不需要 docId）
-    // 注意：更具体的路由（如 /mindmap/data）必须在参数路由（如 /mindmap/:docId）之前注册
-    ctx.Route('mindmap_outline', '/mindmap', MindMapOutlineHandler);
-    ctx.Route('mindmap_outline_branch', '/mindmap/branch/:branch', MindMapOutlineHandler);
-    ctx.Route('mindmap_list', '/mindmap/list', MindMapListHandler);
-    ctx.Route('mindmap_data', '/mindmap/data', MindMapDataHandler); // 必须在 /mindmap/:docId 之前
-    // 更具体的路由先注册，确保这些路由在 /mindmap/:docId 之前匹配
-    ctx.Route('mindmap_node_update', '/mindmap/node/:nodeId', MindMapNodeHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_node', '/mindmap/node', MindMapNodeHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_edge', '/mindmap/edge', MindMapEdgeHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_save', '/mindmap/save', MindMapSaveHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_card', '/mindmap/card', MindMapCardHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_card_update', '/mindmap/card/:cardId', MindMapCardHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_branch_create', '/mindmap/branch', MindMapBranchCreateHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_branch_create_with_param', '/mindmap/branch/:branch/create', MindMapBranchCreateHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_git_status', '/mindmap/git/status', MindMapGitStatusHandler);
-    ctx.Route('mindmap_commit', '/mindmap/commit', MindMapCommitHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_commit_branch', '/mindmap/branch/:branch/commit', MindMapCommitHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_github_push', '/mindmap/github/push', MindMapGithubPushHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_github_push_branch', '/mindmap/branch/:branch/github/push', MindMapGithubPushHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_github_pull', '/mindmap/github/pull', MindMapGithubPullHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_github_pull_branch', '/mindmap/branch/:branch/github/pull', MindMapGithubPullHandler, PRIV.PRIV_USER_PROFILE);
+    // /base 路由现在指向 outline 页面（一个域一个 base，不需要 docId）
+    // 注意：更具体的路由（如 /base/data）必须在参数路由（如 /base/:docId）之前注册
+    ctx.Route('base_outline', '/base', MindMapOutlineHandler);
+    ctx.Route('base_outline_branch', '/base/branch/:branch', MindMapOutlineHandler);
+    ctx.Route('base_list', '/base/list', MindMapListHandler);
+    ctx.Route('base_data', '/base/data', MindMapDataHandler); // 必须在 /base/:docId 之前
+    // 更具体的路由先注册，确保这些路由在 /base/:docId 之前匹配
+    ctx.Route('base_node_update', '/base/node/:nodeId', MindMapNodeHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_node', '/base/node', MindMapNodeHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_edge', '/base/edge', MindMapEdgeHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_save', '/base/save', MindMapSaveHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_card', '/base/card', MindMapCardHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_card_update', '/base/card/:cardId', MindMapCardHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_branch_create', '/base/branch', MindMapBranchCreateHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_branch_create_with_param', '/base/branch/:branch/create', MindMapBranchCreateHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_git_status', '/base/git/status', MindMapGitStatusHandler);
+    ctx.Route('base_commit', '/base/commit', MindMapCommitHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_commit_branch', '/base/branch/:branch/commit', MindMapCommitHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_github_push', '/base/github/push', MindMapGithubPushHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_github_push_branch', '/base/branch/:branch/github/push', MindMapGithubPushHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_github_pull', '/base/github/pull', MindMapGithubPullHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_github_pull_branch', '/base/branch/:branch/github/pull', MindMapGithubPullHandler, PRIV.PRIV_USER_PROFILE);
     // 参数路由放在最后
-    ctx.Route('mindmap_detail', '/mindmap/:docId', MindMapDetailHandler);
-    ctx.Route('mindmap_detail_branch', '/mindmap/:docId/branch/:branch', MindMapDetailHandler);
-    ctx.Route('mindmap_study', '/mindmap/:docId/study', MindMapStudyHandler);
-    ctx.Route('mindmap_study_branch', '/mindmap/:docId/branch/:branch/study', MindMapStudyHandler);
-    ctx.Route('mindmap_edit', '/mindmap/:docId/edit', MindMapEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_card_list', '/mindmap/node/:nodeId/cards', MindMapCardListHandler);
-    ctx.Route('mindmap_card_list_branch', '/mindmap/branch/:branch/node/:nodeId/cards', MindMapCardListHandler);
-    ctx.Route('mindmap_card_edit', '/mindmap/node/:nodeId/card/edit', MindMapCardEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_card_edit_with_card', '/mindmap/node/:nodeId/card/:cardId/edit', MindMapCardEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_card_edit_branch', '/mindmap/branch/:branch/node/:nodeId/card/edit', MindMapCardEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_card_edit_branch_with_card', '/mindmap/branch/:branch/node/:nodeId/card/:cardId/edit', MindMapCardEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_card_detail', '/mindmap/node/:nodeId/card/:cardId', MindMapCardDetailHandler);
-    ctx.Route('mindmap_card_detail_branch', '/mindmap/branch/:branch/node/:nodeId/card/:cardId', MindMapCardDetailHandler);
-    ctx.Route('mindmap_files', '/mindmap/files', MindMapFilesHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_files_branch', '/mindmap/branch/:branch/files', MindMapFilesHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_file_download', '/mindmap/file/:filename', MindMapFileDownloadHandler);
-    ctx.Route('mindmap_editor', '/mindmap/editor', MindMapEditorHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('mindmap_editor_branch', '/mindmap/branch/:branch/editor', MindMapEditorHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_detail', '/base/:docId', MindMapDetailHandler);
+    ctx.Route('base_detail_branch', '/base/:docId/branch/:branch', MindMapDetailHandler);
+    ctx.Route('base_study', '/base/:docId/study', MindMapStudyHandler);
+    ctx.Route('base_study_branch', '/base/:docId/branch/:branch/study', MindMapStudyHandler);
+    ctx.Route('base_edit', '/base/:docId/edit', MindMapEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_card_list', '/base/node/:nodeId/cards', MindMapCardListHandler);
+    ctx.Route('base_card_list_branch', '/base/branch/:branch/node/:nodeId/cards', MindMapCardListHandler);
+    ctx.Route('base_card_edit', '/base/node/:nodeId/card/edit', MindMapCardEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_card_edit_with_card', '/base/node/:nodeId/card/:cardId/edit', MindMapCardEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_card_edit_branch', '/base/branch/:branch/node/:nodeId/card/edit', MindMapCardEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_card_edit_branch_with_card', '/base/branch/:branch/node/:nodeId/card/:cardId/edit', MindMapCardEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_card_detail', '/base/node/:nodeId/card/:cardId', MindMapCardDetailHandler);
+    ctx.Route('base_card_detail_branch', '/base/branch/:branch/node/:nodeId/card/:cardId', MindMapCardDetailHandler);
+    ctx.Route('base_files', '/base/files', MindMapFilesHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_files_branch', '/base/branch/:branch/files', MindMapFilesHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_file_download', '/base/file/:filename', MindMapFileDownloadHandler);
+    ctx.Route('base_editor', '/base/editor', MindMapEditorHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_editor_branch', '/base/branch/:branch/editor', MindMapEditorHandler, PRIV.PRIV_USER_PROFILE);
     
     // WebSocket 连接路由
-    ctx.Connection('mindmap_connection', '/mindmap/ws', MindMapConnectionHandler);
+    ctx.Connection('base_connection', '/base/ws', MindMapConnectionHandler);
 }
 

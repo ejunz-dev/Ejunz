@@ -1,34 +1,34 @@
 {% extends "layout/basic.html" %}
 {% block content %}
 <script>
-  {% set baseUrlValue = url("mindmap_card_list_branch", domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId) %}
+  {% set baseUrlValue = url("base_card_list_branch", domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId) %}
   {{ set(UiContext, 'currentBranch', branch) }}
   {{ set(UiContext, 'mindMap', {
     domainId: mindMap.domainId,
     docId: mindMap.docId,
-    mmid: mindMap.mmid,
+    bid: mindMap.bid,
     currentBranch: branch
   }) }}
   {{ set(UiContext, 'cards', cards) }}
   {{ set(UiContext, 'baseUrl', baseUrlValue) }}
   {{ set(UiContext, 'nodeId', nodeId) }}
 </script>
-<div class="row mindmap-card-list">
+<div class="row base-card-list">
   <!-- 左侧：卡片列表侧边栏 -->
-  <div class="mindmap-card-list__sidebar">
-    <div class="mindmap-card-list__header">
-      <h2 class="mindmap-card-list__title">卡片列表</h2>
-      <div class="mindmap-card-list__actions">
+  <div class="base-card-list__sidebar">
+    <div class="base-card-list__header">
+      <h2 class="base-card-list__title">卡片列表</h2>
+      <div class="base-card-list__actions">
         <button 
           id="edit-mode-btn"
-          class="mindmap-card-list__action-btn mindmap-card-list__action-btn--edit"
+          class="base-card-list__action-btn base-card-list__action-btn--edit"
           title="{{ _('编辑') }}"
         >
           ✎
         </button>
         <button 
           id="save-order-btn"
-          class="mindmap-card-list__action-btn mindmap-card-list__action-btn--save"
+          class="base-card-list__action-btn base-card-list__action-btn--save"
           style="display: none;"
           title="{{ _('保存') }}"
         >
@@ -36,7 +36,7 @@
         </button>
         <button 
           id="cancel-edit-btn"
-          class="mindmap-card-list__action-btn mindmap-card-list__action-btn--cancel"
+          class="base-card-list__action-btn base-card-list__action-btn--cancel"
           style="display: none;"
           title="{{ _('取消') }}"
         >
@@ -44,15 +44,15 @@
         </button>
         <button 
           id="delete-cards-btn"
-          class="mindmap-card-list__action-btn mindmap-card-list__action-btn--delete"
+          class="base-card-list__action-btn base-card-list__action-btn--delete"
           style="display: none;"
           title="{{ _('删除') }}"
         >
           🗑
         </button>
         <a 
-          href="{{ url('mindmap_card_edit_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId) }}"
-          class="mindmap-card-list__action-btn mindmap-card-list__action-btn--new"
+          href="{{ url('base_card_edit_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId) }}"
+          class="base-card-list__action-btn base-card-list__action-btn--new"
           style="text-decoration: none;"
           title="{{ _('新建') }}"
         >
@@ -60,40 +60,40 @@
         </a>
       </div>
     </div>
-    <div id="card-list-container" class="mindmap-card-list__container">
+    <div id="card-list-container" class="base-card-list__container">
       {% if cards and cards|length > 0 %}
         {% for card in cards %}
           <div
-            class="mindmap-card-list__item card-item {% if selectedCard and card.docId.toString() == selectedCard.docId.toString() %}selected{% endif %}"
+            class="base-card-list__item card-item {% if selectedCard and card.docId.toString() == selectedCard.docId.toString() %}selected{% endif %}"
             data-card-id="{{ card.docId }}"
             data-order="{{ card.order or loop.index }}"
           >
-            <div class="mindmap-card-list__item-content">
+            <div class="base-card-list__item-content">
               <input 
                 type="checkbox" 
-                class="mindmap-card-list__checkbox card-checkbox" 
+                class="base-card-list__checkbox card-checkbox" 
                 data-card-id="{{ card.docId }}"
               />
-              <span class="mindmap-card-list__drag-handle drag-handle">⋮⋮</span>
-              <div class="mindmap-card-list__item-title">
+              <span class="base-card-list__drag-handle drag-handle">⋮⋮</span>
+              <div class="base-card-list__item-title">
                 {{ card.title or '未命名卡片' }}
               </div>
             </div>
           </div>
         {% endfor %}
       {% else %}
-        <div class="mindmap-card-list__empty">
-          <p class="mindmap-card-list__empty-text">暂无卡片</p>
+        <div class="base-card-list__empty">
+          <p class="base-card-list__empty-text">暂无卡片</p>
         </div>
       {% endif %}
     </div>
   </div>
   
   <!-- 右侧：卡片内容 -->
-  <div class="mindmap-card-list__content">
+  <div class="base-card-list__content">
     <div class="section">
-      <div class="section__header mindmap-card-list__content-header">
-        <h1 class="section__title mindmap-card-list__content-title">
+      <div class="section__header base-card-list__content-header">
+        <h1 class="section__title base-card-list__content-title">
           <span id="card-title">{{ selectedCard.title if selectedCard else '请选择卡片' }}</span>
           <span style="margin: 0 10px;">/</span>
           {% if nodePath and nodePath|length > 0 %}
@@ -105,14 +105,14 @@
             {{ nodeText }}
             <span style="margin: 0 10px;">/</span>
           {% endif %}
-          <a href="{{ url('mindmap_detail_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch) }}">
+          <a href="{{ url('base_detail_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch) }}">
             {{ mindMap.title if mindMap else '思维导图' }}
           </a>
         </h1>
         <a 
           id="card-edit-btn"
           href=""
-          class="button primary mindmap-card-list__content-edit-btn"
+          class="button primary base-card-list__content-edit-btn"
           style="display: none;"
         >
           {{ _('编辑') }}
