@@ -1,47 +1,47 @@
-{% set mindMaps = payload %}
+{% set bases = payload %}
 {% import "components/user.html" as user with context %}
-{% if mindMaps and mindMaps.length %}
+{% if bases and bases.length %}
   <div class="section page--base_main">
     <div class="section__header">
       <h1 class="section__title">{{ _('Base') }}</h1>
     </div>
     <ol class="section__list">
-      {%- for mindMap in mindMaps -%}
-        {% if mindMap and mindMap.docId %}
+      {%- for base in bases -%}
+        {% if base and base.docId %}
           {% set currentDomainId = domain._id|default(handler.args.domainId|default('system')) %}
           <li class="section__list__item">
             <div class="media">
               <div class="media__body medium">
                 <h1 class="section__item-title">
-                  <a href="{{ url('base_detail', domainId=currentDomainId, docId=mindMap.docId) }}" data-emoji-enabled>
-                    {{ mindMap.title|default('Untitled') }}
+                  <a href="{{ url('base_detail', domainId=currentDomainId, docId=base.docId) }}" data-emoji-enabled>
+                    {{ base.title|default('Untitled') }}
                   </a>
                 </h1>
               <ul class="supplementary list">
-                {% if mindMap.content %}
-                  <li>{{ mindMap.content|truncate(100) }}</li>
+                {% if base.content %}
+                  <li>{{ base.content|truncate(100) }}</li>
                 {% endif %}
                 <li>
                   <span class="icon icon-eye"></span>
-                  {{ _('Views') }}: {{ mindMap.views|default(0) }}
+                  {{ _('Views') }}: {{ base.views|default(0) }}
                 </li>
                 <li>
                   <span class="icon icon-nodes"></span>
-                  {{ _('Nodes') }}: {{ (mindMap.nodes|length if mindMap.nodes else 0) }}
+                  {{ _('Nodes') }}: {{ (base.nodes|length if base.nodes else 0) }}
                 </li>
                 <li>
-                  {% if mindMap.owner and udict[mindMap.owner] %}
-                    {{ user.render_inline(udict[mindMap.owner]) }}
-                  {% elif mindMap.owner %}
-                    {{ _('User') }} #{{ mindMap.owner }}
+                  {% if base.owner and udict[base.owner] %}
+                    {{ user.render_inline(udict[base.owner]) }}
+                  {% elif base.owner %}
+                    {{ _('User') }} #{{ base.owner }}
                   {% else %}
                     {{ _('Unknown User') }}
                   {% endif %}
                   @
-                  {% if mindMap.updateAt %}
-                    {{ datetimeSpan(mindMap.updateAt)|safe }}
-                  {% elif mindMap.createdAt %}
-                    {{ datetimeSpan(mindMap.createdAt)|safe }}
+                  {% if base.updateAt %}
+                    {{ datetimeSpan(base.updateAt)|safe }}
+                  {% elif base.createdAt %}
+                    {{ datetimeSpan(base.createdAt)|safe }}
                   {% else %}
                     N/A
                   {% endif %}

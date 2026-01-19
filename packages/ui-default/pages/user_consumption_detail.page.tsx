@@ -69,7 +69,7 @@ function UserConsumptionDetailPage() {
   const targetDomain = (window as any).UiContext?.targetDomain;
   const date = (window as any).UiContext?.date;
   const contributions: Consumptions = (window as any).UiContext?.contributions || { nodes: [], cards: [], problems: [], practices: [] };
-  const mindMapDocId = (window as any).UiContext?.mindMapDocId;
+  const baseDocId = (window as any).UiContext?.baseDocId;
   const totalTimeInSeconds = (window as any).UiContext?.totalTimeInSeconds || 0;
 
   const getTheme = useCallback(() => {
@@ -120,15 +120,15 @@ function UserConsumptionDetailPage() {
   }, [theme]);
 
   const getNodeLink = (node: ConsumptionNode) => {
-    if (node.type === 'base' && mindMapDocId) {
-      return `/d/${targetDomain._id}/base/${mindMapDocId}?nodeId=${node.id}`;
+    if (node.type === 'base' && baseDocId) {
+      return `/d/${targetDomain._id}/base/${baseDocId}?nodeId=${node.id}`;
     }
     return null;
   };
 
   const getCardLink = (card: ConsumptionCard) => {
-    if (mindMapDocId && card.nodeId) {
-      return `/d/${targetDomain._id}/base/${mindMapDocId}/branch/main/node/${card.nodeId}/cards?cardId=${card.docId}`;
+    if (baseDocId && card.nodeId) {
+      return `/d/${targetDomain._id}/base/${baseDocId}/branch/main/node/${card.nodeId}/cards?cardId=${card.docId}`;
     }
     return null;
   };
