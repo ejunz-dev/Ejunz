@@ -1,6 +1,6 @@
 {% import "components/paginator.html" as paginator with context %}
 {% import "components/nothing.html" as nothing with context %}
-<div data-fragment-id="mindmap-search-results" style="padding: 0;">
+<div data-fragment-id="base-search-results" style="padding: 0;">
   {% if not searchResults or searchResults|length == 0 %}
     <div style="padding: 16px; text-align: center; color: #6a737d; font-size: 14px;">
       {{ _('No results found.') }}
@@ -17,7 +17,7 @@
            onclick="window.location.href='{{ result.url }}'">
         <div style="display: flex; align-items: flex-start; gap: 8px;">
           <span class="badge badge--primary" style="font-size: 10px; padding: 2px 6px; margin-top: 2px; flex-shrink: 0;">
-            MINDMAP
+            BASE
           </span>
           <div style="flex: 1; min-width: 0;">
             <a href="{{ result.url }}" style="font-weight: 600; color: #0366d6; text-decoration: none; display: block; font-size: 14px; line-height: 1.5;">

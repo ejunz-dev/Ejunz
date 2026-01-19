@@ -39,7 +39,7 @@ interface MindMapEdge {
 
 interface MindMapDoc {
   docId: string;
-  mmid: number;
+  bid: number;
   title: string;
   content: string;
   nodes: MindMapNode[];
@@ -163,14 +163,14 @@ const OutlineView = ({
   // 卡片展开状态管理（使用 localStorage 持久化）
   const getStorageKey = useCallback(() => {
     const docId = (window as any).UiContext?.mindMap?.docId;
-    const mmid = (window as any).UiContext?.mindMap?.mmid;
+    const bid = (window as any).UiContext?.mindMap?.bid;
     const domainId = (window as any).UiContext?.domainId || 'system';
     if (docId) {
-      return `mindmap_cards_expanded_${domainId}_${docId}`;
-    } else if (mmid) {
-      return `mindmap_cards_expanded_${domainId}_mmid_${mmid}`;
+      return `base_cards_expanded_${domainId}_${docId}`;
+    } else if (bid) {
+      return `base_cards_expanded_${domainId}_bid_${bid}`;
     }
-    return 'mindmap_cards_expanded_default';
+    return 'base_cards_expanded_default';
   }, []);
 
   // 从 localStorage 加载卡片展开状态
@@ -363,12 +363,12 @@ const OutlineView = ({
     const domainId = (window as any).UiContext?.domainId || 'system';
     const branch = (window as any).UiContext?.currentBranch || 'main';
     const docId = (window as any).UiContext?.mindMap?.docId;
-    const mmid = (window as any).UiContext?.mindMap?.mmid;
+    const bid = (window as any).UiContext?.mindMap?.bid;
     
     if (docId) {
-      return `/d/${domainId}/mindmap/${docId}/branch/${branch}/node/${nodeId}/cards?cardId=${card.docId}`;
-    } else if (mmid) {
-      return `/d/${domainId}/mindmap/mmid/${mmid}/branch/${branch}/node/${nodeId}/cards?cardId=${card.docId}`;
+      return `/d/${domainId}/base/${docId}/branch/${branch}/node/${nodeId}/cards?cardId=${card.docId}`;
+    } else if (bid) {
+      return `/d/${domainId}/base/bid/${bid}/branch/${branch}/node/${nodeId}/cards?cardId=${card.docId}`;
     }
     return '#';
   }, []);
@@ -792,7 +792,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
         
         const domainId = (window as any).UiContext?.domainId || 'system';
         const getMindMapUrl = (path: string, docId: string) => {
-          return `/d/${domainId}/mindmap/${docId}${path}`;
+          return `/d/${domainId}/base/${docId}${path}`;
         };
         
         await request.post(getMindMapUrl('/save', docId), {
@@ -802,7 +802,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
         });
         
         // 更新本地 mindMap 状态（确保与后端同步）
-        // 注意：这里更新 mindMap 不会触发 useEffect 重置展开状态，因为 useEffect 只依赖 mmid
+        // 注意：这里更新 mindMap 不会触发 useEffect 重置展开状态，因为 useEffect 只依赖 bid
         setMindMap(prev => ({
           ...prev,
           nodes: updatedNodes,
@@ -878,7 +878,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
   useEffect(() => {
     try {
       const keys = Object.keys(localStorage);
-      const cachePrefix = 'mindmap-outline-card-';
+      const cachePrefix = 'base-outline-card-';
       let loadedCount = 0;
       let invalidatedCount = 0;
       
@@ -932,10 +932,10 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
       });
       
       if (loadedCount > 0) {
-        console.log(`[MindMap Outline] 从 localStorage 加载了 ${loadedCount} 个 card 缓存`);
+        console.log(`[Base Outline] 从 localStorage 加载了 ${loadedCount} 个 card 缓存`);
       }
       if (invalidatedCount > 0) {
-        console.log(`[MindMap Outline] 清除了 ${invalidatedCount} 个过期缓存`);
+        console.log(`[Base Outline] 清除了 ${invalidatedCount} 个过期缓存`);
       }
     } catch (error) {
       console.error('Failed to load cache from localStorage:', error);
@@ -943,7 +943,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
     
     // 初始化图片缓存（在函数定义之后调用）
     if ('caches' in window && !imageCacheRef.current) {
-      caches.open('mindmap-outline-images-v1').then(cache => {
+      caches.open('base-outline-images-v1').then(cache => {
         imageCacheRef.current = cache;
       }).catch(error => {
         console.error('Failed to init image cache:', error);
@@ -1003,7 +1003,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
         for (const card of batch) {
           const cardIdStr = String(card.docId);
           try {
-            const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+            const cacheKey = `base-outline-card-${cardIdStr}`;
             const cachedDataStr = localStorage.getItem(cacheKey);
             if (cachedDataStr) {
               // 有缓存，标记为已缓存
@@ -1057,13 +1057,13 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
         }
       }
       
-      // 方法2: 检查 localStorage 中所有 mindmap-outline-card-* 的键，清理不存在的卡片缓存
+      // 方法2: 检查 localStorage 中所有 base-outline-card-* 的键，清理不存在的卡片缓存
       // 这个操作也分批进行
       try {
         const allKeys: string[] = [];
         for (let i = 0; i < localStorage.length; i++) {
           const key = localStorage.key(i);
-          if (key && key.startsWith('mindmap-outline-card-')) {
+          if (key && key.startsWith('base-outline-card-')) {
             allKeys.push(key);
           }
         }
@@ -1074,7 +1074,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
           const batch = allKeys.slice(i, i + CLEANUP_BATCH_SIZE);
           
           for (const key of batch) {
-            const cardIdStr = key.replace('mindmap-outline-card-', '');
+            const cardIdStr = key.replace('base-outline-card-', '');
             const card = allCards.find(c => String(c.docId) === cardIdStr);
             if (!card) {
               // 如果 card 不存在于当前数据中，从缓存中移除
@@ -1103,7 +1103,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
       for (let i = 0; i < cachedCardIdsArray.length; i += SYNC_BATCH_SIZE) {
         const batch = cachedCardIdsArray.slice(i, i + SYNC_BATCH_SIZE);
         for (const cardIdStr of batch) {
-          const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+          const cacheKey = `base-outline-card-${cardIdStr}`;
           if (!localStorage.getItem(cacheKey)) {
             cachedCardsRef.current.delete(cardIdStr);
             delete cardContentCacheRef.current[cardIdStr];
@@ -1125,15 +1125,15 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
     }
   }, [isCheckingCache]);
 
-  // 跟踪已初始化的 mindmap（通过 mmid），避免重复初始化
+  // 跟踪已初始化的 base（通过 bid），避免重复初始化
   const initializedMindMapRef = useRef<number | null>(null);
   
-  // 只在初始化时或切换 mindmap 时设置展开状态，之后完全由用户操作控制
+  // 只在初始化时或切换 base 时设置展开状态，之后完全由用户操作控制
   useEffect(() => {
-    const currentMmid = mindMap?.mmid;
+    const currentbid = mindMap?.bid;
     
-    // 如果是新的 mindmap（mmid 变化），重新初始化
-    if (currentMmid && currentMmid !== initializedMindMapRef.current) {
+    // 如果是新的 base（bid 变化），重新初始化
+    if (currentbid && currentbid !== initializedMindMapRef.current) {
       // 从数据库加载展开状态
       const expanded = new Set<string>();
       mindMap.nodes.forEach(node => {
@@ -1143,7 +1143,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
       });
       setExpandedNodes(expanded);
       expandedNodesRef.current = expanded;
-      initializedMindMapRef.current = currentMmid;
+      initializedMindMapRef.current = currentbid;
     }
     
     // 当 mindMap 更新时，自动检查缓存状态（延迟一下，确保 nodeCardsMap 已更新）
@@ -1153,7 +1153,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [mindMap?.mmid, checkCacheStatus]); // 只依赖 mmid，避免频繁触发
+  }, [mindMap?.bid, checkCacheStatus]); // 只依赖 bid，避免频繁触发
 
   // 递归检查 node 及其所有子节点和子卡片是否都已缓存
   const checkNodeCachedRef = useRef<((nodeId: string) => boolean) | null>(null);
@@ -1424,7 +1424,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
   const initImageCache = useCallback(async () => {
     if ('caches' in window && !imageCacheRef.current) {
       try {
-        imageCacheRef.current = await caches.open('mindmap-outline-images-v1');
+        imageCacheRef.current = await caches.open('base-outline-images-v1');
       } catch (error) {
         console.error('Failed to open image cache:', error);
       }
@@ -1545,7 +1545,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
       cardContentCacheRef.current[cardIdStr] = emptyHtml;
       cachedCardsRef.current.add(cardIdStr);
       try {
-        const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+        const cacheKey = `base-outline-card-${cardIdStr}`;
         const cacheData = {
           html: emptyHtml,
           updateAt: card.updateAt || '',
@@ -1601,7 +1601,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
       cachedCardsRef.current.add(cardIdStr);
       
       try {
-        const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+        const cacheKey = `base-outline-card-${cardIdStr}`;
         const cacheData = {
           html: html,
           updateAt: card.updateAt || '',
@@ -1626,7 +1626,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
     cachedCardsRef.current.delete(cardIdStr);
     // 清除 localStorage 缓存
     try {
-      const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+      const cacheKey = `base-outline-card-${cardIdStr}`;
       localStorage.removeItem(cacheKey);
     } catch (error) {
       console.error(`Failed to remove cache for ${cardIdStr}:`, error);
@@ -1662,7 +1662,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
       delete cardContentCacheRef.current[cardIdStr];
       cachedCardsRef.current.delete(cardIdStr);
       try {
-        const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+        const cacheKey = `base-outline-card-${cardIdStr}`;
         localStorage.removeItem(cacheKey);
       } catch (error) {
         console.error(`Failed to remove cache for ${cardIdStr}:`, error);
@@ -1732,7 +1732,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
           delete cardContentCacheRef.current[item.cardId];
           cachedCardsRef.current.delete(item.cardId);
           try {
-            const cacheKey = `mindmap-outline-card-${item.cardId}`;
+            const cacheKey = `base-outline-card-${item.cardId}`;
             localStorage.removeItem(cacheKey);
           } catch (error) {
             console.error(`Failed to remove cache for ${item.cardId}:`, error);
@@ -1747,7 +1747,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
           // 验证缓存是否已正确保存（检查 updateAt）
           let cacheVerified = false;
           try {
-            const cacheKey = `mindmap-outline-card-${item.cardId}`;
+            const cacheKey = `base-outline-card-${item.cardId}`;
             const cachedDataStr = localStorage.getItem(cacheKey);
             if (cachedDataStr) {
               try {
@@ -1842,7 +1842,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
       return;
     }
     
-    console.log(`[MindMap Outline] 开始缓存 node ${nodeId} 下的 ${cardsToCache.length} 个 card`);
+    console.log(`[Base Outline] 开始缓存 node ${nodeId} 下的 ${cardsToCache.length} 个 card`);
     
     // 显示进度
     setCachingProgress({ current: 0, total: cardsToCache.length });
@@ -1864,7 +1864,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
       }));
     }
     
-    console.log(`[MindMap Outline] 完成缓存 node ${nodeId} 下的 card`);
+    console.log(`[Base Outline] 完成缓存 node ${nodeId} 下的 card`);
     // 延迟隐藏进度条，让用户看到完成状态
     setTimeout(() => {
       setCachingProgress(null);
@@ -2285,7 +2285,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
     
     // 检查 localStorage 缓存
     try {
-      const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+      const cacheKey = `base-outline-card-${cardIdStr}`;
       const cachedDataStr = localStorage.getItem(cacheKey);
       if (cachedDataStr) {
         try {
@@ -2416,7 +2416,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
         
         // 保存到 localStorage（保存原始 HTML，不包含 blob URL）
         try {
-          const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+          const cacheKey = `base-outline-card-${cardIdStr}`;
           const cacheData = {
             html: html,
             updateAt: selectedCard.updateAt || '',
@@ -2484,7 +2484,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
       
       // 清除 localStorage 缓存
       try {
-        const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+        const cacheKey = `base-outline-card-${cardIdStr}`;
         localStorage.removeItem(cacheKey);
       } catch (error) {
         console.error('Failed to remove from localStorage:', error);
@@ -2524,7 +2524,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
 
   // 监听数据更新（WebSocket 连接）
   // 使用全局变量管理连接，参考 record_main.page.ts 的做法
-  const globalWsKey = `mindmap-ws-${docId}`;
+  const globalWsKey = `base-ws-${docId}`;
   
   useEffect(() => {
     // 清理旧连接的函数
@@ -2566,7 +2566,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
     cleanupOldConnection();
     
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const wsUrl = `/d/${domainId}/mindmap/${docId}/ws`;
+    const wsUrl = `/d/${domainId}/base/${docId}/ws`;
 
     // 连接 WebSocket（使用 ReconnectingWebSocket，它自带重连功能）
     import('../components/socket').then(({ default: WebSocket }) => {
@@ -2578,14 +2578,14 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
 
       ws.onopen = () => {
         // 连接成功
-        // console.log('[MindMap Outline] WebSocket connected');
+        // console.log('[Base Outline] WebSocket connected');
       };
 
       ws.onmessage = (_: any, data: string) => {
         try {
           const msg = JSON.parse(data);
           // 移除详细日志，减少控制台输出
-          // console.log('[MindMap Outline] WebSocket message:', msg);
+          // console.log('[Base Outline] WebSocket message:', msg);
 
           // 处理缓存响应
           if (msg.type === 'markdown_response') {
@@ -2677,7 +2677,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
                           delete cardContentCacheRef.current[cardIdStr];
                           cachedCardsRef.current.delete(cardIdStr);
                           try {
-                            const cacheKey = `mindmap-outline-card-${cardIdStr}`;
+                            const cacheKey = `base-outline-card-${cardIdStr}`;
                             localStorage.removeItem(cacheKey);
                           } catch (error) {
                             console.error('Failed to remove from localStorage:', error);
@@ -2706,12 +2706,12 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
             }, 0);
           }
         } catch (error) {
-          console.error('[MindMap Outline] Failed to parse WebSocket message:', error);
+          console.error('[Base Outline] Failed to parse WebSocket message:', error);
         }
       };
 
       ws.onclose = (event: any) => {
-        // console.log('[MindMap Outline] WebSocket closed', event.code, event.reason);
+        // console.log('[Base Outline] WebSocket closed', event.code, event.reason);
         // 如果全局连接就是这个连接，清除全局引用
         if ((window as any)[globalWsKey] === ws) {
           (window as any)[globalWsKey] = null;
@@ -2726,7 +2726,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
       // Sock 类没有 onerror，错误会通过 onclose 处理
       // ReconnectingWebSocket 会自动处理错误和重连
     }).catch((error) => {
-      console.error('[MindMap Outline] Failed to load WebSocket:', error);
+      console.error('[Base Outline] Failed to load WebSocket:', error);
     });
 
     return () => {
@@ -2756,7 +2756,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
           href={(() => {
             const domainId = (window as any).UiContext?.domainId || 'system';
             const branch = mindMap.currentBranch || 'main';
-            return `/d/${domainId}/mindmap/${docId}/branch/${branch}`;
+            return `/d/${domainId}/base/${docId}/branch/${branch}`;
           })()}
           style={{
             padding: '6px 12px',
@@ -2775,7 +2775,7 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
           href={(() => {
             const domainId = (window as any).UiContext?.domainId;
             const branch = mindMap.currentBranch || 'main';
-            return `/d/${domainId}/mindmap/branch/${branch}/editor`;
+            return `/d/${domainId}/base/branch/${branch}/editor`;
           })()}
           style={{
             padding: '6px 12px',
@@ -3457,14 +3457,14 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
                     const domainId = (window as any).UiContext?.domainId || 'system';
                     const branch = (window as any).UiContext?.currentBranch || 'main';
                     const mindMapDocId = (window as any).UiContext?.mindMap?.docId;
-                    const mindMapMmid = (window as any).UiContext?.mindMap?.mmid;
+                    const mindMapbid = (window as any).UiContext?.mindMap?.bid;
                     const nodeId = selectedCard.nodeId || '';
                     const cardId = selectedCard.docId;
                     
                     if (mindMapDocId) {
-                      return `/d/${domainId}/mindmap/${mindMapDocId}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit?returnUrl=${encodeURIComponent(window.location.href)}`;
-                    } else if (mindMapMmid) {
-                      return `/d/${domainId}/mindmap/mmid/${mindMapMmid}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit?returnUrl=${encodeURIComponent(window.location.href)}`;
+                      return `/d/${domainId}/base/${mindMapDocId}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit?returnUrl=${encodeURIComponent(window.location.href)}`;
+                    } else if (mindMapbid) {
+                      return `/d/${domainId}/base/bid/${mindMapbid}/branch/${branch}/node/${encodeURIComponent(nodeId)}/card/${cardId}/edit?returnUrl=${encodeURIComponent(window.location.href)}`;
                     }
                     return '#';
                   })()}
@@ -3714,15 +3714,15 @@ function MindMapOutlineEditor({ docId, initialData }: { docId: string | undefine
   );
 }
 
-// 辅助函数：获取带 domainId 的 mindmap URL
+// 辅助函数：获取带 domainId 的 base URL
 const getMindMapUrl = (path: string, docId: string): string => {
   const domainId = (window as any).UiContext?.domainId || 'system';
-  return `/d/${domainId}/mindmap/${docId}${path}`;
+  return `/d/${domainId}/base/${docId}${path}`;
 };
 
-const page = new NamedPage('mindmap_outline', async () => {
+const page = new NamedPage('base_outline', async () => {
   try {
-    const $container = $('#mindmap-outline-editor');
+    const $container = $('#base-outline-editor');
     if (!$container.length) {
       return;
     }
@@ -3733,8 +3733,8 @@ const page = new NamedPage('mindmap_outline', async () => {
     // 加载思维导图数据（不依赖 docId，直接通过 domainId 获取）
     let initialData: MindMapDoc;
     try {
-      // 使用 /mindmap/data 路由，不需要 docId
-      const response = await request.get(`/d/${domainId}/mindmap/data`);
+      // 使用 /base/data 路由，不需要 docId
+      const response = await request.get(`/d/${domainId}/base/data`);
       initialData = response;
       // 如果响应中没有 docId，使用空字符串
       if (!initialData.docId) {
@@ -3750,7 +3750,7 @@ const page = new NamedPage('mindmap_outline', async () => {
       $container[0]
     );
   } catch (error: any) {
-    console.error('Failed to initialize mindmap outline editor:', error);
+    console.error('Failed to initialize base outline editor:', error);
     Notification.error('初始化文件模式编辑器失败: ' + (error.message || '未知错误'));
   }
 });

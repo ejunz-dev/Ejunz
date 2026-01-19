@@ -1,10 +1,10 @@
-.mindmap-editor
+.base-editor
   width: 100%
   height: 100vh
   display: flex
   flex-direction: column
 
-.mindmap-toolbar
+.base-toolbar
   padding: 10px 20px
   background: #f5f5f5
   border-bottom: 1px solid #ddd
@@ -12,12 +12,12 @@
   align-items: center
   gap: 10px
 
-.mindmap-canvas
+.base-canvas
   flex: 1
   width: 100%
   position: relative
 
-.mindmap-node
+.base-node
   padding: 10px 15px
   background: #fff
   border: 2px solid #2196f3
@@ -27,11 +27,11 @@
   cursor: move
   position: relative
 
-.mindmap-node.selected
+.base-node.selected
   background: #e3f2fd
   box-shadow: 0 4px 8px rgba(0,0,0,0.2)
 
-.mindmap-node-delete-btn
+.base-node-delete-btn
   position: absolute
   top: -8px
   right: -8px
@@ -51,7 +51,7 @@
   z-index: 100
   box-shadow: 0 2px 4px rgba(0,0,0,0.2)
 
-.mindmap-node-delete-btn:hover
+.base-node-delete-btn:hover
   background: #d32f2f
   transform: scale(1.1)
 

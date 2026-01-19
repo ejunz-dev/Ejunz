@@ -52,7 +52,7 @@ interface MindMapEdge {
 
 interface MindMapDoc {
   docId: string;
-  mmid: number;
+  bid: number;
   title: string;
   content: string;
   nodes: MindMapNode[];
@@ -189,7 +189,7 @@ const StudyMindMapNodeComponent = ({ data, selected, id }: { data: any; selected
 };
 
 const customNodeTypes: NodeTypes = {
-  mindmap: StudyMindMapNodeComponent,
+  base: StudyMindMapNodeComponent,
 };
 
 // 使用 dagre 自动布局
@@ -257,7 +257,7 @@ const StudyCard = ({
     const nodes: Node[] = [
       {
         id: parent.id,
-        type: 'mindmap',
+        type: 'base',
         position: { x: 0, y: 0 },
         data: {
           originalNode: parent,
@@ -271,7 +271,7 @@ const StudyCard = ({
     children.forEach((child, index) => {
       nodes.push({
         id: child.id,
-        type: 'mindmap',
+        type: 'base',
         position: { x: 0, y: 0 },
         data: {
           originalNode: child,
@@ -437,9 +437,9 @@ function MindMapStudy() {
   // 从 URL 获取 docId
   const docId = useMemo(() => {
     const pathParts = window.location.pathname.split('/').filter(p => p);
-    const mindmapIndex = pathParts.indexOf('mindmap');
-    if (mindmapIndex >= 0 && mindmapIndex < pathParts.length - 1) {
-      return pathParts[mindmapIndex + 1];
+    const baseIndex = pathParts.indexOf('base');
+    if (baseIndex >= 0 && baseIndex < pathParts.length - 1) {
+      return pathParts[baseIndex + 1];
     }
     return '';
   }, []);
@@ -809,7 +809,7 @@ function MindMapStudy() {
         <a
           href={(() => {
             const domainId = (window as any).UiContext?.domainId || 'system';
-            return `/d/${domainId}/mindmap/${docId}`;
+            return `/d/${domainId}/base/${docId}`;
           })()}
           style={{
             padding: '6px 12px',
@@ -883,9 +883,9 @@ function MindMapStudy() {
   );
 }
 
-const page = new NamedPage('mindmap_study', async () => {
+const page = new NamedPage('base_study', async () => {
   try {
-    const $container = $('#mindmap-study');
+    const $container = $('#base-study');
     if (!$container.length) {
       return;
     }
@@ -895,7 +895,7 @@ const page = new NamedPage('mindmap_study', async () => {
       $container[0]
     );
   } catch (error: any) {
-    console.error('Failed to initialize mindmap study:', error);
+    console.error('Failed to initialize base study:', error);
     Notification.error('初始化刷题页面失败: ' + (error.message || '未知错误'));
   }
 });

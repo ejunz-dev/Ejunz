@@ -1,14 +1,14 @@
-.mindmap-card-list
+.base-card-list
   display: flex
   height: calc(100vh - 100px)
 
-.mindmap-card-list__sidebar
+.base-card-list__sidebar
   width: 280px
   border-right: 1px solid #e0e0e0
   overflow-y: auto
   background: #f8f9fa
 
-.mindmap-card-list__header
+.base-card-list__header
   padding: 16px
   border-bottom: 1px solid #e0e0e0
   background: #fff
@@ -16,17 +16,17 @@
   justify-content: space-between
   align-items: center
 
-.mindmap-card-list__title
+.base-card-list__title
   margin: 0
   font-size: 16px
   font-weight: 600
   color: #333
 
-.mindmap-card-list__actions
+.base-card-list__actions
   display: flex
   gap: 8px
 
-.mindmap-card-list__action-btn
+.base-card-list__action-btn
   width: 32px
   height: 32px
   padding: 0
@@ -41,7 +41,7 @@
   transition: all 0.2s ease
   outline: none
 
-.mindmap-card-list__action-btn--save
+.base-card-list__action-btn--save
   background: #4caf50
   color: #fff
 
@@ -49,7 +49,7 @@
     background: #45a049
     transform: scale(1.1)
 
-.mindmap-card-list__action-btn--cancel
+.base-card-list__action-btn--cancel
   background: #999
   color: #fff
 
@@ -57,7 +57,7 @@
     background: #777
     transform: scale(1.1)
 
-.mindmap-card-list__action-btn--delete
+.base-card-list__action-btn--delete
   background: #f44336
   color: #fff
 
@@ -65,7 +65,7 @@
     background: #d32f2f
     transform: scale(1.1)
 
-.mindmap-card-list__action-btn--edit
+.base-card-list__action-btn--edit
   background: #2196f3
   color: #fff
 
@@ -73,7 +73,7 @@
     background: #1976d2
     transform: scale(1.1)
 
-.mindmap-card-list__action-btn--new
+.base-card-list__action-btn--new
   background: #2196f3
   color: #fff
 
@@ -81,10 +81,10 @@
     background: #1976d2
     transform: scale(1.1)
 
-.mindmap-card-list__container
+.base-card-list__container
   padding: 8px
 
-.mindmap-card-list__item
+.base-card-list__item
   padding: 12px 16px
   margin-bottom: 4px
   border-radius: 6px
@@ -93,16 +93,16 @@
   border: 1px solid #e0e0e0
   transition: all 0.2s ease
 
-.mindmap-card-list__item.selected
+.base-card-list__item.selected
   background: #e3f2fd
   border: 2px solid #2196f3
 
-.mindmap-card-list__item-content
+.base-card-list__item-content
   display: flex
   align-items: center
   gap: 8px
 
-.mindmap-card-list__checkbox
+.base-card-list__checkbox
   appearance: none
   -webkit-appearance: none
   width: 18px
@@ -140,65 +140,65 @@
     font-weight: bold
     line-height: 1
 
-.mindmap-card-list__drag-handle
+.base-card-list__drag-handle
   display: none
   cursor: grab
   color: #999
   font-size: 16px
   user-select: none
 
-.mindmap-card-list__item-title
+.base-card-list__item-title
   font-size: 14px
   font-weight: 400
   color: #333
   flex: 1
 
-.mindmap-card-list__item.selected .mindmap-card-list__item-title
+.base-card-list__item.selected .base-card-list__item-title
   font-weight: 600
 
-.mindmap-card-list__empty
+.base-card-list__empty
   text-align: center
   padding: 40px 20px
   color: #999
 
-.mindmap-card-list__empty-text
+.base-card-list__empty-text
   font-size: 14px
 
-.mindmap-card-list__content
+.base-card-list__content
   flex: 1
   overflow-y: auto
   background: #fff
 
-.mindmap-card-list__content-header
+.base-card-list__content-header
   display: flex
   justify-content: space-between
   align-items: center
 
-.mindmap-card-list__content-title
+.base-card-list__content-title
   margin: 0
 
-.mindmap-card-list__content-edit-btn
+.base-card-list__content-edit-btn
   padding: 8px 16px
   font-size: 14px
   text-decoration: none
 
 // 编辑模式样式
-.mindmap-card-list__container.edit-mode
-  .mindmap-card-list__item
+.base-card-list__container.edit-mode
+  .base-card-list__item
     cursor: grab
 
-  .mindmap-card-list__item:active
+  .base-card-list__item:active
     cursor: grabbing
 
-  .mindmap-card-list__item:hover
+  .base-card-list__item:hover
     background: #f5f5f5 !important
 
-  .mindmap-card-list__drag-handle
+  .base-card-list__drag-handle
     display: block
 
-  .mindmap-card-list__checkbox
+  .base-card-list__checkbox
     display: block
 
-.mindmap-card-list__item.dragging
+.base-card-list__item.dragging
   opacity: 0.5
 

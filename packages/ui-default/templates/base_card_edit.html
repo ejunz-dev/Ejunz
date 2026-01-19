@@ -15,7 +15,7 @@
         </h2>
       </div>
       <div class="section__body">
-        <form method="post" action="{% if card %}{{ url('mindmap_card_edit_branch_with_card', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId, cardId=card.docId) }}{% else %}{{ url('mindmap_card_edit_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId) }}{% endif %}">
+        <form method="post" action="{% if card %}{{ url('base_card_edit_branch_with_card', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId, cardId=card.docId) }}{% else %}{{ url('base_card_edit_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId) }}{% endif %}">
           {% if card %}
             <input type="hidden" name="cardId" value="{{ card.docId }}">
             <input type="hidden" name="operation" value="update">

@@ -8,7 +8,7 @@ interface ContributionNode {
   id: string;
   name: string;
   createdAt: Date;
-  type: 'independent' | 'mindmap';
+  type: 'independent' | 'base';
 }
 
 interface ContributionCard {
@@ -89,15 +89,15 @@ function UserContributionDetailPage() {
   const getNodeLink = (node: ContributionNode) => {
     if (node.type === 'independent') {
       return `/d/${targetDomain._id}/node/${node.id}`;
-    } else if (node.type === 'mindmap' && mindMapDocId) {
-      return `/d/${targetDomain._id}/mindmap/${mindMapDocId}?nodeId=${node.id}`;
+    } else if (node.type === 'base' && mindMapDocId) {
+      return `/d/${targetDomain._id}/base/${mindMapDocId}?nodeId=${node.id}`;
     }
     return null;
   };
 
   const getCardLink = (card: ContributionCard) => {
     if (mindMapDocId && card.nodeId) {
-      return `/d/${targetDomain._id}/mindmap/${mindMapDocId}/branch/main/node/${card.nodeId}/cards?cardId=${card.docId}`;
+      return `/d/${targetDomain._id}/base/${mindMapDocId}/branch/main/node/${card.nodeId}/cards?cardId=${card.docId}`;
     }
     return null;
   };
@@ -198,7 +198,7 @@ function UserContributionDetailPage() {
                       display: 'flex',
                       gap: '12px',
                     }}>
-                      <span>{i18n('Type')}: {node.type === 'independent' ? i18n('Independent Node') : i18n('MindMap Node')}</span>
+                      <span>{i18n('Type')}: {node.type === 'independent' ? i18n('Independent Node') : i18n('Base Node')}</span>
                       <span>{i18n('Created at')}: {moment(node.createdAt).format('HH:mm:ss')}</span>
                     </div>
                   </div>

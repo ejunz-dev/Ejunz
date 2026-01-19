@@ -1,9 +1,9 @@
 {% set mindMaps = payload %}
 {% import "components/user.html" as user with context %}
 {% if mindMaps and mindMaps.length %}
-  <div class="section page--mindmap_main">
+  <div class="section page--base_main">
     <div class="section__header">
-      <h1 class="section__title">{{ _('MindMap') }}</h1>
+      <h1 class="section__title">{{ _('Base') }}</h1>
     </div>
     <ol class="section__list">
       {%- for mindMap in mindMaps -%}
@@ -13,7 +13,7 @@
             <div class="media">
               <div class="media__body medium">
                 <h1 class="section__item-title">
-                  <a href="{{ url('mindmap_detail', domainId=currentDomainId, docId=mindMap.docId) }}" data-emoji-enabled>
+                  <a href="{{ url('base_detail', domainId=currentDomainId, docId=mindMap.docId) }}" data-emoji-enabled>
                     {{ mindMap.title|default('Untitled') }}
                   </a>
                 </h1>
@@ -54,7 +54,7 @@
       {%- endfor -%}
     </ol>
     <ul class="pager pager-bottom"><li>
-      <a class="pager__item next link" href="{{ url('mindmap_domain') }}">{{ _('More') }} ></a>
+      <a class="pager__item next link" href="{{ url('base_domain') }}">{{ _('More') }} ></a>
     </li></ul>
   </div>
 {% endif %}

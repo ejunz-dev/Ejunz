@@ -8,7 +8,7 @@ homepage:
       node: 3
       client: 3
     - width: 6
-      mindmap: 10
+      base: 10
       workflow: 10
       discussion: 20
     - width: 3

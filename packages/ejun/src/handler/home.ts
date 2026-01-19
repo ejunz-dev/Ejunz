@@ -20,7 +20,7 @@ import { PERM, PRIV } from '../model/builtin';
 import * as discussion from '../model/discussion';
 import domain from '../model/domain';
 import message from '../model/message';
-import { MindMapModel } from '../model/mindmap';
+import { MindMapModel } from '../model/base';
 import AgentModel from '../model/agent';
 import WorkflowModel from '../model/workflow';
 import EdgeModel from '../model/edge';
@@ -56,7 +56,7 @@ export class HomeHandler extends Handler {
         return discussion.getNodes(domainId);
     }
 
-    async getMindmap(domainId: string, limit = 10) {
+    async getBase(domainId: string, limit = 10) {
         const mindMaps = await MindMapModel.getAll(domainId);
         const sorted = mindMaps.sort((a, b) => (b.updateAt?.getTime() || 0) - (a.updateAt?.getTime() || 0));
         const limited = sorted.slice(0, limit);
