@@ -1,12 +1,12 @@
 {% extends "layout/basic.html" %}
 {% block content %}
 <script>
-  {% set baseUrlValue = url("base_card_list_branch", domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId) %}
+  {% set baseUrlValue = url("base_card_list_branch", domainId=base.domainId, docId=base.docId, branch=branch, nodeId=nodeId) %}
   {{ set(UiContext, 'currentBranch', branch) }}
-  {{ set(UiContext, 'mindMap', {
-    domainId: mindMap.domainId,
-    docId: mindMap.docId,
-    bid: mindMap.bid,
+  {{ set(UiContext, 'base', {
+    domainId: base.domainId,
+    docId: base.docId,
+    bid: base.bid,
     currentBranch: branch
   }) }}
   {{ set(UiContext, 'cards', cards) }}
@@ -51,7 +51,7 @@
           🗑
         </button>
         <a 
-          href="{{ url('base_card_edit_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch, nodeId=nodeId) }}"
+          href="{{ url('base_card_edit_branch', domainId=base.domainId, docId=base.docId, branch=branch, nodeId=nodeId) }}"
           class="base-card-list__action-btn base-card-list__action-btn--new"
           style="text-decoration: none;"
           title="{{ _('新建') }}"
@@ -105,8 +105,8 @@
             {{ nodeText }}
             <span style="margin: 0 10px;">/</span>
           {% endif %}
-          <a href="{{ url('base_detail_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=branch) }}">
-            {{ mindMap.title if mindMap else '思维导图' }}
+          <a href="{{ url('base_detail_branch', domainId=base.domainId, docId=base.docId, branch=branch) }}">
+            {{ base.title if base else '思维导图' }}
           </a>
         </h1>
         <a 

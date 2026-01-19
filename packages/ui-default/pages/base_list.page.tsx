@@ -5,7 +5,7 @@ import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
 import { request } from 'vj/utils';
 
-interface MindMapItem {
+interface BaseItem {
   docId: string;
   bid: number;
   title: string;
@@ -18,17 +18,17 @@ interface MindMapItem {
   branch?: string;
 }
 
-function MindMapList() {
-  const [mindMaps, setMindMaps] = useState<MindMapItem[]>([]);
+function BaseList() {
+  const [bases, setBases] = useState<BaseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [rpid, setRpid] = useState<number | undefined>(undefined);
   const [branch, setBranch] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    loadMindMaps();
+    loadBases();
   }, [rpid, branch]);
 
-  const loadMindMaps = async () => {
+  const loadBases = async () => {
     try {
       setLoading(true);
       const domainId = (window as any).UiContext?.domainId || 'system';
@@ -37,16 +37,16 @@ function MindMapList() {
       if (branch) params.branch = branch;
 
       const response = await request.get(`/d/${domainId}/base`, { params });
-      setMindMaps(response.mindMaps || []);
+      setBases(response.bases || []);
     } catch (error: any) {
-      Notification.error('加载思维导图列表失败: ' + (error.message || '未知错误'));
+      Notification.error('加载知识库列表失败: ' + (error.message || '未知错误'));
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (docId: string, title: string) => {
-    if (!confirm(`确定要删除思维导图"${title}"吗？`)) {
+    if (!confirm(`确定要删除知识库"${title}"吗？`)) {
       return;
     }
 
@@ -56,8 +56,8 @@ function MindMapList() {
       await request.post(`/d/${domainId}/base/${docId}/edit`, {
         operation: 'delete',
       });
-      Notification.success('思维导图已删除');
-      loadMindMaps();
+      Notification.success('知识库已删除');
+      loadBases();
     } catch (error: any) {
       Notification.error('删除失败: ' + (error.message || '未知错误'));
     }
@@ -66,16 +66,16 @@ function MindMapList() {
   return (
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h1 style={{ margin: 0 }}>思维导图列表</h1>
+        <h1 style={{ margin: 0 }}>知识库列表</h1>
       </div>
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '40px' }}>
           <div>加载中...</div>
         </div>
-      ) : mindMaps.length === 0 ? (
+      ) : bases.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-          <p>暂无思维导图</p>
+          <p>暂无知识库</p>
           <a
             href={(() => {
               const domainId = (window as any).UiContext?.domainId || 'system';
@@ -91,14 +91,14 @@ function MindMapList() {
               marginTop: '10px',
             }}
           >
-            创建第一个思维导图
+            创建第一个知识库
           </a>
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-          {mindMaps.map((mindMap) => (
+          {bases.map((base) => (
             <div
-              key={mindMap.docId}
+              key={base.docId}
               style={{
                 border: '1px solid #ddd',
                 borderRadius: '8px',
@@ -118,26 +118,26 @@ function MindMapList() {
               }}
               onClick={() => {
                 const domainId = (window as any).UiContext?.domainId || '';
-                window.location.href = `/d/${domainId}/base/${mindMap.docId}`;
+                window.location.href = `/d/${domainId}/base/${base.docId}`;
               }}
             >
               <h3 style={{ margin: '0 0 10px 0', fontSize: '18px', color: '#333' }}>
-                {mindMap.title}
+                {base.title}
               </h3>
-              {mindMap.content && (
+              {base.content && (
                 <p style={{ margin: '0 0 15px 0', color: '#666', fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                  {mindMap.content}
+                  {base.content}
                 </p>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: '#999', marginTop: '15px' }}>
-                <span>访问量: {mindMap.views}</span>
-                <span>{new Date(mindMap.updateAt).toLocaleDateString()}</span>
+                <span>访问量: {base.views}</span>
+                <span>{new Date(base.updateAt).toLocaleDateString()}</span>
               </div>
               <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
                 <a
                   href={(() => {
                     const domainId = (window as any).UiContext?.domainId || 'system';
-                    return `/d/${domainId}/base/${mindMap.docId}`;
+                    return `/d/${domainId}/base/${base.docId}`;
                   })()}
                   onClick={(e) => e.stopPropagation()}
                   style={{
@@ -154,7 +154,7 @@ function MindMapList() {
                 <a
                   href={(() => {
                     const domainId = (window as any).UiContext?.domainId || 'system';
-                    return `/d/${domainId}/base/${mindMap.docId}/edit`;
+                    return `/d/${domainId}/base/${base.docId}/edit`;
                   })()}
                   onClick={(e) => e.stopPropagation()}
                   style={{
@@ -171,7 +171,7 @@ function MindMapList() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleDelete(mindMap.docId, mindMap.title);
+                    handleDelete(base.docId, base.title);
                   }}
                   style={{
                     padding: '4px 12px',
@@ -205,12 +205,12 @@ const page = new NamedPage('base_list', async () => {
     const branch = $container.data('branch');
 
     ReactDOM.render(
-      <MindMapList />,
+      <BaseList />,
       $container[0]
     );
   } catch (error: any) {
     console.error('Failed to initialize base list:', error);
-    Notification.error('初始化思维导图列表失败: ' + (error.message || '未知错误'));
+    Notification.error('初始化知识库列表失败: ' + (error.message || '未知错误'));
   }
 });
 

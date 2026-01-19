@@ -2,10 +2,10 @@
 {% block content %}
 <script>
   {{ set(UiContext, 'currentBranch', currentBranch) }}
-  {{ set(UiContext, 'mindMap', {
-    domainId: mindMap.domainId,
-    docId: mindMap.docId,
-    bid: mindMap.bid,
+  {{ set(UiContext, 'base', {
+    domainId: base.domainId,
+    docId: base.docId,
+    bid: base.bid,
     currentBranch: currentBranch
   }) }}
   {{ set(UiContext, 'nodeCardsMap', nodeCardsMap or {}) }}
@@ -32,10 +32,10 @@
   <div class="large-9 columns">
     <div class="section">
       <div class="section__header">
-        <h1 class="section__title">{{ mindMap.title if mindMap else '思维导图' }}</h1>
+        <h1 class="section__title">{{ base.title if base else '思维导图' }}</h1>
       </div>
       <div class="section__body no-padding">
-        <div id="base-editor" data-doc-id="{{ mindMap.docId if mindMap else '' }}"></div>
+        <div id="base-editor" data-doc-id="{{ base.docId if base else '' }}"></div>
       </div>
     </div>
   </div>
@@ -52,7 +52,7 @@
             <select id="branch-select" style="width: 100%; margin-bottom: 6px;" onchange="(function(){
               var sel = document.getElementById('branch-select');
               var b = sel && sel.value ? sel.value : '{{ currentBranch }}';
-              var url = '{{ url('base_detail_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch='__BR__') }}'.replace('__BR__', encodeURIComponent(b));
+              var url = '{{ url('base_detail_branch', domainId=base.domainId, docId=base.docId, branch='__BR__') }}'.replace('__BR__', encodeURIComponent(b));
               window.location.href = url;
             })()">
               {% for b in branches %}
@@ -64,7 +64,7 @@
             <button type="button" class="button success expanded" style="margin-bottom: 8px;" onclick="(function(){
               var name = window.prompt('{{ _('Enter new branch name') }}');
               if (!name) return;
-              var url = '{{ url('base_branch_create_with_param', domainId=mindMap.domainId, docId=mindMap.docId, branch='__BR__') }}'.replace('__BR__', encodeURIComponent(name));
+              var url = '{{ url('base_branch_create_with_param', domainId=base.domainId, docId=base.docId, branch='__BR__') }}'.replace('__BR__', encodeURIComponent(name));
               window.location.href = url;
             })()">{{ _('Create Branch') }}</button>
             {% endif %}
@@ -178,7 +178,7 @@
               btn.disabled = true;
               btn.textContent = '{{ _('Committing...') }}';
               
-              fetch('{{ url('base_commit_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=currentBranch) }}', {
+              fetch('{{ url('base_commit_branch', domainId=base.domainId, docId=base.docId, branch=currentBranch) }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -215,7 +215,7 @@
               btn.disabled = true;
               btn.textContent = '{{ _('Pushing...') }}';
               
-              fetch('{{ url('base_github_push_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=currentBranch) }}', {
+              fetch('{{ url('base_github_push_branch', domainId=base.domainId, docId=base.docId, branch=currentBranch) }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -249,7 +249,7 @@
               btn.disabled = true;
               btn.textContent = '{{ _('Pulling...') }}';
               
-              fetch('{{ url('base_github_pull_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=currentBranch) }}', {
+              fetch('{{ url('base_github_pull_branch', domainId=base.domainId, docId=base.docId, branch=currentBranch) }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -283,7 +283,7 @@
               btn.disabled = true;
               btn.textContent = '{{ _('Pushing...') }}';
               
-              fetch('{{ url('base_github_push_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=currentBranch) }}', {
+              fetch('{{ url('base_github_push_branch', domainId=base.domainId, docId=base.docId, branch=currentBranch) }}', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -323,7 +323,7 @@
     if (!historyListEl) return;
     
     try {
-      const response = await fetch('{{ url('base_history_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=currentBranch) }}');
+      const response = await fetch('{{ url('base_history_branch', domainId=base.domainId, docId=base.docId, branch=currentBranch) }}');
       const data = await response.json();
       const history = data.history || [];
       
@@ -371,7 +371,7 @@
     
     try {
       // 构建正确的URL，将historyId作为路径参数
-      const baseUrl = '{{ url('base_history_restore_branch', domainId=mindMap.domainId, docId=mindMap.docId, branch=currentBranch, historyId='__HISTORY_ID__') }}';
+      const baseUrl = '{{ url('base_history_restore_branch', domainId=base.domainId, docId=base.docId, branch=currentBranch, historyId='__HISTORY_ID__') }}';
       const url = baseUrl.replace('__HISTORY_ID__', encodeURIComponent(historyId));
       const response = await fetch(url, {
         method: 'POST',

@@ -42,14 +42,14 @@
 </style>
 <script>
   {{ set(UiContext, 'currentBranch', currentBranch) }}
-  {% if mindMap and mindMap.docId %}
-  {{ set(UiContext, 'mindMap', {
+  {% if base and base.docId %}
+  {{ set(UiContext, 'base', {
     domainId: domainId,
-    docId: mindMap.docId.toString(),
+    docId: base.docId.toString(),
     currentBranch: currentBranch
   }) }}
   {% else %}
-  {{ set(UiContext, 'mindMap', {
+  {{ set(UiContext, 'base', {
     domainId: domainId,
     docId: '',
     currentBranch: currentBranch
@@ -79,7 +79,7 @@
   <div class="large-12 columns">
     <div class="section">
       <div class="section__body no-padding">
-        <div id="base-outline-editor" data-doc-id="{% if mindMap and mindMap.docId %}{{ mindMap.docId.toString() }}{% endif %}" style="height: 100vh; width: 100%;"></div>
+        <div id="base-outline-editor" data-doc-id="{% if base and base.docId %}{{ base.docId.toString() }}{% endif %}" style="height: 100vh; width: 100%;"></div>
       </div>
     </div>
   </div>
@@ -116,7 +116,7 @@
           </div>
         {% endif %}
         
-        {% if mindMap and gitStatus %}
+        {% if base and gitStatus %}
           <div class="typo" style="margin-top: 10px; padding: 12px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; font-size: 12px;">
             <div style="font-weight: 600; margin-bottom: 8px; font-size: 13px;">📊 {{ _('Git Status') }}</div>
             
@@ -440,8 +440,8 @@
     }
   }
   
-  // 初始化时加载历史记录（仅当 mindMap 存在时）
-  {% if mindMap %}
+  // 初始化时加载历史记录（仅当 base 存在时）
+  {% if base %}
   loadHistory();
   
   // 定期刷新历史记录（每10秒）

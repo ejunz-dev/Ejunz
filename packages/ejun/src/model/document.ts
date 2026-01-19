@@ -6,7 +6,7 @@ import {
 import { Context } from '../context';
 import {
     Content, ContestClarificationDoc, DiscussionDoc,
-    DiscussionReplyDoc, AgentDoc, BaseDoc, RepoDoc, DocDoc, BlockDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc, WorkflowDoc, WorkflowNodeDoc, MindMapDoc, CardDoc, SceneDoc, SceneEventDoc,
+    DiscussionReplyDoc, AgentDoc, BaseDoc, RepoDoc, DocDoc, BlockDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc, WorkflowDoc, WorkflowNodeDoc, BaseDoc, CardDoc, SceneDoc, SceneEventDoc,
 } from '../interface';
 import bus from '../service/bus';
 import db from '../service/db';
@@ -46,7 +46,7 @@ export interface DocType {
     [TYPE_TOOL]: ToolDoc;
     [TYPE_WORKFLOW]: WorkflowDoc;
     [TYPE_WORKFLOW_NODE]: WorkflowNodeDoc;
-    [TYPE_BASE]: MindMapDoc;
+    [TYPE_BASE]: BaseDoc;
     [TYPE_CARD]: CardDoc;
     [TYPE_SCENE]: SceneDoc;
     [TYPE_EVENT]: SceneEventDoc;

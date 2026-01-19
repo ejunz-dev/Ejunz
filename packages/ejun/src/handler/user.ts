@@ -413,22 +413,22 @@ class UserDetailHandler extends Handler {
                 
                 const independentNodeCount = await document.count(did, document.TYPE_NODE, { owner: uid });
                 
-                const mindMaps = await document.getMulti(did, document.TYPE_BASE, { owner: uid })
+                const bases = await document.getMulti(did, document.TYPE_BASE, { owner: uid })
                     .project({ nodes: 1, branchData: 1 })
                     .toArray();
-                let mindMapNodeCount = 0;
-                for (const mindMapDoc of mindMaps) {
+                let baseNodeCount = 0;
+                for (const baseDoc of bases) {
                     const nodeIds = new Set<string>();
-                    if (mindMapDoc.nodes && Array.isArray(mindMapDoc.nodes)) {
-                        for (const node of mindMapDoc.nodes) {
+                    if (baseDoc.nodes && Array.isArray(baseDoc.nodes)) {
+                        for (const node of baseDoc.nodes) {
                             if (node && node.id) {
                                 nodeIds.add(node.id);
                             }
                         }
                     }
-                    if (mindMapDoc.branchData && typeof mindMapDoc.branchData === 'object') {
-                        for (const branch in mindMapDoc.branchData) {
-                            const branchNodes = mindMapDoc.branchData[branch]?.nodes;
+                    if (baseDoc.branchData && typeof baseDoc.branchData === 'object') {
+                        for (const branch in baseDoc.branchData) {
+                            const branchNodes = baseDoc.branchData[branch]?.nodes;
                             if (branchNodes && Array.isArray(branchNodes)) {
                                 for (const node of branchNodes) {
                                     if (node && node.id) {
@@ -438,9 +438,9 @@ class UserDetailHandler extends Handler {
                             }
                         }
                     }
-                    mindMapNodeCount += nodeIds.size;
+                    baseNodeCount += nodeIds.size;
                 }
-                const totalNodeCount = independentNodeCount + mindMapNodeCount;
+                const totalNodeCount = independentNodeCount + baseNodeCount;
                 
                 const cardCount = await document.count(did, document.TYPE_CARD, { owner: uid });
                 
@@ -528,24 +528,24 @@ class UserDetailHandler extends Handler {
                 }
             }
 
-            const mindMaps = await document.getMulti(did, document.TYPE_BASE, { owner: uid })
+            const bases = await document.getMulti(did, document.TYPE_BASE, { owner: uid })
                 .project({ nodes: 1, branchData: 1, updateAt: 1, createdAt: 1 })
                 .toArray();
-            for (const mindMapDoc of mindMaps) {
-                let totalNodesInMindMap = 0;
+            for (const baseDoc of bases) {
+                let totalNodesInBase = 0;
                 const nodeIds = new Set<string>();
                 
-                if (mindMapDoc.nodes && Array.isArray(mindMapDoc.nodes)) {
-                    for (const node of mindMapDoc.nodes) {
+                if (baseDoc.nodes && Array.isArray(baseDoc.nodes)) {
+                    for (const node of baseDoc.nodes) {
                         if (node && node.id) {
                             nodeIds.add(node.id);
                         }
                     }
                 }
                 
-                if (mindMapDoc.branchData && typeof mindMapDoc.branchData === 'object') {
-                    for (const branch in mindMapDoc.branchData) {
-                        const branchNodes = mindMapDoc.branchData[branch]?.nodes;
+                if (baseDoc.branchData && typeof baseDoc.branchData === 'object') {
+                    for (const branch in baseDoc.branchData) {
+                        const branchNodes = baseDoc.branchData[branch]?.nodes;
                         if (branchNodes && Array.isArray(branchNodes)) {
                             for (const node of branchNodes) {
                                 if (node && node.id) {
@@ -556,14 +556,14 @@ class UserDetailHandler extends Handler {
                     }
                 }
                 
-                totalNodesInMindMap = nodeIds.size;
+                totalNodesInBase = nodeIds.size;
                 
-                if (totalNodesInMindMap > 0) {
-                    const date = mindMapDoc.updateAt 
-                        ? moment.utc(mindMapDoc.updateAt).format('YYYY-MM-DD')
-                        : (mindMapDoc.createdAt ? moment.utc(mindMapDoc.createdAt).format('YYYY-MM-DD') : null);
+                if (totalNodesInBase > 0) {
+                    const date = baseDoc.updateAt 
+                        ? moment.utc(baseDoc.updateAt).format('YYYY-MM-DD')
+                        : (baseDoc.createdAt ? moment.utc(baseDoc.createdAt).format('YYYY-MM-DD') : null);
                     if (date) {
-                        nodeCounts[date] = (nodeCounts[date] || 0) + totalNodesInMindMap;
+                        nodeCounts[date] = (nodeCounts[date] || 0) + totalNodesInBase;
                         
                         if (!contributionDetails[date]) {
                             contributionDetails[date] = [];
@@ -582,14 +582,14 @@ class UserDetailHandler extends Handler {
                         };
                         contributionDetails[date].push(detail);
                     }
-                    detail.nodes += totalNodesInMindMap;
-                    const createDate = mindMapDoc.createdAt ? moment.utc(mindMapDoc.createdAt).format('YYYY-MM-DD') : null;
-                    const isCreated = createDate === date && mindMapDoc.updateAt && 
-                        Math.abs(moment.utc(mindMapDoc.updateAt).diff(moment.utc(mindMapDoc.createdAt), 'minutes')) < 5;
+                    detail.nodes += totalNodesInBase;
+                    const createDate = baseDoc.createdAt ? moment.utc(baseDoc.createdAt).format('YYYY-MM-DD') : null;
+                    const isCreated = createDate === date && baseDoc.updateAt && 
+                        Math.abs(moment.utc(baseDoc.updateAt).diff(moment.utc(baseDoc.createdAt), 'minutes')) < 5;
                     if (isCreated) {
-                        detail.nodeStats.created += totalNodesInMindMap;
+                        detail.nodeStats.created += totalNodesInBase;
                     } else if (createDate && createDate !== date) {
-                        detail.nodeStats.modified += totalNodesInMindMap;
+                        detail.nodeStats.modified += totalNodesInBase;
                     }
                     }
                 }
@@ -992,20 +992,20 @@ class UserContributionDetailHandler extends Handler {
             }
         }
 
-        const mindMaps = await document.getMulti(targetDomainId, document.TYPE_BASE, { owner: uid })
+        const bases = await document.getMulti(targetDomainId, document.TYPE_BASE, { owner: uid })
             .project({ docId: 1, title: 1, nodes: 1, branchData: 1, updateAt: 1, createdAt: 1 })
             .toArray();
-        for (const mindMapDoc of mindMaps) {
-            const mapDate = mindMapDoc.updateAt 
-                ? moment.utc(mindMapDoc.updateAt).format('YYYY-MM-DD')
-                : (mindMapDoc.createdAt ? moment.utc(mindMapDoc.createdAt).format('YYYY-MM-DD') : null);
+        for (const baseDoc of bases) {
+            const mapDate = baseDoc.updateAt 
+                ? moment.utc(baseDoc.updateAt).format('YYYY-MM-DD')
+                : (baseDoc.createdAt ? moment.utc(baseDoc.createdAt).format('YYYY-MM-DD') : null);
             
             if (mapDate === date) {
                 const nodeIds = new Set<string>();
                 const nodeMap = new Map<string, any>();
                 
-                if (mindMapDoc.nodes && Array.isArray(mindMapDoc.nodes)) {
-                    for (const node of mindMapDoc.nodes) {
+                if (baseDoc.nodes && Array.isArray(baseDoc.nodes)) {
+                    for (const node of baseDoc.nodes) {
                         if (node && node.id) {
                             nodeIds.add(node.id);
                             nodeMap.set(node.id, node);
@@ -1013,9 +1013,9 @@ class UserContributionDetailHandler extends Handler {
                     }
                 }
                 
-                if (mindMapDoc.branchData && typeof mindMapDoc.branchData === 'object') {
-                    for (const branch in mindMapDoc.branchData) {
-                        const branchNodes = mindMapDoc.branchData[branch]?.nodes;
+                if (baseDoc.branchData && typeof baseDoc.branchData === 'object') {
+                    for (const branch in baseDoc.branchData) {
+                        const branchNodes = baseDoc.branchData[branch]?.nodes;
                         if (branchNodes && Array.isArray(branchNodes)) {
                             for (const node of branchNodes) {
                                 if (node && node.id) {
@@ -1034,7 +1034,7 @@ class UserContributionDetailHandler extends Handler {
                     contributions.nodes.push({
                         id: nodeId,
                         name: node?.text || node?.name || this.translate('Unnamed Node'),
-                        createdAt: mindMapDoc.updateAt || mindMapDoc.createdAt,
+                        createdAt: baseDoc.updateAt || baseDoc.createdAt,
                         type: 'base',
                     });
                 }
@@ -1071,7 +1071,7 @@ class UserContributionDetailHandler extends Handler {
             }
         }
 
-        const mindMap = await base.MindMapModel.getByDomain(targetDomainId);
+        const base = await base.BaseModel.getByDomain(targetDomainId);
 
         this.response.template = 'user_contribution_detail.html';
         this.response.body = {
@@ -1079,7 +1079,7 @@ class UserContributionDetailHandler extends Handler {
             targetDomain,
             date,
             contributions,
-            mindMapDocId: mindMap?.docId,
+            baseDocId: base?.docId,
         };
 
         this.UiContext.extraTitleContent = this.translate('Contributions on {0} in {1}').format(date, targetDomain.name);
@@ -1115,8 +1115,8 @@ class UserConsumptionDetailHandler extends Handler {
             createdAt: { $gte: startOfDay, $lte: endOfDay },
         }).toArray();
 
-        const mindMap = await base.MindMapModel.getByDomain(targetDomainId);
-        const mindMapDocId = mindMap?.docId;
+        const base = await base.BaseModel.getByDomain(targetDomainId);
+        const baseDocId = base?.docId;
 
         const contributions: {
             nodes: Array<{ id: string; name: string; createdAt: Date; type: string }>;
@@ -1136,8 +1136,8 @@ class UserConsumptionDetailHandler extends Handler {
         for (const result of resultRecords) {
             if (result.nodeId) {
                 if (!nodeMap.has(result.nodeId)) {
-                    const mindMapNodes = mindMap ? (mindMap.nodes || []).filter((n: any) => n.id === result.nodeId) : [];
-                    const nodeData = mindMapNodes[0] || { id: result.nodeId, text: result.nodeId };
+                    const baseNodes = base ? (base.nodes || []).filter((n: any) => n.id === result.nodeId) : [];
+                    const nodeData = baseNodes[0] || { id: result.nodeId, text: result.nodeId };
                     nodeMap.set(result.nodeId, nodeData);
                 }
                 const node = nodeMap.get(result.nodeId);
@@ -1250,7 +1250,7 @@ class UserConsumptionDetailHandler extends Handler {
             targetDomain,
             date,
             contributions,
-            mindMapDocId: mindMap?.docId,
+            baseDocId: base?.docId,
             totalTimeInSeconds: Math.round(totalTimeInMilliseconds / 1000),
         };
 

@@ -20,7 +20,7 @@ import ReactFlow, {
 import dagre from 'dagre';
 import 'reactflow/dist/style.css';
 
-interface MindMapNode {
+interface BaseNode {
   id: string;
   text: string;
   x?: number;
@@ -39,7 +39,7 @@ interface MindMapNode {
   data?: Record<string, any>;
 }
 
-interface MindMapEdge {
+interface BaseEdge {
   id: string;
   source: string;
   target: string;
@@ -50,13 +50,13 @@ interface MindMapEdge {
   width?: number;
 }
 
-interface MindMapDoc {
+interface BaseDoc {
   docId: string;
   bid: number;
   title: string;
   content: string;
-  nodes: MindMapNode[];
-  edges: MindMapEdge[];
+  nodes: BaseNode[];
+  edges: BaseEdge[];
   layout?: {
     type: 'hierarchical' | 'force' | 'manual';
     direction?: 'LR' | 'RL' | 'TB' | 'BT';
@@ -81,8 +81,8 @@ interface MindMapDoc {
 }
 
 // 思维导图节点组件（用于刷题）
-const StudyMindMapNodeComponent = ({ data, selected, id }: { data: any; selected: boolean; id: string }) => {
-  const node = data.originalNode as MindMapNode;
+const StudyBaseNodeComponent = ({ data, selected, id }: { data: any; selected: boolean; id: string }) => {
+  const node = data.originalNode as BaseNode;
   const shape = node.shape || 'rectangle';
   const backgroundColor = node.backgroundColor || (selected ? '#e3f2fd' : '#fff');
   const color = node.color || '#333';
@@ -189,7 +189,7 @@ const StudyMindMapNodeComponent = ({ data, selected, id }: { data: any; selected
 };
 
 const customNodeTypes: NodeTypes = {
-  base: StudyMindMapNodeComponent,
+  base: StudyBaseNodeComponent,
 };
 
 // 使用 dagre 自动布局
@@ -241,8 +241,8 @@ const StudyCard = ({
   currentLayer,
   totalLayers,
 }: {
-  parent: MindMapNode;
-  children: MindMapNode[];
+  parent: BaseNode;
+  children: BaseNode[];
   showChildren: boolean;
   onToggleShow: () => void;
   cardIndex: number;
@@ -420,13 +420,13 @@ interface Problem {
 }
 
 interface Unit {
-  node: MindMapNode;
+  node: BaseNode;
   problemCount: number;
   problems: Problem[];
 }
 
-function MindMapStudy() {
-  const [mindMap, setMindMap] = useState<MindMapDoc | null>(null);
+function BaseStudy() {
+  const [base, setBase] = useState<BaseDoc | null>(null);
   const [loading, setLoading] = useState(true);
   const [units, setUnits] = useState<Unit[]>([]);
   const [selectedUnitNodeId, setSelectedUnitNodeId] = useState<string | null>(null);
@@ -455,17 +455,17 @@ function MindMapStudy() {
 
       try {
       // 从 UiContext 获取数据
-      const mindMapData = uiContext.mindMap;
+      const baseData = uiContext.base;
       const unitsData = uiContext.units || [];
 
-      if (mindMapData) {
-        setMindMap(mindMapData);
+      if (baseData) {
+        setBase(baseData);
         setUnits(unitsData);
       } else {
-        Notification.error('思维导图数据未找到');
+        Notification.error('知识库数据未找到');
       }
       } catch (error: any) {
-        Notification.error('加载思维导图失败: ' + (error.message || '未知错误'));
+        Notification.error('加载知识库失败: ' + (error.message || '未知错误'));
       } finally {
         setLoading(false);
       }
@@ -519,7 +519,7 @@ function MindMapStudy() {
     );
   }
 
-  if (!mindMap) {
+  if (!base) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
         <div style={{ fontSize: '18px', color: '#f44336' }}>加载失败</div>
@@ -562,7 +562,7 @@ function MindMapStudy() {
             返回 unit 列表
           </button>
           <div style={{ marginLeft: 'auto', fontSize: '14px', color: '#666' }}>
-            {mindMap.title} - {selectedUnit?.node.text || '刷题'}
+            {base.title} - {selectedUnit?.node.text || '刷题'}
           </div>
         </div>
 
@@ -821,10 +821,10 @@ function MindMapStudy() {
             cursor: 'pointer',
           }}
         >
-          返回思维导图
+          返回知识库
         </a>
         <div style={{ marginLeft: 'auto', fontSize: '14px', color: '#666' }}>
-          {mindMap.title} - 刷题模式
+          {base.title} - 刷题模式
         </div>
       </div>
 
@@ -891,7 +891,7 @@ const page = new NamedPage('base_study', async () => {
     }
 
     ReactDOM.render(
-      <MindMapStudy />,
+      <BaseStudy />,
       $container[0]
     );
   } catch (error: any) {
