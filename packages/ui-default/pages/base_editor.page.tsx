@@ -1017,6 +1017,31 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
   const [isChatLoading, setIsChatLoading] = useState<boolean>(false);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const chatMessagesContainerRef = useRef<HTMLDivElement>(null);
+  
+  // 智能滚动：只在用户位于容器底部附近时才自动滚动
+  const scrollToBottomIfNeeded = useCallback(() => {
+    if (!chatMessagesContainerRef.current || !chatMessagesEndRef.current) {
+      return;
+    }
+    
+    const container = chatMessagesContainerRef.current;
+    const scrollTop = container.scrollTop;
+    const scrollHeight = container.scrollHeight;
+    const clientHeight = container.clientHeight;
+    
+    // 如果用户距离底部小于 100px，认为是"在底部附近"，才自动滚动
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    
+    if (isNearBottom) {
+      // 使用 requestAnimationFrame 确保 DOM 更新后再滚动
+      requestAnimationFrame(() => {
+        if (chatMessagesContainerRef.current) {
+          chatMessagesContainerRef.current.scrollTop = chatMessagesContainerRef.current.scrollHeight;
+        }
+      });
+    }
+  }, []);
+  
   const [chatPanelWidth, setChatPanelWidth] = useState<number>(300); // 像素
   const [isResizing, setIsResizing] = useState<boolean>(false);
   const resizeStartXRef = useRef<number>(0);
@@ -3400,12 +3425,10 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
     };
   }, [isResizing]);
 
-  // 自动滚动聊天消息到底部
+  // 自动滚动聊天消息到底部（只在用户位于底部附近时）
   useEffect(() => {
-    if (chatMessagesEndRef.current) {
-      chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [chatMessages]);
+    scrollToBottomIfNeeded();
+  }, [chatMessages, scrollToBottomIfNeeded]);
 
   // 获取节点的完整路径（从根节点到当前节点）
   const getNodePath = useCallback((nodeId: string): string[] => {
@@ -3919,12 +3942,8 @@ ${cardContext}
       return newMessages;
     });
 
-    // 自动滚动到底部
-    setTimeout(() => {
-      if (chatMessagesEndRef.current) {
-        chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-      }
-    }, 100);
+    // 智能滚动：只在用户位于底部附近时才自动滚动
+    scrollToBottomIfNeeded();
 
     try {
       const domainId = (window as any).UiContext?.domainId || 'system';
@@ -4112,12 +4131,8 @@ ${currentCardContext}
               return newMessages;
             });
             
-            // 自动滚动到底部
-            setTimeout(() => {
-              if (chatMessagesEndRef.current) {
-                chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-              }
-            }, 0);
+            // 智能滚动：只在用户位于底部附近时才自动滚动
+            scrollToBottomIfNeeded();
           } else if (msg.type === 'done') {
             streamFinished = true;
             const finalContent = msg.content || accumulatedContent;
@@ -4138,12 +4153,8 @@ ${currentCardContext}
               return newMessages;
             });
             
-            // 滚动到底部
-            setTimeout(() => {
-              if (chatMessagesEndRef.current) {
-                chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-              }
-            }, 100);
+            // 智能滚动：只在用户位于底部附近时才自动滚动
+            scrollToBottomIfNeeded();
             
               // 如果有 JSON 操作，创建操作气泡
               if (jsonMatch) {
@@ -4183,12 +4194,8 @@ ${currentCardContext}
                             return newMessages;
                           });
                           
-                          // 滚动到底部显示错误信息
-                          setTimeout(() => {
-                            if (chatMessagesEndRef.current) {
-                              chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-                            }
-                          }, 100);
+                          // 智能滚动：只在用户位于底部附近时才自动滚动
+                          scrollToBottomIfNeeded();
                         }
                       }).catch((err) => {
                         console.error('Failed to execute operations:', err);
