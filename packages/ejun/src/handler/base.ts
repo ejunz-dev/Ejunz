@@ -736,9 +736,7 @@ class BaseCreateHandler extends Handler {
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        // 确保使用正确的 domainId（优先使用 this.args.domainId，因为它来自 ctx.domainId，是最准确的）
         const actualDomainId = this.args.domainId || domainId || 'system';
-        console.log(`[Base Create] domainId param: ${domainId}, this.args.domainId: ${this.args.domainId}, actualDomainId: ${actualDomainId}`);
         
         const { docId } = await BaseModel.create(
             actualDomainId,
@@ -752,22 +750,15 @@ class BaseCreateHandler extends Handler {
             this.domain.name
         );
 
-        console.log(`[Base Create] Created/Updated base with docId: ${docId.toString()}, domainId: ${actualDomainId}`);
-
-        // 验证 base 是否已成功创建
         let createdBase = await BaseModel.get(actualDomainId, docId);
         if (!createdBase) {
-            // 再等待一下，可能是数据库同步延迟
             await new Promise(resolve => setTimeout(resolve, 200));
             createdBase = await BaseModel.get(actualDomainId, docId) || await BaseModel.getByDomain(actualDomainId);
         }
         
         if (!createdBase) {
-            console.error(`[Base Create] Failed to find base after creation: docId=${docId.toString()}, domainId=${actualDomainId}`);
             throw new Error(`Failed to create base: record not found after creation (docId: ${docId.toString()}, domainId: ${actualDomainId})`);
         }
-        
-        console.log(`[Base Create] Successfully verified base: docId=${createdBase.docId.toString()}`);
 
         // 自动创建 GitHub 仓库（异步处理，不阻塞重定向）
         try {
@@ -3015,6 +3006,276 @@ class BaseCardDetailHandler extends Handler {
 }
 
 /**
+ * Base Batch Save Handler
+ * 批量保存所有更改（节点、卡片、边等）
+ */
+class BaseBatchSaveHandler extends Handler {
+    async post(domainId: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        // 确保使用正确的 domainId（优先使用 this.args.domainId，因为它来自 ctx.domainId，是最准确的）
+        const actualDomainId = this.args.domainId || domainId || 'system';
+        console.log(`[批量保存] domainId param: ${domainId}, this.args.domainId: ${this.args.domainId}, actualDomainId: ${actualDomainId}`);
+        
+        // 直接获取或创建包含 nodes 和 edges 的文档（不依赖 base 实体）
+        let base = await BaseModel.getByDomain(actualDomainId);
+        let docId: ObjectId;
+        
+        if (!base) {
+            const { docId: newDocId } = await BaseModel.create(
+                actualDomainId,
+                this.user._id,
+                this.domain.name || '知识库',
+                '',
+                undefined,
+                'main',
+                this.request.ip,
+                undefined,
+                this.domain.name
+            );
+            base = await BaseModel.get(actualDomainId, newDocId);
+            if (!base) {
+                throw new Error('Failed to create base');
+            }
+            docId = newDocId;
+        } else {
+            if (!this.user.own(base)) {
+                this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            }
+            docId = base.docId;
+        }
+        
+        const data = this.request.body || {};
+        const {
+            nodeCreates = [],
+            nodeUpdates = [],
+            nodeDeletes = [],
+            cardCreates = [],
+            cardUpdates = [],
+            cardDeletes = [],
+            edgeCreates = [],
+            edgeDeletes = [],
+        } = data;
+        
+        console.log('[批量保存] 接收到的数据:', {
+            nodeCreates: nodeCreates.length,
+            nodeUpdates: nodeUpdates.length,
+            nodeDeletes: nodeDeletes.length,
+            cardCreates: cardCreates.length,
+            cardUpdates: cardUpdates.length,
+            cardDeletes: cardDeletes.length,
+            edgeCreates: edgeCreates.length,
+            edgeDeletes: edgeDeletes.length,
+            nodeDeletesList: nodeDeletes,
+        });
+        
+        const branch = (base as any).currentBranch || 'main';
+        const errors: string[] = [];
+        const nodeIdMap = new Map<string, string>();
+        const cardIdMap = new Map<string, string>();
+        
+        const remainingNodeCreates = [...nodeCreates];
+        const processedNodeCreates = new Set<string>();
+        
+        while (remainingNodeCreates.length > 0) {
+            const beforeCount = remainingNodeCreates.length;
+            const currentRound: typeof nodeCreates = [];
+            
+            for (const nodeCreate of remainingNodeCreates) {
+                if (processedNodeCreates.has(nodeCreate.tempId)) {
+                    continue;
+                }
+                
+                let realParentId = nodeCreate.parentId;
+                if (nodeCreate.parentId && nodeCreate.parentId.startsWith('temp-node-')) {
+                    realParentId = nodeIdMap.get(nodeCreate.parentId);
+                    if (!realParentId) {
+                        continue;
+                    }
+                }
+                
+                currentRound.push(nodeCreate);
+                processedNodeCreates.add(nodeCreate.tempId);
+            }
+            
+            if (currentRound.length === 0) {
+                // 没有可以创建的节点，可能是有循环依赖或父节点不存在
+                break;
+            }
+            
+            // 并行创建当前轮的所有节点
+            await Promise.all(currentRound.map(async (nodeCreate) => {
+                try {
+                    let realParentId = nodeCreate.parentId;
+                    if (nodeCreate.parentId && nodeCreate.parentId.startsWith('temp-node-')) {
+                        realParentId = nodeIdMap.get(nodeCreate.parentId);
+                    }
+                    
+                    if (realParentId && !realParentId.startsWith('temp-node-')) {
+                        const currentBase = await BaseModel.get(actualDomainId, docId);
+                        if (currentBase) {
+                            const branchData = getBranchData(currentBase, branch);
+                            const parentExists = branchData.nodes.some((n: BaseNode) => n.id === realParentId);
+                            if (!parentExists) {
+                                realParentId = undefined;
+                            }
+                        } else {
+                            realParentId = undefined;
+                        }
+                    }
+                    
+                    const result = await BaseModel.addNode(
+                        actualDomainId,
+                        docId,
+                        {
+                            text: nodeCreate.text,
+                            x: nodeCreate.x,
+                            y: nodeCreate.y,
+                            parentId: realParentId,
+                        },
+                        realParentId,
+                        branch,
+                        realParentId // edgeSourceId
+                    );
+                    if (nodeCreate.tempId) {
+                        nodeIdMap.set(nodeCreate.tempId, result.nodeId);
+                    }
+                } catch (error: any) {
+                    errors.push(`创建节点失败: ${error.message || '未知错误'}`);
+                }
+            }));
+            
+            remainingNodeCreates.splice(0, remainingNodeCreates.length, 
+                ...remainingNodeCreates.filter(nc => !processedNodeCreates.has(nc.tempId))
+            );
+            
+            if (remainingNodeCreates.length === beforeCount) {
+                break;
+            }
+        }
+        
+        for (const nodeUpdate of nodeUpdates) {
+            try {
+                await BaseModel.updateNode(actualDomainId, docId, nodeUpdate.nodeId, {
+                    text: nodeUpdate.text,
+                    order: nodeUpdate.order,
+                });
+            } catch (error: any) {
+                errors.push(`更新节点失败: ${error.message || '未知错误'}`);
+            }
+        }
+        
+        // 3. 删除边（在删除节点之前）
+        for (const edgeId of edgeDeletes) {
+            try {
+                await BaseModel.deleteEdge(actualDomainId, docId, edgeId);
+            } catch (error: any) {
+                // 忽略删除错误（可能已经不存在）
+            }
+        }
+        
+        // 4. 删除节点
+        for (const nodeId of nodeDeletes) {
+            try {
+                console.log(`[批量保存] 删除节点: ${nodeId}, domainId: ${actualDomainId}, docId: ${docId}, branch: ${branch}`);
+                await BaseModel.deleteNode(actualDomainId, docId, nodeId, branch);
+                console.log(`[批量保存] 节点删除成功: ${nodeId}`);
+            } catch (error: any) {
+                console.error(`[批量保存] 删除节点失败: ${nodeId}`, error);
+                errors.push(`删除节点失败: ${error.message || '未知错误'}`);
+            }
+        }
+        
+        for (const edgeCreate of edgeCreates) {
+            try {
+                const sourceId = edgeCreate.source.startsWith('temp-node-') 
+                    ? nodeIdMap.get(edgeCreate.source) || edgeCreate.source
+                    : edgeCreate.source;
+                const targetId = edgeCreate.target.startsWith('temp-node-')
+                    ? nodeIdMap.get(edgeCreate.target) || edgeCreate.target
+                    : edgeCreate.target;
+                
+                if (sourceId && targetId && !sourceId.startsWith('temp-node-') && !targetId.startsWith('temp-node-')) {
+                    await BaseModel.addEdge(actualDomainId, docId, {
+                        source: sourceId,
+                        target: targetId,
+                        label: edgeCreate.label,
+                    }, branch);
+                }
+            } catch (error: any) {
+                errors.push(`创建边失败: ${error.message || '未知错误'}`);
+            }
+        }
+        
+        // 6. 创建卡片
+        for (const cardCreate of cardCreates) {
+            try {
+                // 如果 nodeId 是临时ID，需要映射为真实ID
+                const realNodeId = cardCreate.nodeId.startsWith('temp-node-')
+                    ? nodeIdMap.get(cardCreate.nodeId) || cardCreate.nodeId
+                    : cardCreate.nodeId;
+                
+                if (realNodeId && !realNodeId.startsWith('temp-node-')) {
+                    const response = await CardModel.create(
+                        actualDomainId,
+                        docId,
+                        realNodeId,
+                        this.user._id,
+                        cardCreate.title || '新卡片',
+                        cardCreate.content || '',
+                        this.request.ip,
+                        cardCreate.problems
+                    );
+                    
+                    if (cardCreate.tempId) {
+                        cardIdMap.set(cardCreate.tempId, response.toString());
+                    }
+                    
+                    if (cardCreate.order !== undefined) {
+                        await CardModel.update(actualDomainId, response, { order: cardCreate.order });
+                    }
+                }
+            } catch (error: any) {
+                errors.push(`创建卡片失败: ${error.message || '未知错误'}`);
+            }
+        }
+        
+        // 7. 更新卡片
+        for (const cardUpdate of cardUpdates) {
+            try {
+                await CardModel.update(actualDomainId, new ObjectId(cardUpdate.cardId), {
+                    title: cardUpdate.title,
+                    content: cardUpdate.content,
+                    nodeId: cardUpdate.nodeId,
+                    order: cardUpdate.order,
+                    problems: cardUpdate.problems,
+                });
+            } catch (error: any) {
+                errors.push(`更新卡片失败: ${error.message || '未知错误'}`);
+            }
+        }
+        
+        for (const cardId of cardDeletes) {
+            try {
+                await CardModel.delete(actualDomainId, new ObjectId(cardId));
+            } catch (error: any) {
+                errors.push(`删除卡片失败: ${error.message || '未知错误'}`);
+            }
+        }
+        
+        // 触发更新事件
+        (this.ctx.emit as any)('base/update', docId);
+        
+        this.response.body = {
+            success: errors.length === 0,
+            errors,
+            nodeIdMap: Object.fromEntries(nodeIdMap),
+            cardIdMap: Object.fromEntries(cardIdMap),
+        };
+    }
+}
+
+/**
  * Sync base data to git repository (without committing)
  */
 async function syncBaseToGit(domainId: string, bid: number, branch: string): Promise<void> {
@@ -4337,6 +4598,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_node', '/base/node', BaseNodeHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_edge', '/base/edge', BaseEdgeHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_save', '/base/save', BaseSaveHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_batch_save', '/base/batch-save', BaseBatchSaveHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card', '/base/card', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card_update', '/base/card/:cardId', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_branch_create', '/base/branch', BaseBranchCreateHandler, PRIV.PRIV_USER_PROFILE);
