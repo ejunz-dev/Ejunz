@@ -312,56 +312,46 @@ export class BaseModel {
      * 删除节点
      */
     static async deleteNode(domainId: string, docId: ObjectId, nodeId: string, branch?: string): Promise<void> {
-        const base = await this.get(domainId, docId);
-        if (!base) throw new Error('Base not found');
+        const actualDomainId = typeof domainId === 'string' ? domainId : String(domainId);
+        const base = await this.get(actualDomainId, docId);
+        if (!base) {
+            throw new Error('Base not found');
+        }
 
-        // 获取分支名称（优先使用传入的分支，否则使用 base 中的分支，最后默认为 'main'）
         const branchName = branch || (base as any).currentBranch || (base as any).branch || 'main';
         const branchData: {
             [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] };
         } = (base as any).branchData || {};
 
-        // 确定使用哪个节点和边数组（使用与 getBranchData 相同的逻辑）
         let nodes: BaseNode[];
         let edges: BaseEdge[];
         
-        // 如果存在 branchData，优先使用
         if (branchData[branchName] && branchData[branchName].nodes) {
             nodes = branchData[branchName].nodes;
             edges = branchData[branchName].edges || [];
         } else if (branchName === 'main') {
-            // 向后兼容：如果 branchData 不存在，使用根节点的 nodes/edges（仅对 main 分支）
             nodes = base.nodes || [];
             edges = base.edges || [];
         } else {
-            // 其他分支如果没有数据，返回空数组
             nodes = [];
             edges = [];
         }
 
         const node = nodes.find(n => n.id === nodeId);
         if (!node) {
-            // 节点不存在，可能是已经被删除或从未存在
-            // 为了幂等性，如果节点不存在，仍然尝试删除该节点的所有卡片，然后返回成功
-            // 这样可以确保即使节点不存在，其卡片也能被删除
             try {
-                const cards = await CardModel.getByNodeId(domainId, base.docId, nodeId);
+                const cards = await CardModel.getByNodeId(actualDomainId, base.docId, nodeId);
                 for (const card of cards) {
-                    await CardModel.delete(domainId, card.docId);
+                    await CardModel.delete(actualDomainId, card.docId);
                 }
             } catch (err) {
-                // Ignore card deletion errors
             }
             return;
         }
 
-        // 收集所有要删除的节点ID（包括当前节点和所有子节点）
         const nodesToDelete = new Set<string>();
         
-        // 递归收集所有子节点
-        // 同时考虑 children 字段和 edges 中的父子关系
         const collectChildNodes = (id: string) => {
-            // 如果已经收集过，跳过
             if (nodesToDelete.has(id)) {
                 return;
             }
@@ -369,12 +359,10 @@ export class BaseModel {
             nodesToDelete.add(id);
             const nodeToDelete = nodes.find(n => n.id === id);
             
-            // 如果节点不存在，跳过（可能已经被删除）
             if (!nodeToDelete) {
                 return;
             }
             
-            // 方法1: 从节点的 children 字段获取子节点
             if (nodeToDelete.children && nodeToDelete.children.length > 0) {
                 nodeToDelete.children.forEach(childId => {
                     if (!nodesToDelete.has(childId)) {
@@ -383,7 +371,6 @@ export class BaseModel {
                 });
             }
             
-            // 方法2: 从 edges 中查找所有以当前节点为 source 的子节点
             const childEdges = edges.filter(e => e.source === id);
             childEdges.forEach(edge => {
                 if (!nodesToDelete.has(edge.target)) {
@@ -394,58 +381,46 @@ export class BaseModel {
 
         collectChildNodes(nodeId);
 
-        // 删除所有相关节点的卡片（删除所有分支的卡片，不限于当前分支）
         for (const nodeIdToDelete of nodesToDelete) {
             try {
-                // 获取该节点在所有分支下的所有卡片
-                const cards = await CardModel.getByNodeId(domainId, base.bid, nodeIdToDelete);
+                const cards = await CardModel.getByNodeId(actualDomainId, docId, nodeIdToDelete);
                 for (const card of cards) {
-                    await CardModel.delete(domainId, card.docId);
+                    await CardModel.delete(actualDomainId, card.docId);
                 }
             } catch (err) {
-                // Ignore card deletion errors
             }
         }
 
-        // 递归删除所有子节点（同时考虑 children 和 edges）
         const deleteNodeRecursive = (id: string) => {
             const nodeToDelete = nodes.find(n => n.id === id);
             
-            // 如果节点不存在，跳过（可能已经被删除）
             if (!nodeToDelete) {
                 return;
             }
             
-            // 先收集所有子节点ID（避免在删除过程中修改数组导致的问题）
             const childIds = new Set<string>();
             
-            // 从 children 字段获取子节点
             if (nodeToDelete.children && nodeToDelete.children.length > 0) {
                 nodeToDelete.children.forEach(childId => {
                     childIds.add(childId);
                 });
             }
             
-            // 从 edges 中获取子节点
             const childEdges = edges.filter(e => e.source === id);
             childEdges.forEach(edge => {
                 childIds.add(edge.target);
             });
             
-            // 递归删除所有子节点
             childIds.forEach(childId => {
                 deleteNodeRecursive(childId);
             });
             
-            // 删除节点
             const index = nodes.findIndex(n => n.id === id);
             if (index !== -1) nodes.splice(index, 1);
             
-            // 删除相关连接（包括作为 source 和 target 的边）
             edges = edges.filter(e => e.source !== id && e.target !== id);
         };
 
-        // 如果节点有父节点，从父节点的子节点列表中移除
         if (node.parentId) {
             const parentNode = nodes.find(n => n.id === node.parentId);
             if (parentNode?.children) {
@@ -457,12 +432,10 @@ export class BaseModel {
             }
         }
         
-        // 从父节点的 edges 中移除（如果有的话）
         edges = edges.filter(e => !(e.source === node.parentId && e.target === nodeId));
 
         deleteNodeRecursive(nodeId);
 
-        // 更新分支数据
         if (!branchData[branchName]) {
             branchData[branchName] = { nodes: [], edges: [] };
         }
@@ -471,7 +444,6 @@ export class BaseModel {
             edges: edges,
         };
 
-        // 同时更新主数据（向后兼容，仅对 main 分支）
         const updateData: any = {
             branchData: branchData,
             updateAt: new Date(),
@@ -482,7 +454,7 @@ export class BaseModel {
             updateData.edges = edges;
         }
 
-        await document.set(domainId, TYPE_MM, docId, updateData);
+        await document.set(actualDomainId, TYPE_MM, docId, updateData);
     }
 
     /**
