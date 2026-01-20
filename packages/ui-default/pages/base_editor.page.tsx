@@ -975,6 +975,7 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [fileContent, setFileContent] = useState<string>('');
   const [isCommitting, setIsCommitting] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<{ current: number; total: number; message: string } | null>(null);
   // 多选模式相关状态
   const [isMultiSelectMode, setIsMultiSelectMode] = useState<boolean>(false);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set()); // 选中的文件ID集合
@@ -1764,457 +1765,132 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
     const hasCreateChanges = pendingCreatesRef.current.size > 0;
     const hasDeleteChanges = pendingDeletes.size > 0;
     const hasProblemChanges = pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0;
-    console.log('[handleSaveAll] 检查待保存更改:', {
-      hasProblemChanges,
-      pendingProblemCardIds: Array.from(pendingProblemCardIds),
-      pendingProblemCardIdsSize: pendingProblemCardIds.size,
-      pendingNewProblemCardIds: Array.from(pendingNewProblemCardIds),
-      pendingEditedProblemIds: Array.from(pendingEditedProblemIds.entries()),
-      pendingDeleteProblemIds: Array.from(pendingDeleteProblemIds.entries()),
+    
+    // 计算总任务数
+    const totalTasks =
+      (hasContentChanges ? allChanges.size : 0) +
+      (hasDragChanges ? pendingDragChanges.size : 0) +
+      (hasRenameChanges ? pendingRenames.size : 0) +
+      (hasCreateChanges ? pendingCreatesRef.current.size : 0) +
+      (hasDeleteChanges ? pendingDeletes.size : 0) +
+      (hasProblemChanges ? (pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size) : 0);
+    
+    let completedTasks = 0;
+    const updateProgress = (message: string) => {
+      completedTasks++;
+      setSaveProgress({
+        current: completedTasks,
+        total: totalTasks,
+        message,
+      });
+    };
+    
+    setSaveProgress({
+      current: 0,
+      total: totalTasks,
+      message: '准备保存...',
     });
+    
     try {
       const domainId = (window as any).UiContext?.domainId || 'system';
       
+      // 收集所有更改到批量保存请求
+      const batchSaveData: any = {
+        nodeCreates: [],
+        nodeUpdates: [],
+        nodeDeletes: [],
+        cardCreates: [],
+        cardUpdates: [],
+        cardDeletes: [],
+        edgeCreates: [],
+        edgeDeletes: [],
+      };
+      
       const nodeIdMap = new Map<string, string>();
+      const cardIdMap = new Map<string, string>();
       let createCountBeforeSave = 0;
       
+      // 收集所有创建操作到批量保存数据
       if (hasCreateChanges) {
+        updateProgress('正在收集创建更改...');
+        
         const creates = Array.from(pendingCreatesRef.current.entries()).map(([tempId, create]) => ({ tempId, ...create })).filter(c => 
           c.tempId && (c.tempId.startsWith('temp-node-') || c.tempId.startsWith('temp-card-'))
         );
         createCountBeforeSave = creates.length;
         
-        const successfullyCreated = new Set<string>();
-        const processedFromSnapshot = new Set<string>();
-        
+        // 收集节点创建
         const nodeCreates = creates.filter(c => c.type === 'node');
-        const nodeCreateMap = new Map<string, PendingCreate>();
-        nodeCreates.forEach(c => {
-          if (c.type === 'node') {
-            nodeCreateMap.set(c.tempId, c);
-          }
-        });
+        const nodeIdSet = new Set<string>(); // 去重
         
-        const processedNodeIds = new Set<string>();
-        const processedInThisBatch = new Set<string>();
-        let remainingNodes = nodeCreates.filter(c => c.type === 'node');
-        while (remainingNodes.length > 0) {
-          const beforeCount = remainingNodes.length;
-          const currentRound: typeof remainingNodes = [];
-          
-          for (const create of remainingNodes) {
-            if (create.type !== 'node') continue;
-            
-            if (processedInThisBatch.has(create.tempId)) {
-              continue;
-            }
-            
-            const parentId = create.nodeId;
-            const isParentTemp = parentId && parentId.startsWith('temp-node-');
-            
-            if (isParentTemp) {
-              if (!nodeIdMap.has(parentId)) {
-                const parentCreate = nodeCreateMap.get(parentId);
-                if (parentCreate) {
-                  continue;
-                } else {
-                  continue;
-                }
-              }
-            } else if (parentId) {
-              const parentExists = base.nodes.some(n => n.id === parentId);
-              if (!parentExists) {
-                continue;
-              }
-            }
-            
-            currentRound.push(create);
+        for (const create of nodeCreates) {
+          if (nodeIdSet.has(create.tempId)) {
+            continue;
           }
+          nodeIdSet.add(create.tempId);
           
-          if (currentRound.length === 0) {
-            break;
-          }
+          const renameRecord = pendingRenames.get(create.tempId);
+          const nodeText = renameRecord ? renameRecord.newName : (create.text || '新节点');
           
-          for (const create of currentRound) {
-            if (processedFromSnapshot.has(create.tempId)) {
-              processedNodeIds.add(create.tempId);
-              continue;
-            }
-            
-            if (processedInThisBatch.has(create.tempId)) {
-              processedNodeIds.add(create.tempId);
-              continue;
-            }
-            
-            if (successfullyCreated.has(create.tempId)) {
-              processedNodeIds.add(create.tempId);
-              processedInThisBatch.add(create.tempId);
-              processedFromSnapshot.add(create.tempId);
-              continue;
-            }
-            
-            if (!pendingCreatesRef.current.has(create.tempId)) {
-              processedNodeIds.add(create.tempId);
-              processedInThisBatch.add(create.tempId);
-              processedFromSnapshot.add(create.tempId);
-              continue;
-            }
-            
-            if (processedInThisBatch.has(create.tempId) || processedFromSnapshot.has(create.tempId) || successfullyCreated.has(create.tempId)) {
-              continue;
-            }
-            
-            processedInThisBatch.add(create.tempId);
-            processedFromSnapshot.add(create.tempId);
-            
-            try {
-              // 如果父节点是临时节点，使用映射后的真实ID
-              const realParentId = create.nodeId && create.nodeId.startsWith('temp-node-')
-                ? nodeIdMap.get(create.nodeId)
-                : create.nodeId;
-              
-              // 验证 realParentId 是否存在（如果是临时节点，必须已经映射）
-              if (create.nodeId && create.nodeId.startsWith('temp-node-') && !realParentId) {
-                continue;
-              }
-              
-              if (successfullyCreated.has(create.tempId)) {
-                continue;
-              }
-              
-              const renameRecord = pendingRenames.get(create.tempId);
-              const nodeText = renameRecord ? renameRecord.newName : (create.text || '新节点');
-              
-              const requestKey = `create-node-${create.tempId}`;
-              if ((window as any).__pendingNodeCreationRequests?.has(requestKey)) {
-                continue;
-              }
-              
-              if (!(window as any).__pendingNodeCreationRequests) {
-                (window as any).__pendingNodeCreationRequests = new Set<string>();
-              }
-              (window as any).__pendingNodeCreationRequests.add(requestKey);
-              
-              try {
-                const response = await request.post(getBaseUrl('/node', docId), {
-                  operation: 'add',
-                  text: nodeText,
-                  parentId: realParentId,
-                });
-                
-                (window as any).__pendingNodeCreationRequests.delete(requestKey);
-              
-                if (!response || !response.nodeId) {
-                  continue;
-                }
-                
-                const newNodeId = response.nodeId;
-                const newEdgeId = response.edgeId;
-                
-                if (nodeIdMap.has(create.tempId)) {
-                  continue;
-                }
-                
-                if (successfullyCreated.has(create.tempId)) {
-                  continue;
-                }
-                
-                nodeIdMap.set(create.tempId, newNodeId);
-                processedNodeIds.add(create.tempId);
-                successfullyCreated.add(create.tempId);
-                
-                // 更新 base，将临时 ID 替换为真实 ID
-                setBase(prev => ({
-                  ...prev,
-                  nodes: prev.nodes.map(n => 
-                    n.id === create.tempId 
-                      ? { ...n, id: newNodeId, text: nodeText }
-                      : n
-                  ),
-                  edges: prev.edges.map(e => 
-                    e.target === create.tempId
-                      ? { ...e, id: newEdgeId || e.id, target: newNodeId }
-                      : e.source === create.tempId
-                      ? { ...e, source: newNodeId }
-                      : e
-                  ),
-                }));
-                
-                pendingCreatesRef.current.delete(create.tempId);
-                setPendingCreatesCount(pendingCreatesRef.current.size);
-                
-                if (renameRecord) {
-                  // 创建node时已经使用了重命名后的文本，所以不需要再次更新
-                  // 直接清除重命名记录，避免在保存时重复调用更新API
-                  setPendingRenames(prev => {
-                    const next = new Map(prev);
-                    next.delete(create.tempId);
-                    // 不需要再次添加到pendingRenames，因为创建时已经使用了正确的文本
-                    return next;
-                  });
-                }
-              } catch (error: any) {
-                const requestKey = `create-node-${create.tempId}`;
-                if ((window as any).__pendingNodeCreationRequests) {
-                  (window as any).__pendingNodeCreationRequests.delete(requestKey);
-                }
-                
-                processedNodeIds.add(create.tempId);
-                processedInThisBatch.add(create.tempId);
-                
-                setBase(prev => ({
-                  ...prev,
-                  nodes: prev.nodes.filter(n => n.id !== create.tempId),
-                  edges: prev.edges.filter(e => e.target !== create.tempId && e.source !== create.tempId),
-                }));
-                pendingCreatesRef.current.delete(create.tempId);
-                setPendingCreatesCount(pendingCreatesRef.current.size);
-                // 如果有重命名记录，也移除
-                setPendingRenames(prev => {
-                  const next = new Map(prev);
-                  next.delete(create.tempId);
-                  return next;
-                });
-              }
-            } catch (error: any) {
-              processedNodeIds.add(create.tempId);
-              processedInThisBatch.add(create.tempId);
-            }
-          }
-          
-          remainingNodes = remainingNodes.filter(c => {
-            return !processedFromSnapshot.has(c.tempId) && !processedNodeIds.has(c.tempId) && !successfullyCreated.has(c.tempId);
+          // 收集到批量保存数据中，批量保存接口会处理依赖关系
+          batchSaveData.nodeCreates.push({
+            tempId: create.tempId,
+            text: nodeText,
+            parentId: create.nodeId, // 保留原始 parentId，批量保存接口会处理临时节点映射
+            x: create.x,
+            y: create.y,
           });
-          
-          if (remainingNodes.length === beforeCount) {
-            break;
-          }
         }
         
-        for (const create of creates) {
-          if (create.type === 'card') {
-            if (!pendingCreatesRef.current.has(create.tempId)) {
-              continue;
-            }
-            
-            const createNodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-            let createNodeId = create.nodeId;
-            
-            if (!createNodeId) {
-              continue;
-            }
-            
-            // 如果节点ID是临时节点ID，尝试从nodeIdMap中获取真实ID
-            if (createNodeId.startsWith('temp-node-')) {
-              const realNodeId = nodeIdMap.get(createNodeId);
-              if (realNodeId) {
-                createNodeId = realNodeId;
-              } else {
-                // 临时节点还没有创建，跳过这个card，等待下一轮保存
-                console.warn(`跳过创建card：临时节点 ${createNodeId} 还没有创建，等待下一轮保存`);
-                continue;
-              }
-            }
-            
-            // 此时createNodeId应该是真实ID，不应该再是临时ID
-            if (createNodeId.startsWith('temp-node-')) {
-              console.warn(`跳过创建card：节点 ${createNodeId} 仍然是临时ID，无法创建card`);
-              continue;
-            }
-            
-            // 检查节点是否在待删除列表中
-            if (pendingDeletes.has(createNodeId)) {
-              console.warn(`跳过创建card：节点 ${createNodeId} 在待删除列表中`);
-              // 清理这个待创建的card
-              pendingCreatesRef.current.delete(create.tempId);
-              setPendingCreatesCount(pendingCreatesRef.current.size);
-              continue;
-            }
-            
-            // 检查节点是否存在
-            // 优先检查nodeIdMap（因为新创建的节点可能还没有更新到base.nodes）
-            const nodeExistsInMap = Array.from(nodeIdMap.values()).includes(createNodeId);
-            const nodeExistsInBase = base.nodes.some(n => n.id === createNodeId);
-            
-            if (!nodeExistsInMap && !nodeExistsInBase) {
-              console.warn(`跳过创建card：节点 ${createNodeId} 不存在（不在nodeIdMap也不在base.nodes中）`);
-              // 清理这个待创建的card
-              pendingCreatesRef.current.delete(create.tempId);
-              setPendingCreatesCount(pendingCreatesRef.current.size);
-              continue;
-            }
-            
-            // 注意：createNodeCardsMap可能使用临时节点ID作为key，需要检查
-            // 如果createNodeId是真实ID，但createNodeCardsMap中使用的是临时ID，需要查找
-            let createNodeCards: Card[] = createNodeCardsMap[createNodeId] || [];
-            // 如果找不到，尝试使用原始的临时节点ID查找
-            if (createNodeCards.length === 0 && create.nodeId && create.nodeId.startsWith('temp-node-')) {
-              createNodeCards = createNodeCardsMap[create.nodeId] || [];
-            }
-            const tempCard = createNodeCards.find((c: Card) => c.docId === create.tempId);
-
-            // 检查 allChanges 中是否有对应的 content 更改（优先使用）
-            const contentChange = allChanges.get(`card-${create.tempId}`);
-            const finalContent = contentChange?.content ?? tempCard?.content ?? '';
-            
-            const cardRenameKey = `card-${create.tempId}`;
-            const renameRecord = pendingRenames.get(cardRenameKey);
-            const finalTitle = renameRecord ? renameRecord.newName : (create.title || tempCard?.title || '新卡片');
-            const finalProblems = tempCard?.problems;
-
-            const response = await request.post(getBaseUrl('/card'), {
-              nodeId: createNodeId,
-              title: finalTitle,
-              content: finalContent,
-              problems: finalProblems,
-            });
-            
-            const newCardId = response.cardId;
-
-            // 为了保险，再用真实 cardId 做一次完整更新，确保标题和内容都写入
-            if (newCardId) {
-              try {
-                await request.post(`/d/${domainId}/base/card/${newCardId}`, {
-                  operation: 'update',
-                  nodeId: createNodeId,
-                  title: finalTitle,
-                  content: finalContent,
-                  problems: finalProblems,
-                });
-              } catch (e) {
-              }
-            }
-            
-            // 更新 nodeCardsMap，将临时 ID 替换为真实 ID
-            const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-            // 需要找到正确的节点ID（可能是临时ID或真实ID）
-            const originalNodeId = create.nodeId; // 原始的节点ID（可能是临时ID）
-            const targetNodeId = createNodeId; // 真实的节点ID
-            
-            // 先尝试使用真实ID查找
-            let cards = nodeCardsMap[targetNodeId];
-            // 如果找不到，尝试使用原始临时ID查找
-            if (!cards && originalNodeId && originalNodeId.startsWith('temp-node-')) {
-              cards = nodeCardsMap[originalNodeId];
-              // 如果找到了，需要将cards从临时ID的key移动到真实ID的key
-              if (cards) {
-                nodeCardsMap[targetNodeId] = cards;
-                delete nodeCardsMap[originalNodeId];
-              }
-            }
-            
-            if (cards) {
-              const tempCardIndex = cards.findIndex((c: Card) => c.docId === create.tempId);
-              if (tempCardIndex >= 0) {
-                cards[tempCardIndex] = {
-                  ...cards[tempCardIndex],
-                  docId: newCardId,
-                  nodeId: targetNodeId, // 确保nodeId也是真实ID
-                };
-                (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
-              }
-            }
-            
-            // 立即从 pendingCreatesRef 中移除已创建的卡片（避免重复创建）
-            pendingCreatesRef.current.delete(create.tempId);
-            setPendingCreatesCount(pendingCreatesRef.current.size);
-            
-            if (renameRecord) {
-              setPendingRenames(prev => {
-                const next = new Map(prev);
-                next.delete(cardRenameKey);
-                next.set(`card-${newCardId}`, {
-                  file: {
-                    ...renameRecord.file,
-                    id: `card-${newCardId}`,
-                    cardId: newCardId,
-                  },
-                  newName: renameRecord.newName,
-                  originalName: renameRecord.originalName,
-                });
-                return next;
-              });
-            }
+        // 收集卡片创建
+        const cardCreates = creates.filter(c => c.type === 'card');
+        const cardIdSet = new Set<string>(); // 去重
+        
+        for (const create of cardCreates) {
+          if (cardIdSet.has(create.tempId)) {
+            continue;
           }
+          cardIdSet.add(create.tempId);
+          
+          const createNodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+          let createNodeId = create.nodeId;
+          
+          if (!createNodeId) {
+            continue;
+          }
+          
+          // 注意：如果节点ID是临时节点ID，保留它，批量保存接口会处理映射
+          // 查找卡片数据
+          let createNodeCards: Card[] = createNodeCardsMap[createNodeId] || [];
+          if (createNodeCards.length === 0 && create.nodeId && create.nodeId.startsWith('temp-node-')) {
+            createNodeCards = createNodeCardsMap[create.nodeId] || [];
+          }
+          const tempCard = createNodeCards.find((c: Card) => c.docId === create.tempId);
+
+          // 检查 allChanges 中是否有对应的 content 更改（优先使用）
+          const contentChange = allChanges.get(`card-${create.tempId}`);
+          const finalContent = contentChange?.content ?? tempCard?.content ?? '';
+          
+          const cardRenameKey = `card-${create.tempId}`;
+          const renameRecord = pendingRenames.get(cardRenameKey);
+          const finalTitle = renameRecord ? renameRecord.newName : (create.title || tempCard?.title || '新卡片');
+          const finalProblems = tempCard?.problems;
+
+          // 收集到批量保存数据中，批量保存接口会处理节点ID映射
+          batchSaveData.cardCreates.push({
+            tempId: create.tempId,
+            nodeId: createNodeId, // 保留原始 nodeId（可能是临时ID），批量保存接口会处理映射
+            title: finalTitle,
+            content: finalContent,
+            problems: finalProblems,
+          });
         }
       }
       
-      // 更新 allChanges 和 pendingRenames 中的临时节点ID为真实ID
-      if (nodeIdMap.size > 0) {
-        const changesToUpdate = new Map<string, PendingChange>();
-        const changesToRemove: string[] = [];
-        
-        for (const [key, change] of allChanges.entries()) {
-          if (change.file.type === 'node') {
-            const keyIsTemp = key && key.startsWith('temp-node-');
-            const fileIdIsTemp = change.file.id && change.file.id.startsWith('temp-node-');
-            const nodeIdIsTemp = change.file.nodeId && change.file.nodeId.startsWith('temp-node-');
-            
-            if (keyIsTemp || fileIdIsTemp || nodeIdIsTemp) {
-              const tempId = keyIsTemp ? key : 
-                            (fileIdIsTemp ? change.file.id : change.file.nodeId);
-              
-              if (tempId && nodeIdMap.has(tempId)) {
-                const realNodeId = nodeIdMap.get(tempId)!;
-                const updatedChange: PendingChange = {
-                  ...change,
-                  file: {
-                    ...change.file,
-                    id: realNodeId,
-                    nodeId: realNodeId,
-                  },
-                };
-                changesToUpdate.set(realNodeId, updatedChange);
-                changesToRemove.push(key);
-              } else {
-                changesToRemove.push(key);
-              }
-            }
-          }
-        }
-        
-        changesToRemove.forEach(key => {
-          allChanges.delete(key);
-        });
-        changesToUpdate.forEach((change, newKey) => {
-          allChanges.set(newKey, change);
-        });
-        
-        // 更新 pendingRenames 中的临时节点ID
-        setPendingRenames(prev => {
-          const next = new Map(prev);
-          const renamesToUpdate = new Map<string, PendingRename>();
-          const renamesToRemove: string[] = [];
-          
-          for (const [key, rename] of next.entries()) {
-            if (rename.file.type === 'node') {
-              const nodeId = rename.file.nodeId || rename.file.id || key;
-              if (nodeId && nodeId.startsWith('temp-node-') && nodeIdMap.has(nodeId)) {
-                const realNodeId = nodeIdMap.get(nodeId)!;
-                renamesToUpdate.set(realNodeId, {
-                  ...rename,
-                  file: {
-                    ...rename.file,
-                    id: realNodeId,
-                    nodeId: realNodeId,
-                  },
-                });
-                renamesToRemove.push(key);
-              } else if (nodeId && nodeId.startsWith('temp-node-')) {
-                renamesToRemove.push(key);
-              }
-            }
-          }
-          
-          renamesToRemove.forEach(key => next.delete(key));
-          renamesToUpdate.forEach((rename, newKey) => next.set(newKey, rename));
-          
-          return next;
-        });
-      }
-      
-      // 保存内容更改（包括附带的题目）
+      // 收集所有更改到批量保存请求
       if (hasContentChanges) {
+        updateProgress('正在收集内容更改...');
+        
         // 先收集所有需要移除的临时节点 key
         const tempNodeKeysToRemove: string[] = [];
         for (const [key, change] of allChanges.entries()) {
@@ -2234,7 +1910,6 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
         
         const changes = Array.from(allChanges.values());
         
-        // 批量保存所有内容更改
         for (const change of changes) {
           if (change.file.type === 'node') {
             const isTempNode = (change.file.id && change.file.id.startsWith('temp-node-')) ||
@@ -2248,21 +1923,7 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
               continue;
             }
             
-            // 保存节点文本（使用 /node/:nodeId 路径，与 base_detail 保持一致）
-            await request.post(getBaseUrl(`/node/${nodeIdToUpdate}`, docId), {
-              operation: 'update',
-              text: change.content,
-            });
-            
-            // 更新本地数据
-            setBase(prev => ({
-              ...prev,
-              nodes: prev.nodes.map(n => 
-                n.id === change.file.nodeId 
-                  ? { ...n, text: change.content }
-                  : n
-              ),
-            }));
+            batchSaveData.nodeUpdates.push({ nodeId: nodeIdToUpdate, text: change.content });
           } else if (change.file.type === 'card') {
             const cardNodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
             const cardNodeId = change.file.nodeId || '';
@@ -2272,39 +1933,26 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
             // 过滤掉待删除的problem
             const problems = card?.problems?.filter(p => !pendingDeleteProblemIds.has(p.pid));
 
-            // 对于临时卡片：只更新前端 nodeCardsMap 中的 content，真正创建时再一次性写入后端
+            // 对于临时卡片：跳过，等待创建时处理
             if (!change.file.cardId || String(change.file.cardId).startsWith('temp-card-')) {
-              if (cardIndex >= 0) {
-                // 创建新数组，确保 React 能检测到变化
-                const newCardNodeCards = [...cardNodeCards];
-                newCardNodeCards[cardIndex] = { ...newCardNodeCards[cardIndex], content: change.content, problems };
-                (window as any).UiContext.nodeCardsMap = { 
-                  ...cardNodeCardsMap, 
-                  [cardNodeId]: newCardNodeCards 
-                };
-              }
               continue;
             }
 
-            // 对于已存在的卡片：保存卡片内容 + 本地练习题（使用全局 card 更新接口，不带 docId）
-            await request.post(`/d/${domainId}/base/card/${change.file.cardId}`, {
-              operation: 'update',
-              nodeId: change.file.nodeId,
+            // 对于已存在的卡片：收集到批量更新列表
+            batchSaveData.cardUpdates.push({
+              cardId: change.file.cardId,
+              nodeId: change.file.nodeId || '',
               content: change.content,
               problems,
             });
-            
-            // 更新本地数据
-            if (cardIndex >= 0) {
-              cardNodeCards[cardIndex] = { ...cardNodeCards[cardIndex], content: change.content, problems };
-              (window as any).UiContext.nodeCardsMap = { ...cardNodeCardsMap };
-            }
           }
         }
       }
 
       // 仅题目发生变更但内容未变更的卡片：单独提交一次（不处理临时卡片）
       if (hasProblemChanges) {
+        updateProgress('正在保存题目更改...');
+        
         const nodeCardsMapForProblems = (window as any).UiContext?.nodeCardsMap || {};
         // 已经通过内容变更提交过的 cardId 集合
         const contentChangedCardIds = new Set<string>();
@@ -2314,6 +1962,9 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
           }
         }
 
+        // 收集所有需要更新的题目
+        const problemUpdates: Array<{ cardId: string; nodeId: string; problems: CardProblem[] }> = [];
+        
         for (const problemCardId of Array.from(pendingProblemCardIds)) {
           // 新建临时卡片的题目会在创建时一起提交，这里跳过 temp-card
           if (String(problemCardId).startsWith('temp-card-')) continue;
@@ -2340,35 +1991,28 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
           // 过滤掉待删除的problem
           const problemsToSave = (foundCard.problems || []).filter(p => !pendingDeleteProblemIds.has(p.pid));
           
-          // 仅更新题目，使用全局 card 更新接口
-          console.log('[handleSaveAll] 保存problem到card:', {
+          problemUpdates.push({
             cardId: problemCardId,
             nodeId: foundNodeId,
-            problemsCount: problemsToSave.length,
-            problems: problemsToSave,
-            deletedProblemsCount: (foundCard.problems || []).length - problemsToSave.length,
-          });
-          await request.post(`/d/${domainId}/base/card/${problemCardId}`, {
-            operation: 'update',
-            nodeId: foundNodeId,
             problems: problemsToSave,
           });
-          
-          // 更新 nodeCardsMap，移除已删除的题目
-          const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-          const nodeCards: Card[] = nodeCardsMap[foundNodeId] || [];
-          const cardIndex = nodeCards.findIndex((c: Card) => c.docId === problemCardId);
-          if (cardIndex >= 0) {
-            nodeCards[cardIndex] = {
-              ...nodeCards[cardIndex],
-              problems: problemsToSave,
-            };
-            (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
-            setNodeCardsMapVersion(prev => prev + 1);
-          }
-          
-          console.log('[handleSaveAll] problem保存成功:', problemCardId);
         }
+        
+        // 收集题目更新到批量保存数据
+        for (const { cardId, nodeId, problems } of problemUpdates) {
+          const existingUpdate = batchSaveData.cardUpdates.find((u: any) => u.cardId === cardId);
+          if (existingUpdate) {
+            existingUpdate.problems = problems;
+          } else {
+            batchSaveData.cardUpdates.push({
+              cardId,
+              nodeId,
+              problems,
+            });
+          }
+        }
+        
+        updateProgress('正在收集题目更改...');
       }
       
       // 保存拖动更改（卡片的 nodeId 和 order，节点的 edges）
@@ -2377,7 +2021,7 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
         
         // 收集所有需要更新的 nodes 和 cards
         const nodeOrderUpdates = new Set<string>();
-        const cardOrderUpdates = new Set<string>();
+        const cardIdsToUpdateOrder = new Set<string>();
         const nodeEdgeUpdates = new Map<string, { newEdge: BaseEdge | null; oldEdges: BaseEdge[] }>();
         
         // 先收集所有需要更新的node信息（不立即调用API）
@@ -2399,7 +2043,7 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
             nodeEdgeUpdates.set(nodeId, { newEdge, oldEdges });
           } else {
             // 卡片拖动，收集需要更新的卡片
-            cardOrderUpdates.add(cardId);
+            cardIdsToUpdateOrder.add(cardId);
           }
         }
         
@@ -2409,7 +2053,6 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
           try {
             currentBase = await request.get(getBaseUrl('/data', docId));
           } catch (error: any) {
-            console.warn('Failed to get current base data for edge updates:', error);
           }
         }
         
@@ -2429,7 +2072,7 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
               (e: BaseEdge) => e.source === newEdge.source && e.target === newEdge.target
             );
             
-            // 删除所有旧的父节点连接（如果新边已存在，则不删除它）
+            // 收集需要删除的旧边到批量保存数据
             for (const oldEdge of oldEdges) {
               // 检查是否是我们要保留的新边（通过 source 和 target 匹配）
               const isNewEdge = oldEdge.source === newEdge.source && oldEdge.target === newEdge.target;
@@ -2439,88 +2082,76 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
                   continue;
                 }
                 
-                // 尝试删除旧的 edge，如果失败（edge 可能已经被删除），忽略错误
-                try {
-                  await request.post(getBaseUrl('/edge'), {
-                    operation: 'delete',
-                    edgeId: oldEdge.id,
-                  });
-                } catch (deleteError: any) {
-                  // Ignore delete errors
+                // 收集到批量保存数据
+                if (!batchSaveData.edgeDeletes.includes(oldEdge.id)) {
+                  batchSaveData.edgeDeletes.push(oldEdge.id);
                 }
               }
             }
             
-            // 如果新边不存在，创建它
+            // 如果新边不存在，收集到创建队列
             if (!edgeExists) {
-              try {
-                await request.post(getBaseUrl('/edge'), {
-                  operation: 'add',
-                  source: newEdge.source,
-                  target: newEdge.target,
-                });
-              } catch (addError: any) {
-                // Ignore edge creation errors
-              }
+              batchSaveData.edgeCreates.push({
+                source: newEdge.source,
+                target: newEdge.target,
+                label: newEdge.label,
+              });
             }
           } catch (error: any) {
             // If update fails, try to create edge directly
-            try {
-              await request.post(getBaseUrl('/edge'), {
-                operation: 'add',
-                source: newEdge.source,
-                target: newEdge.target,
-              });
-            } catch (err: any) {
-              // Ignore edge creation errors
-            }
+            batchSaveData.edgeCreates.push({
+              source: newEdge.source,
+              target: newEdge.target,
+              label: newEdge.label,
+            });
           }
         }
         
-        // 对每个需要更新order的node单独调用更新API（类似card的处理方式）
-        // 只更新被拖动过的nodes的order，而不是保存所有nodes
+        // 收集节点order更新
         for (const nodeId of nodeOrderUpdates) {
           const node = base.nodes.find(n => n.id === nodeId);
           if (node && !node.id.startsWith('temp-node-')) {
-            try {
-              await request.post(getBaseUrl(`/node/${nodeId}`, docId), {
-                operation: 'update',
+            const existingUpdate = batchSaveData.nodeUpdates.find((u: any) => u.nodeId === nodeId);
+            if (existingUpdate) {
+              existingUpdate.order = node.order !== undefined ? node.order : 0;
+            } else {
+              batchSaveData.nodeUpdates.push({ 
+                nodeId, 
                 order: node.order !== undefined ? node.order : 0,
               });
-            } catch (error: any) {
-              console.warn(`Failed to update node order for ${nodeId}:`, error);
             }
           }
         }
         
-        // 保存所有 cards 的 order
+        // 收集所有需要更新order的卡片
         for (const nodeId in nodeCardsMap) {
           const cards = nodeCardsMap[nodeId] || [];
           for (const card of cards) {
             // 跳过临时卡片
             if (String(card.docId).startsWith('temp-card-')) continue;
-            if (card.order !== undefined && card.order !== null) {
-              await request.post(`/d/${domainId}/base/card/${card.docId}`, {
-                operation: 'update',
-                nodeId: nodeId,
-                order: card.order,
-              });
+            // 只更新被拖动过的卡片
+            if (cardIdsToUpdateOrder.has(card.docId) && card.order !== undefined && card.order !== null) {
+              const existingUpdate = batchSaveData.cardUpdates.find((u: any) => u.cardId === card.docId);
+              if (existingUpdate) {
+                existingUpdate.order = card.order;
+              } else {
+                batchSaveData.cardUpdates.push({
+                  cardId: card.docId,
+                  nodeId: nodeId,
+                  order: card.order,
+                });
+              }
             }
           }
         }
         
-        // 保存拖动更改后，重新加载数据以确保同步
-        try {
-          const response = await request.get(getBaseUrl('/data'));
-          setBase(response);
-          console.log('Reloaded base data after drag save, nodes count:', response.nodes.length);
-        } catch (error) {
-          console.warn('Failed to reload base data after drag save:', error);
-        }
+        updateProgress('正在收集拖动更改...');
       }
       
       // 保存重命名更改
       if (hasRenameChanges) {
+        updateProgress('正在保存重命名...');
+        
         // 使用更新后的 pendingRenames（如果节点创建后已更新）
         // 先获取最新的 pendingRenames 状态
         const renames = Array.from(pendingRenames.values());
@@ -2545,6 +2176,7 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
           return rename;
         });
         
+        // 收集所有需要更新的重命名到批量保存数据
         for (const rename of updatedRenames) {
           if (rename.file.type === 'node') {
             // 检查是否是临时节点
@@ -2553,111 +2185,231 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
               continue;
             }
             
-            // 保存节点重命名
-            // 与 base_detail.page.tsx 保持一致，使用 operation: 'update'
-            await request.post(getBaseUrl(`/node/${nodeId}`, docId), {
-              operation: 'update',
-              text: rename.newName,
-            });
+            // 检查是否已经在 nodeUpdates 中（避免重复）
+            const existingUpdate = batchSaveData.nodeUpdates.find((u: any) => u.nodeId === nodeId);
+            if (existingUpdate) {
+              existingUpdate.text = rename.newName;
+            } else {
+              batchSaveData.nodeUpdates.push({ nodeId, text: rename.newName });
+            }
           } else if (rename.file.type === 'card') {
             // 临时卡片的重命名只在前端保存，不调用后端
             if (!rename.file.cardId || String(rename.file.cardId).startsWith('temp-card-')) {
               continue;
             }
-            // 保存卡片重命名
-            await request.post(`/d/${domainId}/base/card/${rename.file.cardId}`, {
-              operation: 'update',
-              title: rename.newName,
-            });
+            
+            // 检查是否已经在 cardUpdates 中（避免重复）
+            const existingUpdate = batchSaveData.cardUpdates.find((u: any) => u.cardId === rename.file.cardId);
+            if (existingUpdate) {
+              existingUpdate.title = rename.newName;
+            } else {
+              batchSaveData.cardUpdates.push({ 
+                cardId: rename.file.cardId, 
+                nodeId: rename.file.nodeId || '',
+                title: rename.newName,
+              });
+            }
           }
         }
+        
+        updateProgress('正在收集重命名更改...');
       }
 
       const hasDeleteChanges = pendingDeletes.size > 0;
       
-      // 保存删除操作
+      // 收集删除操作到批量保存数据
       if (hasDeleteChanges) {
+        updateProgress('正在收集删除更改...');
+        
         const deletes = Array.from(pendingDeletes.values());
         
-        // 先删除所有card，再删除node（避免node删除时card已经被删除的情况）
+        // 收集需要删除的card和node
         const cardDeletes = deletes.filter(d => d.type === 'card');
         const nodeDeletes = deletes.filter(d => d.type === 'node');
         
-        // 删除所有card
-        for (const del of cardDeletes) {
-          // 临时卡片（尚未真正创建），只需要在前端移除，不调用后端删除接口
-          if (!del.id || String(del.id).startsWith('temp-card-')) {
-            continue;
-          }
-          
-          // 删除已存在的卡片
-          try {
-            await request.post(`/d/${domainId}/base/card/${del.id}`, {
-              operation: 'delete',
-            });
-          } catch (deleteError: any) {
-            // 如果card不存在（可能已经被删除），忽略错误继续处理
-            const errorMessage = deleteError.message || deleteError.toString() || '';
-            if (errorMessage.includes('Card not found') || errorMessage.includes('NotFoundError')) {
-              console.warn(`Card ${del.id} not found, skipping deletion`);
-              continue;
-            }
-            // 其他错误继续抛出
-            throw deleteError;
-          }
-        }
+        // 过滤出需要删除的真实卡片（排除临时卡片）
+        const realCardDeletes = cardDeletes.filter(del => 
+          del.id && !String(del.id).startsWith('temp-card-')
+        );
         
-        // 删除所有node
-        if (nodeDeletes.length > 0) {
-          // 先过滤掉临时节点
-          const realNodeDeletes = nodeDeletes.filter(del => 
-            del.id && !String(del.id).startsWith('temp-node-')
+        // 收集到批量保存数据
+        realCardDeletes.forEach(del => {
+          batchSaveData.cardDeletes.push(del.id);
+        });
+        
+        // 收集需要删除的node
+        const realNodeDeletes = nodeDeletes.filter(del => 
+          del.id && !String(del.id).startsWith('temp-node-')
+        );
+        
+        if (realNodeDeletes.length > 0) {
+          // 批量获取所有要删除的node IDs
+          const nodeIdsToDelete = new Set(realNodeDeletes.map(del => del.id));
+          
+          // 收集需要删除的 edges（与要删除的node相关的edges）
+          const edgesToDelete = base.edges.filter(
+            (e: BaseEdge) => nodeIdsToDelete.has(e.source) || nodeIdsToDelete.has(e.target)
           );
           
-          if (realNodeDeletes.length > 0) {
-            // 批量获取所有要删除的node IDs
-            const nodeIdsToDelete = new Set(realNodeDeletes.map(del => del.id));
-            
-            // 只获取一次最新的 edges，而不是每个node都获取一次
-            let allEdges: BaseEdge[] = [];
-            try {
-              const currentBase = await request.get(getBaseUrl('/data', docId));
-              allEdges = currentBase.edges || [];
-            } catch (error: any) {
-              // 如果获取数据失败，使用前端的 base.edges（向后兼容）
-              allEdges = base.edges;
+          // 收集到批量保存数据
+          edgesToDelete.forEach(edge => {
+            if (edge.id && !edge.id.startsWith('temp-edge-')) {
+              batchSaveData.edgeDeletes.push(edge.id);
+            }
+          });
+          
+          // 收集节点删除
+          realNodeDeletes.forEach(del => {
+            batchSaveData.nodeDeletes.push(del.id);
+          });
+        }
+      }
+
+      // 一次性发送批量保存请求
+      const hasAnyChanges = 
+        batchSaveData.nodeCreates.length > 0 ||
+        batchSaveData.nodeUpdates.length > 0 ||
+        batchSaveData.nodeDeletes.length > 0 ||
+        batchSaveData.cardCreates.length > 0 ||
+        batchSaveData.cardUpdates.length > 0 ||
+        batchSaveData.cardDeletes.length > 0 ||
+        batchSaveData.edgeCreates.length > 0 ||
+        batchSaveData.edgeDeletes.length > 0;
+      
+      if (hasAnyChanges) {
+        updateProgress('正在批量保存所有更改...');
+        
+        try {
+          const response = await request.post(getBaseUrl('/batch-save'), batchSaveData);
+          
+          if (response.success) {
+            // 更新 nodeIdMap 和 cardIdMap（从响应中获取）
+            if (response.nodeIdMap) {
+              Object.entries(response.nodeIdMap).forEach(([tempId, realId]) => {
+                nodeIdMap.set(tempId, realId as string);
+              });
             }
             
-            // 收集所有需要删除的 edges（与要删除的node相关的edges）
-            const edgesToDelete = allEdges.filter(
-              (e: BaseEdge) => nodeIdsToDelete.has(e.source) || nodeIdsToDelete.has(e.target)
-            );
+            if (response.cardIdMap) {
+              Object.entries(response.cardIdMap).forEach(([tempId, realId]) => {
+                cardIdMap.set(tempId, realId as string);
+              });
+            }
             
-            // 批量删除所有相关的 edges
-            for (const edge of edgesToDelete) {
-              try {
-                await request.post(getBaseUrl('/edge'), {
-                  operation: 'delete',
-                  edgeId: edge.id,
-                });
-              } catch (deleteError: any) {
-                // 如果删除失败，可能是 edge 已经被删除，继续处理
-                console.warn('Failed to delete edge:', edge.id, deleteError);
+            // 更新本地状态：将临时节点ID替换为真实ID
+            if (response.nodeIdMap && Object.keys(response.nodeIdMap).length > 0) {
+              setBase(prev => ({
+                ...prev,
+                nodes: prev.nodes.map(n => {
+                  const realId = nodeIdMap.get(n.id);
+                  return realId ? { ...n, id: realId } : n;
+                }).filter(n => !n.id.startsWith('temp-node-')), // 移除临时节点
+                edges: prev.edges.map(e => {
+                  const realSource = nodeIdMap.get(e.source) || e.source;
+                  const realTarget = nodeIdMap.get(e.target) || e.target;
+                  return { ...e, source: realSource, target: realTarget };
+                }).filter(e => 
+                  !e.source.startsWith('temp-node-') && 
+                  !e.target.startsWith('temp-node-') &&
+                  !e.id.startsWith('temp-edge-')
+                ), // 移除临时边
+              }));
+            }
+            
+            // 更新 nodeCardsMap 中的临时ID
+            if (cardIdMap.size > 0 || nodeIdMap.size > 0) {
+              const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+              const updatedNodeCardsMap: any = {};
+              
+              for (const [nodeId, cards] of Object.entries(nodeCardsMap)) {
+                const realNodeId = nodeIdMap.get(nodeId) || nodeId;
+                if (realNodeId && !realNodeId.startsWith('temp-node-')) {
+                  const updatedCards = (cards as Card[])
+                    .map((card: Card) => {
+                      const realCardId = cardIdMap.get(String(card.docId)) || card.docId;
+                      return { ...card, docId: realCardId, nodeId: realNodeId };
+                    })
+                    .filter((card: Card) => !String(card.docId).startsWith('temp-card-'));
+                  
+                  if (updatedCards.length > 0) {
+                    updatedNodeCardsMap[realNodeId] = updatedCards;
+                  }
+                }
+              }
+              
+              (window as any).UiContext.nodeCardsMap = updatedNodeCardsMap;
+            }
+            
+            // 更新 cardUpdates 中的内容
+            for (const cardUpdate of batchSaveData.cardUpdates) {
+              const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+              const cards = nodeCardsMap[cardUpdate.nodeId] || [];
+              const cardIndex = cards.findIndex((c: Card) => c.docId === cardUpdate.cardId);
+              if (cardIndex >= 0) {
+                cards[cardIndex] = {
+                  ...cards[cardIndex],
+                  content: cardUpdate.content,
+                  title: cardUpdate.title,
+                  problems: cardUpdate.problems,
+                  order: cardUpdate.order,
+                };
               }
             }
             
-            // 批量删除所有 nodes
-            for (const del of realNodeDeletes) {
-              try {
-                await request.post(getBaseUrl(`/node/${del.id}`), {
-                  operation: 'delete',
-                });
-              } catch (deleteError: any) {
-                // 如果删除失败，可能是 node 已经被删除，继续处理
-                console.warn('Failed to delete node:', del.id, deleteError);
+            // 更新 cardCreates 中的内容（新创建的卡片）
+            for (const cardCreate of batchSaveData.cardCreates) {
+              const realCardId = cardIdMap.get(cardCreate.tempId);
+              const realNodeId = nodeIdMap.get(cardCreate.nodeId) || cardCreate.nodeId;
+              
+              if (realCardId && realNodeId && !realNodeId.startsWith('temp-node-')) {
+                const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                if (!nodeCardsMap[realNodeId]) {
+                  nodeCardsMap[realNodeId] = [];
+                }
+                
+                // 检查是否已存在
+                const existingIndex = nodeCardsMap[realNodeId].findIndex((c: Card) => c.docId === realCardId);
+                if (existingIndex >= 0) {
+                  nodeCardsMap[realNodeId][existingIndex] = {
+                    ...nodeCardsMap[realNodeId][existingIndex],
+                    docId: realCardId,
+                    nodeId: realNodeId,
+                    title: cardCreate.title,
+                    content: cardCreate.content,
+                    problems: cardCreate.problems,
+                  };
+                } else {
+                  nodeCardsMap[realNodeId].push({
+                    docId: realCardId,
+                    nodeId: realNodeId,
+                    title: cardCreate.title,
+                    content: cardCreate.content,
+                    problems: cardCreate.problems,
+                  } as Card);
+                }
               }
             }
+            
+            (window as any).UiContext.nodeCardsMap = { ...(window as any).UiContext?.nodeCardsMap };
+            setNodeCardsMapVersion(prev => prev + 1);
+            
+            // 清空待创建列表（因为已经批量创建了）
+            for (const nodeCreate of batchSaveData.nodeCreates) {
+              pendingCreatesRef.current.delete(nodeCreate.tempId);
+            }
+            for (const cardCreate of batchSaveData.cardCreates) {
+              pendingCreatesRef.current.delete(cardCreate.tempId);
+            }
+            setPendingCreatesCount(pendingCreatesRef.current.size);
+            
+            if (response.errors && response.errors.length > 0) {
+              Notification.warning(`保存完成，但有 ${response.errors.length} 个错误`);
+            }
+          } else {
+            throw new Error(response.errors?.join(', ') || '批量保存失败');
           }
+        } catch (error: any) {
+          throw error;
         }
       }
 
@@ -2692,59 +2444,15 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
         + (hasDeleteChanges ? pendingDeletes.size : 0)
         + problemChangesCount;
       
-      console.log('Total changes calculation:', {
-        hasContentChanges,
-        contentChanges: hasContentChanges ? allChanges.size : 0,
-        hasDragChanges,
-        dragChanges: hasDragChanges ? pendingDragChanges.size : 0,
-        hasRenameChanges,
-        renameChanges: actualRenameCount,
-        createCount: createCountBeforeSave,
-        hasDeleteChanges,
-        deleteChanges: hasDeleteChanges ? pendingDeletes.size : 0,
-        problemChanges: problemChangesCount,
-        newProblemCards: pendingNewProblemCardIds.size,
-        editedProblemCards: pendingEditedProblemIds.size,
-        total: totalChanges,
-      });
-      
+      updateProgress('保存完成！');
       Notification.success(`已保存 ${totalChanges} 个更改`);
       
-      // 如果有创建或重命名更改，重新加载数据以确保同步
-      if (hasCreateChanges || hasRenameChanges) {
+      // 如果有创建更改，重新加载数据以确保同步
+      if (hasCreateChanges || hasAnyChanges) {
         try {
-          // 在重新加载前，先清理 base 中的临时节点，避免重复创建
-          setBase(prev => ({
-            ...prev,
-            nodes: prev.nodes.filter(n => !n.id.startsWith('temp-node-')),
-            edges: prev.edges.filter(e => 
-              !e.source.startsWith('temp-node-') && 
-              !e.target.startsWith('temp-node-') &&
-              !e.id.startsWith('temp-edge-')
-            ),
-          }));
-          
           const response = await request.get(getBaseUrl('/data', docId));
           setBase(response);
-          // 更新 nodeCardsMap（如果有卡片重命名）
-          const renames = Array.from(pendingRenames.values());
-          for (const rename of renames) {
-            if (rename.file.type === 'card') {
-              const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-              if (nodeCardsMap[rename.file.nodeId || '']) {
-                const cards = nodeCardsMap[rename.file.nodeId || ''];
-                const cardIndex = cards.findIndex((c: Card) => c.docId === rename.file.cardId);
-                if (cardIndex >= 0) {
-                  cards[cardIndex] = { ...cards[cardIndex], title: rename.newName };
-                  (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
-                  setNodeCardsMapVersion(prev => prev + 1);
-                }
-              }
-            }
-          }
-          console.log('Reloaded base data after save, nodes count:', response.nodes.length);
         } catch (error) {
-          console.warn('Failed to reload base data after save:', error);
         }
       }
       
@@ -2825,8 +2533,12 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
       Notification.error('保存失败: ' + (error.message || '未知错误'));
     } finally {
       setIsCommitting(false);
+      // 延迟清除进度条，让用户看到完成状态
+      setTimeout(() => {
+        setSaveProgress(null);
+      }, 1000);
     }
-  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion]);
+  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, setSaveProgress]);
 
   // 重命名文件（仅前端修改，保存时才提交到后端）
   const handleRename = useCallback((file: FileItem, newName: string) => {
@@ -8043,6 +7755,49 @@ ${currentCardContext}
             >
               {isCommitting ? '保存中...' : `保存更改 (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size})`}
             </button>
+            
+            {/* 保存进度条 - 复用文件上传的UI样式 */}
+            {saveProgress && (
+              <div style={{
+                minWidth: '200px',
+                maxWidth: '400px',
+                padding: '8px 12px',
+                backgroundColor: themeStyles.bgSecondary,
+                border: `1px solid ${themeStyles.borderPrimary}`,
+                borderRadius: '4px',
+                fontSize: '12px',
+              }}>
+                <div style={{
+                  textAlign: 'center',
+                  marginBottom: '6px',
+                  color: themeStyles.textSecondary,
+                  fontSize: '11px',
+                }}>
+                  {saveProgress.message}
+                </div>
+                <div className="bp5-progress-bar bp5-intent-primary bp5-no-stripes" style={{
+                  height: '6px',
+                  backgroundColor: themeStyles.bgPrimary,
+                  borderRadius: '3px',
+                  overflow: 'hidden',
+                }}>
+                  <div className="bp5-progress-meter" style={{
+                    width: `${(saveProgress.current / saveProgress.total) * 100}%`,
+                    height: '100%',
+                    backgroundColor: themeStyles.success,
+                    transition: 'width 0.3s ease',
+                  }} />
+                </div>
+                <div style={{
+                  textAlign: 'center',
+                  marginTop: '4px',
+                  color: themeStyles.textSecondary,
+                  fontSize: '11px',
+                }}>
+                  {saveProgress.current} / {saveProgress.total}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

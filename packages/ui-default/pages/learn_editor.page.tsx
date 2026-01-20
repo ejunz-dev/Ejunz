@@ -8849,40 +8849,40 @@ const getBaseUrl = (path: string, docId: string): string => {
   return `/d/${domainId}/base/${docId}${path}`;
 };
 
-const page = new NamedPage('base_editor', async () => {
-  try {
-    const $container = $('#base-editor-mode');
-    if (!$container.length) {
-      return;
-    }
+// const page = new NamedPage('base_editor', async () => {
+//   try {
+//     const $container = $('#base-editor-mode');
+//     if (!$container.length) {
+//       return;
+//     }
 
-    const domainId = (window as any).UiContext?.domainId || 'system';
-    const docId = $container.data('doc-id') || $container.attr('data-doc-id') || '';
+//     const domainId = (window as any).UiContext?.domainId || 'system';
+//     const docId = $container.data('doc-id') || $container.attr('data-doc-id') || '';
 
-    // 加载知识库数据（不依赖 docId，直接通过 domainId 获取）
-    let initialData: BaseDoc;
-    try {
-      // 使用 /base/data 路由，不需要 docId
-      const response = await request.get(`/d/${domainId}/base/data`);
-      initialData = response;
-      // 如果响应中没有 docId，使用空字符串
-      if (!initialData.docId) {
-        initialData.docId = docId || '';
-      }
-    } catch (error: any) {
-      Notification.error('加载知识库失败: ' + (error.message || '未知错误'));
-      return;
-    }
+//     // 加载知识库数据（不依赖 docId，直接通过 domainId 获取）
+//     let initialData: BaseDoc;
+//     try {
+//       // 使用 /base/data 路由，不需要 docId
+//       const response = await request.get(`/d/${domainId}/base/data`);
+//       initialData = response;
+//       // 如果响应中没有 docId，使用空字符串
+//       if (!initialData.docId) {
+//         initialData.docId = docId || '';
+//       }
+//     } catch (error: any) {
+//       Notification.error('加载知识库失败: ' + (error.message || '未知错误'));
+//       return;
+//     }
 
-    ReactDOM.render(
-      <BaseEditorMode docId={initialData.docId || ''} initialData={initialData} />,
-      $container[0]
-    );
-  } catch (error: any) {
-    console.error('Failed to initialize base editor mode:', error);
-    Notification.error('初始化编辑器模式失败: ' + (error.message || '未知错误'));
-  }
-});
+//     ReactDOM.render(
+//       <BaseEditorMode docId={initialData.docId || ''} initialData={initialData} />,
+//       $container[0]
+//     );
+//   } catch (error: any) {
+//     console.error('Failed to initialize base editor mode:', error);
+//     Notification.error('初始化编辑器模式失败: ' + (error.message || '未知错误'));
+//   }
+// });
 
-export default page;
+// export default page;
 
