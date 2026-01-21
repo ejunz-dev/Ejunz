@@ -81,17 +81,17 @@ const page = new NamedPage('session_chat', async () => {
       
       // 显示历史消息
       chatMessages.innerHTML = '';
-      displayedMessageIds.clear(); // 清空已显示消息的ID集合
-      messageIdMap.clear(); // 清空消息ID映射
+      displayedbubbleIds.clear(); // 清空已显示消息的ID集合
+      bubbleIdMap.clear(); // 清空消息ID映射
       
       for (let i = 0; i < allMessages.length; i++) {
         const msg = allMessages[i];
         const recordId = msg.recordId ? msg.recordId.toString() : '';
-        const msgId = getMessageId(msg, i, recordId);
-        if (!displayedMessageIds.has(msgId)) {
+        const msgId = getbubbleId(msg, i, recordId);
+        if (!displayedbubbleIds.has(msgId)) {
           const msgElement = addMessage(msg.role, msg.content, msg.toolName, msg.tool_calls, msgId, recordId);
-          displayedMessageIds.add(msgId);
-          messageIdMap.set(msgId, msgElement);
+          displayedbubbleIds.add(msgId);
+          bubbleIdMap.set(msgId, msgElement);
         }
       }
       
@@ -161,14 +161,14 @@ const page = new NamedPage('session_chat', async () => {
   }
 
   let currentRecordId: string | null = null;
-  const displayedMessageIds = new Set<string>(); // 跟踪已显示的消息，避免重复
-  const messageIdMap = new Map<string, HTMLElement>(); // 消息ID到DOM元素的映射
+  const displayedbubbleIds = new Set<string>(); // 跟踪已显示的消息，避免重复
+  const bubbleIdMap = new Map<string, HTMLElement>(); // 消息ID到DOM元素的映射
   const pendingUserMessages = new Map<string, string>(); // 临时用户消息ID到recordId的映射
   
   // 生成消息的唯一ID（用于去重和跟踪）
   // 注意：不使用timestamp，因为流式传输时timestamp会不断更新，导致ID变化
   // 对于assistant消息，也不使用tool_calls，因为流式传输时可能先没有工具调用，后来才添加
-  function getMessageId(msg: any, index: number, recordId: string): string {
+  function getbubbleId(msg: any, index: number, recordId: string): string {
     // 对于tool消息，使用tool_call_id作为标识（tool消息的tool_call_id是稳定的）
     if (msg.role === 'tool' && msg.tool_call_id) {
       const toolName = msg.toolName || '';
@@ -206,10 +206,10 @@ const page = new NamedPage('session_chat', async () => {
       // 处理每条消息，使用消息ID来跟踪和更新
       for (let i = 0; i < newMessagesCount; i++) {
         const msgData = record.agentMessages[i];
-        const msgId = getMessageId(msgData, i, rid);
+        const msgId = getbubbleId(msgData, i, rid);
         
         // 检查消息是否已存在
-        const existingElement = messageIdMap.get(msgId);
+        const existingElement = bubbleIdMap.get(msgId);
         
         if (existingElement) {
           // 消息已存在，更新内容（用于流式更新）
@@ -257,32 +257,32 @@ const page = new NamedPage('session_chat', async () => {
             // 检查是否有待处理的临时用户消息需要替换
             const tempMsgId = pendingUserMessages.get(rid);
             if (tempMsgId) {
-              const tempElement = messageIdMap.get(tempMsgId);
+              const tempElement = bubbleIdMap.get(tempMsgId);
               if (tempElement) {
                 // 移除临时消息
                 tempElement.remove();
-                messageIdMap.delete(tempMsgId);
-                displayedMessageIds.delete(tempMsgId);
+                bubbleIdMap.delete(tempMsgId);
+                displayedbubbleIds.delete(tempMsgId);
               }
               pendingUserMessages.delete(rid);
             }
             
             const msgElement = addMessage('user', msgData.content || '', undefined, undefined, msgId);
-            displayedMessageIds.add(msgId);
-            messageIdMap.set(msgId, msgElement);
+            displayedbubbleIds.add(msgId);
+            bubbleIdMap.set(msgId, msgElement);
           } else if (msgData.role === 'assistant') {
             const content = msgData.content || '';
             const toolCalls = msgData.tool_calls;
             const msgElement = addMessage('assistant', content, undefined, toolCalls, msgId, rid);
-            displayedMessageIds.add(msgId);
-            messageIdMap.set(msgId, msgElement);
+            displayedbubbleIds.add(msgId);
+            bubbleIdMap.set(msgId, msgElement);
           } else if (msgData.role === 'tool') {
             const content = typeof msgData.content === 'string' 
               ? msgData.content 
               : JSON.stringify(msgData.content, null, 2);
             const msgElement = addMessage('tool', content, msgData.toolName, undefined, msgId);
-            displayedMessageIds.add(msgId);
-            messageIdMap.set(msgId, msgElement);
+            displayedbubbleIds.add(msgId);
+            bubbleIdMap.set(msgId, msgElement);
           }
         }
       }
@@ -313,13 +313,13 @@ const page = new NamedPage('session_chat', async () => {
     }
   }
   
-  function addMessage(role: string, content: string, toolName?: string, toolCalls?: any[], messageId?: string, recordId?: string): HTMLElement {
+  function addMessage(role: string, content: string, toolName?: string, toolCalls?: any[], bubbleId?: string, recordId?: string): HTMLElement {
     const messageDiv = document.createElement('div');
     messageDiv.className = `chat-message ${role}`;
     
     // 设置消息ID属性
-    if (messageId) {
-      messageDiv.setAttribute('data-message-id', messageId);
+    if (bubbleId) {
+      messageDiv.setAttribute('data-message-id', bubbleId);
     }
     
     if (role === 'tool') {
@@ -468,8 +468,8 @@ const page = new NamedPage('session_chat', async () => {
     // 生成临时用户消息ID（在收到真实record更新前使用）
     const tempMsgId = `temp_user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const tempElement = addMessage('user', message, undefined, undefined, tempMsgId);
-    displayedMessageIds.add(tempMsgId);
-    messageIdMap.set(tempMsgId, tempElement);
+    displayedbubbleIds.add(tempMsgId);
+    bubbleIdMap.set(tempMsgId, tempElement);
     
     chatInput.value = '';
     setLoading(true);
@@ -489,8 +489,8 @@ const page = new NamedPage('session_chat', async () => {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
         // 移除临时用户消息
         tempElement.remove();
-        displayedMessageIds.delete(tempMsgId);
-        messageIdMap.delete(tempMsgId);
+        displayedbubbleIds.delete(tempMsgId);
+        bubbleIdMap.delete(tempMsgId);
         addMessage('error', 'Send failed: ' + (errorData.error || 'Unknown error'));
         setLoading(false);
         return;
@@ -504,8 +504,8 @@ const page = new NamedPage('session_chat', async () => {
         console.error('[SessionChat] Task created but record ID missing', responseData);
         // 移除临时用户消息
         tempElement.remove();
-        displayedMessageIds.delete(tempMsgId);
-        messageIdMap.delete(tempMsgId);
+        displayedbubbleIds.delete(tempMsgId);
+        bubbleIdMap.delete(tempMsgId);
         addMessage('error', 'Task created but record ID missing: ' + JSON.stringify(responseData));
         setLoading(false);
         return;
@@ -520,8 +520,8 @@ const page = new NamedPage('session_chat', async () => {
       console.error('[SessionChat] Error sending message:', error);
       // 移除临时用户消息
       tempElement.remove();
-      displayedMessageIds.delete(tempMsgId);
-      messageIdMap.delete(tempMsgId);
+      displayedbubbleIds.delete(tempMsgId);
+      bubbleIdMap.delete(tempMsgId);
       addMessage('error', 'Send failed: ' + error.message);
       setLoading(false);
     }

@@ -572,10 +572,10 @@ class HomeMessagesHandler extends Handler {
         this.back({ mdoc, udoc });
     }
 
-    @param('messageId', Types.ObjectId)
-    async postDeleteMessage({ }, messageId: ObjectId) {
-        const msg = await message.get(messageId);
-        if (msg.from === this.user._id) await message.del(messageId);
+    @param('bubbleId', Types.ObjectId)
+    async postDeleteMessage({ }, bubbleId: ObjectId) {
+        const msg = await message.get(bubbleId);
+        if (msg.from === this.user._id) await message.del(bubbleId);
         else throw new PermissionError();
         this.back();
     }

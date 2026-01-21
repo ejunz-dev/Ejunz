@@ -323,12 +323,12 @@ export async function apply(ctx: EjunzContext) {
                                 [`agentMessages.${assistantMessageIndex}.timestamp`]: new Date(),
                             };
                             
-                            // Ensure messageId exists (should always exist, but handle edge case)
-                            if (!existingMessage.messageId) {
+                            // Ensure bubbleId exists (should always exist, but handle edge case)
+                            if (!existingMessage.bubbleId) {
                                 const { randomUUID } = require('crypto');
-                                const newMessageId = randomUUID();
-                                updateData[`agentMessages.${assistantMessageIndex}.messageId`] = newMessageId;
-                                logger.warn('Existing assistant message missing messageId, generated new one:', newMessageId);
+                                const newbubbleId = randomUUID();
+                                updateData[`agentMessages.${assistantMessageIndex}.bubbleId`] = newbubbleId;
+                                logger.warn('Existing assistant message missing bubbleId, generated new one:', newbubbleId);
                             }
                             
                             if (toolCalls) {
@@ -337,13 +337,13 @@ export async function apply(ctx: EjunzContext) {
                             await RecordModel.update(domainId, recordId, updateData);
                         } else {
                             const { randomUUID } = require('crypto');
-                            const messageIdToUse = randomUUID();
+                            const bubbleIdToUse = randomUUID();
                             
                             const assistantMsg: any = {
                                 role: 'assistant',
                                 content: content || '',
                                 timestamp: new Date(),
-                                messageId: messageIdToUse,
+                                bubbleId: bubbleIdToUse,
                             };
                             if (toolCalls) {
                                 assistantMsg.tool_calls = toolCalls;
@@ -543,15 +543,15 @@ export async function apply(ctx: EjunzContext) {
                                     [`agentMessages.${currentMessages.length - 1}.content`]: accumulatedContent,
                                     [`agentMessages.${currentMessages.length - 1}.timestamp`]: new Date(),
                                 };
-                                // BACKEND GENERATES: Ensure messageId is always set
-                                if (lastMessage.messageId) {
-                                    // Preserve existing messageId
-                                    finalUpdateData[`agentMessages.${currentMessages.length - 1}.messageId`] = lastMessage.messageId;
+                                // BACKEND GENERATES: Ensure bubbleId is always set
+                                if (lastMessage.bubbleId) {
+                                    // Preserve existing bubbleId
+                                    finalUpdateData[`agentMessages.${currentMessages.length - 1}.bubbleId`] = lastMessage.bubbleId;
                                 } else {
-                                    // Generate new messageId if missing
+                                    // Generate new bubbleId if missing
                                     const { randomUUID } = require('crypto');
-                                    const finalMessageId = randomUUID();
-                                    finalUpdateData[`agentMessages.${currentMessages.length - 1}.messageId`] = finalMessageId;
+                                    const finalbubbleId = randomUUID();
+                                    finalUpdateData[`agentMessages.${currentMessages.length - 1}.bubbleId`] = finalbubbleId;
                                 }
                                 if (toolCalls.length > 0) {
                                     finalUpdateData[`agentMessages.${currentMessages.length - 1}.tool_calls`] = toolCalls;
@@ -730,9 +730,9 @@ export async function apply(ctx: EjunzContext) {
                                         [`agentMessages.${currentMessages.length - 1}.content`]: accumulatedContent,
                                         [`agentMessages.${currentMessages.length - 1}.timestamp`]: new Date(),
                                     };
-                                    // Preserve messageId if it exists
-                                    if (lastMessage.messageId) {
-                                        updateData[`agentMessages.${currentMessages.length - 1}.messageId`] = lastMessage.messageId;
+                                    // Preserve bubbleId if it exists
+                                    if (lastMessage.bubbleId) {
+                                        updateData[`agentMessages.${currentMessages.length - 1}.bubbleId`] = lastMessage.bubbleId;
                                     }
                                     await RecordModel.update(domainId, recordId, updateData);
                                 } else {
@@ -742,7 +742,7 @@ export async function apply(ctx: EjunzContext) {
                                             role: 'assistant',
                                             content: accumulatedContent,
                                             timestamp: new Date(),
-                                            messageId: randomUUID(), // Generate messageId for new assistant message
+                                            bubbleId: randomUUID(), // Generate bubbleId for new assistant message
                                         }],
                                     });
                                 }

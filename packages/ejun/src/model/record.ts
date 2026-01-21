@@ -62,7 +62,7 @@ export default class RecordModel {
         uid: number,
         initialMessage: string,
         sessionId: ObjectId, // sessionId 现在是必需的
-        messageId?: string, // Optional messageId for user message
+        bubbleId?: string, // Optional bubbleId for user message
     ): Promise<ObjectId> {
         const data: RecordDoc = {
             status: STATUS.STATUS_TASK_WAITING,
@@ -78,7 +78,7 @@ export default class RecordModel {
                 role: 'user',
                 content: initialMessage,
                 timestamp: new Date(),
-                ...(messageId ? { messageId } : {}), // Include messageId if provided
+                ...(bubbleId ? { bubbleId } : {}), // Include bubbleId if provided
             }] as any,
             agentToolCallCount: 0,
             agentTotalToolCalls: 0,
@@ -101,7 +101,7 @@ export default class RecordModel {
                 role: 'user' | 'assistant' | 'tool';
                 content: string;
                 timestamp: Date;
-                messageId?: string; // Unique message ID for deduplication
+                bubbleId?: string; // Unique message ID for deduplication
                 toolName?: string;
                 toolResult?: any;
                 tool_call_id?: string;

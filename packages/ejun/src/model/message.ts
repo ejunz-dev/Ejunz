@@ -54,9 +54,9 @@ class MessageModel {
             .toArray();
     }
 
-    static async setFlag(messageId: ObjectId, flag: number) {
+    static async setFlag(bubbleId: ObjectId, flag: number) {
         const result = await MessageModel.coll.findOneAndUpdate(
-            { _id: messageId },
+            { _id: bubbleId },
             { $bit: { flag: { xor: flag } } },
             { returnDocument: 'after' },
         );
