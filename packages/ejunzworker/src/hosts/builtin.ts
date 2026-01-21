@@ -257,7 +257,35 @@ export async function apply(ctx: EjunzContext) {
                     requestBody.messages.length,
                     requestBody.tools?.length || 0);
                 
-                // 记录消息格式以便调试
+                const systemMessage = context.systemMessage || '';
+                const logMsg = `\n========== [Agent API Request - Worker Process] ==========\n` +
+                    `Domain: ${domainId}\n` +
+                    `Agent ID: ${agentId}\n` +
+                    `Model: ${requestBody.model}\n` +
+                    `System Message Length: ${systemMessage.length} chars (~${Math.ceil(systemMessage.length / 4)} tokens)\n` +
+                    `--- System Message Content ---\n` +
+                    `${systemMessage}\n` +
+                    `--- End System Message ---\n` +
+                    `History Messages: ${normalizedHistory.length}\n` +
+                    `User Message: ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}\n` +
+                    `Total Messages: ${requestBody.messages.length}\n` +
+                    `Tools Count: ${requestBody.tools?.length || 0}\n` +
+                    `=========================================\n`;
+                
+                console.log(logMsg);
+                logger.info('[Agent API Request - Worker]', {
+                    domainId,
+                    agentId,
+                    model: requestBody.model,
+                    systemMessageLength: systemMessage.length,
+                    estimatedTokens: Math.ceil(systemMessage.length / 4),
+                    historyMessages: normalizedHistory.length,
+                    totalMessages: requestBody.messages.length,
+                    toolsCount: requestBody.tools?.length || 0,
+                    userMessagePreview: message.substring(0, 100),
+                    systemMessagePreview: systemMessage.substring(0, 200) + (systemMessage.length > 200 ? '...' : '')
+                });
+                
                 if (normalizedHistory.length > 0) {
                     logger.debug('History messages: %s', JSON.stringify(normalizedHistory.map((msg: any) => ({
                         role: msg.role,

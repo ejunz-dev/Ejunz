@@ -42,7 +42,7 @@ export class AgentModel {
 
     static PROJECTION_DETAIL: Field[] = [
         ...AgentModel.PROJECTION_LIST,
-       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory', 'mcpToolIds'
+       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory', 'mcpToolIds', 'skillIds'
     ];
 
     static PROJECTION_PUBLIC: Field[] = [
@@ -422,6 +422,39 @@ export class McpClient {
             const ctx = (global as any).app || (global as any).Ejunz;
             if (!ctx) {
                 throw new Error('Context not available');
+            }
+
+            // Check if it's a built-in skill loading tool
+            if (name === 'load_skill_instructions') {
+                try {
+                    ClientLogger.info('Calling built-in skill loading tool: %s', name);
+                    if (!domainId) {
+                        throw new Error('domainId is required for load_skill_instructions');
+                    }
+                    
+                    const { loadSkillInstructions } = require('../lib/skillLoader');
+                    const skillName = args.skillName || args.skill_name;
+                    const level = args.level !== undefined ? args.level : (args.maxLevel !== undefined ? args.maxLevel : 2); // 默认加载到 Level 2（模块列表），支持任意层级
+                    
+                    if (!skillName) {
+                        throw new Error('skillName is required');
+                    }
+                    
+                    ClientLogger.info('Loading skill instructions: skillName=%s, level=%d, domainId=%s', skillName, level, domainId);
+                    
+                    const instructions = await loadSkillInstructions(domainId, skillName, level);
+                    
+                    return {
+                        success: true,
+                        skillName,
+                        level,
+                        instructions,
+                        message: `Successfully loaded skill "${skillName}" to level ${level}`
+                    };
+                } catch (e) {
+                    ClientLogger.error('Built-in skill loading tool call failed: %s', (e as Error).message);
+                    throw e;
+                }
             }
 
             // Check if it's a repo internal MCP tool (format: repo_{rpid}_{operation}...)
