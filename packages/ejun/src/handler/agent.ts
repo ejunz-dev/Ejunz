@@ -902,7 +902,7 @@ export async function processAgentChatInternal(
                                                             tool_call_id: firstToolCall.id,
                                                             toolName: firstToolName,
                                                             timestamp: new Date(),
-                                                            messageId: randomUUID(), // Generate messageId for tool message
+                                                            bubbleId: randomUUID(), // Generate bubbleId for tool message
                                                         }],
                                                     });
                                                 }
@@ -1521,8 +1521,8 @@ export class AgentChatHandler extends Handler {
         }
 
         const message = this.request.body?.message;
-        const messageId = this.request.body?.messageId; // Get user messageId from request
-        const assistantMessageId = this.request.body?.assistantMessageId; // Get assistant messageId from request
+        const bubbleId = this.request.body?.bubbleId; // Get user bubbleId from request
+        const assistantbubbleId = this.request.body?.assistantbubbleId; // Get assistant bubbleId from request
         const history = this.request.body?.history || '[]';
         const stream = this.request.query?.stream === 'true' || this.request.body?.stream === true;
         const createTaskRecord = this.request.body?.createTaskRecord !== false; // 默认创建任务记录
@@ -1617,7 +1617,7 @@ export class AgentChatHandler extends Handler {
                 this.user._id,
                 message,
                 sessionId, // 关联到 session（必需）
-                messageId, // Pass messageId to addTask
+                bubbleId, // Pass bubbleId to addTask
             );
             
             // 将 record 添加到 session
@@ -1741,7 +1741,7 @@ export class AgentChatHandler extends Handler {
                 history: JSON.stringify(chatHistory),
                 context: {
                     ...context,
-                    assistantMessageId, // Pass assistantMessageId to worker via context
+                    assistantbubbleId, // Pass assistantbubbleId to worker via context
                 },
                 priority: 0,
             });
@@ -2556,8 +2556,8 @@ export class AgentChatSessionConnectionHandler extends ConnectionHandler {
                             this.send({
                                 type: 'message_start',
                                 rid,
-                                messageId: r.agentMessages && r.agentMessages.length > 0 
-                                    ? r.agentMessages[r.agentMessages.length - 1]?.messageId 
+                                bubbleId: r.agentMessages && r.agentMessages.length > 0 
+                                    ? r.agentMessages[r.agentMessages.length - 1]?.bubbleId 
                                     : undefined,
                             });
                         }
@@ -2571,7 +2571,7 @@ export class AgentChatSessionConnectionHandler extends ConnectionHandler {
                             this.send({
                                 type: 'message_complete',
                                 rid,
-                                messageId: lastMessage?.messageId,
+                                bubbleId: lastMessage?.bubbleId,
                                 status: currentStatus,
                             });
                         }

@@ -80,25 +80,25 @@ const page = new NamedPage('agent_chat', async () => {
   let currentRecordId: string | null = null;
   
   // Track message lifecycle: messages that have started and completed
-  const activeMessageIds = new Set<string>(); // Messages currently being streamed
-  const completedMessageIds = new Set<string>(); // Messages that have completed
+  const activebubbleIds = new Set<string>(); // Messages currently being streamed
+  const completedbubbleIds = new Set<string>(); // Messages that have completed
   
   // Handle message start event
   function handleMessageStart(msg: any) {
-    const { rid, messageId } = msg;
-    if (messageId) {
-      activeMessageIds.add(messageId);
-      completedMessageIds.delete(messageId); // Remove from completed if restarted
+    const { rid, bubbleId } = msg;
+    if (bubbleId) {
+      activebubbleIds.add(bubbleId);
+      completedbubbleIds.delete(bubbleId); // Remove from completed if restarted
     }
   }
   
   // Handle message complete event
   function handleMessageComplete(msg: any) {
-    const { rid, messageId } = msg;
-    if (messageId) {
-      activeMessageIds.delete(messageId);
-      completedMessageIds.add(messageId);
-      console.log('[AgentChat] Message completed:', { rid, messageId, completedCount: completedMessageIds.size });
+    const { rid, bubbleId } = msg;
+    if (bubbleId) {
+      activebubbleIds.delete(bubbleId);
+      completedbubbleIds.add(bubbleId);
+      console.log('[AgentChat] Message completed:', { rid, bubbleId, completedCount: completedbubbleIds.size });
     }
   }
   
@@ -244,7 +244,7 @@ const page = new NamedPage('agent_chat', async () => {
         // Render all messages sequentially to ensure proper order
         for (const msg of recordHistory) {
           if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool') {
-            await addMessage(msg.role, msg.content, msg.toolName, msg.tool_calls, msg.messageId);
+            await addMessage(msg.role, msg.content, msg.toolName, msg.tool_calls, msg.bubbleId);
           }
         }
         // Scroll to bottom
@@ -412,14 +412,14 @@ const page = new NamedPage('agent_chat', async () => {
       if (isCompleted) {
       }
       
-      // Use messageId-based tracking to prevent duplicates
+      // Use bubbleId-based tracking to prevent duplicates
       // Each message element gets a data-message-id attribute
-      const getMessageId = (el: Element): string | null => {
+      const getbubbleId = (el: Element): string | null => {
         return el.getAttribute('data-message-id');
       };
       
-      const setMessageId = (el: Element, messageId: string) => {
-        el.setAttribute('data-message-id', messageId);
+      const setbubbleId = (el: Element, bubbleId: string) => {
+        el.setAttribute('data-message-id', bubbleId);
       };
       
       // Count all message-related elements (chat-message, tool-call-container, tool-result-container)
@@ -433,12 +433,12 @@ const page = new NamedPage('agent_chat', async () => {
       
       // Build a map of displayed message IDs
       // Start with global set to include messages added before record updates
-      const displayedMessageIds = new Set<string>(displayedMessageIdsGlobal);
+      const displayedbubbleIds = new Set<string>(displayedbubbleIdsGlobal);
       existingMessages.forEach((el: Element) => {
-        const messageId = getMessageId(el);
-        if (messageId) {
-          displayedMessageIds.add(messageId);
-          displayedMessageIdsGlobal.add(messageId);
+        const bubbleId = getbubbleId(el);
+        if (bubbleId) {
+          displayedbubbleIds.add(bubbleId);
+          displayedbubbleIdsGlobal.add(bubbleId);
         }
       });
       
@@ -446,10 +446,10 @@ const page = new NamedPage('agent_chat', async () => {
       (async () => {
         for (let i = 0; i < newMessagesCount; i++) {
           const msgData = record.agentMessages[i];
-          let messageId = msgData.messageId;
-          const hadMessageId = !!messageId; // Track if messageId was originally present
+          let bubbleId = msgData.bubbleId;
+          const hadbubbleId = !!bubbleId; // Track if bubbleId was originally present
           
-          if (!messageId && msgData.role === 'assistant' && msgData.content) {
+          if (!bubbleId && msgData.role === 'assistant' && msgData.content) {
             const content = (msgData.content || '').trim();
             if (content) {
               // Check all assistant messages in DOM for content match
@@ -458,7 +458,7 @@ const page = new NamedPage('agent_chat', async () => {
               );
               
               for (const existingMsg of allAssistantMessages) {
-                const existingId = getMessageId(existingMsg);
+                const existingId = getbubbleId(existingMsg);
                 if (existingId) {
                   continue;
                 }
@@ -469,10 +469,10 @@ const page = new NamedPage('agent_chat', async () => {
                   if (contentDiv) {
                     const existingContent = contentDiv.textContent?.trim() || '';
                     if (existingContent === content) {
-                      messageId = existingId || generateMessageId();
-                      setMessageId(existingMsg, messageId);
-                      displayedMessageIds.add(messageId);
-                      displayedMessageIdsGlobal.add(messageId);
+                      bubbleId = existingId || generatebubbleId();
+                      setbubbleId(existingMsg, bubbleId);
+                      displayedbubbleIds.add(bubbleId);
+                      displayedbubbleIdsGlobal.add(bubbleId);
                       break;
                     }
                   }
@@ -481,7 +481,7 @@ const page = new NamedPage('agent_chat', async () => {
             }
           }
           
-          if (messageId && msgData.role === 'assistant') {
+          if (bubbleId && msgData.role === 'assistant') {
             const allAssistantMessages = Array.from(chatMessages.children).filter(
               (el: any) => el.classList.contains('chat-message') && el.classList.contains('assistant')
             );
@@ -489,7 +489,7 @@ const page = new NamedPage('agent_chat', async () => {
             let preCreatedMsg: Element | null = null;
             for (let j = allAssistantMessages.length - 1; j >= 0; j--) {
               const existingMsg = allAssistantMessages[j];
-              const existingId = getMessageId(existingMsg);
+              const existingId = getbubbleId(existingMsg);
               if (existingId && existingId.startsWith('temp-')) {
                 preCreatedMsg = existingMsg;
                 break;
@@ -497,14 +497,14 @@ const page = new NamedPage('agent_chat', async () => {
             }
             
             if (preCreatedMsg) {
-              setMessageId(preCreatedMsg, messageId);
-              displayedMessageIds.add(messageId);
-              displayedMessageIdsGlobal.add(messageId);
+              setbubbleId(preCreatedMsg, bubbleId);
+              displayedbubbleIds.add(bubbleId);
+              displayedbubbleIdsGlobal.add(bubbleId);
             } else {
-              displayedMessageIds.add(messageId);
-              displayedMessageIdsGlobal.add(messageId);
+              displayedbubbleIds.add(bubbleId);
+              displayedbubbleIdsGlobal.add(bubbleId);
             }
-          } else if (!messageId && msgData.role === 'assistant') {
+          } else if (!bubbleId && msgData.role === 'assistant') {
             const allAssistantMessages = Array.from(chatMessages.children).filter(
               (el: any) => el.classList.contains('chat-message') && el.classList.contains('assistant')
             );
@@ -512,7 +512,7 @@ const page = new NamedPage('agent_chat', async () => {
             let preCreatedMsg: Element | null = null;
             for (let j = allAssistantMessages.length - 1; j >= 0; j--) {
               const existingMsg = allAssistantMessages[j];
-              const existingId = getMessageId(existingMsg);
+              const existingId = getbubbleId(existingMsg);
               if (existingId && existingId.startsWith('temp-')) {
                 preCreatedMsg = existingMsg;
                 break;
@@ -520,49 +520,49 @@ const page = new NamedPage('agent_chat', async () => {
             }
             
             if (preCreatedMsg) {
-              messageId = generateMessageId();
-              setMessageId(preCreatedMsg, messageId);
-              displayedMessageIds.add(messageId);
-              displayedMessageIdsGlobal.add(messageId);
-              console.error('[AgentChat] Backend did not provide messageId for assistant message, generated fallback:', messageId);
+              bubbleId = generatebubbleId();
+              setbubbleId(preCreatedMsg, bubbleId);
+              displayedbubbleIds.add(bubbleId);
+              displayedbubbleIdsGlobal.add(bubbleId);
+              console.error('[AgentChat] Backend did not provide bubbleId for assistant message, generated fallback:', bubbleId);
             } else {
-              messageId = generateMessageId();
-              console.error('[AgentChat] Backend did not provide messageId and no pre-created message found, generated fallback:', messageId);
+              bubbleId = generatebubbleId();
+              console.error('[AgentChat] Backend did not provide bubbleId and no pre-created message found, generated fallback:', bubbleId);
             }
-          } else if (!messageId) {
-            messageId = generateMessageId();
+          } else if (!bubbleId) {
+            bubbleId = generatebubbleId();
           }
           
           if (msgData.role === 'user') {
             // For user messages, always check if already displayed first
             // This prevents duplicate adds during streaming updates
-            if (displayedMessageIds.has(messageId)) {
+            if (displayedbubbleIds.has(bubbleId)) {
               // User message already displayed, skip
               continue;
             }
             
-            // Find user message by messageId in DOM
+            // Find user message by bubbleId in DOM
             let userMessage = Array.from(chatMessages.children).find(
               (el: any) => el.classList.contains('chat-message') && 
                           el.classList.contains('user') &&
-                          getMessageId(el) === messageId
+                          getbubbleId(el) === bubbleId
             );
             
             if (userMessage) {
               // Message exists in DOM, mark as displayed
-              displayedMessageIds.add(messageId);
-              displayedMessageIdsGlobal.add(messageId);
+              displayedbubbleIds.add(bubbleId);
+              displayedbubbleIdsGlobal.add(bubbleId);
             } else {
               // Message not in DOM, but check if content matches any existing user message
-              // This handles cases where messageId wasn't set properly
+              // This handles cases where bubbleId wasn't set properly
               const content = msgData.content || '';
               const existingUserMessages = Array.from(chatMessages.children).filter(
                 (el: any) => el.classList.contains('chat-message') && el.classList.contains('user')
               );
               
-              // Check if any existing user message matches this content and doesn't have a messageId
+              // Check if any existing user message matches this content and doesn't have a bubbleId
               const matchingMessage = existingUserMessages.find((el: any) => {
-                const existingId = getMessageId(el);
+                const existingId = getbubbleId(el);
                 if (existingId) return false; // Skip messages that already have an ID
                 const messageBubble = el.querySelector('.message-bubble');
                 const existingContent = messageBubble?.textContent?.trim() || '';
@@ -570,16 +570,16 @@ const page = new NamedPage('agent_chat', async () => {
               });
               
               if (matchingMessage) {
-                // Found matching message without ID, set the messageId
-                setMessageId(matchingMessage, messageId);
-                displayedMessageIds.add(messageId);
-                displayedMessageIdsGlobal.add(messageId);
+                // Found matching message without ID, set the bubbleId
+                setbubbleId(matchingMessage, bubbleId);
+                displayedbubbleIds.add(bubbleId);
+                displayedbubbleIdsGlobal.add(bubbleId);
               } else if (content) {
                 // No matching message found, create new one (shouldn't happen normally)
-                console.warn('[AgentChat] Creating new user message from record update:', messageId);
-                await addMessage('user', content, undefined, undefined, messageId);
-                displayedMessageIds.add(messageId);
-                displayedMessageIdsGlobal.add(messageId);
+                console.warn('[AgentChat] Creating new user message from record update:', bubbleId);
+                await addMessage('user', content, undefined, undefined, bubbleId);
+                displayedbubbleIds.add(bubbleId);
+                displayedbubbleIdsGlobal.add(bubbleId);
               }
             }
             continue;
@@ -592,10 +592,10 @@ const page = new NamedPage('agent_chat', async () => {
             
             // CRITICAL: If task is completed, only update existing messages, never create new ones
             // This prevents duplicates when multiple record_update events arrive after completion
-            if (isCompleted && !displayedMessageIds.has(messageId)) {
-              // Task is completed and message not in displayedMessageIds, check DOM first
+            if (isCompleted && !displayedbubbleIds.has(bubbleId)) {
+              // Task is completed and message not in displayedbubbleIds, check DOM first
               const existingInDOM = Array.from(chatMessages.children).find(
-                (el: any) => getMessageId(el) === messageId && 
+                (el: any) => getbubbleId(el) === bubbleId && 
                             el.classList.contains('chat-message') && 
                             el.classList.contains('assistant')
               );
@@ -606,26 +606,26 @@ const page = new NamedPage('agent_chat', async () => {
             }
             
             // Use event-based lifecycle tracking
-            if (completedMessageIds.has(messageId)) {
+            if (completedbubbleIds.has(bubbleId)) {
               continue;
             }
             
-            // CRITICAL: If messageId was generated (missing from backend), check for existing message by content FIRST
-            // This prevents creating duplicate messages when backend doesn't send messageId
-            const originalMessageId = msgData.messageId; // The messageId from backend (may be undefined)
-            const isGeneratedId = !originalMessageId && messageId; // messageId was generated by frontend
+            // CRITICAL: If bubbleId was generated (missing from backend), check for existing message by content FIRST
+            // This prevents creating duplicate messages when backend doesn't send bubbleId
+            const originalbubbleId = msgData.bubbleId; // The bubbleId from backend (may be undefined)
+            const isGeneratedId = !originalbubbleId && bubbleId; // bubbleId was generated by frontend
             
             if (isGeneratedId && content && content.trim()) {
-              // MessageId was generated, meaning backend didn't provide one
+              // bubbleId was generated, meaning backend didn't provide one
               // Check if there's already a message with this content in DOM
               const allAssistantMessages = Array.from(chatMessages.children).filter(
                 (el: any) => el.classList.contains('chat-message') && el.classList.contains('assistant')
               );
               
               for (const existingMsg of allAssistantMessages) {
-                const existingId = getMessageId(existingMsg);
-                // Skip if already has a different messageId
-                if (existingId && existingId !== messageId) {
+                const existingId = getbubbleId(existingMsg);
+                // Skip if already has a different bubbleId
+                if (existingId && existingId !== bubbleId) {
                   continue;
                 }
                 
@@ -640,19 +640,19 @@ const page = new NamedPage('agent_chat', async () => {
                     if (existingContent && newContent && existingContent === newContent) {
                       // Found exact match! Use the existing message instead of creating new
                       if (!existingId) {
-                        // Set the generated messageId on existing message
-                        setMessageId(existingMsg, messageId);
-                        displayedMessageIds.add(messageId);
-                        displayedMessageIdsGlobal.add(messageId);
+                        // Set the generated bubbleId on existing message
+                        setbubbleId(existingMsg, bubbleId);
+                        displayedbubbleIds.add(bubbleId);
+                        displayedbubbleIdsGlobal.add(bubbleId);
                         if (!isStreaming) {
-                          completedMessageIds.add(messageId);
+                          completedbubbleIds.add(bubbleId);
                         } else {
-                          activeMessageIds.add(messageId);
+                          activebubbleIds.add(bubbleId);
                         }
                       } else {
-                        // Already has messageId, just mark as displayed
-                        displayedMessageIds.add(messageId);
-                        displayedMessageIdsGlobal.add(messageId);
+                        // Already has bubbleId, just mark as displayed
+                        displayedbubbleIds.add(bubbleId);
+                        displayedbubbleIdsGlobal.add(bubbleId);
                       }
                       // Update content if needed (for markdown rendering)
                       if (!isStreaming && contentDiv.textContent && !contentDiv.innerHTML.includes('<')) {
@@ -669,12 +669,12 @@ const page = new NamedPage('agent_chat', async () => {
             
             // If message is completed, allow one final update if task is also completed
             // This ensures final content is rendered correctly even after completion
-            if (completedMessageIds.has(messageId)) {
+            if (completedbubbleIds.has(bubbleId)) {
               // If task is completed, allow one final content update to ensure completeness
               if (isCompleted) {
                 // Find existing message and update content one last time
                 const existingMsg = Array.from(chatMessages.children).find(
-                  (el: any) => getMessageId(el) === messageId && 
+                  (el: any) => getbubbleId(el) === bubbleId && 
                               el.classList.contains('chat-message') && 
                               el.classList.contains('assistant')
                 );
@@ -711,9 +711,9 @@ const page = new NamedPage('agent_chat', async () => {
               continue;
             }
             
-            // If message is not active and not in displayedMessageIds, it might be a new message
+            // If message is not active and not in displayedbubbleIds, it might be a new message
             // But if it's not streaming and we haven't seen it start, be cautious
-            if (!isStreaming && !activeMessageIds.has(messageId) && !displayedMessageIds.has(messageId)) {
+            if (!isStreaming && !activebubbleIds.has(bubbleId) && !displayedbubbleIds.has(bubbleId)) {
               // This could be a late update, check if content matches existing message
               const allAssistantMessages = Array.from(chatMessages.children).filter(
                 (el: any) => el.classList.contains('chat-message') && el.classList.contains('assistant')
@@ -721,12 +721,12 @@ const page = new NamedPage('agent_chat', async () => {
               
               let foundMatching = false;
               for (const existingMsg of allAssistantMessages) {
-                const existingId = getMessageId(existingMsg);
-                if (existingId === messageId) {
+                const existingId = getbubbleId(existingMsg);
+                if (existingId === bubbleId) {
                   foundMatching = true;
               break;
             }
-                // Check by content if no messageId
+                // Check by content if no bubbleId
                 if (!existingId && content) {
                   const messageBubble = existingMsg.querySelector('.message-bubble');
                   if (messageBubble) {
@@ -734,11 +734,11 @@ const page = new NamedPage('agent_chat', async () => {
                     if (contentDiv) {
                       const existingContent = contentDiv.textContent?.trim() || '';
                       if (existingContent === content.trim()) {
-                        // Found matching message, set messageId and mark as completed
-                        setMessageId(existingMsg, messageId);
-                        displayedMessageIds.add(messageId);
-                        displayedMessageIdsGlobal.add(messageId);
-                        completedMessageIds.add(messageId);
+                        // Found matching message, set bubbleId and mark as completed
+                        setbubbleId(existingMsg, bubbleId);
+                        displayedbubbleIds.add(bubbleId);
+                        displayedbubbleIdsGlobal.add(bubbleId);
+                        completedbubbleIds.add(bubbleId);
                         foundMatching = true;
                         break;
                       }
@@ -752,17 +752,17 @@ const page = new NamedPage('agent_chat', async () => {
               }
             }
             
-            // First, try to find by messageId
+            // First, try to find by bubbleId
             let assistantMsg = Array.from(chatMessages.children).find(
-              (el: any) => getMessageId(el) === messageId && 
+              (el: any) => getbubbleId(el) === bubbleId && 
                           el.classList.contains('chat-message') && 
                           el.classList.contains('assistant')
             );
             
-            // If not found by messageId, check tool-call-container
+            // If not found by bubbleId, check tool-call-container
             if (!assistantMsg) {
               const toolCallContainer = Array.from(chatMessages.children).find(
-                (el: any) => getMessageId(el) === messageId && el.classList.contains('tool-call-container')
+                (el: any) => getbubbleId(el) === bubbleId && el.classList.contains('tool-call-container')
               );
               if (toolCallContainer) {
                 const allChildren = Array.from(chatMessages.children);
@@ -780,11 +780,11 @@ const page = new NamedPage('agent_chat', async () => {
                 const el = allChildren[j];
                 if (el.classList.contains('chat-message') && el.classList.contains('assistant')) {
                   assistantMsg = el;
-                  // Set messageId on the found message if it doesn't have one
-                  if (!getMessageId(assistantMsg)) {
-                    setMessageId(assistantMsg, messageId);
-                    displayedMessageIds.add(messageId);
-                    displayedMessageIdsGlobal.add(messageId);
+                  // Set bubbleId on the found message if it doesn't have one
+                  if (!getbubbleId(assistantMsg)) {
+                    setbubbleId(assistantMsg, bubbleId);
+                    displayedbubbleIds.add(bubbleId);
+                    displayedbubbleIdsGlobal.add(bubbleId);
                   }
                   break;
                 }
@@ -812,38 +812,38 @@ const page = new NamedPage('agent_chat', async () => {
                 chatMessages.scrollTop = chatMessages.scrollHeight;
               }
               
-              // Ensure messageId is set and tracked
-              if (!displayedMessageIds.has(messageId)) {
-                displayedMessageIds.add(messageId);
-                displayedMessageIdsGlobal.add(messageId);
+              // Ensure bubbleId is set and tracked
+              if (!displayedbubbleIds.has(bubbleId)) {
+                displayedbubbleIds.add(bubbleId);
+                displayedbubbleIdsGlobal.add(bubbleId);
               }
               continue;
             } else if (toolCalls && toolCalls.length > 0) {
               // Handle tool calls - check if we need to create message first
               // But skip if already displayed and not streaming
-              if (!isStreaming && displayedMessageIds.has(messageId)) {
+              if (!isStreaming && displayedbubbleIds.has(bubbleId)) {
                 continue;
               }
               
               if (!assistantMsg) {
                 // Create assistant message first if it doesn't exist
-                displayedMessageIds.add(messageId);
-                displayedMessageIdsGlobal.add(messageId);
-                await addMessage('assistant', content || '', undefined, toolCalls, messageId);
+                displayedbubbleIds.add(bubbleId);
+                displayedbubbleIdsGlobal.add(bubbleId);
+                await addMessage('assistant', content || '', undefined, toolCalls, bubbleId);
               } else {
                 updateLastMessage(content, toolCalls, isStreaming);
               }
-              if (!displayedMessageIds.has(messageId)) {
-                displayedMessageIds.add(messageId);
-                displayedMessageIdsGlobal.add(messageId);
+              if (!displayedbubbleIds.has(bubbleId)) {
+                displayedbubbleIds.add(bubbleId);
+                displayedbubbleIdsGlobal.add(bubbleId);
               }
               continue;
             }
             
             // If no existing message found, create a new one
             
-            // Check 1: Already in displayedMessageIds
-            if (displayedMessageIds.has(messageId)) {
+            // Check 1: Already in displayedbubbleIds
+            if (displayedbubbleIds.has(bubbleId)) {
               continue;
             }
             
@@ -853,9 +853,9 @@ const page = new NamedPage('agent_chat', async () => {
               // Double-check DOM one more time
               const finalCheckInDOM = Array.from(chatMessages.children).find(
                 (el: any) => {
-                  const elId = getMessageId(el);
-                  if (elId === messageId) return true;
-                  // Also check by content if no messageId match
+                  const elId = getbubbleId(el);
+                  if (elId === bubbleId) return true;
+                  // Also check by content if no bubbleId match
                   if (!elId && content && content.trim()) {
                     const messageBubble = el.querySelector('.message-bubble');
                     if (messageBubble) {
@@ -873,10 +873,10 @@ const page = new NamedPage('agent_chat', async () => {
                 continue;
               } else {
                 // Found in DOM, update it instead of creating new
-                setMessageId(finalCheckInDOM as Element, messageId);
-                displayedMessageIds.add(messageId);
-                displayedMessageIdsGlobal.add(messageId);
-                completedMessageIds.add(messageId);
+                setbubbleId(finalCheckInDOM as Element, bubbleId);
+                displayedbubbleIds.add(bubbleId);
+                displayedbubbleIdsGlobal.add(bubbleId);
+                completedbubbleIds.add(bubbleId);
                 // Update content if needed
                 const messageBubble = (finalCheckInDOM as any).querySelector('.message-bubble');
                 if (messageBubble) {
@@ -915,10 +915,10 @@ const page = new NamedPage('agent_chat', async () => {
               );
               
               for (const existingMsg of allAssistantMessages) {
-                const existingId = getMessageId(existingMsg);
+                const existingId = getbubbleId(existingMsg);
                 
-                // Skip if already has a different messageId (different message)
-                if (existingId && existingId !== messageId) {
+                // Skip if already has a different bubbleId (different message)
+                if (existingId && existingId !== bubbleId) {
                   continue;
                 }
                 
@@ -934,14 +934,14 @@ const page = new NamedPage('agent_chat', async () => {
                     if (existingContent && newContent) {
                       // Exact match
                       if (existingContent === newContent) {
-                        // Found matching message, set messageId and update
-                        setMessageId(existingMsg, messageId);
-                        displayedMessageIds.add(messageId);
-                        displayedMessageIdsGlobal.add(messageId);
+                        // Found matching message, set bubbleId and update
+                        setbubbleId(existingMsg, bubbleId);
+                        displayedbubbleIds.add(bubbleId);
+                        displayedbubbleIdsGlobal.add(bubbleId);
                         if (!isStreaming) {
-                          completedMessageIds.add(messageId);
+                          completedbubbleIds.add(bubbleId);
                         } else {
-                          activeMessageIds.add(messageId);
+                          activebubbleIds.add(bubbleId);
                         }
                         // Update content if needed
                         if (isStreaming) {
@@ -959,13 +959,13 @@ const page = new NamedPage('agent_chat', async () => {
                       const shorter = existingContent.length > newContent.length ? newContent : existingContent;
                       if (longer.includes(shorter) && shorter.length / longer.length > 0.8) {
                         // Update the existing message instead of creating new
-                        setMessageId(existingMsg, messageId);
-                        displayedMessageIds.add(messageId);
-                        displayedMessageIdsGlobal.add(messageId);
+                        setbubbleId(existingMsg, bubbleId);
+                        displayedbubbleIds.add(bubbleId);
+                        displayedbubbleIdsGlobal.add(bubbleId);
                         if (!isStreaming) {
-                          completedMessageIds.add(messageId);
+                          completedbubbleIds.add(bubbleId);
                         } else {
-                          activeMessageIds.add(messageId);
+                          activebubbleIds.add(bubbleId);
                         }
                         // Update content
                         if (isStreaming) {
@@ -983,16 +983,16 @@ const page = new NamedPage('agent_chat', async () => {
             }
             
             // Check 3: If completed, don't create
-            if (completedMessageIds.has(messageId)) {
+            if (completedbubbleIds.has(bubbleId)) {
               continue;
             }
             
             // Check 4: If not streaming and not active, be very cautious - check for messages without IDs
-            if (!isStreaming && !activeMessageIds.has(messageId)) {
+            if (!isStreaming && !activebubbleIds.has(bubbleId)) {
               const messagesWithoutId = Array.from(chatMessages.children).filter(
                 (el: any) => el.classList.contains('chat-message') && 
                             el.classList.contains('assistant') &&
-                            !getMessageId(el)
+                            !getbubbleId(el)
               );
               
               if (messagesWithoutId.length > 0) {
@@ -1001,14 +1001,14 @@ const page = new NamedPage('agent_chat', async () => {
               }
             }
             
-            // This handles the first message in a stream or when messageId doesn't match
+            // This handles the first message in a stream or when bubbleId doesn't match
             // Only create during streaming or if truly new
-            displayedMessageIds.add(messageId);
-            displayedMessageIdsGlobal.add(messageId);
+            displayedbubbleIds.add(bubbleId);
+            displayedbubbleIdsGlobal.add(bubbleId);
             if (isStreaming) {
-              activeMessageIds.add(messageId);
+              activebubbleIds.add(bubbleId);
             }
-            await addMessage('assistant', content, undefined, toolCalls, messageId);
+            await addMessage('assistant', content, undefined, toolCalls, bubbleId);
             continue;
           }
           
@@ -1075,22 +1075,22 @@ const page = new NamedPage('agent_chat', async () => {
               }
               
               // Mark as displayed
-              if (messageId) {
-                displayedMessageIds.add(messageId);
-                displayedMessageIdsGlobal.add(messageId);
+              if (bubbleId) {
+                displayedbubbleIds.add(bubbleId);
+                displayedbubbleIdsGlobal.add(bubbleId);
               }
             } else {
               // Tool call item not found, create standalone tool result (fallback)
-              if (displayedMessageIds.has(messageId)) {
+              if (displayedbubbleIds.has(bubbleId)) {
                 continue;
               }
               
               const toolContent = typeof msgData.content === 'string' 
                 ? msgData.content 
                 : JSON.stringify(msgData.content, null, 2);
-              displayedMessageIds.add(messageId);
-              displayedMessageIdsGlobal.add(messageId);
-              await addMessage('tool', toolContent, toolName, undefined, messageId);
+              displayedbubbleIds.add(bubbleId);
+              displayedbubbleIdsGlobal.add(bubbleId);
+              await addMessage('tool', toolContent, toolName, undefined, bubbleId);
             }
             continue;
           }
@@ -1131,19 +1131,19 @@ const page = new NamedPage('agent_chat', async () => {
     }
   };
   
-  async function addMessage(role: string, content: string, toolName?: string, toolCalls?: any[], messageId?: string) {
+  async function addMessage(role: string, content: string, toolName?: string, toolCalls?: any[], bubbleId?: string) {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
     
-    // Generate messageId if not provided
-    if (!messageId) {
-      messageId = generateMessageId();
+    // Generate bubbleId if not provided
+    if (!bubbleId) {
+      bubbleId = generatebubbleId();
     }
     
     // Tool result messages - separate container
     if (role === 'tool') {
-      // Set messageId for tool messages to prevent duplicates
-      if (messageId) {
+      // Set bubbleId for tool messages to prevent duplicates
+      if (bubbleId) {
         // Check if tool message already exists
         const existingToolMessages = Array.from(chatMessages.children).filter(
           (el: any) => el.classList.contains('tool-result-container')
@@ -1155,8 +1155,8 @@ const page = new NamedPage('agent_chat', async () => {
           if (toolBubble) {
             const toolContent = toolBubble.querySelector('.tool-content pre');
             if (toolContent && toolContent.textContent?.trim() === content.trim()) {
-              // Found matching tool message, set messageId and skip
-              existingTool.setAttribute('data-message-id', messageId);
+              // Found matching tool message, set bubbleId and skip
+              existingTool.setAttribute('data-message-id', bubbleId);
               return;
             }
           }
@@ -1165,8 +1165,8 @@ const page = new NamedPage('agent_chat', async () => {
       
       const toolContainer = document.createElement('div');
       toolContainer.className = 'tool-result-container';
-      if (messageId) {
-        toolContainer.setAttribute('data-message-id', messageId);
+      if (bubbleId) {
+        toolContainer.setAttribute('data-message-id', bubbleId);
       }
       
       const toolBubble = document.createElement('div');
@@ -1194,9 +1194,9 @@ const page = new NamedPage('agent_chat', async () => {
     if (toolCalls && toolCalls.length > 0) {
       const toolCallContainer = document.createElement('div');
       toolCallContainer.className = 'tool-call-container';
-      // Set messageId as data attribute for deduplication (tool calls belong to assistant message)
-      if (messageId) {
-        toolCallContainer.setAttribute('data-message-id', messageId);
+      // Set bubbleId as data attribute for deduplication (tool calls belong to assistant message)
+      if (bubbleId) {
+        toolCallContainer.setAttribute('data-message-id', bubbleId);
       }
       
       const toolCallBubble = document.createElement('div');
@@ -1208,15 +1208,15 @@ const page = new NamedPage('agent_chat', async () => {
       toolCallBubble.appendChild(toolCallHeader);
       
       toolCalls.forEach((toolCall: any) => {
-        const toolCallId = toolCall.id || generateMessageId();
+        const toolCallId = toolCall.id || generatebubbleId();
         const toolName = toolCall.function?.name || 'unknown';
-        // Generate unique messageId for each tool call
-        const toolCallMessageId = `${messageId || generateMessageId()}_tool_${toolCallId}`;
+        // Generate unique bubbleId for each tool call
+        const toolCallbubbleId = `${bubbleId || generatebubbleId()}_tool_${toolCallId}`;
         
         const toolCallDiv = document.createElement('div');
         toolCallDiv.className = 'tool-call-item';
         toolCallDiv.setAttribute('data-tool-call-id', toolCallId);
-        toolCallDiv.setAttribute('data-message-id', toolCallMessageId);
+        toolCallDiv.setAttribute('data-message-id', toolCallbubbleId);
         toolCallDiv.setAttribute('data-tool-status', 'running'); // pending, running, success, error
         
         // Header with tool name and status
@@ -1287,8 +1287,8 @@ const page = new NamedPage('agent_chat', async () => {
     if (content || (!toolCalls || toolCalls.length === 0)) {
       const messageDiv = document.createElement('div');
       messageDiv.className = `chat-message ${role}`;
-      if (messageId) {
-        messageDiv.setAttribute('data-message-id', messageId);
+      if (bubbleId) {
+        messageDiv.setAttribute('data-message-id', bubbleId);
       }
       
       const messageBubble = document.createElement('div');
@@ -1366,15 +1366,15 @@ const page = new NamedPage('agent_chat', async () => {
         
         // Add new tool calls
       toolCalls.forEach((toolCall: any) => {
-          const toolCallId = toolCall.id || generateMessageId();
+          const toolCallId = toolCall.id || generatebubbleId();
           const toolName = toolCall.function?.name || 'unknown';
-          // Generate unique messageId for each tool call
-          const toolCallMessageId = `${generateMessageId()}_tool_${toolCallId}`;
+          // Generate unique bubbleId for each tool call
+          const toolCallbubbleId = `${generatebubbleId()}_tool_${toolCallId}`;
           
         const toolCallDiv = document.createElement('div');
         toolCallDiv.className = 'tool-call-item';
           toolCallDiv.setAttribute('data-tool-call-id', toolCallId);
-          toolCallDiv.setAttribute('data-message-id', toolCallMessageId);
+          toolCallDiv.setAttribute('data-message-id', toolCallbubbleId);
           toolCallDiv.setAttribute('data-tool-status', 'running'); // pending, running, success, error
           
           // Header with tool name and status
@@ -1483,7 +1483,7 @@ const page = new NamedPage('agent_chat', async () => {
   }
 
   // Generate unique message ID
-  function generateMessageId(): string {
+  function generatebubbleId(): string {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
       return crypto.randomUUID();
     }
@@ -1492,7 +1492,7 @@ const page = new NamedPage('agent_chat', async () => {
   }
 
   // Track displayed message IDs globally to prevent duplicates across updates
-  const displayedMessageIdsGlobal = new Set<string>();
+  const displayedbubbleIdsGlobal = new Set<string>();
 
   async function sendMessage() {
     const chatInput = document.getElementById('chatInput') as HTMLTextAreaElement;
@@ -1503,13 +1503,13 @@ const page = new NamedPage('agent_chat', async () => {
     const message = chatInput.value.trim();
     if (!message) return;
 
-    // Generate messageId for user message (frontend still generates user messageId)
-    const userMessageId = generateMessageId();
-    displayedMessageIdsGlobal.add(userMessageId);
-    await addMessage('user', message, undefined, undefined, userMessageId);
+    // Generate bubbleId for user message (frontend still generates user bubbleId)
+    const userbubbleId = generatebubbleId();
+    displayedbubbleIdsGlobal.add(userbubbleId);
+    await addMessage('user', message, undefined, undefined, userbubbleId);
     
-    const tempAssistantMessageId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    await addMessage('assistant', '', undefined, undefined, tempAssistantMessageId);
+    const tempAssistantbubbleId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    await addMessage('assistant', '', undefined, undefined, tempAssistantbubbleId);
     
     chatInput.value = '';
     setLoading(true);
@@ -1524,7 +1524,7 @@ const page = new NamedPage('agent_chat', async () => {
         },
         body: JSON.stringify({
           message,
-          messageId: userMessageId,
+          bubbleId: userbubbleId,
           history: [],
           createTaskRecord: true,
           // If currentSessionId is null, don't pass sessionId, let backend create new session
