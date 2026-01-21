@@ -1038,8 +1038,11 @@ declare module '@ejunz/common/types' {
             role: 'user' | 'assistant' | 'tool';
             content: string;
             timestamp: Date;
+            messageId?: string; // Unique message ID for deduplication
             toolName?: string;
             toolResult?: any;
+            tool_call_id?: string;
+            tool_calls?: any[];
         }>;
         agentToolCallCount?: number;
         agentTotalToolCalls?: number;

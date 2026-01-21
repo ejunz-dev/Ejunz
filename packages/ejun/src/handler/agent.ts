@@ -894,6 +894,7 @@ export async function processAgentChatInternal(
                                                 
                                                 // 保存工具结果消息到记录
                                                 if (taskRecordId) {
+                                                    const { randomUUID } = require('crypto');
                                                     await record.updateTask(adoc.domainId, taskRecordId, {
                                                         agentMessages: [{
                                                             role: 'tool',
@@ -901,6 +902,7 @@ export async function processAgentChatInternal(
                                                             tool_call_id: firstToolCall.id,
                                                             toolName: firstToolName,
                                                             timestamp: new Date(),
+                                                            messageId: randomUUID(), // Generate messageId for tool message
                                                         }],
                                                     });
                                                 }
@@ -1519,6 +1521,8 @@ export class AgentChatHandler extends Handler {
         }
 
         const message = this.request.body?.message;
+        const messageId = this.request.body?.messageId; // Get user messageId from request
+        const assistantMessageId = this.request.body?.assistantMessageId; // Get assistant messageId from request
         const history = this.request.body?.history || '[]';
         const stream = this.request.query?.stream === 'true' || this.request.body?.stream === true;
         const createTaskRecord = this.request.body?.createTaskRecord !== false; // 默认创建任务记录
@@ -1613,6 +1617,7 @@ export class AgentChatHandler extends Handler {
                 this.user._id,
                 message,
                 sessionId, // 关联到 session（必需）
+                messageId, // Pass messageId to addTask
             );
             
             // 将 record 添加到 session
@@ -1734,7 +1739,10 @@ export class AgentChatHandler extends Handler {
                 uid: this.user._id,
                 message,
                 history: JSON.stringify(chatHistory),
-                context,
+                context: {
+                    ...context,
+                    assistantMessageId, // Pass assistantMessageId to worker via context
+                },
                 priority: 0,
             });
             
@@ -2493,6 +2501,26 @@ export class AgentChatSessionConnectionHandler extends ConnectionHandler {
                 udoc,
             });
             
+            // Track previous status to detect state changes
+            let previousStatus: number | undefined = undefined;
+            const STATUS = require('../model/builtin').STATUS;
+            const ACTIVE_TASK_STATUSES = new Set([
+                STATUS.STATUS_TASK_WAITING,
+                STATUS.STATUS_TASK_FETCHED,
+                STATUS.STATUS_TASK_PROCESSING,
+                STATUS.STATUS_TASK_PENDING,
+            ]);
+            const isTerminalStatus = (status?: number) => {
+                if (typeof status !== 'number') return false;
+                return !ACTIVE_TASK_STATUSES.has(status);
+            };
+            
+            // Get initial status
+            const initialRecord = await record.get(this.domainId, new ObjectId(rid));
+            if (initialRecord) {
+                previousStatus = (initialRecord as any).status;
+            }
+            
             const dispose = this.ctx.on('record/change' as any, async (rdoc: any) => {
                 const r = rdoc as any;
                 AgentLogger.debug('Record change event received in session', {
@@ -2514,6 +2542,42 @@ export class AgentChatSessionConnectionHandler extends ConnectionHandler {
                         
                         // 手动构建 record 对象，只包含需要的字段，避免序列化问题
                         const r = fullRecord as any;
+                        const currentStatus = r.status;
+                        
+                        // Detect status changes for message lifecycle events
+                        const wasActive = previousStatus !== undefined && !isTerminalStatus(previousStatus);
+                        const isActive = !isTerminalStatus(currentStatus);
+                        const wasTerminal = previousStatus !== undefined && isTerminalStatus(previousStatus);
+                        const isTerminal = isTerminalStatus(currentStatus);
+                        
+                        // Send message_start event when transitioning from terminal/inactive to active
+                        if ((previousStatus === undefined || wasTerminal || !wasActive) && isActive) {
+                            AgentLogger.debug('Sending message_start event', { rid, previousStatus, currentStatus });
+                            this.send({
+                                type: 'message_start',
+                                rid,
+                                messageId: r.agentMessages && r.agentMessages.length > 0 
+                                    ? r.agentMessages[r.agentMessages.length - 1]?.messageId 
+                                    : undefined,
+                            });
+                        }
+                        
+                        // Send message_complete event when transitioning from active to terminal
+                        if (wasActive && isTerminal) {
+                            AgentLogger.debug('Sending message_complete event', { rid, previousStatus, currentStatus });
+                            const lastMessage = r.agentMessages && r.agentMessages.length > 0 
+                                ? r.agentMessages[r.agentMessages.length - 1] 
+                                : null;
+                            this.send({
+                                type: 'message_complete',
+                                rid,
+                                messageId: lastMessage?.messageId,
+                                status: currentStatus,
+                            });
+                        }
+                        
+                        previousStatus = currentStatus;
+                        
                         const recordData: any = {
                             _id: r._id?.toString(),
                             domainId: r.domainId,
