@@ -1,0 +1,120 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Agent Skills') }}</h1>
+        <div class="section__action">
+          <a href="{{ url('base_card_edit_branch', domainId=domainId, docId=skillsBase.docId, branch=branch, nodeId=rootNodeId) }}" class="button primary">
+            <span class="icon icon-add"></span>
+            {{ _('Create Skill') }}
+          </a>
+        </div>
+      </div>
+      <div class="section__body">
+        {% if skills and skills|length > 0 %}
+          <div class="skill-list">
+            {% for skill in skills %}
+              <div class="skill-item">
+                <div class="skill-item__header">
+                  <h3 class="skill-item__title">
+                    <a href="{{ url('base_card_detail_branch', domainId=domainId, docId=skillsBase.docId, branch=branch, nodeId=skill.nodeId, cardId=skill.docId) }}">
+                      {{ skill.title or '未命名技能' }}
+                    </a>
+                  </h3>
+                  <div class="skill-item__actions">
+                    <a href="{{ url('base_card_edit_branch', domainId=domainId, docId=skillsBase.docId, branch=branch, nodeId=skill.nodeId, cardId=skill.docId) }}" class="button small">
+                      <span class="icon icon-edit"></span>
+                      {{ _('Edit') }}
+                    </a>
+                  </div>
+                </div>
+                {% if skill.content %}
+                  <div class="skill-item__preview">
+                    {{ skill.content|truncate(200) }}
+                  </div>
+                {% endif %}
+                <div class="skill-item__meta">
+                  <span class="skill-item__node">{{ skill.nodeName or '未分类' }}</span>
+                  <span class="skill-item__updated">{{ datetimeSpan(skill.updateAt)|safe if skill.updateAt else 'N/A' }}</span>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="typo">
+            <p class="note">{{ _('暂无技能。点击上方"创建技能"按钮开始创建。') }}</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.skill-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.skill-item {
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 16px;
+  background: #fff;
+  transition: box-shadow 0.2s;
+}
+
+.skill-item:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.skill-item__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.skill-item__title {
+  margin: 0;
+  font-size: 1.1em;
+}
+
+.skill-item__title a {
+  color: #333;
+  text-decoration: none;
+}
+
+.skill-item__title a:hover {
+  color: #0066cc;
+}
+
+.skill-item__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.skill-item__preview {
+  color: #666;
+  font-size: 0.9em;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.skill-item__meta {
+  display: flex;
+  gap: 16px;
+  font-size: 0.85em;
+  color: #999;
+}
+
+.skill-item__node {
+  padding: 2px 8px;
+  background: #f0f0f0;
+  border-radius: 3px;
+}
+</style>
+{% endblock %}

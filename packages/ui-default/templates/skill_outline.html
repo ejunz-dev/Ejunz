@@ -1,0 +1,371 @@
+{% set page_name = "base_skill_outline" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<style>
+  body {
+    background: #fff !important;
+  }
+  #panel {
+    background: #fff !important;
+  }
+  #skill-outline-editor {
+    background: #fff !important;
+    min-height: 100vh !important;
+    width: 100% !important;
+  }
+  #skill-outline-editor ~ *,
+  #skill-outline-editor .row,
+  #skill-outline-editor .large-9.columns,
+  #skill-outline-editor .large-3.columns,
+  #skill-outline-editor .section,
+  #skill-outline-editor .section__body {
+    background: #fff !important;
+  }
+  #skill-outline-editor .section {
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    background: transparent !important;
+  }
+  #skill-outline-editor .row {
+    margin: 0 !important;
+    background: transparent !important;
+  }
+  #skill-outline-editor .large-9.columns,
+  #skill-outline-editor .large-3.columns {
+    padding: 0 !important;
+    background: transparent !important;
+  }
+  #skill-outline-editor .section__body {
+    padding: 0 !important;
+    background: transparent !important;
+  }
+</style>
+<script>
+  {{ set(UiContext, 'currentBranch', currentBranch) }}
+  {% if base and base.docId %}
+  {{ set(UiContext, 'base', {
+    domainId: domainId,
+    docId: base.docId.toString(),
+    currentBranch: currentBranch
+  }) }}
+  {% else %}
+  {{ set(UiContext, 'base', {
+    domainId: domainId,
+    docId: '',
+    currentBranch: currentBranch
+  }) }}
+  {% endif %}
+  {{ set(UiContext, 'nodeCardsMap', nodeCardsMap or {}) }}
+  {{ set(UiContext, 'files', files or []) }}
+  // Helper function to get Notification
+  async function getNotification() {
+    if (window.Ejunz?.components?.Notification) {
+      return window.Ejunz.components.Notification;
+    }
+    try {
+      const module = await import('vj/components/notification');
+      return module.default;
+    } catch (e) {
+      // Fallback to alert if Notification is not available
+      return {
+        success: (msg) => { alert(msg); return Promise.resolve(); },
+        error: (msg) => { alert(msg); return Promise.resolve(); },
+        info: (msg) => { alert(msg); return Promise.resolve(); }
+      };
+    }
+  }
+</script>
+<div class="row">
+  <div class="large-12 columns">
+    <div class="section">
+      <div class="section__body no-padding">
+        <div id="skill-outline-editor" data-doc-id="{% if base and base.docId %}{{ base.docId.toString() }}{% endif %}" style="height: 100vh; width: 100%;"></div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Info和History侧边栏已移除 -->
+  <div class="large-3 columns" style="display: none;">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Info') }}</h1>
+      </div>
+      <div class="section__body">
+        {% if branches %}
+          <div style="margin-bottom: 10px;">
+            <div style="font-size: 12px; color: #888; margin-bottom: 4px;">{{ _('Branch') }}</div>
+            <select id="branch-select" style="width: 100%; margin-bottom: 6px;" onchange="(function(){
+              var sel = document.getElementById('branch-select');
+              var b = sel && sel.value ? sel.value : '{{ currentBranch }}';
+              var url = '{{ url('base_skill_outline_branch', domainId=domainId, branch='__BR__') }}'.replace('__BR__', encodeURIComponent(b));
+              window.location.href = url;
+            })()">
+              {% for b in branches %}
+                <option value="{{ b }}" {% if b == currentBranch %}selected{% endif %}>{{ b }}</option>
+              {% endfor %}
+            </select>
+
+            {% if currentBranch == 'main' %}
+            <button type="button" class="button success expanded" style="margin-bottom: 8px;" onclick="(function(){
+              var name = window.prompt('{{ _('Enter new branch name') }}');
+              if (!name) return;
+              var url = '{{ url('base_branch_create_with_param', domainId=domainId, branch='__BR__') }}'.replace('__BR__', encodeURIComponent(name));
+              window.location.href = url;
+            })()">{{ _('Create Branch') }}</button>
+            {% endif %}
+          </div>
+        {% endif %}
+        
+        {% if base and gitStatus %}
+          <div class="typo" style="margin-top: 10px; padding: 12px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; font-size: 12px;">
+            <div style="font-weight: 600; margin-bottom: 8px; font-size: 13px;">📊 {{ _('Git Status') }}</div>
+            
+            {% if gitStatus.hasLocalRepo %}
+              <div style="margin-bottom: 6px;">
+                <span style="color: #28a745;">✓</span> {{ _('Local Repository') }}
+                {% if gitStatus.currentBranch %}
+                  <span style="color: #888; font-size: 11px;">({{ gitStatus.currentBranch }})</span>
+                {% endif %}
+              </div>
+              
+              {% if gitStatus.hasLocalBranch %}
+                <div style="margin-bottom: 6px;">
+                  <span style="color: #28a745;">✓</span> {{ _('Local Branch') }}: <strong>{{ currentBranch }}</strong>
+                  <span style="color: #888; font-size: 11px;">({{ gitStatus.localCommits }} {{ _('commits') }})</span>
+                </div>
+                
+                {% if gitStatus.uncommittedChanges %}
+                  <div style="margin-bottom: 6px; color: #dc3545;">
+                    <span>⚠</span> {{ _('Uncommitted changes') }}
+                  </div>
+                {% endif %}
+                
+                {% if gitStatus.lastCommit %}
+                  <div style="margin-bottom: 6px; font-size: 11px; color: #666;">
+                    <div style="margin-top: 4px;">
+                      <strong>{{ _('Last Commit') }}:</strong> {{ gitStatus.lastCommitShort or gitStatus.lastCommit }}
+                    </div>
+                    {% if gitStatus.lastCommitMessage %}
+                      <div style="margin-top: 2px; color: #888; word-break: break-word; white-space: pre-wrap;">{{ gitStatus.lastCommitMessage }}</div>
+                    {% elif gitStatus.lastCommit %}
+                      <div style="margin-top: 2px; color: #888; font-style: italic;">{{ _('No commit message') }}</div>
+                    {% endif %}
+                    {% if gitStatus.lastCommitTime %}
+                      <div style="margin-top: 2px; color: #888;">{{ gitStatus.lastCommitTime }}</div>
+                    {% endif %}
+                  </div>
+                {% endif %}
+              {% else %}
+                <div style="margin-bottom: 6px; color: #ffc107;">
+                  <span>⚠</span> {{ _('Local branch not found') }}: {{ currentBranch }}
+                </div>
+              {% endif %}
+              
+              {% if gitStatus.hasRemote %}
+                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #dee2e6;">
+                  <div style="margin-bottom: 6px;">
+                    <span style="color: #28a745;">✓</span> {{ _('Remote Repository') }}
+                  </div>
+                  
+                  {% if gitStatus.hasRemoteBranch %}
+                    <div style="margin-bottom: 6px;">
+                      <span style="color: #28a745;">✓</span> {{ _('Remote Branch') }}: <strong>{{ currentBranch }}</strong>
+                      <span style="color: #888; font-size: 11px;">({{ gitStatus.remoteCommits }} {{ _('commits') }})</span>
+                    </div>
+                    
+                    {% if gitStatus.behind > 0 %}
+                      <div style="margin-bottom: 6px; color: #ffc107;">
+                        <span>⬇</span> {{ _('Behind remote by {0} commit(s)').format(gitStatus.behind) }}
+                      </div>
+                    {% endif %}
+                    
+                    {% if gitStatus.ahead > 0 %}
+                      <div style="margin-bottom: 6px; color: #17a2b8;">
+                        <span>⬆</span> {{ _('Ahead of remote by {0} commit(s)').format(gitStatus.ahead) }}
+                      </div>
+                    {% endif %}
+                    
+                    {% if gitStatus.behind == 0 and gitStatus.ahead == 0 and gitStatus.hasRemoteBranch %}
+                      <div style="margin-bottom: 6px; color: #28a745;">
+                        <span>✓</span> {{ _('Up to date with remote') }}
+                      </div>
+                    {% endif %}
+                  {% else %}
+                    <div style="margin-bottom: 6px; color: #ffc107;">
+                      <span>⚠</span> {{ _('Remote branch not found') }}: {{ currentBranch }}
+                    </div>
+                    {% if gitStatus.hasLocalBranch and gitStatus.localCommits > 0 %}
+                      <div style="margin-bottom: 6px; color: #17a2b8; font-size: 12px;">
+                        <span>ℹ</span> {{ _('Push will create a new remote branch') }}
+                      </div>
+                    {% endif %}
+                  {% endif %}
+                </div>
+              {% else %}
+                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #dee2e6; color: #888;">
+                  <span>—</span> {{ _('No remote repository configured') }}
+                </div>
+              {% endif %}
+            {% else %}
+              <div style="margin-bottom: 6px; color: #888;">
+                <span>—</span> {{ _('No local repository') }}
+              </div>
+            {% endif %}
+          </div>
+          
+          {% if gitStatus.uncommittedChanges %}
+            <button type="button" id="commit-btn" class="button success expanded" style="margin-bottom: 8px; margin-top: 10px;" onclick="(function(){
+              var note = window.prompt('{{ _('Enter commit message (optional)') }}', '');
+              if (note === null) return;
+              
+              var btn = document.getElementById('commit-btn');
+              var originalText = btn.textContent;
+              btn.disabled = true;
+              btn.textContent = '{{ _('Committing...') }}';
+              
+              fetch('{{ url('base_commit_branch', domainId=domainId, branch=currentBranch) }}', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ note: note || '' })
+              })
+              .then(response => response.json())
+              .then(async data => {
+                const Notification = await getNotification();
+                if (data.ok) {
+                  await Notification.success('{{ _('Changes committed successfully') }}');
+                  setTimeout(() => window.location.reload(), 1000);
+                } else {
+                  await Notification.error(data.error || '{{ _('Commit failed') }}');
+                  btn.disabled = false;
+                  btn.textContent = originalText;
+                }
+              })
+              .catch(async error => {
+                const Notification = await getNotification();
+                await Notification.error('{{ _('Commit failed') }}: ' + error.message);
+                btn.disabled = false;
+                btn.textContent = originalText;
+              });
+            })()">{{ _('Commit Changes') }}</button>
+          {% endif %}
+          
+          {% if gitStatus.ahead > 0 %}
+            <button type="button" id="push-btn" class="button warning expanded" style="margin-bottom: 8px;" onclick="(function(){
+              if (!confirm('{{ _('Are you sure you want to push to GitHub?') }}')) return;
+              
+              var btn = document.getElementById('push-btn');
+              var originalText = btn.textContent;
+              btn.disabled = true;
+              btn.textContent = '{{ _('Pushing...') }}';
+              
+              fetch('{{ url('base_github_push_branch', domainId=domainId, branch=currentBranch) }}', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                }
+              })
+              .then(response => response.json())
+              .then(async data => {
+                const Notification = await getNotification();
+                if (data.ok) {
+                  await Notification.success('{{ _('Successfully pushed to GitHub') }}');
+                  setTimeout(() => window.location.reload(), 1000);
+                } else {
+                  await Notification.error(data.error || '{{ _('Push to GitHub failed') }}');
+                  btn.disabled = false;
+                  btn.textContent = originalText;
+                }
+              })
+              .catch(async error => {
+                const Notification = await getNotification();
+                await Notification.error('{{ _('Push to GitHub failed') }}: ' + error.message);
+                btn.disabled = false;
+                btn.textContent = originalText;
+              });
+            })()">{{ _('Push to GitHub') }}</button>
+          {% elif gitStatus.behind > 0 %}
+            <button type="button" id="pull-btn" class="button alert expanded" style="margin-bottom: 8px;" onclick="(function(){
+              if (!confirm('{{ _('Are you sure you want to pull from GitHub? This may overwrite local changes.') }}')) return;
+              
+              var btn = document.getElementById('pull-btn');
+              var originalText = btn.textContent;
+              btn.disabled = true;
+              btn.textContent = '{{ _('Pulling...') }}';
+              
+              fetch('{{ url('base_github_pull_branch', domainId=domainId, branch=currentBranch) }}', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                }
+              })
+              .then(response => response.json())
+              .then(async data => {
+                const Notification = await getNotification();
+                if (data.ok) {
+                  await Notification.success('{{ _('Successfully pulled from GitHub') }}');
+                  setTimeout(() => window.location.reload(), 1000);
+                } else {
+                  await Notification.error(data.error || '{{ _('Pull from GitHub failed') }}');
+                  btn.disabled = false;
+                  btn.textContent = originalText;
+                }
+              })
+              .catch(async error => {
+                const Notification = await getNotification();
+                await Notification.error('{{ _('Pull from GitHub failed') }}: ' + error.message);
+                btn.disabled = false;
+                btn.textContent = originalText;
+              });
+            })()">{{ _('Pull from GitHub') }}</button>
+          {% elif not gitStatus.hasRemoteBranch and gitStatus.hasLocalBranch and gitStatus.hasRemote and gitStatus.localCommits > 0 %}
+            <button type="button" id="push-btn" class="button warning expanded" style="margin-bottom: 8px;" onclick="(function(){
+              if (!confirm('{{ _('Are you sure you want to push to GitHub?') }}')) return;
+              
+              var btn = document.getElementById('push-btn');
+              var originalText = btn.textContent;
+              btn.disabled = true;
+              btn.textContent = '{{ _('Pushing...') }}';
+              
+              fetch('{{ url('base_github_push_branch', domainId=domainId, branch=currentBranch) }}', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                }
+              })
+              .then(response => response.json())
+              .then(async data => {
+                const Notification = await getNotification();
+                if (data.ok) {
+                  await Notification.success('{{ _('Successfully pushed to GitHub') }}');
+                  setTimeout(() => window.location.reload(), 1000);
+                } else {
+                  await Notification.error(data.error || '{{ _('Push to GitHub failed') }}');
+                  btn.disabled = false;
+                  btn.textContent = originalText;
+                }
+              })
+              .catch(async error => {
+                const Notification = await getNotification();
+                await Notification.error('{{ _('Push to GitHub failed') }}: ' + error.message);
+                btn.disabled = false;
+                btn.textContent = originalText;
+              });
+            })()">{{ _('Push to GitHub') }} ({{ _('Create remote branch') }})</button>
+          {% endif %}
+        {% endif %}
+      </div>
+      
+    </div>
+  </div>
+</div>
+
+<script>
+  // 初始化时加载历史记录（仅当 base 存在时）
+  {% if base %}
+  // 定期刷新历史记录（每10秒）
+  {% endif %}
+</script>
+{% endblock %}

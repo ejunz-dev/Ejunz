@@ -208,8 +208,7 @@ const EditableProblem = React.memo(({
       });
       
       // 构建图片 URL（下载/预览端点是 /file）
-      const domainId = (window as any).UiContext?.domainId || 'system';
-      const imageUrl = `/d/${domainId}/base/${docId}/file/${encodeURIComponent(filename)}`;
+      const imageUrl = getBaseUrl(`/${docId}/file/${encodeURIComponent(filename)}`, docId);
       setProblemImageUrl(imageUrl);
     } catch (error: any) {
       Notification.error(`图片上传失败: ${error.message || '未知错误'}`);
@@ -839,7 +838,7 @@ function migrateOrderFields(base: BaseDoc): { base: BaseDoc; needsSave: boolean;
   };
 }
 
-function BaseEditorMode({ docId, initialData }: { docId: string | undefined; initialData: BaseDoc }) {
+export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docId: string | undefined; initialData: BaseDoc; basePath?: string }) {
   // 主题检测
   const getTheme = useCallback(() => {
     try {
@@ -918,12 +917,6 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
     if (migrationResult.needsSave) {
       const saveMigration = async () => {
         try {
-          const domainId = (window as any).UiContext?.domainId || 'system';
-          const getBaseUrl = (path: string, docId?: string): string => {
-            // 不再需要 docId，直接使用 /base 路径
-            return `/d/${domainId}/base${path}`;
-          };
-          
           // 保存nodes的order
           // 过滤掉临时节点和边，确保不会保存临时数据
           const migrationNodes = migrationResult.base.nodes.filter(n => !n.id.startsWith('temp-node-'));
@@ -941,8 +934,9 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
           
           // 批量更新cards的order
           if (migrationResult.cardUpdates.length > 0) {
+            const domainId = (window as any).UiContext?.domainId || 'system';
             const updatePromises = migrationResult.cardUpdates.map(update =>
-              request.post(`/d/${domainId}/base/card/${update.cardId}`, {
+              request.post(getBaseUrl(`/card/${update.cardId}`), {
                 operation: 'update',
                 nodeId: update.nodeId,
                 order: update.order,
@@ -1155,12 +1149,12 @@ function BaseEditorMode({ docId, initialData }: { docId: string | undefined; ini
     };
   }, []);
 
-  // 获取带 domainId 的 base URL
-  const getBaseUrl = (path: string, docId?: string): string => {
+  // 获取带 domainId 的 base URL（使用 useCallback 以便在依赖中使用）
+  const getBaseUrl = useCallback((path: string, docId?: string): string => {
     const domainId = (window as any).UiContext?.domainId || 'system';
-    // 不再需要 docId，直接使用 /base 路径
-    return `/d/${domainId}/base${path}`;
-  };
+    // 使用 basePath 参数
+    return `/d/${domainId}/${basePath}${path}`;
+  }, [basePath]);
 
   // 构建文件树（支持折叠）
   const fileTree = useMemo(() => {
@@ -6870,11 +6864,10 @@ ${currentCardContext}
                     <div
                       key={file._id}
                       onClick={() => {
-                        const domainId = (window as any).UiContext?.domainId || 'system';
                         const branch = base.currentBranch || 'main';
                         let url = docId 
-                          ? `/d/${domainId}/base/${docId}/file/${encodeURIComponent(file.name)}`
-                          : `/d/${domainId}/base/bid/${base.bid}/file/${encodeURIComponent(file.name)}`;
+                          ? getBaseUrl(`/${docId}/file/${encodeURIComponent(file.name)}`)
+                          : getBaseUrl(`/bid/${base.bid}/file/${encodeURIComponent(file.name)}`);
                         // 添加 noDisposition=1 参数以启用预览
                         url = url.includes('?') ? `${url}&noDisposition=1` : `${url}?noDisposition=1`;
                         window.open(url, '_blank');
@@ -7689,11 +7682,7 @@ ${currentCardContext}
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <a
-              href={(() => {
-                const domainId = (window as any).UiContext?.domainId || 'system';
-                const branch = base.currentBranch || 'main';
-                return `/d/${domainId}/base/${docId}/branch/${branch}`;
-              })()}
+              href={getBaseUrl(`/${docId}/branch/${base.currentBranch || 'main'}`)}
               style={{
                 padding: '4px 8px',
                 fontSize: '12px',
@@ -8611,9 +8600,12 @@ const getBaseUrl = (path: string, docId: string): string => {
   return `/d/${domainId}/base/${docId}${path}`;
 };
 
-const page = new NamedPage('base_editor', async () => {
+const page = new NamedPage(['base_editor', 'base_skill_editor', 'base_skill_editor_branch'], async (pageName) => {
   try {
-    const $container = $('#base-editor-mode');
+    // 根据页面名称判断是 base 还是 skill
+    const isSkill = pageName === 'base_skill_editor' || pageName === 'base_skill_editor_branch';
+    const containerId = isSkill ? '#skill-editor-mode' : '#base-editor-mode';
+    const $container = $(containerId);
     if (!$container.length) {
       return;
     }
@@ -8621,27 +8613,28 @@ const page = new NamedPage('base_editor', async () => {
     const domainId = (window as any).UiContext?.domainId || 'system';
     const docId = $container.data('doc-id') || $container.attr('data-doc-id') || '';
 
-    // 加载知识库数据（不依赖 docId，直接通过 domainId 获取）
+    // 加载知识库数据
     let initialData: BaseDoc;
     try {
-      // 使用 /base/data 路由，不需要 docId
-      const response = await request.get(`/d/${domainId}/base/data`);
+      // 根据页面类型选择不同的 API 路径
+      const apiPath = isSkill ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+      const response = await request.get(apiPath);
       initialData = response;
       // 如果响应中没有 docId，使用空字符串
       if (!initialData.docId) {
         initialData.docId = docId || '';
       }
     } catch (error: any) {
-      Notification.error('加载知识库失败: ' + (error.message || '未知错误'));
+      Notification.error(`加载${isSkill ? 'Skills' : '知识库'}失败: ` + (error.message || '未知错误'));
       return;
     }
 
     ReactDOM.render(
-      <BaseEditorMode docId={initialData.docId || ''} initialData={initialData} />,
+      <BaseEditorMode docId={initialData.docId || ''} initialData={initialData} basePath={isSkill ? 'base/skill' : 'base'} />,
       $container[0]
     );
   } catch (error: any) {
-    console.error('Failed to initialize base editor mode:', error);
+    console.error('Failed to initialize editor mode:', error);
     Notification.error('初始化编辑器模式失败: ' + (error.message || '未知错误'));
   }
 });

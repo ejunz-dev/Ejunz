@@ -366,12 +366,12 @@ const OutlineView = ({
     const bid = (window as any).UiContext?.base?.bid;
     
     if (docId) {
-      return `/d/${domainId}/base/${docId}/branch/${branch}/node/${nodeId}/cards?cardId=${card.docId}`;
+      return `/d/${domainId}/${basePath}/${docId}/branch/${branch}/node/${nodeId}/cards?cardId=${card.docId}`;
     } else if (bid) {
-      return `/d/${domainId}/base/bid/${bid}/branch/${branch}/node/${nodeId}/cards?cardId=${card.docId}`;
+      return `/d/${domainId}/${basePath}/bid/${bid}/branch/${branch}/node/${nodeId}/cards?cardId=${card.docId}`;
     }
     return '#';
-  }, []);
+  }, [basePath]);
 
   // 递归渲染节点树
   const renderNodeTree = useCallback(
@@ -715,7 +715,7 @@ const OutlineView = ({
   );
 };
 
-function BaseOutlineEditor({ docId, initialData }: { docId: string | undefined; initialData: BaseDoc }) {
+export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { docId: string | undefined; initialData: BaseDoc; basePath?: string }) {
   const [base, setBase] = useState<BaseDoc>(initialData);
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -789,11 +789,6 @@ function BaseOutlineEditor({ docId, initialData }: { docId: string | undefined; 
           !e.target.startsWith('temp-node-') &&
           !e.id.startsWith('temp-edge-')
         );
-        
-        const domainId = (window as any).UiContext?.domainId || 'system';
-        const getBaseUrl = (path: string, docId: string) => {
-          return `/d/${domainId}/base/${docId}${path}`;
-        };
         
         await request.post(getBaseUrl('/save', docId), {
           nodes: filteredNodes,
@@ -2566,7 +2561,7 @@ function BaseOutlineEditor({ docId, initialData }: { docId: string | undefined; 
     cleanupOldConnection();
     
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const wsUrl = `/d/${domainId}/base/${docId}/ws`;
+    const wsUrl = `/d/${domainId}/${basePath}/${docId}/ws`;
 
     // 连接 WebSocket（使用 ReconnectingWebSocket，它自带重连功能）
     import('../components/socket').then(({ default: WebSocket }) => {
@@ -2738,7 +2733,7 @@ function BaseOutlineEditor({ docId, initialData }: { docId: string | undefined; 
         wsRef.current = null;
       }
     };
-  }, [docId]); // 只依赖 docId，避免频繁重建连接
+  }, [docId, basePath]); // 依赖 docId 和 basePath，当它们变化时重建连接
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', backgroundColor: '#fff', overflow: 'hidden' }}>
@@ -2774,8 +2769,13 @@ function BaseOutlineEditor({ docId, initialData }: { docId: string | undefined; 
         <a
           href={(() => {
             const domainId = (window as any).UiContext?.domainId;
+            // skill 页面不使用 branch，直接使用 /base/skill/editor
+            if (basePath === 'base/skill') {
+              return `/d/${domainId}/base/skill/editor`;
+            }
+            // base 页面使用 branch
             const branch = base.currentBranch || 'main';
-            return `/d/${domainId}/base/branch/${branch}/editor`;
+            return `/d/${domainId}/${basePath}/branch/${branch}/editor`;
           })()}
           style={{
             padding: '6px 12px',
@@ -3720,9 +3720,12 @@ const getBaseUrl = (path: string, docId: string): string => {
   return `/d/${domainId}/base/${docId}${path}`;
 };
 
-const page = new NamedPage('base_outline', async () => {
+const page = new NamedPage(['base_outline', 'base_skill_outline'], async (pageName) => {
   try {
-    const $container = $('#base-outline-editor');
+    // 根据页面名称判断是 base 还是 skill
+    const isSkill = pageName === 'base_skill_outline';
+    const containerId = isSkill ? '#skill-outline-editor' : '#base-outline-editor';
+    const $container = $(containerId);
     if (!$container.length) {
       return;
     }
@@ -3730,27 +3733,31 @@ const page = new NamedPage('base_outline', async () => {
     const domainId = (window as any).UiContext?.domainId || 'system';
     const docId = $container.data('doc-id') || $container.attr('data-doc-id') || '';
 
-    // 加载思维导图数据（不依赖 docId，直接通过 domainId 获取）
+    // 加载思维导图数据
     let initialData: BaseDoc;
     try {
-      // 使用 /base/data 路由，不需要 docId
-      const response = await request.get(`/d/${domainId}/base/data`);
+      // 根据页面类型选择不同的 API 路径
+      const apiPath = isSkill ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+      const response = await request.get(apiPath);
       initialData = response;
       // 如果响应中没有 docId，使用空字符串
       if (!initialData.docId) {
         initialData.docId = docId || '';
       }
     } catch (error: any) {
-      Notification.error('加载知识库失败: ' + (error.message || '未知错误'));
+      console.error('[BaseOutline] Failed to load data:', error);
+      Notification.error(`加载${isSkill ? 'Skills' : '知识库'}失败: ` + (error.message || '未知错误'));
       return;
     }
 
+    console.log('[BaseOutline] Rendering BaseOutlineEditor...');
     ReactDOM.render(
-      <BaseOutlineEditor docId={initialData.docId || ''} initialData={initialData} />,
+      <BaseOutlineEditor docId={initialData.docId || ''} initialData={initialData} basePath={isSkill ? 'base/skill' : 'base'} />,
       $container[0]
     );
+    console.log('[BaseOutline] Render complete');
   } catch (error: any) {
-    console.error('Failed to initialize base outline editor:', error);
+    console.error('[BaseOutline] Failed to initialize outline editor:', error);
     Notification.error('初始化文件模式编辑器失败: ' + (error.message || '未知错误'));
   }
 });

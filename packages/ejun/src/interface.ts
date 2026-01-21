@@ -326,6 +326,7 @@ export interface BaseDoc {
     owner: number;
     title: string;
     content: string; // 描述性内容（可选）
+    type?: 'base' | 'skill';
     nodes: BaseNode[]; // 节点列表（向后兼容，新数据存储在 branchData 中）
     edges: BaseEdge[]; // 连接列表（向后兼容，新数据存储在 branchData 中）
     branchData?: { [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] } }; // 按分支存储的数据
@@ -532,6 +533,7 @@ declare module './model/mcp' {
         content?: string; // document 系统要求
     }
 }
+
 
 // Client Chat document
 declare module './model/client_chat' {

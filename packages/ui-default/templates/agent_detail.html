@@ -22,6 +22,22 @@
           {{ adoc['content']|markdown|safe }}
         </div>
 
+        <div class="section" style="margin-top: 20px;">
+          <div class="section__header">
+            <h2 class="section__title">{{ _('Agent Skills') }}</h2>
+          </div>
+          <div class="section__body">
+            <div class="typo">
+              <p class="help-text">
+                {{ _('Agent 会自动使用此 Domain 的所有 Skills。Skills 通过 Base 的文件夹系统管理。') }}
+                <a href="{{ url('base_skill', { domainId: domainId }) }}" target="_blank" style="margin-left: 10px;">
+                  {{ _('管理 Skills') }} →
+                </a>
+              </p>
+            </div>
+          </div>
+        </div>
+
         {% if adoc.memory %}
         <div class="section" style="margin-top: 20px;">
           <div class="section__header">

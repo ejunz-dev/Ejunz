@@ -16,9 +16,13 @@ export const TYPE_CARD: 71 = 71;
 export class BaseModel {
     /**
      * 通过 domainId 获取思维导图（一个 domain 一个 base）
+     * 排除 Skills Base（type 为 'skill'）
      */
     static async getByDomain(domainId: string): Promise<BaseDoc | null> {
-        const result = await document.getMulti(domainId, TYPE_MM, {}).limit(1).toArray();
+        // 排除 Skills Base，确保普通 base 和 Skills base 独立
+        const result = await document.getMulti(domainId, TYPE_MM, {
+            type: { $ne: 'skill' }
+        }).limit(1).toArray();
         return result.length > 0 ? result[0] : null;
     }
 
@@ -34,19 +38,28 @@ export class BaseModel {
         branch?: string,
         ip?: string,
         parentId?: ObjectId,
-        domainName?: string
+        domainName?: string,
+        type?: 'base' | 'skill'
     ): Promise<{ docId: ObjectId }> {
-        // 检查 domain 是否已有 base
-        const existing = await this.getByDomain(domainId);
-        if (existing) {
-            // 如果已存在，更新标题和内容（如果需要）
-            if (title && title !== existing.title) {
-                await this.update(domainId, existing.docId, { title });
+        // 如果是 skill 类型，使用不同的查询逻辑
+        if (type === 'skill') {
+            const existing = await document.getMulti(domainId, TYPE_MM, { type: 'skill' }).limit(1).toArray();
+            if (existing.length > 0) {
+                return { docId: existing[0].docId };
             }
-            if (content !== undefined && content !== existing.content) {
-                await this.update(domainId, existing.docId, { content });
+        } else {
+            // 检查 domain 是否已有 base（排除 skill 类型）
+            const existing = await this.getByDomain(domainId);
+            if (existing) {
+                // 如果已存在，更新标题和内容（如果需要）
+                if (title && title !== existing.title) {
+                    await this.update(domainId, existing.docId, { title });
+                }
+                if (content !== undefined && content !== existing.content) {
+                    await this.update(domainId, existing.docId, { content });
+                }
+                return { docId: existing.docId };
             }
-            return { docId: existing.docId };
         }
 
         // 创建根节点，使用域名字作为默认名称
@@ -65,6 +78,7 @@ export class BaseModel {
             domainId,
             title: title || '未命名思维导图',
             content: content || '',
+            type: type || 'base', // 默认为 'base'，如果未指定
             owner,
             nodes: [rootNode],
             edges: [],
