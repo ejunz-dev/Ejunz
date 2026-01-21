@@ -249,13 +249,7 @@ export async function apply(ctx: EjunzContext) {
                             },
                         };
                     });
-                    logger.debug('Built tools for API request: count=%d', requestBody.tools.length);
                 }
-                
-                logger.debug('API request body: model=%s, messages count=%d, tools count=%d', 
-                    requestBody.model, 
-                    requestBody.messages.length,
-                    requestBody.tools?.length || 0);
                 
                 const systemMessage = context.systemMessage || '';
                 const logMsg = `\n========== [Agent API Request - Worker Process] ==========\n` +
@@ -287,14 +281,6 @@ export async function apply(ctx: EjunzContext) {
                 });
                 
                 if (normalizedHistory.length > 0) {
-                    logger.debug('History messages: %s', JSON.stringify(normalizedHistory.map((msg: any) => ({
-                        role: msg.role,
-                        hasContent: !!msg.content,
-                        contentLength: msg.content?.length || 0,
-                        hasToolCalls: !!msg.tool_calls,
-                        toolCallsCount: msg.tool_calls?.length || 0,
-                        hasToolCallId: !!msg.tool_call_id,
-                    }))));
                 }
                 
                 let iterations = 0;
@@ -315,36 +301,59 @@ export async function apply(ctx: EjunzContext) {
                         return;
                     }
                     lastUpdateTime = now;
-                    
+
                     try {
                         const currentRecord = await RecordModel.get(domainId, recordId);
                         const currentMessages = (currentRecord as any)?.agentMessages || [];
-                        const lastMessage = currentMessages[currentMessages.length - 1];
+
+                        // Find the last assistant message in the current record
+                        // This is the message we should update (for streaming)
+                        let assistantMessageIndex = -1;
+                        for (let i = currentMessages.length - 1; i >= 0; i--) {
+                            if (currentMessages[i].role === 'assistant') {
+                                assistantMessageIndex = i;
+                                break;
+                            }
+                        }
                         
-                        if (lastMessage && lastMessage.role === 'assistant') {
-                            // 更新最后一条 assistant 消息
+                        if (assistantMessageIndex >= 0) {
+                            const existingMessage = currentMessages[assistantMessageIndex];
                             const updateData: any = {
-                                [`agentMessages.${currentMessages.length - 1}.content`]: content,
-                                [`agentMessages.${currentMessages.length - 1}.timestamp`]: new Date(),
+                                [`agentMessages.${assistantMessageIndex}.content`]: content,
+                                [`agentMessages.${assistantMessageIndex}.timestamp`]: new Date(),
                             };
+                            
+                            // Ensure messageId exists (should always exist, but handle edge case)
+                            if (!existingMessage.messageId) {
+                                const { randomUUID } = require('crypto');
+                                const newMessageId = randomUUID();
+                                updateData[`agentMessages.${assistantMessageIndex}.messageId`] = newMessageId;
+                                logger.warn('Existing assistant message missing messageId, generated new one:', newMessageId);
+                            }
+                            
                             if (toolCalls) {
-                                updateData[`agentMessages.${currentMessages.length - 1}.tool_calls`] = toolCalls;
+                                updateData[`agentMessages.${assistantMessageIndex}.tool_calls`] = toolCalls;
                             }
                             await RecordModel.update(domainId, recordId, updateData);
                         } else {
+                            const { randomUUID } = require('crypto');
+                            const messageIdToUse = randomUUID();
+                            
                             const assistantMsg: any = {
                                 role: 'assistant',
                                 content: content || '',
                                 timestamp: new Date(),
+                                messageId: messageIdToUse,
                             };
                             if (toolCalls) {
                                 assistantMsg.tool_calls = toolCalls;
                             }
                             await RecordModel.update(domainId, recordId, undefined, {
-                                agentMessages: assistantMsg,
+                                agentMessages: { $each: [assistantMsg] },
                             } as any);
                         }
                     } catch (e) {
+                        logger.error('Error in updateRecordContent:', e);
                     }
                 };
                 
@@ -534,6 +543,16 @@ export async function apply(ctx: EjunzContext) {
                                     [`agentMessages.${currentMessages.length - 1}.content`]: accumulatedContent,
                                     [`agentMessages.${currentMessages.length - 1}.timestamp`]: new Date(),
                                 };
+                                // BACKEND GENERATES: Ensure messageId is always set
+                                if (lastMessage.messageId) {
+                                    // Preserve existing messageId
+                                    finalUpdateData[`agentMessages.${currentMessages.length - 1}.messageId`] = lastMessage.messageId;
+                                } else {
+                                    // Generate new messageId if missing
+                                    const { randomUUID } = require('crypto');
+                                    const finalMessageId = randomUUID();
+                                    finalUpdateData[`agentMessages.${currentMessages.length - 1}.messageId`] = finalMessageId;
+                                }
                                 if (toolCalls.length > 0) {
                                     finalUpdateData[`agentMessages.${currentMessages.length - 1}.tool_calls`] = toolCalls;
                                 }
@@ -568,12 +587,10 @@ export async function apply(ctx: EjunzContext) {
                             if (toolInfo) {
                                 if (toolInfo.token) {
                                     toolToken = toolInfo.token;
-                                    logger.debug('Found token for tool=%s from context', toolName);
                                 }
                                 // 兼容旧的serverId方式
                                 if (toolInfo.serverId) {
                                     toolServerId = toolInfo.serverId;
-                                    logger.debug('Found serverId=%d for tool=%s from context', toolServerId, toolName);
                                 }
                             }
                         }
@@ -695,7 +712,6 @@ export async function apply(ctx: EjunzContext) {
                             ...normalizedMessagesForTurn,
                         ];
                         
-                        logger.debug('Next iteration request: messages count=%d', requestBody.messages.length);
                         
                         accumulatedContent = '';
                     } else {
@@ -710,16 +726,23 @@ export async function apply(ctx: EjunzContext) {
                             const lastMessage = currentMessages[currentMessages.length - 1];
                             if (!lastMessage || lastMessage.role !== 'assistant' || lastMessage.content !== accumulatedContent) {
                                 if (lastMessage && lastMessage.role === 'assistant') {
-                                    await RecordModel.update(domainId, recordId, {
+                                    const updateData: any = {
                                         [`agentMessages.${currentMessages.length - 1}.content`]: accumulatedContent,
                                         [`agentMessages.${currentMessages.length - 1}.timestamp`]: new Date(),
-                                    });
+                                    };
+                                    // Preserve messageId if it exists
+                                    if (lastMessage.messageId) {
+                                        updateData[`agentMessages.${currentMessages.length - 1}.messageId`] = lastMessage.messageId;
+                                    }
+                                    await RecordModel.update(domainId, recordId, updateData);
                                 } else {
+                                    const { randomUUID } = require('crypto');
                                     await RecordModel.updateTask(domainId, recordId, {
                                         agentMessages: [{
                                             role: 'assistant',
                                             content: accumulatedContent,
                                             timestamp: new Date(),
+                                            messageId: randomUUID(), // Generate messageId for new assistant message
                                         }],
                                     });
                                 }

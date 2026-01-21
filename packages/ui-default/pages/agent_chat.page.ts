@@ -24,7 +24,6 @@ const page = new NamedPage('agent_chat', async () => {
   // Shared function definitions for connectToSession, sendMessage, etc. (must be defined before list mode)
   const connectToSession = async (): Promise<void> => {
     if (sessionConnected && sessionWebSocket) {
-      console.log('[AgentChat] Session already connected');
       return;
     }
     
@@ -34,7 +33,6 @@ const page = new NamedPage('agent_chat', async () => {
     
     sessionConnectPromise = new Promise<void>((resolve, reject) => {
       const wsUrl = `agent-chat-session?domainId=${domainId}&aid=${urlAid}`;
-      console.log('[AgentChat] Connecting to session WebSocket:', wsUrl);
       
       import('../components/socket').then(({ default: WebSocket }) => {
         const sock = new WebSocket(wsPrefix + wsUrl, false, true);
@@ -42,7 +40,6 @@ const page = new NamedPage('agent_chat', async () => {
         sessionConnected = false;
         
         sock.onopen = () => {
-          console.log('[AgentChat] Session WebSocket connected');
           sessionConnected = true;
           resolve();
         };
@@ -50,10 +47,12 @@ const page = new NamedPage('agent_chat', async () => {
         sock.onmessage = (_, data: string) => {
           try {
             const msg = JSON.parse(data);
-            console.log('[AgentChat] Session message received:', msg);
             
             if (msg.type === 'session_connected') {
-              console.log('[AgentChat] Session connected:', msg);
+            } else if (msg.type === 'message_start') {
+              handleMessageStart(msg);
+            } else if (msg.type === 'message_complete') {
+              handleMessageComplete(msg);
             } else if (msg.type === 'record_update') {
               handleRecordUpdate(msg);
             } else if (msg.type === 'error') {
@@ -65,7 +64,6 @@ const page = new NamedPage('agent_chat', async () => {
         };
         
         sock.onclose = () => {
-          console.log('[AgentChat] Session WebSocket closed');
           sessionWebSocket = null;
           sessionConnected = false;
           sessionConnectPromise = null;
@@ -80,6 +78,55 @@ const page = new NamedPage('agent_chat', async () => {
   };
   
   let currentRecordId: string | null = null;
+  
+  // Track message lifecycle: messages that have started and completed
+  const activeMessageIds = new Set<string>(); // Messages currently being streamed
+  const completedMessageIds = new Set<string>(); // Messages that have completed
+  
+  // Handle message start event
+  function handleMessageStart(msg: any) {
+    const { rid, messageId } = msg;
+    if (messageId) {
+      activeMessageIds.add(messageId);
+      completedMessageIds.delete(messageId); // Remove from completed if restarted
+    }
+  }
+  
+  // Handle message complete event
+  function handleMessageComplete(msg: any) {
+    const { rid, messageId } = msg;
+    if (messageId) {
+      activeMessageIds.delete(messageId);
+      completedMessageIds.add(messageId);
+      console.log('[AgentChat] Message completed:', { rid, messageId, completedCount: completedMessageIds.size });
+    }
+  }
+  
+  // Render markdown content to HTML
+  async function renderMarkdown(text: string, inline: boolean = false): Promise<string> {
+    try {
+      const response = await fetch('/markdown', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: text || '',
+          inline: inline,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to render markdown');
+      }
+      
+      return await response.text();
+    } catch (error: any) {
+      console.error('[AgentChat] Error rendering markdown:', error);
+      // Fallback to plain text with escaped HTML
+      return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+  }
   
   // Show/hide loading state
   function setLoadingState(loading: boolean, message?: string) {
@@ -194,11 +241,12 @@ const page = new NamedPage('agent_chat', async () => {
       
       // Load history records
       if (recordHistory && Array.isArray(recordHistory) && recordHistory.length > 0) {
-        recordHistory.forEach((msg: any) => {
+        // Render all messages sequentially to ensure proper order
+        for (const msg of recordHistory) {
           if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool') {
-            addMessage(msg.role, msg.content, msg.toolName, msg.tool_calls);
+            await addMessage(msg.role, msg.content, msg.toolName, msg.tool_calls, msg.messageId);
           }
-        });
+        }
         // Scroll to bottom
         chatMessages.scrollTop = chatMessages.scrollHeight;
       } else {
@@ -221,7 +269,6 @@ const page = new NamedPage('agent_chat', async () => {
       }
       await connectToSession();
       
-      console.log('[AgentChat] Switched to session:', sessionId);
     } catch (error: any) {
       console.error('[AgentChat] Error switching session:', error);
       setLoadingState(false);
@@ -318,147 +365,8 @@ const page = new NamedPage('agent_chat', async () => {
     }
   }
   
-  const handleRecordUpdate = (msg: any) => {
-    const chatMessages = document.getElementById('chatMessages');
-    if (!chatMessages) return;
-    
-    if (!msg.rid) {
-      console.warn('[AgentChat] Invalid record update message: missing rid', msg);
-      return;
-    }
-    
-    const record = msg.record || {};
-    const rid = msg.rid;
-    
-    if (currentRecordId !== rid) {
-      console.log('[AgentChat] New record detected:', rid);
-      currentRecordId = rid;
-    }
-    
-    if (record.agentMessages && Array.isArray(record.agentMessages)) {
-      const newMessagesCount = record.agentMessages.length;
-      const existingMessages = Array.from(chatMessages.children).filter(
-        (el: any) => el.classList.contains('chat-message') && 
-        (el.classList.contains('user') || el.classList.contains('assistant') || el.classList.contains('tool'))
-      );
-      
-      const displayedNonUserCount = existingMessages.filter(
-        (el: any) => !el.classList.contains('user')
-      ).length;
-      
-      const recordNonUserMessages = record.agentMessages.filter((m: any) => m.role !== 'user');
-      const recordNonUserCount = recordNonUserMessages.length;
-      
-      if (recordNonUserCount > displayedNonUserCount) {
-        let addedCount = 0;
-        const targetAddCount = recordNonUserCount - displayedNonUserCount;
-        
-        for (let i = 0; i < newMessagesCount && addedCount < targetAddCount; i++) {
-          const msgData = record.agentMessages[i];
-          
-          if (msgData.role === 'user') {
-            continue;
-          }
-          
-          let alreadyDisplayed = false;
-          
-          if (msgData.role === 'assistant') {
-            const content = msgData.content || '';
-            const toolCalls = msgData.tool_calls;
-            
-            const lastAssistant = Array.from(chatMessages.children)
-              .reverse()
-              .find((el: any) => el.classList.contains('chat-message') && el.classList.contains('assistant'));
-            
-            if (lastAssistant) {
-              if (toolCalls && toolCalls.length > 0) {
-                const toolCallName = lastAssistant.querySelector('.tool-call-item code')?.textContent;
-                if (toolCallName === toolCalls[0]?.function?.name) {
-                  alreadyDisplayed = true;
-                }
-              } else {
-                const existingContent = lastAssistant.textContent?.trim() || '';
-                if (content.trim() && 
-                    (existingContent === content.trim() || existingContent.startsWith(content.trim()))) {
-                  alreadyDisplayed = true;
-                }
-              }
-            }
-          } else if (msgData.role === 'tool') {
-            const toolName = msgData.toolName || '';
-            const content = typeof msgData.content === 'string' 
-              ? msgData.content 
-              : JSON.stringify(msgData.content, null, 2);
-            
-            const lastTool = Array.from(chatMessages.children)
-              .reverse()
-              .find((el: any) => el.classList.contains('chat-message') && el.classList.contains('tool'));
-            
-            if (lastTool) {
-              const toolHeader = lastTool.querySelector('.tool-header');
-              const toolContent = lastTool.querySelector('pre')?.textContent?.trim();
-              if (toolHeader?.textContent === `Tool: ${toolName}` && 
-                  toolContent === content.trim()) {
-                alreadyDisplayed = true;
-              }
-            }
-          }
-          
-          if (!alreadyDisplayed) {
-            if (msgData.role === 'assistant') {
-              const content = msgData.content || '';
-              const toolCalls = msgData.tool_calls;
-              addMessage('assistant', content, undefined, toolCalls);
-              addedCount++;
-            } else if (msgData.role === 'tool') {
-              const content = typeof msgData.content === 'string' 
-                ? msgData.content 
-                : JSON.stringify(msgData.content, null, 2);
-              addMessage('tool', content, msgData.toolName);
-              addedCount++;
-            }
-          }
-        }
-      }
-      
-      if (newMessagesCount > 0 && newMessagesCount <= existingMessages.length) {
-        const lastMsg = record.agentMessages[newMessagesCount - 1];
-        
-        if (lastMsg && lastMsg.role === 'assistant') {
-          const content = lastMsg.content || '';
-          const toolCalls = lastMsg.tool_calls;
-          
-          let lastAssistantMessage: Element | null = null;
-          for (let i = existingMessages.length - 1; i >= 0; i--) {
-            const msg = existingMessages[i];
-            if (msg.classList.contains('assistant')) {
-              lastAssistantMessage = msg;
-              break;
-            }
-          }
-          
-          if (lastAssistantMessage) {
-            if (toolCalls && toolCalls.length > 0) {
-              updateLastMessage(content, toolCalls);
-            } else {
-              let contentDiv = lastAssistantMessage.querySelector('.message-content');
-              if (!contentDiv) {
-                if (lastAssistantMessage.querySelector('.tool-call-header')) {
-                  contentDiv = document.createElement('div');
-                  contentDiv.className = 'message-content';
-                  lastAssistantMessage.appendChild(contentDiv);
-                } else {
-                  contentDiv = lastAssistantMessage;
-                }
-              }
-              contentDiv.textContent = content;
-            }
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-          }
-        }
-      }
-    }
-    
+  // Helper function to check if task is in terminal status
+  const getTaskStatusInfo = () => {
     const UiCtx = (window as any).UiContext || {};
     const STATUS = UiCtx.STATUS || (window as any).STATUS || (window as any).model?.builtin?.STATUS || {};
     const ACTIVE_TASK_STATUSES = new Set(
@@ -473,113 +381,1082 @@ const page = new NamedPage('agent_chat', async () => {
       if (typeof status !== 'number') return false;
       return !ACTIVE_TASK_STATUSES.has(status);
     };
+    return { STATUS, ACTIVE_TASK_STATUSES, isTerminalTaskStatus };
+  };
+  
+  const handleRecordUpdate = async (msg: any) => {
+    const chatMessages = document.getElementById('chatMessages');
+    if (!chatMessages) return;
     
+    if (!msg.rid) {
+      console.warn('[AgentChat] Invalid record update message: missing rid', msg);
+      return;
+    }
+    
+    const record = msg.record || {};
+    const rid = msg.rid;
+    
+    if (currentRecordId !== rid) {
+      currentRecordId = rid;
+    }
+    
+    // Check if task is streaming (before processing messages)
+    const { isTerminalTaskStatus } = getTaskStatusInfo();
+    const isStreaming = record.status !== undefined && !isTerminalTaskStatus(record.status);
+    const isCompleted = record.status !== undefined && isTerminalTaskStatus(record.status);
+    
+    if (record.agentMessages && Array.isArray(record.agentMessages)) {
+      const newMessagesCount = record.agentMessages.length;
+      
+      // If task is completed, only update existing messages, never create new ones
+      if (isCompleted) {
+      }
+      
+      // Use messageId-based tracking to prevent duplicates
+      // Each message element gets a data-message-id attribute
+      const getMessageId = (el: Element): string | null => {
+        return el.getAttribute('data-message-id');
+      };
+      
+      const setMessageId = (el: Element, messageId: string) => {
+        el.setAttribute('data-message-id', messageId);
+      };
+      
+      // Count all message-related elements (chat-message, tool-call-container, tool-result-container)
+      const existingMessages = Array.from(chatMessages.children).filter(
+        (el: any) => 
+          (el.classList.contains('chat-message') && 
+           (el.classList.contains('user') || el.classList.contains('assistant'))) ||
+          el.classList.contains('tool-call-container') ||
+          el.classList.contains('tool-result-container')
+      );
+      
+      // Build a map of displayed message IDs
+      // Start with global set to include messages added before record updates
+      const displayedMessageIds = new Set<string>(displayedMessageIdsGlobal);
+      existingMessages.forEach((el: Element) => {
+        const messageId = getMessageId(el);
+        if (messageId) {
+          displayedMessageIds.add(messageId);
+          displayedMessageIdsGlobal.add(messageId);
+        }
+      });
+      
+      // Process messages: add new ones or update existing ones
+      (async () => {
+        for (let i = 0; i < newMessagesCount; i++) {
+          const msgData = record.agentMessages[i];
+          let messageId = msgData.messageId;
+          const hadMessageId = !!messageId; // Track if messageId was originally present
+          
+          if (!messageId && msgData.role === 'assistant' && msgData.content) {
+            const content = (msgData.content || '').trim();
+            if (content) {
+              // Check all assistant messages in DOM for content match
+              const allAssistantMessages = Array.from(chatMessages.children).filter(
+                (el: any) => el.classList.contains('chat-message') && el.classList.contains('assistant')
+              );
+              
+              for (const existingMsg of allAssistantMessages) {
+                const existingId = getMessageId(existingMsg);
+                if (existingId) {
+                  continue;
+                }
+                
+                const messageBubble = existingMsg.querySelector('.message-bubble');
+                if (messageBubble) {
+                  const contentDiv = messageBubble.querySelector('.message-content');
+                  if (contentDiv) {
+                    const existingContent = contentDiv.textContent?.trim() || '';
+                    if (existingContent === content) {
+                      messageId = existingId || generateMessageId();
+                      setMessageId(existingMsg, messageId);
+                      displayedMessageIds.add(messageId);
+                      displayedMessageIdsGlobal.add(messageId);
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+          }
+          
+          if (messageId && msgData.role === 'assistant') {
+            const allAssistantMessages = Array.from(chatMessages.children).filter(
+              (el: any) => el.classList.contains('chat-message') && el.classList.contains('assistant')
+            );
+            
+            let preCreatedMsg: Element | null = null;
+            for (let j = allAssistantMessages.length - 1; j >= 0; j--) {
+              const existingMsg = allAssistantMessages[j];
+              const existingId = getMessageId(existingMsg);
+              if (existingId && existingId.startsWith('temp-')) {
+                preCreatedMsg = existingMsg;
+                break;
+              }
+            }
+            
+            if (preCreatedMsg) {
+              setMessageId(preCreatedMsg, messageId);
+              displayedMessageIds.add(messageId);
+              displayedMessageIdsGlobal.add(messageId);
+            } else {
+              displayedMessageIds.add(messageId);
+              displayedMessageIdsGlobal.add(messageId);
+            }
+          } else if (!messageId && msgData.role === 'assistant') {
+            const allAssistantMessages = Array.from(chatMessages.children).filter(
+              (el: any) => el.classList.contains('chat-message') && el.classList.contains('assistant')
+            );
+            
+            let preCreatedMsg: Element | null = null;
+            for (let j = allAssistantMessages.length - 1; j >= 0; j--) {
+              const existingMsg = allAssistantMessages[j];
+              const existingId = getMessageId(existingMsg);
+              if (existingId && existingId.startsWith('temp-')) {
+                preCreatedMsg = existingMsg;
+                break;
+              }
+            }
+            
+            if (preCreatedMsg) {
+              messageId = generateMessageId();
+              setMessageId(preCreatedMsg, messageId);
+              displayedMessageIds.add(messageId);
+              displayedMessageIdsGlobal.add(messageId);
+              console.error('[AgentChat] Backend did not provide messageId for assistant message, generated fallback:', messageId);
+            } else {
+              messageId = generateMessageId();
+              console.error('[AgentChat] Backend did not provide messageId and no pre-created message found, generated fallback:', messageId);
+            }
+          } else if (!messageId) {
+            messageId = generateMessageId();
+          }
+          
+          if (msgData.role === 'user') {
+            // For user messages, always check if already displayed first
+            // This prevents duplicate adds during streaming updates
+            if (displayedMessageIds.has(messageId)) {
+              // User message already displayed, skip
+              continue;
+            }
+            
+            // Find user message by messageId in DOM
+            let userMessage = Array.from(chatMessages.children).find(
+              (el: any) => el.classList.contains('chat-message') && 
+                          el.classList.contains('user') &&
+                          getMessageId(el) === messageId
+            );
+            
+            if (userMessage) {
+              // Message exists in DOM, mark as displayed
+              displayedMessageIds.add(messageId);
+              displayedMessageIdsGlobal.add(messageId);
+            } else {
+              // Message not in DOM, but check if content matches any existing user message
+              // This handles cases where messageId wasn't set properly
+              const content = msgData.content || '';
+              const existingUserMessages = Array.from(chatMessages.children).filter(
+                (el: any) => el.classList.contains('chat-message') && el.classList.contains('user')
+              );
+              
+              // Check if any existing user message matches this content and doesn't have a messageId
+              const matchingMessage = existingUserMessages.find((el: any) => {
+                const existingId = getMessageId(el);
+                if (existingId) return false; // Skip messages that already have an ID
+                const messageBubble = el.querySelector('.message-bubble');
+                const existingContent = messageBubble?.textContent?.trim() || '';
+                return existingContent === content.trim();
+              });
+              
+              if (matchingMessage) {
+                // Found matching message without ID, set the messageId
+                setMessageId(matchingMessage, messageId);
+                displayedMessageIds.add(messageId);
+                displayedMessageIdsGlobal.add(messageId);
+              } else if (content) {
+                // No matching message found, create new one (shouldn't happen normally)
+                console.warn('[AgentChat] Creating new user message from record update:', messageId);
+                await addMessage('user', content, undefined, undefined, messageId);
+                displayedMessageIds.add(messageId);
+                displayedMessageIdsGlobal.add(messageId);
+              }
+            }
+            continue;
+          }
+          
+          // For assistant messages, always try to update existing message first (for streaming)
+            if (msgData.role === 'assistant') {
+              const content = msgData.content || '';
+              const toolCalls = msgData.tool_calls;
+            
+            // CRITICAL: If task is completed, only update existing messages, never create new ones
+            // This prevents duplicates when multiple record_update events arrive after completion
+            if (isCompleted && !displayedMessageIds.has(messageId)) {
+              // Task is completed and message not in displayedMessageIds, check DOM first
+              const existingInDOM = Array.from(chatMessages.children).find(
+                (el: any) => getMessageId(el) === messageId && 
+                            el.classList.contains('chat-message') && 
+                            el.classList.contains('assistant')
+              );
+              if (!existingInDOM) {
+                // Message not in DOM and task is completed, skip to prevent duplicates
+                continue;
+              }
+            }
+            
+            // Use event-based lifecycle tracking
+            if (completedMessageIds.has(messageId)) {
+              continue;
+            }
+            
+            // CRITICAL: If messageId was generated (missing from backend), check for existing message by content FIRST
+            // This prevents creating duplicate messages when backend doesn't send messageId
+            const originalMessageId = msgData.messageId; // The messageId from backend (may be undefined)
+            const isGeneratedId = !originalMessageId && messageId; // messageId was generated by frontend
+            
+            if (isGeneratedId && content && content.trim()) {
+              // MessageId was generated, meaning backend didn't provide one
+              // Check if there's already a message with this content in DOM
+              const allAssistantMessages = Array.from(chatMessages.children).filter(
+                (el: any) => el.classList.contains('chat-message') && el.classList.contains('assistant')
+              );
+              
+              for (const existingMsg of allAssistantMessages) {
+                const existingId = getMessageId(existingMsg);
+                // Skip if already has a different messageId
+                if (existingId && existingId !== messageId) {
+                  continue;
+                }
+                
+                // Check content match
+                const messageBubble = existingMsg.querySelector('.message-bubble');
+                if (messageBubble) {
+                  const contentDiv = messageBubble.querySelector('.message-content');
+                  if (contentDiv) {
+                    const existingContent = contentDiv.textContent?.trim() || '';
+                    const newContent = content.trim();
+                    
+                    if (existingContent && newContent && existingContent === newContent) {
+                      // Found exact match! Use the existing message instead of creating new
+                      if (!existingId) {
+                        // Set the generated messageId on existing message
+                        setMessageId(existingMsg, messageId);
+                        displayedMessageIds.add(messageId);
+                        displayedMessageIdsGlobal.add(messageId);
+                        if (!isStreaming) {
+                          completedMessageIds.add(messageId);
+                        } else {
+                          activeMessageIds.add(messageId);
+                        }
+                      } else {
+                        // Already has messageId, just mark as displayed
+                        displayedMessageIds.add(messageId);
+                        displayedMessageIdsGlobal.add(messageId);
+                      }
+                      // Update content if needed (for markdown rendering)
+                      if (!isStreaming && contentDiv.textContent && !contentDiv.innerHTML.includes('<')) {
+                        renderMarkdown(content, false).then(renderedHtml => {
+                          contentDiv.innerHTML = renderedHtml;
+                        });
+                      }
+                      continue; // Skip to next message in outer loop (don't create new)
+                    }
+                  }
+                }
+              }
+            }
+            
+            // If message is completed, allow one final update if task is also completed
+            // This ensures final content is rendered correctly even after completion
+            if (completedMessageIds.has(messageId)) {
+              // If task is completed, allow one final content update to ensure completeness
+              if (isCompleted) {
+                // Find existing message and update content one last time
+                const existingMsg = Array.from(chatMessages.children).find(
+                  (el: any) => getMessageId(el) === messageId && 
+                              el.classList.contains('chat-message') && 
+                              el.classList.contains('assistant')
+                );
+                if (existingMsg) {
+                  const messageBubble = existingMsg.querySelector('.message-bubble');
+                  if (messageBubble) {
+                    const contentDiv = messageBubble.querySelector('.message-content');
+                    if (contentDiv && content) {
+                      // Only update if content is different (to avoid unnecessary updates)
+                      const currentContent = contentDiv.textContent?.trim() || '';
+                      if (currentContent !== content.trim()) {
+                        // Final update: render markdown for completed message
+                        try {
+                          const response = await fetch('/system/markdown', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ content }),
+                          });
+                          if (response.ok) {
+                            const data = await response.json();
+                            contentDiv.innerHTML = data.html || content;
+                          } else {
+                            contentDiv.textContent = content;
+                          }
+                        } catch (e) {
+                          contentDiv.textContent = content;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              // Skip further processing for completed messages
+              continue;
+            }
+            
+            // If message is not active and not in displayedMessageIds, it might be a new message
+            // But if it's not streaming and we haven't seen it start, be cautious
+            if (!isStreaming && !activeMessageIds.has(messageId) && !displayedMessageIds.has(messageId)) {
+              // This could be a late update, check if content matches existing message
+              const allAssistantMessages = Array.from(chatMessages.children).filter(
+                (el: any) => el.classList.contains('chat-message') && el.classList.contains('assistant')
+              );
+              
+              let foundMatching = false;
+              for (const existingMsg of allAssistantMessages) {
+                const existingId = getMessageId(existingMsg);
+                if (existingId === messageId) {
+                  foundMatching = true;
+              break;
+            }
+                // Check by content if no messageId
+                if (!existingId && content) {
+                  const messageBubble = existingMsg.querySelector('.message-bubble');
+                  if (messageBubble) {
+                    const contentDiv = messageBubble.querySelector('.message-content');
+                    if (contentDiv) {
+                      const existingContent = contentDiv.textContent?.trim() || '';
+                      if (existingContent === content.trim()) {
+                        // Found matching message, set messageId and mark as completed
+                        setMessageId(existingMsg, messageId);
+                        displayedMessageIds.add(messageId);
+                        displayedMessageIdsGlobal.add(messageId);
+                        completedMessageIds.add(messageId);
+                        foundMatching = true;
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
+              
+              if (foundMatching) {
+                continue;
+              }
+            }
+            
+            // First, try to find by messageId
+            let assistantMsg = Array.from(chatMessages.children).find(
+              (el: any) => getMessageId(el) === messageId && 
+                          el.classList.contains('chat-message') && 
+                          el.classList.contains('assistant')
+            );
+            
+            // If not found by messageId, check tool-call-container
+            if (!assistantMsg) {
+              const toolCallContainer = Array.from(chatMessages.children).find(
+                (el: any) => getMessageId(el) === messageId && el.classList.contains('tool-call-container')
+              );
+              if (toolCallContainer) {
+                const allChildren = Array.from(chatMessages.children);
+                const containerIndex = allChildren.indexOf(toolCallContainer);
+                assistantMsg = allChildren
+                  .slice(containerIndex + 1)
+                  .find((el: any) => el.classList.contains('chat-message') && el.classList.contains('assistant'));
+              }
+            }
+            
+            // If still not found and streaming, find the last assistant message (for streaming updates)
+            if (!assistantMsg && isStreaming) {
+              const allChildren = Array.from(chatMessages.children);
+              for (let j = allChildren.length - 1; j >= 0; j--) {
+                const el = allChildren[j];
+                if (el.classList.contains('chat-message') && el.classList.contains('assistant')) {
+                  assistantMsg = el;
+                  // Set messageId on the found message if it doesn't have one
+                  if (!getMessageId(assistantMsg)) {
+                    setMessageId(assistantMsg, messageId);
+                    displayedMessageIds.add(messageId);
+                    displayedMessageIdsGlobal.add(messageId);
+                  }
+                  break;
+                }
+              }
+            }
+            
+            // If found existing message, update it
+            if (assistantMsg && assistantMsg.classList.contains('assistant')) {
+              // Update existing assistant message (streaming or final)
+              const messageBubble = assistantMsg.querySelector('.message-bubble');
+              if (messageBubble) {
+                let contentDiv = messageBubble.querySelector('.message-content');
+              if (!contentDiv) {
+                  contentDiv = document.createElement('div');
+                  contentDiv.className = 'message-content';
+                  messageBubble.appendChild(contentDiv);
+                }
+                
+                if (isStreaming) {
+                  contentDiv.textContent = content;
+                } else {
+                  const renderedHtml = await renderMarkdown(content, false);
+                  contentDiv.innerHTML = renderedHtml;
+                }
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+              }
+              
+              // Ensure messageId is set and tracked
+              if (!displayedMessageIds.has(messageId)) {
+                displayedMessageIds.add(messageId);
+                displayedMessageIdsGlobal.add(messageId);
+              }
+              continue;
+            } else if (toolCalls && toolCalls.length > 0) {
+              // Handle tool calls - check if we need to create message first
+              // But skip if already displayed and not streaming
+              if (!isStreaming && displayedMessageIds.has(messageId)) {
+                continue;
+              }
+              
+              if (!assistantMsg) {
+                // Create assistant message first if it doesn't exist
+                displayedMessageIds.add(messageId);
+                displayedMessageIdsGlobal.add(messageId);
+                await addMessage('assistant', content || '', undefined, toolCalls, messageId);
+              } else {
+                updateLastMessage(content, toolCalls, isStreaming);
+              }
+              if (!displayedMessageIds.has(messageId)) {
+                displayedMessageIds.add(messageId);
+                displayedMessageIdsGlobal.add(messageId);
+              }
+              continue;
+            }
+            
+            // If no existing message found, create a new one
+            
+            // Check 1: Already in displayedMessageIds
+            if (displayedMessageIds.has(messageId)) {
+              continue;
+            }
+            
+            // Check 1.5: If task is completed, NEVER create new messages
+            // This is the most critical check to prevent duplicates after completion
+            if (isCompleted) {
+              // Double-check DOM one more time
+              const finalCheckInDOM = Array.from(chatMessages.children).find(
+                (el: any) => {
+                  const elId = getMessageId(el);
+                  if (elId === messageId) return true;
+                  // Also check by content if no messageId match
+                  if (!elId && content && content.trim()) {
+                    const messageBubble = el.querySelector('.message-bubble');
+                    if (messageBubble) {
+                      const contentDiv = messageBubble.querySelector('.message-content');
+                      if (contentDiv) {
+                        const existingContent = contentDiv.textContent?.trim() || '';
+                        return existingContent === content.trim();
+                      }
+                    }
+                  }
+                  return false;
+                }
+              );
+              if (!finalCheckInDOM) {
+                continue;
+              } else {
+                // Found in DOM, update it instead of creating new
+                setMessageId(finalCheckInDOM as Element, messageId);
+                displayedMessageIds.add(messageId);
+                displayedMessageIdsGlobal.add(messageId);
+                completedMessageIds.add(messageId);
+                // Update content if needed
+                const messageBubble = (finalCheckInDOM as any).querySelector('.message-bubble');
+                if (messageBubble) {
+                  const contentDiv = messageBubble.querySelector('.message-content');
+                  if (contentDiv && content) {
+                    if (!isStreaming) {
+                      // Render markdown for completed message
+                      try {
+                        const response = await fetch('/system/markdown', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ content }),
+                        });
+                        if (response.ok) {
+                          const data = await response.json();
+                          contentDiv.innerHTML = data.html || content;
+                        } else {
+              contentDiv.textContent = content;
+            }
+                      } catch (e) {
+                        contentDiv.textContent = content;
+                      }
+                    } else {
+                      contentDiv.textContent = content;
+                    }
+                  }
+                }
+                continue;
+              }
+            }
+            
+            // Check 2: Check DOM for any assistant message with same or similar content
+            if (content && content.trim()) {
+              const allAssistantMessages = Array.from(chatMessages.children).filter(
+                (el: any) => el.classList.contains('chat-message') && el.classList.contains('assistant')
+              );
+              
+              for (const existingMsg of allAssistantMessages) {
+                const existingId = getMessageId(existingMsg);
+                
+                // Skip if already has a different messageId (different message)
+                if (existingId && existingId !== messageId) {
+                  continue;
+                }
+                
+                // Check content match
+                const messageBubble = existingMsg.querySelector('.message-bubble');
+                if (messageBubble) {
+                  const contentDiv = messageBubble.querySelector('.message-content');
+                  if (contentDiv) {
+                    // Get text content (works for both raw text and rendered HTML)
+                    const existingContent = contentDiv.textContent?.trim() || '';
+                    const newContent = content.trim();
+                    
+                    if (existingContent && newContent) {
+                      // Exact match
+                      if (existingContent === newContent) {
+                        // Found matching message, set messageId and update
+                        setMessageId(existingMsg, messageId);
+                        displayedMessageIds.add(messageId);
+                        displayedMessageIdsGlobal.add(messageId);
+                        if (!isStreaming) {
+                          completedMessageIds.add(messageId);
+                        } else {
+                          activeMessageIds.add(messageId);
+                        }
+                        // Update content if needed
+                        if (isStreaming) {
+                          contentDiv.textContent = content;
+                        } else if (contentDiv.textContent && !contentDiv.innerHTML.includes('<')) {
+                          renderMarkdown(content, false).then(renderedHtml => {
+                            contentDiv.innerHTML = renderedHtml;
+                          });
+                        }
+                        continue; // Skip to next message in outer loop
+                      }
+                      
+                      // Substantial overlap check (one contains the other with 80%+ similarity)
+                      const longer = existingContent.length > newContent.length ? existingContent : newContent;
+                      const shorter = existingContent.length > newContent.length ? newContent : existingContent;
+                      if (longer.includes(shorter) && shorter.length / longer.length > 0.8) {
+                        // Update the existing message instead of creating new
+                        setMessageId(existingMsg, messageId);
+                        displayedMessageIds.add(messageId);
+                        displayedMessageIdsGlobal.add(messageId);
+                        if (!isStreaming) {
+                          completedMessageIds.add(messageId);
+                        } else {
+                          activeMessageIds.add(messageId);
+                        }
+                        // Update content
+                        if (isStreaming) {
+                          contentDiv.textContent = content;
+                        } else {
+                          const renderedHtml = await renderMarkdown(content, false);
+                          contentDiv.innerHTML = renderedHtml;
+                        }
+                        continue; // Skip to next message in outer loop
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            
+            // Check 3: If completed, don't create
+            if (completedMessageIds.has(messageId)) {
+              continue;
+            }
+            
+            // Check 4: If not streaming and not active, be very cautious - check for messages without IDs
+            if (!isStreaming && !activeMessageIds.has(messageId)) {
+              const messagesWithoutId = Array.from(chatMessages.children).filter(
+                (el: any) => el.classList.contains('chat-message') && 
+                            el.classList.contains('assistant') &&
+                            !getMessageId(el)
+              );
+              
+              if (messagesWithoutId.length > 0) {
+                // There are messages without IDs, don't create new one to avoid duplicates
+                continue;
+              }
+            }
+            
+            // This handles the first message in a stream or when messageId doesn't match
+            // Only create during streaming or if truly new
+            displayedMessageIds.add(messageId);
+            displayedMessageIdsGlobal.add(messageId);
+            if (isStreaming) {
+              activeMessageIds.add(messageId);
+            }
+            await addMessage('assistant', content, undefined, toolCalls, messageId);
+            continue;
+          }
+          
+          // For tool messages (tool results)
+          if (msgData.role === 'tool') {
+            const toolCallId = msgData.tool_call_id;
+            const toolName = msgData.toolName || 'Unknown Tool';
+            
+            // Try to find the corresponding tool call item by tool_call_id
+            let toolCallItem: Element | null = null;
+            if (toolCallId) {
+              toolCallItem = Array.from(chatMessages.querySelectorAll('.tool-call-item')).find(
+                (el: any) => el.getAttribute('data-tool-call-id') === toolCallId
+              ) as Element | null;
+            }
+            
+            if (toolCallItem) {
+              // Update tool call status to success
+              toolCallItem.setAttribute('data-tool-status', 'success');
+              const statusBadge = toolCallItem.querySelector('.tool-status-badge') as HTMLElement;
+              if (statusBadge) {
+                statusBadge.textContent = '执行成功';
+                statusBadge.style.cssText = 'padding: 2px 8px; border-radius: 12px; background: #4caf50; color: white; font-size: 11px;';
+              }
+              
+              // Add tool result to the tool call item (in details section)
+              const toolCallDetails = toolCallItem.querySelector('.tool-call-details') as HTMLElement;
+              if (toolCallDetails) {
+                // Check if result already exists
+                let resultDiv = toolCallDetails.querySelector('.tool-call-result') as HTMLElement;
+                if (!resultDiv) {
+                  resultDiv = document.createElement('div');
+                  resultDiv.className = 'tool-call-result';
+                  resultDiv.style.cssText = 'margin-top: 8px;';
+                  
+                  const resultLabel = document.createElement('div');
+                  resultLabel.textContent = '结果:';
+                  resultLabel.style.cssText = 'font-size: 11px; color: #666; margin-bottom: 4px;';
+                  resultDiv.appendChild(resultLabel);
+                  
+                  const resultPre = document.createElement('pre');
+                  resultPre.style.cssText = 'margin: 0; padding: 8px; background: #e7f3ff; border: 1px solid #b3d9ff; border-radius: 4px; font-size: 12px; overflow-x: auto; max-height: 300px; overflow-y: auto;';
+                  resultDiv.appendChild(resultPre);
+                  
+                  toolCallDetails.appendChild(resultDiv);
+                }
+                
+                const resultPre = resultDiv.querySelector('pre') as HTMLElement;
+                if (resultPre) {
+                  const toolContent = typeof msgData.content === 'string' 
+                    ? msgData.content 
+                    : JSON.stringify(msgData.content, null, 2);
+                  resultPre.textContent = toolContent;
+                }
+                
+                // Auto-expand if collapsed
+                if (toolCallDetails.style.display === 'none') {
+                  toolCallDetails.style.display = 'block';
+                  const toggleIcon = toolCallItem.querySelector('.tool-call-toggle-icon') as HTMLElement;
+                  if (toggleIcon) {
+                    toggleIcon.textContent = '▲';
+                  }
+                }
+              }
+              
+              // Mark as displayed
+              if (messageId) {
+                displayedMessageIds.add(messageId);
+                displayedMessageIdsGlobal.add(messageId);
+              }
+            } else {
+              // Tool call item not found, create standalone tool result (fallback)
+              if (displayedMessageIds.has(messageId)) {
+                continue;
+              }
+              
+              const toolContent = typeof msgData.content === 'string' 
+                ? msgData.content 
+                : JSON.stringify(msgData.content, null, 2);
+              displayedMessageIds.add(messageId);
+              displayedMessageIdsGlobal.add(messageId);
+              await addMessage('tool', toolContent, toolName, undefined, messageId);
+            }
+            continue;
+          }
+        }
+      })();
+      
+    }
+    
+    // Check task status and handle completion
     if (record.status !== undefined) {
       if (isTerminalTaskStatus(record.status)) {
-        console.log('[AgentChat] Task completed, status:', record.status);
         setLoading(false);
         currentRecordId = null;
+        
+        // When task is complete, render markdown for the last assistant message
+        const lastAssistantMessage = Array.from(chatMessages.children)
+          .reverse()
+          .find((el: any) => el.classList.contains('chat-message') && el.classList.contains('assistant'));
+        
+        if (lastAssistantMessage) {
+          const messageBubble = lastAssistantMessage.querySelector('.message-bubble');
+          if (messageBubble) {
+            const contentDiv = messageBubble.querySelector('.message-content');
+            if (contentDiv) {
+              // Check if content is still raw text (not yet rendered as markdown)
+              const rawContent = contentDiv.textContent || '';
+              // Only re-render if content exists and looks like it might be markdown
+              if (rawContent && (rawContent.includes('**') || rawContent.includes('#') || rawContent.includes('`') || rawContent.includes('\n'))) {
+                renderMarkdown(rawContent, false).then(renderedHtml => {
+                  contentDiv.innerHTML = renderedHtml;
+                  chatMessages.scrollTop = chatMessages.scrollHeight;
+                });
+              }
+            }
+          }
+        }
       }
     }
   };
   
-  function addMessage(role: string, content: string, toolName?: string, toolCalls?: any[]) {
+  async function addMessage(role: string, content: string, toolName?: string, toolCalls?: any[], messageId?: string) {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
     
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `chat-message ${role}`;
+    // Generate messageId if not provided
+    if (!messageId) {
+      messageId = generateMessageId();
+    }
     
+    // Tool result messages - separate container
     if (role === 'tool') {
+      // Set messageId for tool messages to prevent duplicates
+      if (messageId) {
+        // Check if tool message already exists
+        const existingToolMessages = Array.from(chatMessages.children).filter(
+          (el: any) => el.classList.contains('tool-result-container')
+        );
+        
+        // Try to find by checking if any tool message has the same content
+        for (const existingTool of existingToolMessages) {
+          const toolBubble = existingTool.querySelector('.tool-result-bubble');
+          if (toolBubble) {
+            const toolContent = toolBubble.querySelector('.tool-content pre');
+            if (toolContent && toolContent.textContent?.trim() === content.trim()) {
+              // Found matching tool message, set messageId and skip
+              existingTool.setAttribute('data-message-id', messageId);
+              return;
+            }
+          }
+        }
+      }
+      
+      const toolContainer = document.createElement('div');
+      toolContainer.className = 'tool-result-container';
+      if (messageId) {
+        toolContainer.setAttribute('data-message-id', messageId);
+      }
+      
+      const toolBubble = document.createElement('div');
+      toolBubble.className = 'tool-result-bubble';
+      
       const toolHeader = document.createElement('div');
       toolHeader.className = 'tool-header';
-      toolHeader.textContent = `Tool: ${toolName || 'Unknown'}`;
-      messageDiv.appendChild(toolHeader);
+      toolHeader.textContent = toolName || 'Unknown Tool';
+      toolBubble.appendChild(toolHeader);
       
-      const toolContent = document.createElement('pre');
-      toolContent.textContent = content;
-      messageDiv.appendChild(toolContent);
-    } else if (toolCalls && toolCalls.length > 0) {
+      const toolContent = document.createElement('div');
+      toolContent.className = 'tool-content';
+      const contentPre = document.createElement('pre');
+      contentPre.textContent = content;
+      toolContent.appendChild(contentPre);
+      toolBubble.appendChild(toolContent);
+      
+      toolContainer.appendChild(toolBubble);
+      chatMessages.appendChild(toolContainer);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return;
+    }
+    
+    // Tool calls - separate container before message
+    if (toolCalls && toolCalls.length > 0) {
+      const toolCallContainer = document.createElement('div');
+      toolCallContainer.className = 'tool-call-container';
+      // Set messageId as data attribute for deduplication (tool calls belong to assistant message)
+      if (messageId) {
+        toolCallContainer.setAttribute('data-message-id', messageId);
+      }
+      
+      const toolCallBubble = document.createElement('div');
+      toolCallBubble.className = 'tool-call-bubble';
+      
       const toolCallHeader = document.createElement('div');
       toolCallHeader.className = 'tool-call-header';
-      toolCallHeader.textContent = 'Tool Call:';
-      messageDiv.appendChild(toolCallHeader);
+      toolCallHeader.textContent = 'Tool Call';
+      toolCallBubble.appendChild(toolCallHeader);
       
       toolCalls.forEach((toolCall: any) => {
+        const toolCallId = toolCall.id || generateMessageId();
+        const toolName = toolCall.function?.name || 'unknown';
+        // Generate unique messageId for each tool call
+        const toolCallMessageId = `${messageId || generateMessageId()}_tool_${toolCallId}`;
+        
         const toolCallDiv = document.createElement('div');
         toolCallDiv.className = 'tool-call-item';
-        const toolNameSpan = document.createElement('code');
-        toolNameSpan.textContent = toolCall.function?.name || 'unknown';
-        toolCallDiv.appendChild(toolNameSpan);
+        toolCallDiv.setAttribute('data-tool-call-id', toolCallId);
+        toolCallDiv.setAttribute('data-message-id', toolCallMessageId);
+        toolCallDiv.setAttribute('data-tool-status', 'running'); // pending, running, success, error
+        
+        // Header with tool name and status
+        const toolCallHeader = document.createElement('div');
+        toolCallHeader.className = 'tool-call-item-header';
+        toolCallHeader.style.cssText = 'display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none;';
+        
+        const toolNameCode = document.createElement('code');
+        toolNameCode.textContent = toolName;
+        toolNameCode.style.cssText = 'font-size: 13px; font-weight: 600;';
+        
+        const statusContainer = document.createElement('div');
+        statusContainer.className = 'tool-call-status';
+        statusContainer.style.cssText = 'display: flex; align-items: center; gap: 6px; font-size: 12px;';
+        
+        const statusBadge = document.createElement('span');
+        statusBadge.className = 'tool-status-badge';
+        statusBadge.textContent = '执行中';
+        statusBadge.style.cssText = 'padding: 2px 8px; border-radius: 12px; background: #ff9800; color: white; font-size: 11px;';
+        statusContainer.appendChild(statusBadge);
+        
+        const toggleIcon = document.createElement('span');
+        toggleIcon.className = 'tool-call-toggle-icon';
+        toggleIcon.textContent = '▼';
+        toggleIcon.style.cssText = 'font-size: 10px; transition: transform 0.2s;';
+        statusContainer.appendChild(toggleIcon);
+        
+        toolCallHeader.appendChild(toolNameCode);
+        toolCallHeader.appendChild(statusContainer);
+        toolCallDiv.appendChild(toolCallHeader);
+        
+        // Collapsible details section - DEFAULT COLLAPSED
+        const toolCallDetails = document.createElement('div');
+        toolCallDetails.className = 'tool-call-details';
+        toolCallDetails.style.cssText = 'display: none; margin-top: 8px;'; // Default collapsed
         
         if (toolCall.function?.arguments) {
+          const argsLabel = document.createElement('div');
+          argsLabel.textContent = '参数:';
+          argsLabel.style.cssText = 'font-size: 11px; color: #666; margin-bottom: 4px;';
+          toolCallDetails.appendChild(argsLabel);
+          
           const argsPre = document.createElement('pre');
+          argsPre.style.cssText = 'margin: 0; padding: 8px; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; font-size: 12px; overflow-x: auto;';
           argsPre.textContent = typeof toolCall.function.arguments === 'string' 
             ? toolCall.function.arguments 
             : JSON.stringify(toolCall.function.arguments, null, 2);
-          toolCallDiv.appendChild(argsPre);
+          toolCallDetails.appendChild(argsPre);
         }
-        messageDiv.appendChild(toolCallDiv);
+        
+        toolCallDiv.appendChild(toolCallDetails);
+        
+        // Toggle collapse/expand
+        toolCallHeader.addEventListener('click', () => {
+          const isCollapsed = toolCallDetails.style.display === 'none';
+          toolCallDetails.style.display = isCollapsed ? 'block' : 'none';
+          toggleIcon.textContent = isCollapsed ? '▲' : '▼';
+        });
+        
+        toolCallBubble.appendChild(toolCallDiv);
       });
       
-      if (content) {
-        const contentDiv = document.createElement('div');
-        contentDiv.className = 'message-content';
-        contentDiv.textContent = content;
-        messageDiv.appendChild(contentDiv);
-      }
-    } else {
-      messageDiv.textContent = content;
+      toolCallContainer.appendChild(toolCallBubble);
+      chatMessages.appendChild(toolCallContainer);
     }
     
+    // Regular message bubble (user or assistant)
+    if (content || (!toolCalls || toolCalls.length === 0)) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `chat-message ${role}`;
+      if (messageId) {
+        messageDiv.setAttribute('data-message-id', messageId);
+      }
+      
+      const messageBubble = document.createElement('div');
+      messageBubble.className = 'message-bubble';
+      
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+      
+      // Render markdown for assistant messages, plain text for user messages
+      // For assistant messages, always create content div (even if empty, for streaming)
+      if (role === 'assistant') {
+        if (content) {
+          const renderedHtml = await renderMarkdown(content, false);
+          contentDiv.innerHTML = renderedHtml;
+        }
+        // If no content, leave empty (will be filled during streaming)
+      } else if (content) {
+        contentDiv.textContent = content;
+    }
+    
+      messageBubble.appendChild(contentDiv);
+      messageDiv.appendChild(messageBubble);
     chatMessages.appendChild(messageDiv);
+    }
+    
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
-  function updateLastMessage(content: string, toolCalls?: any[]) {
+  async function updateLastMessage(content: string, toolCalls?: any[], isStreaming: boolean = false) {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
     
-    const lastMessage = chatMessages.lastElementChild;
-    if (!lastMessage || !lastMessage.classList.contains('chat-message')) return;
+    // Find the last assistant message bubble (not tool call container)
+    let lastAssistantMessage: Element | null = null;
+    const children = Array.from(chatMessages.children);
+    for (let i = children.length - 1; i >= 0; i--) {
+      const child = children[i];
+      if (child.classList.contains('chat-message') && child.classList.contains('assistant')) {
+        lastAssistantMessage = child;
+        break;
+      }
+    }
     
+    if (!lastAssistantMessage) return;
+    
+    const messageBubble = lastAssistantMessage.querySelector('.message-bubble');
+    if (!messageBubble) return;
+    
+    // Handle tool calls - add tool call container before message if needed
     if (toolCalls && toolCalls.length > 0) {
-      const existingToolCalls = lastMessage.querySelectorAll('.tool-call-item');
-      if (existingToolCalls.length === 0) {
+      // Check if tool call container already exists
+      let toolCallContainer = chatMessages.querySelector('.tool-call-container:last-of-type');
+      if (!toolCallContainer || toolCallContainer.nextElementSibling !== lastAssistantMessage) {
+        // Create new tool call container
+        toolCallContainer = document.createElement('div');
+        toolCallContainer.className = 'tool-call-container';
+        
+        const toolCallBubble = document.createElement('div');
+        toolCallBubble.className = 'tool-call-bubble';
+        
         const toolCallHeader = document.createElement('div');
         toolCallHeader.className = 'tool-call-header';
-        toolCallHeader.textContent = 'Tool Call:';
-        lastMessage.appendChild(toolCallHeader);
+        toolCallHeader.textContent = 'Tool Call';
+        toolCallBubble.appendChild(toolCallHeader);
+        
+        toolCallContainer.appendChild(toolCallBubble);
+        chatMessages.insertBefore(toolCallContainer, lastAssistantMessage);
       }
       
+      const toolCallBubble = toolCallContainer.querySelector('.tool-call-bubble');
+      if (toolCallBubble) {
+        // Clear existing tool call items
+        const existingItems = toolCallBubble.querySelectorAll('.tool-call-item');
+        existingItems.forEach(item => item.remove());
+        
+        // Add new tool calls
       toolCalls.forEach((toolCall: any) => {
+          const toolCallId = toolCall.id || generateMessageId();
+          const toolName = toolCall.function?.name || 'unknown';
+          // Generate unique messageId for each tool call
+          const toolCallMessageId = `${generateMessageId()}_tool_${toolCallId}`;
+          
         const toolCallDiv = document.createElement('div');
         toolCallDiv.className = 'tool-call-item';
-        const toolNameSpan = document.createElement('code');
-        toolNameSpan.textContent = toolCall.function?.name || 'unknown';
-        toolCallDiv.appendChild(toolNameSpan);
+          toolCallDiv.setAttribute('data-tool-call-id', toolCallId);
+          toolCallDiv.setAttribute('data-message-id', toolCallMessageId);
+          toolCallDiv.setAttribute('data-tool-status', 'running'); // pending, running, success, error
+          
+          // Header with tool name and status
+          const toolCallHeader = document.createElement('div');
+          toolCallHeader.className = 'tool-call-item-header';
+          toolCallHeader.style.cssText = 'display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none;';
+          
+          const toolNameCode = document.createElement('code');
+          toolNameCode.textContent = toolName;
+          toolNameCode.style.cssText = 'font-size: 13px; font-weight: 600;';
+          
+          const statusContainer = document.createElement('div');
+          statusContainer.className = 'tool-call-status';
+          statusContainer.style.cssText = 'display: flex; align-items: center; gap: 6px; font-size: 12px;';
+          
+          const statusBadge = document.createElement('span');
+          statusBadge.className = 'tool-status-badge';
+          statusBadge.textContent = '执行中';
+          statusBadge.style.cssText = 'padding: 2px 8px; border-radius: 12px; background: #ff9800; color: white; font-size: 11px;';
+          statusContainer.appendChild(statusBadge);
+          
+          const toggleIcon = document.createElement('span');
+          toggleIcon.className = 'tool-call-toggle-icon';
+          toggleIcon.textContent = '▼';
+          toggleIcon.style.cssText = 'font-size: 10px; transition: transform 0.2s;';
+          statusContainer.appendChild(toggleIcon);
+          
+          toolCallHeader.appendChild(toolNameCode);
+          toolCallHeader.appendChild(statusContainer);
+          toolCallDiv.appendChild(toolCallHeader);
+          
+          // Collapsible details section
+          const toolCallDetails = document.createElement('div');
+          toolCallDetails.className = 'tool-call-details';
+          toolCallDetails.style.cssText = 'display: none; margin-top: 8px;';
         
         if (toolCall.function?.arguments) {
+            const argsLabel = document.createElement('div');
+            argsLabel.textContent = '参数:';
+            argsLabel.style.cssText = 'font-size: 11px; color: #666; margin-bottom: 4px;';
+            toolCallDetails.appendChild(argsLabel);
+            
           const argsPre = document.createElement('pre');
+            argsPre.style.cssText = 'margin: 0; padding: 8px; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; font-size: 12px; overflow-x: auto;';
           argsPre.textContent = typeof toolCall.function.arguments === 'string' 
             ? toolCall.function.arguments 
             : JSON.stringify(toolCall.function.arguments, null, 2);
-          toolCallDiv.appendChild(argsPre);
-        }
-        lastMessage.appendChild(toolCallDiv);
-      });
-      
-      if (content) {
-        let contentDiv = lastMessage.querySelector('.message-content');
+            toolCallDetails.appendChild(argsPre);
+          }
+          
+          toolCallDiv.appendChild(toolCallDetails);
+          
+          // Toggle collapse/expand
+          toolCallHeader.addEventListener('click', () => {
+            const isCollapsed = toolCallDetails.style.display === 'none';
+            toolCallDetails.style.display = isCollapsed ? 'block' : 'none';
+            toggleIcon.textContent = isCollapsed ? '▲' : '▼';
+          });
+          
+          toolCallBubble.appendChild(toolCallDiv);
+        });
+      }
+    }
+    
+    // Update message content
+    if (content !== undefined) {
+      let contentDiv = messageBubble.querySelector('.message-content');
         if (!contentDiv) {
           contentDiv = document.createElement('div');
           contentDiv.className = 'message-content';
-          lastMessage.appendChild(contentDiv);
+        messageBubble.appendChild(contentDiv);
         }
+      
+      // During streaming, show raw text (don't render markdown to avoid flickering)
+      // Markdown will be rendered when streaming is complete
+      if (isStreaming) {
         contentDiv.textContent = content;
-      }
     } else {
-      lastMessage.textContent = content;
+        // Streaming complete, render markdown
+        const renderedHtml = await renderMarkdown(content, false);
+        contentDiv.innerHTML = renderedHtml;
+      }
     }
     
     chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -605,6 +1482,18 @@ const page = new NamedPage('agent_chat', async () => {
     }
   }
 
+  // Generate unique message ID
+  function generateMessageId(): string {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    // Fallback for older browsers
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  // Track displayed message IDs globally to prevent duplicates across updates
+  const displayedMessageIdsGlobal = new Set<string>();
+
   async function sendMessage() {
     const chatInput = document.getElementById('chatInput') as HTMLTextAreaElement;
     const chatMessages = document.getElementById('chatMessages');
@@ -614,14 +1503,19 @@ const page = new NamedPage('agent_chat', async () => {
     const message = chatInput.value.trim();
     if (!message) return;
 
-    addMessage('user', message);
+    // Generate messageId for user message (frontend still generates user messageId)
+    const userMessageId = generateMessageId();
+    displayedMessageIdsGlobal.add(userMessageId);
+    await addMessage('user', message, undefined, undefined, userMessageId);
+    
+    const tempAssistantMessageId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    await addMessage('assistant', '', undefined, undefined, tempAssistantMessageId);
     
     chatInput.value = '';
     setLoading(true);
 
     try {
       const postUrl = `/d/${domainId}/agent/${urlAid}/chat`;
-      console.log('[AgentChat] Creating task via POST:', { message, postUrl, sessionId: currentSessionId });
       
       const response = await fetch(postUrl, {
         method: 'POST',
@@ -630,6 +1524,7 @@ const page = new NamedPage('agent_chat', async () => {
         },
         body: JSON.stringify({
           message,
+          messageId: userMessageId,
           history: [],
           createTaskRecord: true,
           // If currentSessionId is null, don't pass sessionId, let backend create new session
@@ -645,7 +1540,6 @@ const page = new NamedPage('agent_chat', async () => {
       }
 
       const responseData = await response.json();
-      console.log('[AgentChat] POST response:', responseData);
       const taskRecordId = responseData.taskRecordId;
       const newSessionId = responseData.sessionId;
       
@@ -666,13 +1560,11 @@ const page = new NamedPage('agent_chat', async () => {
         if (UiContext) {
           UiContext.sessionId = newSessionId;
         }
-        console.log('[AgentChat] Session created and URL updated:', newSessionId);
         
         // Update left sidebar session list
         await updateSessionListSidebar();
       }
 
-      console.log('[AgentChat] Task created, subscribing to record via session:', taskRecordId);
 
       // Ensure session is connected
       try {
@@ -687,7 +1579,6 @@ const page = new NamedPage('agent_chat', async () => {
           type: 'subscribe_record',
           rid: taskRecordId,
         }));
-        console.log('[AgentChat] Subscribed to record via session:', taskRecordId);
       } catch (error: any) {
         console.error('[AgentChat] Failed to connect to session or subscribe:', error);
         addMessage('error', 'Failed to connect to session: ' + (error.message || String(error)));
@@ -766,7 +1657,6 @@ const page = new NamedPage('agent_chat', async () => {
     
     // Connect to session WebSocket
     connectToSession().then(() => {
-      console.log('[AgentChat] Chat mode initialized from list mode');
     });
     
     // Set send button event (use one-time event to avoid duplicate binding)
@@ -795,7 +1685,7 @@ const page = new NamedPage('agent_chat', async () => {
   // Show chat mode
   chatMode.style.display = 'block';
   currentSessionId = sessionId || null;
-
+  
   // Left sidebar plus button: clear chat box and create new session
   const newChatBtnSidebar = document.getElementById('newChatBtnSidebar');
   if (newChatBtnSidebar) {
@@ -813,18 +1703,18 @@ const page = new NamedPage('agent_chat', async () => {
       }
       // Update left sidebar session list (remove current session highlight)
       updateSessionListSidebar();
-      console.log('[AgentChat] Chat cleared, ready for new session');
     });
   }
 
   // Load history records (if any)
   const recordHistory = UiContext?.recordHistory || [];
   if (recordHistory && Array.isArray(recordHistory) && recordHistory.length > 0) {
-    recordHistory.forEach((msg: any) => {
+    // Render all messages sequentially to ensure proper order
+    for (const msg of recordHistory) {
       if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool') {
-        addMessage(msg.role, msg.content, msg.toolName, msg.tool_calls);
+        await addMessage(msg.role, msg.content, msg.toolName, msg.tool_calls);
       }
-    });
+    }
     // Scroll to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
