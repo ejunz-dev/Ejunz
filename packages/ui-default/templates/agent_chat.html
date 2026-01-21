@@ -12,14 +12,61 @@
 </script>
 
 <div class="row">
-  <div class="medium-9 columns">
+  {% if mode == 'chat' %}
+  <!-- Chat Mode: Left Sidebar (Session List) -->
+  <div class="medium-3 columns">
+    <div class="section side">
+      <div class="section__header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 class="section__title">{{ _('Sessions') }}</h2>
+        <button id="newChatBtnSidebar" class="button" style="padding: 4px 8px; min-width: auto;" title="{{ _('New Chat') }}">
+          <span class="icon icon-add"></span>
+        </button>
+      </div>
+      <div class="section__body" style="max-height: calc(100vh - 200px); overflow-y: auto;">
+        <div id="sessionListSidebar">
+          {% if sessions and sessions.length > 0 %}
+          <div class="session-list">
+            {% for session in sessions %}
+            <div class="session-item-sidebar" data-session-id="{{ session._id.toString() }}" 
+                 style="border: 1px solid #ddd; border-radius: 4px; padding: 12px; margin-bottom: 8px; cursor: pointer; {% if sessionId == session._id.toString() %}background-color: #f0f0f0; border-color: #007bff;{% endif %}">
+              <div style="flex: 1;">
+                <h4 style="margin: 0 0 5px 0; font-size: 0.95em; font-weight: 600;">
+                  {{ session.title or ('Session ' + session._id.toString().substring(0, 8)) }}
+                </h4>
+                {% if session.lastRecord and session.lastRecord.agentMessages %}
+                  {% set lastMsg = session.lastRecord.agentMessages[session.lastRecord.agentMessages.length - 1] %}
+                  <p style="margin: 5px 0; color: #666; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    {{ lastMsg.content|truncate(60) }}
+                  </p>
+                {% endif %}
+                <div style="font-size: 0.8em; color: #999; margin-top: 5px;">
+                  <span>{{ (session.recordIds|length) if session.recordIds else 0 }} {{ _('records') }}</span>
+                  <span style="margin-left: 8px;">{{ datetimeSpan(session.updatedAt, false)|safe if session.updatedAt else datetimeSpan(session._id, false)|safe }}</span>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="typo">
+            <p class="text-gray" style="font-size: 0.9em;">{{ _('No sessions yet.') }}</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Main Content Area -->
+  <div class="{% if mode == 'chat' %}medium-9{% else %}medium-9{% endif %} columns">
     <div class="section">
       <div class="section__header">
         <h1 class="section__title">{{ adoc.title }} - {{ _('Chat') }}</h1>
         <div class="section__tools">
           {% if mode == 'chat' %}
-          <a href="{{ url('agent_chat', domainId=domainId, aid=adoc.aid) }}" class="button" id="backToListBtn">
-            <span class="icon icon-back"></span> {{ _('Back to Sessions') }}
+          <a href="{{ url('agent_detail', domainId=domainId, aid=adoc.aid) }}" class="button" id="backToAgentBtn">
+            <span class="icon icon-back"></span> {{ _('Back to Agent') }}
           </a>
           {% else %}
           <a href="{{ url('agent_detail', domainId=domainId, aid=adoc.aid) }}" class="button">
@@ -73,10 +120,6 @@
         {% endif %}
         <!-- Chat Mode (always present, hidden in list mode) -->
         <div id="chatMode" {% if mode == 'list' %}style="display: none;"{% endif %}>
-          <div class="mcp-status-container">
-            <span id="mcpStatus" class="mcp-status" data-status-url="{{ url('agent_mcp_status', domainId=domainId, aid=adoc.aid) }}">MCP: Checking...</span>
-          </div>
-
           {% if not apiKey or apiKey == '' %}
           <div class="api-key-warning">
             <p>⚠️ {{ _('API Key not configured. Please configure AI settings in system settings') }}</p>
@@ -95,110 +138,6 @@
     </div>
   </div>
 
-  <div class="medium-3 columns">
-    {% if mode == 'chat' %}
-    <div class="section side">
-      <div class="section__header">
-        <h2 class="section__title">{{ _('MCP Tools') }}</h2>
-      </div>
-      <div class="section__body">
-        <div id="mcp-tools-sidebar">
-          {# 已注释：MCP 工具状态的 WebSocket URL
-          data-mcp-status-ws-url="{{ mcpStatusWsUrl|default('') }}"
-          #}
-          <!-- Provider MCP Servers -->
-          {% if providerServers and providerServers.length > 0 %}
-          <div class="mcp-category">
-            <h4 style="font-size: 0.9em; margin-bottom: 8px; color: #666;">{{ _('Provider') }}</h4>
-            <div id="mcp-provider-servers">
-              {% for server in providerServers %}
-              <div class="mcp-server-item" data-server-id="{{ server.serverId }}" data-type="provider">
-                <div class="mcp-server-header" onclick="window.toggleServer && window.toggleServer('{{ server.serverId }}')">
-                  <span class="mcp-server-toggle icon icon-chevron-right" id="toggle-{{ server.serverId }}"></span>
-                  <span class="mcp-server-name">{{ server.name }}</span>
-                  <span class="mcp-server-status" id="status-{{ server.serverId }}" data-status="{{ server.status }}">
-                    {% if server.status == 'connected' %}
-                    <span class="status-indicator status-online"></span>{{ _('Online') }}
-                    {% else %}
-                    <span class="status-indicator status-offline"></span>{{ _('Offline') }}
-                    {% endif %}
-                  </span>
-                </div>
-                <div class="mcp-server-tools" id="tools-{{ server.serverId }}" style="display: none;">
-                  {% if server.tools and server.tools.length > 0 %}
-                  {% for tool in server.tools %}
-                  <div class="mcp-tool-item" data-tool-id="{{ tool._id }}">
-                    <div class="mcp-tool-name">{{ tool.name }}</div>
-                    <div class="mcp-tool-description">{{ tool.description }}</div>
-                    {% if tool.inputSchema %}
-                    <details class="mcp-tool-schema">
-                      <summary>{{ _('View Parameters') }}</summary>
-                      <pre>{{ tool.inputSchema|json }}</pre>
-                    </details>
-                    {% endif %}
-                  </div>
-                  {% endfor %}
-                  {% else %}
-                  <div class="mcp-tool-empty">{{ _('No tools available') }}</div>
-                  {% endif %}
-                </div>
-              </div>
-              {% endfor %}
-            </div>
-          </div>
-          {% endif %}
-
-
-          <!-- Node MCP Servers -->
-          {% if nodeServers and nodeServers.length > 0 %}
-          <div class="mcp-category" style="margin-top: 15px;">
-            <h4 style="font-size: 0.9em; margin-bottom: 8px; color: #666;">{{ _('Node') }}</h4>
-            <div id="mcp-node-servers">
-              {% for server in nodeServers %}
-              <div class="mcp-server-item" data-server-id="{{ server.serverId }}" data-type="node">
-                <div class="mcp-server-header" onclick="window.toggleServer && window.toggleServer('{{ server.serverId }}')">
-                  <span class="mcp-server-toggle icon icon-chevron-right" id="toggle-{{ server.serverId }}"></span>
-                  <span class="mcp-server-name">{{ server.name }}</span>
-                  <span class="mcp-server-status" id="status-{{ server.serverId }}" data-status="{{ server.status }}">
-                    {% if server.status == 'connected' %}
-                    <span class="status-indicator status-online"></span>{{ _('Online') }}
-                    {% else %}
-                    <span class="status-indicator status-offline"></span>{{ _('Offline') }}
-                    {% endif %}
-                  </span>
-                </div>
-                <div class="mcp-server-tools" id="tools-{{ server.serverId }}" style="display: none;">
-                  {% if server.tools and server.tools.length > 0 %}
-                  {% for tool in server.tools %}
-                  <div class="mcp-tool-item" data-tool-id="{{ tool._id }}">
-                    <div class="mcp-tool-name">{{ tool.name }}</div>
-                    <div class="mcp-tool-description">{{ tool.description }}</div>
-                    {% if tool.inputSchema %}
-                    <details class="mcp-tool-schema">
-                      <summary>{{ _('View Parameters') }}</summary>
-                      <pre>{{ tool.inputSchema|json }}</pre>
-                    </details>
-                    {% endif %}
-                  </div>
-                  {% endfor %}
-                  {% else %}
-                  <div class="mcp-tool-empty">{{ _('No tools available') }}</div>
-                  {% endif %}
-                </div>
-              </div>
-              {% endfor %}
-            </div>
-          </div>
-          {% endif %}
-
-          {% if (not providerServers or providerServers.length == 0) and (not nodeServers or nodeServers.length == 0) %}
-          <p class="note">{{ _('No MCP servers available.') }}</p>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-    {% endif %}
-  </div>
 </div>
 {% endblock %}
 

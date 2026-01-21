@@ -21,7 +21,7 @@ const page = new NamedPage('agent_chat', async () => {
   const urlMatch = window.location.pathname.match(/\/agent\/([^\/]+)\/chat/);
   const urlAid = urlMatch ? urlMatch[1] : aid;
 
-  // 共享的 connectToSession, sendMessage 等函数定义（需要在列表模式之前定义）
+  // Shared function definitions for connectToSession, sendMessage, etc. (must be defined before list mode)
   const connectToSession = async (): Promise<void> => {
     if (sessionConnected && sessionWebSocket) {
       console.log('[AgentChat] Session already connected');
@@ -80,6 +80,243 @@ const page = new NamedPage('agent_chat', async () => {
   };
   
   let currentRecordId: string | null = null;
+  
+  // Show/hide loading state
+  function setLoadingState(loading: boolean, message?: string) {
+    const chatMessages = document.getElementById('chatMessages');
+    if (!chatMessages) return;
+    
+    let loadingIndicator = document.getElementById('sessionLoadingIndicator');
+    if (loading) {
+      if (!loadingIndicator) {
+        loadingIndicator = document.createElement('div');
+        loadingIndicator.id = 'sessionLoadingIndicator';
+        loadingIndicator.style.cssText = 'text-align: center; padding: 20px; color: #666;';
+        loadingIndicator.innerHTML = `
+          <div style="display: inline-block;">
+            <span class="loading" style="margin-right: 8px;"></span>
+            <span>${message || '加载中...'}</span>
+          </div>
+        `;
+        chatMessages.appendChild(loadingIndicator);
+      } else {
+        if (message) {
+          const textSpan = loadingIndicator.querySelector('span:last-child');
+          if (textSpan) textSpan.textContent = message;
+        }
+        loadingIndicator.style.display = 'block';
+      }
+    } else {
+      if (loadingIndicator) {
+        loadingIndicator.style.display = 'none';
+      }
+    }
+  }
+  
+  // Update session list highlight state (immediate update, no API wait)
+  function updateSessionHighlight(sessionId: string | null) {
+    const sessionListSidebar = document.getElementById('sessionListSidebar');
+    if (!sessionListSidebar) return;
+    
+    const sessionItems = sessionListSidebar.querySelectorAll('.session-item-sidebar');
+    sessionItems.forEach(item => {
+      const sid = item.getAttribute('data-session-id');
+      const isActive = sid === sessionId;
+      const element = item as HTMLElement;
+      
+      // Only set border highlight, don't change background color
+      if (isActive) {
+        element.style.setProperty('border-color', '#007bff', 'important');
+        element.style.setProperty('border-width', '2px', 'important');
+      } else {
+        element.style.setProperty('border-color', '#ddd', 'important');
+        element.style.setProperty('border-width', '1px', 'important');
+      }
+    });
+  }
+  
+  // Switch to specified session (no page refresh)
+  async function switchToSession(sessionId: string) {
+    const chatMessages = document.getElementById('chatMessages');
+    if (!chatMessages) return;
+    
+    // If already the current session, do nothing
+    if (currentSessionId === sessionId) {
+      return;
+    }
+    
+    // Immediately update highlight state (before loading, instant feedback)
+    updateSessionHighlight(sessionId);
+    
+    // Save previous sessionId (for error recovery)
+    const previousSessionId = currentSessionId;
+    // Update currentSessionId (update early to avoid duplicate clicks)
+    currentSessionId = sessionId;
+    
+    try {
+      // Show loading state
+      setLoadingState(true, '正在加载会话历史...');
+      
+      // Clear current chat messages
+      chatMessages.innerHTML = '';
+      setLoadingState(true, '正在加载会话历史...');
+      
+      // Fetch history records for this session
+      const response = await fetch(`/d/${domainId}/agent/${urlAid}/chat/session/${sessionId}/history`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        console.error('[AgentChat] Failed to load session history:', response.status);
+        setLoadingState(false);
+        // If failed, fall back to page navigation
+        window.location.href = `/d/${domainId}/agent/${urlAid}/chat?sid=${sessionId}`;
+        return;
+      }
+      
+      const data = await response.json();
+      const recordHistory = data.recordHistory || [];
+      
+      // Update URL (no page refresh)
+      const newUrl = `/d/${domainId}/agent/${urlAid}/chat?sid=${sessionId}`;
+      window.history.pushState({ mode: 'chat', sessionId: sessionId }, '', newUrl);
+      
+      // Update sessionId in UiContext
+      if (UiContext) {
+        UiContext.sessionId = sessionId;
+      }
+      
+      // Hide loading state
+      setLoadingState(false);
+      
+      // Load history records
+      if (recordHistory && Array.isArray(recordHistory) && recordHistory.length > 0) {
+        recordHistory.forEach((msg: any) => {
+          if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool') {
+            addMessage(msg.role, msg.content, msg.toolName, msg.tool_calls);
+          }
+        });
+        // Scroll to bottom
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      } else {
+        // If no history records, show message
+        const emptyMsg = document.createElement('div');
+        emptyMsg.style.cssText = 'text-align: center; padding: 20px; color: #999;';
+        emptyMsg.textContent = '暂无消息';
+        chatMessages.appendChild(emptyMsg);
+      }
+      
+      // Update left sidebar session list (maintain highlight state)
+      await updateSessionListSidebar();
+      // Ensure highlight state is correct (updateSessionListSidebar regenerates HTML)
+      updateSessionHighlight(sessionId);
+      
+      // Reconnect WebSocket (if needed)
+      if (sessionWebSocket) {
+        sessionWebSocket.close();
+        sessionConnected = false;
+      }
+      await connectToSession();
+      
+      console.log('[AgentChat] Switched to session:', sessionId);
+    } catch (error: any) {
+      console.error('[AgentChat] Error switching session:', error);
+      setLoadingState(false);
+      // If error occurred, restore previous highlight state
+      currentSessionId = previousSessionId;
+      updateSessionHighlight(previousSessionId);
+      // If error occurred, fall back to page navigation
+      window.location.href = `/d/${domainId}/agent/${urlAid}/chat?sid=${sessionId}`;
+    }
+  }
+  
+  // Function to update session list sidebar (must be defined before sendMessage)
+  async function updateSessionListSidebar() {
+    const sessionListSidebar = document.getElementById('sessionListSidebar');
+    if (!sessionListSidebar) return;
+    
+    try {
+      // Fetch latest session list (JSON API)
+      const response = await fetch(`/d/${domainId}/agent/${urlAid}/chat/sessions`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        console.error('[AgentChat] Failed to fetch sessions:', response.status);
+        return;
+      }
+      
+      const data = await response.json();
+      const sessions = data.sessions || [];
+      
+      if (sessions.length === 0) {
+        sessionListSidebar.innerHTML = '<div class="typo"><p class="text-gray" style="font-size: 0.9em;">No sessions yet.</p></div>';
+        return;
+      }
+      
+      // Build session list HTML
+      let html = '<div class="session-list">';
+      for (const session of sessions) {
+        const sessionId = session._id;
+        const isActive = sessionId === currentSessionId;
+        const title = session.title || `Session ${sessionId.substring(0, 8)}`;
+        const recordCount = (session.recordIds || []).length;
+        
+        let lastMsgPreview = '';
+        if (session.lastRecord && session.lastRecord.agentMessages) {
+          const lastMsg = session.lastRecord.agentMessages[session.lastRecord.agentMessages.length - 1];
+          if (lastMsg && lastMsg.content) {
+            const content = typeof lastMsg.content === 'string' ? lastMsg.content : JSON.stringify(lastMsg.content);
+            lastMsgPreview = content.length > 60 ? content.substring(0, 60) + '...' : content;
+          }
+        }
+        
+        const updatedAt = session.updatedAt || session._id;
+        const updatedAtStr = new Date(updatedAt).toLocaleString('zh-CN', { 
+          month: 'short', 
+          day: 'numeric', 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        });
+        
+        html += `
+          <div class="session-item-sidebar" data-session-id="${sessionId}" 
+               style="border: 1px solid #ddd; border-radius: 4px; padding: 12px; margin-bottom: 8px; cursor: pointer; ${isActive ? 'border-color: #007bff; border-width: 2px;' : ''}">
+            <div style="flex: 1;">
+              <h4 style="margin: 0 0 5px 0; font-size: 0.95em; font-weight: 600;">${title}</h4>
+              ${lastMsgPreview ? `<p style="margin: 5px 0; color: #666; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${lastMsgPreview}</p>` : ''}
+              <div style="font-size: 0.8em; color: #999; margin-top: 5px;">
+                <span>${recordCount} records</span>
+                <span style="margin-left: 8px;">${updatedAtStr}</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      html += '</div>';
+      
+      sessionListSidebar.innerHTML = html;
+      
+      // Rebind click events (no refresh switching)
+      const sessionItems = sessionListSidebar.querySelectorAll('.session-item-sidebar');
+      sessionItems.forEach(item => {
+        const sid = item.getAttribute('data-session-id');
+        if (sid) {
+          item.addEventListener('click', async () => {
+            await switchToSession(sid);
+          });
+        }
+      });
+    } catch (error: any) {
+      console.error('[AgentChat] Error updating session list:', error);
+    }
+  }
   
   const handleRecordUpdate = (msg: any) => {
     const chatMessages = document.getElementById('chatMessages');
@@ -395,7 +632,7 @@ const page = new NamedPage('agent_chat', async () => {
           message,
           history: [],
           createTaskRecord: true,
-          // 如果 currentSessionId 为 null，不传 sessionId，让后端创建新 session
+          // If currentSessionId is null, don't pass sessionId, let backend create new session
           ...(currentSessionId ? { sessionId: currentSessionId } : {}),
         }),
       });
@@ -419,22 +656,25 @@ const page = new NamedPage('agent_chat', async () => {
         return;
       }
 
-      // 如果返回了新的 sessionId（第一次发送消息时创建），无刷新切换到该 session 的 URL
+      // If new sessionId is returned (auto-created on first message), update URL and sidebar
       if (newSessionId && newSessionId !== currentSessionId) {
         currentSessionId = newSessionId;
         const newUrl = `/d/${domainId}/agent/${urlAid}/chat?sid=${newSessionId}`;
-        // 使用 pushState 更新 URL，不刷新页面（类似 DeepSeek 的行为）
+        // Use pushState to update URL without page refresh (similar to DeepSeek behavior)
         window.history.pushState({ mode: 'chat', sessionId: newSessionId }, '', newUrl);
-        // 更新 UiContext 中的 sessionId
+        // Update sessionId in UiContext
         if (UiContext) {
           UiContext.sessionId = newSessionId;
         }
         console.log('[AgentChat] Session created and URL updated:', newSessionId);
+        
+        // Update left sidebar session list
+        await updateSessionListSidebar();
       }
 
       console.log('[AgentChat] Task created, subscribing to record via session:', taskRecordId);
 
-      // 确保 session 已连接
+      // Ensure session is connected
       try {
         await connectToSession();
         
@@ -442,7 +682,7 @@ const page = new NamedPage('agent_chat', async () => {
           throw new Error('Session connection failed');
         }
         
-        // 通过 session 订阅新的 record
+        // Subscribe to new record via session
         sessionWebSocket.send(JSON.stringify({
           type: 'subscribe_record',
           rid: taskRecordId,
@@ -461,7 +701,7 @@ const page = new NamedPage('agent_chat', async () => {
     }
   }
 
-  // 列表模式
+  // List mode
   if (mode === 'list') {
     const sessionListMode = document.getElementById('sessionListMode');
     const newChatBtn = document.getElementById('newChatBtn');
@@ -470,37 +710,37 @@ const page = new NamedPage('agent_chat', async () => {
     
     if (!sessionListMode) return;
     
-    // 隐藏聊天模式（如果存在）
+    // Hide chat mode (if exists)
     if (chatMode) chatMode.style.display = 'none';
     
-    // 新建会话按钮：切换到聊天模式（纯前端行为，不改变 URL）
+    // New chat button: switch to chat mode (pure frontend behavior, don't change URL)
     if (newChatBtn) {
       newChatBtn.addEventListener('click', () => {
-        // 切换到聊天模式（URL 不变，纯前端切换）
+        // Switch to chat mode (URL unchanged, pure frontend switch)
         sessionListMode.style.display = 'none';
         const chatMode = document.getElementById('chatMode');
         if (chatMode) {
           chatMode.style.display = 'block';
-          // 重置 sessionId，表示这是一个新会话
+          // Reset sessionId, indicating this is a new session
           currentSessionId = null;
-          // 清空聊天消息
+          // Clear chat messages
           const chatMessages = document.getElementById('chatMessages');
           if (chatMessages) {
             chatMessages.innerHTML = '';
           }
-          // 初始化聊天模式（延迟执行，确保 DOM 已更新）
+          // Initialize chat mode (delayed execution to ensure DOM is updated)
           setTimeout(() => {
             initChatModeForList();
           }, 100);
         } else {
-          // 如果聊天模式不存在，跳转到新建聊天页面
+          // If chat mode doesn't exist, navigate to new chat page
           window.location.href = `/d/${domainId}/agent/${urlAid}/chat?new=true`;
         }
-        // 不更新 URL，保持当前 URL 不变
+        // Don't update URL, keep current URL unchanged
       });
     }
     
-    // 点击 session 项：跳转到对应的 session URL
+    // Click session item: navigate to corresponding session URL
     sessionItems.forEach(item => {
       item.addEventListener('click', () => {
         const sid = item.getAttribute('data-session-id');
@@ -513,7 +753,7 @@ const page = new NamedPage('agent_chat', async () => {
     return;
   }
   
-  // 初始化聊天模式的函数（在列表模式下切换到聊天模式时调用）
+  // Function to initialize chat mode (called when switching to chat mode from list mode)
   function initChatModeForList() {
     const chatMessages = document.getElementById('chatMessages');
     const chatInput = document.getElementById('chatInput') as HTMLTextAreaElement;
@@ -524,12 +764,12 @@ const page = new NamedPage('agent_chat', async () => {
       return;
     }
     
-    // 连接 session WebSocket
+    // Connect to session WebSocket
     connectToSession().then(() => {
       console.log('[AgentChat] Chat mode initialized from list mode');
     });
     
-    // 设置发送按钮事件（使用一次性事件，避免重复绑定）
+    // Set send button event (use one-time event to avoid duplicate binding)
     const sendHandler = () => {
       sendMessage();
     };
@@ -544,57 +784,85 @@ const page = new NamedPage('agent_chat', async () => {
     chatInput.addEventListener('keydown', keyHandler);
   }
 
-  // 聊天模式
+  // Chat mode
   const chatMode = document.getElementById('chatMode');
   const chatMessages = document.getElementById('chatMessages');
   const chatInput = document.getElementById('chatInput') as HTMLTextAreaElement;
   const sendButton = document.getElementById('sendButton') as HTMLButtonElement;
-  const mcpStatus = document.getElementById('mcpStatus');
   
   if (!chatMode || !chatMessages || !chatInput || !sendButton) return;
   
-  // 显示聊天模式
+  // Show chat mode
   chatMode.style.display = 'block';
   currentSessionId = sessionId || null;
-  
-  // 加载历史记录（如果有）
-  const recordHistory = UiContext?.recordHistory || [];
-  if (recordHistory && Array.isArray(recordHistory) && recordHistory.length > 0) {
-    recordHistory.forEach((msg: any) => {
-      if (msg.role === 'user' || msg.role === 'assistant') {
-        addMessage(msg.role, msg.content, undefined, msg.tool_calls);
+
+  // Left sidebar plus button: clear chat box and create new session
+  const newChatBtnSidebar = document.getElementById('newChatBtnSidebar');
+  if (newChatBtnSidebar) {
+    newChatBtnSidebar.addEventListener('click', () => {
+      // Clear chat messages
+      chatMessages.innerHTML = '';
+      // Reset sessionId, indicating this is a new session
+      currentSessionId = null;
+      // Update URL, remove sid parameter
+      const newUrl = `/d/${domainId}/agent/${urlAid}/chat`;
+      window.history.pushState({ mode: 'chat', sessionId: null }, '', newUrl);
+      // Update sessionId in UiContext
+      if (UiContext) {
+        UiContext.sessionId = '';
       }
+      // Update left sidebar session list (remove current session highlight)
+      updateSessionListSidebar();
+      console.log('[AgentChat] Chat cleared, ready for new session');
     });
   }
 
-  // 使用共享的 connectToSession 函数（已在列表模式下定义）
-  await connectToSession();
-
-  if (mcpStatus) {
-    const mcpStatusUrl = mcpStatus.getAttribute('data-status-url') || '';
-    async function checkMcpStatus() {
-      if (!mcpStatusUrl) return;
-      try {
-        const response = await fetch(mcpStatusUrl, { 
-          method: 'GET'
-        });
-        const data = await response.json();
-        if (data.connected) {
-          mcpStatus.textContent = `MCP: Connected (${data.toolCount} tools)`;
-          mcpStatus.className = 'mcp-status connected';
-        } else {
-          mcpStatus.textContent = 'MCP: Disconnected';
-          mcpStatus.className = 'mcp-status disconnected';
-        }
-      } catch (e) {
-        mcpStatus.textContent = 'MCP: Disconnected';
-        mcpStatus.className = 'mcp-status disconnected';
+  // Load history records (if any)
+  const recordHistory = UiContext?.recordHistory || [];
+  if (recordHistory && Array.isArray(recordHistory) && recordHistory.length > 0) {
+    recordHistory.forEach((msg: any) => {
+      if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool') {
+        addMessage(msg.role, msg.content, msg.toolName, msg.tool_calls);
       }
-    }
-    checkMcpStatus();
+    });
+    // Scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
-  // 使用共享的 sendMessage 函数（已在列表模式下定义）
+  // Use shared connectToSession function (already defined in list mode)
+  await connectToSession();
+
+  // Bind click events for initially rendered session items (if in template)
+  const initialSessionItems = document.querySelectorAll('.session-item-sidebar');
+  initialSessionItems.forEach(item => {
+    const sid = item.getAttribute('data-session-id');
+    if (sid) {
+      item.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        await switchToSession(sid);
+      });
+    }
+  });
+
+  // Handle browser back/forward buttons
+  window.addEventListener('popstate', async (event) => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const sid = urlParams.get('sid');
+    if (sid && sid !== currentSessionId) {
+      await switchToSession(sid);
+    } else if (!sid && currentSessionId) {
+      // If no sid in URL, clear chat box
+      currentSessionId = null;
+      chatMessages.innerHTML = '';
+      if (UiContext) {
+        UiContext.sessionId = '';
+      }
+      await updateSessionListSidebar();
+    }
+  });
+
+  // Use shared sendMessage function (already defined in list mode)
 
   sendButton.addEventListener('click', sendMessage);
   chatInput.addEventListener('keydown', (e) => {
