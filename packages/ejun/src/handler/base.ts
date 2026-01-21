@@ -4584,6 +4584,345 @@ class BaseDomainEditHandler extends Handler {
         };
     }
 }
+/**
+ * 获取 Skills Base 的辅助函数
+ */
+async function getSkillsBase(domainId: string): Promise<BaseDoc> {
+    let base = await document.getMulti(domainId, document.TYPE_BASE, { 
+        type: 'skill'
+    })
+        .limit(1)
+        .toArray();
+    
+    if (base.length === 0) {
+        throw new NotFoundError('Skills Base not found');
+    }
+    
+    return base[0] as BaseDoc;
+}
+
+/**
+ * Skill Card Handler (类似 BaseCardHandler，但使用 Skills Base)
+ */
+class SkillCardHandler extends Handler {
+    @param('nodeId', Types.String, true)
+    @param('title', Types.String, true)
+    @param('content', Types.String, true)
+    @param('operation', Types.String, true)
+    async post(
+        domainId: string,
+        nodeId?: string,
+        title?: string,
+        content: string = '',
+        operation?: string
+    ) {
+        if (operation) {
+            return;
+        }
+        
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const body: any = this.request?.body || {};
+        const finalNodeId: string | undefined = body.nodeId || nodeId;
+        const finalTitle: string | undefined = body.title || title;
+        const finalContent: string = body.content !== undefined ? body.content : content || '';
+
+        if (!finalNodeId || !finalTitle) {
+            throw new ValidationError('nodeId and title are required for creating a card');
+        }
+        
+        const base = await getSkillsBase(domainId);
+        
+        if (!this.user.own(base)) {
+            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        }
+        
+        const cardDocId = await CardModel.create(
+            domainId,
+            base.docId,
+            finalNodeId,
+            this.user._id,
+            finalTitle,
+            finalContent,
+            this.request.ip,
+            body?.problems,
+        );
+        
+        this.response.body = { cardId: cardDocId.toString() };
+    }
+    
+    @param('docId', Types.ObjectId, true)
+    @param('bid', Types.PositiveInt, true)
+    @param('nodeId', Types.String)
+    async get(domainId: string, docId: ObjectId, bid: number, nodeId: string) {
+        const base = await getSkillsBase(domainId);
+        const cards = await CardModel.getByNodeId(domainId, base.docId, nodeId);
+        this.response.body = { cards };
+    }
+    
+    @route('cardId', Types.String)
+    @param('nodeId', Types.String, true)
+    @param('title', Types.String, true)
+    @param('content', Types.String, true)
+    @param('order', Types.PositiveInt, true)
+    @param('operation', Types.String, true)
+    @param('cid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
+    @param('docId', Types.ObjectId, true)
+    async postUpdate(
+        domainId: string,
+        cardIdParam?: string,
+        nodeId?: string,
+        title?: string,
+        content?: string,
+        order?: number,
+        _operation?: string,
+        cidParam?: number,
+        bidParam?: number,
+        docIdParam?: ObjectId,
+    ) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        await this.handleCardMutation('update', domainId, {
+            cardIdParam,
+            nodeId,
+            title,
+            content,
+            order,
+            cidParam,
+            bidParam,
+            docIdParam,
+        });
+    }
+
+    @route('cardId', Types.String)
+    @param('nodeId', Types.String, true)
+    @param('title', Types.String, true)
+    @param('content', Types.String, true)
+    @param('order', Types.PositiveInt, true)
+    @param('operation', Types.String, true)
+    @param('cid', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
+    @param('docId', Types.ObjectId, true)
+    async postDelete(
+        domainId: string,
+        cardIdParam?: string,
+        nodeId?: string,
+        title?: string,
+        content?: string,
+        order?: number,
+        _operation?: string,
+        cidParam?: number,
+        bidParam?: number,
+        docIdParam?: ObjectId
+    ) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        await this.handleCardMutation('delete', domainId, {
+            cardIdParam,
+            nodeId,
+            title,
+            content,
+            order,
+            cidParam,
+            bidParam,
+            docIdParam,
+        });
+    }
+
+    private async handleCardMutation(
+        action: 'update' | 'delete',
+        domainId: string,
+        params: {
+            cardIdParam?: string;
+            nodeId?: string;
+            title?: string;
+            content?: string;
+            order?: number;
+            cidParam?: number;
+            bidParam?: number;
+            docIdParam?: ObjectId;
+        },
+    ) {
+        const { cardIdParam, nodeId, title, content, order } = params;
+
+        const parseObjectId = (value?: string): ObjectId | null => {
+            if (value && ObjectId.isValid(value)) {
+                try {
+                    return new ObjectId(value);
+                } catch {
+                    return null;
+                }
+            }
+            return null;
+        };
+
+        const resolvedDocId = parseObjectId(cardIdParam);
+
+        const base = await getSkillsBase(domainId);
+        
+        if (!this.user.own(base)) {
+            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        }
+
+        let targetCard: CardDoc | null = null;
+        if (resolvedDocId) {
+            targetCard = await CardModel.get(domainId, resolvedDocId);
+        }
+
+        if (!targetCard) {
+            throw new NotFoundError('Card not found');
+        }
+
+        if (action === 'update') {
+            await CardModel.update(domainId, targetCard.docId, {
+                nodeId,
+                title,
+                content,
+                order,
+            });
+            this.response.body = { success: true };
+        } else if (action === 'delete') {
+            await CardModel.delete(domainId, targetCard.docId);
+            this.response.body = { success: true };
+        }
+    }
+}
+
+/**
+ * Skill Node Handler (类似 BaseNodeHandler，但使用 Skills Base)
+ */
+class SkillNodeHandler extends Handler {
+    @post('text', Types.String, true)
+    @post('x', Types.Float, true)
+    @post('y', Types.Float, true)
+    @post('parentId', Types.String, true)
+    @post('siblingId', Types.String, true)
+    @post('operation', Types.String, true)
+    @param('nodeId', Types.String, true)
+    @post('branch', Types.String, true)
+    async post(
+        domainId: string,
+        text?: string,
+        x?: number,
+        y?: number,
+        parentId?: string,
+        siblingId?: string,
+        operation?: string,
+        nodeId?: string,
+        branch?: string,
+    ) {
+        const base = await getSkillsBase(domainId);
+        const docId = base.docId;
+        const effectiveBranch = 'main'; // skill 固定使用 main branch
+        
+        if (operation === 'delete' && nodeId) {
+            this.checkPriv(PRIV.PRIV_USER_PROFILE);
+            if (!this.user.own(base)) {
+                this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            }
+            await BaseModel.deleteNode(domainId, docId, nodeId, effectiveBranch);
+            this.response.body = { success: true };
+            return;
+        }
+        
+        const body: any = this.request?.body || {};
+        const finalText = text !== undefined ? text : body.text;
+        
+        if (nodeId && operation === 'update') {
+            this.checkPriv(PRIV.PRIV_USER_PROFILE);
+            if (!this.user.own(base)) {
+                this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            }
+            await BaseModel.updateNode(domainId, docId, nodeId, {
+                text: finalText,
+                x,
+                y,
+            });
+            this.response.body = { success: true };
+            return;
+        }
+        
+        if (finalText !== undefined || operation === 'add') {
+            this.checkPriv(PRIV.PRIV_USER_PROFILE);
+            if (!this.user.own(base)) {
+                this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            }
+            const finalTextValue = finalText !== undefined ? finalText : '';
+            const result = await BaseModel.addNode(
+                domainId,
+                docId,
+                {
+                    text: finalTextValue,
+                    x,
+                    y,
+                    parentId,
+                },
+                parentId,
+                effectiveBranch,
+                parentId
+            );
+            this.response.body = { nodeId: result.nodeId, edgeId: result.edgeId };
+            return;
+        }
+        
+        throw new BadRequestError('Missing required parameters');
+    }
+}
+
+/**
+ * Skill Edge Handler (类似 BaseEdgeHandler，但使用 Skills Base)
+ */
+class SkillEdgeHandler extends Handler {
+    @param('source', Types.String)
+    @param('target', Types.String)
+    @param('label', Types.String, true)
+    async postAdd(
+        domainId: string,
+        source: string,
+        target: string,
+        label?: string
+    ) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const base = await getSkillsBase(domainId);
+        const docId = base.docId;
+        const branch = 'main'; // skill 固定使用 main branch
+        
+        if (!this.user.own(base)) {
+            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        }
+
+        const edge: Omit<BaseEdge, 'id'> = {
+            source,
+            target,
+            label,
+        };
+
+        const newEdgeId = await BaseModel.addEdge(
+            domainId,
+            docId,
+            edge,
+            branch
+        );
+
+        this.response.body = { edgeId: newEdgeId };
+    }
+
+    @param('edgeId', Types.String)
+    async postDelete(domainId: string, edgeId: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const base = await getSkillsBase(domainId);
+        const docId = base.docId;
+        
+        if (!this.user.own(base)) {
+            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        }
+
+        await BaseModel.deleteEdge(domainId, docId, edgeId);
+
+        this.response.body = { success: true };
+    }
+}
 
 export async function apply(ctx: Context) {
     // 注册路由
@@ -4610,6 +4949,19 @@ export async function apply(ctx: Context) {
     ctx.Route('base_github_push_branch', '/base/branch/:branch/github/push', BaseGithubPushHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_github_pull', '/base/github/pull', BaseGithubPullHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_github_pull_branch', '/base/branch/:branch/github/pull', BaseGithubPullHandler, PRIV.PRIV_USER_PROFILE);
+    // Skills Base Handlers（完全复用 Base 逻辑，必须在 /base/:docId 之前注册）
+    ctx.Route('base_skill_data', '/base/skill/data', SkillDataHandler); // 必须在 /base/skill 之前
+    ctx.Route('base_skill_save', '/base/skill/save', SkillSaveHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_skill_batch_save', '/base/skill/batch-save', SkillBatchSaveHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_skill_card', '/base/skill/card', SkillCardHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_skill_card_update', '/base/skill/card/:cardId', SkillCardHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_skill_node', '/base/skill/node', SkillNodeHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_skill_node_update', '/base/skill/node/:nodeId', SkillNodeHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_skill_edge', '/base/skill/edge', SkillEdgeHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_skill_outline', '/base/skill', SkillOutlineHandler);
+    ctx.Route('base_skill_outline_branch', '/base/skill/branch/:branch', SkillOutlineHandler);
+    ctx.Route('base_skill_editor', '/base/skill/editor', SkillEditorHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_skill_editor_branch', '/base/skill/editor/branch/:branch', SkillEditorHandler, PRIV.PRIV_USER_PROFILE);
     // 参数路由放在最后
     ctx.Route('base_detail', '/base/:docId', BaseDetailHandler);
     ctx.Route('base_detail_branch', '/base/:docId/branch/:branch', BaseDetailHandler);
@@ -4632,5 +4984,879 @@ export async function apply(ctx: Context) {
     
     // WebSocket 连接路由
     ctx.Connection('base_connection', '/base/ws', BaseConnectionHandler);
+}
+
+/**
+ * Skill Data Handler (类似 BaseDataHandler，用于前端 API)
+ */
+class SkillDataHandler extends Handler {
+    @param('branch', Types.String, true)
+    async get(domainId: string, branch?: string) {
+        // 获取或创建专门用于 Skills 的 Base
+        let base = await document.getMulti(domainId, document.TYPE_BASE, { 
+            type: 'skill'
+        })
+            .limit(1)
+            .toArray();
+        
+        if (base.length === 0) {
+            // 创建新的 Skills Base
+            const { docId } = await BaseModel.create(
+                domainId,
+                this.user._id,
+                'Skills',
+                'Agent Skills 管理',
+                undefined,
+                branch || 'main',
+                this.request.ip,
+                undefined,
+                undefined,
+                'skill'
+            );
+            const newBase = await BaseModel.get(domainId, docId);
+            if (!newBase) {
+                throw new Error('Failed to create Skills base');
+            }
+            base = [newBase];
+        }
+        
+        const skillsBase = base[0] as BaseDoc;
+        const currentBranch = branch || (skillsBase as any)?.currentBranch || 'main';
+        
+        // 获取 nodes 和 edges
+        const branchData = getBranchData(skillsBase, currentBranch);
+        let nodes: BaseNode[] = branchData.nodes || [];
+        let edges: BaseEdge[] = branchData.edges || [];
+        
+        // 检查是否有错误的数据（如果根节点不是 'Skills'，说明数据被污染了）
+        const hasWrongData = nodes.length > 0 && nodes[0]?.text !== 'Skills';
+        if (hasWrongData) {
+            // 清理错误的数据：清空 nodes 和 edges
+            nodes = [];
+            edges = [];
+            // 更新 Base 的 branchData
+            await document.set(domainId, document.TYPE_BASE, skillsBase.docId, {
+                [`branchData.${currentBranch}.nodes`]: [],
+                [`branchData.${currentBranch}.edges`]: []
+            });
+            // 同时清理根节点的 nodes 和 edges（向后兼容）
+            await document.set(domainId, document.TYPE_BASE, skillsBase.docId, {
+                nodes: [],
+                edges: []
+            });
+            // 注意：不删除 cards，因为它们可能已经被迁移到普通 base 了
+            // 只清理那些确实属于 Skills Base 的 cards（通过检查 nodeId 是否在清理后的 nodes 中）
+        }
+        
+        // 如果没有节点，自动创建一个根节点
+        if (nodes.length === 0) {
+            const rootNode: Omit<BaseNode, 'id'> = {
+                text: 'Skills',
+                level: 0,
+            };
+            const result = await BaseModel.addNode(
+                domainId,
+                skillsBase.docId,
+                rootNode,
+                undefined,
+                currentBranch
+            );
+            
+            // 重新获取 base
+            const updatedBase = await BaseModel.get(domainId, skillsBase.docId);
+            if (updatedBase) {
+                const updatedBranchData = getBranchData(updatedBase, currentBranch);
+                nodes = updatedBranchData.nodes || [];
+                edges = updatedBranchData.edges || [];
+            }
+        }
+        
+        // 获取所有 cards（Skills），按 nodeId 分组
+        const allCards = await document.getMulti(domainId, document.TYPE_CARD, { baseDocId: skillsBase.docId })
+            .sort({ order: 1, cid: 1 })
+            .toArray() as CardDoc[];
+        
+        const nodeCardsMap: Record<string, CardDoc[]> = {};
+        for (const card of allCards) {
+            if (card.nodeId) {
+                if (!nodeCardsMap[card.nodeId]) {
+                    nodeCardsMap[card.nodeId] = [];
+                }
+                nodeCardsMap[card.nodeId].push(card);
+            }
+        }
+        
+        this.response.body = {
+            ...skillsBase,
+            nodes,
+            edges,
+            currentBranch,
+            nodeCardsMap,
+            files: skillsBase.files || [],
+        };
+    }
+}
+
+/**
+ * Skill Outline Handler (文件模式，类似 BaseOutlineHandler)
+ */
+class SkillOutlineHandler extends Handler {
+    @param('branch', Types.String, true)
+    async get(domainId: string, branch?: string) {
+        // 不使用 branch 参数，直接使用 main
+        this.response.template = 'skill_outline.html';
+        
+        const requestedBranch = 'main';
+        
+        // 获取或创建专门用于 Skills 的 Base
+        let base = await document.getMulti(domainId, document.TYPE_BASE, { 
+            type: 'skill'
+        })
+            .limit(1)
+            .toArray();
+        
+        if (base.length === 0) {
+            // 创建新的 Skills Base
+            const { docId } = await BaseModel.create(
+                domainId,
+                this.user._id,
+                'Skills',
+                'Agent Skills 管理',
+                undefined,
+                requestedBranch,
+                this.request.ip,
+                undefined,
+                undefined,
+                'skill'
+            );
+            const newBase = await BaseModel.get(domainId, docId);
+            if (!newBase) {
+                throw new Error('Failed to create Skills base');
+            }
+            base = [newBase];
+        }
+        
+        const skillsBase = base[0] as BaseDoc;
+        
+        // 获取 nodes 和 edges
+        const branchData = getBranchData(skillsBase, requestedBranch);
+        let nodes: BaseNode[] = branchData.nodes || [];
+        let edges: BaseEdge[] = branchData.edges || [];
+        
+        // 检查是否有错误的数据（如果根节点不是 'Skills'，说明数据被污染了）
+        const hasWrongData = nodes.length > 0 && nodes[0]?.text !== 'Skills';
+        if (hasWrongData) {
+            // 清理错误的数据：清空 nodes 和 edges
+            nodes = [];
+            edges = [];
+            // 更新 Base 的 branchData
+            await document.set(domainId, document.TYPE_BASE, skillsBase.docId, {
+                [`branchData.${requestedBranch}.nodes`]: [],
+                [`branchData.${requestedBranch}.edges`]: []
+            });
+            // 同时清理根节点的 nodes 和 edges（向后兼容）
+            await document.set(domainId, document.TYPE_BASE, skillsBase.docId, {
+                nodes: [],
+                edges: []
+            });
+            // 注意：不删除 cards，因为它们可能已经被迁移到普通 base 了
+            // 只清理那些确实属于 Skills Base 的 cards（通过检查 nodeId 是否在清理后的 nodes 中）
+        }
+        
+        // 如果没有节点，自动创建一个根节点
+        if (nodes.length === 0) {
+            const rootNode: Omit<BaseNode, 'id'> = {
+                text: 'Skills',
+                level: 0,
+            };
+            const result = await BaseModel.addNode(
+                domainId,
+                skillsBase.docId,
+                rootNode,
+                undefined,
+                requestedBranch
+            );
+            
+            // 重新获取 base
+            const updatedBase = await BaseModel.get(domainId, skillsBase.docId);
+            if (updatedBase) {
+                const updatedBranchData = getBranchData(updatedBase, requestedBranch);
+                nodes = updatedBranchData.nodes || [];
+                edges = updatedBranchData.edges || [];
+            }
+        }
+        
+        // 获取所有 cards（Skills），按 nodeId 分组
+        const allCards = await document.getMulti(domainId, document.TYPE_CARD, { baseDocId: skillsBase.docId })
+            .sort({ order: 1, cid: 1 })
+            .toArray() as CardDoc[];
+        
+        const nodeCardsMap: Record<string, CardDoc[]> = {};
+        for (const card of allCards) {
+            if (card.nodeId) {
+                if (!nodeCardsMap[card.nodeId]) {
+                    nodeCardsMap[card.nodeId] = [];
+                }
+                nodeCardsMap[card.nodeId].push(card);
+            }
+        }
+        
+        const cardId = this.request.query.cardId as string | undefined;
+        if (cardId && nodes.length > 0 && edges.length > 0) {
+            let targetNodeId: string | null = null;
+            for (const [nodeId, cards] of Object.entries(nodeCardsMap)) {
+                if (cards.some(card => String(card.docId) === String(cardId))) {
+                    targetNodeId = nodeId;
+                    break;
+                }
+            }
+            
+            if (targetNodeId) {
+                const parentMap = new Map<string, string>();
+                edges.forEach(edge => {
+                    parentMap.set(edge.target, edge.source);
+                });
+                
+                const nodesToExpand = new Set<string>();
+                let currentNodeId: string | null = targetNodeId;
+                while (currentNodeId) {
+                    nodesToExpand.add(currentNodeId);
+                    currentNodeId = parentMap.get(currentNodeId) || null;
+                }
+                
+                nodes = nodes.map(node => {
+                    if (nodesToExpand.has(node.id)) {
+                        return {
+                            ...node,
+                            expandedOutline: true,
+                        };
+                    }
+                    return node;
+                });
+            }
+        }
+        
+        // 获取分支列表
+        const branches = Array.isArray((skillsBase as any)?.branches) 
+            ? (skillsBase as any).branches 
+            : ['main'];
+        if (!branches.includes('main')) {
+            branches.unshift('main');
+        }
+        
+        // Get git status
+        let gitStatus: any = null;
+        const githubRepo = (skillsBase.githubRepo || '') as string;
+        
+        if (githubRepo && githubRepo.trim()) {
+            try {
+                const settingValue = this.ctx.setting.get('ejunzrepo.github_token');
+                const systemValue = system.get('ejunzrepo.github_token');
+                const GH_TOKEN = settingValue || systemValue || '';
+                
+                let REPO_URL = githubRepo;
+                if (githubRepo.startsWith('git@')) {
+                    REPO_URL = githubRepo;
+                } else {
+                    if (githubRepo.startsWith('https://github.com/') || githubRepo.startsWith('http://github.com/')) {
+                        if (!githubRepo.includes('@github.com')) {
+                            REPO_URL = githubRepo.replace('https://github.com/', `https://${GH_TOKEN}@github.com/`)
+                                .replace('http://github.com/', `https://${GH_TOKEN}@github.com/`);
+                        } else {
+                            REPO_URL = githubRepo;
+                        }
+                    } else if (!githubRepo.includes('://') && !githubRepo.includes('@')) {
+                        const repoPath = githubRepo.replace('.git', '');
+                        REPO_URL = `https://${GH_TOKEN}@github.com/${repoPath}.git`;
+                    }
+                }
+                
+                gitStatus = await getBaseGitStatus(domainId, skillsBase.docId, requestedBranch, REPO_URL);
+            } catch (err) {
+                console.error('Failed to get git status:', err);
+                gitStatus = null;
+            }
+        } else {
+            try {
+                gitStatus = await getBaseGitStatus(domainId, skillsBase.docId, requestedBranch);
+            } catch (err) {
+                console.error('Failed to get local git status:', err);
+                gitStatus = null;
+            }
+        }
+        
+        this.response.body = {
+            base: {
+                ...skillsBase,
+                nodes,
+                edges,
+            },
+            gitStatus,
+            currentBranch: requestedBranch,
+            branches,
+            nodeCardsMap,
+            files: skillsBase.files || [],
+            domainId: domainId,
+        };
+    }
+}
+
+/**
+ * Skill Save Handler (类似 BaseSaveHandler，但使用 Skills Base)
+ */
+class SkillSaveHandler extends Handler {
+    async post(domainId: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        // 获取或创建专门用于 Skills 的 Base
+        let base = await document.getMulti(domainId, document.TYPE_BASE, { 
+            type: 'skill'
+        })
+            .limit(1)
+            .toArray();
+        
+        let docId: ObjectId;
+        
+        if (base.length === 0) {
+            const { docId: newDocId } = await BaseModel.create(
+                domainId,
+                this.user._id,
+                'Skills',
+                'Agent Skills 管理',
+                undefined,
+                'main',
+                this.request.ip,
+                undefined,
+                undefined,
+                'skill'
+            );
+            base = [await BaseModel.get(domainId, newDocId)];
+            if (!base[0]) {
+                throw new Error('Failed to create Skills base');
+            }
+            docId = newDocId;
+        } else {
+            docId = base[0].docId;
+            if (!this.user.own(base[0])) {
+                this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            }
+        }
+
+        const skillsBase = base[0] as BaseDoc;
+        const data = this.request.body || {};
+        let { nodes, edges, layout, viewport, theme, operationDescription } = data;
+        
+        const isExpandOnlySave = operationDescription === '自动保存展开状态' || operationDescription === '自动保存 outline 展开状态';
+        const currentBranch = 'main'; // skill 固定使用 main branch
+        
+        if (isExpandOnlySave && nodes && Array.isArray(nodes)) {
+            const currentBranchData = getBranchData(skillsBase, currentBranch);
+            
+            const updatedNodes = currentBranchData.nodes.map((existingNode: BaseNode) => {
+                const updatedNode = nodes.find((n: BaseNode) => n.id === existingNode.id);
+                if (updatedNode) {
+                    const result: BaseNode = { ...existingNode };
+                    if (updatedNode.expanded !== undefined) {
+                        result.expanded = updatedNode.expanded;
+                    }
+                    if ((updatedNode as any).expandedOutline !== undefined) {
+                        (result as any).expandedOutline = (updatedNode as any).expandedOutline;
+                    }
+                    return result;
+                }
+                return existingNode;
+            });
+            
+            setBranchData(skillsBase, currentBranch, updatedNodes, currentBranchData.edges);
+            
+            await BaseModel.updateFull(domainId, docId, {
+                branchData: skillsBase.branchData,
+                nodes: skillsBase.nodes,
+                edges: skillsBase.edges,
+            });
+            
+            (this.ctx.emit as any)('base/update', docId);
+            
+            this.response.body = { success: true, hasNonPositionChanges: false };
+            return;
+        }
+        
+        // 过滤掉临时节点和边
+        if (nodes && Array.isArray(nodes)) {
+            nodes = nodes.filter((node: BaseNode) => {
+                if (!node.id) return false;
+                if (node.id.startsWith('temp-node-')) {
+                    console.warn(`Rejected temporary node from save: ${node.id}`);
+                    return false;
+                }
+                return true;
+            });
+        }
+        
+        if (edges && Array.isArray(edges)) {
+            edges = edges.filter((edge: BaseEdge) => {
+                if (!edge.id && !edge.source && !edge.target) return false;
+                if (edge.id && edge.id.startsWith('temp-edge-')) {
+                    console.warn(`Rejected temporary edge from save: ${edge.id}`);
+                    return false;
+                }
+                if (edge.source && edge.source.startsWith('temp-node-')) {
+                    console.warn(`Rejected edge with temporary source node: ${edge.source}`);
+                    return false;
+                }
+                if (edge.target && edge.target.startsWith('temp-node-')) {
+                    console.warn(`Rejected edge with temporary target node: ${edge.target}`);
+                    return false;
+                }
+                return true;
+            });
+        }
+        
+        const currentBranchData = getBranchData(skillsBase, currentBranch);
+        
+        // 检测是否有非位置改变
+        const hasNonPositionChanges = this.detectNonPositionChanges(
+            { ...skillsBase, nodes: currentBranchData.nodes, edges: currentBranchData.edges },
+            nodes,
+            edges
+        );
+
+        // 更新当前分支的数据
+        setBranchData(skillsBase, currentBranch, nodes || [], edges || []);
+
+        await BaseModel.updateFull(domainId, docId, {
+            branchData: skillsBase.branchData,
+            nodes: skillsBase.nodes,
+            edges: skillsBase.edges,
+            layout,
+            viewport,
+            theme,
+        });
+        
+        // 触发更新事件
+        (this.ctx.emit as any)('base/update', docId);
+        
+        this.response.body = { success: true, hasNonPositionChanges };
+    }
+
+    private detectNonPositionChanges(
+        oldBase: BaseDoc,
+        newNodes?: BaseNode[],
+        newEdges?: BaseEdge[]
+    ): boolean {
+        if (!newNodes && !newEdges) return false;
+        
+        const oldNodes = oldBase.nodes || [];
+        const oldEdges = oldBase.edges || [];
+        
+        if (newNodes) {
+            if (newNodes.length !== oldNodes.length) return true;
+            for (const newNode of newNodes) {
+                const oldNode = oldNodes.find(n => n.id === newNode.id);
+                if (!oldNode) return true;
+                if (oldNode.text !== newNode.text) return true;
+            }
+        }
+        
+        if (newEdges) {
+            if (newEdges.length !== oldEdges.length) return true;
+            for (const newEdge of newEdges) {
+                const oldEdge = oldEdges.find(e => 
+                    e.source === newEdge.source && e.target === newEdge.target
+                );
+                if (!oldEdge) return true;
+            }
+        }
+        
+        return false;
+    }
+}
+
+/**
+ * Skill Batch Save Handler (类似 BaseBatchSaveHandler，但使用 Skills Base)
+ */
+class SkillBatchSaveHandler extends Handler {
+    async post(domainId: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const actualDomainId = this.args.domainId || domainId || 'system';
+        
+        // 获取或创建专门用于 Skills 的 Base
+        let base = await document.getMulti(actualDomainId, document.TYPE_BASE, { 
+            type: 'skill'
+        })
+            .limit(1)
+            .toArray();
+        
+        let docId: ObjectId;
+        
+        if (base.length === 0) {
+            const { docId: newDocId } = await BaseModel.create(
+                actualDomainId,
+                this.user._id,
+                'Skills',
+                'Agent Skills 管理',
+                undefined,
+                'main',
+                this.request.ip,
+                undefined,
+                undefined,
+                'skill'
+            );
+            base = [await BaseModel.get(actualDomainId, newDocId)];
+            if (!base[0]) {
+                throw new Error('Failed to create Skills base');
+            }
+            docId = newDocId;
+        } else {
+            docId = base[0].docId;
+            if (!this.user.own(base[0])) {
+                this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            }
+        }
+        
+        const skillsBase = base[0] as BaseDoc;
+        const data = this.request.body || {};
+        const {
+            nodeCreates = [],
+            nodeUpdates = [],
+            nodeDeletes = [],
+            cardCreates = [],
+            cardUpdates = [],
+            cardDeletes = [],
+            edgeCreates = [],
+            edgeDeletes = [],
+        } = data;
+        
+        const branch = 'main'; // skill 固定使用 main branch
+        const errors: string[] = [];
+        const nodeIdMap = new Map<string, string>();
+        const cardIdMap = new Map<string, string>();
+        
+        const remainingNodeCreates = [...nodeCreates];
+        const processedNodeCreates = new Set<string>();
+        
+        while (remainingNodeCreates.length > 0) {
+            const beforeCount = remainingNodeCreates.length;
+            const currentRound: typeof nodeCreates = [];
+            
+            for (const nodeCreate of remainingNodeCreates) {
+                if (processedNodeCreates.has(nodeCreate.tempId)) {
+                    continue;
+                }
+                
+                let realParentId = nodeCreate.parentId;
+                if (nodeCreate.parentId && nodeCreate.parentId.startsWith('temp-node-')) {
+                    realParentId = nodeIdMap.get(nodeCreate.parentId);
+                    if (!realParentId) {
+                        continue;
+                    }
+                }
+                
+                currentRound.push(nodeCreate);
+                processedNodeCreates.add(nodeCreate.tempId);
+            }
+            
+            if (currentRound.length === 0) {
+                break;
+            }
+            
+            await Promise.all(currentRound.map(async (nodeCreate) => {
+                try {
+                    let realParentId = nodeCreate.parentId;
+                    if (nodeCreate.parentId && nodeCreate.parentId.startsWith('temp-node-')) {
+                        realParentId = nodeIdMap.get(nodeCreate.parentId);
+                    }
+                    
+                    if (realParentId && !realParentId.startsWith('temp-node-')) {
+                        const currentBase = await BaseModel.get(actualDomainId, docId);
+                        if (currentBase) {
+                            const branchData = getBranchData(currentBase, branch);
+                            const parentExists = branchData.nodes.some((n: BaseNode) => n.id === realParentId);
+                            if (!parentExists) {
+                                realParentId = undefined;
+                            }
+                        } else {
+                            realParentId = undefined;
+                        }
+                    }
+                    
+                    const result = await BaseModel.addNode(
+                        actualDomainId,
+                        docId,
+                        {
+                            text: nodeCreate.text,
+                            x: nodeCreate.x,
+                            y: nodeCreate.y,
+                            parentId: realParentId,
+                        },
+                        realParentId,
+                        branch,
+                        realParentId
+                    );
+                    if (nodeCreate.tempId) {
+                        nodeIdMap.set(nodeCreate.tempId, result.nodeId);
+                    }
+                } catch (error: any) {
+                    errors.push(`创建节点失败: ${error.message || '未知错误'}`);
+                }
+            }));
+            
+            remainingNodeCreates.splice(0, remainingNodeCreates.length, 
+                ...remainingNodeCreates.filter(nc => !processedNodeCreates.has(nc.tempId))
+            );
+            
+            if (remainingNodeCreates.length === beforeCount) {
+                break;
+            }
+        }
+        
+        for (const nodeUpdate of nodeUpdates) {
+            try {
+                await BaseModel.updateNode(actualDomainId, docId, nodeUpdate.nodeId, {
+                    text: nodeUpdate.text,
+                    order: nodeUpdate.order,
+                });
+            } catch (error: any) {
+                errors.push(`更新节点失败: ${error.message || '未知错误'}`);
+            }
+        }
+        
+        for (const edgeId of edgeDeletes) {
+            try {
+                await BaseModel.deleteEdge(actualDomainId, docId, edgeId);
+            } catch (error: any) {
+                // 忽略删除错误
+            }
+        }
+        
+        for (const nodeId of nodeDeletes) {
+            try {
+                await BaseModel.deleteNode(actualDomainId, docId, nodeId, branch);
+            } catch (error: any) {
+                errors.push(`删除节点失败: ${error.message || '未知错误'}`);
+            }
+        }
+        
+        for (const edgeCreate of edgeCreates) {
+            try {
+                const sourceId = edgeCreate.source.startsWith('temp-node-') 
+                    ? nodeIdMap.get(edgeCreate.source) || edgeCreate.source
+                    : edgeCreate.source;
+                const targetId = edgeCreate.target.startsWith('temp-node-')
+                    ? nodeIdMap.get(edgeCreate.target) || edgeCreate.target
+                    : edgeCreate.target;
+                
+                if (sourceId && targetId && !sourceId.startsWith('temp-node-') && !targetId.startsWith('temp-node-')) {
+                    await BaseModel.addEdge(actualDomainId, docId, {
+                        source: sourceId,
+                        target: targetId,
+                        label: edgeCreate.label,
+                    }, branch);
+                }
+            } catch (error: any) {
+                errors.push(`创建边失败: ${error.message || '未知错误'}`);
+            }
+        }
+        
+        for (const cardCreate of cardCreates) {
+            try {
+                const realNodeId = cardCreate.nodeId.startsWith('temp-node-')
+                    ? nodeIdMap.get(cardCreate.nodeId) || cardCreate.nodeId
+                    : cardCreate.nodeId;
+                
+                if (realNodeId && !realNodeId.startsWith('temp-node-')) {
+                    const response = await CardModel.create(
+                        actualDomainId,
+                        docId,
+                        realNodeId,
+                        this.user._id,
+                        cardCreate.title || '新卡片',
+                        cardCreate.content || '',
+                        this.request.ip,
+                        cardCreate.problems
+                    );
+                    
+                    if (cardCreate.tempId) {
+                        cardIdMap.set(cardCreate.tempId, response.toString());
+                    }
+                    
+                    if (cardCreate.order !== undefined) {
+                        await CardModel.update(actualDomainId, response, { order: cardCreate.order });
+                    }
+                }
+            } catch (error: any) {
+                errors.push(`创建卡片失败: ${error.message || '未知错误'}`);
+            }
+        }
+        
+        for (const cardUpdate of cardUpdates) {
+            try {
+                await CardModel.update(actualDomainId, new ObjectId(cardUpdate.cardId), {
+                    title: cardUpdate.title,
+                    content: cardUpdate.content,
+                    nodeId: cardUpdate.nodeId,
+                    order: cardUpdate.order,
+                    problems: cardUpdate.problems,
+                });
+            } catch (error: any) {
+                errors.push(`更新卡片失败: ${error.message || '未知错误'}`);
+            }
+        }
+        
+        for (const cardId of cardDeletes) {
+            try {
+                await CardModel.delete(actualDomainId, new ObjectId(cardId));
+            } catch (error: any) {
+                errors.push(`删除卡片失败: ${error.message || '未知错误'}`);
+            }
+        }
+        
+        // 触发更新事件
+        (this.ctx.emit as any)('base/update', docId);
+        
+        this.response.body = {
+            success: errors.length === 0,
+            errors,
+            nodeIdMap: Object.fromEntries(nodeIdMap),
+            cardIdMap: Object.fromEntries(cardIdMap),
+        };
+    }
+}
+
+/**
+ * Skill Editor Handler (类似 BaseEditorHandler)
+ */
+class SkillEditorHandler extends Handler {
+    @param('branch', Types.String, true)
+    async get(domainId: string, branch?: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        // skill 编辑器不使用 branch，直接使用 main
+        this.response.template = 'skill_editor.html';
+        
+        const requestedBranch = 'main';
+        
+        // 获取或创建专门用于 Skills 的 Base
+        let base = await document.getMulti(domainId, document.TYPE_BASE, { 
+            type: 'skill'
+        })
+            .limit(1)
+            .toArray();
+        
+        if (base.length === 0) {
+            // 创建新的 Skills Base
+            const { docId } = await BaseModel.create(
+                domainId,
+                this.user._id,
+                'Skills',
+                'Agent Skills 管理',
+                undefined,
+                requestedBranch,
+                this.request.ip,
+                undefined,
+                undefined,
+                'skill'
+            );
+            const newBase = await BaseModel.get(domainId, docId);
+            if (!newBase) {
+                throw new Error('Failed to create Skills base');
+            }
+            base = [newBase];
+        }
+        
+        const skillsBase = base[0] as BaseDoc;
+        
+        // 获取 nodes 和 edges
+        const branchData = getBranchData(skillsBase, requestedBranch);
+        let nodes: BaseNode[] = branchData.nodes || [];
+        let edges: BaseEdge[] = branchData.edges || [];
+        
+        // 检查是否有错误的数据（如果根节点不是 'Skills'，说明数据被污染了）
+        const hasWrongData = nodes.length > 0 && nodes[0]?.text !== 'Skills';
+        if (hasWrongData) {
+            // 清理错误的数据：清空 nodes 和 edges
+            nodes = [];
+            edges = [];
+            // 更新 Base 的 branchData
+            await document.set(domainId, document.TYPE_BASE, skillsBase.docId, {
+                [`branchData.${requestedBranch}.nodes`]: [],
+                [`branchData.${requestedBranch}.edges`]: []
+            });
+            // 同时清理根节点的 nodes 和 edges（向后兼容）
+            await document.set(domainId, document.TYPE_BASE, skillsBase.docId, {
+                nodes: [],
+                edges: []
+            });
+            // 注意：不删除 cards，因为它们可能已经被迁移到普通 base 了
+        }
+        
+        // Update currentBranch if different
+        const currentBaseBranch = (skillsBase as any)?.currentBranch || 'main';
+        if (requestedBranch !== currentBaseBranch) {
+            await document.set(domainId, document.TYPE_BASE, skillsBase.docId, { 
+                currentBranch: requestedBranch 
+            });
+        }
+        
+        // 如果没有节点，自动创建一个根节点
+        if (nodes.length === 0) {
+            const rootNode: Omit<BaseNode, 'id'> = {
+                text: 'Skills',
+                level: 0,
+            };
+            const result = await BaseModel.addNode(
+                domainId,
+                skillsBase.docId,
+                rootNode,
+                undefined,
+                requestedBranch
+            );
+            
+            // 重新获取 base
+            const updatedBase = await BaseModel.get(domainId, skillsBase.docId);
+            if (updatedBase) {
+                const updatedBranchData = getBranchData(updatedBase, requestedBranch);
+                nodes = updatedBranchData.nodes || [];
+                edges = updatedBranchData.edges || [];
+            }
+        }
+        
+        // 获取所有 cards（Skills），按 nodeId 分组
+        const allCards = await document.getMulti(domainId, document.TYPE_CARD, { baseDocId: skillsBase.docId })
+            .sort({ order: 1, cid: 1 })
+            .toArray() as CardDoc[];
+        
+        const nodeCardsMap: Record<string, CardDoc[]> = {};
+        for (const card of allCards) {
+            if (card.nodeId) {
+                if (!nodeCardsMap[card.nodeId]) {
+                    nodeCardsMap[card.nodeId] = [];
+                }
+                nodeCardsMap[card.nodeId].push(card);
+            }
+        }
+        
+        // 获取分支列表
+        const branches = Array.isArray((skillsBase as any)?.branches) 
+            ? (skillsBase as any).branches 
+            : ['main'];
+        if (!branches.includes('main')) {
+            branches.unshift('main');
+        }
+        
+        this.response.body = {
+            base: {
+                ...skillsBase,
+                nodes,
+                edges,
+            },
+            currentBranch: requestedBranch,
+            branches,
+            nodeCardsMap,
+            files: skillsBase.files || [],
+            domainId: domainId,
+        };
+    }
 }
 
