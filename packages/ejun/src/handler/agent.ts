@@ -1386,53 +1386,7 @@ export class AgentChatHandler extends Handler {
 
         const udoc = await user.getById(domainId, adoc.owner);
         
-        // 如果不是新建聊天且没有指定 session，显示 session 列表
-        if (!newChat && !sid) {
-            // 获取该 agent 下的所有 session
-            const sessions = await SessionModel.getMulti(domainId, {
-                agentId: adoc.aid || adoc.docId?.toString() || adoc.aid,
-                uid: this.user._id,
-            }, {
-                sort: { _id: -1 },
-                limit: 50,
-            }).toArray();
-            
-            // 获取每个 session 的 record 信息
-            const recordIds = sessions.flatMap(s => s.recordIds || []);
-            const records = recordIds.length > 0 
-                ? await record.getList(domainId, recordIds)
-                : {};
-            
-            // 为每个 session 添加 record 详情
-            const sessionsWithRecords = sessions.map(s => ({
-                ...s,
-                records: (s.recordIds || []).map(rid => records[rid.toString()]).filter(Boolean),
-                lastRecord: (s.recordIds || []).length > 0 
-                    ? records[(s.recordIds || [])[s.recordIds.length - 1].toString()]
-                    : null,
-            }));
-            
-            // 读取域的配置（用于显示 API Key 警告等）
-            const apiKey = (this.domain as any)['apiKey'] || '';
-            const aiModel = (this.domain as any)['model'] || 'deepseek-chat';
-            const apiUrl = (this.domain as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions';
-            
-            this.response.template = 'agent_chat.html';
-            this.response.body = {
-                domainId,
-                aid: adoc.aid,
-                adoc,
-                udoc,
-                mode: 'list', // 列表模式
-                sessions: sessionsWithRecords,
-                apiKey,
-                aiModel,
-                apiUrl,
-            };
-            return;
-        }
-        
-        // 聊天模式：新建或指定 session
+        // 聊天模式：新建或指定 session（默认进入聊天模式，不再显示列表模式）
         let currentSessionId: ObjectId | undefined = sid;
         let recordHistory: any[] = [];
         
@@ -1465,6 +1419,30 @@ export class AgentChatHandler extends Handler {
                 currentSessionId = undefined;
             }
         }
+
+        // 在聊天模式下也加载 sessions 列表（用于左侧边栏）
+        const sessions = await SessionModel.getMulti(domainId, {
+            agentId: adoc.aid || adoc.docId?.toString() || adoc.aid,
+            uid: this.user._id,
+        }, {
+            sort: { _id: -1 },
+            limit: 50,
+        }).toArray();
+        
+        // 获取每个 session 的 record 信息
+        const recordIds = sessions.flatMap(s => s.recordIds || []);
+        const records = recordIds.length > 0 
+            ? await record.getList(domainId, recordIds)
+            : {};
+        
+        // 为每个 session 添加 record 详情
+        const sessionsWithRecords = sessions.map(s => ({
+            ...s,
+            records: (s.recordIds || []).map(rid => records[rid.toString()]).filter(Boolean),
+            lastRecord: (s.recordIds || []).length > 0 
+                ? records[(s.recordIds || [])[s.recordIds.length - 1].toString()]
+                : null,
+        }));
 
         const apiKey = (this.domain as any)['apiKey'] || '';
         const aiModel = (this.domain as any)['model'] || 'deepseek-chat';
@@ -1524,6 +1502,7 @@ export class AgentChatHandler extends Handler {
             mode: 'chat', // 聊天模式
             sessionId: currentSessionId?.toString(),
             recordHistory,
+            sessions: sessionsWithRecords, // 添加 sessions 列表用于左侧边栏
         };
     }
 
@@ -2255,6 +2234,118 @@ export class AgentChatHandler extends Handler {
     }
 }
 
+/**
+ * Handler for fetching agent sessions list (JSON API)
+ */
+export class AgentChatSessionsListHandler extends Handler {
+    @param('aid', Types.String)
+    async get(domainId: string, aid: string) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
+        const adoc = await Agent.get(domainId, normalizedId);
+        if (!adoc) {
+            throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
+        }
+
+        // 获取该 agent 下的所有 session
+        const sessions = await SessionModel.getMulti(domainId, {
+            agentId: adoc.aid || adoc.docId?.toString() || adoc.aid,
+            uid: this.user._id,
+        }, {
+            sort: { _id: -1 },
+            limit: 50,
+        }).toArray();
+        
+        // 获取每个 session 的 record 信息
+        const recordIds = sessions.flatMap(s => s.recordIds || []);
+        const records = recordIds.length > 0 
+            ? await record.getList(domainId, recordIds)
+            : {};
+        
+        // 为每个 session 添加 record 详情
+        const sessionsWithRecords = sessions.map(s => ({
+            ...s,
+            _id: s._id.toString(),
+            records: (s.recordIds || []).map(rid => {
+                const r = records[rid.toString()];
+                return r ? {
+                    ...r,
+                    _id: (r as any)._id ? (r as any)._id.toString() : rid.toString(),
+                } : null;
+            }).filter(Boolean),
+            lastRecord: (s.recordIds || []).length > 0 
+                ? (() => {
+                    const lastRid = s.recordIds[s.recordIds.length - 1];
+                    const r = records[lastRid.toString()] as any;
+                    return r ? {
+                        ...r,
+                        _id: r._id ? r._id.toString() : lastRid.toString(),
+                    } : null;
+                })()
+                : null,
+            recordIds: (s.recordIds || []).map(rid => rid.toString()),
+        }));
+
+        this.response.template = null;
+        this.response.body = {
+            sessions: sessionsWithRecords,
+        };
+    }
+}
+
+export class AgentChatSessionHistoryHandler extends Handler {
+    @param('aid', Types.String)
+    @param('sid', Types.ObjectId)
+    async get(domainId: string, aid: string, sid: ObjectId) {
+        await this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        
+        const normalizedId: number | string = /^\d+$/.test(aid) ? Number(aid) : aid;
+        const adoc = await Agent.get(domainId, normalizedId);
+        if (!adoc) {
+            throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
+        }
+
+        // 获取指定 session
+        const sdoc = await SessionModel.get(domainId, sid);
+        if (!sdoc || sdoc.agentId !== (adoc.aid || adoc.docId?.toString() || adoc.aid) || sdoc.uid !== this.user._id) {
+            throw new NotFoundError('Session not found or access denied');
+        }
+
+        // 获取 session 的所有 record 历史记录
+        const recordHistory: any[] = [];
+        if (sdoc.recordIds && sdoc.recordIds.length > 0) {
+            // 按顺序获取所有 records
+            const records = await record.getList(domainId, sdoc.recordIds);
+            const recordsList = sdoc.recordIds.map(rid => records[rid.toString()]).filter(Boolean);
+            
+            // 提取所有消息并按时间排序
+            for (const rdoc of recordsList) {
+                if (rdoc) {
+                    const r = rdoc as any;
+                    if (r.agentMessages && Array.isArray(r.agentMessages)) {
+                        for (const msg of r.agentMessages) {
+                            if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool') {
+                                recordHistory.push({
+                                    role: msg.role,
+                                    content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
+                                    tool_calls: msg.tool_calls,
+                                    toolName: msg.toolName,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        this.response.template = null;
+        this.response.body = {
+            sessionId: sid.toString(),
+            recordHistory,
+        };
+    }
+}
 
 export class AgentChatSessionConnectionHandler extends ConnectionHandler {
     private subscribedRids: Set<string> = new Set();
@@ -4598,6 +4689,8 @@ export async function apply(ctx: Context) {
     ctx.Route('agent_create', '/agent/create', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_detail', '/agent/:aid', AgentDetailHandler);
     ctx.Route('agent_edge_config', '/agent/:aid/edge-config', AgentEdgeConfigHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('agent_chat_sessions_list', '/agent/:aid/chat/sessions', AgentChatSessionsListHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('agent_chat_session_history', '/agent/:aid/chat/session/:sid/history', AgentChatSessionHistoryHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_chat', '/agent/:aid/chat', AgentChatHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Connection('agent_chat_session', '/agent-chat-session', AgentChatSessionConnectionHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_edit', '/agent/:aid/edit', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
