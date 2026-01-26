@@ -18,16 +18,31 @@ async function getFirst(query: Filter<Task>) {
     if (process.env.CI) return null;
     try {
         const q = { ...query };
+        // Handle MongoDB driver version differences: 6.0.0+ returns document directly, older versions return ModifyResult
         const res = await coll.findOneAndDelete(q, { sort: { priority: -1 } });
+        
+        let doc: any = null;
         if (res) {
-            logger.debug('%o', res);
-            return res;
+            if (typeof res === 'object' && res !== null) {
+                if ('value' in res && 'ok' in res && typeof (res as any).ok === 'number') {
+                    doc = (res as any).value;
+                } else if ('_id' in res) {
+                    doc = res;
+                } else {
+                    doc = res;
+                }
+            } else {
+                doc = res;
+            }
         }
+        
+        if (doc && doc._id) {
+            return doc;
+        }
+        
         return null;
     } catch (e) {
-        // Usually caused by the database being down
-        // Should recover once it is back
-        logger.error(e);
+        logger.error('getFirst: error querying database', { error: e });
         return null;
     }
 }
@@ -55,6 +70,7 @@ export class Consumer {
                     continue;
                 }
                 const res = await getFirst(this.filter); // eslint-disable-line no-await-in-loop
+                
                 if (!res) {
                     // eslint-disable-next-line no-await-in-loop
                     await Promise.race([
@@ -63,10 +79,16 @@ export class Consumer {
                     ]);
                     continue;
                 }
+                
+                if (this.processing.has(res)) {
+                    logger.warn('Task already being processed, skipping', { taskId: res._id?.toString() });
+                    continue;
+                }
+                
                 this.processing.add(res);
                 this.func(res)
                     .catch((err) => {
-                        logger.error(err);
+                        logger.error('handleTask failed: taskId=%s, error=%s', res._id?.toString(), err);
                         if (this.destroyOnError) this.destroy();
                     })
                     .finally(() => {
@@ -147,8 +169,8 @@ export async function apply(ctx: Context) {
             event,
             payload: BSON.EJSON.stringify(payload),
             expire: new Date(Date.now() + 10000),
-            trace,
-        });
+            ...(trace ? { trace } : {}),
+        } as any);
     });
 
     if (process.env.NODE_APP_INSTANCE !== '0') return;

@@ -444,19 +444,16 @@ export async function processAgentChatInternal(
     let toolCallCount = 0;
     let accumulatedContent = '';
     
+    // 注意：所有请求现在都必须通过worker处理，processAgentChatInternal 不应该更新record
+    // 这个函数现在只用于Client Handler的特殊情况（需要立即流式响应），但即使在这种情况下也不应该更新record
+    // Worker 会负责所有record的更新
+    
     try {
-        // 如果存在任务记录，更新状态为运行中
+        // 不再更新record，所有record更新都由worker处理
+        // 如果taskRecordId存在，说明这是Client Handler的特殊情况，但即使如此也不应该更新record
         if (taskRecordId) {
-            await record.updateTask(adoc.domainId, taskRecordId, {
-                status: STATUS.STATUS_TASK_PROCESSING,
-            });
-            // 保存用户消息
-            await record.updateTask(adoc.domainId, taskRecordId, {
-                agentMessages: [{
-                    role: 'user',
-                    content: message,
-                    timestamp: new Date(),
-                }],
+            AgentLogger.info('processAgentChatInternal: taskRecordId provided, but record updates are handled by worker', {
+                recordId: taskRecordId.toString(),
             });
         }
         const domainInfo = await domain.get(adoc.domainId);
@@ -838,29 +835,14 @@ export async function processAgentChatInternal(
 
                                                 AgentLogger.info(`Calling first tool: ${firstToolName} (internal - One-by-One Mode)`, parsedArgs);
 
-                                                // 更新任务记录
-                                                if (taskRecordId) {
-                                                    toolCallCount++;
-                                                    await record.updateTask(adoc.domainId, taskRecordId, {
-                                                        agentToolCallCount: toolCallCount,
-                                                    });
-                                                    // 保存工具调用消息
-                                                    await record.updateTask(adoc.domainId, taskRecordId, {
-                                                        agentMessages: [{
-                                                            role: 'assistant',
-                                                            content: accumulatedContent || '',
-                                                            tool_calls: [{
-                                                                id: firstToolCall.id,
-                                                                type: 'function',
-                                                                function: {
-                                                                    name: firstToolName,
-                                                                    arguments: firstToolCall.function.arguments,
-                                                                },
-                                                            }],
-                                                            timestamp: new Date(),
-                                                        }],
-                                                    });
-                                                }
+                                                // 不再更新record，所有record更新都由worker处理
+                                                toolCallCount++;
+                                                // 记录工具调用，但不更新record（worker会处理）
+                                                AgentLogger.debug('processAgentChatInternal: tool call detected', {
+                                                    toolName: firstToolName,
+                                                    toolCallCount,
+                                                    recordId: taskRecordId?.toString(),
+                                                });
 
                                                 let toolResult: any;
                                                 try {
@@ -878,34 +860,21 @@ export async function processAgentChatInternal(
                                                         message: toolError.message || String(toolError),
                                                         code: toolError.code || 'UNKNOWN_ERROR',
                                                     };
-                                                    // 更新任务记录为失败
-                                                    if (taskRecordId) {
-                                                        await record.updateTask(adoc.domainId, taskRecordId, {
-                                                            status: STATUS.STATUS_TASK_ERROR_SYSTEM,
-                                                            agentError: {
-                                                                message: toolError.message || String(toolError),
-                                                                code: toolError.code || 'UNKNOWN_ERROR',
-                                                            },
-                                                        });
-                                                    }
+                                                    // 不再更新record，所有record更新都由worker处理
+                                                    AgentLogger.error('processAgentChatInternal: tool call failed', {
+                                                        toolName: firstToolName,
+                                                        error: toolError.message || String(toolError),
+                                                        recordId: taskRecordId?.toString(),
+                                                    });
                                                 }
 
                                                 callbacks.onToolResult?.(firstToolName, toolResult);
                                                 
-                                                // 保存工具结果消息到记录
-                                                if (taskRecordId) {
-                                                    const { randomUUID } = require('crypto');
-                                                    await record.updateTask(adoc.domainId, taskRecordId, {
-                                                        agentMessages: [{
-                                                            role: 'tool',
-                                                            content: JSON.stringify(toolResult),
-                                                            tool_call_id: firstToolCall.id,
-                                                            toolName: firstToolName,
-                                                            timestamp: new Date(),
-                                                            bubbleId: randomUUID(), // Generate bubbleId for tool message
-                                                        }],
-                                                    });
-                                                }
+                                                // 不再更新record，所有record更新都由worker处理
+                                                AgentLogger.debug('processAgentChatInternal: tool result received', {
+                                                    toolName: firstToolName,
+                                                    recordId: taskRecordId?.toString(),
+                                                });
 
                                                 const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
 
@@ -1510,6 +1479,13 @@ export class AgentChatHandler extends Handler {
 
     @param('aid', Types.String)
     async post(domainId: string, aid: string) {
+        AgentLogger.info('POST /agent/:aid/chat: request received', { 
+            domainId, 
+            aid, 
+            hasMessage: !!this.request.body?.message,
+            createTaskRecord: this.request.body?.createTaskRecord !== false,
+            NODE_APP_INSTANCE: process.env.NODE_APP_INSTANCE 
+        });
         this.response.template = null;
         
         await this.checkPriv(PRIV.PRIV_USER_PROFILE);
@@ -1525,7 +1501,17 @@ export class AgentChatHandler extends Handler {
         const assistantbubbleId = this.request.body?.assistantbubbleId; // Get assistant bubbleId from request
         const history = this.request.body?.history || '[]';
         const stream = this.request.query?.stream === 'true' || this.request.body?.stream === true;
-        const createTaskRecord = this.request.body?.createTaskRecord !== false; // 默认创建任务记录
+        // 强制所有请求都创建task，必须通过worker处理
+        const createTaskRecord = true;
+        
+        AgentLogger.info('POST /agent/:aid/chat: parameters parsed', { 
+            domainId, 
+            aid, 
+            messageLength: message?.length || 0,
+            createTaskRecord,
+            stream,
+            NODE_APP_INSTANCE: process.env.NODE_APP_INSTANCE 
+        });
         
         if (!message) {
             this.response.body = { error: 'Message cannot be empty' };
@@ -1730,7 +1716,14 @@ export class AgentChatHandler extends Handler {
             
             // 创建 task 任务，包含完整的上下文信息
             const taskModel = require('../model/task').default;
-            await taskModel.add({
+            AgentLogger.info('POST chat: calling TaskModel.add', { 
+                recordId: taskRecordId.toString(), 
+                sessionId: sessionId.toString(),
+                agentId: adoc.aid || adoc.docId.toString(),
+                assistantbubbleId,
+                NODE_APP_INSTANCE: process.env.NODE_APP_INSTANCE 
+            });
+            const taskId = await taskModel.add({
                 type: 'task',
                 recordId: taskRecordId,
                 sessionId, // 关联到 session
@@ -1745,6 +1738,15 @@ export class AgentChatHandler extends Handler {
                 },
                 priority: 0,
             });
+            AgentLogger.info('POST chat: TaskModel.add completed', { 
+                taskId: taskId.toString(), 
+                recordId: taskRecordId.toString(),
+                NODE_APP_INSTANCE: process.env.NODE_APP_INSTANCE 
+            });
+            
+            // 注意：不设置 record 状态为 PROCESSING，让 worker 正常消费任务
+            // 这与 client.ts 不同：client.ts 会设置 PROCESSING 并直接调用 processAgentChatInternal
+            // 而 agent.ts 的 post 方法应该让 worker 处理任务
             
             // 任务已创建，返回任务 ID，由 worker 处理
             const responseBody = {
@@ -1757,488 +1759,10 @@ export class AgentChatHandler extends Handler {
             return;
         }
 
-        // 如果没有创建任务（继续对话），继续在主服务器处理
-        const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds);
-        const mcpClient = new McpClient();
-        
-        // 加载 Agent Skills 元数据（渐进式披露 - 只加载名称和描述，节省 token）
-        let skillsInstructions = '';
-        try {
-            skillsInstructions = await loadSkillsMetadata(domainId);
-        } catch (e) {
-            AgentLogger.warn('Failed to load Agent Skills metadata:', e);
-        }
-        
-        const agentPrompt = adoc.content || '';
-        let systemMessage = agentPrompt;
-        
-        // 添加 Agent Skills 列表（在 role prompt 之后，memory 之前）
-        // 只包含 skill 名称和描述，不包含完整 instructions，节省 token
-        if (skillsInstructions) {
-            systemMessage += skillsInstructions;
-        }
-        
-        const truncateMemory = (memory: string, maxLength: number = 2000): string => {
-            if (!memory || memory.length <= maxLength) {
-                return memory;
-            }
-            return memory.substring(0, maxLength) + '\n\n[... Memory truncated, keeping most important rules ...]';
-        };
-        if (adoc.memory) {
-            const truncatedMemory = truncateMemory(adoc.memory);
-            systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
-        }
-        
-        // Prohibit using emojis
-        if (systemMessage && !systemMessage.includes('do not use emoji')) {
-            systemMessage += '\n\nNote: Do not use any emoji in your responses.';
-        } else if (!systemMessage) {
-            systemMessage = 'Note: Do not use any emoji in your responses.';
-        }
-        if (tools.length > 0) {
-            const toolsInfo = '\n\nYou can use the following tools. Use them when appropriate.\n\n' +
-              tools.map(tool => `- ${tool.name}: ${tool.description || ''}`).join('\n') +
-              '\n\n【IMPORTANT RULES - BOTTOM-LEVEL FUNDAMENTAL RULES】You must strictly adhere to the following rules for tool calls:\n1. **ALWAYS speak first before calling tools**: When you need to call a tool, you MUST first stream a message to the user explaining what you are about to do (e.g., "Let me search the knowledge base", "Let me check the relevant information"). This gives the user immediate feedback and makes the conversation feel natural and responsive. Only after you have explained what you are doing should you call the tool.\n2. You can only request ONE tool call at a time. It is strictly forbidden to request multiple tools in a single request.\n3. After each tool call completes, you must immediately reply to the user, describing ONLY the result of this tool. Do NOT summarize results from previous tools.\n4. Each tool call response should be independent and focused solely on the current tool\'s result.\n5. After the last tool call completes, you should only reply with the last tool\'s result. Do NOT provide a comprehensive summary of all tools\' results (unless there are clear dependencies between tools that require integration).\n6. It is absolutely forbidden to call multiple tools consecutively without replying to the user.\n7. Tool calls proceed one by one sequentially: first explain what you will do → call one tool → immediately reply with that tool\'s result → decide if another tool is needed.\n8. If multiple tools are needed, proceed one by one: explain what you will do → call the first tool → reply with the first tool\'s result → explain what you will do next → call the second tool → reply with the second tool\'s result, and so on. Each reply should be independent and focused on the current tool.';
-            systemMessage = systemMessage + toolsInfo;
-        }
-
-        logApiRequest('AgentChatHandler.post', domainId, aid, model, systemMessage, chatHistory, message);
-
-        if (stream) {
-            this.response.type = 'text/event-stream';
-            this.response.addHeader('Cache-Control', 'no-cache');
-            this.response.addHeader('Connection', 'keep-alive');
-            this.response.addHeader('X-Accel-Buffering', 'no');
-            this.context.response.type = 'text/event-stream';
-            this.context.compress = false;
-        }
-
-        try {
-            const requestBody: any = {
-                model,
-                max_tokens: 1024,
-                messages: [
-                    { role: 'system', content: systemMessage },
-                    ...chatHistory,
-                    { role: 'user', content: message },
-                ],
-                stream: stream,
-            };
-
-            if (tools.length > 0) {
-                requestBody.tools = tools.map(tool => ({
-                    type: 'function',
-                    function: {
-                        name: tool.name,
-                        description: tool.description,
-                        parameters: tool.inputSchema,
-                    },
-                }));
-            }
-
-            let messagesForTurn: any[] = [
-                { role: 'system', content: systemMessage },
-                ...chatHistory,
-                { role: 'user', content: message },
-            ];
-
-            if (stream) {
-                const res = this.context.res;
-                res.statusCode = 200;
-                res.setHeader('Content-Type', 'text/event-stream');
-                res.setHeader('Cache-Control', 'no-cache');
-                res.setHeader('Connection', 'keep-alive');
-                res.setHeader('X-Accel-Buffering', 'no');
-                
-                if (this.context.req.socket) {
-                    this.context.req.socket.setNoDelay(true);
-                    this.context.req.socket.setKeepAlive(true);
-                }
-                
-                const streamResponse = new PassThrough({
-                    highWaterMark: 0,
-                    objectMode: false,
-                });
-                
-                streamResponse.pipe(res);
-                
-                this.context.compress = false;
-                (this.context.EjunzContext as any).request.websocket = true;
-                this.response.body = null;
-                this.context.body = null;
-                
-                let accumulatedContent = '';
-                let finishReason = '';
-                let toolCalls: any[] = [];
-                let iterations = 0;
-                const maxIterations = 50; // 增加迭代次数限制，避免过早停止
-                let streamFinished = false;
-                let waitingForToolCall = false;
-
-                const processStream = async () => {
-                    try {
-                        AgentLogger.info('Starting stream request', { apiUrl, model, streamEnabled: requestBody.stream });
-                        streamFinished = false;
-                        waitingForToolCall = false;
-                        
-                        await new Promise<void>((resolve, reject) => {
-                            const req = request.post(apiUrl)
-                                .send(requestBody)
-                                .set('Authorization', `Bearer ${apiKey}`)
-                                .set('content-type', 'application/json')
-                                .buffer(false)
-                                .timeout(60000)
-                                .parse((res, callback) => {
-                                    res.setEncoding('utf8');
-                                    let buffer = '';
-                                    
-                                    res.on('data', (chunk: string) => {
-                                        if (streamResponse.destroyed || streamResponse.writableEnded || streamFinished) return;
-                                        
-                                        buffer += chunk;
-                                        const lines = buffer.split('\n');
-                                        buffer = lines.pop() || '';
-                                        
-                                        for (const line of lines) {
-                                            if (!line.trim() || !line.startsWith('data: ')) continue;
-                                            const data = line.slice(6).trim();
-                                            if (data === '[DONE]') {
-                                                if (waitingForToolCall) {
-                                                    AgentLogger.info('Received [DONE] but waiting for tool call, ignoring');
-                                                    callback(null, undefined);
-                                                    return;
-                                                }
-                                                if (!streamResponse.destroyed && !streamResponse.writableEnded && !streamFinished) {
-                                                    streamFinished = true;
-                                                    streamResponse.write(`data: ${JSON.stringify({ type: 'done', message: accumulatedContent, history: JSON.stringify([
-                                                        ...chatHistory,
-                                                        { role: 'user', content: message },
-                                                        { role: 'assistant', content: accumulatedContent },
-                                                    ]) })}\n\n`);
-                                                    streamResponse.end();
-                                                }
-                                                if (adoc && accumulatedContent) {
-                                                    updateAgentMemory(
-                                                        domainId,
-                                                        adoc,
-                                                        chatHistory,
-                                                        message,
-                                                        accumulatedContent,
-                                                    ).catch(err => AgentLogger.error('Failed to update memory in background', err));
-                                                }
-                                                callback(null, undefined);
-                                                return;
-                                            }
-                                            if (!data) continue;
-                                            
-                                            try {
-                                                const parsed = JSON.parse(data);
-                                                const choice = parsed.choices?.[0];
-                                                const delta = choice?.delta;
-                                                
-                                                if (delta?.content) {
-                                                    accumulatedContent += delta.content;
-                                                    if (!streamResponse.destroyed && !streamResponse.writableEnded && !streamFinished) {
-                                                        const contentData = `data: ${JSON.stringify({ type: 'content', content: delta.content })}\n\n`;
-                                                        streamResponse.write(contentData, 'utf8', () => {
-                                                            AgentLogger.debug('Content chunk written:', delta.content.length, 'bytes');
-                                                        });
-                                                        AgentLogger.debug('Sent content chunk:', delta.content.length, 'bytes');
-                                                    }
-                                                }
-                                                
-                                                if (choice?.finish_reason) {
-                                                    finishReason = choice.finish_reason;
-                                                    if (finishReason === 'tool_calls') {
-                                                        waitingForToolCall = true;
-                                                        AgentLogger.info('Tool call detected, will continue sending accumulated content');
-                                                    }
-                                                    AgentLogger.info('Received finish_reason:', finishReason);
-                                                }
-                                                
-                                                if (delta?.tool_calls) {
-                                                    for (const toolCall of delta.tool_calls || []) {
-                                                        const idx = toolCall.index || 0;
-                                                        if (!toolCalls[idx]) toolCalls[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
-                                                        if (toolCall.id) toolCalls[idx].id = toolCall.id;
-                                                        if (toolCall.function?.name) toolCalls[idx].function.name = toolCall.function.name;
-                                                        if (toolCall.function?.arguments) toolCalls[idx].function.arguments += toolCall.function.arguments;
-                                                    }
-                                                }
-                                            } catch (e) {
-                                                AgentLogger.warn('Parse error in stream:', e, data.substring(0, 100));
-                                            }
-                                        }
-                                    });
-                                    
-                                    res.on('end', async () => {
-                                        AgentLogger.info('Stream ended', { finishReason, iterations, accumulatedLength: accumulatedContent.length, streamFinished, waitingForToolCall });
-                                        callback(null, undefined);
-                                        
-                                        if (!streamFinished || waitingForToolCall) {
-                                            (async () => {
-                                                try {
-                                                    if (finishReason === 'tool_calls' && toolCalls.length > 0 && iterations < maxIterations) {
-                                                        if (streamFinished) {
-                                                            AgentLogger.info('Resetting streamFinished for tool call processing');
-                                                            streamFinished = false;
-                                                        }
-                                                        
-                                                        iterations++;
-                                                        AgentLogger.info('Processing tool calls', { toolCallCount: toolCalls.length });
-                                                        
-                                                        if (!streamResponse.destroyed && !streamResponse.writableEnded) {
-                                                            const firstToolName = toolCalls[0]?.function?.name || 'unknown';
-                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call_start', tools: [firstToolName] })}\n\n`);
-                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call', tools: [firstToolName] })}\n\n`);
-                                                        }
-                                                        
-                                                        const assistantForTools: any = { role: 'assistant', tool_calls: toolCalls.map((tc, idx) => ({
-                                                            id: tc.id || `call_${idx}`,
-                                                            type: tc.type || 'function',
-                                                            function: {
-                                                                name: tc.function.name,
-                                                                arguments: tc.function.arguments,
-                                                            },
-                                                        })) };
-                                                        
-                                                        const firstToolCall = assistantForTools.tool_calls[0];
-                                                        
-                                                        if (!firstToolCall) {
-                                                            AgentLogger.warn('No tool call found in assistant message');
-                                                            return;
-                                                        }
-                                                        
-                                                        let parsedArgs: any = {};
-                                                        try {
-                                                            parsedArgs = JSON.parse(firstToolCall.function.arguments);
-                                                        } catch (e) {
-                                                            parsedArgs = {};
-                                                        }
-                                                        
-                                                        AgentLogger.info(`Calling first tool: ${firstToolCall.function.name} (One-by-One Mode)`, parsedArgs);
-                                                        
-                                                        let toolResult: any;
-                                                        try {
-                                                            toolResult = await mcpClient.callTool(firstToolCall.function.name, parsedArgs, domainId);
-                                                            AgentLogger.info(`Tool ${firstToolCall.function.name} returned`, { resultLength: JSON.stringify(toolResult).length });
-                                                        } catch (toolError: any) {
-                                                            AgentLogger.error(`Tool ${firstToolCall.function.name} failed:`, toolError);
-                                                            toolResult = {
-                                                                error: true,
-                                                                message: toolError.message || String(toolError),
-                                                                code: toolError.code || 'UNKNOWN_ERROR',
-                                                            };
-                                                        }
-                                                        
-                                                        const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
-                                                        
-                                                        if (!streamResponse.destroyed && !streamResponse.writableEnded) {
-                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_result', tool: firstToolCall.function.name, result: toolResult })}\n\n`);
-                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'tool_call_complete' })}\n\n`);
-                                                        }
-                                                        
-                                                        messagesForTurn = [
-                                                            ...messagesForTurn,
-                                                            { 
-                                                                role: 'assistant', 
-                                                                content: accumulatedContent, 
-                                                                tool_calls: [firstToolCall] // 只包含已调用的工具
-                                                            },
-                                                            toolMsg,
-                                                        ];
-                                                        accumulatedContent = '';
-                                                        finishReason = '';
-                                                        toolCalls = [];
-                                                        waitingForToolCall = false;
-                                                        requestBody.messages = messagesForTurn;
-                                                        requestBody.stream = true;
-                                                        AgentLogger.info('Continuing stream after first tool call', { 
-                                                            toolName: firstToolCall.function.name,
-                                                            remainingTools: assistantForTools.tool_calls.length - 1
-                                                        });
-                                                        await processStream();
-                                                    } else if (!streamFinished) {
-                                                        streamFinished = true;
-                                                        if (!streamResponse.destroyed && !streamResponse.writableEnded) {
-                                                            streamResponse.write(`data: ${JSON.stringify({ type: 'done', message: accumulatedContent, history: JSON.stringify([
-                                                                ...chatHistory,
-                                                                { role: 'user', content: message },
-                                                                { role: 'assistant', content: accumulatedContent },
-                                                            ]) })}\n\n`);
-                                                            streamResponse.end();
-                                                        }
-                                                    }
-                                                    resolve();
-                                                } catch (err: any) {
-                                                    AgentLogger.error('Error in stream end handler:', err);
-                                                    streamFinished = true;
-                                                    waitingForToolCall = false;
-                                                    if (!streamResponse.destroyed && !streamResponse.writableEnded) {
-                                                        streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: err.message || String(err) })}\n\n`);
-                                                        streamResponse.end();
-                                                    }
-                                                    resolve();
-                                                }
-                                            })();
-                                        } else {
-                                            resolve();
-                                        }
-                                    });
-                                    
-                                    res.on('error', (err: any) => {
-                                        AgentLogger.error('Stream response error:', err);
-                                        callback(err, undefined);
-                                        reject(err);
-                                    });
-                                });
-                            
-                            req.on('error', (err: any) => {
-                                AgentLogger.error('Stream request error:', err);
-                                if (!streamResponse.destroyed) {
-                                    streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: err.message || String(err) })}\n\n`);
-                                    streamResponse.end();
-                                }
-                                reject(err);
-                            });
-                            
-                            req.end();
-                        });
-                    } catch (error: any) {
-                        AgentLogger.error('Stream setup error:', error);
-                        if (!streamResponse.destroyed) {
-                            streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: error.message || String(error) })}\n\n`);
-                            streamResponse.end();
-                        }
-                    }
-                };
-                
-                await processStream();
-                return;
-            }
-
-            let currentResponse = await request.post(apiUrl)
-                .send(requestBody)
-                .set('Authorization', `Bearer ${apiKey}`)
-                .set('content-type', 'application/json');
-
-            let iterations = 0;
-            const maxIterations = 50; // 增加迭代次数限制，避免过早停止
-
-            while (true) {
-                const choice = currentResponse.body.choices?.[0] || {};
-                const finishReason = choice.finish_reason;
-                const msg = choice.message || {};
-
-                if (finishReason === 'tool_calls') {
-                    const toolCalls = msg.tool_calls || [];
-                    if (!toolCalls.length) break;
-
-                    const firstToolCall = toolCalls[0];
-                    if (!firstToolCall) break;
-
-                    let parsedArgs: any = {};
-                    try {
-                        parsedArgs = typeof firstToolCall.function?.arguments === 'string'
-                            ? JSON.parse(firstToolCall.function.arguments)
-                            : firstToolCall.function?.arguments || {};
-                    } catch (e) {
-                        parsedArgs = {};
-                    }
-                    
-                    AgentLogger.info(`Calling first tool: ${firstToolCall.function?.name} (One-by-One Mode)`);
-                    const toolResult = await mcpClient.callTool(firstToolCall.function?.name, parsedArgs, domainId);
-                    AgentLogger.info('Tool returned:', { toolResult });
-                    
-                    const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
-                    
-                    const assistantForTools: any = { 
-                        role: 'assistant', 
-                        content: msg.content || '',
-                        tool_calls: [firstToolCall] // 只包含已调用的工具
-                    };
-
-                    messagesForTurn = [
-                        ...messagesForTurn,
-                        assistantForTools,
-                        toolMsg,
-                    ];
-
-                    iterations += 1;
-                    if (iterations >= maxIterations) break;
-
-                    currentResponse = await request.post(apiUrl)
-                        .send({
-                            model,
-                            max_tokens: 1024,
-                            messages: messagesForTurn,
-                            tools: requestBody.tools,
-                        })
-                        .set('Authorization', `Bearer ${apiKey}`)
-                        .set('content-type', 'application/json');
-                    continue;
-                }
-
-                let finalContent = msg.content || '';
-                if (typeof finalContent !== 'string') {
-                    finalContent = typeof finalContent === 'object' ? JSON.stringify(finalContent) : String(finalContent);
-                }
-
-                this.response.body = {
-                    message: finalContent,
-                    history: JSON.stringify([
-                        ...chatHistory,
-                        { role: 'user', content: message },
-                        { role: 'assistant', content: finalContent },
-                    ]),
-                };
-                if (adoc && finalContent) {
-                    updateAgentMemory(
-                        domainId,
-                        adoc,
-                        chatHistory,
-                        message,
-                        finalContent,
-                    ).catch(err => AgentLogger.error('Failed to update memory in background', err));
-                }
-                return;
-            }
-
-            const fallbackMsg = currentResponse.body?.choices?.[0]?.message?.content || '';
-            const msgStr = typeof fallbackMsg === 'string' ? fallbackMsg : JSON.stringify(fallbackMsg || '');
-            this.response.body = {
-                message: msgStr,
-                history: JSON.stringify([
-                    ...chatHistory,
-                    { role: 'user', content: message },
-                    { role: 'assistant', content: msgStr },
-                ]),
-            };
-            if (adoc && msgStr) {
-                updateAgentMemory(
-                    domainId,
-                    adoc,
-                    chatHistory,
-                    message,
-                    msgStr,
-                ).catch(err => AgentLogger.error('Failed to update memory in background', err));
-            }
-        } catch (error: any) {
-            AgentLogger.error('AI Chat Error:', {
-                message: error.message,
-                response: error.response?.body,
-                stack: error.stack,
-            });
-            if (stream) {
-                const streamResponse = this.response.body as PassThrough;
-                if (streamResponse && !streamResponse.destroyed) {
-                    streamResponse.write(`data: ${JSON.stringify({ type: 'error', error: JSON.stringify(error.response?.body || error.message) })}\n\n`);
-                    streamResponse.end();
-                }
-            } else {
-                this.response.body = { error: JSON.stringify(error.response?.body || error.message) };
-            }
-        }
+        // 所有请求都必须创建task并通过worker处理，不再支持直接处理模式
+        AgentLogger.error('POST chat: createTaskRecord must be true, all requests must go through worker');
+        this.response.body = { error: 'All requests must create task and be processed by worker' };
+        return;
     }
 }
 
@@ -2356,6 +1880,7 @@ export class AgentChatSessionHistoryHandler extends Handler {
 }
 
 export class AgentChatSessionConnectionHandler extends ConnectionHandler {
+    private lastSentRecordHash?: Map<string, string>; // Track last sent record hash per rid to avoid duplicates
     private subscribedRids: Set<string> = new Set();
     private subscriptions: Array<{ dispose: () => void; rid: string }> = [];
     private domainId: string = '';
@@ -2436,6 +1961,25 @@ export class AgentChatSessionConnectionHandler extends ConnectionHandler {
         }
         
         try {
+            // 订阅 bubble/stream 事件（流式内容，不更新 Record）
+            const streamDispose = this.ctx.on('bubble/stream' as any, async (data: any) => {
+                if (data.rid === rid && data.domainId === this.domainId) {
+                    try {
+                        // 直接推送流式内容给前端，不经过 Record
+                        this.send({
+                            type: 'bubble_stream',
+                            rid,
+                            bubbleId: data.bubbleId,
+                            content: data.content,
+                            isNew: data.isNew || false,
+                        });
+                    } catch (error: any) {
+                        AgentLogger.error('Error sending bubble stream:', error);
+                    }
+                }
+            });
+            
+            this.subscriptions.push({ dispose: streamDispose, rid });
             if (!this.domainId || !this.aid) {
                 AgentLogger.error('Session not properly initialized', { domainId: this.domainId, aid: this.aid });
                 this.send({ type: 'error', error: 'Session not properly initialized' });
@@ -2578,6 +2122,32 @@ export class AgentChatSessionConnectionHandler extends ConnectionHandler {
                         
                         previousStatus = currentStatus;
                         
+                        // Calculate content hash to detect if record actually changed
+                        const { createHash } = require('crypto');
+                        const agentMessages = r.agentMessages || [];
+                        const messagesHash = agentMessages
+                            .map((m: any) => {
+                                const contentHash = m.contentHash || (m.content ? createHash('md5').update(m.content || '').digest('hex').substring(0, 16) : '');
+                                return `${m.role}:${m.bubbleId || ''}:${contentHash}:${m.bubbleState || ''}`;
+                            })
+                            .join('|');
+                        const recordContentHash = createHash('md5').update(`${messagesHash}:${r.status}:${r.agentToolCallCount || 0}`).digest('hex').substring(0, 16);
+                        
+                        // Track last sent record hash to avoid duplicate sends
+                        if (!this.lastSentRecordHash) {
+                            this.lastSentRecordHash = new Map<string, string>();
+                        }
+                        const lastHash = this.lastSentRecordHash.get(rid);
+                        if (lastHash === recordContentHash) {
+                            // Record content unchanged, skip sending duplicate update
+                            AgentLogger.debug('Skipping duplicate record update (content unchanged)', { 
+                                rid, 
+                                contentHash: recordContentHash 
+                            });
+                            return;
+                        }
+                        this.lastSentRecordHash.set(rid, recordContentHash);
+                        
                         const recordData: any = {
                             _id: r._id?.toString(),
                             domainId: r.domainId,
@@ -2599,7 +2169,8 @@ export class AgentChatSessionConnectionHandler extends ConnectionHandler {
                         AgentLogger.debug('Sending record update to client', { 
                             rid, 
                             recordKeys: Object.keys(recordData),
-                            agentMessagesCount: (recordData.agentMessages || []).length 
+                            agentMessagesCount: (recordData.agentMessages || []).length,
+                            contentHash: recordContentHash
                         });
                         
                         const [adoc, udoc] = await Promise.all([

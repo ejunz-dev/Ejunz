@@ -1,4 +1,3 @@
-// import { pick, sum } from 'lodash'; // 已移除 judge 相关功能，不再需要
 import moment from 'moment-timezone';
 import {
     Filter, FindOptions, MatchKeysAndValues,
@@ -54,15 +53,13 @@ export default class RecordModel {
         };
     }
 
-    // worker 和 add 方法已移除（judge 相关功能已删除，只保留 task 相关方法）
-
     static async addTask(
         domainId: string,
         agentId: string,
         uid: number,
         initialMessage: string,
-        sessionId: ObjectId, // sessionId 现在是必需的
-        bubbleId?: string, // Optional bubbleId for user message
+        sessionId: ObjectId,
+        bubbleId?: string,
     ): Promise<ObjectId> {
         const data: RecordDoc = {
             status: STATUS.STATUS_TASK_WAITING,
@@ -71,9 +68,9 @@ export default class RecordModel {
             code: initialMessage,
             domainId,
             agentId,
-            sessionId, // 关联到 session
-            score: 100, // 初始分数100分，根据错误扣分
-            time: 0, // 用时（毫秒）
+            sessionId,
+            score: 100,
+            time: 0,
             agentMessages: [{
                 role: 'user',
                 content: initialMessage,
@@ -106,6 +103,8 @@ export default class RecordModel {
                 toolResult?: any;
                 tool_call_id?: string;
                 tool_calls?: any[];
+                bubbleState?: 'streaming' | 'completed'; // Bubble state: streaming or completed
+                contentHash?: string; // Content hash to detect changes and prevent duplicate processing
             }>;
         },
     ): Promise<RecordDoc | null> {
@@ -117,14 +116,48 @@ export default class RecordModel {
         if (update.agentError !== undefined) $set.agentError = update.agentError;
         let updated: RecordDoc | null = null;
         if (update.agentMessages) {
-            // Push new messages
+            const existingRecord = await RecordModel.get(domainId, recordId);
+            if (existingRecord) {
+                const { createHash } = require('crypto');
+                const existingMessages = (existingRecord as any).agentMessages || [];
+                const newMessages = update.agentMessages;
+                
+                const existingHash = existingMessages
+                    .map((m: any) => {
+                        const contentHash = m.contentHash || (m.content ? createHash('md5').update(m.content || '').digest('hex').substring(0, 16) : '');
+                        return `${m.role}:${m.bubbleId || ''}:${contentHash}:${m.bubbleState || ''}`;
+                    })
+                    .join('|');
+                
+                const newHash = newMessages
+                    .map((m: any) => {
+                        const contentHash = m.contentHash || (m.content ? createHash('md5').update(m.content || '').digest('hex').substring(0, 16) : '');
+                        return `${m.role}:${m.bubbleId || ''}:${contentHash}:${m.bubbleState || ''}`;
+                    })
+                    .join('|');
+                
+                const lastExisting = existingMessages[existingMessages.length - 1];
+                const firstNew = newMessages[0];
+                
+                if (lastExisting && firstNew && 
+                    lastExisting.role === firstNew.role &&
+                    lastExisting.bubbleId === firstNew.bubbleId &&
+                    (lastExisting.contentHash || (lastExisting.content ? createHash('md5').update(lastExisting.content || '').digest('hex').substring(0, 16) : '')) === 
+                     (firstNew.contentHash || (firstNew.content ? createHash('md5').update(firstNew.content || '').digest('hex').substring(0, 16) : ''))) {
+                    logger.debug('Skipping record update (content unchanged)', { 
+                        recordId: recordId.toString(), 
+                        bubbleId: firstNew.bubbleId 
+                    });
+                    return existingRecord as RecordDoc;
+                }
+            }
+            
             updated = await RecordModel.update(domainId, recordId, $set, {
                 agentMessages: { $each: update.agentMessages },
             } as any);
         } else {
             updated = await RecordModel.update(domainId, recordId, $set);
         }
-        // 广播 record/change 事件，通知 WebSocket 连接更新
         if (updated) {
             (bus as any).broadcast('record/change', updated);
         }
@@ -153,13 +186,46 @@ export default class RecordModel {
             return null;
         }
         if (Object.keys($update).length) {
+            let shouldBroadcast = true;
+            const isUpdatingAgentMessages = ($set && Object.keys($set).some(k => k.startsWith('agentMessages')) || $push && ($push as any).agentMessages);
+            
+            if (isUpdatingAgentMessages) {
+                const existingRecord = await RecordModel.coll.findOne({ _id, domainId });
+                if (existingRecord) {
+                    const { createHash } = require('crypto');
+                    const existingMessages = (existingRecord as any).agentMessages || [];
+                    
+                    const agentMessageKeys = $set ? Object.keys($set).filter(k => k.startsWith('agentMessages.')) : [];
+                    if (agentMessageKeys.length > 0) {
+                        const messageIndexMatch = agentMessageKeys[0].match(/agentMessages\.(\d+)\./);
+                        if (messageIndexMatch) {
+                            const index = parseInt(messageIndexMatch[1], 10);
+                            const existingMsg = existingMessages[index];
+                            if (existingMsg) {
+                                const existingContentHash = existingMsg.contentHash || 
+                                    (existingMsg.content ? createHash('md5').update(existingMsg.content || '').digest('hex').substring(0, 16) : '');
+                                const newContentHash = $set[`agentMessages.${index}.contentHash`] || 
+                                    ($set[`agentMessages.${index}.content`] ? createHash('md5').update($set[`agentMessages.${index}.content`] || '').digest('hex').substring(0, 16) : '');
+                                
+                                if (existingContentHash === newContentHash && existingContentHash) {
+                                    shouldBroadcast = false;
+                                    logger.debug('Skipping record/change broadcast (content hash unchanged)', { 
+                                        recordId: _id.toString(), 
+                                        messageIndex: index 
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
             const updated = await RecordModel.coll.findOneAndUpdate(
                 { _id, domainId },
                 $update,
                 { returnDocument: 'after' },
             );
-            // 如果更新了 agentMessages，广播事件
-            if (updated && ($set && Object.keys($set).some(k => k.startsWith('agentMessages')) || $push && ($push as any).agentMessages)) {
+            if (updated && shouldBroadcast && isUpdatingAgentMessages) {
                 (bus as any).broadcast('record/change', updated);
             }
             return updated;
@@ -201,14 +267,11 @@ export default class RecordModel {
 export async function apply(ctx: Context) {
     ctx.on('domain/delete', (domainId) => RecordModel.coll.deleteMany({ domainId }));
     
-    // 监听 agent 完成事件
     ctx.on('task/agent-completed', async (payload: { recordId: string; domainId: string; taskId?: string }) => {
         try {
             const recordId = new ObjectId(payload.recordId);
             const rdoc = await RecordModel.get(payload.domainId, recordId);
             if (rdoc && rdoc.agentId) {
-                // 标记任务已完成，清除超时定时器
-                // 这里可以添加额外的处理逻辑
                 logger.info('Agent completed for record: %s', recordId.toString());
             }
         } catch (e) {
@@ -216,12 +279,10 @@ export async function apply(ctx: Context) {
         }
     });
     
-    // 超时检查：定期检查working/pending状态的任务，如果超过一定时间没有完成，设置为0分
-    const TIMEOUT_MS = 2 * 60 * 1000; // 2分钟超时
+    const TIMEOUT_MS = 2 * 60 * 1000;
     setInterval(async () => {
         try {
             const timeoutThreshold = new Date(Date.now() - TIMEOUT_MS);
-            // 查找processing或pending状态且创建时间超过阈值的记录
             const timeoutRecords = await RecordModel.coll.find({
                 status: { $in: [STATUS.STATUS_TASK_PROCESSING, STATUS.STATUS_TASK_PENDING] },
                 agentId: { $exists: true, $ne: null },
@@ -229,14 +290,18 @@ export async function apply(ctx: Context) {
             }).toArray();
             
             for (const rdoc of timeoutRecords) {
+                const TaskModel = require('./task').default;
+                const hasAssociatedTask = await TaskModel.count({ type: 'task', recordId: rdoc._id });
+                if (hasAssociatedTask > 0) {
+                    logger.debug('Skipping timeout check for record with associated task: recordId=%s', rdoc._id.toString());
+                    continue;
+                }
+                
                 const elapsedTime = Date.now() - rdoc._id.getTimestamp().getTime();
-                // 根据超时原因设置不同的错误状态（基于2分钟超时阈值）
                 let errorStatus = STATUS.STATUS_TASK_ERROR_TIMEOUT;
                 if (elapsedTime > 2.5 * 60 * 1000) {
-                    // 超过2.5分钟，可能是系统问题
                     errorStatus = STATUS.STATUS_TASK_ERROR_SYSTEM;
                 } else if (elapsedTime > 2.2 * 60 * 1000) {
-                    // 超过2.2分钟，可能是网络问题
                     errorStatus = STATUS.STATUS_TASK_ERROR_NETWORK;
                 }
                 
@@ -255,7 +320,7 @@ export async function apply(ctx: Context) {
         } catch (e) {
             logger.error('Error in timeout check:', e);
         }
-    }, 30000); // 每30秒检查一次，更及时地检测超时
+    }, 30000);
     
     await Promise.all([
         db.ensureIndexes(

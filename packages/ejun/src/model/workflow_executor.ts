@@ -9,7 +9,7 @@ import { NodeDeviceModel } from './node';
 import AgentModel from './agent';
 import message from './message';
 import ClientModel from './client';
-import { processAgentChatInternal, getAssignedTools } from '../handler/agent';
+import { getAssignedTools } from '../handler/agent';
 
 const logger = new Logger('model/workflow_executor');
 
