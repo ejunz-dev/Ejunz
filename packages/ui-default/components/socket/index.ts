@@ -5,7 +5,11 @@ export default class Sock {
   sock: ReconnectingWebSocket;
   interval: NodeJS.Timeout;
 
-  constructor(public url: string, nocookie = false, shorty = false) {
+  constructor(public url: string, nocookie = false, shorty = false, options?: {
+    connectionTimeout?: number;
+    maxReconnectionDelay?: number;
+    maxRetries?: number;
+  }) {
     const i = new URL(url, window.location.href);
     if (shorty) {
       i.searchParams.append('shorty', 'on');
@@ -16,8 +20,9 @@ export default class Sock {
     i.protocol = i.protocol.replace('http', 'ws');
     this.url = i.toString();
     this.sock = new ReconnectingWebSocket(this.url, [], {
-      maxReconnectionDelay: 10000,
-      maxRetries: 100,
+      connectionTimeout: options?.connectionTimeout ?? 4000, // Default 4s, can be overridden
+      maxReconnectionDelay: options?.maxReconnectionDelay ?? 10000,
+      maxRetries: options?.maxRetries ?? 100,
     });
     this.sock.onopen = () => {
       console.log('Connected');

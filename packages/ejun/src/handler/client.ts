@@ -11,7 +11,6 @@ import EdgeTokenModel from '../model/edge_token';
 import { EdgeServerConnectionHandler } from './edge';
 import AgentModel, { McpClient } from '../model/agent';
 import type { EdgeBridgeEnvelope } from '../service/bus';
-import { processAgentChatInternal } from './agent';
 import SessionModel from '../model/session';
 import record from '../model/record';
 import domain from '../model/domain';
@@ -3021,7 +3020,8 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
 
         const message = msg.message;
         const history = msg.history || [];
-        const createTaskRecord = msg.createTaskRecord !== false;
+        // 强制所有请求都创建task，必须通过worker处理
+        const createTaskRecord = true;
 
         if (!message || typeof message !== 'string') {
             logger.warn('handleAgentChat: Invalid message: clientId=%d, message=%o', this.clientId, message);
@@ -3031,8 +3031,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         }
 
         if (createTaskRecord) {
-            // Fast path: Start streaming immediately, load agent info asynchronously
-            // This ensures immediate response without waiting for database queries
+            // 所有请求都必须通过worker处理，创建task让worker处理
             const recordUid = this.client.owner; // Use cached owner, don't query
             
             // Get or create session (use cached if available)
@@ -3060,14 +3059,10 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 sessionId,
             );
             
-            // Mark task as processing immediately to prevent worker from handling it
-            // We'll handle streaming in main server for immediate response
-            const STATUS = require('../model/builtin').STATUS;
-            await record.updateTask(this.domain._id, taskRecordId, {
-                status: STATUS.STATUS_TASK_PROCESSING,
-            });
+            // 不再设置状态为PROCESSING，让worker处理
+            // 不再直接调用processAgentChatInternal，worker会处理所有逻辑
             
-            // Subscribe to record immediately
+            // Subscribe to record immediately to receive updates from worker
             this.subscribeRecord(taskRecordId.toString(), agentConfig.agentId);
             
             // Send task_created event immediately (stage 1 response)
@@ -3077,13 +3072,13 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 message: 'Task created, processing by worker',
             }]);
             
-            logger.info('Task created for client, starting immediate streaming: clientId=%d, taskRecordId=%s', 
+            logger.info('Task created for client, worker will handle: clientId=%d, taskRecordId=%s', 
                 this.clientId, taskRecordId.toString());
             
-            // Load agent info asynchronously and start streaming
+            // Load agent info and create task asynchronously (don't block response)
             (async () => {
                 try {
-                    // Load agent info (this was blocking before)
+                    // Load agent info
                     const agents = await AgentModel.getMulti(this.domain._id, { aid: agentConfig.agentId }, AgentModel.PROJECTION_DETAIL).toArray();
                     if (agents.length === 0) {
                         logger.error('handleAgentChat: Agent not found: clientId=%d, agentId=%s', this.clientId, agentConfig.agentId);
@@ -3100,39 +3095,59 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                         return;
                     }
                     
-                    // Start streaming immediately using processAgentChatInternal
-                    await processAgentChatInternal(agent, message, history, {
-                        taskRecordId,
-                        onContent: (content: string) => {
-                            // Stream content immediately to client (non-blocking)
-                            const startTime = Date.now();
-                            logger.info('Forwarding content to client: clientId=%d, content=%s', this.clientId, content);
-                            this.sendEvent('agent/content', [content]);
-                            const sendDuration = Date.now() - startTime;
-                            if (sendDuration > 10) {
-                                logger.warn('sendEvent took %dms (may block streaming): clientId=%d', sendDuration, this.clientId);
+                    // 收集完整的上下文信息，供 worker 使用
+                    const { getAssignedTools } = require('./agent');
+                    const tools = await getAssignedTools(this.domain._id, agent.mcpToolIds, agent.repoIds);
+                    
+                    const agentPrompt = agent.content || '';
+                    let systemMessage = agentPrompt;
+                    
+                    if (agent.memory) {
+                        const truncateMemory = (memory: string, maxLength: number = 2000): string => {
+                            if (!memory || memory.length <= maxLength) {
+                                return memory;
                             }
-                            
-                            // Add to TTS queue (async, non-blocking)
-                            this.addTtsText(content).catch((error: any) => {
-                                logger.warn('addTtsText failed: %s', error.message);
-                            });
-                        },
-                        onToolCall: async (tools: any[]) => {
-                            // Tool calls will be handled in the same stream
-                            logger.info('Tool call detected: clientId=%d', this.clientId);
-                        },
-                        onDone: (finalContent: string, finalHistory: string) => {
-                            logger.info('Agent reply completed: clientId=%d, content length=%d', 
-                                this.clientId, finalContent.length);
-                        },
-                        onError: (error: string) => {
-                            logger.error('Agent chat error: clientId=%d, error=%s', this.clientId, error);
-                            this.sendEvent('agent/error', [{ message: error }]);
-                        },
+                            return memory.substring(0, maxLength) + '\n\n[... Memory truncated, keeping most important rules ...]';
+                        };
+                        const truncatedMemory = truncateMemory(agent.memory);
+                        systemMessage += `\n\n---\n【Work Rules Memory - Supplementary Guidelines】\n${truncatedMemory}\n---\n\n**CRITICAL**: The above work rules contain user guidance for specific questions. When you encounter the same or similar questions mentioned in the memory, you MUST strictly follow the user's guidance without deviation. For example, if the memory says "When user asks xxx, should xxx", you must follow that exactly when the user asks that question.\n\nNote: The above work rules are supplements and refinements to the role definition above, and should not conflict with the role prompt. If there is a conflict between rules and role definition, the role definition (content) takes precedence.`;
+                    }
+                    
+                    const context = {
+                        apiKey: (domainInfo as any)['apiKey'] || '',
+                        model: (domainInfo as any)['model'] || 'deepseek-chat',
+                        apiUrl: (domainInfo as any)['apiUrl'] || 'https://api.deepseek.com/v1/chat/completions',
+                        agentContent: agent.content || '',
+                        agentMemory: agent.memory || '',
+                        tools: tools.map(tool => ({
+                            name: tool.name,
+                            description: tool.description,
+                            inputSchema: tool.inputSchema,
+                            token: tool.token,
+                            edgeId: tool.edgeId,
+                        })),
+                        systemMessage,
+                    };
+                    
+                    // Create task for worker to process
+                    const taskModel = require('../model/task').default;
+                    await taskModel.add({
+                        type: 'task',
+                        recordId: taskRecordId,
+                        sessionId,
+                        domainId: this.domain._id,
+                        agentId: agentConfig.agentId,
+                        uid: recordUid,
+                        message,
+                        history: JSON.stringify(history),
+                        context,
+                        priority: 0,
                     });
+                    
+                    logger.info('Task created for worker: clientId=%d, taskRecordId=%s', 
+                        this.clientId, taskRecordId.toString());
                 } catch (error: any) {
-                    logger.error('Failed to start streaming: %s', error.message);
+                    logger.error('Failed to create task: %s', error.message);
                     this.sendEvent('agent/error', [{ message: error.message }]);
                 }
             })();
@@ -3156,349 +3171,10 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             return;
         }
 
-        // For non-createTaskRecord path, still need agent info synchronously
-        const agents = await AgentModel.getMulti(this.domain._id, { aid: agentConfig.agentId }, AgentModel.PROJECTION_DETAIL).toArray();
-        if (agents.length === 0) {
-            logger.error('handleAgentChat: Agent not found: clientId=%d, agentId=%s', this.clientId, agentConfig.agentId);
-            this.sendEvent('agent/error', [{ message: 'Agent not found' }]);
-            addClientLog(this.clientId, 'error', `Agent not found: ${agentConfig.agentId}`);
-            return;
-        }
-        const agent = agents[0];
-
-        // Old path for non-createTaskRecord (kept for compatibility)
-        {
-            // Fast path: Create task record immediately, then handle other operations asynchronously
-            // This ensures immediate response for stage 1 (speak before tool calls)
-            const recordUid = this.client.owner; // Use cached owner, don't query
-            
-            // Get or create session (use cached if available)
-            let sessionId = this.currentSessionId;
-            if (!sessionId) {
-                // Only create session if we don't have one cached
-                sessionId = await SessionModel.add(
-                    this.domain._id,
-                    agentConfig.agentId,
-                    recordUid,
-                    'client',
-                    `Client ${this.clientId} Session`,
-                    undefined,
-                    this.clientId,
-                );
-                this.currentSessionId = sessionId;
-            }
-            
-            // Create task record immediately (minimal blocking operation)
-            const taskRecordId = await record.addTask(
-                this.domain._id,
-                agentConfig.agentId,
-                recordUid,
-                message,
-                sessionId,
-            );
-            
-            // Mark task as processing immediately to prevent worker from handling it
-            // We'll handle streaming in main server for immediate response
-            const STATUS = require('../model/builtin').STATUS;
-            await record.updateTask(this.domain._id, taskRecordId, {
-                status: STATUS.STATUS_TASK_PROCESSING,
-            });
-            
-            // Subscribe to record immediately
-            this.subscribeRecord(taskRecordId.toString(), agentConfig.agentId);
-            
-            // Send task_created event immediately (stage 1 response)
-            this.sendEvent('agent/task_created', [{
-                taskRecordId: taskRecordId.toString(),
-                sessionId: sessionId.toString(),
-                message: 'Task created, processing by worker',
-            }]);
-            
-            logger.info('Task created for client, starting immediate streaming: clientId=%d, taskRecordId=%s', 
-                this.clientId, taskRecordId.toString());
-            
-            // Start streaming immediately (stage 1: speak before tool calls)
-            // Don't wait for worker - start streaming response right away
-            (async () => {
-                try {
-                    // Get domain info for API
-                    const domainInfo = await domain.get(this.domain._id);
-                    if (!domainInfo) {
-                        logger.error('Domain not found: %s', this.domain._id);
-                        return;
-                    }
-                    
-                    // Start streaming immediately using processAgentChatInternal
-                    await processAgentChatInternal(agent, message, history, {
-                        taskRecordId,
-                        onContent: (content: string) => {
-                            // Stream content immediately to client
-                            this.sendEvent('agent/content', [content]);
-                            this.addTtsText(content).catch((error: any) => {
-                                logger.warn('addTtsText failed: %s', error.message);
-                            });
-                        },
-                        onToolCall: async (tools: any[]) => {
-                            // Tool calls will be handled in the same stream
-                            logger.info('Tool call detected: clientId=%d', this.clientId);
-                        },
-                        onDone: (finalContent: string, finalHistory: string) => {
-                            logger.info('Agent reply completed: clientId=%d, content length=%d', 
-                                this.clientId, finalContent.length);
-                        },
-                        onError: (error: string) => {
-                            logger.error('Agent chat error: clientId=%d, error=%s', this.clientId, error);
-                            this.sendEvent('agent/error', [{ message: error }]);
-                        },
-                    });
-                } catch (error: any) {
-                    logger.error('Failed to start streaming: %s', error.message);
-                }
-            })();
-            
-            // Handle remaining operations asynchronously (don't block response)
-            (async () => {
-                try {
-                    if (!this.tokenDomainId) return;
-                    // Update session last activity
-                    await SessionModel.update(this.tokenDomainId, sessionId, {
-                        lastActivityAt: new Date(),
-                    });
-                    
-                    // Add record to session
-                    await SessionModel.addRecord(this.tokenDomainId, sessionId, taskRecordId);
-                } catch (error: any) {
-                    logger.error('Failed to update session: %s', error.message);
-                }
-            })();
-            
-            return;
-        }
-
-        // 如果没有创建任务（继续对话），继续在主服务器处理
-        this.currentTtsAudioBuffers = [];
-        const chatMessages: Array<{
-            role: 'user' | 'assistant' | 'tool';
-            content: string;
-            timestamp: Date;
-            toolName?: string;
-            toolCallId?: string;
-            responseTime?: number;
-            asrAudioPath?: string;
-            ttsAudioPath?: string;
-        }> = [];
-
-        // Save ASR audio (user recording) collected before this message
-        let userAsrAudioPath: string | undefined;
-        if (this.currentAsrAudioBuffers.length > 0) {
-            try {
-                const audioBuffer = Buffer.concat(this.currentAsrAudioBuffers);
-                const audioPath = `client/${this.tokenDomainId || this.domain._id}/${this.clientId}/asr/${Date.now()}.pcm`;
-                await this.ctx.storage.put(audioPath, audioBuffer, {});
-                userAsrAudioPath = audioPath;
-                logger.info('ASR audio saved: clientId=%d, path=%s, size=%d bytes', this.clientId, audioPath, audioBuffer.length);
-                // Clear ASR buffer after saving
-                this.currentAsrAudioBuffers = [];
-            } catch (error: any) {
-                logger.error('Failed to save ASR audio: %s', error.message);
-            }
-        }
-
-        // Add user message
-        chatMessages.push({
-            role: 'user',
-            content: message,
-            timestamp: new Date(),
-            asrAudioPath: userAsrAudioPath,
-        });
-
-        let assistantContent = '';
-        let currentToolCall: { toolName: string; toolCallId?: string; startTime: number } | null = null;
-
-        try {
-            logger.info('handleAgentChat: Agent found: clientId=%d, agentId=%s, agentDocId=%s', 
-                this.clientId, agentConfig.agentId, agent.docId);
-            addClientLog(this.clientId, 'info', `Agent info retrieved: agentId=${agentConfig.agentId}, docId=${agent.docId}`);
-            
-            // Use internal Agent API function to process chat
-            logger.info('handleAgentChat: Calling internal Agent API: clientId=%d', this.clientId);
-            addClientLog(this.clientId, 'info', 'Calling internal Agent API');
-            
-            await processAgentChatInternal(agent, message, history, {
-                onContent: (content: string) => {
-                    assistantContent += content;
-                    this.sendEvent('agent/content', [content]);
-                    this.addTtsText(content).catch((error: any) => {
-                        logger.warn('addTtsText failed: %s', error.message);
-                    });
-                },
-                onToolCall: async (tools: any[]) => {
-                    if (assistantContent.trim()) {
-                        chatMessages.push({
-                            role: 'assistant',
-                            content: assistantContent,
-                            timestamp: new Date(),
-                        });
-                        assistantContent = '';
-                    }
-
-                    // Wait for TTS playback to complete before tool call to create natural pause
-                    if (this.client?.settings?.tts && this.pendingCommits > 0) {
-                        logger.info('Waiting for TTS playback before tool call: clientId=%d, pendingCommits=%d', this.clientId, this.pendingCommits);
-                        
-                        // Step 1: Wait for TTS audio generation to complete
-                        await new Promise<void>((resolve) => {
-                            const checkInterval = setInterval(() => {
-                                if (this.pendingCommits === 0) {
-                                    clearInterval(checkInterval);
-                                    resolve();
-                                }
-                            }, 100);
-                            
-                            setTimeout(() => {
-                                clearInterval(checkInterval);
-                                logger.warn('TTS generation timeout, continuing: clientId=%d', this.clientId);
-                                resolve();
-                            }, 10000);
-                        });
-                        
-                        // Step 2: Wait for client-side audio playback to complete
-                        logger.info('Waiting for client-side TTS playback: clientId=%d', this.clientId);
-                        this.sendEvent('agent/wait_tts_playback', []);
-                        
-                        await new Promise<void>((resolve) => {
-                            this.ttsPlaybackWaitPromise = { resolve, reject: () => {} };
-                            
-                            setTimeout(() => {
-                                if (this.ttsPlaybackWaitPromise) {
-                                    logger.warn('TTS playback wait timeout, continuing: clientId=%d', this.clientId);
-                                    this.ttsPlaybackWaitPromise = null;
-                                    resolve();
-                                }
-                            }, 30000);
-                        });
-                        
-                        logger.info('TTS playback completed, proceeding with tool call: clientId=%d', this.clientId);
-                    }
-
-                    const toolName = tools[0] || 'unknown';
-                    currentToolCall = {
-                        toolName,
-                        toolCallId: `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                        startTime: Date.now(),
-                    };
-                    this.sendEvent('agent/tool_call', [{ tools }]);
-                },
-                onToolResult: (tool: string, result: any) => {
-                    const responseTime = currentToolCall ? Date.now() - currentToolCall.startTime : undefined;
-                    const toolCallId = currentToolCall?.toolCallId;
-
-                    chatMessages.push({
-                        role: 'tool',
-                        content: JSON.stringify(result),
-                        timestamp: new Date(),
-                        toolName: tool,
-                        toolCallId,
-                        responseTime,
-                    });
-
-                    currentToolCall = null;
-                    this.sendEvent('agent/tool_result', [{ tool, result }]);
-                },
-                onDone: async (finalMessage: string, finalHistory: string) => {
-                    // Save TTS audio (AI response audio) to storage
-                    let assistantTtsAudioPath: string | undefined;
-                    if (this.currentTtsAudioBuffers.length > 0) {
-                        try {
-                            const audioBuffer = Buffer.concat(this.currentTtsAudioBuffers);
-                            const audioPath = `client/${this.tokenDomainId || this.domain._id}/${this.clientId}/tts/${Date.now()}.pcm`;
-                            await this.ctx.storage.put(audioPath, audioBuffer, {});
-                            assistantTtsAudioPath = audioPath;
-                            logger.info('TTS audio saved: clientId=%d, path=%s, size=%d bytes', this.clientId, audioPath, audioBuffer.length);
-                        } catch (error: any) {
-                            logger.error('Failed to save TTS audio: %s', error.message);
-                        }
-                    }
-
-                    if (assistantContent.trim()) {
-                        chatMessages.push({
-                            role: 'assistant',
-                            content: assistantContent,
-                            timestamp: new Date(),
-                            ttsAudioPath: assistantTtsAudioPath,
-                        });
-                    } else if (assistantTtsAudioPath) {
-                        chatMessages.push({
-                            role: 'assistant',
-                            content: '',
-                            timestamp: new Date(),
-                            ttsAudioPath: assistantTtsAudioPath,
-                        });
-                    }
-
-                                            this.sendEvent('agent/done', [{
-                        message: finalMessage,
-                        history: finalHistory,
-                    }]);
-                    // 同时发送 client/agent/done 事件（兼容性）
-                    this.sendEvent('client/agent/done', [{
-                        message: finalMessage,
-                        history: finalHistory,
-                    }]);
-                    addClientLog(this.clientId, 'info', `Agent chat completed: ${finalMessage.substring(0, 50)}...`);
-                    
-                    try {
-                        if (chatMessages.length > 0) {
-                            await ClientChatModel.add(
-                                this.domain._id,
-                                this.clientId!,
-                                this.client!.owner,
-                                chatMessages,
-                            );
-                            logger.info('Chat history saved: clientId=%d, messageCount=%d', this.clientId, chatMessages.length);
-                            this.currentAsrAudioBuffers = [];
-                            this.currentTtsAudioBuffers = [];
-                        }
-                    } catch (error: any) {
-                        logger.error('Failed to save chat history: %s', error.message);
-                    }
-                    
-                    // Handle TTS
-                                            (async () => {
-                                                try {
-                                                    const latestClient = await ClientModel.getByClientId(this.domain._id, this.clientId!);
-                                                    if (latestClient) {
-                                                        this.client = latestClient;
-                                                    }
-                                                } catch (error: any) {
-                                                    logger.warn('Failed to refresh client config for TTS: %s', error.message);
-                                                }
-                                                
-                                                const ttsConfig = this.client?.settings?.tts;
-                                                if (this.ttsTextBuffer && this.ttsTextBuffer.trim()) {
-                                                    addClientLog(this.clientId, 'info', `Agent reply completed, processing remaining TTS text: ${this.ttsTextBuffer.substring(0, 50)}...`);
-                                                    await this.flushTtsSentence(this.ttsTextBuffer);
-                                                    this.ttsTextBuffer = '';
-                                                }
-                                                
-                        if (finalMessage && ttsConfig) {
-                                                    addClientLog(this.clientId, 'info', 'Agent reply completed, TTS processing completed');
-                                                }
-                                            })().catch((error: any) => {
-                                                logger.error('Failed to process Agent completion for TTS: %s', error.message);
-                    });
-                },
-                onError: (error: string) => {
-                    logger.error('handleAgentChat: Internal API error: clientId=%d, error=%s', this.clientId, error);
-                    addClientLog(this.clientId, 'error', `Agent chat error: ${error}`);
-                    this.sendEvent('agent/error', [{ message: error }]);
-                },
-            });
-        } catch (error: any) {
-            logger.error('Failed to process agent chat: %s', error.message);
-            addClientLog(this.clientId, 'error', `Agent chat error: ${error.message}`);
-            this.sendEvent('agent/error', [{ message: error.message }]);
-        }
+        // 所有请求都必须创建task并通过worker处理，不再支持直接处理模式
+        logger.error('handleAgentChat: createTaskRecord must be true, all requests must go through worker: clientId=%d', this.clientId);
+        this.sendEvent('agent/error', [{ message: 'All requests must create task and be processed by worker' }]);
+        return;
     }
 
     private subscribeRecord(rid: string, agentId: string) {

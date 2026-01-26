@@ -1,4 +1,3 @@
-// Ejunz Integration
 /* eslint-disable no-await-in-loop */
 import {
     Context as EjunzContext,
@@ -10,21 +9,68 @@ import { getConfig } from '../config';
 import logger from '../log';
 import superagent from 'superagent';
 
+let taskConsumerInstance: any = null;
+let isCreatingConsumer = false;
+
 export async function apply(ctx: EjunzContext) {
+    if (isCreatingConsumer) {
+        let waitCount = 0;
+        while (isCreatingConsumer && waitCount < 50) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            waitCount++;
+        }
+        if (isCreatingConsumer) {
+            logger.error('Timeout waiting for consumer creation');
+            return;
+        }
+    }
+    
+    if (taskConsumerInstance) {
+        logger.warn('Task consumer already exists, destroying old instance');
+        taskConsumerInstance.destroy();
+        taskConsumerInstance = null;
+    }
+    
     ctx.effect(() => {
         const handleTask = async (t: any) => {
+            if (!t) {
+                logger.error('handleTask received null/undefined task');
+                return;
+            }
+            
             const { recordId, domainId, agentId, uid, message, history, context, workflowConfig, _id: taskId } = t;
-            logger.info('Processing task: agentId=%s, message=%s (taskId: %s)', agentId, message?.substring(0, 50), taskId?.toString());
             
             const startTime = Date.now();
             const STATUS = require('ejun/src/model/builtin').STATUS;
             
             try {
+                const currentRecord = await RecordModel.get(domainId, recordId);
+                if (!currentRecord) {
+                    logger.error('Record not found: recordId=%s, taskId=%s', recordId?.toString(), taskId?.toString());
+                    throw new Error(`Record not found: ${recordId?.toString()}`);
+                }
+                
+                const currentStatus = (currentRecord as any).status as number | undefined;
+                if (currentStatus !== undefined && currentStatus !== STATUS.STATUS_TASK_WAITING) {
+                    logger.warn('Task already being processed or completed: recordId=%s, taskId=%s, currentStatus=%d, skipping', 
+                        recordId?.toString(), 
+                        taskId?.toString(),
+                        currentStatus);
+                    return;
+                }
+                
                 await RecordModel.updateTask(domainId, recordId, {
                     status: STATUS.STATUS_TASK_FETCHED,
                 });
                 
                 if (!context || !context.apiKey || !context.systemMessage) {
+                    logger.error('Task missing required context information', {
+                        taskId: taskId?.toString(),
+                        recordId: recordId?.toString(),
+                        hasContext: !!context,
+                        hasApiKey: !!context?.apiKey,
+                        hasSystemMessage: !!context?.systemMessage,
+                    });
                     throw new Error('Task missing required context information');
                 }
                 
@@ -98,11 +144,10 @@ export async function apply(ctx: EjunzContext) {
                 
                 let limitedHistory = truncateMessages(chatHistory);
                 
-                // 清理和规范化历史消息格式，确保符合 API 要求
                 const normalizeMessages = (messages: any[]): any[] => {
                     const normalized: any[] = [];
-                    const usedToolCallIds = new Set<string>(); // 跟踪已使用的 tool_call_id
-                    let lastAssistantToolCallIds: string[] = []; // 跟踪最近的 assistant 消息的所有 tool_call ids
+                    const usedToolCallIds = new Set<string>();
+                    let lastAssistantToolCallIds: string[] = [];
                     
                     for (let i = 0; i < messages.length; i++) {
                         const msg = messages[i];
@@ -111,23 +156,20 @@ export async function apply(ctx: EjunzContext) {
                             content: msg.content || '',
                         };
                         
-                        // 处理 assistant 消息的 tool_calls
                         if (msg.role === 'assistant' && msg.tool_calls && Array.isArray(msg.tool_calls)) {
-                            lastAssistantToolCallIds = []; // 重置，因为这是新的 assistant 消息
+                            lastAssistantToolCallIds = [];
                             normalizedMsg.tool_calls = msg.tool_calls.map((tc: any) => {
                                 let toolCallId = '';
                                 let toolCallName = '';
                                 let toolCallArgs = '';
                                 
                                 if (typeof tc === 'object' && tc.function) {
-                                    // 已经是正确格式
                                     toolCallId = tc.id || '';
                                     toolCallName = tc.function.name || '';
                                     toolCallArgs = typeof tc.function.arguments === 'string' 
                                         ? tc.function.arguments 
                                         : JSON.stringify(tc.function.arguments || {});
                                 } else if (typeof tc === 'object') {
-                                    // 可能是简化的格式，需要转换
                                     toolCallId = tc.id || '';
                                     toolCallName = tc.name || tc.function?.name || '';
                                     toolCallArgs = typeof tc.arguments === 'string'
@@ -135,7 +177,6 @@ export async function apply(ctx: EjunzContext) {
                                         : JSON.stringify(tc.arguments || tc.function?.arguments || {});
                                 }
                                 
-                                // 保存所有 tool_call 的 id
                                 if (toolCallId) {
                                     lastAssistantToolCallIds.push(toolCallId);
                                 }
@@ -151,18 +192,14 @@ export async function apply(ctx: EjunzContext) {
                             });
                         }
                         
-                        // 处理 tool 角色的消息，确保有 tool_call_id 且不重复
                         if (msg.role === 'tool') {
                             let toolCallId: string | null = null;
                             
-                            // 优先使用消息中的 tool_call_id
                             if (msg.tool_call_id) {
                                 toolCallId = msg.tool_call_id;
                             } else if (lastAssistantToolCallIds.length > 0) {
-                                // 如果没有，使用前一条 assistant 消息的第一个 tool_call id
                                 toolCallId = lastAssistantToolCallIds[0];
                             } else {
-                                // 如果都没有，尝试从前面查找最近的 assistant 消息的 tool_call id
                                 for (let j = i - 1; j >= 0; j--) {
                                     const prevMsg = messages[j];
                                     if (prevMsg.role === 'assistant' && prevMsg.tool_calls && Array.isArray(prevMsg.tool_calls) && prevMsg.tool_calls.length > 0) {
@@ -175,23 +212,21 @@ export async function apply(ctx: EjunzContext) {
                                 }
                             }
                             
-                            // 检查是否已经使用过这个 tool_call_id（去重）
                             if (toolCallId && usedToolCallIds.has(toolCallId)) {
                                 logger.warn('Duplicate tool message detected for tool_call_id: %s, skipping', toolCallId);
-                                continue; // 跳过重复的 tool 消息
+                                continue;
                             }
                             
                             if (toolCallId) {
                                 normalizedMsg.tool_call_id = toolCallId;
                                 usedToolCallIds.add(toolCallId);
-                                // 从 lastAssistantToolCallIds 中移除已使用的 id
                                 const index = lastAssistantToolCallIds.indexOf(toolCallId);
                                 if (index > -1) {
                                     lastAssistantToolCallIds.splice(index, 1);
                                 }
                             } else {
                                 logger.warn('Tool message missing tool_call_id at index %d, skipping', i);
-                                continue; // 跳过没有 tool_call_id 的 tool 消息
+                                continue;
                             }
                         }
                         
@@ -203,7 +238,6 @@ export async function apply(ctx: EjunzContext) {
                 
                 const normalizedHistory = normalizeMessages(limitedHistory);
                 
-                // 验证消息格式
                 for (const msg of normalizedHistory) {
                     if (msg.role === 'assistant' && msg.tool_calls) {
                         for (const tc of msg.tool_calls) {
@@ -252,33 +286,6 @@ export async function apply(ctx: EjunzContext) {
                 }
                 
                 const systemMessage = context.systemMessage || '';
-                const logMsg = `\n========== [Agent API Request - Worker Process] ==========\n` +
-                    `Domain: ${domainId}\n` +
-                    `Agent ID: ${agentId}\n` +
-                    `Model: ${requestBody.model}\n` +
-                    `System Message Length: ${systemMessage.length} chars (~${Math.ceil(systemMessage.length / 4)} tokens)\n` +
-                    `--- System Message Content ---\n` +
-                    `${systemMessage}\n` +
-                    `--- End System Message ---\n` +
-                    `History Messages: ${normalizedHistory.length}\n` +
-                    `User Message: ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}\n` +
-                    `Total Messages: ${requestBody.messages.length}\n` +
-                    `Tools Count: ${requestBody.tools?.length || 0}\n` +
-                    `=========================================\n`;
-                
-                console.log(logMsg);
-                logger.info('[Agent API Request - Worker]', {
-                    domainId,
-                    agentId,
-                    model: requestBody.model,
-                    systemMessageLength: systemMessage.length,
-                    estimatedTokens: Math.ceil(systemMessage.length / 4),
-                    historyMessages: normalizedHistory.length,
-                    totalMessages: requestBody.messages.length,
-                    toolsCount: requestBody.tools?.length || 0,
-                    userMessagePreview: message.substring(0, 100),
-                    systemMessagePreview: systemMessage.substring(0, 200) + (systemMessage.length > 200 ? '...' : '')
-                });
                 
                 if (normalizedHistory.length > 0) {
                 }
@@ -292,79 +299,83 @@ export async function apply(ctx: EjunzContext) {
                 let errorStatus: number | null = null;
                 let score = 100;
                 
-                let lastUpdateTime = 0;
-                const UPDATE_THROTTLE_MS = 200;
-                
-                const updateRecordContent = async (content: string, toolCalls?: any[]) => {
-                    const now = Date.now();
-                    if (now - lastUpdateTime < UPDATE_THROTTLE_MS && content.length > 0) {
-                        return;
-                    }
-                    lastUpdateTime = now;
-
-                    try {
-                        const currentRecord = await RecordModel.get(domainId, recordId);
-                        const currentMessages = (currentRecord as any)?.agentMessages || [];
-
-                        // Find the last assistant message in the current record
-                        // This is the message we should update (for streaming)
-                        let assistantMessageIndex = -1;
-                        for (let i = currentMessages.length - 1; i >= 0; i--) {
-                            if (currentMessages[i].role === 'assistant') {
-                                assistantMessageIndex = i;
-                                break;
-                            }
-                        }
-                        
-                        if (assistantMessageIndex >= 0) {
-                            const existingMessage = currentMessages[assistantMessageIndex];
-                            const updateData: any = {
-                                [`agentMessages.${assistantMessageIndex}.content`]: content,
-                                [`agentMessages.${assistantMessageIndex}.timestamp`]: new Date(),
-                            };
-                            
-                            // Ensure bubbleId exists (should always exist, but handle edge case)
-                            if (!existingMessage.bubbleId) {
-                                const { randomUUID } = require('crypto');
-                                const newbubbleId = randomUUID();
-                                updateData[`agentMessages.${assistantMessageIndex}.bubbleId`] = newbubbleId;
-                                logger.warn('Existing assistant message missing bubbleId, generated new one:', newbubbleId);
-                            }
-                            
-                            if (toolCalls) {
-                                updateData[`agentMessages.${assistantMessageIndex}.tool_calls`] = toolCalls;
-                            }
-                            await RecordModel.update(domainId, recordId, updateData);
-                        } else {
-                            const { randomUUID } = require('crypto');
-                            const bubbleIdToUse = randomUUID();
-                            
-                            const assistantMsg: any = {
-                                role: 'assistant',
-                                content: content || '',
-                                timestamp: new Date(),
-                                bubbleId: bubbleIdToUse,
-                            };
-                            if (toolCalls) {
-                                assistantMsg.tool_calls = toolCalls;
-                            }
-                            await RecordModel.update(domainId, recordId, undefined, {
-                                agentMessages: { $each: [assistantMsg] },
-                            } as any);
-                        }
-                    } catch (e) {
-                        logger.error('Error in updateRecordContent:', e);
-                    }
-                };
-                
                 while (iterations < maxIterations) {
                     iterations++;
+                    
+                    let currentBubbleId: string | null = null;
+                    let bubbleStarted = false;
+                    const updateRecordContent = async (content: string, toolCalls?: any[]) => {
+                        try {
+                            if (!currentBubbleId) {
+                                const currentRecord = await RecordModel.get(domainId, recordId);
+                                const currentMessages = (currentRecord as any)?.agentMessages || [];
+                                const lastMessage = currentMessages[currentMessages.length - 1];
+                                
+                                if (lastMessage && lastMessage.role === 'assistant' && lastMessage.bubbleId) {
+                                    currentBubbleId = lastMessage.bubbleId;
+                                    bubbleStarted = true;
+                                } else {
+                                    const { randomUUID, createHash } = require('crypto');
+                                    currentBubbleId = (context as any)?.assistantbubbleId || randomUUID();
+                                    const contentHash = createHash('md5').update(content || '').digest('hex').substring(0, 16);
+                                    
+                                    const bus = require('ejun/src/service/bus').default;
+                                    bus.broadcast('bubble/stream', {
+                                        rid: recordId.toString(),
+                                        domainId,
+                                        bubbleId: currentBubbleId,
+                                        content: '',
+                                        isNew: true,
+                                    });
+                                    
+                                    await RecordModel.updateTask(domainId, recordId, {
+                                        agentMessages: [{
+                                            role: 'assistant',
+                                            content: content || '',
+                                            timestamp: new Date(),
+                                            bubbleId: currentBubbleId,
+                                            bubbleState: 'streaming',
+                                            contentHash: contentHash,
+                                        }],
+                                    });
+                                    
+                                    bubbleStarted = true;
+                                }
+                            }
+                            
+                            if (!currentBubbleId) {
+                                logger.error('updateRecordContent: currentBubbleId is empty', {
+                                    recordId: recordId.toString(),
+                                    contentLength: content ? content.length : 0,
+                                });
+                                return;
+                            }
+                            
+                            const bus = require('ejun/src/service/bus').default;
+                            bus.broadcast('bubble/stream', {
+                                rid: recordId.toString(),
+                                domainId,
+                                bubbleId: currentBubbleId,
+                                content: content,
+                                isNew: false,
+                            });
+                            
+                        } catch (e) {
+                            logger.error(`[气泡 ${currentBubbleId ? currentBubbleId.substring(0, 8) : 'unknown'}] updateRecordContent 错误:`, {
+                                error: e,
+                                recordId: recordId.toString(),
+                                bubbleId: currentBubbleId,
+                                contentLength: content ? content.length : 0,
+                            });
+                        }
+                    };
                     
                     let finishReason = '';
                     let toolCalls: any[] = [];
                     let streamFinished = false;
                     let streamResolve: (() => void) | null = null;
                     let streamReject: ((err: any) => void) | null = null;
+                    
                     
                     await new Promise<void>((resolve, reject) => {
                         streamResolve = resolve;
@@ -379,7 +390,6 @@ export async function apply(ctx: EjunzContext) {
                             .parse((res, callback) => {
                                 let responseStatus = res.status || 200;
                                 
-                                // 检查状态码，如果是错误状态码，记录但不立即失败
                                 if (responseStatus >= 400) {
                                     logger.warn('API response status: %d, but continuing to process stream', responseStatus);
                                 }
@@ -406,7 +416,6 @@ export async function apply(ctx: EjunzContext) {
                                         try {
                                             const parsed = JSON.parse(data);
                                             
-                                            // 检查是否有错误信息
                                             if (parsed.error) {
                                                 logger.error('API error in stream: %s', JSON.stringify(parsed.error));
                                                 streamFinished = true;
@@ -423,11 +432,16 @@ export async function apply(ctx: EjunzContext) {
                                             const choice = parsed.choices?.[0];
                                             const delta = choice?.delta;
                                             
+                                            
                                             if (delta?.content) {
                                                 accumulatedContent += delta.content;
-                                                updateRecordContent(accumulatedContent, toolCalls.length > 0 ? toolCalls : undefined).catch(() => {});
+                                                updateRecordContent(accumulatedContent, toolCalls.length > 0 ? toolCalls : undefined).catch((err) => {
+                                                    logger.error('updateRecordContent 调用失败', {
+                                                        recordId: recordId.toString(),
+                                                        error: err,
+                                                    });
+                                                });
                                                 
-                                                // 如果是 workflow task 且需要 TTS，流式发送 TTS
                                                 if (workflowConfig && workflowConfig.returnType === 'tts' && workflowConfig.clientId) {
                                                     (async () => {
                                                         try {
@@ -447,7 +461,6 @@ export async function apply(ctx: EjunzContext) {
                                             
                                             if (choice?.finish_reason) {
                                                 finishReason = choice.finish_reason;
-                                                // 不立即处理，等待流完全结束
                                             }
                                             
                                             if (delta?.tool_calls) {
@@ -462,21 +475,13 @@ export async function apply(ctx: EjunzContext) {
                                                 }
                                             }
                                         } catch (e) {
-                                            // 忽略解析错误
                                         }
                                     }
                                 });
                                 
                                 res.on('end', () => {
                                     streamFinished = true;
-                                    logger.info('Stream ended: status=%d, finish_reason=%s, accumulatedContent length=%d, toolCalls length=%d, content preview=%s', 
-                                        responseStatus,
-                                        finishReason, 
-                                        accumulatedContent.length,
-                                        toolCalls.length,
-                                        accumulatedContent.substring(0, 100));
                                     
-                                    // 只有在状态码 >= 400 且没有接收到任何有效数据时才报错
                                     if (responseStatus >= 400 && accumulatedContent.length === 0 && toolCalls.length === 0 && !finishReason) {
                                         const error = new Error(`API request failed with status ${responseStatus}`);
                                         callback(error, undefined);
@@ -515,10 +520,7 @@ export async function apply(ctx: EjunzContext) {
                         });
                         
                         req.end((err, res) => {
-                            // req.end() 只处理网络层面的错误，HTTP 状态码错误在 res.on('end') 中处理
                             if (err && !streamFinished) {
-                                // 只有在流还没有结束时才处理错误
-                                // 如果流已经结束，说明数据已经处理完成，不需要再报错
                                 streamFinished = true;
                                 logger.error('Request network error: %s', err.message || String(err));
                                 if (streamReject) {
@@ -527,45 +529,35 @@ export async function apply(ctx: EjunzContext) {
                                     reject(err);
                                 }
                             }
-                            // 注意：HTTP 状态码错误（如 400）会在 res.on('end') 中处理
                         });
                     });
                     
-                    if (accumulatedContent || toolCalls.length > 0) {
-                        await updateRecordContent(accumulatedContent, toolCalls.length > 0 ? toolCalls : undefined);
-                        const currentRecord = await RecordModel.get(domainId, recordId);
-                        const currentMessages = (currentRecord as any)?.agentMessages || [];
-                        const lastMessage = currentMessages[currentMessages.length - 1];
-                        if (lastMessage && lastMessage.role === 'assistant') {
-                            if (lastMessage.content !== accumulatedContent || 
-                                (toolCalls.length > 0 && JSON.stringify(lastMessage.tool_calls) !== JSON.stringify(toolCalls))) {
-                                const finalUpdateData: any = {
-                                    [`agentMessages.${currentMessages.length - 1}.content`]: accumulatedContent,
-                                    [`agentMessages.${currentMessages.length - 1}.timestamp`]: new Date(),
-                                };
-                                // BACKEND GENERATES: Ensure bubbleId is always set
-                                if (lastMessage.bubbleId) {
-                                    // Preserve existing bubbleId
-                                    finalUpdateData[`agentMessages.${currentMessages.length - 1}.bubbleId`] = lastMessage.bubbleId;
-                                } else {
-                                    // Generate new bubbleId if missing
-                                    const { randomUUID } = require('crypto');
-                                    const finalbubbleId = randomUUID();
-                                    finalUpdateData[`agentMessages.${currentMessages.length - 1}.bubbleId`] = finalbubbleId;
-                                }
-                                if (toolCalls.length > 0) {
-                                    finalUpdateData[`agentMessages.${currentMessages.length - 1}.tool_calls`] = toolCalls;
-                                }
-                                await RecordModel.update(domainId, recordId, finalUpdateData);
+                    if (accumulatedContent) {
+                        let finalBubbleId = currentBubbleId;
+                        if (!finalBubbleId) {
+                            const currentRecord = await RecordModel.get(domainId, recordId);
+                            const currentMessages = (currentRecord as any)?.agentMessages || [];
+                            const lastMessage = currentMessages[currentMessages.length - 1];
+                            if (lastMessage && lastMessage.role === 'assistant' && lastMessage.bubbleId) {
+                                finalBubbleId = lastMessage.bubbleId;
                             }
                         }
+                        
+                        if (finalBubbleId) {
+                            const bus = require('ejun/src/service/bus').default;
+                            bus.broadcast('bubble/stream', {
+                                rid: recordId.toString(),
+                                domainId,
+                                bubbleId: finalBubbleId,
+                                content: accumulatedContent,
+                                isNew: false,
+                            });
+                        } else {
+                            logger.warn('Cannot send final bubble_stream: no bubbleId available', { 
+                                recordId: recordId.toString() 
+                            });
+                        }
                     }
-                    
-                    logger.info('After stream: finish_reason=%s, accumulatedContent length=%d, toolCalls length=%d, content=%s', 
-                        finishReason, 
-                        accumulatedContent.length,
-                        toolCalls.length,
-                        accumulatedContent.substring(0, 200));
                     
                     const hasToolCalls = finishReason === 'tool_calls' && toolCalls.length > 0;
                     
@@ -579,7 +571,6 @@ export async function apply(ctx: EjunzContext) {
                             toolArgs = {};
                         }
                         
-                        // 优先从context中获取工具的token信息，以便直接调用
                         let toolToken: string | undefined = undefined;
                         let toolServerId: number | undefined = undefined;
                         if (context.tools && Array.isArray(context.tools)) {
@@ -588,7 +579,6 @@ export async function apply(ctx: EjunzContext) {
                                 if (toolInfo.token) {
                                     toolToken = toolInfo.token;
                                 }
-                                // 兼容旧的serverId方式
                                 if (toolInfo.serverId) {
                                     toolServerId = toolInfo.serverId;
                                 }
@@ -676,7 +666,6 @@ export async function apply(ctx: EjunzContext) {
                             break;
                         }
                         
-                        // 构建工具调用后的消息，确保格式正确
                         const assistantMsg = {
                             role: 'assistant',
                             content: accumulatedContent || null,
@@ -703,8 +692,6 @@ export async function apply(ctx: EjunzContext) {
                         ];
                         
                         messagesForTurn = truncateMessages(messagesForTurn);
-                        
-                        // 规范化消息格式
                         const normalizedMessagesForTurn = normalizeMessages(messagesForTurn);
                         
                         requestBody.messages = [
@@ -715,38 +702,43 @@ export async function apply(ctx: EjunzContext) {
                         
                         accumulatedContent = '';
                     } else {
-                        logger.info('Agent reply completed: finish_reason=%s, content length=%d, content=%s', 
-                            finishReason, 
-                            accumulatedContent.length,
-                            accumulatedContent.substring(0, 200));
-                        
                         if (accumulatedContent) {
                             const currentRecord = await RecordModel.get(domainId, recordId);
                             const currentMessages = (currentRecord as any)?.agentMessages || [];
                             const lastMessage = currentMessages[currentMessages.length - 1];
-                            if (!lastMessage || lastMessage.role !== 'assistant' || lastMessage.content !== accumulatedContent) {
-                                if (lastMessage && lastMessage.role === 'assistant') {
-                                    const updateData: any = {
-                                        [`agentMessages.${currentMessages.length - 1}.content`]: accumulatedContent,
-                                        [`agentMessages.${currentMessages.length - 1}.timestamp`]: new Date(),
-                                    };
-                                    // Preserve bubbleId if it exists
-                                    if (lastMessage.bubbleId) {
-                                        updateData[`agentMessages.${currentMessages.length - 1}.bubbleId`] = lastMessage.bubbleId;
-                                    }
-                                    await RecordModel.update(domainId, recordId, updateData);
-                                } else {
-                                    const { randomUUID } = require('crypto');
-                                    await RecordModel.updateTask(domainId, recordId, {
-                                        agentMessages: [{
-                                            role: 'assistant',
-                                            content: accumulatedContent,
-                                            timestamp: new Date(),
-                                            bubbleId: randomUUID(), // Generate bubbleId for new assistant message
-                                        }],
-                                    });
-                                }
+                            
+                            const { createHash, randomUUID } = require('crypto');
+                            const contentHash = createHash('md5').update(accumulatedContent || '').digest('hex').substring(0, 16);
+                            const bubbleIdToUse = currentBubbleId || (lastMessage?.bubbleId) || randomUUID();
+                            
+                            if (lastMessage && lastMessage.role === 'assistant' && lastMessage.bubbleId === bubbleIdToUse) {
+                                const updateData: any = {
+                                    [`agentMessages.${currentMessages.length - 1}.content`]: accumulatedContent,
+                                    [`agentMessages.${currentMessages.length - 1}.timestamp`]: new Date(),
+                                    [`agentMessages.${currentMessages.length - 1}.contentHash`]: contentHash,
+                                    [`agentMessages.${currentMessages.length - 1}.bubbleState`]: 'completed',
+                                };
+                                await RecordModel.update(domainId, recordId, updateData);
+                            } else {
+                                await RecordModel.updateTask(domainId, recordId, {
+                                    agentMessages: [{
+                                        role: 'assistant',
+                                        content: accumulatedContent,
+                                        timestamp: new Date(),
+                                        bubbleId: bubbleIdToUse,
+                                        bubbleState: 'completed',
+                                        contentHash: contentHash,
+                                    }],
+                                });
+                                logger.warn('Bubble completed but message not found, created new message', { 
+                                    recordId: recordId.toString(), 
+                                    bubbleId: bubbleIdToUse,
+                                    contentLength: accumulatedContent.length,
+                                });
                             }
+                            
+                            currentBubbleId = null;
+                            bubbleStarted = false;
                         }
                         
                         const bus = require('ejun/src/service/bus').default;
@@ -780,7 +772,6 @@ export async function apply(ctx: EjunzContext) {
                 });
                 }
                 
-                logger.info('Task completed: %s, tool calls: %d, time: %dms, score: %d', taskId?.toString(), toolCallCount, elapsedTime, score);
             } catch (error: any) {
                 logger.error('Task failed: %s, error: %s', taskId?.toString(), error.message);
                 
@@ -806,17 +797,42 @@ export async function apply(ctx: EjunzContext) {
         };
         
         const taskConcurrency = getConfig('toolcallConcurrency') || 10;
-        const taskConsumer = TaskModel.consume(
-            { type: 'task' },
-            handleTask,
-            true,
-            taskConcurrency,
-        );
         
-        logger.info('Task consumer started (concurrency: %d)', taskConcurrency);
+        if (taskConsumerInstance) {
+            logger.warn('Task consumer already exists, destroying old instance');
+            taskConsumerInstance.destroy();
+            taskConsumerInstance = null;
+        }
+        
+        if (isCreatingConsumer) {
+            logger.error('Consumer is already being created, this should not happen');
+            return;
+        }
+        
+        isCreatingConsumer = true;
+        let taskConsumer: any = null;
+        
+        try {
+            taskConsumer = TaskModel.consume(
+                { type: 'task' },
+                handleTask,
+                true,
+                taskConcurrency,
+            );
+            
+            taskConsumerInstance = taskConsumer;
+            (taskConsumer as any).__instanceId = `${process.env.NODE_APP_INSTANCE}-${process.pid}-${Date.now()}`;
+        } finally {
+            isCreatingConsumer = false;
+        }
         
         return () => {
-            taskConsumer.destroy();
+            if (taskConsumerInstance === taskConsumer) {
+                taskConsumerInstance = null;
+            }
+            if (taskConsumer) {
+                taskConsumer.destroy();
+            }
         };
     });
 }

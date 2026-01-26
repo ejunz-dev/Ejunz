@@ -67,6 +67,27 @@
     align-self: flex-start
     margin-right: auto
 
+    .message-status
+      font-size: 12px
+      color: #666
+      margin-bottom: 4px
+      padding: 2px 8px
+      display: inline-block
+      border-radius: 4px
+      background: #f0f0f0
+      transition: all 0.3s ease
+
+      &.message-status-streaming
+        color: #007acc
+        background: #e3f2fd
+
+      &.message-status-pending_complete
+        color: #ff9800
+        background: #fff3e0
+
+      &.message-status-completed
+        display: none
+
     .message-bubble
       background: #ffffff
       color: #333
