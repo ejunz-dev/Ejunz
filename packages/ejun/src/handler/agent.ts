@@ -1362,23 +1362,29 @@ export class AgentChatHandler extends Handler {
         let recordHistory: any[] = [];
         
         if (sid) {
-            // 加载指定 session 的信息
             const sdoc = await SessionModel.get(domainId, sid);
             if (sdoc && sdoc.agentId === (adoc.aid || adoc.docId?.toString() || adoc.aid) && sdoc.uid === this.user._id) {
-                // 获取 session 中最后一个 record 的历史记录
                 if (sdoc.recordIds && sdoc.recordIds.length > 0) {
-                    const lastRecordId = sdoc.recordIds[sdoc.recordIds.length - 1];
                     try {
-                        const rdoc = await record.get(domainId, lastRecordId);
-                        if (rdoc) {
-                            const r = rdoc as any;
-                            if (r.agentMessages && Array.isArray(r.agentMessages)) {
-                                recordHistory = r.agentMessages
-                                    .filter((msg: any) => msg.role === 'user' || msg.role === 'assistant')
-                                    .map((msg: any) => ({
-                                        role: msg.role,
-                                        content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
-                                    }));
+                        const records = await record.getList(domainId, sdoc.recordIds);
+                        const recordsList = sdoc.recordIds.map((rid: ObjectId) => records[rid.toString()]).filter(Boolean);
+                        for (const rdoc of recordsList) {
+                            if (rdoc) {
+                                const r = rdoc as any;
+                                if (r.agentMessages && Array.isArray(r.agentMessages)) {
+                                    for (const msg of r.agentMessages) {
+                                        if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool') {
+                                            recordHistory.push({
+                                                role: msg.role,
+                                                content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
+                                                tool_calls: msg.tool_calls,
+                                                toolName: msg.toolName,
+                                                tool_call_id: msg.tool_call_id,
+                                                bubbleId: msg.bubbleId,
+                                            });
+                                        }
+                                    }
+                                }
                             }
                         }
                     } catch (error: any) {
@@ -1863,6 +1869,8 @@ export class AgentChatSessionHistoryHandler extends Handler {
                                     content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
                                     tool_calls: msg.tool_calls,
                                     toolName: msg.toolName,
+                                    tool_call_id: msg.tool_call_id,
+                                    bubbleId: msg.bubbleId,
                                 });
                             }
                         }
