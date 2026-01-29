@@ -563,6 +563,50 @@ export async function apply(ctx: EjunzContext) {
                     
                     if (hasToolCalls) {
                         const toolCall = toolCalls[0];
+                        if (accumulatedContent) {
+                            const currentRecord = await RecordModel.get(domainId, recordId);
+                            const currentMessages = (currentRecord as any)?.agentMessages || [];
+                            let lastAssistantIndex = -1;
+                            for (let k = currentMessages.length - 1; k >= 0; k--) {
+                                if (currentMessages[k].role === 'assistant') {
+                                    lastAssistantIndex = k;
+                                    break;
+                                }
+                            }
+                            if (lastAssistantIndex >= 0) {
+                                const { createHash } = require('crypto');
+                                const contentHash = createHash('md5').update(accumulatedContent || '').digest('hex').substring(0, 16);
+                                const $setContent: any = {
+                                    [`agentMessages.${lastAssistantIndex}.content`]: accumulatedContent,
+                                    [`agentMessages.${lastAssistantIndex}.timestamp`]: new Date(),
+                                    [`agentMessages.${lastAssistantIndex}.contentHash`]: contentHash,
+                                    [`agentMessages.${lastAssistantIndex}.bubbleState`]: 'completed',
+                                };
+                                await RecordModel.update(domainId, recordId, $setContent);
+                            }
+                        }
+                        const currentRecordForToolCalls = await RecordModel.get(domainId, recordId);
+                        const messagesForToolCalls = (currentRecordForToolCalls as any)?.agentMessages || [];
+                        let lastAssistantIdx = -1;
+                        for (let k = messagesForToolCalls.length - 1; k >= 0; k--) {
+                            if (messagesForToolCalls[k].role === 'assistant') {
+                                lastAssistantIdx = k;
+                                break;
+                            }
+                        }
+                        if (lastAssistantIdx >= 0) {
+                            const toolCallsForRecord = [{
+                                id: toolCall.id,
+                                type: 'function',
+                                function: {
+                                    name: toolCall.function?.name || '',
+                                    arguments: toolCall.function?.arguments || '',
+                                },
+                            }];
+                            await RecordModel.update(domainId, recordId, {
+                                [`agentMessages.${lastAssistantIdx}.tool_calls`]: toolCallsForRecord,
+                            } as any);
+                        }
                         const toolName = toolCall.function?.name;
                         let toolArgs: any = {};
                         try {
