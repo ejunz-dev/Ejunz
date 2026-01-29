@@ -316,7 +316,10 @@ export async function apply(ctx: EjunzContext) {
                                     bubbleStarted = true;
                                 } else {
                                     const { randomUUID, createHash } = require('crypto');
-                                    currentBubbleId = (context as any)?.assistantbubbleId || randomUUID();
+                                    const hasAssistant = currentMessages.some((m: any) => m.role === 'assistant');
+                                    currentBubbleId = !hasAssistant && (context as any)?.assistantbubbleId
+                                        ? (context as any).assistantbubbleId
+                                        : randomUUID();
                                     const contentHash = createHash('md5').update(content || '').digest('hex').substring(0, 16);
                                     
                                     const bus = require('ejun/src/service/bus').default;
