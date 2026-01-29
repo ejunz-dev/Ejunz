@@ -1560,18 +1560,39 @@ const page = new NamedPage('agent_chat', async () => {
       // For streaming, don't group messages yet (tool calls and results may not be complete)
       // For completed tasks, group messages to merge tool calls with results
       const processedMessages = isStreaming 
-        ? record.agentMessages.map((msg: any) => ({
-            type: msg.role === 'user' ? 'user' as const : 
-                  msg.role === 'tool' ? 'tool' as const : 
-                  msg.tool_calls && msg.tool_calls.length > 0 ? 'tool_call_result' as const : 'assistant_after' as const,
-            data: msg,
-            bubbleId: msg.bubbleId || generatebubbleId(),
-            toolCallId: msg.tool_call_id,
-            toolResult: msg.role === 'tool' ? msg : undefined,
-            // Extract bubble state from message if available
-            bubbleState: msg.bubbleState || (isStreaming ? 'streaming' : 'completed'),
-            contentHash: msg.contentHash, // Content hash to detect changes
-          }))
+        ? (() => {
+            const messages = record.agentMessages;
+            const result: any[] = [];
+            for (let i = 0; i < messages.length; i++) {
+              const msg = messages[i];
+              const baseBubbleId = msg.bubbleId || generatebubbleId();
+              const isToolCallResult = msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0;
+              if (msg.role === 'tool') {
+                continue;
+              }
+              let toolResult: any = undefined;
+              if (isToolCallResult && msg.tool_calls && msg.tool_calls[0]) {
+                const toolCallId = msg.tool_calls[0].id;
+                for (let j = i + 1; j < messages.length; j++) {
+                  if (messages[j].role === 'tool' && (messages[j] as any).tool_call_id === toolCallId) {
+                    toolResult = messages[j];
+                    break;
+                  }
+                }
+              }
+              result.push({
+                type: msg.role === 'user' ? 'user' as const :
+                      isToolCallResult ? 'tool_call_result' as const : 'assistant_after' as const,
+                data: msg,
+                bubbleId: isToolCallResult ? baseBubbleId + '_tool' : baseBubbleId,
+                toolCallId: msg.tool_calls?.[0]?.id,
+                toolResult,
+                bubbleState: msg.bubbleState || (isStreaming ? 'streaming' : 'completed'),
+                contentHash: msg.contentHash,
+              });
+            }
+            return result;
+          })()
         : groupMessages(record.agentMessages).map((processedMsg: any) => ({
             ...processedMsg,
             // For completed messages, mark as completed
@@ -1774,8 +1795,22 @@ const page = new NamedPage('agent_chat', async () => {
           if (processedMsg.type === 'tool_call_result') {
             const toolCalls = msgData.tool_calls;
             const toolResult = processedMsg.toolResult;
-            
-            // Check if already displayed
+            const precedingAssistantBubbleId = msgData.bubbleId;
+            if (precedingAssistantBubbleId) {
+              const precedingAssistant = Array.from(chatMessages.children).find(
+                (el: any) => getbubbleId(el) === precedingAssistantBubbleId &&
+                            el.classList.contains('chat-message') && el.classList.contains('assistant')
+              ) as HTMLElement | null;
+              if (precedingAssistant) {
+                const contentDiv = precedingAssistant.querySelector('.message-content') as HTMLElement | null;
+                if (contentDiv && msgData.content != null) {
+                  contentDiv.textContent = typeof msgData.content === 'string' ? msgData.content : JSON.stringify(msgData.content || '');
+                }
+                precedingAssistant.classList.remove('streaming');
+                precedingAssistant.classList.add('completed');
+                updateFrontendState(precedingAssistantBubbleId, FrontendBubbleState.COMPLETED, 'tool_call_before', {});
+              }
+            }
             if (displayedbubbleIds.has(bubbleId)) {
               // Update tool result if available
               if (toolResult && processedMsg.toolCallId) {
@@ -1831,16 +1866,13 @@ const page = new NamedPage('agent_chat', async () => {
             displayedbubbleIds.add(bubbleId);
             displayedbubbleIdsGlobal.add(bubbleId);
             
-            // CRITICAL: Double-check DOM one more time (handleBubbleStream might have created it)
             const finalCheckInDOMForTool = Array.from(chatMessages.children).find(
-              (el: any) => getbubbleId(el) === bubbleId && 
-                          el.classList.contains('chat-message') && 
-                          el.classList.contains('assistant')
+              (el: any) => getbubbleId(el) === bubbleId && el.classList.contains('tool-call-container')
             );
             if (!finalCheckInDOMForTool) {
               await addMessage('assistant', '', undefined, toolCalls, bubbleId);
             } else {
-              console.log('[AgentChat] Tool message already exists, skipping creation:', { bubbleId });
+              console.log('[AgentChat] Tool call container already exists, skipping creation:', { bubbleId });
             }
             
             // If tool result is available, add it immediately
@@ -2289,18 +2321,14 @@ const page = new NamedPage('agent_chat', async () => {
                 const isPendingComplete = currentMsgState === FrontendBubbleState.PENDING_COMPLETE;
                 const isCompletedState = currentMsgState === FrontendBubbleState.COMPLETED;
                 
-                // For streaming or pending_complete, always update content if changed
-                // For completed, only update if content exists and changed
-                if (isStreaming || isPendingComplete) {
+                // During streaming, do not overwrite content; handleBubbleStream updates incrementally
+                // For pending_complete or completed, update content if changed
+                if (isStreaming) {
+                  markBubbleContentUpdate(bubbleId);
+                } else if (isPendingComplete) {
                   if (contentChanged) {
                     contentDiv.textContent = content || '';
-                    // Mark content update (this will handle state synchronization)
                     markBubbleContentUpdate(bubbleId);
-                } else {
-                    // Even if content unchanged, mark update to reset timeout (only during streaming)
-                    if (isStreaming) {
-                      markBubbleContentUpdate(bubbleId);
-                    }
                   }
                 } else if (content && isCompletedState) {
                   // Task and bubble are completed, only update if content actually changed
@@ -2357,7 +2385,8 @@ const page = new NamedPage('agent_chat', async () => {
                   assistantMsg = finalCheckInDOM as HTMLElement;
                   updateLastMessage(content, toolCalls, isStreaming);
                 } else {
-                await addMessage('assistant', content || '', undefined, toolCalls, bubbleId);
+                const contentToSet = isStreaming ? '' : (content || '');
+                await addMessage('assistant', contentToSet, undefined, toolCalls, bubbleId);
                 }
               } else {
                 updateLastMessage(content, toolCalls, isStreaming);
@@ -2489,10 +2518,7 @@ const page = new NamedPage('agent_chat', async () => {
                         } else {
                           activebubbleIds.add(bubbleId);
                         }
-                        // Update content if needed
-                        if (isStreaming) {
-                          contentDiv.textContent = content;
-                        } else if (contentDiv && contentDiv instanceof HTMLElement) {
+                        if (!isStreaming && contentDiv && contentDiv instanceof HTMLElement) {
                           await renderMarkdownWithTracking(bubbleId, content, contentDiv);
                         }
                         continue; // Skip to next message in outer loop
@@ -2511,10 +2537,7 @@ const page = new NamedPage('agent_chat', async () => {
                         } else {
                           activebubbleIds.add(bubbleId);
                         }
-                        // Update content
-                        if (isStreaming) {
-                          contentDiv.textContent = content;
-                        } else {
+                        if (!isStreaming) {
                           const renderedHtml = await renderMarkdown(content, false);
                           contentDiv.innerHTML = renderedHtml;
                         }
@@ -2569,7 +2592,8 @@ const page = new NamedPage('agent_chat', async () => {
             continue;
           }
           
-              await addMessage('assistant', content, undefined, toolCalls, bubbleId);
+              const contentToSet = isStreaming ? '' : content;
+              await addMessage('assistant', contentToSet, undefined, toolCalls, bubbleId);
             }
                 continue;
               }
@@ -2578,6 +2602,62 @@ const page = new NamedPage('agent_chat', async () => {
           // Skip standalone tool messages to avoid duplicates
           if (msgData.role === 'tool') {
             continue;
+          }
+        }
+        if (isStreaming && record.agentMessages && record.agentMessages.length > 0) {
+          for (let i = 0; i < record.agentMessages.length - 1; i++) {
+            const msg = record.agentMessages[i];
+            if (msg.role !== 'assistant' || !msg.tool_calls || msg.tool_calls.length === 0) continue;
+            const nextMsg = record.agentMessages[i + 1];
+            if (nextMsg.role !== 'tool') continue;
+            const baseBubbleId = msg.bubbleId || generatebubbleId();
+            const toolBubbleId = baseBubbleId + '_tool';
+            const hasToolContainer = Array.from(chatMessages.children).some(
+              (el: any) => getbubbleId(el) === toolBubbleId && el.classList.contains('tool-call-container')
+            );
+            if (!hasToolContainer) {
+              const toolCalls = msg.tool_calls;
+              const toolResult = nextMsg;
+              const toolCallId = toolCalls[0]?.id;
+              displayedbubbleIdsGlobal.add(toolBubbleId);
+              await addMessage('assistant', '', undefined, toolCalls, toolBubbleId);
+              const toolCallItem = Array.from(chatMessages.querySelectorAll('.tool-call-item')).find(
+                (el: any) => el.getAttribute('data-tool-call-id') === toolCallId
+              ) as Element | null;
+              if (toolCallItem && toolResult) {
+                toolCallItem.setAttribute('data-tool-status', 'success');
+                const statusBadge = toolCallItem.querySelector('.tool-status-badge') as HTMLElement;
+                if (statusBadge) {
+                  statusBadge.textContent = '执行成功';
+                  statusBadge.style.cssText = 'padding: 2px 8px; border-radius: 12px; background: #4caf50; color: white; font-size: 11px;';
+                }
+                const toolCallDetails = toolCallItem.querySelector('.tool-call-details') as HTMLElement;
+                if (toolCallDetails) {
+                  let resultDiv = toolCallDetails.querySelector('.tool-call-result') as HTMLElement;
+                  if (!resultDiv) {
+                    resultDiv = document.createElement('div');
+                    resultDiv.className = 'tool-call-result';
+                    resultDiv.style.cssText = 'margin-top: 8px;';
+                    const resultLabel = document.createElement('div');
+                    resultLabel.textContent = '结果:';
+                    resultLabel.style.cssText = 'font-size: 11px; color: #666; margin-bottom: 4px;';
+                    resultDiv.appendChild(resultLabel);
+                    const resultPre = document.createElement('pre');
+                    resultPre.style.cssText = 'margin: 0; padding: 8px; background: #e7f3ff; border: 1px solid #b3d9ff; border-radius: 4px; font-size: 12px; overflow-x: auto; max-height: 300px; overflow-y: auto;';
+                    resultDiv.appendChild(resultPre);
+                    toolCallDetails.appendChild(resultDiv);
+                  }
+                  const resultPre = resultDiv.querySelector('pre') as HTMLElement;
+                  if (resultPre) {
+                    const toolContent = typeof toolResult.content === 'string'
+                      ? toolResult.content
+                      : JSON.stringify(toolResult.content, null, 2);
+                    resultPre.textContent = toolContent;
+                  }
+                }
+              }
+              chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
           }
         }
       })();
@@ -3004,32 +3084,22 @@ const page = new NamedPage('agent_chat', async () => {
       }
     }
     
-    // Update message content
-    if (content !== undefined) {
+    // Update message content (during streaming, do not overwrite; handleBubbleStream updates incrementally)
+    if (content !== undefined && !isStreaming) {
       let contentDiv = messageBubble.querySelector('.message-content');
         if (!contentDiv) {
           contentDiv = document.createElement('div');
           contentDiv.className = 'message-content';
         messageBubble.appendChild(contentDiv);
         }
-      
-      // During streaming, show raw text (don't render markdown to avoid flickering)
-      // Markdown will be rendered when streaming is complete
-      if (isStreaming) {
-        contentDiv.textContent = content;
-    } else {
-        // Streaming complete, render markdown (with tracking to prevent duplicates)
-        // Find bubbleId from message element
-        const messageEl = contentDiv.closest('.chat-message');
+      const messageEl = contentDiv.closest('.chat-message');
         const bubbleId = messageEl ? getbubbleIdFromElement(messageEl) : null;
         if (bubbleId && contentDiv instanceof HTMLElement) {
           await renderMarkdownWithTracking(bubbleId, content, contentDiv);
         } else {
-          // Fallback if no bubbleId found
         const renderedHtml = await renderMarkdown(content, false);
         contentDiv.innerHTML = renderedHtml;
         }
-      }
     }
     
     chatMessages.scrollTop = chatMessages.scrollHeight;

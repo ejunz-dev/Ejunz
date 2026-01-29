@@ -196,7 +196,8 @@ export default class RecordModel {
                     const existingMessages = (existingRecord as any).agentMessages || [];
                     
                     const agentMessageKeys = $set ? Object.keys($set).filter(k => k.startsWith('agentMessages.')) : [];
-                    if (agentMessageKeys.length > 0) {
+                    const hasToolCallsUpdate = agentMessageKeys.some((k: string) => k.includes('.tool_calls'));
+                    if (agentMessageKeys.length > 0 && !hasToolCallsUpdate) {
                         const messageIndexMatch = agentMessageKeys[0].match(/agentMessages\.(\d+)\./);
                         if (messageIndexMatch) {
                             const index = parseInt(messageIndexMatch[1], 10);
