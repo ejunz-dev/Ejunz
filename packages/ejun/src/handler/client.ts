@@ -3097,7 +3097,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                     
                     // 收集完整的上下文信息，供 worker 使用
                     const { getAssignedTools } = require('./agent');
-                    const tools = await getAssignedTools(this.domain._id, agent.mcpToolIds, agent.repoIds);
+                    const tools = await getAssignedTools(this.domain._id, agent.mcpToolIds, agent.repoIds, agent.skillIds);
                     
                     const agentPrompt = agent.content || '';
                     let systemMessage = agentPrompt;

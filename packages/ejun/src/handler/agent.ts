@@ -29,11 +29,12 @@ import { Logger } from '../logger';
 import { PassThrough } from 'stream';
 import EdgeModel from '../model/edge';
 import ToolModel from '../model/tool';
-import { loadSkillsMetadata, loadSkillInstructions, loadSkillsInstructions } from '../lib/skillLoader';
+import { loadSkillsMetadata, loadSkillInstructions, loadSkillsInstructions, getToolNamesFromSkills, getToolExamplesFromSkills } from '../lib/skillLoader';
 import { EdgeServerConnectionHandler } from './edge';
 import * as document from '../model/document';
 import NodeModel from '../model/node';
 import { callToolViaWorker } from './worker';
+import { getDomainMarketToolsForAgent } from './tool';
 import record from '../model/record';
 import SessionModel from '../model/session';
 import { SessionConnectionTracker } from './session';
@@ -42,7 +43,7 @@ import { RecordDoc } from '../interface';
 const AgentLogger = new Logger('agent');
 export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
 
-// 工具调用辅助函数：优先使用 worker，如果 worker 不可用则直接调用
+// Tool call: try worker first, then direct MCP
 async function callToolWithFallback(
     toolName: string,
     args: any,
@@ -496,7 +497,7 @@ export async function processAgentChatInternal(
                     repoIds: adoc.repoIds?.length || 0,
                     repoIdsArray: adoc.repoIds || []
                 });
-                const loadedTools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds);
+                const loadedTools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds);
                 tools = loadedTools;
                 toolsLoaded = true;
                 AgentLogger.info('processAgentChatInternal: Got tools (async)', { 
@@ -900,14 +901,7 @@ export async function processAgentChatInternal(
                                                 // Also update system message with tools info if available
                                                 if (toolsLoaded && tools.length > 0) {
                                                     // Add tools to request body
-                                                    requestBody.tools = tools.map(tool => ({
-                                                        type: 'function',
-                                                        function: {
-                                                            name: tool.name,
-                                                            description: tool.description,
-                                                            parameters: tool.inputSchema,
-                                                        },
-                                                    }));
+                                                    requestBody.tools = toolsToApiFormat(tools);
                                                     
                                                     // Update system message with tools info if not already added
                                                     let updatedSystemMessage = systemMessage;
@@ -1000,7 +994,7 @@ export async function processAgentChatInternal(
 // Enhanced to also fetch from real-time MCP connections to ensure all tools are available
 // If mcpToolIds is empty, returns all available tools from database (since tools are synced from MCP servers to DB)
 // Also includes tools from repos specified in repoIds
-export async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[], repoIds?: number[]): Promise<any[]> {
+export async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[], repoIds?: number[], skillIds?: string[]): Promise<any[]> {
     const allToolIds = new Set<string>();
     
     if (mcpToolIds) {
@@ -1014,7 +1008,25 @@ export async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[]
     
     const finalToolIds: ObjectId[] = Array.from(allToolIds).map(id => new ObjectId(id));
     
-    if (finalToolIds.length === 0) {
+    // When no Edge tools assigned, only return domain market tools that are referenced in assigned skills
+    const hasEdgeTools = finalToolIds.length > 0;
+    
+    if (!hasEdgeTools) {
+        const allowedFromSkills = await getToolNamesFromSkills(domainId, skillIds || []);
+        if (allowedFromSkills.size === 0) {
+            AgentLogger.info('getAssignedTools: No Edge tools and no skill-referenced domain tools, returning empty array');
+            return [];
+        }
+        try {
+            const domainMarketTools = await getDomainMarketToolsForAgent(domainId);
+            const filtered = domainMarketTools.filter(t => allowedFromSkills.has(t.name));
+            if (filtered.length > 0) {
+                AgentLogger.info('getAssignedTools: No Edge tools, returning %d domain market tools from skills', filtered.length);
+                return filtered;
+            }
+        } catch (e) {
+            AgentLogger.warn('getAssignedTools: getDomainMarketToolsForAgent failed: %s', (e as Error).message);
+        }
         AgentLogger.info('getAssignedTools: No toolIds specified, returning empty array');
         return [];
     }
@@ -1056,7 +1068,7 @@ export async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[]
                         name: tool.name,
                         description: tool.description,
                         inputSchema: tool.inputSchema,
-                        token: edge.token, // 使用 token 而不是 serverId
+                        token: edge.token,
                         edgeId: edge._id,
                     });
                     assignedToolNames.add(tool.name);
@@ -1131,10 +1143,55 @@ export async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[]
         }
     }
     
+    // Merge domain market tools only when referenced in assigned skills (must load skill first)
+    try {
+        const allowedFromSkills = await getToolNamesFromSkills(domainId, skillIds || []);
+        if (allowedFromSkills.size > 0) {
+            const { getDomainMarketToolsForAgent } = await import('./tool');
+            const domainMarketTools = await getDomainMarketToolsForAgent(domainId);
+            for (const t of domainMarketTools) {
+                if (allowedFromSkills.has(t.name) && !processedNames.has(t.name)) {
+                    finalTools.push(t);
+                    processedNames.add(t.name);
+                }
+            }
+        }
+    } catch (e) {
+        AgentLogger.warn('getAssignedTools: getDomainMarketToolsForAgent failed: %s', (e as Error).message);
+    }
+    
+    // Inject skill-recommended arguments into description + x-skill-example (Option B)
+    try {
+        const skillExamples = await getToolExamplesFromSkills(domainId, skillIds || []);
+        if (skillExamples.size > 0) {
+            for (const tool of finalTools) {
+                const args = skillExamples.get(tool.name);
+                if (args != null) {
+                    const desc = (tool.description || '').trim();
+                    tool.description = desc
+                        ? `${desc}\n\nRecommended from assigned skill(s): use arguments ${JSON.stringify(args)}.`
+                        : `Recommended from assigned skill(s): use arguments ${JSON.stringify(args)}.`;
+                    (tool as any)['x-skill-example'] = { arguments: args };
+                }
+            }
+        }
+    } catch (e) {
+        AgentLogger.warn('getAssignedTools: getToolExamplesFromSkills failed: %s', (e as Error).message);
+    }
+    
     AgentLogger.info('getAssignedTools: dbTools=%d, realtimeTools=%d, matchedTools=%d, finalTools=%d', 
         dbToolsMap.size, realtimeTools.length, processedNames.size, finalTools.length);
     
     return finalTools;
+}
+
+/** Tools to OpenAI request format (incl. x-skill-example). */
+function toolsToApiFormat(tools: any[]): any[] {
+    return tools.map(tool => {
+        const fn: any = { name: tool.name, description: tool.description, parameters: tool.inputSchema };
+        if (tool['x-skill-example']) fn['x-skill-example'] = tool['x-skill-example'];
+        return { type: 'function', function: fn };
+    });
 }
 
 class AgentMcpStatusHandler extends Handler {
@@ -1147,7 +1204,7 @@ class AgentMcpStatusHandler extends Handler {
             return;
         }
         
-        const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds);
+        const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds);
         this.response.body = { 
             connected: true, 
             toolCount: tools.length 
@@ -1623,7 +1680,7 @@ export class AgentChatHandler extends Handler {
                 throw new Error('Domain not found');
             }
             
-            const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds);
+            const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds);
             
             // 加载 Agent Skills 元数据（渐进式披露 - 只加载名称和描述，节省 token）
             let skillsInstructions = '';
@@ -1633,12 +1690,12 @@ export class AgentChatHandler extends Handler {
                 AgentLogger.warn('Failed to load Agent Skills metadata:', e);
             }
             
-            // 如果有 skills，添加内置的 load_skill_instructions 工具
+            // Add built-in load_skill_instructions when skills exist
             const finalTools = [...tools];
             if (skillsInstructions) {
                 finalTools.push({
                     name: 'load_skill_instructions',
-                    description: 'Load detailed instructions for a specific skill. Use this when you need detailed information about a skill\'s modules, sub-modules, or full instructions. Parameters: skillName (required, string) - the name of the skill to load; level (optional, number) - 1 for overview, 2+ for specific depth (supports unlimited levels), or omit for full content.',
+                    description: 'Load detailed instructions for a specific skill. Use this when you need detailed information about a skill\'s modules, sub-modules, or full instructions. Parameters: skillName (required, string) - the name of the skill to load; level (optional, number) - 1 for overview, 2+ for specific depth (supports unlimited levels), or omit for full content. IMPORTANT: Call this only ONCE per skill per user request. After you receive the tool result, do NOT call load_skill_instructions again; immediately call the tool specified in the loaded content (e.g. get_current_time) with the arguments from the skill.',
                     inputSchema: {
                         type: 'object',
                         properties: {
@@ -2344,7 +2401,7 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
         } catch (e) {
         }
 
-        const tools = await getAssignedTools(domainId, this.adoc.mcpToolIds);
+        const tools = await getAssignedTools(domainId, this.adoc.mcpToolIds, this.adoc.repoIds, this.adoc.skillIds);
         const mcpClient = new McpClient();
         
         // 加载 Agent Skills 元数据（渐进式披露 - 只加载名称和描述，节省 token）
@@ -2407,14 +2464,7 @@ export class AgentStreamConnectionHandler extends ConnectionHandler {
             };
 
             if (tools.length > 0) {
-                requestBody.tools = tools.map(tool => ({
-                    type: 'function',
-                    function: {
-                        name: tool.name,
-                        description: tool.description,
-                        parameters: tool.inputSchema,
-                    },
-                }));
+                requestBody.tools = toolsToApiFormat(tools);
             }
 
             let messagesForTurn: any[] = [
@@ -2799,7 +2849,7 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
         } catch (e) {
         }
 
-        const tools = await getAssignedTools(domainId, this.adoc.mcpToolIds);
+        const tools = await getAssignedTools(domainId, this.adoc.mcpToolIds, this.adoc.repoIds, this.adoc.skillIds);
         const mcpClient = new McpClient();
         
         // 加载 Agent Skills 元数据（渐进式披露 - 只加载名称和描述，节省 token）
@@ -2862,14 +2912,7 @@ export class AgentApiConnectionHandler extends ConnectionHandler {
             };
 
             if (tools.length > 0) {
-                requestBody.tools = tools.map(tool => ({
-                    type: 'function',
-                    function: {
-                        name: tool.name,
-                        description: tool.description,
-                        parameters: tool.inputSchema,
-                    },
-                }));
+                requestBody.tools = toolsToApiFormat(tools);
             }
 
             let messagesForTurn: any[] = [
@@ -3175,7 +3218,7 @@ export class AgentApiHandler extends Handler {
             // ignore parse error
         }
 
-        const tools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds);
+        const tools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds);
         const mcpClient = new McpClient();
         
         // 加载 Agent Skills 元数据（渐进式披露 - 只加载名称和描述，节省 token）
@@ -3243,14 +3286,7 @@ export class AgentApiHandler extends Handler {
             };
 
             if (tools.length > 0) {
-                requestBody.tools = tools.map(tool => ({
-                    type: 'function',
-                    function: {
-                        name: tool.name,
-                        description: tool.description,
-                        parameters: tool.inputSchema,
-                    },
-                }));
+                requestBody.tools = toolsToApiFormat(tools);
             }
 
             let messagesForTurn: any[] = [
@@ -3797,6 +3833,7 @@ export class AgentEditHandler extends Handler {
         AgentLogger.info('Updating agent: aid=%s, toolIds=%o, validToolIds=%o, repoIds=%o, validRepoIds=%o', 
             agent.aid, toolIds, validToolIds.map(id => id.toString()), repoIds, validRepoIds);
     
+        const validSkillIds: string[] = Array.isArray(skillIds) ? skillIds.filter((s): s is string => typeof s === 'string' && s.trim() !== '') : [];
         const agentAid = agent.aid;
         const updatedAgent = await Agent.edit(domainId, agentAid, { 
             title, 
@@ -3804,11 +3841,12 @@ export class AgentEditHandler extends Handler {
             tag: tag ?? [], 
             memory: memory || null,
             mcpToolIds: validToolIds,
-            repoIds: validRepoIds.length > 0 ? validRepoIds : undefined
+            repoIds: validRepoIds.length > 0 ? validRepoIds : undefined,
+            skillIds: validSkillIds.length > 0 ? validSkillIds : undefined,
         });
         
         if (updatedAgent) {
-            AgentLogger.info('Agent updated: aid=%s, mcpToolIds=%o', agentAid, updatedAgent.mcpToolIds?.map(id => id.toString()));
+            AgentLogger.info('Agent updated: aid=%s, mcpToolIds=%o, skillIds=%o', agentAid, updatedAgent.mcpToolIds?.map(id => id.toString()), updatedAgent.skillIds);
         } else {
             AgentLogger.warn('Agent.edit returned null/undefined for aid=%s', agentAid);
         }

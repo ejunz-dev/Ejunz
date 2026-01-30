@@ -9,10 +9,11 @@ import DomainMarketToolModel from '../model/domain_market_tool';
 import { EdgeServerConnectionHandler } from './edge';
 import { ValidationError, NotFoundError } from '../error';
 import type { ToolDoc } from '../interface';
+import { executeSystemTool } from '../lib/systemTools';
 
 const logger = new Logger('handler/tool');
 
-/** 工具市场：系统提供的 MCP 工具目录（非 Edge 端），用户可添加到当前 domain 的 tool/list */
+/** Tool market: system MCP tools (non-Edge); user can add to domain tool/list */
 export const MARKET_TOOLS_CATALOG: Array<{
     id: string;
     name: string;
@@ -32,7 +33,7 @@ export const MARKET_TOOLS_CATALOG: Array<{
     },
 ];
 
-/** 构建当前 domain 已启用的系统工具列表（用于 list/WebSocket），不创建 Edge */
+/** Build enabled system tools for domain (list/WebSocket); no Edge. */
 async function buildSystemToolsForDomain(domainId: string): Promise<any[]> {
     const enabled = await DomainMarketToolModel.getByDomain(domainId);
     return enabled.map((doc) => {
@@ -51,6 +52,12 @@ async function buildSystemToolsForDomain(domainId: string): Promise<any[]> {
             edgeId: null,
         };
     }).filter(Boolean);
+}
+
+/** Returns domain market tools for agent tool list (so agent can call e.g. get_current_time from skill). */
+export async function getDomainMarketToolsForAgent(domainId: string): Promise<Array<{ name: string; description: string; inputSchema: any }>> {
+    const list = await buildSystemToolsForDomain(domainId);
+    return list.map((t: any) => ({ name: t.name, description: t.description || '', inputSchema: t.inputSchema }));
 }
 
 // Tool页面相关handler
@@ -104,7 +111,48 @@ export class ToolDomainHandler extends Handler<Context> {
     }
 }
 
-/** 工具市场页面：展示系统 MCP 工具，支持添加到当前 domain（不创建 Edge） */
+/** Returns domain tools list as JSON (for skill editor sidebar). */
+export class ToolListApiHandler extends Handler<Context> {
+    async get() {
+        const edges = await EdgeModel.getByDomain(this.domain._id);
+        const allTools: any[] = [];
+
+        for (const edge of edges) {
+            const tools = await ToolModel.getByToken(this.domain._id, edge.token);
+            const isConnected = EdgeServerConnectionHandler.active.has(edge.token);
+            const edgeStatus = isConnected ? (tools.length > 0 ? 'working' : 'online') : 'offline';
+            const displayEdgeName = edge.name || `Edge-${edge.eid}`;
+            for (const tool of tools) {
+                allTools.push({
+                    ...tool,
+                    edgeToken: edge.token,
+                    edgeId: edge._id,
+                    eid: edge.eid,
+                    edgeName: displayEdgeName,
+                    edgeStatus,
+                });
+            }
+        }
+
+        const systemTools = await buildSystemToolsForDomain(this.domain._id);
+        allTools.push(...systemTools);
+
+        allTools.sort((a, b) => {
+            if (a.edgeName !== b.edgeName) {
+                return a.edgeName.localeCompare(b.edgeName);
+            }
+            const tidA = a.tid ?? 0;
+            const tidB = b.tid ?? 0;
+            if (tidA !== tidB) return tidA - tidB;
+            return (a.name || '').localeCompare(b.name || '');
+        });
+
+        this.response.template = null;
+        this.response.body = { tools: allTools };
+    }
+}
+
+/** Tool market page: list system MCP tools, add to domain (no Edge). */
 export class ToolMarketHandler extends Handler<Context> {
     async get() {
         const enabled = await DomainMarketToolModel.getByDomain(this.domain._id);
@@ -121,7 +169,7 @@ export class ToolMarketHandler extends Handler<Context> {
     }
 }
 
-/** 系统工具详情（来源 domain_market_tool，不关联 Edge） */
+/** System tool detail (from domain_market_tool; no Edge). */
 export class ToolSystemDetailHandler extends Handler<Context> {
     async get() {
         const { toolKey } = this.request.params;
@@ -174,10 +222,8 @@ export class ToolDetailHandler extends Handler<Context> {
     async get() {
         const { tid } = this.request.params;
         
-        // 如果 tid 包含点号（如 .css.map），说明是静态资源，不应该匹配这个路由
-        // 框架应该先处理静态资源，但如果到达这里，说明是无效的 tid
+        // tid with dot (e.g. .css.map) = static asset; 404
         if (tid && (tid.includes('.') || !/^\d+$/.test(tid))) {
-            // 返回 404，让静态资源处理器处理
             throw new NotFoundError(tid);
         }
         
@@ -186,7 +232,6 @@ export class ToolDetailHandler extends Handler<Context> {
             throw new ValidationError('tid');
         }
         
-        // 需要先找到对应的 edge，然后通过 token 和 tid 查找 tool
         const edges = await EdgeModel.getByDomain(this.domain._id);
         let foundTool: ToolDoc | null = null;
         
@@ -267,7 +312,7 @@ export class ToolStatusConnectionHandler extends ConnectionHandler<Context> {
 
         this.send({ type: 'init', tools: allTools });
 
-        // 监听工具更新事件（含 system：不查 Edge，直接构建系统工具列表）
+        // Tool update (incl. system: build system tools, no Edge)
         const dispose1 = this.ctx.on('mcp/tools/update' as any, async (...args: any[]) => {
             const [token] = args;
             if (token === 'system') {
@@ -378,28 +423,16 @@ export class ToolStatusConnectionHandler extends ConnectionHandler<Context> {
     }
 }
 
-/** 执行系统内置 MCP 工具（工具市场中提供的非 Edge 工具） */
-function executeSystemTool(name: string, args: Record<string, unknown>): any {
-    if (name === 'get_current_time') {
-        const timezone = (args?.timezone as string) || undefined;
-        const now = new Date();
-        const iso = timezone
-            ? now.toLocaleString('sv-SE', { timeZone: timezone })
-            : now.toISOString();
-        return { currentTime: iso, timezone: timezone || 'UTC' };
-    }
-    throw new Error(`Unknown system tool: ${name}`);
-}
-
 export async function apply(ctx: Context) {
     ctx.Route('tool_domain', '/tool/list', ToolDomainHandler);
+    ctx.Route('tool_list_api', '/tool/api/list', ToolListApiHandler);
     ctx.Route('tool_market', '/tool/market', ToolMarketHandler);
     ctx.Route('tool_market_add', '/tool/market/add', ToolMarketAddHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('tool_system_detail', '/tool/system/:toolKey', ToolSystemDetailHandler);
     ctx.Route('tool_detail', '/tool/:tid', ToolDetailHandler);
     ctx.Connection('tool_status_conn', '/tool/status/ws', ToolStatusConnectionHandler);
 
-    // 系统 MCP 工具（domain_market_tool 存储，不创建 Edge）
+    // System MCP tools (domain_market_tool; no Edge)
     (ctx as any).on('mcp/tools/list/local', async (payload?: { domainId?: string }) => {
         const domainId = payload?.domainId;
         if (!domainId) return [];

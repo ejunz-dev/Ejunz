@@ -212,6 +212,7 @@ declare module './model/agent'{
         memory?: string;
         mcpToolIds?: ObjectId[]; // 分配的MCP工具ID列表
         repoIds?: number[]; // 生效的repo ID列表（rpid数组）
+        skillIds?: string[]; // Assigned skill names; domain market tools only when referenced in these skills
     }
 }
 export type { AgentDoc } from './model/agent';

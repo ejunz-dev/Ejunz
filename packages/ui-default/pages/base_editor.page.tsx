@@ -1043,6 +1043,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const executeAIOperationsRef = useRef<((operations: any[]) => Promise<{ success: boolean; errors: string[] }>) | null>(null);
   const chatWebSocketRef = useRef<any>(null); // WebSocket 连接
   const [explorerMode, setExplorerMode] = useState<'tree' | 'files' | 'pending'>('tree'); // 文件树模式、文件模式或待提交模式
+  const [domainTools, setDomainTools] = useState<any[]>([]);
+  const [domainToolsLoading, setDomainToolsLoading] = useState<boolean>(false);
   const [files, setFiles] = useState<Array<{ _id: string; name: string; size: number; etag?: string; lastModified?: Date | string }>>(initialData.files || []);
   const [selectedFileForPreview, setSelectedFileForPreview] = useState<string | null>(null);
   // 单选题编辑状态（针对当前选中的卡片）
@@ -6480,6 +6482,23 @@ ${currentCardContext}
     }
   }, [fileContent, editorInstance, selectedFile]);
 
+  useEffect(() => {
+    if (basePath !== 'base/skill') return;
+    const domainId = (window as any).UiContext?.domainId;
+    if (!domainId) return;
+    setDomainToolsLoading(true);
+    request.get(`/d/${domainId}/tool/api/list`)
+      .then((data: any) => {
+        setDomainTools(data?.tools ?? []);
+      })
+      .catch(() => {
+        setDomainTools([]);
+      })
+      .finally(() => {
+        setDomainToolsLoading(false);
+      });
+  }, [basePath]);
+
   // 组件卸载时清理
   useEffect(() => {
     return () => {
@@ -8191,6 +8210,109 @@ ${currentCardContext}
           )}
         </div>
       </div>
+
+      {/* Domain Tools sidebar (skill editor only): show params, click to copy tool + arguments template */}
+      {basePath === 'base/skill' && (
+        <div style={{
+          width: '280px',
+          flexShrink: 0,
+          borderLeft: `1px solid ${themeStyles.borderPrimary}`,
+          backgroundColor: themeStyles.bgSecondary,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            padding: '12px 16px',
+            borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+            fontSize: '12px',
+            fontWeight: '600',
+            color: themeStyles.textSecondary,
+            backgroundColor: themeStyles.bgPrimary,
+          }}>
+            Domain Tools
+          </div>
+          <div style={{ flex: 1, overflow: 'auto', padding: '8px 0' }}>
+            {domainToolsLoading ? (
+              <div style={{ padding: '12px 16px', fontSize: '12px', color: themeStyles.textSecondary }}>Loading...</div>
+            ) : domainTools.length === 0 ? (
+              <div style={{ padding: '12px 16px', fontSize: '12px', color: themeStyles.textSecondary }}>No tools in this domain.</div>
+            ) : (
+              domainTools.map((tool: any) => {
+                const toolKey = tool.toolKey || tool.name || '';
+                const label = tool.name || tool.toolKey || '';
+                const serverLabel = tool.edgeName || '';
+                const schema = tool.inputSchema;
+                const params: Array<{ name: string; desc?: string; defaultVal?: string }> = [];
+                if (schema?.properties && typeof schema.properties === 'object') {
+                  Object.entries(schema.properties).forEach(([k, v]: [string, any]) => {
+                    params.push({
+                      name: k,
+                      desc: v?.description,
+                      defaultVal: v?.default != null ? String(v.default) : undefined,
+                    });
+                  });
+                }
+                const buildCopyPayload = () => {
+                  const args: Record<string, string> = {};
+                  params.forEach((p) => {
+                    args[p.name] = p.defaultVal ?? '';
+                  });
+                  return JSON.stringify({ tool: toolKey, arguments: args }, null, 2);
+                };
+                const copyPayload = toolKey ? (params.length > 0 ? buildCopyPayload() : JSON.stringify({ tool: toolKey, arguments: {} }, null, 2)) : '';
+                return (
+                  <div
+                    key={tool.tid != null ? `edge-${tool.tid}-${tool.edgeToken}` : `system-${tool.toolKey}`}
+                    title={copyPayload ? 'Click to copy tool + arguments template' : ''}
+                    onClick={() => {
+                      if (!copyPayload) return;
+                      if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(copyPayload).then(() => {
+                          Notification.success('Copied to clipboard');
+                        }).catch(() => {
+                          Notification.error('Copy failed');
+                        });
+                      } else {
+                        Notification.error('Clipboard not available');
+                      }
+                    }}
+                    style={{
+                      padding: '10px 16px',
+                      fontSize: '12px',
+                      color: themeStyles.textPrimary,
+                      cursor: copyPayload ? 'pointer' : 'default',
+                      borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (copyPayload) e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    <div style={{ fontWeight: 500 }}>{label}</div>
+                    {serverLabel && (
+                      <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginTop: '2px' }}>{serverLabel}</div>
+                    )}
+                    {params.length > 0 && (
+                      <div style={{ marginTop: '6px', fontSize: '11px', color: themeStyles.textSecondary }}>
+                        <div style={{ fontWeight: 600, marginBottom: '4px' }}>Parameters:</div>
+                        {params.map((p) => (
+                          <div key={p.name} style={{ marginLeft: '4px', marginBottom: '2px' }}>
+                            <code style={{ fontSize: '10px' }}>{p.name}</code>
+                            {p.desc && <span style={{ marginLeft: '4px' }}>— {p.desc}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 分隔条 */}
       {showAIChat && (
