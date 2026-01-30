@@ -16,6 +16,7 @@ import type {
     Document, User, AgentDoc
 } from '../interface';
 import { parseConfig } from '../lib/testdataConfig';
+import { executeSystemTool } from '../lib/systemTools';
 import * as bus from '../service/bus';
 import {
     ArrayKeys, MaybeArray, NumberKeys, Projection,
@@ -395,7 +396,7 @@ export interface EdgeTool {
 const ClientLogger = new AppLogger('mcp');
 
 export class McpClient {
-    /** domainId 用于按 domain 列出工具市场添加的系统工具 */
+    /** domainId for listing domain market tools per domain */
     async getTools(domainId?: string): Promise<EdgeTool[]> {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
@@ -425,6 +426,12 @@ export class McpClient {
                 throw new Error('Context not available');
             }
 
+            // Built-in system tools: execute first
+            if (name === 'get_current_time') {
+                ClientLogger.info('Calling built-in system tool: %s', name);
+                return executeSystemTool(name, args || {});
+            }
+
             // Check if it's a built-in skill loading tool
             if (name === 'load_skill_instructions') {
                 try {
@@ -435,7 +442,7 @@ export class McpClient {
                     
                     const { loadSkillInstructions } = require('../lib/skillLoader');
                     const skillName = args.skillName || args.skill_name;
-                    const level = args.level !== undefined ? args.level : (args.maxLevel !== undefined ? args.maxLevel : 2); // 默认加载到 Level 2（模块列表），支持任意层级
+                    const level = args.level !== undefined ? args.level : (args.maxLevel !== undefined ? args.maxLevel : 2);
                     
                     if (!skillName) {
                         throw new Error('skillName is required');
@@ -542,7 +549,6 @@ export class McpClient {
                     ClientLogger.debug('Looking for tool in Edge servers: tool=%s, domainId=%s', name, domainId);
                     
                     const edges = await EdgeModel.getByDomain(domainId);
-                    // 只检查有活跃 WebSocket 连接的 edge
                     const connectedEdges = edges.filter(edge => {
                         const hasActiveConnection = EdgeServerConnectionHandler.active.has(edge.token);
                         return hasActiveConnection;
@@ -600,14 +606,17 @@ export class McpClient {
                 ClientLogger.warn('No domainId provided for tool call: %s', name);
             }
 
-            // Finally try calling via local event
+            // Local/system tools (domain market)
             try {
-                const localTools = await ctx.serial('mcp/tools/list/local').catch(() => []);
-                const inLocal = (localTools || []).some((t: EdgeTool) => t.name === name);
-                if (inLocal) {
-                    return await ctx.serial('mcp/tool/call/local', { name, args });
+                if (domainId) {
+                    const localTools = await ctx.serial('mcp/tools/list/local', { domainId }).catch(() => []);
+                    const inLocal = (localTools || []).some((t: EdgeTool) => t.name === name);
+                    if (inLocal) {
+                        return await ctx.serial('mcp/tool/call/local', { name, args });
+                    }
                 }
             } catch (e) {
+                if ((e as Error).message?.startsWith('Tool not found:')) throw e;
                 ClientLogger.debug('Local tools not available: %s', (e as Error).message);
             }
 
