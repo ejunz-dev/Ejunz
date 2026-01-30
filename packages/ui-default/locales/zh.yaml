@@ -1,6 +1,7 @@
 
 __id: zh
 __langname: 简体中文
+' for use by Agent etc.': 供 Agent 等使用。
 '-- Please Select Agent --': -- 请选择 Agent --
 '"{data}" copied to clipboard!': “{data}”已复制到剪贴板！
 '{0} {1} delete your discussion reply {2} in "{3}"({4}).' : '{0} {1} 从讨论 {3}({4}) 删除了你的回复 {2}。'
@@ -19,7 +20,11 @@ __langname: 简体中文
 'A domain ID cannot be changed after creation. It is supposed to be:': '创建后将无法更改 ID。ID 必须满足以下条件：'
 'Access Point Type': 接入点类型
 'Accuracy': 正确率
+'Add failed.': 添加失败
 'Add Root Doc': 添加根文档
+'Added to tool list.': 已添加到工具列表
+'Added': 已添加
+'Adding...': 添加中...
 'After successful connection, configure ASR, TTS and Agent services': 连接成功后，可以配置 ASR、TTS 和 Agent 服务
 'Agent configuration cleared successfully': Agent 配置已清除
 'Agent configuration saved successfully': Agent 配置已保存
@@ -40,7 +45,9 @@ __langname: 简体中文
 'Back to Details': 返回详情
 'Back to Learn': 返回学习
 'Back to List': 返回列表
+'Back to Tools List': 返回工具列表
 'Base URL': Base URL
+'Basic Info': 基本信息
 'Behind remote by {0} commit(s)': 落后远程 {0} 个提交
 'Block': 块
 'Card': 卡片
@@ -126,6 +133,7 @@ __langname: 简体中文
 'Git Status': Git 状态
 'Hide Answer': 隐藏答案
 'Incorrect': 错误
+'Input Parameters': 输入参数
 'Input Schema': 输入模式
 'Join {0}': '加入 {0}'
 'Jump to {0}': 跳至 {0}
@@ -143,6 +151,7 @@ __langname: 简体中文
 'Locked': 已锁定
 'Manuscript Mode': 文稿模式
 'MCP Tools': MCP 工具
+'MCP Tools': MCP 工具管理
 'Model': 模型
 'New Content Block': 新建内容块
 'New Folder': 新建文件夹
@@ -157,12 +166,15 @@ __langname: 简体中文
 'No content or practice questions available.': 暂无内容或练习题。
 'No content': 无内容
 'No courses available.': 暂无可用课程。
+'No description': 无描述
 'No local git repository': 无本地 git 仓库
+'No MCP tools yet. When MCP server connects and registers, they will appear here.': 暂无注册的 MCP 工具。当 MCP 服务器连接并注册工具后，它们将显示在这里。
 'No messages in this conversation': 此对话中暂无消息
 'No nodes available.': 暂无可用节点。
 'No recording available': 无录音可用
 'No remote repository configured': 未配置远程仓库
 'No sections available.': 暂无可用章节。
+'No system tools.': 暂无系统工具。
 'No tools available': 暂无工具
 'No tools yet. Tools list will be automatically synced after server connection.': 暂无工具。服务器连接后会自动同步工具列表。
 'No': 否
@@ -214,14 +226,20 @@ __langname: 简体中文
 'Select the type of access point to generate a token': 选择接入点类型以生成 token
 'Server ID': 服务器 ID
 'Server Information': 服务器信息
+'Server': 服务器
 'Show Answer': 显示答案
+'Source': 来源
 'Start Learning': 开始学习
+'Status': 状态
 'Successfully pulled from GitHub': 成功从 GitHub 拉取
 'Successfully pushed to GitHub': 成功推送到 GitHub
+'System MCP tools (not from Edge). Click "Add" to add to current domain ': 系统提供的 MCP 工具（非 Edge 端）。点击「添加」可将工具加入当前域的
+'System tool (not Edge)': 系统工具，非 Edge
 'Table of Contents': 目录
 'The value `{1}` of {0} already exists.': '{0} 的值 `{1}` 已经存在。'
 'This branch is behind remote by {0} commit(s). Please use Pull to sync.': 此分支落后远程 {0} 个提交。请使用 Pull 同步。
 'This section requires completion of the following sections first': 此章节需要先完成以下章节
+'This tool has no input parameters defined.': 该工具没有定义输入参数。
 'Time Spent': 用时
 'Token deleted successfully': Token 已删除
 'Token generated successfully': Token 已生成
@@ -229,6 +247,8 @@ __langname: 简体中文
 'Token will be deleted if not used within 30 minutes': Token 如果 30 分钟未使用将被删除
 'Token': Token
 'Tool call successful': 工具调用成功
+'Tool Detail': 工具详情
+'Tool Name': 工具名称
 'Tool': 工具
 'Tools Count': 工具数量
 'Tools List': 工具列表
@@ -243,6 +263,7 @@ __langname: 简体中文
 'Unnamed Section': 未命名阶段
 'Unnamed Unit': 未命名单元
 'Up to date with remote': 与远程同步
+'Update Time': 更新时间
 'Usage Steps': 使用步骤
 'User {0} mentioned you in {1:link}': '用户 {0} 在 {1:link} 中提到了你。'
 'View Connection Logs': 查看连接日志
@@ -302,6 +323,20 @@ Arguments: 参数
 author: 作者
 Avatar: 头像
 Back to: 返回
+Base Node: 知识库节点
+base_create: 创建知识库
+base_data: 知识库数据
+base_delete: 删除知识库
+base_detail: 知识库详情
+base_domain: 知识库
+base_edge: 知识库边
+base_edit: 编辑知识库
+base_editor: 编辑器
+base_list: 知识库列表
+base_node: 知识库节点
+base_outline: 知识库
+base_save: 保存知识库
+base_study: 学习知识库
 Be Copied: 被复制
 Begin at: 开始于
 Begin Date: 开始日期
@@ -591,20 +626,6 @@ Memory: 内存
 Message {0} not found.: 消息 {0} 不存在。
 Messages: 消息
 Method: 方法
-Base Node: 知识库节点
-base_create: 创建知识库
-base_data: 知识库数据
-base_delete: 删除知识库
-base_detail: 知识库详情
-base_domain: 知识库
-base_edge: 知识库边
-base_edit: 编辑知识库
-base_editor: 编辑器
-base_list: 知识库列表
-base_node: 知识库节点
-base_outline: 知识库
-base_save: 保存知识库
-base_study: 学习知识库
 Month: 月
 More: 多
 My Domains: 我加入的域
@@ -842,6 +863,7 @@ Timezone: 时区
 title: 标题
 Title: 标题
 tool_domain: 工具
+tool_market: 工具市场
 Total: 总计
 Type: 类型
 UI Language: 用户界面语言

@@ -1,24 +1,34 @@
-<tr data-tool-id="{{ tool.tid }}" data-edge-token="{{ tool.edgeToken }}">
+<tr data-tool-id="{{ tool.tid or tool.toolKey }}" data-edge-token="{{ tool.edgeToken }}" class="{% if tool.edgeName == 'system' %}tool_main__row--market{% endif %}">
   <td class="col--status">
     <span class="tool-status tool-status-{{ tool.edgeStatus }}">
       {% if tool.edgeStatus == 'working' %}
-        工作中
+        {{ _('Working') }}
       {% elif tool.edgeStatus == 'online' %}
-        在线
+        {{ _('Online') }}
       {% else %}
-        离线
+        {{ _('Offline') }}
       {% endif %}
     </span>
   </td>
   <td class="col--server">
-    <a href="{{ url('edge_detail', { domainId: handler.args.domainId, eid: tool.eid }) }}">
-      <code>{{ tool.eid }}</code>
-    </a>
+    {% if tool.edgeName == 'system' %}
+      <code>{{ tool.edgeName }}</code>
+    {% else %}
+      <a href="{{ url('edge_detail', { domainId: handler.args.domainId, eid: tool.eid }) }}">
+        <code>{{ tool.edgeName or tool.eid }}</code>
+      </a>
+    {% endif %}
   </td>
   <td class="col--name">
-    <a href="{{ url('tool_detail', { domainId: handler.args.domainId, tid: tool.tid }) }}">
-      <code>{{ tool.name }}</code>
-    </a>
+    {% if tool.toolKey %}
+      <a href="{{ url('tool_system_detail', { domainId: handler.args.domainId, toolKey: tool.toolKey }) }}">
+        <code>{{ tool.name }}</code>
+      </a>
+    {% else %}
+      <a href="{{ url('tool_detail', { domainId: handler.args.domainId, tid: tool.tid }) }}">
+        <code>{{ tool.name }}</code>
+      </a>
+    {% endif %}
   </td>
   <td class="col--description">
     {{ tool.description or '' }}

@@ -717,6 +717,7 @@ declare module './model/tool' {
     }
 }
 export type { ToolDoc } from './model/tool';
+export type { DomainMarketToolDoc } from './model/domain_market_tool';
 export type { ClientChatDoc } from './model/client_chat';
 
 export interface DomainDoc extends Record<string, any> {

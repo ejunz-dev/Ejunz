@@ -1098,7 +1098,7 @@ export async function getAssignedTools(domainId: string, mcpToolIds?: ObjectId[]
         const timeoutPromise = new Promise<any[]>((_, reject) => {
             setTimeout(() => reject(new Error('MCP tools fetch timeout')), 1000); // 1 second timeout
         });
-        realtimeTools = await Promise.race([mcpClient.getTools(), timeoutPromise]);
+        realtimeTools = await Promise.race([mcpClient.getTools(domainId), timeoutPromise]);
     } catch (error: any) {
         // Silently fallback to database tools - MCP is optional
         AgentLogger.debug('MCP tools fetch failed or timeout, using DB tools only: %s', error.message);

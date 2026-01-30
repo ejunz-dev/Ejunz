@@ -6,7 +6,7 @@ import {
 import { Context } from '../context';
 import {
     Content, ContestClarificationDoc, DiscussionDoc,
-    DiscussionReplyDoc, AgentDoc, BaseDoc, RepoDoc, DocDoc, BlockDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc, WorkflowDoc, WorkflowNodeDoc, BaseDoc, CardDoc, SceneDoc, SceneEventDoc,
+    DiscussionReplyDoc, AgentDoc, BaseDoc, RepoDoc, DocDoc, BlockDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc, DomainMarketToolDoc, WorkflowDoc, WorkflowNodeDoc, BaseDoc, CardDoc, SceneDoc, SceneEventDoc,
 } from '../interface';
 import bus from '../service/bus';
 import db from '../service/db';
@@ -22,6 +22,7 @@ export const collStatus = db.collection('document.status');
 export const TYPE_AGENT: 10 = 10;
 export const TYPE_EDGE: 20 = 20;
 export const TYPE_TOOL: 21 = 21;
+export const TYPE_DOMAIN_MARKET_TOOL: 22 = 22;
 export const TYPE_NODE: 30 = 30;
 export const TYPE_CLIENT: 40 = 40;
 export const TYPE_CLIENT_CHAT: 41 = 41;
@@ -44,6 +45,7 @@ export interface DocType {
     [TYPE_CLIENT_CHAT]: ClientChatDoc;
     [TYPE_EDGE]: EdgeDoc;
     [TYPE_TOOL]: ToolDoc;
+    [TYPE_DOMAIN_MARKET_TOOL]: DomainMarketToolDoc;
     [TYPE_WORKFLOW]: WorkflowDoc;
     [TYPE_WORKFLOW_NODE]: WorkflowNodeDoc;
     [TYPE_BASE]: BaseDoc;
@@ -541,6 +543,7 @@ global.Ejunz.model.document = {
     TYPE_CLIENT_CHAT,
     TYPE_EDGE,
     TYPE_TOOL,
+    TYPE_DOMAIN_MARKET_TOOL,
     TYPE_WORKFLOW,
     TYPE_WORKFLOW_NODE,
     TYPE_BASE,
