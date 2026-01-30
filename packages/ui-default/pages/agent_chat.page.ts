@@ -22,6 +22,30 @@ const page = new NamedPage('agent_chat', async () => {
   const urlMatch = window.location.pathname.match(/\/agent\/([^\/]+)\/chat/);
   const urlAid = urlMatch ? urlMatch[1] : aid;
 
+  /** Returns true if tool result content indicates an error (e.g. { error: true, message: "..." }). */
+  const isToolResultError = (content: string | object | undefined): boolean => {
+    if (content == null) return false;
+    if (typeof content === 'object' && content !== null && 'error' in content) return (content as any).error === true;
+    if (typeof content === 'string') {
+      try {
+        const o = JSON.parse(content);
+        return !!(o && o.error === true);
+      } catch { return false; }
+    }
+    return false;
+  };
+
+  const applyToolCallStatus = (toolCallItem: Element, content: string | object | undefined, statusBadge: HTMLElement | null) => {
+    const isError = isToolResultError(content);
+    toolCallItem.setAttribute('data-tool-status', isError ? 'error' : 'success');
+    if (statusBadge) {
+      statusBadge.textContent = isError ? '执行失败' : '执行成功';
+      statusBadge.style.cssText = isError
+        ? 'padding: 2px 8px; border-radius: 12px; background: #f44336; color: white; font-size: 11px;'
+        : 'padding: 2px 8px; border-radius: 12px; background: #4caf50; color: white; font-size: 11px;';
+    }
+  };
+
   // Shared function definitions for connectToSession, sendMessage, etc. (must be defined before list mode)
   const connectToSession = async (): Promise<void> => {
     if (sessionConnected && sessionWebSocket) {
@@ -1161,12 +1185,8 @@ const page = new NamedPage('agent_chat', async () => {
               ) as Element | null;
               
               if (toolCallItem) {
-                toolCallItem.setAttribute('data-tool-status', 'success');
-                const statusBadge = toolCallItem.querySelector('.tool-status-badge') as HTMLElement;
-                if (statusBadge) {
-                  statusBadge.textContent = '执行成功';
-                  statusBadge.style.cssText = 'padding: 2px 8px; border-radius: 12px; background: #4caf50; color: white; font-size: 11px;';
-                }
+                const statusBadge = toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null;
+                applyToolCallStatus(toolCallItem, processedMsg.toolResult.content, statusBadge);
                 
                 const toolCallDetails = toolCallItem.querySelector('.tool-call-details') as HTMLElement;
                 if (toolCallDetails) {
@@ -1819,15 +1839,8 @@ const page = new NamedPage('agent_chat', async () => {
                 ) as Element | null;
                 
                 if (toolCallItem) {
-                  // Update tool call status to success
-                  toolCallItem.setAttribute('data-tool-status', 'success');
-                  const statusBadge = toolCallItem.querySelector('.tool-status-badge') as HTMLElement;
-                  if (statusBadge) {
-                    statusBadge.textContent = '执行成功';
-                    statusBadge.style.cssText = 'padding: 2px 8px; border-radius: 12px; background: #4caf50; color: white; font-size: 11px;';
-                  }
-                  
-                  // Add tool result to the tool call item
+                  const content = toolResult.content;
+                  applyToolCallStatus(toolCallItem, content, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
                   const toolCallDetails = toolCallItem.querySelector('.tool-call-details') as HTMLElement;
                   if (toolCallDetails) {
                     let resultDiv = toolCallDetails.querySelector('.tool-call-result') as HTMLElement;
@@ -1835,24 +1848,18 @@ const page = new NamedPage('agent_chat', async () => {
                       resultDiv = document.createElement('div');
                       resultDiv.className = 'tool-call-result';
                       resultDiv.style.cssText = 'margin-top: 8px;';
-                      
                       const resultLabel = document.createElement('div');
                       resultLabel.textContent = '结果:';
                       resultLabel.style.cssText = 'font-size: 11px; color: #666; margin-bottom: 4px;';
                       resultDiv.appendChild(resultLabel);
-                      
                       const resultPre = document.createElement('pre');
                       resultPre.style.cssText = 'margin: 0; padding: 8px; background: #e7f3ff; border: 1px solid #b3d9ff; border-radius: 4px; font-size: 12px; overflow-x: auto; max-height: 300px; overflow-y: auto;';
                       resultDiv.appendChild(resultPre);
-                      
                       toolCallDetails.appendChild(resultDiv);
                     }
-                    
                     const resultPre = resultDiv.querySelector('pre') as HTMLElement;
                     if (resultPre) {
-                      const toolContent = typeof toolResult.content === 'string' 
-                        ? toolResult.content 
-                        : JSON.stringify(toolResult.content, null, 2);
+                      const toolContent = typeof toolResult.content === 'string' ? toolResult.content : JSON.stringify(toolResult.content, null, 2);
                       resultPre.textContent = toolContent;
                     }
                   }
@@ -1880,15 +1887,8 @@ const page = new NamedPage('agent_chat', async () => {
               const toolCallItem = Array.from(chatMessages.querySelectorAll('.tool-call-item')).find(
                 (el: any) => el.getAttribute('data-tool-call-id') === processedMsg.toolCallId
               ) as Element | null;
-              
               if (toolCallItem) {
-                toolCallItem.setAttribute('data-tool-status', 'success');
-                const statusBadge = toolCallItem.querySelector('.tool-status-badge') as HTMLElement;
-                if (statusBadge) {
-                  statusBadge.textContent = '执行成功';
-                  statusBadge.style.cssText = 'padding: 2px 8px; border-radius: 12px; background: #4caf50; color: white; font-size: 11px;';
-                }
-                
+                applyToolCallStatus(toolCallItem, toolResult.content, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
                 const toolCallDetails = toolCallItem.querySelector('.tool-call-details') as HTMLElement;
                 if (toolCallDetails) {
                   let resultDiv = toolCallDetails.querySelector('.tool-call-result') as HTMLElement;
@@ -1896,24 +1896,18 @@ const page = new NamedPage('agent_chat', async () => {
                     resultDiv = document.createElement('div');
                     resultDiv.className = 'tool-call-result';
                     resultDiv.style.cssText = 'margin-top: 8px;';
-                    
                     const resultLabel = document.createElement('div');
                     resultLabel.textContent = '结果:';
                     resultLabel.style.cssText = 'font-size: 11px; color: #666; margin-bottom: 4px;';
                     resultDiv.appendChild(resultLabel);
-                    
                     const resultPre = document.createElement('pre');
                     resultPre.style.cssText = 'margin: 0; padding: 8px; background: #e7f3ff; border: 1px solid #b3d9ff; border-radius: 4px; font-size: 12px; overflow-x: auto; max-height: 300px; overflow-y: auto;';
                     resultDiv.appendChild(resultPre);
-                    
                     toolCallDetails.appendChild(resultDiv);
                   }
-                  
                   const resultPre = resultDiv.querySelector('pre') as HTMLElement;
                   if (resultPre) {
-                    const toolContent = typeof toolResult.content === 'string' 
-                      ? toolResult.content 
-                      : JSON.stringify(toolResult.content, null, 2);
+                    const toolContent = typeof toolResult.content === 'string' ? toolResult.content : JSON.stringify(toolResult.content, null, 2);
                     resultPre.textContent = toolContent;
                   }
                 }
@@ -2625,12 +2619,7 @@ const page = new NamedPage('agent_chat', async () => {
                 (el: any) => el.getAttribute('data-tool-call-id') === toolCallId
               ) as Element | null;
               if (toolCallItem && toolResult) {
-                toolCallItem.setAttribute('data-tool-status', 'success');
-                const statusBadge = toolCallItem.querySelector('.tool-status-badge') as HTMLElement;
-                if (statusBadge) {
-                  statusBadge.textContent = '执行成功';
-                  statusBadge.style.cssText = 'padding: 2px 8px; border-radius: 12px; background: #4caf50; color: white; font-size: 11px;';
-                }
+                applyToolCallStatus(toolCallItem, toolResult.content, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
                 const toolCallDetails = toolCallItem.querySelector('.tool-call-details') as HTMLElement;
                 if (toolCallDetails) {
                   let resultDiv = toolCallDetails.querySelector('.tool-call-result') as HTMLElement;
@@ -2649,9 +2638,7 @@ const page = new NamedPage('agent_chat', async () => {
                   }
                   const resultPre = resultDiv.querySelector('pre') as HTMLElement;
                   if (resultPre) {
-                    const toolContent = typeof toolResult.content === 'string'
-                      ? toolResult.content
-                      : JSON.stringify(toolResult.content, null, 2);
+                    const toolContent = typeof toolResult.content === 'string' ? toolResult.content : JSON.stringify(toolResult.content, null, 2);
                     resultPre.textContent = toolContent;
                   }
                 }
@@ -3375,13 +3362,7 @@ const page = new NamedPage('agent_chat', async () => {
           ) as Element | null;
           
           if (toolCallItem) {
-            toolCallItem.setAttribute('data-tool-status', 'success');
-            const statusBadge = toolCallItem.querySelector('.tool-status-badge') as HTMLElement;
-            if (statusBadge) {
-              statusBadge.textContent = '执行成功';
-              statusBadge.style.cssText = 'padding: 2px 8px; border-radius: 12px; background: #4caf50; color: white; font-size: 11px;';
-            }
-            
+            applyToolCallStatus(toolCallItem, processedMsg.toolResult.content, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
             const toolCallDetails = toolCallItem.querySelector('.tool-call-details') as HTMLElement;
             if (toolCallDetails) {
               let resultDiv = toolCallDetails.querySelector('.tool-call-result') as HTMLElement;
@@ -3389,24 +3370,18 @@ const page = new NamedPage('agent_chat', async () => {
                 resultDiv = document.createElement('div');
                 resultDiv.className = 'tool-call-result';
                 resultDiv.style.cssText = 'margin-top: 8px;';
-                
                 const resultLabel = document.createElement('div');
                 resultLabel.textContent = '结果:';
                 resultLabel.style.cssText = 'font-size: 11px; color: #666; margin-bottom: 4px;';
                 resultDiv.appendChild(resultLabel);
-                
                 const resultPre = document.createElement('pre');
                 resultPre.style.cssText = 'margin: 0; padding: 8px; background: #e7f3ff; border: 1px solid #b3d9ff; border-radius: 4px; font-size: 12px; overflow-x: auto; max-height: 300px; overflow-y: auto;';
                 resultDiv.appendChild(resultPre);
-                
                 toolCallDetails.appendChild(resultDiv);
               }
-              
               const resultPre = resultDiv.querySelector('pre') as HTMLElement;
               if (resultPre) {
-                const toolContent = typeof processedMsg.toolResult.content === 'string' 
-                  ? processedMsg.toolResult.content 
-                  : JSON.stringify(processedMsg.toolResult.content, null, 2);
+                const toolContent = typeof processedMsg.toolResult.content === 'string' ? processedMsg.toolResult.content : JSON.stringify(processedMsg.toolResult.content, null, 2);
                 resultPre.textContent = toolContent;
               }
             }
