@@ -395,14 +395,15 @@ export interface EdgeTool {
 const ClientLogger = new AppLogger('mcp');
 
 export class McpClient {
-    async getTools(): Promise<EdgeTool[]> {
+    /** domainId 用于按 domain 列出工具市场添加的系统工具 */
+    async getTools(domainId?: string): Promise<EdgeTool[]> {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
             const edgeP = (async () => {
                 try { return ctx ? await ctx.serial('mcp/tools/list/edge') : []; } catch { return []; }
             })();
             const localP = (async () => {
-                try { return ctx ? await ctx.serial('mcp/tools/list/local') : []; } catch { return []; }
+                try { return ctx && domainId ? await ctx.serial('mcp/tools/list/local', { domainId }) : []; } catch { return []; }
             })();
             const [edgeTools, localTools] = await Promise.all([edgeP, localP]);
             ClientLogger.info('Tool sources:', { edgeCount: (edgeTools || []).length, localCount: (localTools || []).length });

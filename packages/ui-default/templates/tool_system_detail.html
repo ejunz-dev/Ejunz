@@ -1,4 +1,4 @@
-{% set page_name = "tool_detail" %}
+{% set page_name = "tool_system_detail" %}
 {% extends "layout/basic.html" %}
 {% block content %}
 <div class="row">
@@ -27,44 +27,11 @@
               </tr>
               <tr>
                 <td class="col--key">{{ _('Source') }}</td>
-                <td>
-                  {% if isSystemTool %}
-                    <code>system</code> {{ _('System tool (not Edge)') }}
-                  {% else %}
-                    <a href="{{ url('edge_detail', { domainId: domainId, eid: edge.eid }) }}">
-                      {{ edge.name or ('Edge-' + edge.eid|string) }}
-                    </a>
-                    <span class="edge-status edge-status-{{ edge.status }}" style="margin-left: 10px;">
-                      {% if edge.status == 'online' %}
-                        {{ _('Online') }}
-                      {% elif edge.status == 'offline' %}
-                        {{ _('Offline') }}
-                      {% elif edge.status == 'working' %}
-                        {{ _('Working') }}
-                      {% else %}
-                        {{ edge.status }}
-                      {% endif %}
-                    </span>
-                  {% endif %}
-                </td>
-              </tr>
-              {% if not isSystemTool %}
-              <tr>
-                <td class="col--key">Edge ID</td>
-                <td><code>{{ edge._id }}</code></td>
-              </tr>
-              {% endif %}
-              <tr>
-                <td class="col--key">Tool ID</td>
-                <td><code>{{ tool.tid }}</code></td>
+                <td><code>system</code> {{ _('System tool (not Edge)') }}</td>
               </tr>
               <tr>
-                <td class="col--key">{{ _('Created Time') }}</td>
-                <td>{{ datetimeSpan(tool.createdAt)|safe }}</td>
-              </tr>
-              <tr>
-                <td class="col--key">{{ _('Update Time') }}</td>
-                <td>{{ datetimeSpan(tool.updatedAt)|safe }}</td>
+                <td class="col--key">Tool Key</td>
+                <td><code>{{ toolKey }}</code></td>
               </tr>
             </tbody>
           </table>
@@ -89,4 +56,3 @@
   </div>
 </div>
 {% endblock %}
-

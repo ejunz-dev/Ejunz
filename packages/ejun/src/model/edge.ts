@@ -7,6 +7,9 @@ import { randomstring } from '../utils';
 
 const logger = new Logger('model/edge');
 
+/** 工具市场使用的系统 Edge 固定 token（每个 domain 一个，用于存放从市场添加的 MCP 工具） */
+export const SYSTEM_EDGE_TOKEN = 'system_market';
+
 class EdgeModel {
     static async generateNextEdgeId(domainId: string): Promise<number> {
         const lastEdge = await document.getMulti(domainId, document.TYPE_EDGE, {})
@@ -129,6 +132,20 @@ class EdgeModel {
             .limit(1)
             .toArray();
         return (edges[0] as EdgeDoc) || null;
+    }
+
+    /** 获取或创建当前 domain 的「工具市场」系统 Edge，用于存放从市场添加的 MCP 工具 */
+    static async getOrCreateSystemEdge(domainId: string, owner: number): Promise<EdgeDoc> {
+        let edge = await this.getByToken(domainId, SYSTEM_EDGE_TOKEN);
+        if (edge) return edge;
+        edge = await this.add({
+            domainId,
+            owner,
+            type: 'provider',
+            token: SYSTEM_EDGE_TOKEN,
+            name: '工具市场',
+        });
+        return edge;
     }
 }
 

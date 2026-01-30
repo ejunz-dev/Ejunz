@@ -1,13 +1,18 @@
 
 __id: en
 __langname: English
+' for use by Agent etc.': for use by Agent etc.
 '-- Please Select Agent --': -- Please Select Agent --
 '{0} parts': '{0} parts'
 '{0} units': '{0} units'
 'Access Point Type': Access Point Type
 'Accuracy': Accuracy
 'Actions': Actions
+'Add failed.': Add failed.
 'Add Root Doc': Add Root Doc
+'Added to tool list.': Added to tool list.
+'Added': Added
+'Adding...': Adding...
 'After successful connection, configure ASR, TTS and Agent services': After successful connection, configure ASR, TTS and Agent services
 'Agent configuration cleared successfully': Agent configuration cleared successfully
 'Agent configuration saved successfully': Agent configuration saved successfully
@@ -27,7 +32,9 @@ __langname: English
 'Back to Details': Back to Details
 'Back to Learn': Back to Learn
 'Back to List': Back to List
+'Back to Tools List': Back to Tools List
 'Base URL': Base URL
+'Basic Info': Basic Info
 'Behind remote by {0} commit(s)': Behind remote by {0} commit(s)
 'Block': Block
 'Cancel': Cancel
@@ -113,6 +120,7 @@ __langname: English
 'Hide Answer': Hide Answer
 'Hide result': Hide result
 'Incorrect': Incorrect
+'Input Parameters': Input Parameters
 'Input Schema': Input Schema
 'Jump to {0}': Jump to {0}
 'Language Type': Language Type
@@ -130,6 +138,7 @@ __langname: English
 'Locked': Locked
 'Manuscript Mode': Manuscript Mode
 'MCP Tools': MCP Tools
+'MCP Tools': MCP Tools
 'Model': Model
 'New Content Block': New Content Block
 'New Folder': New Folder
@@ -144,12 +153,15 @@ __langname: English
 'No content or practice questions available.': No content or practice questions available.
 'No content': No content
 'No courses available.': No courses available.
+'No description': No description
 'No local git repository': No local git repository
+'No MCP tools yet. When MCP server connects and registers, they will appear here.': No MCP tools yet. When MCP server connects and registers, they will appear here.
 'No messages in this conversation': No messages in this conversation
 'No nodes available.': No nodes available.
 'No recording available': No recording available
 'No remote repository configured': No remote repository configured
 'No sections available.': No sections available.
+'No system tools.': No system tools.
 'No tools available': No tools available
 'No tools yet. Tools list will be automatically synced after server connection.': No tools yet. Tools list will be automatically synced after server connection.
 'Operations': Operations
@@ -198,14 +210,20 @@ __langname: English
 'Select the type of access point to generate a token': Select the type of access point to generate a token
 'Server ID': Server ID
 'Server Information': Server Information
+'Server': Server
 'Show Answer': Show Answer
+'Source': Source
 'Start Learning': Start Learning
+'Status': Status
 'Status': Status
 'Successfully pulled from GitHub': Successfully pulled from GitHub
 'Successfully pushed to GitHub': Successfully pushed to GitHub
+'System MCP tools (not from Edge). Click "Add" to add to current domain ': System MCP tools (not from Edge). Click "Add" to add to current domain
+'System tool (not Edge)': system (system tool, not Edge)
 'Table of Contents': Table of Contents
 'This branch is behind remote by {0} commit(s). Please use Pull to sync.': This branch is behind remote by {0} commit(s). Please use Pull to sync.
 'This section requires completion of the following sections first': This section requires completion of the following sections first
+'This tool has no input parameters defined.': This tool has no input parameters defined.
 'Time Spent': Time Spent
 'Token deleted successfully': Token deleted successfully
 'Token generated successfully': Token generated successfully
@@ -213,6 +231,8 @@ __langname: English
 'Token will be deleted if not used within 30 minutes': Token will be deleted if not used within 30 minutes
 'Token': Token
 'Tool call successful': Tool call successful
+'Tool Detail': Tool Detail
+'Tool Name': Tool Name
 'Tool': Tool
 'Tools Count': Tools Count
 'Tools List': Tools List
@@ -227,6 +247,7 @@ __langname: English
 'Unnamed Section': Unnamed Section
 'Unnamed Unit': Unnamed Unit
 'Up to date with remote': Up to date with remote
+'Update Time': Update Time
 'Usage Steps': Usage Steps
 'View Connection Logs': View Connection Logs
 'View Details': View Details
@@ -246,6 +267,20 @@ agent_detail: Agent Detail
 agent_domain: Agent
 agent_edit: Edit Agent
 Back to: Back to
+Base Node: Base Node
+base_create: Create Base
+base_data: Base Data
+base_delete: Delete Base
+base_detail: Base Detail
+base_domain: Base
+base_edge: Base Edge
+base_edit: Edit Base
+base_editor: Base Editor
+base_list: Base List
+base_node: Base Node
+base_outline: Base
+base_save: Save Base
+base_study: Study Base
 Belongs to card: Belongs to card
 block_create: Create Block
 block_detail: Block Detail
@@ -320,20 +355,6 @@ mcp_domain: MCP
 mcp_edit: Edit MCP
 mcp_logs: MCP Logs
 Members: Members
-Base Node: Base Node
-base_create: Create Base
-base_data: Base Data
-base_delete: Delete Base
-base_detail: Base Detail
-base_domain: Base
-base_edge: Base Edge
-base_edit: Edit Base
-base_editor: Base Editor
-base_list: Base List
-base_node: Base Node
-base_outline: Base
-base_save: Save Base
-base_study: Study Base
 More: More
 No contribution records on this day: No contribution records on this day
 No domains joined.: No domains joined.
@@ -391,6 +412,7 @@ setting_smtp: SMTP Settings
 setting_usage: Usage Preference
 timeago_locale: en_US
 tool_domain: Tool
+tool_market: Tool Market
 Total: Total
 training_create: Training Create
 training_detail: Training Detail

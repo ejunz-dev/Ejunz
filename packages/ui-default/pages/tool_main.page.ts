@@ -1,6 +1,7 @@
 import $ from 'jquery';
 import Notification from 'vj/components/notification';
 import { NamedPage } from 'vj/misc/Page';
+import { i18n } from 'vj/utils';
 
 const page = new NamedPage('tool_main', async () => {
   let globalSock: any = null;
@@ -41,7 +42,6 @@ const page = new NamedPage('tool_main', async () => {
     globalSock = sock;
 
     sock.onopen = () => {
-      // 连接成功后发送ping保持连接
       if (pingInterval) {
         clearInterval(pingInterval);
       }
@@ -53,7 +53,7 @@ const page = new NamedPage('tool_main', async () => {
             // ignore
           }
         }
-      }, 30000); // 每30秒发送一次ping
+      }, 30000);
     };
     
     sock.onclose = () => {
@@ -67,23 +67,22 @@ const page = new NamedPage('tool_main', async () => {
         const msg = JSON.parse(data);
         
         if (msg.type === 'init') {
-          // 初始化数据
           if (msg.tools && Array.isArray(msg.tools)) {
-            updateToolsTable(msg.tools);
+            const $rows = $('.tool_main__table tbody tr');
+            if ($rows.length === 0) {
+              updateToolsTable(msg.tools);
+            }
           }
         } else if (msg.type === 'tools/update') {
-          // 更新某个edge的工具
           updateServerTools(msg.token, msg.tools);
         } else if (msg.type === 'server/status') {
-          // 更新edge状态
           updateServerStatus(msg.token, msg.tools);
         } else if (msg.type === 'refresh') {
-          // 刷新所有工具
           if (msg.tools && Array.isArray(msg.tools)) {
             updateToolsTable(msg.tools);
           }
         } else if (msg.type === 'pong') {
-          // ping响应
+          // no-op
         }
       } catch (e) {
         console.error('Failed to parse WebSocket message:', e);
@@ -117,62 +116,46 @@ const page = new NamedPage('tool_main', async () => {
     $(window).on('pagehide', cleanup);
   }
 
-  // 更新工具状态
   function updateToolStatus(tid: number, edgeToken: string, tool: any) {
     const $row = $(`.tool_main__table tr[data-tool-id="${tid}"][data-edge-token="${edgeToken}"]`);
     if ($row.length) {
-      // 更新状态
       const $statusCell = $row.find('.col--status .tool-status');
       $statusCell.removeClass('tool-status-working tool-status-online tool-status-offline');
       $statusCell.addClass(`tool-status-${tool.edgeStatus}`);
-      
       let statusText = '';
       if (tool.edgeStatus === 'working') {
-        statusText = '工作中';
+        statusText = i18n('Working');
       } else if (tool.edgeStatus === 'online') {
-        statusText = '在线';
+        statusText = i18n('Online');
       } else {
-        statusText = '离线';
+        statusText = i18n('Offline');
       }
       $statusCell.text(statusText);
     }
   }
 
-  // 更新edge工具
   function updateServerTools(token: string, tools: any[]) {
-    // 移除该edge的旧工具
     $(`.tool_main__table tr[data-edge-token="${token}"]`).remove();
-    
-    // 添加新工具
-    const $tbody = $('.tool_main__table tbody');
     tools.forEach(tool => {
       addToolToTable(tool);
     });
   }
 
-  // 更新edge状态
   function updateServerStatus(token: string, tools: any[]) {
     tools.forEach(tool => {
       updateToolStatus(tool.tid, token, tool);
     });
   }
 
-  // 添加工具到表格
   function addToolToTable(tool: any) {
     let $tbody = $('.tool_main__table tbody');
     if ($tbody.length === 0) {
-      // 如果没有表格，尝试创建表格结构
       const $sectionBody = $('.section__body');
       if ($sectionBody.length === 0) {
-        // 如果连 section body 都没有，说明页面结构有问题，刷新页面
         location.reload();
         return;
       }
-      
-      // 移除"暂无工具"的提示
       $sectionBody.find('.typo').remove();
-      
-      // 创建表格结构
       const $table = $(`
         <table class="data-table tool_main__table">
           <colgroup>
@@ -183,10 +166,10 @@ const page = new NamedPage('tool_main', async () => {
           </colgroup>
           <thead>
             <tr>
-              <th class="col--status">状态</th>
-              <th class="col--server">服务器</th>
-              <th class="col--name">工具名称</th>
-              <th class="col--description">描述</th>
+              <th class="col--status">${i18n('Status')}</th>
+              <th class="col--server">${i18n('Server')}</th>
+              <th class="col--name">${i18n('Tool Name')}</th>
+              <th class="col--description">${i18n('Description')}</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -195,31 +178,35 @@ const page = new NamedPage('tool_main', async () => {
       $sectionBody.append($table);
       $tbody = $table.find('tbody');
     }
-    
-    // 检查是否已存在
-    const $existing = $(`.tool_main__table tr[data-tool-id="${tool.tid}"][data-edge-token="${tool.edgeToken}"]`);
+    const toolId = tool.tid ?? tool.toolKey;
+    const $existing = $(`.tool_main__table tr[data-tool-id="${toolId}"][data-edge-token="${tool.edgeToken}"]`);
     if ($existing.length > 0) {
-      updateToolStatus(tool.tid, tool.edgeToken, tool);
+      if (tool.tid != null) updateToolStatus(tool.tid, tool.edgeToken, tool);
       return;
     }
-    
-    // 创建新行
     let statusText = '';
     if (tool.edgeStatus === 'working') {
-      statusText = '工作中';
+      statusText = i18n('Working');
     } else if (tool.edgeStatus === 'online') {
-      statusText = '在线';
+      statusText = i18n('Online');
     } else {
-      statusText = '离线';
+      statusText = i18n('Offline');
     }
     const domainId = UiContext.domain._id;
     const edgeUrl = `/d/${domainId}/edge/${tool.eid}`;
-    const toolUrl = `/d/${domainId}/tool/${tool.tid}`;
-    
+    const toolUrl = tool.toolKey
+      ? `/d/${domainId}/tool/system/${tool.toolKey}`
+      : `/d/${domainId}/tool/${tool.tid}`;
+    const serverLabel = tool.edgeName || String(tool.eid);
+    const isSystem = tool.edgeName === 'system';
+    const serverCell = isSystem
+      ? `<code>${serverLabel}</code>`
+      : `<a href="${edgeUrl}"><code>${serverLabel}</code></a>`;
+    const rowClass = isSystem ? 'tool_main__row--market' : '';
     const $newRow = $(`
-      <tr data-tool-id="${tool.tid}" data-edge-token="${tool.edgeToken}">
+      <tr data-tool-id="${toolId}" data-edge-token="${tool.edgeToken}"${rowClass ? ` class="${rowClass}"` : ''}>
         <td class="col--status"><span class="tool-status tool-status-${tool.edgeStatus}">${statusText}</span></td>
-        <td class="col--server"><a href="${edgeUrl}"><code>${tool.eid}</code></a></td>
+        <td class="col--server">${serverCell}</td>
         <td class="col--name"><a href="${toolUrl}"><code>${tool.name}</code></a></td>
         <td class="col--description">${tool.description || ''}</td>
       </tr>
@@ -229,22 +216,15 @@ const page = new NamedPage('tool_main', async () => {
     $newRow.trigger('vjContentNew');
   }
 
-  // 更新整个表格
   function updateToolsTable(tools: any[]) {
     let $tbody = $('.tool_main__table tbody');
     if ($tbody.length === 0) {
-      // 如果没有表格，尝试创建表格结构
       const $sectionBody = $('.section__body');
       if ($sectionBody.length === 0) {
-        // 如果连 section body 都没有，说明页面结构有问题，刷新页面
         location.reload();
         return;
       }
-      
-      // 移除"暂无工具"的提示
       $sectionBody.find('.typo').remove();
-      
-      // 创建表格结构
       const $table = $(`
         <table class="data-table tool_main__table">
           <colgroup>
@@ -255,10 +235,10 @@ const page = new NamedPage('tool_main', async () => {
           </colgroup>
           <thead>
             <tr>
-              <th class="col--status">状态</th>
-              <th class="col--server">服务器</th>
-              <th class="col--name">工具名称</th>
-              <th class="col--description">描述</th>
+              <th class="col--status">${i18n('Status')}</th>
+              <th class="col--server">${i18n('Server')}</th>
+              <th class="col--name">${i18n('Tool Name')}</th>
+              <th class="col--description">${i18n('Description')}</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -267,11 +247,7 @@ const page = new NamedPage('tool_main', async () => {
       $sectionBody.append($table);
       $tbody = $table.find('tbody');
     }
-    
-    // 清空现有行
     $tbody.empty();
-    
-    // 添加所有工具
     tools.forEach(tool => {
       addToolToTable(tool);
     });

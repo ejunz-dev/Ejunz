@@ -1,5 +1,12 @@
 {% set page_name = "tool_main" %}
 {% extends "layout/basic.html" %}
+{% block head %}
+{{ super() }}
+<style>
+.tool_main__row--market { background-color: #f8f9fa; }
+.tool_main__row--market .col--server code { color: #0969da; }
+</style>
+{% endblock %}
 {% block content %}
 {{ set(
   UiContext, 'socketUrl',
@@ -9,12 +16,15 @@
   <div class="medium-12 columns">
     <div class="section">
       <div class="section__header">
-        <h1 class="section__title">MCP 工具管理</h1>
+        <h1 class="section__title">{{ _('MCP Tools') }}</h1>
+        <div class="section__tools">
+          <a href="{{ url('tool_market', { domainId: handler.args.domainId }) }}" class="button">{{ _('tool_market') }}</a>
+        </div>
       </div>
       <div class="section__body no-padding">
         {% if not tools or not tools.length %}
           <div class="typo">
-            <p>暂无注册的 MCP 工具。当 MCP 服务器连接并注册工具后，它们将显示在这里。</p>
+            <p>{{ _('No MCP tools yet. When MCP server connects and registers, they will appear here.') }}</p>
           </div>
         {% else %}
           <table class="data-table tool_main__table">
@@ -26,10 +36,10 @@
             </colgroup>
             <thead>
               <tr>
-                <th class="col--status">状态</th>
-                <th class="col--server">服务器</th>
-                <th class="col--name">工具名称</th>
-                <th class="col--description">描述</th>
+                <th class="col--status">{{ _('Status') }}</th>
+                <th class="col--server">{{ _('Server') }}</th>
+                <th class="col--name">{{ _('Tool Name') }}</th>
+                <th class="col--description">{{ _('Description') }}</th>
               </tr>
             </thead>
             <tbody>
