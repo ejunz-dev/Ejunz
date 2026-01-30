@@ -1,0 +1,54 @@
+{% set page_name = "tool_market" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('tool_market') }}</h1>
+        <div class="section__tools">
+          <a href="{{ url('tool_domain', { domainId: domainId }) }}" class="button">{{ _('Back to Tools List') }}</a>
+        </div>
+      </div>
+      <div class="section__body">
+        <p class="typo">{{ _('System MCP tools (not from Edge). Click "Add" to add to current domain ') }}<a href="{{ url('tool_domain', { domainId: domainId }) }}">{{ _('Tools List') }}</a>{{ _(' for use by Agent etc.') }}</p>
+        {% if not marketTools or not marketTools.length %}
+          <div class="typo">
+            <p>{{ _('No system tools.') }}</p>
+          </div>
+        {% else %}
+          <table class="data-table tool_market__table">
+            <colgroup>
+              <col class="col--name">
+              <col class="col--description">
+              <col class="col--action">
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="col--name">{{ _('Tool Name') }}</th>
+                <th class="col--description">{{ _('Description') }}</th>
+                <th class="col--action">{{ _('Actions') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {%- for tool in marketTools -%}
+              <tr data-tool-id="{{ tool.id }}">
+                <td class="col--name"><code>{{ tool.name }}</code></td>
+                <td class="col--description">{{ tool.description or '' }}</td>
+                <td class="col--action">
+                  {% if tool.name in addedNames %}
+                    <span class="text-gray">{{ _('Added') }}</span>
+                  {% else %}
+                    <button type="button" class="primary button tool_market__add-btn" data-tool-key="{{ tool.id }}">{{ _('Add') }}</button>
+                  {% endif %}
+                </td>
+              </tr>
+              {%- endfor -%}
+            </tbody>
+          </table>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

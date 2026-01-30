@@ -125,6 +125,7 @@ const OutlineView = ({
   onNodeClick,
   selectedNodeId,
   rootNodeId,
+  basePath = 'base',
 }: {
   nodes: ReactFlowNode[];
   edges: ReactFlowEdge[];
@@ -132,6 +133,7 @@ const OutlineView = ({
   onNodeClick: (nodeId: string) => void;
   selectedNodeId: string | null;
   rootNodeId?: string | null;
+  basePath?: string;
 }) => {
   // 大纲节点的展开状态（不记录状态，默认展开）
   const [expandedNodesOutline, setExpandedNodesOutline] = useState<Set<string>>(() => {
@@ -3575,6 +3577,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                     onNodeClick={handleNodeClick}
           selectedNodeId={selectedNodeId}
                     rootNodeId={selectedNodeId}
+                    basePath={basePath}
         />
                 );
               })()}
