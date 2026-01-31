@@ -1,5 +1,6 @@
 {% extends "layout/basic.html" %}
 {% block content %}
+{% set _editor_mode = editorMode or 'base' %}
 <script>
   {{ set(UiContext, 'currentBranch', currentBranch) }}
   {{ set(UiContext, 'base', {
@@ -15,7 +16,7 @@
   <div class="large-12 columns">
     <div class="section" style="background: transparent; border: none; box-shadow: none; margin: 0;">
       <div class="section__body no-padding" style="background: transparent; padding: 0;">
-        <div id="base-editor-mode" data-doc-id="{{ base.docId if base else '' }}"></div>
+        <div id="{{ _editor_mode }}-editor-mode" data-doc-id="{{ base.docId if base else '' }}"></div>
       </div>
     </div>
   </div>

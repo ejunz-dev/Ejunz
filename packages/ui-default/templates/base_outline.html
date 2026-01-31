@@ -1,5 +1,7 @@
 {% extends "layout/basic.html" %}
 {% block content %}
+{% set _editor_mode = editorMode or 'base' %}
+{% set _outline_branch_route = 'base_skill_outline_branch' if editorMode == 'skill' else 'base_outline_branch' %}
 <style>
   body {
     background: #fff !important;
@@ -7,35 +9,35 @@
   #panel {
     background: #fff !important;
   }
-  #base-outline-editor {
+  .outline-editor-root {
     background: #fff !important;
     min-height: 100vh !important;
     width: 100% !important;
   }
-  #base-outline-editor ~ *,
-  #base-outline-editor .row,
-  #base-outline-editor .large-9.columns,
-  #base-outline-editor .large-3.columns,
-  #base-outline-editor .section,
-  #base-outline-editor .section__body {
+  .outline-editor-root ~ *,
+  .outline-editor-root .row,
+  .outline-editor-root .large-9.columns,
+  .outline-editor-root .large-3.columns,
+  .outline-editor-root .section,
+  .outline-editor-root .section__body {
     background: #fff !important;
   }
-  #base-outline-editor .section {
+  .outline-editor-root .section {
     border: none !important;
     box-shadow: none !important;
     margin: 0 !important;
     background: transparent !important;
   }
-  #base-outline-editor .row {
+  .outline-editor-root .row {
     margin: 0 !important;
     background: transparent !important;
   }
-  #base-outline-editor .large-9.columns,
-  #base-outline-editor .large-3.columns {
+  .outline-editor-root .large-9.columns,
+  .outline-editor-root .large-3.columns {
     padding: 0 !important;
     background: transparent !important;
   }
-  #base-outline-editor .section__body {
+  .outline-editor-root .section__body {
     padding: 0 !important;
     background: transparent !important;
   }
@@ -97,7 +99,7 @@
             <select id="branch-select" style="width: 100%; margin-bottom: 6px;" onchange="(function(){
               var sel = document.getElementById('branch-select');
               var b = sel && sel.value ? sel.value : '{{ currentBranch }}';
-              var url = '{{ url('base_outline_branch', domainId=domainId, branch='__BR__') }}'.replace('__BR__', encodeURIComponent(b));
+              var url = '{{ url(_outline_branch_route, domainId=domainId, branch='__BR__') }}'.replace('__BR__', encodeURIComponent(b));
               window.location.href = url;
             })()">
               {% for b in branches %}

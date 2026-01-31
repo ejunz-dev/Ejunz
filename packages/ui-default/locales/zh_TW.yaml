@@ -7,6 +7,7 @@ __langname: 正體中文
 '↓ # Enrollees': ↓ 參與人數
 '↓ # Likes': ↓ 贊數
 '↓ # Stars': ↓ 收藏數
+'Failed to generate token: {0}': '生成 token 失敗: {0}'
 'No': 否
 'Yes': 是
 (None): (無)
@@ -21,10 +22,13 @@ Active Sessions: 活動會話
 Add new data: 新增新資料
 Add User: 新增使用者
 Add: 新增
+After selecting a Skill branch, the Agent will load and use Skills under that branch.: 選擇 Skill 分支後，Agent 才會載入並使用該分支下的 Skills。
 After successful connection, configure ASR, TTS and Agent services: 連接成功後，可以配置 ASR、TTS
 Agent configuration cleared successfully: Agent 配置已清除
 Agent configuration saved successfully: Agent 配置已保存
 Agent Configuration: Agent 配置
+Agent Skills: Agent Skills
+Agent uses all Skills in this Domain. Skills are managed via Base.: Agent 會自動使用此 Domain 的所有 Skills。Skills 透過 Base 的資料夾系統管理。
 All: 全部
 Always granted all privileges: 總是擁有所有域許可權
 An error has occurred.: 發生了一個錯誤。
@@ -158,7 +162,6 @@ Endpoint: Endpoint
 Error Message: 錯誤資訊
 error: 錯誤
 Error: 錯誤
-'Failed to generate token: {0}': '生成 token 失敗: {0}'
 Field {0} or {1} validation failed.: 欄位 {0} 或 {1} 驗證失敗。
 Field {0} validation failed.: 欄位 {0} 驗證失敗。
 Footer: 頁尾
@@ -215,6 +218,7 @@ Logout All Sessions: 登出所有會話
 Logout This Session: 登出該會話
 Logout: 登出
 Lost Password: 忘記密碼
+Manage Skills: 管理 Skills
 manage_dashboard: 系統管理
 manage_join_applications: 加域申請
 manage: 管理
@@ -340,6 +344,7 @@ SIGN IN: 登入
 Sign up mail has been sent to your email.: 註冊郵件已經發送到您的電子郵箱。
 Sign Up Now: 現在註冊
 Sign Up: 註冊
+Skill branch: Skill 分支
 Sorry: 對不起
 Sort by: 排序
 Star Topic: 收藏討論

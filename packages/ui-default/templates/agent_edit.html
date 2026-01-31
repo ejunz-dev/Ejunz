@@ -57,12 +57,27 @@
           <div class="row">
             <div class="medium-12 columns">
               <label>
+                {{ _('Skill branch') }}
+                <select name="skillBranch" class="textbox">
+                  <option value="" {{ 'selected' if not adoc.skillBranch else '' }}>{{ _('Not enabled') }}</option>
+                  <option value="main" {{ 'selected' if adoc.skillBranch == 'main' else '' }}>main</option>
+                </select>
+                <div class="help-text" style="margin-bottom: 10px;">
+                  {{ _('After selecting a Skill branch, the Agent will load and use Skills under that branch.') }}
+                  <a href="{{ url('base_skill_outline', { domainId: handler.domain._id }) }}" target="_blank" style="margin-left: 10px;">
+                    {{ _('Manage Skills') }} →
+                  </a>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="medium-12 columns">
+              <label>
                 {{ _('Agent Skills') }}
                 <div class="help-text" style="margin-bottom: 10px;">
-                  {{ _('Agent 会自动使用此 Domain 的所有 Skills。Skills 通过 Base 的文件夹系统管理。') }}
-                  <a href="{{ url('base_skill', { domainId: handler.domain._id }) }}" target="_blank" style="margin-left: 10px;">
-                    {{ _('管理 Skills') }} →
-                  </a>
+                  {{ _('Agent uses all Skills in this Domain. Skills are managed via Base.') }}
                 </div>
               </label>
             </div>

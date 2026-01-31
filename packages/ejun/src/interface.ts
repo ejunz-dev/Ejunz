@@ -213,6 +213,7 @@ declare module './model/agent'{
         mcpToolIds?: ObjectId[]; // 分配的MCP工具ID列表
         repoIds?: number[]; // 生效的repo ID列表（rpid数组）
         skillIds?: string[]; // Assigned skill names; domain market tools only when referenced in these skills
+        skillBranch?: string; // 挂载的 Skill 分支（如 main）；未设则不能使用 Skill
     }
 }
 export type { AgentDoc } from './model/agent';
@@ -718,6 +719,18 @@ declare module './model/tool' {
     }
 }
 export type { ToolDoc } from './model/tool';
+
+/** Agent 可复制的工具参数（context.tools 中传给 worker）；带 system 则识别为系统工具并直接调用。 */
+export interface AssignedToolEntry {
+    name: string;
+    description: string;
+    inputSchema: any;
+    token?: string;
+    edgeId?: ObjectId;
+    type?: 'system';
+    /** 有 system 则识别为系统工具并直接调用 */
+    system?: boolean;
+}
 export type { DomainMarketToolDoc } from './model/domain_market_tool';
 export type { ClientChatDoc } from './model/client_chat';
 

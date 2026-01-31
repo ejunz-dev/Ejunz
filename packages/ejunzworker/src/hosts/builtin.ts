@@ -620,6 +620,7 @@ export async function apply(ctx: EjunzContext) {
                         
                         let toolToken: string | undefined = undefined;
                         let toolServerId: number | undefined = undefined;
+                        let toolType: string | undefined = undefined;
                         if (context.tools && Array.isArray(context.tools)) {
                             const toolInfo = context.tools.find((t: any) => t.name === toolName);
                             if (toolInfo) {
@@ -629,6 +630,12 @@ export async function apply(ctx: EjunzContext) {
                                 if (toolInfo.serverId) {
                                     toolServerId = toolInfo.serverId;
                                 }
+                                if (toolInfo.type) {
+                                    toolType = toolInfo.type;
+                                }                              // 可复制的工具参数中增加 system 字段，据此识别并直接调用系统工具
+                                if (toolInfo.system === true) {
+                                    toolType = 'system';
+                                }
                             }
                         }
                         
@@ -637,27 +644,11 @@ export async function apply(ctx: EjunzContext) {
                         let toolResult: any;
                         const STATUS = require('ejun/src/model/builtin').STATUS;
                         try {
-                            toolResult = await mcpClient.callTool(toolName, toolArgs, domainId, toolServerId, toolToken);
+                            toolResult = await mcpClient.callTool(toolName, toolArgs, domainId, toolServerId, toolToken, (context as any)?.skillBranch, toolType);
                             
+                            // 工具返回 success: false 时仍将结果写入 record，并继续请求模型让 Agent 根据结果回复；不设 hasToolError，避免任务被标为错误导致中断/UI 显示失败
                             if (toolResult === false || (typeof toolResult === 'object' && toolResult !== null && toolResult.success === false)) {
                                 score = Math.max(0, score - 20);
-                                hasToolError = true;
-                                errorStatus = STATUS.STATUS_TASK_ERROR_TOOL;
-                                
-                                await RecordModel.updateTask(domainId, recordId, {
-                                    status: errorStatus,
-                                    score,
-                                    agentToolCallCount: toolCallCount,
-                                    agentMessages: [{
-                                        role: 'tool',
-                                        content: JSON.stringify(toolResult),
-                                        toolName,
-                                        tool_call_id: toolCall.id,
-                                        timestamp: new Date(),
-                                    }],
-                                });
-                                
-                                break;
                             }
                             
                             await RecordModel.updateTask(domainId, recordId, {
@@ -709,8 +700,7 @@ export async function apply(ctx: EjunzContext) {
                                     timestamp: new Date(),
                                 }],
                             });
-                            
-                            break;
+                            // 不 break：将错误结果带入下一轮请求，让 Agent 根据报错回复用户
                         }
                         
                         const assistantMsg = {
@@ -732,8 +722,10 @@ export async function apply(ctx: EjunzContext) {
                             tool_call_id: toolCall.id,
                         };
                         
+                        // 下一轮请求必须带上当前用户消息，否则模型看不到用户刚发的 URL/需求
                         messagesForTurn = [
                             ...messagesForTurn,
+                            { role: 'user', content: message },
                             assistantMsg,
                             toolMsg,
                         ];

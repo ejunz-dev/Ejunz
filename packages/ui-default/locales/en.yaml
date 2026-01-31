@@ -13,10 +13,13 @@ __langname: English
 'Added to tool list.': Added to tool list.
 'Added': Added
 'Adding...': Adding...
+'After selecting a Skill branch, the Agent will load and use Skills under that branch.': After selecting a Skill branch, the Agent will load and use Skills under that branch.
 'After successful connection, configure ASR, TTS and Agent services': After successful connection, configure ASR, TTS and Agent services
 'Agent configuration cleared successfully': Agent configuration cleared successfully
 'Agent configuration saved successfully': Agent configuration saved successfully
 'Agent Configuration': Agent Configuration
+'Agent Skills': Agent Skills
+'Agent uses all Skills in this Domain. Skills are managed via Base.': Agent uses all Skills in this Domain. Skills are managed via Base.
 'Ahead of remote by {0} commit(s)': Ahead of remote by {0} commit(s)
 'AI': AI
 'Analysis': Analysis
@@ -97,8 +100,10 @@ __langname: English
 'Error Message': Error Message
 'Error': Error
 'Failed to clear Agent configuration: {0}': 'Failed to clear Agent configuration: {0}'
+'Failed to delete API key': Failed to delete API key
 'Failed to delete conversation': 'Failed to delete conversation'
 'Failed to delete Token: {0}': 'Failed to delete Token: {0}'
+'Failed to generate API key': Failed to generate API key
 'Failed to generate token: {0}': 'Failed to generate token: {0}'
 'Failed to generate Token: {0}': 'Failed to generate Token: {0}'
 'Failed to load chat details': 'Failed to load chat details'
@@ -108,6 +113,7 @@ __langname: English
 'Failed to save Agent configuration: {0}': 'Failed to save Agent configuration: {0}'
 'Failed to save ASR configuration: {0}': 'Failed to save ASR configuration: {0}'
 'Failed to save TTS configuration: {0}': 'Failed to save TTS configuration: {0}'
+'Failed to update Skill branch': Failed to update Skill branch
 'File Mode': File Mode
 'Final message will be': Final message will be
 'Folder description': Folder description
@@ -136,9 +142,10 @@ __langname: English
 'Local Repository': Local Repository
 'Lock Scroll': Lock Scroll
 'Locked': Locked
+'Manage Skills': Manage Skills
 'Manuscript Mode': Manuscript Mode
-'MCP Tools': MCP Tools
 'MCP Tools Management': MCP Tools Management
+'MCP Tools': MCP Tools
 'Model': Model
 'New Content Block': New Content Block
 'New Folder': New Folder
@@ -212,6 +219,7 @@ __langname: English
 'Server Information': Server Information
 'Server': Server
 'Show Answer': Show Answer
+'Skill branch': Skill branch
 'Source': Source
 'Start Learning': Start Learning
 'Status': Status

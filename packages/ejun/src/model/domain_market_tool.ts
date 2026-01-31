@@ -14,6 +14,8 @@ export interface DomainMarketToolDoc {
     toolKey: string;
     owner: number;
     createdAt: Date;
+    /** 是否为系统工具（可复制的工具参数中带 system 则识别并直接调用系统工具）；默认 true */
+    system?: boolean;
 }
 
 class DomainMarketToolModel {
@@ -39,7 +41,7 @@ class DomainMarketToolModel {
             toolKey as any,
             null,
             null,
-            { toolKey, owner, createdAt: now },
+            { toolKey, owner, createdAt: now, system: true },
         );
         const list = await document.getMulti(domainId, document.TYPE_DOMAIN_MARKET_TOOL as any, { toolKey })
             .limit(1)
