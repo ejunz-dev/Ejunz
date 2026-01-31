@@ -22,15 +22,18 @@ const page = new NamedPage('agent_chat', async () => {
   const urlMatch = window.location.pathname.match(/\/agent\/([^\/]+)\/chat/);
   const urlAid = urlMatch ? urlMatch[1] : aid;
 
-  /** Returns true if tool result content indicates an error (e.g. { error: true, message: "..." }). */
+  /** Returns true if tool result content indicates an error (e.g. { error: true } or { success: false }). */
   const isToolResultError = (content: string | object | undefined): boolean => {
     if (content == null) return false;
-    if (typeof content === 'object' && content !== null && 'error' in content) return (content as any).error === true;
+    let o: any = content;
     if (typeof content === 'string') {
       try {
-        const o = JSON.parse(content);
-        return !!(o && o.error === true);
+        o = JSON.parse(content);
       } catch { return false; }
+    }
+    if (o && typeof o === 'object') {
+      if (o.error === true) return true;
+      if (o.success === false) return true;
     }
     return false;
   };
@@ -43,6 +46,11 @@ const page = new NamedPage('agent_chat', async () => {
       statusBadge.style.cssText = isError
         ? 'padding: 2px 8px; border-radius: 12px; background: #f44336; color: white; font-size: 11px;'
         : 'padding: 2px 8px; border-radius: 12px; background: #4caf50; color: white; font-size: 11px;';
+    }
+    const resultPre = toolCallItem.querySelector('.tool-call-result pre') as HTMLElement | null;
+    if (resultPre) {
+      resultPre.style.background = isError ? '#ffebee' : '#e7f3ff';
+      resultPre.style.borderColor = isError ? '#f44336' : '#b3d9ff';
     }
   };
 
@@ -1220,10 +1228,11 @@ const page = new NamedPage('agent_chat', async () => {
                   
                   const resultPre = resultDiv.querySelector('pre') as HTMLElement;
                   if (resultPre) {
-                    const toolContent = typeof processedMsg.toolResult.content === 'string' 
-                      ? processedMsg.toolResult.content 
+                    const toolContent = typeof processedMsg.toolResult.content === 'string'
+                      ? processedMsg.toolResult.content
                       : JSON.stringify(processedMsg.toolResult.content, null, 2);
                     resultPre.textContent = toolContent;
+                    applyToolCallStatus(toolCallItem, processedMsg.toolResult.content, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
                   }
                 }
               }
@@ -1924,6 +1933,7 @@ const page = new NamedPage('agent_chat', async () => {
                   if (resultPre) {
                     const toolContent = typeof toolResult.content === 'string' ? toolResult.content : JSON.stringify(toolResult.content, null, 2);
                     resultPre.textContent = toolContent;
+                    applyToolCallStatus(toolCallItem, toolResult.content, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
                   }
                 }
               }
@@ -2668,6 +2678,7 @@ const page = new NamedPage('agent_chat', async () => {
                   if (resultPre) {
                     const toolContent = typeof toolResult.content === 'string' ? toolResult.content : JSON.stringify(toolResult.content, null, 2);
                     resultPre.textContent = toolContent;
+                    applyToolCallStatus(toolCallItem, toolResult.content, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
                   }
                 }
               }
@@ -3411,6 +3422,7 @@ const page = new NamedPage('agent_chat', async () => {
               if (resultPre) {
                 const toolContent = typeof processedMsg.toolResult.content === 'string' ? processedMsg.toolResult.content : JSON.stringify(processedMsg.toolResult.content, null, 2);
                 resultPre.textContent = toolContent;
+                applyToolCallStatus(toolCallItem, processedMsg.toolResult.content, toolCallItem.querySelector('.tool-status-badge') as HTMLElement | null);
               }
             }
           }

@@ -61,9 +61,12 @@
   <!-- Main Content Area -->
   <div class="{% if mode == 'chat' %}medium-9{% else %}medium-9{% endif %} columns">
     <div class="section">
-      <div class="section__header">
-        <h1 class="section__title">{{ adoc.title }} - {{ _('Chat') }}</h1>
-        <div class="section__tools">
+      <div class="section__header" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <h1 class="section__title" style="margin: 0;">{{ adoc.title }} - {{ _('Chat') }}</h1>
+        <span class="skill-branch-inline" style="font-size: 0.95em; color: var(--color-text-secondary, #666);">
+          {{ _('Skill 分支') }}: <strong>{{ adoc.skillBranch or _('未启用') }}</strong>
+        </span>
+        <div class="section__tools" style="margin-left: auto;">
           {% if mode == 'chat' %}
           <a href="{{ url('agent_detail', domainId=domainId, aid=adoc.aid) }}" class="button" id="backToAgentBtn">
             <span class="icon icon-back"></span> {{ _('Back to Agent') }}

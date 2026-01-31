@@ -1,0 +1,9 @@
+{
+    "name": "@ejunz/ejunztools",
+    "version": "0.1.0",
+    "main": "src/index.ts",
+    "types": "src/index.ts",
+    "repository": "https://github.com/ejunz-dev/Ejunz",
+    "license": "AGPL-3.0-or-later",
+    "sideEffects": false
+}
