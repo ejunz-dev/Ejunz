@@ -25,10 +25,13 @@ __langname: 简体中文
 'Added to tool list.': 已添加到工具列表
 'Added': 已添加
 'Adding...': 添加中...
+'After selecting a Skill branch, the Agent will load and use Skills under that branch.': 选择 Skill 分支后，Agent 才会加载并使用该分支下的 Skills。
 'After successful connection, configure ASR, TTS and Agent services': 连接成功后，可以配置 ASR、TTS 和 Agent 服务
 'Agent configuration cleared successfully': Agent 配置已清除
 'Agent configuration saved successfully': Agent 配置已保存
 'Agent Configuration': Agent 配置
+'Agent Skills': Agent Skills
+'Agent uses all Skills in this Domain. Skills are managed via Base.': Agent 会自动使用此 Domain 的所有 Skills。Skills 通过 Base 的文件夹系统管理。
 'Ahead of remote by {0} commit(s)': 领先远程 {0} 个提交
 'AI': AI
 'Allow using gravatar:email qq:id github:name url:link format.': '允许使用 gravatar:email，qq:id，github:name，url:link 格式。'
@@ -110,8 +113,10 @@ __langname: 简体中文
 'Error Message': 错误信息
 'Error': 错误
 'Failed to clear Agent configuration: {0}': '清除 Agent 配置失败: {0}'
+'Failed to delete API key': 删除 API Key 失败
 'Failed to delete conversation': '删除对话失败'
 'Failed to delete Token: {0}': '删除 Token 失败: {0}'
+'Failed to generate API key': 生成 API Key 失败
 'Failed to generate token: {0}': '生成 token 失败: {0}'
 'Failed to generate Token: {0}': '生成 Token 失败: {0}'
 'Failed to load chat details': '加载聊天详情失败'
@@ -121,6 +126,7 @@ __langname: 简体中文
 'Failed to save Agent configuration: {0}': '保存 Agent 配置失败: {0}'
 'Failed to save ASR configuration: {0}': '保存 ASR 配置失败: {0}'
 'Failed to save TTS configuration: {0}': '保存 TTS 配置失败: {0}'
+'Failed to update Skill branch': 更新 Skill 分支失败
 'File Mode': 文件模式
 'Final message will be': 最终消息将是
 'Folder description': 文件夹描述
@@ -149,9 +155,10 @@ __langname: 简体中文
 'Local Repository': 本地仓库
 'Lock Scroll': 锁定滚动
 'Locked': 已锁定
+'Manage Skills': 管理 Skills
 'Manuscript Mode': 文稿模式
-'MCP Tools': MCP 工具
 'MCP Tools Management': MCP 工具管理
+'MCP Tools': MCP 工具
 'Model': 模型
 'New Content Block': 新建内容块
 'New Folder': 新建文件夹
@@ -178,6 +185,7 @@ __langname: 简体中文
 'No tools available': 暂无工具
 'No tools yet. Tools list will be automatically synced after server connection.': 暂无工具。服务器连接后会自动同步工具列表。
 'No': 否
+'Not enabled': 不启用
 'Operations': 操作
 'Original score: {0}': '原得分: {0}'
 'Play Audio': 播放音频
@@ -228,6 +236,7 @@ __langname: 简体中文
 'Server Information': 服务器信息
 'Server': 服务器
 'Show Answer': 显示答案
+'Skill branch': Skill 分支
 'Source': 来源
 'Start Learning': 开始学习
 'Status': 状态

@@ -78,93 +78,90 @@ function buildNodeTree(nodes: BaseNode[], edges: BaseEdge[]): Map<string, BaseNo
     return childrenMap;
 }
 
-/** Load domain skills metadata (Level 1 only: name + description). */
-export async function loadSkillsMetadata(domainId: string): Promise<string> {
-    try {
-        const skillsBaseList = await document.getMulti(domainId, document.TYPE_BASE, { type: 'skill' })
-            .limit(1)
-            .toArray();
-        
-        if (skillsBaseList.length === 0) {
-            return '';
-        }
-        
-        const skillsBase = skillsBaseList[0] as any;
-        const branchData = skillsBase.branchData?.['main'] || { nodes: skillsBase.nodes || [], edges: skillsBase.edges || [] };
-        const nodes: BaseNode[] = branchData.nodes || [];
-        const edges: BaseEdge[] = branchData.edges || [];
-        
-        if (nodes.length === 0) {
-            return '';
-        }
-        
-        const childrenMap = buildNodeTree(nodes, edges);
-        
-        const rootNodes = nodes.filter(n => (n.level === 0 || !n.parentId) && 
-            !edges.some(e => e.target === n.id));
-        
-        if (rootNodes.length === 0) {
-            return '';
-        }
-        
-        const rootNode = rootNodes[0];
-        
-        const skillNodes = childrenMap.get(rootNode.id) || 
-            nodes.filter(n => n.parentId === rootNode.id || 
-                edges.some(e => e.source === rootNode.id && e.target === n.id));
-        
-        if (skillNodes.length === 0) {
-            return '';
-        }
-        
-        const skillMetadata = [];
+/** 返回指定分支下所有技能的元数据列表（供 loadSkillsMetadata / getSkillNamesForBranch 复用）。branch 为空则返回 []。 */
+async function getSkillsMetadataList(domainId: string, branch: string): Promise<{ name: string; description: string; nodeId: string; cardId: string }[]> {
+    if (!branch || String(branch).trim() === '') return [];
+    const skillsBaseList = await document.getMulti(domainId, document.TYPE_BASE, { type: 'skill' })
+        .limit(1)
+        .toArray();
+    if (skillsBaseList.length === 0) return [];
+    const skillsBase = skillsBaseList[0] as any;
+    const branchName = branch || 'main';
+    const branchData = skillsBase.branchData?.[branchName] || (branchName === 'main' ? { nodes: skillsBase.nodes || [], edges: skillsBase.edges || [] } : { nodes: [], edges: [] });
+    const nodes: BaseNode[] = branchData.nodes || [];
+    const edges: BaseEdge[] = branchData.edges || [];
+    if (nodes.length === 0) return [];
+    const childrenMap = buildNodeTree(nodes, edges);
+    const rootNodes = nodes.filter(n => (n.level === 0 || !n.parentId) && !edges.some(e => e.target === n.id));
+    if (rootNodes.length === 0) return [];
+    const rootNode = rootNodes[0];
+    const baseDocId = (skillsBase as any).docId || (skillsBase as any)._id;
+    const skillNodes = childrenMap.get(rootNode.id) || nodes.filter(n => n.parentId === rootNode.id || edges.some(e => e.source === rootNode.id && e.target === n.id));
+    const skillMetadata: { name: string; description: string; nodeId: string; cardId: string }[] = [];
+    if (skillNodes.length > 0) {
         for (const skillNode of skillNodes) {
-            const nodeCards = await CardModel.getByNodeId(domainId, skillsBase.docId, skillNode.id);
+            const nodeCards = await CardModel.getByNodeId(domainId, baseDocId, skillNode.id);
             if (nodeCards.length > 0) {
                 const card = nodeCards[0];
                 const cardId = (card.docId || (card as any)._id)?.toString() || '';
-                
                 try {
                     const { metadata } = parseSkillMd(card.content || '');
-                    const overview = card.content 
-                        ? card.content.replace(/^---[\s\S]*?---\s*\n/, '').trim().substring(0, 200)
-                        : '';
-                    
-                    skillMetadata.push({
-                        name: metadata.name || skillNode.text || card.title,
-                        description: metadata.description || overview || '',
-                        nodeId: skillNode.id,
-                        cardId,
-                    });
+                    const overview = card.content ? card.content.replace(/^---[\s\S]*?---\s*\n/, '').trim().substring(0, 200) : '';
+                    const displayName = (metadata.name && metadata.name !== 'Unnamed Skill') ? metadata.name : (skillNode.text || card.title);
+                    skillMetadata.push({ name: displayName, description: metadata.description || overview || '', nodeId: skillNode.id, cardId });
                 } catch (e) {
                     logger.warn(`Failed to parse skill metadata for node ${skillNode.id}:`, e);
-                    skillMetadata.push({
-                        name: skillNode.text || card.title,
-                        description: '',
-                        nodeId: skillNode.id,
-                        cardId,
-                    });
+                    skillMetadata.push({ name: skillNode.text || card.title, description: '', nodeId: skillNode.id, cardId });
                 }
             } else {
-                skillMetadata.push({
-                    name: skillNode.text,
-                    description: '',
-                    nodeId: skillNode.id,
-                    cardId: '',
-                });
+                skillMetadata.push({ name: skillNode.text, description: '', nodeId: skillNode.id, cardId: '' });
             }
         }
-        
+    } else {
+        const rootCards = await CardModel.getByNodeId(domainId, baseDocId, rootNode.id);
+        for (const card of rootCards) {
+            const cardId = (card.docId || (card as any)._id)?.toString() || '';
+            try {
+                const { metadata } = parseSkillMd(card.content || '');
+                const overview = card.content ? card.content.replace(/^---[\s\S]*?---\s*\n/, '').trim().substring(0, 200) : '';
+                // 根节点下每张卡一个技能：优先用卡片标题，避免都用 rootNode.text（如 "Skills"）导致重名、load 时匹配错卡或 instructions 为空
+                const displayName = (metadata.name && metadata.name !== 'Unnamed Skill') ? metadata.name : (card.title || rootNode.text);
+                skillMetadata.push({ name: displayName, description: metadata.description || overview || '', nodeId: rootNode.id, cardId });
+            } catch (e) {
+                logger.warn(`Failed to parse skill metadata for root card ${card.title}:`, e);
+                skillMetadata.push({ name: card.title || rootNode.text, description: '', nodeId: rootNode.id, cardId });
+            }
+        }
+    }
+    return skillMetadata;
+}
+
+/** Returns all skill names for the branch (used when skillIds is empty to resolve tools by branch). */
+export async function getSkillNamesForBranch(domainId: string, branch: string): Promise<string[]> {
+    if (!branch || String(branch).trim() === '') return [];
+    try {
+        const list = await getSkillsMetadataList(domainId, branch);
+        return list.map(s => s.name);
+    } catch (e) {
+        logger.warn('getSkillNamesForBranch failed:', e);
+        return [];
+    }
+}
+
+/** Load domain skills metadata (name + description only). Returns empty if branch is empty. */
+export async function loadSkillsMetadata(domainId: string, branch?: string): Promise<string> {
+    if (!branch || String(branch).trim() === '') return '';
+    try {
+        const skillMetadata = await getSkillsMetadataList(domainId, branch);
         if (skillMetadata.length === 0) {
             return '';
         }
-        
         const skillsList = skillMetadata.map(skill => {
             const desc = skill.description ? `: ${skill.description}` : '';
             return `- **${skill.name}**${desc}`;
         }).join('\n');
-        
-        return `\n\n# Available Agent Skills\n\nThe following Agent Skills are available. Each skill has a hierarchical structure with modules and sub-modules. When you need to use a specific skill, you can request its detailed instructions. The skills will be loaded on-demand to save tokens.\n\n${skillsList}\n\n**Note**: To use a skill, simply mention its name or ask for help with a task that matches the skill's description. The full skill instructions (including all modules and sub-modules) will be provided when needed.\n\n**Tool calls in skills**: When skill instructions contain a JSON block with \`tool\` and \`arguments\` (e.g. {\"tool\": \"get_current_time\", \"arguments\": {\"timezone\": \"UTC\"}}), you MUST call that tool with the given arguments and use the result in your response. Do not refuse to call tools that are in your available tools list.\n\n**Built-in Tool Available**: You can use the \`load_skill_instructions\` tool to load detailed instructions for any skill. Call it with \`skillName\` (the name of the skill) and optionally \`level\` (1 for overview, 2+ for specific depth, or omit for full content). The system supports unlimited depth levels. Example: \`load_skill_instructions(skillName="综合命理分析系统", level=2)\`\n\n**CRITICAL - Avoid dead loop**: After you have called \`load_skill_instructions\` and received the skill content in a tool result, do NOT call \`load_skill_instructions\` again for the same skill. The content is already in the conversation. You MUST immediately call the tool specified in that content (e.g. \`get_current_time\`) with the arguments from the JSON block. Do not repeat loading; go straight to calling the tool.\n\n---\n\n`;
+        const exampleSkillName = skillMetadata[0]?.name || 'skill_name';
+        return `\n\n# Available Agent Skills\n\nThe following Agent Skills are available. Each skill has a hierarchical structure with modules and sub-modules. When you need to use a specific skill, you can request its detailed instructions. The skills will be loaded on-demand to save tokens.\n\n${skillsList}\n\n**Note**: To use a skill, simply mention its name or ask for help with a task that matches the skill's description. The full skill instructions (including all modules and sub-modules) will be provided when needed.\n\n**When the user only asks what tools/skills you have** (e.g. \"你有什么工具\", \"what tools do you have\"), **answer directly** from the tools list and the skill names in this message. Do NOT call \`load_skill_instructions\` or any other tool to answer that question; the list is already in the system message.\n\n**Tool calls in skills**: When skill instructions contain a JSON block with \`tool\` and \`arguments\` (e.g. {\"tool\": \"get_current_time\", \"arguments\": {\"timezone\": \"UTC\"}}), you MUST call that tool with the given arguments and use the result in your response. Do not refuse to call tools that are in your available tools list. **When arguments are already set** (e.g. \`"url": "https://example.com"\` in the loaded instructions), use them directly and call the tool immediately; do NOT ask the user again for the URL or other parameters. **When arguments have empty placeholders** (e.g. \`"url": ""\`, \`"maxLength": ""\`), you MUST fill them from the user's message or conversation context before calling the tool; do not call the tool with empty url or other required fields.\n\n**Built-in Tool Available**: You can use the \`load_skill_instructions\` tool to load instructions for any skill. **Call it only once per skill**: use \`skillName\` (the name from the list above) and omit \`level\` or use \`level=2\` to get full content (including tool name and arguments) in one response. Do NOT call it multiple times (e.g. first level=1 then level=2); one call is enough. Example: \`load_skill_instructions(skillName="${exampleSkillName}")\`\n\n**CRITICAL - Match user request**: When the user asks for a specific task (e.g. \"抓取网页\" / scrape webpage, \"查时间\" / get time), you MUST load the skill that matches that task (e.g. load \"查询网页\" for 抓取网页, \"查询时间\" for 查时间). Only call the tool from the loaded skill content if that tool fulfills the user's request. If the loaded content specifies a different tool (e.g. get_current_time when the user asked to scrape a webpage), do NOT call that tool; load the correct skill for the user's request instead.\n\n**CRITICAL - One load per skill**: Call \`load_skill_instructions\` only **once** for the skill that matches the user's request. One call returns the full content (including tool and arguments). Do NOT call it again for the same skill to get "more detail" or "specific content". After you receive the result, call the tool from that content directly; do NOT call \`load_skill_instructions\` again.\n\n**CRITICAL - Concise response & tool error**: Keep replies short (1–2 sentences when possible). When a tool call returns an error (e.g. \`Tool not found\`, \`error: true\`), you MUST respond in the next message in one short sentence: state what failed and one suggested action (e.g. \"该工具当前不可用，请检查当前 Skill 分支下是否已包含该工具。\"). Do not output long self-reflective or apologetic paragraphs.\n\n---\n\n`;
     } catch (e) {
         logger.warn('Failed to load Skills metadata:', e);
         return '';
@@ -279,8 +276,9 @@ async function loadNodeContentRecursive(
     return content;
 }
 
-/** Load skill instructions by name; maxLevel 1=overview, 2+=to depth, -1=full. */
-export async function loadSkillInstructions(domainId: string, skillName: string, maxLevel: number = -1): Promise<string | null> {
+/** Load skill instructions by name; maxLevel 1=overview, 2+=depth, -1=full. Returns null if branch is empty. */
+export async function loadSkillInstructions(domainId: string, skillName: string, maxLevel: number = -1, branch?: string): Promise<string | null> {
+    if (!branch || String(branch).trim() === '') return null;
     try {
         const skillsBaseList = await document.getMulti(domainId, document.TYPE_BASE, { type: 'skill' })
             .limit(1)
@@ -291,7 +289,8 @@ export async function loadSkillInstructions(domainId: string, skillName: string,
         }
         
         const skillsBase = skillsBaseList[0] as any;
-        const branchData = skillsBase.branchData?.['main'] || { nodes: skillsBase.nodes || [], edges: skillsBase.edges || [] };
+        const branchName = branch || 'main';
+        const branchData = skillsBase.branchData?.[branchName] || (branchName === 'main' ? { nodes: skillsBase.nodes || [], edges: skillsBase.edges || [] } : { nodes: [], edges: [] });
         const nodes: BaseNode[] = branchData.nodes || [];
         const edges: BaseEdge[] = branchData.edges || [];
         
@@ -305,37 +304,56 @@ export async function loadSkillInstructions(domainId: string, skillName: string,
         }
         
         const rootNode = rootNodes[0];
-        
+        const baseDocId = skillsBase.docId || skillsBase._id;
+
         const skillNodes = childrenMap.get(rootNode.id) ||
-            nodes.filter(n => n.parentId === rootNode.id || 
+            nodes.filter(n => n.parentId === rootNode.id ||
                 edges.some(e => e.source === rootNode.id && e.target === n.id));
-        
-        for (const skillNode of skillNodes) {
-            const nodeCards = await CardModel.getByNodeId(domainId, skillsBase.docId, skillNode.id);
-            let skillNodeName = skillNode.text;
-            
-            if (nodeCards.length > 0) {
-                const { metadata } = parseSkillMd(nodeCards[0].content || '');
-                skillNodeName = metadata.name || skillNode.text || nodeCards[0].title;
+
+        if (skillNodes.length > 0) {
+            for (const skillNode of skillNodes) {
+                const nodeCards = await CardModel.getByNodeId(domainId, baseDocId, skillNode.id);
+                let skillNodeName = skillNode.text;
+
+                if (nodeCards.length > 0) {
+                    const { metadata } = parseSkillMd(nodeCards[0].content || '');
+                    skillNodeName = metadata.name || skillNode.text || nodeCards[0].title;
+                }
+
+                if (skillNodeName.toLowerCase().includes(skillName.toLowerCase()) ||
+                    skillName.toLowerCase().includes(skillNodeName.toLowerCase())) {
+                    const fullContent = await loadNodeContentRecursive(
+                        domainId,
+                        baseDocId,
+                        skillNode.id,
+                        nodes,
+                        childrenMap,
+                        1,
+                        maxLevel
+                    );
+                    return fullContent ? `\n\n${fullContent}\n\n---\n\n` : null;
+                }
             }
-            
-            if (skillNodeName.toLowerCase().includes(skillName.toLowerCase()) || 
-                skillName.toLowerCase().includes(skillNodeName.toLowerCase())) {
-                
-                const fullContent = await loadNodeContentRecursive(
-                    domainId,
-                    skillsBase.docId,
-                    skillNode.id,
-                    nodes,
-                    childrenMap,
-                    1, // Level 1
-                    maxLevel
-                );
-                
-                return fullContent ? `\n\n${fullContent}\n\n---\n\n` : null;
+        } else {
+            // 根节点为 layer，每张 card 为技能：按 card 的 name/title 匹配，或按卡片内容中的工具名匹配（如 fetch_webpage）
+            const rootCards = await CardModel.getByNodeId(domainId, baseDocId, rootNode.id);
+            for (const card of rootCards) {
+                let cardSkillName = card.title || rootNode.text;
+                try {
+                    const { metadata } = parseSkillMd(card.content || '');
+                    cardSkillName = (metadata.name && metadata.name !== 'Unnamed Skill') ? metadata.name : (card.title || rootNode.text);
+                } catch (_) { /* ignore */ }
+                const nameMatches = cardSkillName && (cardSkillName.toLowerCase().includes(skillName.toLowerCase()) ||
+                    skillName.toLowerCase().includes(cardSkillName.toLowerCase()));
+                const contentMatchesTool = (card.content || '').includes(skillName);
+                if (nameMatches || contentMatchesTool) {
+                    const { instructions } = parseSkillMd(card.content || '');
+                    const body = instructions || (card.content || '').trim();
+                    return body ? `\n\n${body}\n\n---\n\n` : null;
+                }
             }
         }
-        
+
         return null;
     } catch (e) {
         logger.warn(`Failed to load skill instructions for ${skillName}:`, e);
@@ -423,6 +441,19 @@ export async function loadSkillsInstructions(domainId: string): Promise<string> 
 }
 
 const TOOL_NAME_IN_SKILL_REGEX = /"tool"\s*:\s*"([^"]+)"/g;
+/** Single-quoted tool name in skill content, e.g. 'tool': 'fetch_webpage' */
+const TOOL_NAME_IN_SKILL_REGEX_SINGLE = /'tool'\s*:\s*'([^']+)'/g;
+
+/** Extract all tool names from skill content (double- and single-quoted). */
+function extractToolNamesFromContent(content: string): string[] {
+    const names: string[] = [];
+    TOOL_NAME_IN_SKILL_REGEX.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = TOOL_NAME_IN_SKILL_REGEX.exec(content)) !== null) names.push(m[1]);
+    TOOL_NAME_IN_SKILL_REGEX_SINGLE.lastIndex = 0;
+    while ((m = TOOL_NAME_IN_SKILL_REGEX_SINGLE.exec(content)) !== null) names.push(m[1]);
+    return names;
+}
 
 /** Extract tool name + arguments from skill content (brace-matched). */
 function extractToolExamplesFromText(content: string): Array<{ tool: string; arguments: Record<string, unknown> }> {
@@ -459,19 +490,17 @@ function extractToolExamplesFromText(content: string): Array<{ tool: string; arg
 
 /**
  * Returns the set of tool names referenced in the given skills (by name).
- * Used to restrict domain market tools to only those that appear in assigned skills.
+ * branch 为空则返回空集合（不使用 Skill）。
  */
-export async function getToolNamesFromSkills(domainId: string, skillNames: string[]): Promise<Set<string>> {
+export async function getToolNamesFromSkills(domainId: string, skillNames: string[], branch?: string): Promise<Set<string>> {
     const names = new Set<string>();
-    if (!skillNames?.length) return names;
+    if (!branch || !skillNames?.length) return names;
     for (const skillName of skillNames) {
         try {
-            const content = await loadSkillInstructions(domainId, skillName.trim(), -1);
+            const content = await loadSkillInstructions(domainId, skillName.trim(), -1, branch);
             if (!content) continue;
-            let m: RegExpExecArray | null;
-            TOOL_NAME_IN_SKILL_REGEX.lastIndex = 0;
-            while ((m = TOOL_NAME_IN_SKILL_REGEX.exec(content)) !== null) {
-                names.add(m[1]);
+            for (const toolName of extractToolNamesFromContent(content)) {
+                names.add(toolName);
             }
         } catch (e) {
             logger.debug('getToolNamesFromSkills: failed to load skill %s: %s', skillName, (e as Error).message);
@@ -481,15 +510,14 @@ export async function getToolNamesFromSkills(domainId: string, skillNames: strin
 }
 
 /**
- * Returns tool name -> recommended arguments from assigned skills (first occurrence per tool).
- * Used to inject description + x-skill-example into agent tools.
+ * Returns tool name -> recommended arguments from assigned skills (first occurrence per tool). Returns empty map if branch is empty.
  */
-export async function getToolExamplesFromSkills(domainId: string, skillNames: string[]): Promise<Map<string, Record<string, unknown>>> {
+export async function getToolExamplesFromSkills(domainId: string, skillNames: string[], branch?: string): Promise<Map<string, Record<string, unknown>>> {
     const map = new Map<string, Record<string, unknown>>();
-    if (!skillNames?.length) return map;
+    if (!branch || !skillNames?.length) return map;
     for (const skillName of skillNames) {
         try {
-            const content = await loadSkillInstructions(domainId, skillName.trim(), -1);
+            const content = await loadSkillInstructions(domainId, skillName.trim(), -1, branch);
             if (!content) continue;
             const examples = extractToolExamplesFromText(content);
             for (const { tool, arguments: args } of examples) {

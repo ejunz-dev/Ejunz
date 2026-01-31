@@ -16,7 +16,6 @@ import type {
     Document, User, AgentDoc
 } from '../interface';
 import { parseConfig } from '../lib/testdataConfig';
-import { executeSystemTool } from '../lib/systemTools';
 import * as bus from '../service/bus';
 import {
     ArrayKeys, MaybeArray, NumberKeys, Projection,
@@ -43,7 +42,7 @@ export class AgentModel {
 
     static PROJECTION_DETAIL: Field[] = [
         ...AgentModel.PROJECTION_LIST,
-       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory', 'mcpToolIds', 'skillIds'
+       'docId', 'aid', 'title', 'content', 'owner', 'updateAt', 'views', 'nReply', 'apiKey', 'memory', 'mcpToolIds', 'skillIds', 'skillBranch'
     ];
 
     static PROJECTION_PUBLIC: Field[] = [
@@ -400,16 +399,15 @@ export class McpClient {
     async getTools(domainId?: string): Promise<EdgeTool[]> {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
-            const edgeP = (async () => {
-                try { return ctx ? await ctx.serial('mcp/tools/list/edge') : []; } catch { return []; }
-            })();
+            // [Edge 暂不启用] const edgeP = (async () => { try { return ctx ? await ctx.serial('mcp/tools/list/edge') : []; } catch { return []; } })();
             const localP = (async () => {
                 try { return ctx && domainId ? await ctx.serial('mcp/tools/list/local', { domainId }) : []; } catch { return []; }
             })();
-            const [edgeTools, localTools] = await Promise.all([edgeP, localP]);
-            ClientLogger.info('Tool sources:', { edgeCount: (edgeTools || []).length, localCount: (localTools || []).length });
+            // [Edge 暂不启用] const [edgeTools, localTools] = await Promise.all([edgeP, localP]);
+            const localTools = await localP;
+            ClientLogger.info('Tool sources: local only (Edge 暂不启用)', { localCount: (localTools || []).length });
             const merged: Record<string, EdgeTool> = Object.create(null);
-            for (const t of ([] as EdgeTool[]).concat(edgeTools || [], localTools || [])) merged[t.name] = t;
+            for (const t of ([] as EdgeTool[]).concat(/* edgeTools || [], */ localTools || [])) merged[t.name] = t;
             const list = Object.values(merged);
             ClientLogger.info('Got tool list (merged):', { toolCount: list.length });
             return list;
@@ -419,16 +417,17 @@ export class McpClient {
         }
     }
 
-    async callTool(name: string, args: any, domainId?: string, serverId?: number, token?: string): Promise<any> {
+    async callTool(name: string, args: any, domainId?: string, serverId?: number, token?: string, skillBranch?: string, toolType?: string): Promise<any> {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
             if (!ctx) {
                 throw new Error('Context not available');
             }
 
-            // Built-in system tools: execute first
-            if (name === 'get_current_time') {
-                ClientLogger.info('Calling built-in system tool: %s', name);
+            // type 为 system 时走 executeSystemTool，不走 Edge
+            if (toolType === 'system') {
+                const { executeSystemTool } = require('../lib/systemTools');
+                ClientLogger.info('Calling system tool (no Edge): %s', name);
                 return executeSystemTool(name, args || {});
             }
 
@@ -439,6 +438,13 @@ export class McpClient {
                     if (!domainId) {
                         throw new Error('domainId is required for load_skill_instructions');
                     }
+                    if (!skillBranch || String(skillBranch).trim() === '') {
+                        return {
+                            success: false,
+                            skillName: args.skillName || args.skill_name,
+                            message: 'Skill 未启用：请在 Agent 设置中选择 Skill 分支后再使用。'
+                        };
+                    }
                     
                     const { loadSkillInstructions } = require('../lib/skillLoader');
                     const skillName = args.skillName || args.skill_name;
@@ -448,9 +454,9 @@ export class McpClient {
                         throw new Error('skillName is required');
                     }
                     
-                    ClientLogger.info('Loading skill instructions: skillName=%s, level=%d, domainId=%s', skillName, level, domainId);
+                    ClientLogger.info('Loading skill instructions: skillName=%s, level=%d, domainId=%s, branch=%s', skillName, level, domainId, skillBranch);
                     
-                    const instructions = await loadSkillInstructions(domainId, skillName, level);
+                    const instructions = await loadSkillInstructions(domainId, skillName, level, skillBranch);
                     
                     return {
                         success: true,
@@ -494,117 +500,28 @@ export class McpClient {
                 }
             }
 
-            // If token is provided, try to call tool directly using that token
-            // This is more efficient and reliable than searching through all edges
-            if (token) {
-                try {
-                    ClientLogger.debug('Calling tool %s using provided token: %s', name, token);
-                    const connection = EdgeServerConnectionHandler.getConnection(token);
-                    
-                    if (connection) {
-                        ClientLogger.info('Found connection for token %s, calling tool %s', token, name);
-                        const result = await connection.callTool(name, args);
-                        
-                        // MCP protocol return format: { content: [{ type: 'text', text: ... }] }
-                        if (result?.content && Array.isArray(result.content)) {
-                            const textContent = result.content.find((c: any) => c.type === 'text');
-                            if (textContent?.text) {
-                                try {
-                                    return JSON.parse(textContent.text);
-                                } catch {
-                                    return textContent.text;
-                                }
-                            } else {
-                                return result;
-                            }
-                        } else {
-                            return result;
-                        }
-                    } else {
-                        ClientLogger.warn('Token %s provided but no active connection found, will search for tool', token);
-                    }
-                } catch (e) {
-                    ClientLogger.warn('Tool call via token failed: %s, will try other methods', (e as Error).message);
-                }
-            }
+            // [Edge 适配暂不启用] If token is provided, try to call tool directly using that token
+            // if (token) {
+            //     try {
+            //         const connection = EdgeServerConnectionHandler.getConnection(token);
+            //         if (connection) {
+            //             const result = await connection.callTool(name, args);
+            //             ...
+            //         }
+            //     } catch (e) { ... }
+            // }
 
-            // First try to call via edge (if available)
-            try {
-                const edgeTools = await ctx.serial('mcp/tools/list/edge').catch(() => []);
-                const inEdge = (edgeTools || []).some((t: EdgeTool) => t.name === name);
-                if (inEdge) {
-                    try {
-                        return await ctx.serial('mcp/tool/call/edge', { name, args });
-                    } catch (e) {
-                        ClientLogger.warn('Edge tool call failed, trying local: %s', (e as Error).message);
-                    }
-                }
-            } catch (e) {
-                ClientLogger.debug('Edge tools not available: %s', (e as Error).message);
-            }
+            // [Edge 适配暂不启用] First try to call via edge (if available)
+            // try {
+            //     const edgeTools = await ctx.serial('mcp/tools/list/edge').catch(() => []);
+            //     ...
+            // } catch (e) { ... }
 
-            // Search for tool in Edge/Tool model
-            if (domainId) {
-                try {
-                    ClientLogger.debug('Looking for tool in Edge servers: tool=%s, domainId=%s', name, domainId);
-                    
-                    const edges = await EdgeModel.getByDomain(domainId);
-                    const connectedEdges = edges.filter(edge => {
-                        const hasActiveConnection = EdgeServerConnectionHandler.active.has(edge.token);
-                        return hasActiveConnection;
-                    });
-                    ClientLogger.debug('Found %d connected edges in domain (with active WebSocket)', connectedEdges.length);
-                    
-                    for (const edge of connectedEdges) {
-                        const tools = await ToolModel.getByEdgeDocId(domainId, edge._id);
-                        ClientLogger.debug('Edge %s has %d tools', edge._id, tools.length);
-                        
-                        const hasTool = tools.some(t => t.name === name);
-                        if (hasTool) {
-                            ClientLogger.info('Found tool %s in edge %s', name, edge._id);
-                            
-                            const connection = EdgeServerConnectionHandler.getConnection(edge.token);
-                            
-                            if (!connection) {
-                                ClientLogger.warn('Edge %s (token: %s) has tool %s but no active WebSocket connection. Skipping this edge.', 
-                                    edge._id, edge.token, name);
-                                continue;
-                            }
-                            
-                            ClientLogger.info('Calling tool %s via edge %s connection (token: %s)', name, edge._id, edge.token);
-                            
-                            const result = await connection.callTool(name, args);
-                            
-                            ClientLogger.info('Tool %s returned result', name);
-                            
-                            // MCP protocol return format: { content: [{ type: 'text', text: ... }] }
-                            if (result?.content && Array.isArray(result.content)) {
-                                const textContent = result.content.find((c: any) => c.type === 'text');
-                                if (textContent?.text) {
-                                    try {
-                                        return JSON.parse(textContent.text);
-                                    } catch {
-                                        return textContent.text;
-                                    }
-                                } else {
-                                    return result;
-                                }
-                            } else {
-                                return result;
-                            }
-                        } else {
-                            ClientLogger.debug('Edge %s does not have tool %s', edge._id, name);
-                        }
-                    }
-                    
-                    ClientLogger.warn('Tool %s not found in any connected Edge server', name);
-                } catch (e) {
-                    ClientLogger.error('Edge tool call failed: %s', (e as Error).message);
-                    ClientLogger.error('Stack: %s', (e as Error).stack);
-                }
-            } else {
-                ClientLogger.warn('No domainId provided for tool call: %s', name);
-            }
+            // [Edge 适配暂不启用] Search for tool in Edge/Tool model
+            // if (domainId) {
+            //     const edges = await EdgeModel.getByDomain(domainId);
+            //     for (const edge of connectedEdges) { ... }
+            // }
 
             // Local/system tools (domain market)
             try {
@@ -618,6 +535,18 @@ export class McpClient {
             } catch (e) {
                 if ((e as Error).message?.startsWith('Tool not found:')) throw e;
                 ClientLogger.debug('Local tools not available: %s', (e as Error).message);
+            }
+
+            // 兜底：仅配 Skill、参数写在 card 里时，由适配层按「可执行系统工具列表」尝试执行，不写死具体工具名
+            try {
+                const { tryExecuteSystemTool } = require('../lib/systemTools');
+                const fallbackResult = await tryExecuteSystemTool(name, args || {});
+                if (fallbackResult !== null) {
+                    ClientLogger.info('Calling system tool (fallback from skill): %s', name);
+                    return fallbackResult;
+                }
+            } catch (fallbackE) {
+                ClientLogger.debug('System tool fallback failed for %s: %s', name, (fallbackE as Error).message);
             }
 
             throw new Error(`Tool not found: ${name}`);

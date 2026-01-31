@@ -29,9 +29,9 @@
           <div class="section__body">
             <div class="typo">
               <p class="help-text">
-                {{ _('Agent 会自动使用此 Domain 的所有 Skills。Skills 通过 Base 的文件夹系统管理。') }}
-                <a href="{{ url('base_skill', { domainId: domainId }) }}" target="_blank" style="margin-left: 10px;">
-                  {{ _('管理 Skills') }} →
+                {{ _('Agent uses all Skills in this Domain. Skills are managed via Base.') }}
+                <a href="{{ url('base_skill_editor_branch', domainId=domainId, branch=adoc.skillBranch or 'main') }}" target="_blank" style="margin-left: 10px;">
+                  {{ _('Manage Skills') }} →
                 </a>
               </p>
             </div>
@@ -62,8 +62,7 @@
           </div>
         </div>
         {% endif %}
-        
-        <!-- Footer Section -->
+
         <ul class="section__footer supplementary dot list">
           {% if handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) or handler.user.own(adoc) %}
             <li><a href="{{ url('agent_edit', domainId=domainId, aid=adoc.aid) }}">
@@ -86,8 +85,7 @@
             <span class="icon icon-warning"></span> {{ _('Report') }}
           </a></li>
         </ul>
-        <!-- End of Footer Section -->
-        
+
       </div>
     </div>
   </div>
@@ -156,19 +154,47 @@
     {% if handler.user.own(adoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}
     <div class="section">
       <div class="section__header">
-        <h2 class="section__title">{{ _('Edge Tools') }}</h2>
+        <h2 class="section__title">{{ _('Agent Skills') }}</h2>
       </div>
       <div class="section__body">
-        <div style="margin-top: 15px;">
-          <a href="{{ url('agent_edge_config', { uid: adoc.owner, aid: adoc.aid }) }}" class="button primary">
-            <span class="icon icon-edit"></span> 配置 Edge 工具
-          </a>
-        </div>
+        <p class="help-text" style="margin-bottom: 10px;">{{ _('After selecting a Skill branch, the Agent will load and use Skills under that branch.') }}</p>
+        <form method="post" class="form--inline" onsubmit="event.preventDefault(); updateSkillBranch('{{ domainId }}', '{{ adoc.aid }}', this.skillBranch.value); return false;">
+          <input type="hidden" name="operation" value="updateSkillBranch">
+          <label>
+            <select name="skillBranch" class="textbox" style="min-width: 120px;">
+              <option value="" {{ 'selected' if not adoc.skillBranch else '' }}>{{ _('Not enabled') }}</option>
+              <option value="main" {{ 'selected' if adoc.skillBranch == 'main' else '' }}>main</option>
+            </select>
+          </label>
+          <button type="submit" class="button primary" style="margin-left: 8px;">{{ _('Save') }}</button>
+        </form>
+        <p class="help-text" style="margin-top: 10px;">
+          <a href="{{ url('base_skill_editor_branch', domainId=domainId, branch=adoc.skillBranch or 'main') }}" target="_blank">{{ _('Manage Skills') }} →</a>
+        </p>
       </div>
     </div>
     {% endif %}
 
     <script>
+    async function updateSkillBranch(domainId, aid, skillBranch) {
+      try {
+        const response = await fetch(`/d/${domainId}/agent/${aid}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ operation: 'updateSkillBranch', skillBranch: skillBranch || '' }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          location.reload();
+        } else {
+          alert('{{ _("Failed to update Skill branch") }}');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('{{ _("Failed to update Skill branch") }}');
+      }
+    }
+
     async function generateApiKey(domainId, aid) {
       try {
         const response = await fetch(`/d/${domainId}/agent/${aid}`, {
@@ -209,11 +235,11 @@
         if (data.success) {
           location.reload();
         } else {
-          alert('Failed to delete API key');
+          alert('{{ _("Failed to delete API key") }}');
         }
       } catch (error) {
         console.error('Error:', error);
-        alert('Failed to delete API key');
+        alert('{{ _("Failed to delete API key") }}');
       }
     }
 

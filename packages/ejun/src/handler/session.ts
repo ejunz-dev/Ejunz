@@ -647,7 +647,7 @@ export class SessionChatHandler extends Handler {
         }
         
         const { getAssignedTools } = require('./agent');
-        const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds);
+        const tools = await getAssignedTools(domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds, adoc.skillBranch);
         
         const agentPrompt = adoc.content || '';
         let systemMessage = agentPrompt;

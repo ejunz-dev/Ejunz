@@ -9,35 +9,28 @@ import DomainMarketToolModel from '../model/domain_market_tool';
 import { EdgeServerConnectionHandler } from './edge';
 import { ValidationError, NotFoundError } from '../error';
 import type { ToolDoc } from '../interface';
-import { executeSystemTool } from '../lib/systemTools';
+import { registerSystemToolCatalog, registerSystemToolExecutor, executeSystemTool } from '../lib/systemTools';
+import { SYSTEM_TOOLS_CATALOG, executeSystemTool as pluginExecuteSystemTool } from '@ejunz/ejunztools';
+
+// 插件注册：将 ejunztools 的 catalog 与 executor 注册到 core，core 不写死 package
+registerSystemToolCatalog(SYSTEM_TOOLS_CATALOG as any);
+registerSystemToolExecutor(pluginExecuteSystemTool);
 
 const logger = new Logger('handler/tool');
 
-/** Tool market: system MCP tools (non-Edge); user can add to domain tool/list */
-export const MARKET_TOOLS_CATALOG: Array<{
+/** Tool market: system MCP tools (non-Edge); from @ejunz/ejunztools */
+export const MARKET_TOOLS_CATALOG = SYSTEM_TOOLS_CATALOG as Array<{
     id: string;
     name: string;
     description: string;
     inputSchema: ToolDoc['inputSchema'];
-}> = [
-    {
-        id: 'get_current_time',
-        name: 'get_current_time',
-        description: '查询当前服务器时间',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                timezone: { type: 'string', description: '可选时区，如 Asia/Shanghai' },
-            },
-        },
-    },
-];
+}>;
 
 /** Build enabled system tools for domain (list/WebSocket); no Edge. */
 async function buildSystemToolsForDomain(domainId: string): Promise<any[]> {
     const enabled = await DomainMarketToolModel.getByDomain(domainId);
     return enabled.map((doc) => {
-        const entry = MARKET_TOOLS_CATALOG.find((c) => c.id === doc.toolKey);
+        const entry = SYSTEM_TOOLS_CATALOG.find((c) => c.id === doc.toolKey);
         if (!entry) return null;
         return {
             edgeToken: 'system',
@@ -54,13 +47,13 @@ async function buildSystemToolsForDomain(domainId: string): Promise<any[]> {
     }).filter(Boolean);
 }
 
-/** Returns domain market tools for agent tool list (so agent can call e.g. get_current_time from skill). */
-export async function getDomainMarketToolsForAgent(domainId: string): Promise<Array<{ name: string; description: string; inputSchema: any }>> {
+/** Returns domain market tools for agent; when type is system, callTool uses executeSystemTool (not Edge). */
+export async function getDomainMarketToolsForAgent(domainId: string): Promise<Array<{ name: string; description: string; inputSchema: any; type?: 'system'; system?: boolean }>> {
     const list = await buildSystemToolsForDomain(domainId);
-    return list.map((t: any) => ({ name: t.name, description: t.description || '', inputSchema: t.inputSchema }));
+    return list.map((t: any) => ({ name: t.name, description: t.description || '', inputSchema: t.inputSchema, type: 'system' as const, system: t.system !== false }));
 }
 
-// Tool页面相关handler
+// Tool page handlers
 export class ToolDomainHandler extends Handler<Context> {
     async get() {
         const edges = await EdgeModel.getByDomain(this.domain._id);
@@ -157,12 +150,12 @@ export class ToolMarketHandler extends Handler<Context> {
     async get() {
         const enabled = await DomainMarketToolModel.getByDomain(this.domain._id);
         const addedNames = enabled.map((doc) => {
-            const entry = MARKET_TOOLS_CATALOG.find((c) => c.id === doc.toolKey);
+            const entry = SYSTEM_TOOLS_CATALOG.find((c) => c.id === doc.toolKey);
             return entry?.name;
         }).filter(Boolean) as string[];
         this.response.template = 'tool_market.html';
         this.response.body = {
-            marketTools: MARKET_TOOLS_CATALOG,
+            marketTools: SYSTEM_TOOLS_CATALOG,
             addedNames,
             domainId: this.domain._id,
         };
@@ -180,7 +173,7 @@ export class ToolSystemDetailHandler extends Handler<Context> {
         if (!has) {
             throw new NotFoundError(toolKey);
         }
-        const entry = MARKET_TOOLS_CATALOG.find(c => c.id === toolKey);
+        const entry = SYSTEM_TOOLS_CATALOG.find(c => c.id === toolKey);
         if (!entry) {
             throw new NotFoundError(toolKey);
         }
@@ -200,7 +193,7 @@ export class ToolMarketAddHandler extends Handler<Context> {
         if (!toolKey || typeof toolKey !== 'string') {
             throw new ValidationError('toolKey');
         }
-        const entry = MARKET_TOOLS_CATALOG.find(e => e.id === toolKey);
+        const entry = SYSTEM_TOOLS_CATALOG.find(e => e.id === toolKey);
         if (!entry) {
             throw new ValidationError('Unknown tool in catalog');
         }
@@ -339,7 +332,7 @@ export class ToolStatusConnectionHandler extends ConnectionHandler<Context> {
         });
         this.subscriptions.push({ dispose: dispose1 });
 
-        // 监听服务器连接状态更新（system 无 edge，不处理）
+        // Listen for server connection updates; skip system (no Edge)
         const dispose2 = this.ctx.on('mcp/server/connection/update' as any, async (...args: any[]) => {
             const [token] = args;
             if (token === 'system') return;
@@ -438,7 +431,7 @@ export async function apply(ctx: Context) {
         if (!domainId) return [];
         const enabled = await DomainMarketToolModel.getByDomain(domainId);
         return enabled.map(doc => {
-            const entry = MARKET_TOOLS_CATALOG.find(c => c.id === doc.toolKey);
+            const entry = SYSTEM_TOOLS_CATALOG.find(c => c.id === doc.toolKey);
             return entry ? { name: entry.name, description: entry.description, inputSchema: entry.inputSchema } : null;
         }).filter(Boolean);
     });

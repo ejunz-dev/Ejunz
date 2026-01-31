@@ -1959,11 +1959,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               continue;
             }
 
-            // 对于已存在的卡片：收集到批量更新列表
+            // 对于已存在的卡片：收集到批量更新列表（带上当前 title，避免只保存 content 时后端/前端把 title 丢成空）
             batchSaveData.cardUpdates.push({
               cardId: change.file.cardId,
               nodeId: change.file.nodeId || '',
               content: change.content,
+              title: card?.title,
               problems,
             });
           }
@@ -2361,19 +2362,18 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               (window as any).UiContext.nodeCardsMap = updatedNodeCardsMap;
             }
             
-            // 更新 cardUpdates 中的内容
+            // 更新 cardUpdates 中的内容（只覆盖有值的字段，避免 undefined 把已有 title 等冲掉）
             for (const cardUpdate of batchSaveData.cardUpdates) {
               const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
               const cards = nodeCardsMap[cardUpdate.nodeId] || [];
               const cardIndex = cards.findIndex((c: Card) => c.docId === cardUpdate.cardId);
               if (cardIndex >= 0) {
-                cards[cardIndex] = {
-                  ...cards[cardIndex],
-                  content: cardUpdate.content,
-                  title: cardUpdate.title,
-                  problems: cardUpdate.problems,
-                  order: cardUpdate.order,
-                };
+                const next = { ...cards[cardIndex] };
+                if (cardUpdate.content !== undefined) next.content = cardUpdate.content;
+                if (cardUpdate.title !== undefined) next.title = cardUpdate.title;
+                if (cardUpdate.problems !== undefined) next.problems = cardUpdate.problems;
+                if (cardUpdate.order !== undefined) next.order = cardUpdate.order;
+                cards[cardIndex] = next;
               }
             }
             
@@ -7681,13 +7681,14 @@ ${currentCardContext}
         />
       )}
 
-      {/* 中间编辑器区域 */}
+      {/* 中间编辑器区域；skill 模式下不设 width:100%，以便右侧工具栏能显示 */}
       <div style={{ 
         flex: 1, 
+        minWidth: 0,
         display: 'flex', 
         flexDirection: 'column', 
         overflow: 'hidden',
-        width: showAIChat ? `${100 - chatPanelWidth}%` : '100%',
+        width: showAIChat ? `${100 - chatPanelWidth}%` : (basePath === 'base/skill' ? undefined : '100%'),
         transition: isResizing ? 'none' : 'width 0.3s ease',
       }}>
         {/* 顶部工具栏 */}
@@ -8211,7 +8212,7 @@ ${currentCardContext}
         </div>
       </div>
 
-      {/* Domain Tools sidebar (skill editor only): show params, click to copy tool + arguments template */}
+      {/* Skill 模式：右侧工具侧边栏，点击工具可复制工具参数（tool + arguments 模板） */}
       {basePath === 'base/skill' && (
         <div style={{
           width: '280px',
@@ -8230,13 +8231,16 @@ ${currentCardContext}
             color: themeStyles.textSecondary,
             backgroundColor: themeStyles.bgPrimary,
           }}>
-            Domain Tools
+            工具
+          </div>
+          <div style={{ padding: '8px 12px', fontSize: '11px', color: themeStyles.textTertiary, borderBottom: `1px solid ${themeStyles.borderPrimary}` }}>
+            点击工具可复制「工具名 + 参数」到剪贴板
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: '8px 0' }}>
             {domainToolsLoading ? (
-              <div style={{ padding: '12px 16px', fontSize: '12px', color: themeStyles.textSecondary }}>Loading...</div>
+              <div style={{ padding: '12px 16px', fontSize: '12px', color: themeStyles.textSecondary }}>加载中...</div>
             ) : domainTools.length === 0 ? (
-              <div style={{ padding: '12px 16px', fontSize: '12px', color: themeStyles.textSecondary }}>No tools in this domain.</div>
+              <div style={{ padding: '12px 16px', fontSize: '12px', color: themeStyles.textSecondary }}>当前域下暂无工具。</div>
             ) : (
               domainTools.map((tool: any) => {
                 const toolKey = tool.toolKey || tool.name || '';
@@ -8264,17 +8268,17 @@ ${currentCardContext}
                 return (
                   <div
                     key={tool.tid != null ? `edge-${tool.tid}-${tool.edgeToken}` : `system-${tool.toolKey}`}
-                    title={copyPayload ? 'Click to copy tool + arguments template' : ''}
+                    title={copyPayload ? '点击复制工具参数' : ''}
                     onClick={() => {
                       if (!copyPayload) return;
                       if (navigator.clipboard && navigator.clipboard.writeText) {
                         navigator.clipboard.writeText(copyPayload).then(() => {
-                          Notification.success('Copied to clipboard');
+                          Notification.success('已复制到剪贴板');
                         }).catch(() => {
-                          Notification.error('Copy failed');
+                          Notification.error('复制失败');
                         });
                       } else {
-                        Notification.error('Clipboard not available');
+                        Notification.error('剪贴板不可用');
                       }
                     }}
                     style={{
@@ -8297,7 +8301,7 @@ ${currentCardContext}
                     )}
                     {params.length > 0 && (
                       <div style={{ marginTop: '6px', fontSize: '11px', color: themeStyles.textSecondary }}>
-                        <div style={{ fontWeight: 600, marginBottom: '4px' }}>Parameters:</div>
+                        <div style={{ fontWeight: 600, marginBottom: '4px' }}>参数：</div>
                         {params.map((p) => (
                           <div key={p.name} style={{ marginLeft: '4px', marginBottom: '2px' }}>
                             <code style={{ fontSize: '10px' }}>{p.name}</code>

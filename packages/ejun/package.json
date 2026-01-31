@@ -19,6 +19,7 @@
         "@babel/code-frame": "^7.27.1",
         "@cordisjs/plugin-timer": "1.1.1",
         "@ejunz/common": "workspace:^",
+        "@ejunz/ejunztools": "workspace:^",
         "@ejunz/framework": "workspace:^",
         "@ejunz/utils": "workspace:^",
         "@simplewebauthn/server": "13.2.2",
