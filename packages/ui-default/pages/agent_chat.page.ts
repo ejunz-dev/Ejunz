@@ -1029,6 +1029,12 @@ const page = new NamedPage('agent_chat', async () => {
       return; // Skip if already rendered or shouldn't render
     }
     
+    // CRITICAL: Never overwrite non-empty bubble with empty - prevents 最后一句话时上面气泡被清空
+    const existingText = contentDiv?.textContent?.trim() || (contentDiv?.innerHTML ? contentDiv.innerHTML.replace(/<[^>]*>/g, '').trim() : '');
+    if ((!content || !content.trim()) && existingText) {
+      return;
+    }
+    
     const contentHashValue = contentHash(content);
     const lastHash = renderedMarkdownIds.get(bubbleId);
     
@@ -1040,13 +1046,17 @@ const page = new NamedPage('agent_chat', async () => {
     try {
       const renderedHtml = await renderMarkdown(content, false);
       if (contentDiv) {
+        const newHtmlTrimmed = (renderedHtml || '').replace(/<[^>]*>/g, '').trim();
+        if (!newHtmlTrimmed && existingText) {
+          return; // Don't overwrite non-empty with empty rendered result
+        }
         contentDiv.innerHTML = renderedHtml;
         // Track that we rendered this content
         renderedMarkdownIds.set(bubbleId, contentHashValue);
       }
     } catch (error: any) {
       console.error('[AgentChat] Error rendering markdown with tracking:', error);
-      if (contentDiv) {
+      if (contentDiv && (content.trim() || !existingText)) {
         contentDiv.textContent = content;
       }
     }
@@ -1824,7 +1834,12 @@ const page = new NamedPage('agent_chat', async () => {
               if (precedingAssistant) {
                 const contentDiv = precedingAssistant.querySelector('.message-content') as HTMLElement | null;
                 if (contentDiv && msgData.content != null) {
-                  contentDiv.textContent = typeof msgData.content === 'string' ? msgData.content : JSON.stringify(msgData.content || '');
+                  const newVal = typeof msgData.content === 'string' ? msgData.content : JSON.stringify(msgData.content || '');
+                  const currentVal = contentDiv.textContent?.trim() || (contentDiv.innerHTML ? contentDiv.innerHTML.replace(/<[^>]*>/g, '').trim() : '');
+                  // CRITICAL: tool_call_result has content:'' in groupMessages - never overwrite non-empty 上方气泡 with empty (fixes 最后一句话时上面气泡被清空)
+                  if (newVal.trim() || !currentVal) {
+                    contentDiv.textContent = newVal;
+                  }
                 }
                 precedingAssistant.classList.remove('streaming');
                 precedingAssistant.classList.add('completed');
@@ -2317,11 +2332,15 @@ const page = new NamedPage('agent_chat', async () => {
                 
                 // During streaming, do not overwrite content; handleBubbleStream updates incrementally
                 // For pending_complete or completed, update content if changed
+                // CRITICAL: Never overwrite non-empty bubble content with empty - prevents "清空全部气泡" from malformed record_update
                 if (isStreaming) {
                   markBubbleContentUpdate(bubbleId);
                 } else if (isPendingComplete) {
                   if (contentChanged) {
-                    contentDiv.textContent = content || '';
+                    const newVal = content || '';
+                    if (newVal.trim() || !currentContent.trim()) {
+                      contentDiv.textContent = newVal;
+                    }
                     markBubbleContentUpdate(bubbleId);
                   }
                 } else if (content && isCompletedState) {
@@ -2463,13 +2482,22 @@ const page = new NamedPage('agent_chat', async () => {
                           const data = await response.json();
                           contentDiv.innerHTML = data.html || content;
                         } else {
-              contentDiv.textContent = content;
-            }
+                          const currentVal = contentDiv.textContent?.trim() || '';
+                          if (content.trim() || !currentVal) {
+                            contentDiv.textContent = content;
+                          }
+                        }
                       } catch (e) {
-                        contentDiv.textContent = content;
+                        const currentVal = contentDiv.textContent?.trim() || '';
+                        if (content.trim() || !currentVal) {
+                          contentDiv.textContent = content;
+                        }
                       }
                     } else {
-                      contentDiv.textContent = content;
+                      const currentVal = contentDiv.textContent?.trim() || '';
+                      if (content.trim() || !currentVal) {
+                        contentDiv.textContent = content;
+                      }
                     }
                   }
                 }
