@@ -12,7 +12,21 @@ import superagent from 'superagent';
 let taskConsumerInstance: any = null;
 let isCreatingConsumer = false;
 
+/** Register system tool catalog and executor so worker can run get_current_time etc. (same as ejun handler/tool). */
+function registerSystemToolsIfAvailable() {
+    try {
+        const { SYSTEM_TOOLS_CATALOG, executeSystemTool } = require('@ejunz/ejunztools');
+        const { registerSystemToolCatalog, registerSystemToolExecutor } = require('ejun/src/lib/systemTools');
+        registerSystemToolCatalog(SYSTEM_TOOLS_CATALOG);
+        registerSystemToolExecutor(executeSystemTool);
+        logger.info('System tools registered for worker (get_current_time, fetch_webpage, etc.)');
+    } catch (e: any) {
+        logger.warn('System tools not registered (ejunztools may be missing): %s', e?.message || e);
+    }
+}
+
 export async function apply(ctx: EjunzContext) {
+    registerSystemToolsIfAvailable();
     if (isCreatingConsumer) {
         let waitCount = 0;
         while (isCreatingConsumer && waitCount < 50) {
@@ -621,6 +635,7 @@ export async function apply(ctx: EjunzContext) {
                         let toolToken: string | undefined = undefined;
                         let toolServerId: number | undefined = undefined;
                         let toolType: string | undefined = undefined;
+                        const toolsCount = context.tools && Array.isArray(context.tools) ? context.tools.length : 0;
                         if (context.tools && Array.isArray(context.tools)) {
                             const toolInfo = context.tools.find((t: any) => t.name === toolName);
                             if (toolInfo) {
@@ -637,6 +652,9 @@ export async function apply(ctx: EjunzContext) {
                                     toolType = 'system';
                                 }
                             }
+                            logger.info('[tool] worker: name=%s context.tools=%d found=%s toolType=%s', toolName, toolsCount, !!toolInfo, toolType ?? 'undefined');
+                        } else {
+                            logger.info('[tool] worker: name=%s context.tools=missing toolType=%s', toolName, toolType ?? 'undefined');
                         }
                         
                         toolCallCount++;
@@ -645,6 +663,7 @@ export async function apply(ctx: EjunzContext) {
                         const STATUS = require('ejun/src/model/builtin').STATUS;
                         try {
                             toolResult = await mcpClient.callTool(toolName, toolArgs, domainId, toolServerId, toolToken, (context as any)?.skillBranch, toolType);
+                            logger.info('[tool] worker: name=%s done success', toolName);
                             
                             // 工具返回 success: false 时仍将结果写入 record，并继续请求模型让 Agent 根据结果回复；不设 hasToolError，避免任务被标为错误导致中断/UI 显示失败
                             if (toolResult === false || (typeof toolResult === 'object' && toolResult !== null && toolResult.success === false)) {
@@ -665,6 +684,7 @@ export async function apply(ctx: EjunzContext) {
                             hasToolError = true;
                             const errorMessage = toolError.message || String(toolError);
                             const errorCode = toolError.code || 'UNKNOWN_ERROR';
+                            logger.warn('[tool] worker: name=%s done error %s', toolName, errorMessage);
                             
                             if (errorMessage.includes('not found') || errorMessage.includes('找不到') || errorCode === 'TOOL_NOT_FOUND') {
                                 errorStatus = STATUS.STATUS_TASK_ERROR_NOT_FOUND;
