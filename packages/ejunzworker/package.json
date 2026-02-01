@@ -6,7 +6,9 @@
     "repository": "https://github.com/ejunz-dev/Ejunz.git",
     "dependencies": {
         "@ejunz/common": "workspace:^",
+        "@ejunz/ejunztools": "workspace:^",
         "@ejunz/utils": "workspace:^",
+        "ejun": "workspace:^",
         "@zip.js/zip.js": "^2.8.10",
         "cac": "^6.7.14",
         "p-queue": "^9.0.0",

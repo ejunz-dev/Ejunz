@@ -498,7 +498,7 @@ export async function processAgentChatInternal(
                     repoIds: adoc.repoIds?.length || 0,
                     repoIdsArray: adoc.repoIds || []
                 });
-                const loadedTools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds);
+                const loadedTools = await getAssignedTools(adoc.domainId, adoc.mcpToolIds, adoc.repoIds, adoc.skillIds, adoc.skillBranch);
                 tools = loadedTools;
                 toolsLoaded = true;
                 AgentLogger.info('processAgentChatInternal: Got tools (async)', { 
