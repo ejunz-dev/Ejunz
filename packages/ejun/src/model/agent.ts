@@ -419,6 +419,7 @@ export class McpClient {
 
     async callTool(name: string, args: any, domainId?: string, serverId?: number, token?: string, skillBranch?: string, toolType?: string): Promise<any> {
         try {
+            ClientLogger.info('[tool] callTool: name=%s toolType=%s', name, toolType ?? 'undefined');
             const ctx = (global as any).app || (global as any).Ejunz;
             if (!ctx) {
                 throw new Error('Context not available');
@@ -427,7 +428,7 @@ export class McpClient {
             // type 为 system 时走 executeSystemTool，不走 Edge
             if (toolType === 'system') {
                 const { executeSystemTool } = require('../lib/systemTools');
-                ClientLogger.info('Calling system tool (no Edge): %s', name);
+                ClientLogger.info('[tool] callTool: name=%s -> branch=system (executeSystemTool)', name);
                 return executeSystemTool(name, args || {});
             }
 
@@ -478,7 +479,7 @@ export class McpClient {
             // - Others: update_structure, query_structure, query_branches
             if (name.match(/^repo_\d+_(query|create|edit|delete|update|pull|push|commit|search|ask|create_branch|sync_branch)/)) {
                 try {
-                    ClientLogger.info('Calling repo internal MCP tool: %s', name);
+                    ClientLogger.info('[tool] callTool: name=%s -> branch=repo', name);
                     // Try to get agentId and agentName from context (if called from agent)
                     const agentId = (args as any).__agentId;
                     const agentName = (args as any).__agentName;
@@ -529,6 +530,7 @@ export class McpClient {
                     const localTools = await ctx.serial('mcp/tools/list/local', { domainId }).catch(() => []);
                     const inLocal = (localTools || []).some((t: EdgeTool) => t.name === name);
                     if (inLocal) {
+                        ClientLogger.info('[tool] callTool: name=%s -> branch=local', name);
                         return await ctx.serial('mcp/tool/call/local', { name, args });
                     }
                 }
@@ -540,15 +542,18 @@ export class McpClient {
             // 兜底：仅配 Skill、参数写在 card 里时，由适配层按「可执行系统工具列表」尝试执行，不写死具体工具名
             try {
                 const { tryExecuteSystemTool } = require('../lib/systemTools');
+                ClientLogger.info('[tool] callTool: name=%s -> branch=tryExecuteSystemTool (fallback)', name);
                 const fallbackResult = await tryExecuteSystemTool(name, args || {});
                 if (fallbackResult !== null) {
-                    ClientLogger.info('Calling system tool (fallback from skill): %s', name);
+                    ClientLogger.info('[tool] callTool: name=%s fallback executed ok', name);
                     return fallbackResult;
                 }
+                ClientLogger.info('[tool] callTool: name=%s fallback returned null', name);
             } catch (fallbackE) {
                 ClientLogger.debug('System tool fallback failed for %s: %s', name, (fallbackE as Error).message);
             }
 
+            ClientLogger.warn('[tool] callTool: name=%s -> branch=not_found (throw)', name);
             throw new Error(`Tool not found: ${name}`);
         } catch (e) {
             ClientLogger.error(`Failed to call tool: ${name}`, e);
