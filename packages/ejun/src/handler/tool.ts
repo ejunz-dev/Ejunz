@@ -209,6 +209,28 @@ export class ToolMarketAddHandler extends Handler<Context> {
     }
 }
 
+/** 从当前 domain 卸载市场已添加的工具 */
+export class ToolMarketRemoveHandler extends Handler<Context> {
+    async post() {
+        const toolKey = this.request.body?.toolKey;
+        if (!toolKey || typeof toolKey !== 'string') {
+            throw new ValidationError('toolKey');
+        }
+        const entry = SYSTEM_TOOLS_CATALOG.find(e => e.id === toolKey);
+        if (!entry) {
+            throw new ValidationError('Unknown tool in catalog');
+        }
+        const has = await DomainMarketToolModel.has(this.domain._id, toolKey);
+        if (!has) {
+            this.response.body = { ok: true, message: 'not_added' };
+            return;
+        }
+        await DomainMarketToolModel.remove(this.domain._id, toolKey);
+        (this.ctx.emit as any)('mcp/tools/update', 'system');
+        this.response.body = { ok: true };
+    }
+}
+
 export class ToolDetailHandler extends Handler<Context> {
     tool: ToolDoc;
 
@@ -421,6 +443,7 @@ export async function apply(ctx: Context) {
     ctx.Route('tool_list_api', '/tool/api/list', ToolListApiHandler);
     ctx.Route('tool_market', '/tool/market', ToolMarketHandler);
     ctx.Route('tool_market_add', '/tool/market/add', ToolMarketAddHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('tool_market_remove', '/tool/market/remove', ToolMarketRemoveHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('tool_system_detail', '/tool/system/:toolKey', ToolSystemDetailHandler);
     ctx.Route('tool_detail', '/tool/:tid', ToolDetailHandler);
     ctx.Connection('tool_status_conn', '/tool/status/ws', ToolStatusConnectionHandler);

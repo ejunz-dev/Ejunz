@@ -240,6 +240,7 @@ __langname: English
 'Tool call successful': Tool call successful
 'Tool Detail': Tool Detail
 'Tool Name': Tool Name
+'Tool uninstalled.': Tool uninstalled.
 'Tool': Tool
 'Tools Count': Tools Count
 'Tools List': Tools List
@@ -248,6 +249,9 @@ __langname: English
 'TTS configuration saved successfully': TTS configuration saved successfully
 'TTS Configuration': TTS Configuration
 'Uncommitted changes': Uncommitted changes
+'Uninstall failed.': Uninstall failed.
+'Uninstall': Uninstall
+'Uninstalling...': Uninstalling...
 'Unknown error': Unknown error
 'Unnamed Course': Unnamed Course
 'Unnamed Lesson': Unnamed Lesson

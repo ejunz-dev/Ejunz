@@ -433,6 +433,7 @@ export class WorkflowExecutor {
                     || status === STATUS.STATUS_TASK_ERROR_SYSTEM
                     || status === STATUS.STATUS_TASK_ERROR_TOOL
                     || status === STATUS.STATUS_TASK_ERROR_NOT_FOUND
+                    || status === STATUS.STATUS_TASK_ERROR_NOT_ADDED
                     || status === STATUS.STATUS_TASK_ERROR_SERVER
                     || status === STATUS.STATUS_TASK_ERROR_NETWORK
                     || status === STATUS.STATUS_TASK_ERROR_TIMEOUT

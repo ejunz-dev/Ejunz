@@ -35,7 +35,7 @@
                       <span class="badge badge--warning">{{ _('Pending') }}</span>
                     {% elif r.status == STATUS.STATUS_TASK_DELIVERED %}
                       <span class="badge badge--success">{{ _('Delivered') }}</span>
-                    {% elif r.status in [STATUS.STATUS_TASK_ERROR_TOOL, STATUS.STATUS_TASK_ERROR_NOT_FOUND, STATUS.STATUS_TASK_ERROR_SERVER, STATUS.STATUS_TASK_ERROR_NETWORK, STATUS.STATUS_TASK_ERROR_TIMEOUT, STATUS.STATUS_TASK_ERROR_SYSTEM, STATUS.STATUS_TASK_ERROR_UNKNOWN] %}
+                    {% elif r.status in [STATUS.STATUS_TASK_ERROR_TOOL, STATUS.STATUS_TASK_ERROR_NOT_FOUND, STATUS.STATUS_TASK_ERROR_NOT_ADDED, STATUS.STATUS_TASK_ERROR_SERVER, STATUS.STATUS_TASK_ERROR_NETWORK, STATUS.STATUS_TASK_ERROR_TIMEOUT, STATUS.STATUS_TASK_ERROR_SYSTEM, STATUS.STATUS_TASK_ERROR_UNKNOWN] %}
                       <span class="badge badge--error">{{ model.builtin.STATUS_TEXTS[r.status] }}</span>
                     {% else %}
                       <span class="badge">{{ model.builtin.STATUS_TEXTS[r.status] if model.builtin.STATUS_TEXTS[r.status] else r.status }}</span>
