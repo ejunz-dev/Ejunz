@@ -37,7 +37,7 @@
                 <td class="col--description">{{ tool.description or '' }}</td>
                 <td class="col--action">
                   {% if tool.name in addedNames %}
-                    <span class="text-gray">{{ _('Added') }}</span>
+                    <button type="button" class="rounded button tool_market__remove-btn" data-tool-key="{{ tool.id }}">{{ _('Uninstall') }}</button>
                   {% else %}
                     <button type="button" class="primary button tool_market__add-btn" data-tool-key="{{ tool.id }}">{{ _('Add') }}</button>
                   {% endif %}

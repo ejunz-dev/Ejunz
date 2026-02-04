@@ -11,6 +11,7 @@ export enum STATUS {
     STATUS_TASK_ERROR_TIMEOUT = 6,
     STATUS_TASK_ERROR_SYSTEM = 7,
     STATUS_TASK_ERROR_UNKNOWN = 8,
+    STATUS_TASK_ERROR_NOT_ADDED = 9,
 }
 
 export const STATUS_TEXTS: Record<STATUS, string> = {
@@ -41,6 +42,7 @@ export const STATUS_SHORT_TEXTS: Partial<Record<STATUS, string>> = {
     [STATUS.STATUS_TASK_ERROR_TIMEOUT]: 'TIME',
     [STATUS.STATUS_TASK_ERROR_SYSTEM]: 'SYS',
     [STATUS.STATUS_TASK_ERROR_UNKNOWN]: 'UNKN',
+    [STATUS.STATUS_TASK_ERROR_NOT_ADDED]: 'NADD',
 };
 
 export const STATUS_CODES: Record<STATUS, string> = {
@@ -56,6 +58,7 @@ export const STATUS_CODES: Record<STATUS, string> = {
     [STATUS.STATUS_TASK_ERROR_TIMEOUT]: 'fail',
     [STATUS.STATUS_TASK_ERROR_SYSTEM]: 'fail',
     [STATUS.STATUS_TASK_ERROR_UNKNOWN]: 'fail',
+    [STATUS.STATUS_TASK_ERROR_NOT_ADDED]: 'fail',
 };
 
 export function getScoreColor(score: number | string): string {

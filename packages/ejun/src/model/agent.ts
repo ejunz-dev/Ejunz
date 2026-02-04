@@ -425,14 +425,35 @@ export class McpClient {
                 throw new Error('Context not available');
             }
 
-            // type 为 system 时走 executeSystemTool，不走 Edge
-            if (toolType === 'system') {
-                const { executeSystemTool } = require('../lib/systemTools');
-                ClientLogger.info('[tool] callTool: name=%s -> branch=system (executeSystemTool)', name);
-                return executeSystemTool(name, args || {});
+            // Built-in loading tools (handled in core; do not dispatch to executeSystemTool)
+            if (name === 'load_base_instructions') {
+                try {
+                    ClientLogger.info('Calling built-in base loading tool: %s', name);
+                    if (!domainId) {
+                        throw new Error('domainId is required for load_base_instructions');
+                    }
+                    if (!skillBranch || String(skillBranch).trim() === '') {
+                        return {
+                            success: false,
+                            message: 'Base 未启用：请在 Agent 设置中选择分支后再使用。'
+                        };
+                    }
+                    const { loadBaseInstructions } = require('../lib/baseLoader');
+                    const level = args.level !== undefined ? args.level : (args.maxLevel !== undefined ? args.maxLevel : -1);
+                    ClientLogger.info('Loading base instructions: level=%s, domainId=%s, branch=%s', level, domainId, skillBranch);
+                    const instructions = await loadBaseInstructions(domainId, level, skillBranch);
+                    return {
+                        success: true,
+                        level,
+                        instructions: instructions ?? '',
+                        message: instructions ? `Successfully loaded base to level ${level}` : 'Base has no content for this branch.'
+                    };
+                } catch (e) {
+                    ClientLogger.error('Built-in base loading tool call failed: %s', (e as Error).message);
+                    throw e;
+                }
             }
 
-            // Check if it's a built-in skill loading tool
             if (name === 'load_skill_instructions') {
                 try {
                     ClientLogger.info('Calling built-in skill loading tool: %s', name);
@@ -446,19 +467,14 @@ export class McpClient {
                             message: 'Skill 未启用：请在 Agent 设置中选择 Skill 分支后再使用。'
                         };
                     }
-                    
                     const { loadSkillInstructions } = require('../lib/skillLoader');
                     const skillName = args.skillName || args.skill_name;
                     const level = args.level !== undefined ? args.level : (args.maxLevel !== undefined ? args.maxLevel : 2);
-                    
                     if (!skillName) {
                         throw new Error('skillName is required');
                     }
-                    
                     ClientLogger.info('Loading skill instructions: skillName=%s, level=%d, domainId=%s, branch=%s', skillName, level, domainId, skillBranch);
-                    
                     const instructions = await loadSkillInstructions(domainId, skillName, level, skillBranch);
-                    
                     return {
                         success: true,
                         skillName,
@@ -470,6 +486,13 @@ export class McpClient {
                     ClientLogger.error('Built-in skill loading tool call failed: %s', (e as Error).message);
                     throw e;
                 }
+            }
+
+            // type 为 system 时走 executeSystemTool，不走 Edge
+            if (toolType === 'system') {
+                const { executeSystemTool } = require('../lib/systemTools');
+                ClientLogger.info('[tool] callTool: name=%s -> branch=system (executeSystemTool)', name);
+                return executeSystemTool(name, args || {});
             }
 
             // Check if it's a repo internal MCP tool (format: repo_{rpid}_{operation}...)
@@ -539,22 +562,11 @@ export class McpClient {
                 ClientLogger.debug('Local tools not available: %s', (e as Error).message);
             }
 
-            // 兜底：仅配 Skill、参数写在 card 里时，由适配层按「可执行系统工具列表」尝试执行，不写死具体工具名
-            try {
-                const { tryExecuteSystemTool } = require('../lib/systemTools');
-                ClientLogger.info('[tool] callTool: name=%s -> branch=tryExecuteSystemTool (fallback)', name);
-                const fallbackResult = await tryExecuteSystemTool(name, args || {});
-                if (fallbackResult !== null) {
-                    ClientLogger.info('[tool] callTool: name=%s fallback executed ok', name);
-                    return fallbackResult;
-                }
-                ClientLogger.info('[tool] callTool: name=%s fallback returned null', name);
-            } catch (fallbackE) {
-                ClientLogger.debug('System tool fallback failed for %s: %s', name, (fallbackE as Error).message);
-            }
-
-            ClientLogger.warn('[tool] callTool: name=%s -> branch=not_found (throw)', name);
-            throw new Error(`Tool not found: ${name}`);
+            // 不再从 catalog 兜底执行：仅执行已分配工具（市场已添加 + load_skill/load_base），未分配则报错
+            ClientLogger.warn('[tool] callTool: name=%s -> not in assigned tools (market/local)', name);
+            const err = new Error(`Tool not added: ${name}. Please add it from the tool market (工具市场) for this domain.`);
+            (err as any).code = 'TOOL_NOT_ADDED';
+            throw err;
         } catch (e) {
             ClientLogger.error(`Failed to call tool: ${name}`, e);
             throw e;

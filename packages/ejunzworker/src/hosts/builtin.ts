@@ -686,7 +686,11 @@ export async function apply(ctx: EjunzContext) {
                             const errorCode = toolError.code || 'UNKNOWN_ERROR';
                             logger.warn('[tool] worker: name=%s done error %s', toolName, errorMessage);
                             
-                            if (errorMessage.includes('not found') || errorMessage.includes('找不到') || errorCode === 'TOOL_NOT_FOUND') {
+                            if (errorCode === 'TOOL_NOT_ADDED') {
+                                errorStatus = STATUS.STATUS_TASK_ERROR_NOT_ADDED;
+                            } else if (errorCode === 'TOOL_NOT_FOUND' || errorMessage.includes('找不到')) {
+                                errorStatus = STATUS.STATUS_TASK_ERROR_NOT_FOUND;
+                            } else if (errorMessage.includes('not found')) {
                                 errorStatus = STATUS.STATUS_TASK_ERROR_NOT_FOUND;
                             } else if (errorMessage.includes('timeout') || errorMessage.includes('超时') || errorCode === 'TIMEOUT') {
                                 errorStatus = STATUS.STATUS_TASK_ERROR_TIMEOUT;
