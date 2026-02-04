@@ -258,6 +258,7 @@ __langname: 简体中文
 'Tool call successful': 工具调用成功
 'Tool Detail': 工具详情
 'Tool Name': 工具名称
+'Tool uninstalled.': 已卸载。
 'Tool': 工具
 'Tools Count': 工具数量
 'Tools List': 工具列表
@@ -266,6 +267,9 @@ __langname: 简体中文
 'TTS configuration saved successfully': TTS 配置已保存
 'TTS Configuration': TTS 配置
 'Uncommitted changes': 未提交的更改
+'Uninstall failed.': 卸载失败
+'Uninstall': 卸载
+'Uninstalling...': 卸载中...
 'Unknown error': 未知错误
 'Unnamed Course': 未命名课程
 'Unnamed Lesson': 未命名课程
