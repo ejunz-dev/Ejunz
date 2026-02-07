@@ -56,65 +56,11 @@ export class HomeHandler extends Handler {
         return discussion.getNodes(domainId);
     }
 
-    async getBase(domainId: string, limit = 10) {
-        const bases = await BaseModel.getAll(domainId);
-        const sorted = bases.sort((a, b) => (b.updateAt?.getTime() || 0) - (a.updateAt?.getTime() || 0));
-        const limited = sorted.slice(0, limit);
-        this.collectUser(limited.map((mm) => mm.owner));
-        return limited;
-    }
-
     async getAgent(domainId: string, limit = 10) {
         const [agents] = await AgentModel.list(domainId, {}, 1, limit);
         this.collectUser(agents.map((agent) => agent.owner));
         return agents;
     }
-
-    async getWorkflow(domainId: string, limit = 10) {
-        const workflows = await WorkflowModel.getByDomain(domainId);
-        const sorted = workflows.sort((a, b) => (b.updatedAt?.getTime() || 0) - (a.updatedAt?.getTime() || 0));
-        const limited = sorted.slice(0, limit);
-        this.collectUser(limited.map((wf) => wf.owner));
-        return limited;
-    }
-
-    async getEdge(domainId: string, limit = 10) {
-        const edges = await EdgeModel.getByDomain(domainId);
-        const sorted = edges.sort((a, b) => (b.updatedAt?.getTime() || 0) - (a.updatedAt?.getTime() || 0));
-        const limited = sorted.slice(0, limit);
-        this.collectUser(limited.map((edge) => edge.owner));
-        return limited;
-    }
-
-    async getTool(domainId: string, limit = 10) {
-        const edges = await EdgeModel.getByDomain(domainId);
-        const allTools: any[] = [];
-        for (const edge of edges) {
-            const tools = await ToolModel.getByToken(domainId, edge.token);
-            allTools.push(...tools);
-        }
-        const sorted = allTools.sort((a, b) => (b.updatedAt?.getTime() || 0) - (a.updatedAt?.getTime() || 0));
-        const limited = sorted.slice(0, limit);
-        this.collectUser(limited.map((tool) => tool.owner));
-        return limited;
-    }
-
-    async getClient(domainId: string, limit = 10) {
-        const clients = await ClientModel.getByDomain(domainId);
-        const sorted = clients.sort((a, b) => (b.updatedAt?.getTime() || 0) - (a.updatedAt?.getTime() || 0));
-        const limited = sorted.slice(0, limit);
-        this.collectUser(limited.map((client) => client.owner));
-        return limited;
-    }
-
-    async getNode(domainId: string, limit = 10) {
-        const nodes = await NodeModel.getByDomain(domainId);
-        const sorted = nodes.sort((a, b) => (b.updatedAt?.getTime() || 0) - (a.updatedAt?.getTime() || 0));
-        const limited = sorted.slice(0, limit);
-        this.collectUser(limited.map((node) => node.owner));
-        return limited;
-    }
-
     async get({ domainId }) {
         const homepageConfig = this.ctx.setting.get('ejun.homepage');
         const info = yaml.load(homepageConfig) as any;
