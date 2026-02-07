@@ -3,6 +3,7 @@ __id: en
 __langname: English
 ' for use by Agent etc.': for use by Agent etc.
 '-- Please Select Agent --': -- Please Select Agent --
+'{0} days ago': '{0} days ago'
 '{0} parts': '{0} parts'
 '{0} units': '{0} units'
 'Access Point Type': Access Point Type
@@ -42,6 +43,8 @@ __langname: English
 'Block': Block
 'Cancel': Cancel
 'Card': Card
+'Check-in Days': Check-in Days
+'Check-in remaining': Remaining today
 'Clear Agent': Clear Agent
 'Clear Logs': Clear Logs
 'Click the "Create Client" button above to create a new client': Click the "Create Client" button above to create a new client
@@ -53,6 +56,7 @@ __langname: English
 'Clients can connect via the following WebSocket URL (Token must be generated first)': Clients can connect via the following WebSocket URL (Token must be generated first)
 'Commit Message': Commit Message
 'commits': commits
+'Completed today': Completed today
 'Configuration': Configuration
 'Congratulations! You have completed all practice questions correctly.': Congratulations! You have completed all practice questions correctly.
 'Connect to the WebSocket URL above using the generated Token': Connect to the WebSocket URL above using the generated Token
@@ -78,6 +82,7 @@ __langname: English
 'Cumulative': Cumulative
 'Current Progress': Current Progress
 'Currently Selected Agent': Currently Selected Agent
+'days': days
 'Default message': Default message
 'Delete Client': Delete Client
 'Delete Server': Delete Server
@@ -131,6 +136,7 @@ __langname: English
 'Jump to {0}': Jump to {0}
 'Language Type': Language Type
 'Language': Language
+'Last check-in': Last check-in
 'Last Commit': Last Commit
 'Last Connected Time': Last Connected Time
 'Last Connected': Last Connected
@@ -144,6 +150,7 @@ __langname: English
 'Locked': Locked
 'Manage Skills': Manage Skills
 'Manuscript Mode': Manuscript Mode
+'Max consecutive': Max consecutive
 'MCP Tools Management': MCP Tools Management
 'MCP Tools': MCP Tools
 'Model': Model
@@ -165,6 +172,8 @@ __langname: English
 'No MCP tools yet. When MCP server connects and registers, they will appear here.': No MCP tools yet. When MCP server connects and registers, they will appear here.
 'No messages in this conversation': No messages in this conversation
 'No nodes available.': No nodes available.
+'No recent cards.': No recent cards.
+'No recent nodes.': No recent nodes.
 'No recording available': No recording available
 'No remote repository configured': No remote repository configured
 'No sections available.': No sections available.
@@ -194,6 +203,8 @@ __langname: English
 'Pushing...': Pushing...
 'Question Details': Question Details
 'Question': Question
+'Recent Cards': Recent Cards
+'Recent Nodes': Recent Nodes
 'Refresh Tools List': Refresh Tools List
 'Remaining': Remaining
 'Remote branch exists. Use Pull to sync with remote changes.': Remote branch exists. Use Pull to sync with remote changes.
@@ -232,6 +243,7 @@ __langname: English
 'This section requires completion of the following sections first': This section requires completion of the following sections first
 'This tool has no input parameters defined.': This tool has no input parameters defined.
 'Time Spent': Time Spent
+'Today': Today
 'Token deleted successfully': Token deleted successfully
 'Token generated successfully': Token generated successfully
 'Token not generated yet': Token not generated yet
@@ -290,10 +302,6 @@ base_editor: Base Editor
 base_list: Base List
 base_node: Base Node
 base_outline: Base
-'Recent Cards': Recent Cards
-'Recent Nodes': Recent Nodes
-'No recent cards.': No recent cards.
-'No recent nodes.': No recent nodes.
 base_save: Save Base
 base_study: Study Base
 Belongs to card: Belongs to card
