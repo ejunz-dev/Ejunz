@@ -1,11 +1,10 @@
 {% set nodes = payload %}
 {% set currentDomainId = (domain and domain._id) or (handler and handler.args and handler.args.domainId) or 'system' %}
-{% if nodes is defined %}
+{% if nodes and nodes.length %}
   <div class="section page--base_node">
     <div class="section__header">
       <h1 class="section__title">{{ _('Recent Nodes') }}</h1>
     </div>
-    {% if nodes and nodes.length %}
     <div class="section__body typo no-media">
       {%- for node in nodes -%}
         {% if node and node.baseDocId %}
@@ -24,8 +23,5 @@
         {% endif %}
       {%- endfor -%}
     </div>
-    {% else %}
-    <div class="section__body typo"><p>{{ _('No recent nodes.') }}</p></div>
-    {% endif %}
   </div>
 {% endif %}
