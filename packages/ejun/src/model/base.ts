@@ -807,6 +807,17 @@ export class CardModel {
     }
 
     /**
+     * 获取最近更新的 cards（按 updateAt 降序）
+     */
+    static async getRecentUpdated(domainId: string, limit: number = 10): Promise<CardDoc[]> {
+        const list = await document.getMulti(domainId, TYPE_CARD, {})
+            .sort({ updateAt: -1 })
+            .limit(limit)
+            .toArray();
+        return list as CardDoc[];
+    }
+
+    /**
      * 获取 node 下的所有 cards
      */
     static async getByNodeId(domainId: string, baseDocId: ObjectId, nodeId: string): Promise<CardDoc[]> {

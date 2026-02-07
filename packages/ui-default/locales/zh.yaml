@@ -348,6 +348,10 @@ base_editor: 编辑器
 base_list: 知识库列表
 base_node: 知识库节点
 base_outline: 知识库
+'Recent Cards': 最近更新的卡片
+'Recent Nodes': 最近更新的节点
+'No recent cards.': 暂无最近更新的卡片
+'No recent nodes.': 暂无最近更新的节点
 base_save: 保存知识库
 base_study: 学习知识库
 Be Copied: 被复制
