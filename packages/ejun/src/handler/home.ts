@@ -35,6 +35,7 @@ import user from '../model/user';
 import {
     Handler, param, query, requireSudo, Types,
 } from '../service/server';
+import moment from 'moment-timezone';
 import { camelCase, md5 } from '../utils';
 
 export class HomeHandler extends Handler {
@@ -62,7 +63,6 @@ export class HomeHandler extends Handler {
         return agents;
     }
 
-    /** Recently updated cards from base (mind map). */
     async getCard(domainId: string, limit = 10) {
         const cards = await CardModel.getRecentUpdated(domainId, typeof limit === 'number' ? limit : 10);
         this.collectUser(cards.map((c) => c.owner));
@@ -115,6 +115,98 @@ export class HomeHandler extends Handler {
         }
         this.collectUser(result.map((r) => r.owner));
         return result;
+    }
+
+    async getCheckin(domainId: string) {
+        if (this.user._id === 0) return null;
+        const learnResultColl = this.ctx.db.db.collection('learn_result');
+        const today = moment.utc().format('YYYY-MM-DD');
+        const startOfToday = moment.utc(today).startOf('day').toDate();
+        const endOfToday = moment.utc(today).endOf('day').toDate();
+
+        const [allResults, todayResults] = await Promise.all([
+            learnResultColl.find({ domainId, userId: this.user._id }).project({ createdAt: 1 }).toArray(),
+            learnResultColl.find({
+                domainId,
+                userId: this.user._id,
+                createdAt: { $gte: startOfToday, $lte: endOfToday },
+            }).project({ cardId: 1, nodeId: 1 }).toArray(),
+        ]);
+
+        const practiceDates = new Set<string>();
+        for (const r of allResults) {
+            if (r.createdAt) {
+                practiceDates.add(moment.utc(r.createdAt).format('YYYY-MM-DD'));
+            }
+        }
+
+        const dates = Array.from(practiceDates).sort();
+        const lastCheckinDate = dates.length > 0 ? dates[dates.length - 1] : null;
+        const lastCheckinDaysAgo = lastCheckinDate
+            ? moment.utc(today).diff(moment.utc(lastCheckinDate), 'days')
+            : null;
+
+        let maxConsecutiveDays = 0;
+        if (dates.length > 0) {
+            let streak = 1;
+            for (let i = 1; i < dates.length; i++) {
+                const prev = moment.utc(dates[i - 1]);
+                const curr = moment.utc(dates[i]);
+                if (curr.diff(prev, 'days') === 1) {
+                    streak++;
+                } else {
+                    maxConsecutiveDays = Math.max(maxConsecutiveDays, streak);
+                    streak = 1;
+                }
+            }
+            maxConsecutiveDays = Math.max(maxConsecutiveDays, streak);
+        }
+
+        const todayCards = new Set<string>();
+        const todayNodeIds = new Set<string>();
+        for (const r of todayResults) {
+            if (r.cardId) todayCards.add(String(r.cardId));
+            if (r.nodeId) todayNodeIds.add(String(r.nodeId));
+        }
+
+        const dudoc = await domain.getDomainUser(domainId, { _id: this.user._id, priv: this.user.priv });
+        const dailyGoal = (dudoc as any)?.dailyGoal || 0;
+        const todayCompleted = todayCards.size;
+        const completedToday = dailyGoal > 0 ? todayCompleted >= dailyGoal : todayCards.size > 0;
+        const cardsRemaining = Math.max(0, dailyGoal - todayCompleted);
+
+        let nodesRemaining = 0;
+        const base = await BaseModel.getByDomain(domainId);
+        if (base) {
+            const learnDAGColl = this.ctx.db.db.collection('learn_dag');
+            const existingDAG = await learnDAGColl.findOne({
+                domainId,
+                baseDocId: base.docId,
+                branch: 'main',
+            });
+            if (existingDAG?.dag) {
+                const nodesWithPendingCards = new Set<string>();
+                for (const node of existingDAG.dag) {
+                    for (const card of node.cards || []) {
+                        if (card?.cardId && !todayCards.has(String(card.cardId))) {
+                            nodesWithPendingCards.add(node._id);
+                            break;
+                        }
+                    }
+                }
+                nodesRemaining = nodesWithPendingCards.size;
+            }
+        }
+
+        return {
+            days: practiceDates.size,
+            completedToday,
+            cardsRemaining,
+            nodesRemaining,
+            learnUrl: `/d/${domainId}/learn`,
+            lastCheckinDaysAgo,
+            maxConsecutiveDays,
+        };
     }
 
     async get({ domainId }) {

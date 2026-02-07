@@ -2,13 +2,21 @@ __id: zh_TW
 __langname: 正體中文
 -- Please Select Agent --: -- 請選擇 Agent --
 '{0} comments': '''{0} 條評論'''
+'{0} days ago': '{0}天前'
 '{0} discussions': '''{0} 條討論'''
 '↓ # Comments': ↓ 評論數
 '↓ # Enrollees': ↓ 參與人數
 '↓ # Likes': ↓ 贊數
 '↓ # Stars': ↓ 收藏數
+'Check-in Days': 打卡天數
+'Check-in remaining': 今日還需
+'Completed today': 今日已完成
+'days': 天
 'Failed to generate token: {0}': '生成 token 失敗: {0}'
+'Last check-in': 上次打卡
+'Max consecutive': 最長連續
 'No': 否
+'Today': 今天
 'Yes': 是
 (None): (無)
 ↓ Create Time: ↓ 創建時間
