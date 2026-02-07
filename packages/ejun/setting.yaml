@@ -6,6 +6,7 @@ homepage:
       card: 10
       node: 10
       agent: 3
+      checkin: true
     - width: 6
       discussion: 20
     - width: 3

@@ -6,6 +6,7 @@ __langname: 简体中文
 '"{data}" copied to clipboard!': “{data}”已复制到剪贴板！
 '{0} {1} delete your discussion reply {2} in "{3}"({4}).' : '{0} {1} 从讨论 {3}({4}) 删除了你的回复 {2}。'
 '{0} comments': '{0} 条评论'
+'{0} days ago': '{0}天前'
 '{0} discussions': '{0} 条讨论'
 '{0} is a moderator of this domain.': '{}是这个域的管理者之一。'
 '{0} limit exceeded (limit: {2} operations in {1} seconds).': '{0} 超过频率限制。限制：{1} 秒内最多 {2} 次操作。'
@@ -54,6 +55,8 @@ __langname: 简体中文
 'Behind remote by {0} commit(s)': 落后远程 {0} 个提交
 'Block': 块
 'Card': 卡片
+'Check-in Days': 打卡天数
+'Check-in remaining': 今日还需
 'Clear Agent': 清除 Agent
 'Clear Logs': 清空日志
 'Click the "Create Client" button above to create a new client': 点击上方"创建客户端"按钮来创建新的客户端
@@ -65,6 +68,7 @@ __langname: 简体中文
 'Clients can connect via the following WebSocket URL (Token must be generated first)': 客户端可以通过以下 WebSocket URL 连接（需要先为客户端生成 Token）
 'Commit Message': 提交消息
 'commits': 提交
+'Completed today': 今日已完成
 'Configuration': 配置
 'Congratulations! You have completed all practice questions correctly.': 恭喜！您已正确完成所有练习题。
 'Connect to the WebSocket URL above using the generated Token': 使用生成的 Token 连接到上述 WebSocket URL
@@ -90,6 +94,7 @@ __langname: 简体中文
 'Current dataset: {0}': '当前测试数据: {0}'
 'Current Progress': 当前进度
 'Currently Selected Agent': 当前选择的 Agent
+'days': 天
 'Default message': 默认消息
 'Delete Client': 删除客户端
 'Delete Server': 删除服务器
@@ -144,6 +149,7 @@ __langname: 简体中文
 'Join {0}': '加入 {0}'
 'Jump to {0}': 跳至 {0}
 'Language Type': 语言类型
+'Last check-in': 上次打卡
 'Last Commit': 最后提交
 'Last Connected Time': 最后连接时间
 'Last Connected': 最后连接
@@ -157,6 +163,7 @@ __langname: 简体中文
 'Locked': 已锁定
 'Manage Skills': 管理 Skills
 'Manuscript Mode': 文稿模式
+'Max consecutive': 最长连续
 'MCP Tools Management': MCP 工具管理
 'MCP Tools': MCP 工具
 'Model': 模型
@@ -178,6 +185,8 @@ __langname: 简体中文
 'No MCP tools yet. When MCP server connects and registers, they will appear here.': 暂无注册的 MCP 工具。当 MCP 服务器连接并注册工具后，它们将显示在这里。
 'No messages in this conversation': 此对话中暂无消息
 'No nodes available.': 暂无可用节点。
+'No recent cards.': 暂无最近更新的卡片
+'No recent nodes.': 暂无最近更新的节点
 'No recording available': 无录音可用
 'No remote repository configured': 未配置远程仓库
 'No sections available.': 暂无可用章节。
@@ -210,6 +219,8 @@ __langname: 简体中文
 'Pushing...': 推送中...
 'Question Details': 题目详情
 'Question': 题目
+'Recent Cards': 最近更新的卡片
+'Recent Nodes': 最近更新的节点
 'Refresh Tools List': 刷新工具列表
 'Remaining': 剩余
 'Remote branch exists. Use Pull to sync with remote changes.': 远程分支存在。使用 Pull 同步远程更改。
@@ -250,6 +261,7 @@ __langname: 简体中文
 'This section requires completion of the following sections first': 此章节需要先完成以下章节
 'This tool has no input parameters defined.': 该工具没有定义输入参数。
 'Time Spent': 用时
+'Today': 今天
 'Token deleted successfully': Token 已删除
 'Token generated successfully': Token 已生成
 'Token not generated yet': 尚未生成 Token
@@ -348,10 +360,6 @@ base_editor: 编辑器
 base_list: 知识库列表
 base_node: 知识库节点
 base_outline: 知识库
-'Recent Cards': 最近更新的卡片
-'Recent Nodes': 最近更新的节点
-'No recent cards.': 暂无最近更新的卡片
-'No recent nodes.': 暂无最近更新的节点
 base_save: 保存知识库
 base_study: 学习知识库
 Be Copied: 被复制
