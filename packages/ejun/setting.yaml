@@ -3,6 +3,8 @@ homepage:
   desc: Homepage Config
   default:
     - width: 3
+      card: 10
+      node: 10
       agent: 3
     - width: 6
       discussion: 20
