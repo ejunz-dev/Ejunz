@@ -1,11 +1,10 @@
 {% set cards = payload %}
 {% set currentDomainId = (domain and domain._id) or (handler and handler.args and handler.args.domainId) or 'system' %}
-{% if cards is defined %}
+{% if cards and cards.length %}
   <div class="section page--base_card">
     <div class="section__header">
       <h1 class="section__title">{{ _('Recent Cards') }}</h1>
     </div>
-    {% if cards and cards.length %}
     <div class="section__body typo no-media">
       {%- for card in cards -%}
         {% if card and card.baseDocId %}
@@ -24,8 +23,5 @@
         {% endif %}
       {%- endfor -%}
     </div>
-    {% else %}
-    <div class="section__body typo"><p>{{ _('No recent cards.') }}</p></div>
-    {% endif %}
   </div>
 {% endif %}
