@@ -290,6 +290,10 @@ base_editor: Base Editor
 base_list: Base List
 base_node: Base Node
 base_outline: Base
+'Recent Cards': Recent Cards
+'Recent Nodes': Recent Nodes
+'No recent cards.': No recent cards.
+'No recent nodes.': No recent nodes.
 base_save: Save Base
 base_study: Study Base
 Belongs to card: Belongs to card

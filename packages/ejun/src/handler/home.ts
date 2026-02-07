@@ -20,7 +20,7 @@ import { PERM, PRIV } from '../model/builtin';
 import * as discussion from '../model/discussion';
 import domain from '../model/domain';
 import message from '../model/message';
-import { BaseModel } from '../model/base';
+import { BaseModel, CardModel } from '../model/base';
 import AgentModel from '../model/agent';
 import WorkflowModel from '../model/workflow';
 import EdgeModel from '../model/edge';
@@ -61,6 +61,62 @@ export class HomeHandler extends Handler {
         this.collectUser(agents.map((agent) => agent.owner));
         return agents;
     }
+
+    /** Recently updated cards from base (mind map). */
+    async getCard(domainId: string, limit = 10) {
+        const cards = await CardModel.getRecentUpdated(domainId, typeof limit === 'number' ? limit : 10);
+        this.collectUser(cards.map((c) => c.owner));
+        return cards
+            .filter((c) => c.baseDocId != null)
+            .map((c) => ({ ...c, baseDocId: String(c.baseDocId), docId: String((c as any)._id) }));
+    }
+
+    async getNode(domainId: string, limit = 10) {
+        const cap = Math.min((typeof limit === 'number' ? limit : 10) * 5, 100);
+        const cards = await CardModel.getRecentUpdated(domainId, cap);
+        const byKey = new Map<string, { updateAt: Date; owner: number }>();
+        for (const c of cards) {
+            if (!c.baseDocId || !c.nodeId) continue;
+            const key = `${(c.baseDocId as ObjectId).toString()}\t${c.nodeId}`;
+            const existing = byKey.get(key);
+            if (!existing || c.updateAt > existing.updateAt) {
+                byKey.set(key, { updateAt: c.updateAt, owner: c.owner });
+            }
+        }
+        const entries = Array.from(byKey.entries())
+            .sort((a, b) => (b[1].updateAt as Date).getTime() - (a[1].updateAt as Date).getTime())
+            .slice(0, typeof limit === 'number' ? limit : 10);
+        const result: Array<{ nodeId: string; baseDocId: string; text: string; updateAt: Date; owner: number; baseTitle?: string }> = [];
+        const baseIds = new Set<string>();
+        for (const [key] of entries) {
+            const [baseIdStr] = key.split('\t');
+            baseIds.add(baseIdStr);
+        }
+        const baseDocs = new Map<string, any>();
+        for (const bid of baseIds) {
+            const base = await BaseModel.get(domainId, new ObjectId(bid));
+            if (base) baseDocs.set(bid, base);
+        }
+        for (const [key, { updateAt, owner }] of entries) {
+            const [baseIdStr, nodeId] = key.split('\t');
+            const base = baseDocs.get(baseIdStr);
+            let text = nodeId;
+            let baseTitle: string | undefined;
+            if (base) {
+                baseTitle = base.title;
+                const branch = (base as any).currentBranch || (base as any).branch || 'main';
+                const branchData = (base as any).branchData || {};
+                const data = branchData[branch] || (branch === 'main' ? { nodes: base.nodes || [], edges: base.edges || [] } : { nodes: [], edges: [] });
+                const nodes = data.nodes || [];
+                const node = nodes.find((n: any) => n.id === nodeId);
+                if (node && node.text) text = node.text;
+            }
+            result.push({ nodeId, baseDocId: baseIdStr, text, updateAt, owner, baseTitle });
+        }
+        this.collectUser(result.map((r) => r.owner));
+        return result;
+    }
+
     async get({ domainId }) {
         const homepageConfig = this.ctx.setting.get('ejun.homepage');
         const info = yaml.load(homepageConfig) as any;

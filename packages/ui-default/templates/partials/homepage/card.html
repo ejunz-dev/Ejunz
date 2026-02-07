@@ -1,0 +1,31 @@
+{% set cards = payload %}
+{% set currentDomainId = (domain and domain._id) or (handler and handler.args and handler.args.domainId) or 'system' %}
+{% if cards is defined %}
+  <div class="section page--base_card">
+    <div class="section__header">
+      <h1 class="section__title">{{ _('Recent Cards') }}</h1>
+    </div>
+    {% if cards and cards.length %}
+    <div class="section__body typo no-media">
+      {%- for card in cards -%}
+        {% if card and card.baseDocId %}
+          <p>
+            <a href="{{ url('base_outline_branch', domainId=currentDomainId, branch='main', query={'cardId': (card.docId or card._id or '')}) }}" data-emoji-enabled>
+              {{ card.title|default('Untitled') }}
+            </a>
+            <span style="float: right">
+              {% if card.updateAt %}
+                {{ datetimeSpan(card.updateAt)|safe }}
+              {% else %}
+                N/A
+              {% endif %}
+            </span>
+          </p>
+        {% endif %}
+      {%- endfor -%}
+    </div>
+    {% else %}
+    <div class="section__body typo"><p>{{ _('No recent cards.') }}</p></div>
+    {% endif %}
+  </div>
+{% endif %}

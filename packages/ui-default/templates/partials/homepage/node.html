@@ -1,0 +1,31 @@
+{% set nodes = payload %}
+{% set currentDomainId = (domain and domain._id) or (handler and handler.args and handler.args.domainId) or 'system' %}
+{% if nodes is defined %}
+  <div class="section page--base_node">
+    <div class="section__header">
+      <h1 class="section__title">{{ _('Recent Nodes') }}</h1>
+    </div>
+    {% if nodes and nodes.length %}
+    <div class="section__body typo no-media">
+      {%- for node in nodes -%}
+        {% if node and node.baseDocId %}
+          <p>
+            <a href="{{ url('base_outline_branch', domainId=currentDomainId, branch='main', query={'nodeId': (node.nodeId or '')}) }}" data-emoji-enabled>
+              {{ node.text|default(node.nodeId) }}
+            </a>
+            <span style="float: right">
+              {% if node.updateAt %}
+                {{ datetimeSpan(node.updateAt)|safe }}
+              {% else %}
+                N/A
+              {% endif %}
+            </span>
+          </p>
+        {% endif %}
+      {%- endfor -%}
+    </div>
+    {% else %}
+    <div class="section__body typo"><p>{{ _('No recent nodes.') }}</p></div>
+    {% endif %}
+  </div>
+{% endif %}
