@@ -68,6 +68,7 @@ export const BaseAdd = (name, args, icon = 'add', text = 'Create Base') => {
 
 
 inject('Nav', 'homepage', { prefix: 'homepage' });
+inject('Nav', 'learn', { prefix: 'learn' });
 inject('Nav', 'scene_domain', { prefix: 'scene' });
 inject('Nav', 'base_outline', { prefix: 'base' });
 // inject('Nav', 'base_domain', { prefix: 'base' });
@@ -80,7 +81,7 @@ inject('Nav', 'discussion_main', { prefix: 'discussion' });
 // inject('Nav', 'workflow_domain', { prefix: 'workflow' });
 
 
-
+    
 
 
 

@@ -4,13 +4,7 @@ homepage:
   default:
     - width: 3
       agent: 3
-      edge: 3
-      node: 3
-      client: 3
     - width: 6
-      base: 10
-      workflow: 10
       discussion: 20
     - width: 3
       discussion_nodes: true
-      tool: 3
