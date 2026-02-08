@@ -31,6 +31,7 @@ interface LearnSectionsTreeProps {
   dag: LearnDAGNode[];
   domainId: string;
   currentSectionId: string | null;
+  currentLearnSectionIndex: number | null;
 }
 
 function buildNodeMap(sections: LearnDAGNode[], dag: LearnDAGNode[]) {
@@ -81,19 +82,19 @@ function getTheme(): 'light' | 'dark' {
   return 'light';
 }
 
-function LearnSectionsTree({ sections, dag, domainId, currentSectionId }: LearnSectionsTreeProps) {
-  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentLearnSectionIndex }: LearnSectionsTreeProps) {
+  const [selectedSectionIndex, setSelectedSectionIndex] = useState<number>(0);
   const [theme, setTheme] = useState<'light' | 'dark'>(getTheme);
 
   useEffect(() => {
     if (sections.length === 0) return;
-    const defaultId = currentSectionId && sections.some(s => s._id === currentSectionId)
-      ? currentSectionId
-      : sections[0]._id;
-    if (!selectedSectionId || !sections.some(s => s._id === selectedSectionId)) {
-      setSelectedSectionId(defaultId);
-    }
-  }, [sections, currentSectionId, selectedSectionId]);
+    const defaultIndex = typeof currentLearnSectionIndex === 'number' && currentLearnSectionIndex >= 0 && currentLearnSectionIndex < sections.length
+      ? currentLearnSectionIndex
+      : currentSectionId
+        ? Math.max(0, sections.findIndex(s => s._id === currentSectionId))
+        : 0;
+    setSelectedSectionIndex(defaultIndex >= 0 ? defaultIndex : 0);
+  }, [sections, currentSectionId, currentLearnSectionIndex]);
 
   useEffect(() => {
     const checkTheme = () => {
@@ -124,7 +125,6 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId }: LearnS
     ] as const,
   }), [theme]);
 
-  const selectedSection = useMemo(() => sections.find(s => s._id === selectedSectionId) || null, [sections, selectedSectionId]);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => new Set());
 
   // 默认全部展开：当 sections/dag 加载后，将所有节点加入展开集合
@@ -168,12 +168,12 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId }: LearnS
     });
   }, []);
 
-  const renderNode = useCallback((node: LearnDAGNode, level: number) => {
+  const renderNode = useCallback((node: LearnDAGNode, level: number, isRootCurrentSection = false) => {
     const children = getChildren(node._id, sections, dag);
     const cards = node.cards || [];
     const hasContent = children.length > 0 || cards.length > 0;
     const expanded = expandedNodes.has(node._id);
-    const isCurrentSection = currentSectionId === node._id;
+    const isCurrentSection = isRootCurrentSection;
     const totalProblemCount = getTotalProblemCount(node._id, sections, dag);
 
     const allChildren: Array<{ type: 'node' | 'card'; id: string; order: number; data: LearnDAGNode | LearnCard }> = [
@@ -385,7 +385,7 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId }: LearnS
                     </div>
                   );
                 }
-                return renderNode(item.data as LearnDAGNode, level + 1);
+                return renderNode(item.data as LearnDAGNode, level + 1, false);
               })}
             </div>
           </div>
@@ -403,6 +403,7 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId }: LearnS
     );
   }
 
+  const selectedSection = sections[selectedSectionIndex];
   return (
     <div
       style={{
@@ -440,13 +441,15 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId }: LearnS
             {i18n('Section Order')}
           </a>
         </div>
-        {sections.map((section) => {
-          const isSelected = selectedSectionId === section._id;
-          const isCurrent = currentSectionId === section._id;
+        {sections.map((section, index) => {
+          const isSelected = selectedSectionIndex === index;
+          const isCurrent = typeof currentLearnSectionIndex === 'number'
+            ? index === currentLearnSectionIndex
+            : currentSectionId === section._id && index === sections.findIndex(s => s._id === currentSectionId);
           return (
             <div
-              key={section._id}
-              onClick={() => setSelectedSectionId(section._id)}
+              key={`${index}-${section._id}`}
+              onClick={() => setSelectedSectionIndex(index)}
               style={{
                 padding: '10px 16px',
                 cursor: 'pointer',
@@ -499,7 +502,9 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId }: LearnS
               {selectedSection.title}
             </div>
             <div style={{ paddingLeft: '4px' }}>
-              {renderNode(selectedSection, 0)}
+              {renderNode(selectedSection, 0, typeof currentLearnSectionIndex === 'number'
+                ? selectedSectionIndex === currentLearnSectionIndex
+                : currentSectionId === selectedSection._id && selectedSectionIndex === sections.findIndex(s => s._id === currentSectionId))}
             </div>
           </>
         ) : (
@@ -521,6 +526,7 @@ const page = new NamedPage('learnSectionsPage', async () => {
     const dag = (window as any).UiContext?.dag || [];
     const domainId = (window as any).UiContext?.domainId || 'system';
     const currentSectionId = (window as any).UiContext?.currentSectionId || null;
+    const currentLearnSectionIndex = (window as any).UiContext?.currentLearnSectionIndex ?? null;
 
     ReactDOM.render(
       <LearnSectionsTree
@@ -528,6 +534,7 @@ const page = new NamedPage('learnSectionsPage', async () => {
         dag={dag}
         domainId={domainId}
         currentSectionId={currentSectionId}
+        currentLearnSectionIndex={currentLearnSectionIndex}
       />,
       container
     );

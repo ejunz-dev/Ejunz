@@ -1,6 +1,7 @@
 
 __id: en
 __langname: English
+' Click "Set as start" to set where learning begins from.': Click "Set as start" to set where learning begins from.
 ' for use by Agent etc.': for use by Agent etc.
 '-- Please Select Agent --': -- Please Select Agent --
 '{0} days ago': '{0} days ago'
@@ -122,6 +123,7 @@ __langname: English
 'Failed to save Agent configuration: {0}': 'Failed to save Agent configuration: {0}'
 'Failed to save ASR configuration: {0}': 'Failed to save ASR configuration: {0}'
 'Failed to save TTS configuration: {0}': 'Failed to save TTS configuration: {0}'
+'Failed to set learning point': Failed to set learning point
 'Failed to update Skill branch': Failed to update Skill branch
 'File Mode': File Mode
 'Final message will be': Final message will be
