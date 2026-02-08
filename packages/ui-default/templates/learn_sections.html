@@ -1,55 +1,16 @@
 {% set page_name = "learnSectionsPage" %}
 {% extends "layout/basic.html" %}
 {% block content %}
-<div data-fragment-id="learn_sections">
-  <div class="section">
-    <div class="section__header">
-      <h1 class="section__title">{{ _('Sections') }}</h1>
-    </div>
-    <div class="section__body">
-      {% if sections and sections|length > 0 %}
-        <div class="row">
-          {%- for section in sections -%}
-            <div class="medium-6 large-4 columns" style="margin-bottom: 20px;">
-              <div class="section" style="height: 100%; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; transition: box-shadow 0.2s; {% if currentSectionId == section._id %}border-color: #4CAF50; border-width: 2px;{% endif %}">
-                <div class="section__header">
-                  <h2 class="section__title" style="font-size: 1.2em; margin-bottom: 10px;">
-                    {{ _('Section') }} {{ loop.index }}. {{ section.title }}
-                    {% if currentSectionId == section._id %}
-                      <span style="color: #4CAF50; font-size: 0.8em; margin-left: 10px;">({{ _('Current Progress') }})</span>
-                    {% endif %}
-                  </h2>
-                </div>
-                <div class="section__body">
-                  {% if section.cards and section.cards|length > 0 %}
-                    <p style="color: #666; font-size: 0.9em; margin-bottom: 10px;">
-                      {{ section.cards|length }} {{ _('cards') }}
-                    </p>
-                    <div style="display: flex; gap: 10px; flex-direction: column;">
-                      <a href="/d/{{ domainId }}/learn?sectionId={{ section._id }}" class="button primary" style="width: 100%;">
-                        {% if currentSectionId == section._id %}{{ _('Continue Learning') }}{% else %}{{ _('Start Learning') }}{% endif %}
-                      </a>
-                      <a href="/d/{{ domainId }}/learn?sectionId={{ section._id }}" class="button secondary" style="width: 100%;">
-                        {{ _('View Section') }}
-                      </a>
-                    </div>
-                  {% else %}
-                    <p style="color: #999; font-size: 0.9em;">
-                      {{ _('No cards available in this section.') }}
-                    </p>
-                  {% endif %}
-                </div>
-              </div>
-            </div>
-          {%- endfor -%}
-        </div>
-      {% else %}
-        <blockquote class="typo note">
-          <p>{{ _('No sections available.') }}</p>
-          <p>{{ _('Please create a base with at least one section.') }}</p>
-        </blockquote>
-      {% endif %}
-    </div>
+<script>
+  {{ set(UiContext, 'sections', sections) }}
+  {{ set(UiContext, 'dag', dag) }}
+  {{ set(UiContext, 'domainId', domainId) }}
+  {{ set(UiContext, 'baseDocId', baseDocId) }}
+  {{ set(UiContext, 'currentSectionId', currentSectionId) }}
+</script>
+<div class="row">
+  <div class="medium-12 columns">
+    <div id="learn-sections-container"></div>
   </div>
 </div>
 {% endblock %}
