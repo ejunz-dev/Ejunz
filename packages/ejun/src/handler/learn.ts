@@ -49,7 +49,20 @@ async function generateDAG(
         if (!childrenMap.has(edge.source)) {
             childrenMap.set(edge.source, []);
         }
-        childrenMap.get(edge.source)!.push(edge.target);
+        if (!childrenMap.get(edge.source)!.includes(edge.target)) {
+            childrenMap.get(edge.source)!.push(edge.target);
+        }
+    });
+    // 补充 parentId：base 可能用 parentId 而非 edges 表示父子关系
+    nodes.forEach(node => {
+        const parentId = (node as any).parentId;
+        if (parentId && nodeMap.has(parentId)) {
+            if (!parentMap.has(node.id)) parentMap.set(node.id, parentId);
+            if (!childrenMap.has(parentId)) childrenMap.set(parentId, []);
+            if (!childrenMap.get(parentId)!.includes(node.id)) {
+                childrenMap.get(parentId)!.push(node.id);
+            }
+        }
     });
 
     const rootNodes = nodes.filter(node => 
@@ -63,23 +76,15 @@ async function generateDAG(
     const dagNodes: LearnDAGNode[] = [];
     let nodeIndex = 1;
 
-    const collectAllCards = async (nodeId: string, collectedCards: Array<{ cardId: string; title: string; order: number }>): Promise<void> => {
-        const node = nodeMap.get(nodeId);
-        if (!node) return;
-
-        const cards = await CardModel.getByNodeId(domainId, baseDocId, nodeId);
-        for (const card of cards) {
-            collectedCards.push({
-                cardId: card.docId.toString(),
-                title: card.title || translate('Unnamed Card'),
-                order: (card as any).order || 0,
-            });
-        }
-
-        const childIds = childrenMap.get(nodeId) || [];
-        for (const childId of childIds) {
-            await collectAllCards(childId, collectedCards);
-        }
+    const toCardItem = (card: any) => {
+        const problems = (card as any).problems || [];
+        return {
+            cardId: card.docId.toString(),
+            title: card.title || translate('Unnamed Card'),
+            order: (card as any).order || 0,
+            problemCount: problems.length,
+            problems: problems.map((p: any) => ({ pid: p.pid, stem: p.stem, options: p.options, answer: p.answer })),
+        };
     };
 
     const processNode = async (nodeId: string, parentIds: string[], isFirstLevel: boolean = false) => {
@@ -88,20 +93,9 @@ async function generateDAG(
             return;
         }
 
-        let cardList: Array<{ cardId: string; title: string; order: number }> = [];
-        
-        if (isFirstLevel) {
-            const allCards: Array<{ cardId: string; title: string; order: number }> = [];
-            await collectAllCards(nodeId, allCards);
-            cardList = allCards.sort((a, b) => (a.order || 0) - (b.order || 0));
-        } else {
-            const cards = await CardModel.getByNodeId(domainId, baseDocId, nodeId);
-            cardList = cards.map(card => ({
-                cardId: card.docId.toString(),
-                title: card.title || translate('Unnamed Card'),
-                order: (card as any).order || 0,
-            })).sort((a, b) => (a.order || 0) - (b.order || 0));
-        }
+        // 每个节点只存储该节点自身的卡片，不包含子节点的卡片（避免树形渲染时重复）
+        const cards = await CardModel.getByNodeId(domainId, baseDocId, nodeId);
+        const cardList = cards.map(card => toCardItem(card)).sort((a, b) => (a.order || 0) - (b.order || 0));
 
         const dagNode: LearnDAGNode = {
             _id: nodeId,
@@ -136,11 +130,7 @@ async function generateDAG(
             if (allOtherNodes.length > 0) {
                 for (const otherNode of allOtherNodes) {
                     const cards = await CardModel.getByNodeId(domainId, baseDocId, otherNode.id);
-                    const cardList = cards.map(card => ({
-                        cardId: card.docId.toString(),
-                        title: card.title || translate('Unnamed Card'),
-                        order: (card as any).order || 0,
-                    })).sort((a, b) => (a.order || 0) - (b.order || 0));
+                    const cardList = cards.map(card => toCardItem(card)).sort((a, b) => (a.order || 0) - (b.order || 0));
                     
                     sections.push({
                         _id: otherNode.id,
@@ -154,11 +144,7 @@ async function generateDAG(
                 
                 const rootCards = await CardModel.getByNodeId(domainId, baseDocId, rootNode.id);
                 if (rootCards.length > 0) {
-                    const rootCardList = rootCards.map(card => ({
-                        cardId: card.docId.toString(),
-                        title: card.title || translate('Unnamed Card'),
-                        order: (card as any).order || 0,
-                    })).sort((a, b) => (a.order || 0) - (b.order || 0));
+                    const rootCardList = rootCards.map(card => toCardItem(card)).sort((a, b) => (a.order || 0) - (b.order || 0));
                     
                     sections.push({
                         _id: rootNode.id,
@@ -1200,8 +1186,10 @@ class LearnSectionsHandler extends Handler {
             this.response.template = 'learn_sections.html';
             this.response.body = {
                 sections: [],
+                dag: [],
                 domainId: finalDomainId,
                 baseDocId: base.docId.toString() || null,
+                currentSectionId: null,
             };
             return;
         }
@@ -1215,17 +1203,31 @@ class LearnSectionsHandler extends Handler {
         });
 
         const baseVersion = base.updateAt ? base.updateAt.getTime() : 0;
+        const DAG_SCHEMA_VERSION = 2; // 增量：每个节点只存自身卡片，不聚合子节点
         const needsUpdate = !existingDAG || (existingDAG.version || 0) < baseVersion;
+        const needsSchemaUpdate = existingDAG && ((existingDAG as any).dagSchemaVersion || 0) < DAG_SCHEMA_VERSION;
         
         const hasSectionsWithoutCards = existingDAG && existingDAG.sections && 
             existingDAG.sections.some((s: any) => !s.cards || s.cards.length === 0);
 
-        let sections: LearnDAGNode[] = [];
+        // 检查缓存中的卡片是否缺少 problemCount（旧格式），需要重新生成以包含题目数据
+        const hasCardsWithoutProblemCount = existingDAG && (
+            (existingDAG.sections || []).some((s: any) =>
+                (s.cards || []).some((c: any) => c.problemCount === undefined && c.problems === undefined)
+            ) ||
+            (existingDAG.dag || []).some((n: any) =>
+                (n.cards || []).some((c: any) => c.problemCount === undefined && c.problems === undefined)
+            )
+        );
 
-        if (needsUpdate || !existingDAG || hasSectionsWithoutCards) {
+        let sections: LearnDAGNode[] = [];
+        let dag: LearnDAGNode[] = [];
+
+        if (needsUpdate || !existingDAG || hasSectionsWithoutCards || hasCardsWithoutProblemCount || needsSchemaUpdate) {
             const result = await generateDAG(finalDomainId, base.docId, nodes, edges, (key: string) => this.translate(key));
             sections = result.sections;
-            
+            dag = result.dag;
+
             await learnDAGColl.updateOne(
                 {
                     domainId: finalDomainId,
@@ -1240,6 +1242,7 @@ class LearnSectionsHandler extends Handler {
                         sections: sections,
                         dag: result.dag,
                         version: baseVersion,
+                        dagSchemaVersion: DAG_SCHEMA_VERSION,
                         updateAt: new Date(),
                     },
                 },
@@ -1247,6 +1250,7 @@ class LearnSectionsHandler extends Handler {
             );
         } else {
             sections = existingDAG.sections || [];
+            dag = existingDAG.dag || [];
         }
 
         const dudoc = await domain.getDomainUser(finalDomainId, { _id: this.user._id, priv: this.user.priv });
@@ -1260,6 +1264,7 @@ class LearnSectionsHandler extends Handler {
         this.response.template = 'learn_sections.html';
         this.response.body = {
             sections: sections,
+            dag: dag,
             domainId: finalDomainId,
             baseDocId: base.docId.toString(),
             currentSectionId: currentSectionId,
