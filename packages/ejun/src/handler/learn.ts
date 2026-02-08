@@ -3,12 +3,14 @@ import { Handler, param, post, Types } from '../service/server';
 import { BaseModel, CardModel } from '../model/base';
 import type { BaseDoc, BaseNode, BaseEdge } from '../interface';
 import domain from '../model/domain';
-import { PRIV } from '../model/builtin';
+import user from '../model/user';
+import { PERM, PRIV } from '../model/builtin';
 import { NotFoundError, ValidationError } from '../error';
 import { MethodNotAllowedError } from '@ejunz/framework';
 import { ObjectId } from 'mongodb';
 import db from '../service/db';
 import moment from 'moment-timezone';
+import bus from '../service/bus';
 import { updateDomainRanking } from './domain';
 
 function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edges: BaseEdge[] } {
@@ -29,6 +31,18 @@ function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edge
     }
     
     return { nodes: [], edges: [] };
+}
+
+function applyUserSectionOrder(sections: LearnDAGNode[], learnSectionOrder: string[] | undefined): LearnDAGNode[] {
+    if (!learnSectionOrder || learnSectionOrder.length === 0) return sections;
+    const sectionMap = new Map<string, LearnDAGNode>();
+    sections.forEach(s => sectionMap.set(String(s._id), s));
+    const result: LearnDAGNode[] = [];
+    for (const id of learnSectionOrder) {
+        const s = sectionMap.get(String(id));
+        if (s) result.push({ ...s, order: result.length });
+    }
+    return result;
 }
 
 async function generateDAG(
@@ -360,6 +374,8 @@ class LearnHandler extends Handler {
         const dudoc = await domain.getDomainUser(finalDomainId, { _id: this.user._id, priv: this.user.priv });
         const savedSectionId = (dudoc as any)?.currentLearnSectionId;
         const dailyGoal = (dudoc as any)?.dailyGoal || 0;
+        const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
+        sections = applyUserSectionOrder(sections, learnSectionOrder);
         
         let finalSectionId: string | null = null;
         if (sectionId) {
@@ -735,6 +751,8 @@ class LessonHandler extends Handler {
 
         const dudoc = await domain.getDomainUser(finalDomainId, { _id: this.user._id, priv: this.user.priv });
         const savedSectionId = (dudoc as any)?.currentLearnSectionId;
+        const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
+        sections = applyUserSectionOrder(sections, learnSectionOrder);
         
         let finalSectionId: string | null = null;
         if (savedSectionId && sections.find(s => s._id === savedSectionId)) {
@@ -1143,6 +1161,140 @@ class LessonHandler extends Handler {
     }
 }
 
+class LearnSectionEditHandler extends Handler {
+    async after(domainId: string) {
+        if (this.request.json || !this.response.template) return;
+        
+        const uidParam = this.request.query?.uid;
+        const uid = uidParam ? parseInt(String(uidParam), 10) : this.user._id;
+        this.response.body.overrideNav = [
+            {
+                name: 'homepage',
+                args: {},
+                displayName: this.translate('Home'),
+                checker: () => true,
+            },
+            {
+                name: 'learn',
+                args: {},
+                displayName: this.translate('Learn'),
+                checker: () => true,
+            },
+            {
+                name: 'learn_sections',
+                args: {},
+                displayName: this.translate('Sections'),
+                checker: () => true,
+            },
+            {
+                name: 'learn_section_edit',
+                args: { query: { uid: String(uid) } },
+                displayName: this.translate('Section Order'),
+                checker: () => true,
+            },
+        ];
+    }
+
+    async post(domainId: string) {
+        return this.postSaveOrder(domainId);
+    }
+
+    async resolveTargetUid(domainId: string): Promise<number> {
+        const uidParam = this.request.query?.uid || this.request.body?.uid;
+        let targetUid = uidParam ? parseInt(String(uidParam), 10) : this.user._id;
+        if (Number.isNaN(targetUid)) targetUid = this.user._id;
+        if (targetUid !== this.user._id) {
+            this.checkPerm(PERM.PERM_EDIT_DOMAIN);
+        }
+        const udoc = await user.getById(domainId, targetUid);
+        if (!udoc) throw new NotFoundError('User not found');
+        return targetUid;
+    }
+
+    async postSaveOrder(domainId: string) {
+        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+        const targetUid = await this.resolveTargetUid(finalDomainId);
+        const body: any = this.request?.body || {};
+        const sectionOrder: string[] = Array.isArray(body.sectionOrder) ? body.sectionOrder : [];
+
+        const base = await BaseModel.getByDomain(finalDomainId);
+        if (!base) {
+            throw new NotFoundError('Base not found for this domain');
+        }
+
+        const learnDAGColl = this.ctx.db.db.collection('learn_dag');
+        const existingDAG = await learnDAGColl.findOne({
+            domainId: finalDomainId,
+            baseDocId: base.docId,
+            branch: 'main',
+        });
+
+        if (!existingDAG || !existingDAG.sections || existingDAG.sections.length === 0) {
+            throw new NotFoundError('No sections to reorder');
+        }
+
+        await domain.setUserInDomain(finalDomainId, targetUid, { learnSectionOrder: sectionOrder });
+
+        this.response.body = { success: true, sectionOrder };
+    }
+
+    async get(domainId: string) {
+        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+        const targetUid = await this.resolveTargetUid(finalDomainId);
+        const base = await BaseModel.getByDomain(finalDomainId);
+        
+        if (!base) {
+            this.response.template = 'learn_section_edit.html';
+            this.response.body = {
+                sections: [],
+                allSections: [],
+                dag: [],
+                domainId: finalDomainId,
+                baseDocId: null,
+                targetUid,
+                targetUser: null,
+            };
+            return;
+        }
+
+        const branch = 'main';
+        const learnDAGColl = this.ctx.db.db.collection('learn_dag');
+        const existingDAG = await learnDAGColl.findOne({
+            domainId: finalDomainId,
+            baseDocId: base.docId,
+            branch: branch,
+        });
+
+        const allSections: LearnDAGNode[] = [];
+        const dag: LearnDAGNode[] = [];
+        if (existingDAG) {
+            if (existingDAG.sections && existingDAG.sections.length > 0) {
+                allSections.push(...[...existingDAG.sections].sort((a, b) => (a.order || 0) - (b.order || 0)));
+            }
+            if (existingDAG.dag && existingDAG.dag.length > 0) {
+                dag.push(...[...existingDAG.dag].sort((a, b) => (a.order || 0) - (b.order || 0)));
+            }
+        }
+
+        const dudoc = await domain.getDomainUser(finalDomainId, { _id: targetUid, priv: this.user.priv });
+        const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
+        const sections = applyUserSectionOrder(allSections.length ? [...allSections] : [], learnSectionOrder);
+
+        const udoc = await user.getById(finalDomainId, targetUid);
+
+        this.response.template = 'learn_section_edit.html';
+        this.response.body = {
+            sections,
+            allSections,
+            dag,
+            domainId: finalDomainId,
+            baseDocId: base.docId.toString(),
+            targetUid,
+            targetUser: udoc ? { uname: udoc.uname, _id: udoc._id } : null,
+        };
+    }
+}
+
 class LearnSectionsHandler extends Handler {
     async after(domainId: string) {
         if (this.request.json || !this.response.template) return;
@@ -1155,9 +1307,21 @@ class LearnSectionsHandler extends Handler {
                 checker: () => true,
             },
             {
+                name: 'learn',
+                args: {},
+                displayName: this.translate('Learn'),
+                checker: () => true,
+            },
+            {
                 name: 'learn_sections',
                 args: {},
                 displayName: this.translate('Sections'),
+                checker: () => true,
+            },
+            {
+                name: 'learn_section_edit',
+                args: {},
+                displayName: this.translate('Section Order'),
                 checker: () => true,
             },
         ];
@@ -1255,6 +1419,8 @@ class LearnSectionsHandler extends Handler {
 
         const dudoc = await domain.getDomainUser(finalDomainId, { _id: this.user._id, priv: this.user.priv });
         const currentSectionId = (dudoc as any)?.currentLearnSectionId || null;
+        const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
+        sections = applyUserSectionOrder(sections, learnSectionOrder);
 
         sections = sections.map(section => ({
             ...section,
@@ -1276,6 +1442,7 @@ export async function apply(ctx: Context) {
     ctx.Route('learn', '/learn', LearnHandler);
     ctx.Route('learn_set_daily_goal', '/learn/daily-goal', LearnHandler);
     ctx.Route('learn_sections', '/learn/sections', LearnSectionsHandler);
+    ctx.Route('learn_section_edit', '/learn/section/edit', LearnSectionEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_edit', '/learn/edit', LearnEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_lesson', '/learn/lesson', LessonHandler);
     ctx.Route('learn_lesson_pass', '/learn/lesson/pass', LessonHandler);
