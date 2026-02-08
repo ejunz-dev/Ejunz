@@ -47,6 +47,46 @@ function applyUserSectionOrder(sections: LearnDAGNode[], learnSectionOrder: stri
     return result;
 }
 
+function getSectionProgress(
+    sections: LearnDAGNode[],
+    allDagNodes: LearnDAGNode[],
+    passedCardIds: Set<string>
+): { pending: Array<{ _id: string; title: string; passed: number; total: number }>; completed: Array<{ _id: string; title: string; passed: number; total: number }> } {
+    const nodeMap = new Map<string, LearnDAGNode>();
+    sections.forEach(s => nodeMap.set(String(s._id), s));
+    allDagNodes.forEach(n => nodeMap.set(String(n._id), n));
+
+    const collectCards = (nodeId: string, collected: Set<string>): Array<{ cardId: string }> => {
+        if (collected.has(nodeId)) return [];
+        collected.add(nodeId);
+        const node = nodeMap.get(nodeId);
+        if (!node) return [];
+        const cards = (node.cards || []).map((c: any) => ({ cardId: c.cardId }));
+        const children = allDagNodes.filter((n: any) => n.requireNids?.length > 0 && n.requireNids[n.requireNids.length - 1] === nodeId);
+        for (const child of children) {
+            cards.push(...collectCards(child._id, collected));
+        }
+        return cards;
+    };
+
+    const pending: Array<{ _id: string; title: string; passed: number; total: number }> = [];
+    const completed: Array<{ _id: string; title: string; passed: number; total: number }> = [];
+
+    for (const section of sections) {
+        const cards = collectCards(section._id, new Set());
+        const total = cards.length;
+        const passed = cards.filter((c: any) => passedCardIds.has(String(c.cardId))).length;
+        const item = { _id: section._id, title: section.title || 'Unnamed', passed, total };
+        if (total > 0 && passed >= total) {
+            completed.push(item);
+        } else {
+            pending.push(item);
+        }
+    }
+
+    return { pending, completed };
+}
+
 async function generateDAG(
     domainId: string,
     baseDocId: ObjectId,
@@ -321,6 +361,8 @@ class LearnHandler extends Handler {
                 sections: [],
                 domainId: finalDomainId,
                 baseDocId: base.docId.toString() || null,
+                pendingSections: [],
+                completedSections: [],
             };
             return;
         }
@@ -476,6 +518,8 @@ class LearnHandler extends Handler {
         const passedCardsCount = passedCardIds.size;
         const currentProgress = totalCards > 0 ? passedCardsCount : 0;
 
+        const { pending: pendingSections, completed: completedSections } = getSectionProgress(sections, allDagNodes, passedCardIds);
+
         const learnResultColl = this.ctx.db.db.collection('learn_result');
         const allResults = await learnResultColl.find({
             domainId: finalDomainId,
@@ -483,12 +527,20 @@ class LearnHandler extends Handler {
         }).toArray();
 
         const practiceDates = new Set<string>();
+        const todayStart = moment.utc().startOf('day').toDate();
+        const todayEnd = moment.utc().add(1, 'day').startOf('day').toDate();
+        let todayCompletedCount = 0;
         for (const result of allResults) {
             if (result.createdAt) {
                 const date = moment.utc(result.createdAt).format('YYYY-MM-DD');
                 practiceDates.add(date);
+                if (result.createdAt >= todayStart && result.createdAt < todayEnd) {
+                    todayCompletedCount++;
+                }
             }
         }
+
+        const totalCheckinDays = practiceDates.size;
 
         let consecutiveDays = 0;
         const today = moment.utc();
@@ -553,8 +605,12 @@ class LearnHandler extends Handler {
             baseDocId: base.docId.toString(),
             currentProgress,
             totalCards,
+            totalCheckinDays,
             consecutiveDays,
             dailyGoal,
+            todayCompletedCount,
+            pendingSections,
+            completedSections,
             nextCard,
         };
     }
