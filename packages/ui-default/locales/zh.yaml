@@ -148,6 +148,7 @@ __langname: 简体中文
 'Input Parameters': 输入参数
 'Input Schema': 输入模式
 'Join {0}': '加入 {0}'
+'Join Domain': 加入域
 'Jump to {0}': 跳至 {0}
 'Language Type': 语言类型
 'Last check-in': 上次打卡
@@ -205,6 +206,8 @@ __langname: 简体中文
 'Please create a base with at least one section.': 请创建至少包含一个章节的知识库。
 'Please create a base with course structure (course -> section -> unit -> lesson)': 请创建包含课程结构的知识库（课程 -> 阶段 -> 单元 -> 课程）
 'Please generate token on': 请在
+'Please join the domain to view': 请加入该域以显示
+'Please login to view': 请登录以显示
 'Please select a conversation from the left sidebar to view chat details': 请从左侧边栏选择一个对话以查看聊天详情
 'Please select': 请选择
 'Practice Alone': 单独练习
