@@ -1251,7 +1251,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       if (pendingRenames.has(file.id)) return true;
       
       // 检查problem修改（仅针对card）
-      if (file.type === 'card' && file.cardId && pendingProblemCardIds.has(file.cardId)) return true;
+      if (file.type === 'card' && file.cardId && pendingProblemCardIds.has(String(file.cardId))) return true;
       
       // 检查新建（临时 ID）
       // 对于 node，id 直接是 temp-node-...
@@ -1731,9 +1731,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
           // 标记该卡片的题目有待提交（仅针对已有 cardId，临时卡片由创建时一起提交）
           if (!String(selectedFile.cardId || '').startsWith('temp-card-')) {
+            const cardIdStr = String(selectedFile.cardId || '');
             setPendingProblemCardIds(prev => {
               const next = new Set(prev);
-              next.add(String(selectedFile.cardId));
+              next.add(cardIdStr);
+              return next;
+            });
+            // 同时添加到 pendingNewProblemCardIds，使待保存列表能正确显示
+            setPendingNewProblemCardIds(prev => {
+              const next = new Set(prev);
+              next.add(cardIdStr);
               return next;
             });
           }
@@ -1752,7 +1759,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } finally {
       setIsSavingProblem(false);
     }
-  }, [selectedFile, problemStem, problemOptions, problemAnswer, problemAnalysis, setPendingProblemCardIds, setPendingNewProblemCardIds]);
+  }, [selectedFile, problemStem, problemOptions, problemAnswer, problemAnalysis]);
 
 
   const handleSaveAll = useCallback(async () => {
@@ -7166,6 +7173,7 @@ ${currentCardContext}
                  pendingRenames.size === 0 && 
                  pendingCreatesCount === 0 && 
                  pendingDeletes.size === 0 &&
+                 pendingProblemCardIds.size === 0 &&
                  pendingNewProblemCardIds.size === 0 &&
                  pendingEditedProblemIds.size === 0 &&
                  pendingDeleteProblemIds.size === 0 && (

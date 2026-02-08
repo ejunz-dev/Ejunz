@@ -48,6 +48,7 @@ __langname: English
 'Clear Agent': Clear Agent
 'Clear Logs': Clear Logs
 'Click the "Create Client" button above to create a new client': Click the "Create Client" button above to create a new client
+'Click to expand questions': Click to expand questions
 'Client Connection Logs': Client Connection Logs
 'Client ID': Client ID
 'Client Information': Client Information
@@ -172,6 +173,7 @@ __langname: English
 'No MCP tools yet. When MCP server connects and registers, they will appear here.': No MCP tools yet. When MCP server connects and registers, they will appear here.
 'No messages in this conversation': No messages in this conversation
 'No nodes available.': No nodes available.
+'No question details available': No question details available
 'No recent cards.': No recent cards.
 'No recent nodes.': No recent nodes.
 'No recording available': No recording available
@@ -223,6 +225,7 @@ __langname: English
 'Saving': Saving
 'Sections': Sections
 'Select a conversation to view details': Select a conversation to view details
+'Select a section from the sidebar': Select a section from the sidebar
 'Select Agent': Select Agent
 'Select the branch to use for learning': Select the branch to use for learning
 'Select the type of access point to generate a token': Select the type of access point to generate a token
@@ -267,6 +270,7 @@ __langname: English
 'Unknown error': Unknown error
 'Unnamed Course': Unnamed Course
 'Unnamed Lesson': Unnamed Lesson
+'Unnamed question': Unnamed question
 'Unnamed Section': Unnamed Section
 'Unnamed Unit': Unnamed Unit
 'Up to date with remote': Up to date with remote

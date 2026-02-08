@@ -60,6 +60,7 @@ __langname: 简体中文
 'Clear Agent': 清除 Agent
 'Clear Logs': 清空日志
 'Click the "Create Client" button above to create a new client': 点击上方"创建客户端"按钮来创建新的客户端
+'Click to expand questions': 点击展开题目
 'Client Connection Logs': 客户端连接日志
 'Client ID': 客户端 ID
 'Client Information': 客户端信息
@@ -185,6 +186,7 @@ __langname: 简体中文
 'No MCP tools yet. When MCP server connects and registers, they will appear here.': 暂无注册的 MCP 工具。当 MCP 服务器连接并注册工具后，它们将显示在这里。
 'No messages in this conversation': 此对话中暂无消息
 'No nodes available.': 暂无可用节点。
+'No question details available': 暂无题目详情
 'No recent cards.': 暂无最近更新的卡片
 'No recent nodes.': 暂无最近更新的节点
 'No recording available': 无录音可用
@@ -240,6 +242,7 @@ __langname: 简体中文
 'Saving': 保存中
 'Sections': 章节
 'Select a conversation to view details': 选择对话以查看详情
+'Select a section from the sidebar': 请从左侧选择章节
 'Select Agent': 选择 Agent
 'Select the branch to use for learning': 选择用于学习的分支
 'Select the type of access point to generate a token': 选择接入点类型以生成 token
@@ -285,6 +288,7 @@ __langname: 简体中文
 'Unknown error': 未知错误
 'Unnamed Course': 未命名课程
 'Unnamed Lesson': 未命名课程
+'Unnamed question': 未命名题目
 'Unnamed Section': 未命名阶段
 'Unnamed Unit': 未命名单元
 'Up to date with remote': 与远程同步
