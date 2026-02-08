@@ -1,6 +1,7 @@
 
 __id: zh
 __langname: 简体中文
+' Click "Set as start" to set where learning begins from.': 点击「设为学习起点」可设置学习起点。
 ' for use by Agent etc.': 供 Agent 等使用。
 '-- Please Select Agent --': -- 请选择 Agent --
 '"{data}" copied to clipboard!': “{data}”已复制到剪贴板！
@@ -135,6 +136,7 @@ __langname: 简体中文
 'Failed to save Agent configuration: {0}': '保存 Agent 配置失败: {0}'
 'Failed to save ASR configuration: {0}': '保存 ASR 配置失败: {0}'
 'Failed to save TTS configuration: {0}': '保存 TTS 配置失败: {0}'
+'Failed to set learning point': 设置学习点失败
 'Failed to update Skill branch': 更新 Skill 分支失败
 'File Mode': 文件模式
 'Final message will be': 最终消息将是
@@ -161,6 +163,8 @@ __langname: 简体中文
 'Last Connected': 最后连接
 'Last Disconnected Time': 最后断开时间
 'Learn Settings': 学习设置
+'Learning point set': 学习点已设置
+'Learning start': 学习起点
 'Lesson Passed': 课程通过
 'Local branch not found': 本地分支未找到
 'Local Branch': 本地分支
@@ -256,6 +260,7 @@ __langname: 简体中文
 'Server ID': 服务器 ID
 'Server Information': 服务器信息
 'Server': 服务器
+'Set as start': 设为学习起点
 'Show Answer': 显示答案
 'Skill branch': Skill 分支
 'Source': 来源
