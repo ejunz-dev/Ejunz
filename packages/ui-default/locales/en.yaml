@@ -134,6 +134,7 @@ __langname: English
 'Incorrect': Incorrect
 'Input Parameters': Input Parameters
 'Input Schema': Input Schema
+'Join Domain': Join Domain
 'Jump to {0}': Jump to {0}
 'Language Type': Language Type
 'Language': Language
@@ -189,6 +190,8 @@ __langname: English
 'Please create a base with at least one section.': Please create a base with at least one section.
 'Please create a base with course structure (course -> section -> unit -> lesson)': Please create a base with course structure (course -> section -> unit -> lesson)
 'Please generate token on': Please generate token on
+'Please join the domain to view': Please join the domain to view
+'Please login to view': Please login to view
 'Please select a conversation from the left sidebar to view chat details': Please select a conversation from the left sidebar to view chat details
 'Please select': Please select
 'Practice Alone': Practice Alone

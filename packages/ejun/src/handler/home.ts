@@ -118,7 +118,13 @@ export class HomeHandler extends Handler {
     }
 
     async getCheckin(domainId: string) {
-        if (this.user._id === 0) return null;
+        if (this.user._id === 0) {
+            return { needLogin: true, domainId };
+        }
+        const rawDudoc = await this.ctx.db.db.collection('domain.user').findOne({ domainId, uid: this.user._id });
+        if ((!rawDudoc || !rawDudoc.join) && !(this.user.priv & PRIV.PRIV_VIEW_ALL_DOMAIN)) {
+            return { needJoinDomain: true, domainId };
+        }
         const learnResultColl = this.ctx.db.db.collection('learn_result');
         const today = moment.utc().format('YYYY-MM-DD');
         const startOfToday = moment.utc(today).startOf('day').toDate();
