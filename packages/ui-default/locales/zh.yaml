@@ -23,6 +23,7 @@ __langname: 简体中文
 'Accuracy': 正确率
 'Add failed.': 添加失败
 'Add Root Doc': 添加根文档
+'Add to top of order': 添加到顺序顶部
 'Added to tool list.': 已添加到工具列表
 'Added': 已添加
 'Adding...': 添加中...
@@ -59,6 +60,8 @@ __langname: 简体中文
 'Check-in remaining': 今日还需
 'Clear Agent': 清除 Agent
 'Clear Logs': 清空日志
+'Click a section on the left to add to the top of the order.': 点击左侧章节的加号添加到顺序列表顶部。
+'Click a section to add it to the top of the order list.': 点击章节右侧的加号可将其添加至顺序列表顶部。
 'Click the "Create Client" button above to create a new client': 点击上方"创建客户端"按钮来创建新的客户端
 'Click to expand questions': 点击展开题目
 'Client Connection Logs': 客户端连接日志
@@ -147,6 +150,7 @@ __langname: 简体中文
 'Incorrect': 错误
 'Input Parameters': 输入参数
 'Input Schema': 输入模式
+'Insert here': 插入此处
 'Join {0}': '加入 {0}'
 'Join Domain': 加入域
 'Jump to {0}': 跳至 {0}

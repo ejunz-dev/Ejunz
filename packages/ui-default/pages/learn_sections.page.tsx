@@ -424,8 +424,21 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId }: LearnS
           padding: '12px 0',
         }}
       >
-        <div style={{ padding: '0 16px 12px', fontSize: '12px', fontWeight: '600', color: themeStyles.textSecondary, textTransform: 'uppercase' }}>
-          {i18n('Sections')}
+        <div style={{ padding: '0 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+          <span style={{ fontSize: '12px', fontWeight: '600', color: themeStyles.textSecondary, textTransform: 'uppercase' }}>
+            {i18n('Sections')}
+          </span>
+          <a
+            href={`/d/${domainId}/learn/section/edit?uid=${(window as any).UserContext?._id ?? ''}`}
+            style={{
+              fontSize: '12px',
+              color: themeStyles.accent,
+              textDecoration: 'none',
+            }}
+            title={i18n('Section Order')}
+          >
+            {i18n('Section Order')}
+          </a>
         </div>
         {sections.map((section) => {
           const isSelected = selectedSectionId === section._id;
