@@ -325,6 +325,20 @@ function LearnPage() {
         >
           {i18n('Start Learning')}
         </button>
+
+        <a
+          href={`/d/${domainId}/learn/section/edit?uid=${(window as any).UserContext?._id ?? ''}`}
+          style={{
+            display: 'block',
+            textAlign: 'center',
+            marginTop: '16px',
+            fontSize: '14px',
+            color: themeStyles.accent,
+            textDecoration: 'none',
+          }}
+        >
+          {i18n('Section Order')}
+        </a>
       </div>
     </div>
   );
