@@ -34,7 +34,9 @@ function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edge
 }
 
 function applyUserSectionOrder(sections: LearnDAGNode[], learnSectionOrder: string[] | undefined): LearnDAGNode[] {
-    if (!learnSectionOrder || learnSectionOrder.length === 0) return sections;
+    if (!learnSectionOrder || learnSectionOrder.length === 0) {
+        return [...sections].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    }
     const sectionMap = new Map<string, LearnDAGNode>();
     sections.forEach(s => sectionMap.set(String(s._id), s));
     const result: LearnDAGNode[] = [];
@@ -372,20 +374,31 @@ class LearnHandler extends Handler {
         }
 
         const dudoc = await domain.getDomainUser(finalDomainId, { _id: this.user._id, priv: this.user.priv });
+        const savedSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
         const savedSectionId = (dudoc as any)?.currentLearnSectionId;
         const dailyGoal = (dudoc as any)?.dailyGoal || 0;
         const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
         sections = applyUserSectionOrder(sections, learnSectionOrder);
         
         let finalSectionId: string | null = null;
+        let currentSectionIndex: number = 0;
         if (sectionId) {
+            const idx = sections.findIndex(s => s._id === sectionId);
             finalSectionId = sectionId;
-            await domain.setUserInDomain(finalDomainId, this.user._id, { currentLearnSectionId: sectionId });
+            currentSectionIndex = idx >= 0 ? idx : 0;
+            await domain.setUserInDomain(finalDomainId, this.user._id, { currentLearnSectionId: sectionId, currentLearnSectionIndex: currentSectionIndex });
+        } else if (typeof savedSectionIndex === 'number' && savedSectionIndex >= 0 && savedSectionIndex < sections.length) {
+            finalSectionId = sections[savedSectionIndex]._id;
+            currentSectionIndex = savedSectionIndex;
         } else if (savedSectionId && sections.find(s => s._id === savedSectionId)) {
+            const idx = sections.findIndex(s => s._id === savedSectionId);
             finalSectionId = savedSectionId;
+            currentSectionIndex = idx >= 0 ? idx : 0;
+            await domain.setUserInDomain(finalDomainId, this.user._id, { currentLearnSectionIndex: currentSectionIndex });
         } else if (sections.length > 0) {
             finalSectionId = sections[0]._id;
-            await domain.setUserInDomain(finalDomainId, this.user._id, { currentLearnSectionId: finalSectionId });
+            currentSectionIndex = 0;
+            await domain.setUserInDomain(finalDomainId, this.user._id, { currentLearnSectionId: finalSectionId, currentLearnSectionIndex: 0 });
         }
 
         let dag: LearnDAGNode[] = [];
@@ -521,6 +534,14 @@ class LearnHandler extends Handler {
                 nextCard = { nodeId: flatCards[i].nodeId, cardId: flatCards[i].cardId };
                 break;
             }
+        }
+
+        if (!nextCard && sections.length > 0 && currentSectionIndex + 1 < sections.length) {
+            const nextIndex = currentSectionIndex + 1;
+            const nextSectionId = sections[nextIndex]._id;
+            await domain.setUserInDomain(finalDomainId, this.user._id, { currentLearnSectionIndex: nextIndex, currentLearnSectionId: nextSectionId });
+            this.response.redirect = this.url('learn', { domainId: finalDomainId });
+            return;
         }
 
         this.response.template = 'learn.html';
@@ -750,16 +771,25 @@ class LessonHandler extends Handler {
         }
 
         const dudoc = await domain.getDomainUser(finalDomainId, { _id: this.user._id, priv: this.user.priv });
+        const savedSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
         const savedSectionId = (dudoc as any)?.currentLearnSectionId;
         const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
         sections = applyUserSectionOrder(sections, learnSectionOrder);
         
         let finalSectionId: string | null = null;
-        if (savedSectionId && sections.find(s => s._id === savedSectionId)) {
+        let currentSectionIndex = 0;
+        if (typeof savedSectionIndex === 'number' && savedSectionIndex >= 0 && savedSectionIndex < sections.length) {
+            finalSectionId = sections[savedSectionIndex]._id;
+            currentSectionIndex = savedSectionIndex;
+        } else if (savedSectionId && sections.find(s => s._id === savedSectionId)) {
+            const idx = sections.findIndex(s => s._id === savedSectionId);
             finalSectionId = savedSectionId;
+            currentSectionIndex = idx >= 0 ? idx : 0;
+            await domain.setUserInDomain(finalDomainId, this.user._id, { currentLearnSectionIndex: currentSectionIndex });
         } else if (sections.length > 0) {
             finalSectionId = sections[0]._id;
-            await domain.setUserInDomain(finalDomainId, this.user._id, { currentLearnSectionId: finalSectionId });
+            currentSectionIndex = 0;
+            await domain.setUserInDomain(finalDomainId, this.user._id, { currentLearnSectionId: finalSectionId, currentLearnSectionIndex: 0 });
         }
 
         let dag: LearnDAGNode[] = [];
@@ -820,7 +850,15 @@ class LessonHandler extends Handler {
         }
 
         if (!nextCard) {
-            throw new NotFoundError('No available card to practice');
+            if (sections.length > 0 && currentSectionIndex + 1 < sections.length) {
+                const nextIndex = currentSectionIndex + 1;
+                const nextSectionId = sections[nextIndex]._id;
+                await domain.setUserInDomain(finalDomainId, this.user._id, { currentLearnSectionIndex: nextIndex, currentLearnSectionId: nextSectionId });
+                this.response.redirect = this.url('learn', { domainId: finalDomainId });
+                return;
+            }
+            this.response.redirect = this.url('learn', { domainId: finalDomainId });
+            return;
         }
 
         const card = await CardModel.get(finalDomainId, new ObjectId(nextCard.cardId));
@@ -1216,6 +1254,7 @@ class LearnSectionEditHandler extends Handler {
         const targetUid = await this.resolveTargetUid(finalDomainId);
         const body: any = this.request?.body || {};
         const sectionOrder: string[] = Array.isArray(body.sectionOrder) ? body.sectionOrder : [];
+        const currentLearnSectionIndex = body.currentLearnSectionIndex;
 
         const base = await BaseModel.getByDomain(finalDomainId);
         if (!base) {
@@ -1233,9 +1272,14 @@ class LearnSectionEditHandler extends Handler {
             throw new NotFoundError('No sections to reorder');
         }
 
-        await domain.setUserInDomain(finalDomainId, targetUid, { learnSectionOrder: sectionOrder });
+        const update: Record<string, unknown> = { learnSectionOrder: sectionOrder };
+        if (typeof currentLearnSectionIndex === 'number' && currentLearnSectionIndex >= 0 && currentLearnSectionIndex < sectionOrder.length) {
+            update.currentLearnSectionIndex = currentLearnSectionIndex;
+            update.currentLearnSectionId = sectionOrder[currentLearnSectionIndex];
+        }
+        await domain.setUserInDomain(finalDomainId, targetUid, update);
 
-        this.response.body = { success: true, sectionOrder };
+        this.response.body = { success: true, sectionOrder, currentLearnSectionIndex: (update as any).currentLearnSectionIndex };
     }
 
     async get(domainId: string) {
@@ -1279,6 +1323,8 @@ class LearnSectionEditHandler extends Handler {
         const dudoc = await domain.getDomainUser(finalDomainId, { _id: targetUid, priv: this.user.priv });
         const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
         const sections = applyUserSectionOrder(allSections.length ? [...allSections] : [], learnSectionOrder);
+        const currentLearnSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
+        const currentLearnSectionId = (dudoc as any)?.currentLearnSectionId;
 
         const udoc = await user.getById(finalDomainId, targetUid);
 
@@ -1291,6 +1337,8 @@ class LearnSectionEditHandler extends Handler {
             baseDocId: base.docId.toString(),
             targetUid,
             targetUser: udoc ? { uname: udoc.uname, _id: udoc._id } : null,
+            currentLearnSectionIndex: typeof currentLearnSectionIndex === 'number' ? currentLearnSectionIndex : null,
+            currentLearnSectionId: currentLearnSectionId || null,
         };
     }
 }
@@ -1354,6 +1402,7 @@ class LearnSectionsHandler extends Handler {
                 domainId: finalDomainId,
                 baseDocId: base.docId.toString() || null,
                 currentSectionId: null,
+                currentLearnSectionIndex: null,
             };
             return;
         }
@@ -1418,6 +1467,7 @@ class LearnSectionsHandler extends Handler {
         }
 
         const dudoc = await domain.getDomainUser(finalDomainId, { _id: this.user._id, priv: this.user.priv });
+        const currentLearnSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
         const currentSectionId = (dudoc as any)?.currentLearnSectionId || null;
         const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
         sections = applyUserSectionOrder(sections, learnSectionOrder);
@@ -1434,6 +1484,7 @@ class LearnSectionsHandler extends Handler {
             domainId: finalDomainId,
             baseDocId: base.docId.toString(),
             currentSectionId: currentSectionId,
+            currentLearnSectionIndex: typeof currentLearnSectionIndex === 'number' && currentLearnSectionIndex >= 0 && currentLearnSectionIndex < sections.length ? currentLearnSectionIndex : null,
         };
     }
 }

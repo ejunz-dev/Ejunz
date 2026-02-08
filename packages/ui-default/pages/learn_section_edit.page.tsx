@@ -36,6 +36,8 @@ interface LearnSectionEditProps {
   domainId: string;
   targetUid: number;
   targetUser: { uname: string; _id: number } | null;
+  currentLearnSectionIndex?: number | null;
+  currentLearnSectionId?: string | null;
 }
 
 function getTheme(): 'light' | 'dark' {
@@ -52,23 +54,33 @@ function getTheme(): 'light' | 'dark' {
   return 'light';
 }
 
-function LearnSectionEdit({ sections: initialSections, allSections: allSectionsProp = [], dag: dagProp = [], domainId, targetUid, targetUser }: LearnSectionEditProps) {
+function LearnSectionEdit({ sections: initialSections, allSections: allSectionsProp = [], dag: dagProp = [], domainId, targetUid, targetUser, currentLearnSectionIndex: initialLearnIndex = null, currentLearnSectionId: initialLearnId = null }: LearnSectionEditProps) {
   const [sections, setSections] = useState<LearnDAGNode[]>(initialSections || []);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(getTheme);
   const [sidebarExpanded, setSidebarExpanded] = useState<Set<string>>(() => new Set());
+  const [currentLearnSectionIndex, setCurrentLearnSectionIndex] = useState<number | null>(initialLearnIndex ?? null);
   const draggedIndexRef = useRef<number | null>(null);
 
   const allSections = allSectionsProp || [];
   const dag = dagProp || [];
 
   useEffect(() => {
-    if (initialSections && initialSections.length > 0) {
-      setSections([...initialSections].sort((a, b) => (a.order || 0) - (b.order || 0)));
+    if (typeof initialLearnIndex === 'number') setCurrentLearnSectionIndex(initialLearnIndex);
+    else if (initialLearnId && initialSections?.length) {
+      const idx = initialSections.findIndex(s => String(s._id) === String(initialLearnId));
+      if (idx >= 0) setCurrentLearnSectionIndex(idx);
     }
-  }, []); // 仅挂载时同步，避免覆盖用户添加的项
+  }, [initialLearnIndex, initialLearnId, initialSections]);
+
+  useEffect(() => {
+    if (initialSections && initialSections.length > 0) {
+      const sorted = [...initialSections].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      setSections([...sorted].reverse());
+    }
+  }, []); // 仅挂载时同步，与 column-reverse 显示一致：顶部=第一个学习
 
   useEffect(() => {
     const checkTheme = () => {
@@ -95,11 +107,11 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
   }), [theme]);
 
   const [savedSectionIds, setSavedSectionIds] = useState<string[]>(() =>
-    (initialSections || []).map(s => s._id)
+    (initialSections || []).map(s => String(s._id))
   );
 
   const hasUnsavedChanges = useMemo(() => {
-    const current = sections.map(s => String(s._id));
+    const current = [...sections].reverse().map(s => String(s._id));
     if (current.length !== savedSectionIds.length) return true;
     for (let i = 0; i < current.length; i++) {
       if (current[i] !== savedSectionIds[i]) return true;
@@ -108,20 +120,21 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
   }, [sections, savedSectionIds]);
 
   const pendingChanges = useMemo(() => {
-    const currentIds = new Set(sections.map(s => String(s._id)));
-    const savedSet = new Set(savedSectionIds);
+    const currentOrder = [...sections].reverse().map(s => String(s._id));
+    const currentIds = new Set(currentOrder);
     const countMap: Record<string, number> = {};
     savedSectionIds.forEach(id => { countMap[id] = (countMap[id] || 0) + 1; });
     const addedIndices = new Set<number>();
     const added: LearnDAGNode[] = [];
-    sections.forEach((s, i) => {
-      const id = String(s._id);
+    currentOrder.forEach((id, i) => {
       const saved = countMap[id] || 0;
       if (saved > 0) {
         countMap[id]--;
       } else {
-        addedIndices.add(i);
-        added.push(s);
+        const sectionIndex = sections.length - 1 - i;
+        addedIndices.add(sectionIndex);
+        const section = sections.find(s => String(s._id) === id);
+        if (section) added.push(section);
       }
     });
     const removed = savedSectionIds.filter(id => !currentIds.has(id)).map(id => {
@@ -129,7 +142,7 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
       return n;
     });
     const reordered = added.length === 0 && removed.length === 0 && sections.length > 0 &&
-      (sections.map(s => String(s._id)).join(',') !== savedSectionIds.join(','));
+      (currentOrder.join(',') !== savedSectionIds.join(','));
     return { added, removed, reordered, addedIndices };
   }, [sections, savedSectionIds, allSections]);
 
@@ -209,6 +222,9 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
     setIsSaving(true);
     try {
       const body: Record<string, unknown> = { sectionOrder: sections.map(s => String(s._id)) };
+      if (typeof currentLearnSectionIndex === 'number') {
+        body.currentLearnSectionIndex = currentLearnSectionIndex;
+      }
       if (targetUid && targetUid !== (window as any).UserContext?._id) {
         body.uid = targetUid;
       }
@@ -220,7 +236,31 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
     } finally {
       setIsSaving(false);
     }
-  }, [domainId, sections]);
+  }, [domainId, sections, currentLearnSectionIndex]);
+
+  const handleSetLearningPoint = useCallback(async (index: number) => {
+    if (index < 0 || index >= sections.length) return;
+    setIsSaving(true);
+    try {
+      const sectionOrder = [...sections].reverse().map(s => String(s._id));
+      const learnSectionIndex = sections.length - 1 - index;
+      const body: Record<string, unknown> = {
+        sectionOrder,
+        currentLearnSectionIndex: learnSectionIndex,
+      };
+      if (targetUid && targetUid !== (window as any).UserContext?._id) {
+        body.uid = targetUid;
+      }
+      await request.post(`/d/${domainId}/learn/section/edit`, body);
+      setCurrentLearnSectionIndex(learnSectionIndex);
+      setSavedSectionIds(sectionOrder);
+      UiNotification.success(i18n('Learning point set') || '学习点已设置');
+    } catch (err: any) {
+      UiNotification.error(err?.message || i18n('Failed to set learning point') || '设置学习点失败');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [domainId, sections, targetUid]);
 
   if (allSections.length === 0) {
     return (
@@ -459,6 +499,7 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
               color: themeStyles.textSecondary,
             }}>
               {i18n('Drag to reorder sections. The order affects this user\'s learning sequence.')}
+              {i18n(' Click "Set as start" to set where learning begins from.')}
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -611,8 +652,23 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
                 fontSize: '15px',
                 fontWeight: 500,
                 color: themeStyles.textPrimary,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
               }}>
                 {section.title || i18n('Unnamed Section')}
+                {currentLearnSectionIndex === sections.length - 1 - index && (
+                  <span style={{
+                    fontSize: '11px',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    backgroundColor: themeStyles.accent + '30',
+                    color: themeStyles.accent,
+                    fontWeight: 600,
+                  }}>
+                    {i18n('Learning start')}
+                  </span>
+                )}
               </div>
               {(section.cards?.length ?? 0) > 0 && (
                 <div style={{
@@ -625,6 +681,27 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
               )}
             </div>
             <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleSetLearningPoint(index); }}
+                disabled={isSaving || currentLearnSectionIndex === index}
+                title={i18n('Set as start')}
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: `1px solid ${themeStyles.border}`,
+                  borderRadius: '4px',
+                  backgroundColor: currentLearnSectionIndex === sections.length - 1 - index ? themeStyles.accent + '30' : themeStyles.bgPrimary,
+                  color: currentLearnSectionIndex === sections.length - 1 - index ? themeStyles.accent : themeStyles.textSecondary,
+                  cursor: isSaving || currentLearnSectionIndex === sections.length - 1 - index ? 'not-allowed' : 'pointer',
+                  fontSize: '14px',
+                }}
+              >
+                ▶
+              </button>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); removeSection(index); }}
@@ -688,6 +765,8 @@ const page = new NamedPage('learnSectionEditPage', async () => {
     const domainId = (window as any).UiContext?.domainId || 'system';
     const targetUid = (window as any).UiContext?.targetUid ?? (window as any).UserContext?._id;
     const targetUser = (window as any).UiContext?.targetUser || null;
+    const currentLearnSectionIndex = (window as any).UiContext?.currentLearnSectionIndex ?? null;
+    const currentLearnSectionId = (window as any).UiContext?.currentLearnSectionId ?? null;
 
     ReactDOM.render(
       <LearnSectionEdit
@@ -697,6 +776,8 @@ const page = new NamedPage('learnSectionEditPage', async () => {
         domainId={domainId}
         targetUid={targetUid}
         targetUser={targetUser}
+        currentLearnSectionIndex={currentLearnSectionIndex}
+        currentLearnSectionId={currentLearnSectionId}
       />,
       container
     );
