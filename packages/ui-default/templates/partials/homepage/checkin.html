@@ -1,22 +1,30 @@
 {% set checkin = payload %}
-{% if checkin and checkin.days is defined %}
+{% if checkin %}
   <div class="section page--checkin">
     <div class="section__header">
       <h1 class="section__title">{{ _('Check-in Days') }}</h1>
     </div>
     <div class="section__body typo no-media">
-      <p>{{ checkin.days }} {{ _('days') }}</p>
-      {% if checkin.lastCheckinDaysAgo is not none %}
-        <p>{{ _('Last check-in') }}: {% if checkin.lastCheckinDaysAgo == 0 %}{{ _('Today') }}{% else %}{{ _('{0} days ago').format(checkin.lastCheckinDaysAgo) }}{% endif %}</p>
-      {% endif %}
-      {% if checkin.maxConsecutiveDays > 0 %}
-        <p>{{ _('Max consecutive') }}: {{ checkin.maxConsecutiveDays }} {{ _('days') }}</p>
-      {% endif %}
-      {% if not checkin.completedToday %}
-        <p>{{ _('Check-in remaining') }}: {{ checkin.nodesRemaining }} {{ _('nodes') }}, {{ checkin.cardsRemaining }} {{ _('cards') }}</p>
-        <p><a href="{{ checkin.learnUrl }}" class="button primary">{{ _('Start Learning') }}</a></p>
-      {% else %}
-        <p>{{ _('Completed today') }}</p>
+      {% if checkin.needLogin %}
+        <p class="text-gray">{{ _('Please login to view') }}</p>
+        <p><a href="{{ url('user_login') }}" class="button primary">{{ _('Login') }}</a></p>
+      {% elif checkin.needJoinDomain %}
+        <p class="text-gray">{{ _('Please join the domain to view') }}</p>
+        <p><a href="{{ url('domain_join', domainId=checkin.domainId) }}" class="button primary">{{ _('Join Domain') }}</a></p>
+      {% elif checkin.days is defined %}
+        <p>{{ checkin.days }} {{ _('days') }}</p>
+        {% if checkin.lastCheckinDaysAgo is not none %}
+          <p>{{ _('Last check-in') }}: {% if checkin.lastCheckinDaysAgo == 0 %}{{ _('Today') }}{% else %}{{ _('{0} days ago').format(checkin.lastCheckinDaysAgo) }}{% endif %}</p>
+        {% endif %}
+        {% if checkin.maxConsecutiveDays > 0 %}
+          <p>{{ _('Max consecutive') }}: {{ checkin.maxConsecutiveDays }} {{ _('days') }}</p>
+        {% endif %}
+        {% if not checkin.completedToday %}
+          <p>{{ _('Check-in remaining') }}: {{ checkin.nodesRemaining }} {{ _('nodes') }}, {{ checkin.cardsRemaining }} {{ _('cards') }}</p>
+          <p><a href="{{ checkin.learnUrl }}" class="button primary">{{ _('Start Learning') }}</a></p>
+        {% else %}
+          <p>{{ _('Completed today') }}</p>
+        {% endif %}
       {% endif %}
     </div>
   </div>
