@@ -221,7 +221,9 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
   const handleSave = useCallback(async () => {
     setIsSaving(true);
     try {
-      const body: Record<string, unknown> = { sectionOrder: sections.map(s => String(s._id)) };
+      // 与「设置学习点」约定一致：sectionOrder[0]=先学(顶部)，顺序可含重复
+      const sectionOrder = [...sections].reverse().map(s => String(s._id));
+      const body: Record<string, unknown> = { sectionOrder };
       if (typeof currentLearnSectionIndex === 'number') {
         body.currentLearnSectionIndex = currentLearnSectionIndex;
       }
