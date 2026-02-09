@@ -89,6 +89,7 @@ __langname: English
 'Created Time': Created Time
 'Cumulative': Cumulative
 'Current Progress': Current Progress
+'Current': Current
 'Currently Selected Agent': Currently Selected Agent
 'Daily Goal': Daily Goal
 'days': days
@@ -154,6 +155,7 @@ __langname: English
 'Last Connected': Last Connected
 'Last Disconnected Time': Last Disconnected Time
 'Learn Settings': Learn Settings
+'Learning Path': Learning Path
 'Lesson Passed': Lesson Passed
 'Local branch not found': Local branch not found
 'Local Branch': Local Branch

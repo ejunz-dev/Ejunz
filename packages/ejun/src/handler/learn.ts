@@ -426,11 +426,15 @@ class LearnHandler extends Handler {
             this.response.template = 'learn.html';
             this.response.body = {
                 dag: [],
+                fullDag: [],
                 sections: [],
+                currentSectionId: null,
+                currentSectionIndex: 0,
                 domainId: finalDomainId,
                 baseDocId: base.docId.toString() || null,
                 pendingNodeList: [],
                 completedSections: [],
+                passedCardIds: [],
             };
             return;
         }
@@ -681,8 +685,10 @@ class LearnHandler extends Handler {
         this.response.template = 'learn.html';
         this.response.body = {
             dag: dagWithProgress,
+            fullDag: allDagNodes,
             sections: sections,
             currentSectionId: finalSectionId,
+            currentSectionIndex,
             domainId: finalDomainId,
             baseDocId: base.docId.toString(),
             currentProgress,
@@ -695,6 +701,7 @@ class LearnHandler extends Handler {
             pendingNodeList,
             completedSections,
             nextCard,
+            passedCardIds: Array.from(passedCardIds),
         };
     }
 
