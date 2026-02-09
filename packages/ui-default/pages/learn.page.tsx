@@ -9,6 +9,20 @@ interface SectionProgress {
   title: string;
   passed: number;
   total: number;
+  slotIndex?: number;
+}
+
+interface PendingNodeCard {
+  cardId: string;
+  title: string;
+  problems?: Array<{ stem?: string }>;
+}
+
+interface PendingNode {
+  orderIndex: number;
+  _id: string;
+  title: string;
+  cards: PendingNodeCard[];
 }
 
 function LearnPage() {
@@ -20,7 +34,7 @@ function LearnPage() {
   const consecutiveDays = (window as any).UiContext?.consecutiveDays || 0;
   const dailyGoal = (window as any).UiContext?.dailyGoal || 0;
   const todayCompletedCount = (window as any).UiContext?.todayCompletedCount ?? 0;
-  const pendingSections = ((window as any).UiContext?.pendingSections || []) as SectionProgress[];
+  const pendingNodeList = ((window as any).UiContext?.pendingNodeList || []) as PendingNode[];
   const completedSections = ((window as any).UiContext?.completedSections || []) as SectionProgress[];
   const nextCard = (window as any).UiContext?.nextCard as { nodeId: string; cardId: string } | null;
 
@@ -30,7 +44,27 @@ function LearnPage() {
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
   const [showConsecutiveTip, setShowConsecutiveTip] = useState(false);
+  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
+  const [expandedCardIds, setExpandedCardIds] = useState<Set<string>>(new Set());
   const consecutiveBubbleRef = useRef<HTMLButtonElement>(null);
+
+  const toggleNodeExpand = useCallback((nodeKey: string) => {
+    setExpandedNodeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeKey)) next.delete(nodeKey);
+      else next.add(nodeKey);
+      return next;
+    });
+  }, []);
+
+  const toggleCardStems = useCallback((cardKey: string) => {
+    setExpandedCardIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(cardKey)) next.delete(cardKey);
+      else next.add(cardKey);
+      return next;
+    });
+  }, []);
 
   const handleConsecutiveBubbleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -190,39 +224,115 @@ function LearnPage() {
                 </button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {pendingSections.length === 0 ? (
+                {pendingNodeList.length === 0 ? (
                   <div style={{ fontSize: '13px', color: themeStyles.textTertiary, fontStyle: 'italic' }}>
                     {i18n('No pending sections')}
                   </div>
                 ) : (
-                  pendingSections.map((s) => (
-                    <a
-                      key={s._id}
-                      href={`/d/${domainId}/learn?sectionId=${s._id}`}
-                      style={{
-                        display: 'block',
-                        padding: '10px 12px',
-                        fontSize: '14px',
-                        color: themeStyles.textPrimary,
-                        textDecoration: 'none',
-                        borderRadius: '8px',
-                        background: themeStyles.bgPrimary,
-                        border: `1px solid ${themeStyles.border}`,
-                        transition: 'background 0.15s',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = themeStyles.bgHover;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = themeStyles.bgPrimary;
-                      }}
-                    >
-                      <div style={{ fontWeight: 500 }}>{s.title}</div>
-                      <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginTop: '4px' }}>
-                        {s.passed}/{s.total}
+                  pendingNodeList.map((node) => {
+                    const nodeKey = `${String(node._id)}-${node.orderIndex}`;
+                    const isNodeExpanded = expandedNodeIds.has(nodeKey);
+                    return (
+                      <div
+                        key={nodeKey}
+                        style={{
+                          borderRadius: '8px',
+                          background: themeStyles.bgPrimary,
+                          border: `1px solid ${themeStyles.border}`,
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleNodeExpand(nodeKey)}
+                          style={{
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '10px 12px',
+                            fontSize: '14px',
+                            fontWeight: 500,
+                            color: themeStyles.textPrimary,
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                          }}
+                        >
+                          <span style={{ flexShrink: 0, color: themeStyles.textSecondary, fontSize: '12px' }}>
+                            {node.orderIndex}.
+                          </span>
+                          <span style={{ flex: 1 }}>{node.title}</span>
+                          <span style={{ fontSize: '12px', color: themeStyles.textTertiary }}>
+                            {isNodeExpanded ? '▼' : '▶'}
+                          </span>
+                        </button>
+                        {isNodeExpanded && node.cards && node.cards.length > 0 && (
+                          <div style={{ padding: '0 12px 8px', borderTop: `1px solid ${themeStyles.border}` }}>
+                            {node.cards.map((card, cardIndex) => {
+                              const cardNumber = `${node.orderIndex}.${cardIndex + 1}`;
+                              const cardKey = `${nodeKey}-${String(card.cardId)}`;
+                              const isCardExpanded = expandedCardIds.has(cardKey);
+                              const problems = card.problems || [];
+                              return (
+                                <div
+                                  key={cardKey}
+                                  style={{
+                                    marginTop: '6px',
+                                    padding: '6px 8px',
+                                    background: themeStyles.bgSecondary,
+                                    borderRadius: '6px',
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleCardStems(cardKey)}
+                                    style={{
+                                      width: '100%',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      padding: 0,
+                                      fontSize: '13px',
+                                      color: themeStyles.textPrimary,
+                                      background: 'transparent',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      textAlign: 'left',
+                                    }}
+                                  >
+                                    <span style={{ flexShrink: 0, color: themeStyles.textSecondary, fontSize: '12px' }}>
+                                      {cardNumber}.
+                                    </span>
+                                    <span style={{ flex: 1 }}>{card.title}</span>
+                                    {problems.length > 0 && (
+                                      <span style={{ color: themeStyles.textTertiary, fontSize: '11px' }}>
+                                        {isCardExpanded ? '▼' : '▶'}
+                                      </span>
+                                    )}
+                                  </button>
+                                  {isCardExpanded && problems.length > 0 && (
+                                    <div style={{ marginTop: '6px', fontSize: '12px', color: themeStyles.textSecondary, whiteSpace: 'pre-wrap' }}>
+                                      {problems.map((p, idx) => {
+                                        const problemNumber = `${cardNumber}.${idx + 1}`;
+                                        return (
+                                          <div key={idx} style={{ marginBottom: '4px' }}>
+                                            <span style={{ color: themeStyles.textTertiary, marginRight: '6px' }}>{problemNumber}.</span>
+                                            {p.stem || ''}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                    </a>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
