@@ -25,6 +25,51 @@ interface PendingNode {
   cards: PendingNodeCard[];
 }
 
+interface MapCardProblem {
+  stem?: string;
+}
+
+interface MapCard {
+  cardId: string;
+  title: string;
+  order?: number;
+  problemCount?: number;
+  problems?: MapCardProblem[];
+}
+
+interface MapDAGNode {
+  _id: string;
+  title: string;
+  requireNids?: string[];
+  cards?: MapCard[];
+  order?: number;
+}
+
+function getChildren(nodeId: string, sections: MapDAGNode[], dag: MapDAGNode[]): MapDAGNode[] {
+  const list: MapDAGNode[] = [];
+  dag.forEach((n) => {
+    const parentId = n.requireNids?.[n.requireNids.length - 1];
+    if (parentId === nodeId) list.push(n);
+  });
+  return list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+function collectCardsUnder(nodeId: string, sections: MapDAGNode[], dag: MapDAGNode[], collected: Set<string>): MapCard[] {
+  if (collected.has(nodeId)) return [];
+  collected.add(nodeId);
+  const nodeMap = new Map<string, MapDAGNode>();
+  sections.forEach((s) => nodeMap.set(s._id, s));
+  dag.forEach((n) => nodeMap.set(n._id, n));
+  const node = nodeMap.get(nodeId);
+  if (!node) return [];
+  const cards = [...(node.cards || [])];
+  const children = getChildren(nodeId, sections, dag);
+  for (const child of children) {
+    cards.push(...collectCardsUnder(child._id, sections, dag, collected));
+  }
+  return cards.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
 function LearnPage() {
   const domainId = (window as any).UiContext?.domainId as string;
   const currentProgress = (window as any).UiContext?.currentProgress || 0;
@@ -37,6 +82,10 @@ function LearnPage() {
   const pendingNodeList = ((window as any).UiContext?.pendingNodeList || []) as PendingNode[];
   const completedSections = ((window as any).UiContext?.completedSections || []) as SectionProgress[];
   const nextCard = (window as any).UiContext?.nextCard as { nodeId: string; cardId: string } | null;
+  const sections = ((window as any).UiContext?.sections || []) as MapDAGNode[];
+  const fullDag = ((window as any).UiContext?.fullDag || []) as MapDAGNode[];
+  const currentSectionIndex = (window as any).UiContext?.currentSectionIndex as number | undefined;
+  const passedCardIdsSet = new Set<string>((window as any).UiContext?.passedCardIds || []);
 
   const [goal, setGoal] = useState(dailyGoal);
   const [isEditingGoal, setIsEditingGoal] = useState(false);
@@ -46,7 +95,29 @@ function LearnPage() {
   const [showConsecutiveTip, setShowConsecutiveTip] = useState(false);
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
   const [expandedCardIds, setExpandedCardIds] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'progress' | 'path'>('progress');
+  const [expandedMapSectionIds, setExpandedMapSectionIds] = useState<Set<string>>(() => {
+    const s = new Set<string>();
+    sections.forEach((sec) => s.add(sec._id));
+    return s;
+  });
+  const [expandedPathCardIds, setExpandedPathCardIds] = useState<Set<string>>(new Set());
   const consecutiveBubbleRef = useRef<HTMLButtonElement>(null);
+
+  const togglePathCardExpand = useCallback((cardId: string) => {
+    setExpandedPathCardIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(cardId)) next.delete(cardId);
+      else next.add(cardId);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (sections.length > 0 && expandedMapSectionIds.size === 0) {
+      setExpandedMapSectionIds(new Set(sections.map((sec) => sec._id)));
+    }
+  }, [sections.length]);
 
   const toggleNodeExpand = useCallback((nodeKey: string) => {
     setExpandedNodeIds((prev) => {
@@ -380,17 +451,58 @@ function LearnPage() {
         flexDirection: 'column',
         gap: '24px',
       }}>
-        <h1 style={{
-          fontSize: '28px',
-          fontWeight: 600,
-          color: themeStyles.textPrimary,
-          margin: '0 0 4px',
-          letterSpacing: '-0.03em',
+        {/* 切换：Learning Progress / Learning Path */}
+        <div style={{
+          display: 'flex',
+          gap: '4px',
+          padding: '4px',
+          background: themeStyles.bgSecondary,
+          borderRadius: '12px',
+          border: `1px solid ${themeStyles.border}`,
         }}>
-          {i18n('Learning Progress')}
-        </h1>
+          <button
+            type="button"
+            onClick={() => setViewMode('progress')}
+            style={{
+              flex: 1,
+              padding: '10px 16px',
+              fontSize: '14px',
+              fontWeight: 600,
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              background: viewMode === 'progress' ? themeStyles.bgCard : 'transparent',
+              color: viewMode === 'progress' ? themeStyles.textPrimary : themeStyles.textSecondary,
+              boxShadow: viewMode === 'progress' ? (theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 6px rgba(0,0,0,0.08)') : 'none',
+              transition: 'all 0.2s',
+            }}
+          >
+            {i18n('Learning Progress')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('path')}
+            style={{
+              flex: 1,
+              padding: '10px 16px',
+              fontSize: '14px',
+              fontWeight: 600,
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              background: viewMode === 'path' ? themeStyles.bgCard : 'transparent',
+              color: viewMode === 'path' ? themeStyles.textPrimary : themeStyles.textSecondary,
+              boxShadow: viewMode === 'path' ? (theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 6px rgba(0,0,0,0.08)') : 'none',
+              transition: 'all 0.2s',
+            }}
+          >
+            {i18n('Learning Path')}
+          </button>
+        </div>
 
-        {/* 进度：总进度 + 今日进度 */}
+        {/* 进度模式：总进度 + 今日进度 */}
+        {viewMode === 'progress' && (
+        <>
         <div style={{
           padding: '28px',
           background: themeStyles.bgCard,
@@ -671,6 +783,187 @@ function LearnPage() {
         >
           {i18n('Section Order')}
         </a>
+      </>
+        )}
+
+        {/* Learning Path 模式：sections + 单卡片刷题 */}
+        {viewMode === 'path' && sections.length > 0 && (
+          <div style={{
+            padding: '8px 0',
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {sections.map((section, sectionIndex) => {
+                const sectionCards = collectCardsUnder(section._id, sections, fullDag, new Set());
+                const isCurrentSection = typeof currentSectionIndex === 'number' && sectionIndex === currentSectionIndex;
+                const isExpanded = expandedMapSectionIds.has(section._id);
+                const toggleSection = () => {
+                  setExpandedMapSectionIds((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(section._id)) next.delete(section._id);
+                    else next.add(section._id);
+                    return next;
+                  });
+                };
+                return (
+                  <div
+                    key={section._id}
+                    style={{
+                      background: themeStyles.bgCard,
+                      borderRadius: '14px',
+                      border: `1px solid ${isCurrentSection ? themeStyles.primary : themeStyles.border}`,
+                      overflow: 'hidden',
+                      boxShadow: theme === 'dark' ? '0 2px 12px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={toggleSection}
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '14px 18px',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        color: themeStyles.textPrimary,
+                        fontSize: '15px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{
+                          width: '28px',
+                          height: '28px',
+                          borderRadius: '50%',
+                          background: isCurrentSection ? themeStyles.primary : themeStyles.bgSecondary,
+                          color: isCurrentSection ? '#fff' : themeStyles.textSecondary,
+                          fontSize: '13px',
+                          fontWeight: 700,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}>
+                          {sectionIndex + 1}
+                        </span>
+                        {section.title || i18n('Unnamed Section')}
+                        {isCurrentSection && (
+                          <span style={{ fontSize: '12px', color: themeStyles.primary, fontWeight: 500 }}>
+                            ({i18n('Current')})
+                          </span>
+                        )}
+                      </span>
+                      <span style={{ color: themeStyles.textSecondary, fontSize: '14px' }}>
+                        {isExpanded ? '▼' : '▶'}
+                      </span>
+                    </button>
+                    {isExpanded && sectionCards.length > 0 && (
+                      <div style={{
+                        padding: '0 18px 14px',
+                        borderTop: `1px solid ${themeStyles.border}`,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                        marginTop: '4px',
+                        paddingTop: '12px',
+                      }}>
+                        {sectionCards.map((card) => {
+                          const cardIdStr = String(card.cardId);
+                          const problemCount = card.problemCount ?? (card.problems?.length ?? 0);
+                          const problems = card.problems ?? [];
+                          const isCardExpanded = expandedPathCardIds.has(cardIdStr);
+                          return (
+                            <div key={card.cardId} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); togglePathCardExpand(cardIdStr); }}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  padding: '8px 12px',
+                                  fontSize: '13px',
+                                  fontWeight: 500,
+                                  color: themeStyles.textPrimary,
+                                  background: themeStyles.bgSecondary,
+                                  border: `1px solid ${themeStyles.border}`,
+                                  borderRadius: '10px',
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  width: '100%',
+                                  transition: 'all 0.2s',
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = themeStyles.bgHover;
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = themeStyles.bgSecondary;
+                                }}
+                              >
+                                <span style={{ flex: 1 }}>{card.title || i18n('Unnamed Card')}</span>
+                                {problemCount > 0 && (
+                                  <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    minWidth: '22px',
+                                    height: '22px',
+                                    padding: '0 8px',
+                                    fontSize: '12px',
+                                    fontWeight: 600,
+                                    color: themeStyles.accent,
+                                    backgroundColor: theme === 'dark' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(14, 165, 233, 0.15)',
+                                    border: `1px solid ${themeStyles.accent}`,
+                                    borderRadius: '11px',
+                                  }}>
+                                    {problemCount}
+                                  </span>
+                                )}
+                                <span style={{ color: themeStyles.textSecondary, fontSize: '12px' }}>
+                                  {isCardExpanded ? '▼' : '▶'}
+                                </span>
+                              </button>
+                              {isCardExpanded && problems.length > 0 && (
+                                <div style={{
+                                  marginLeft: '12px',
+                                  paddingLeft: '12px',
+                                  borderLeft: `2px solid ${themeStyles.border}`,
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '6px',
+                                }}>
+                                  {problems.map((p, idx) => (
+                                    <div
+                                      key={idx}
+                                      style={{
+                                        padding: '8px 10px',
+                                        fontSize: '12px',
+                                        color: themeStyles.textSecondary,
+                                        background: themeStyles.bgPrimary,
+                                        borderRadius: '6px',
+                                        lineHeight: 1.5,
+                                      }}
+                                    >
+                                      <span style={{ color: themeStyles.textTertiary, marginRight: '6px' }}>{idx + 1}.</span>
+                                      {p.stem || i18n('Unnamed question')}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
       </main>
 
