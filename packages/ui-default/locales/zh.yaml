@@ -76,6 +76,7 @@ __langname: 简体中文
 'Completed sections': 已完成
 'Completed today': 今日已完成
 'Configuration': 配置
+'Confirm': 确认
 'Congratulations! You have completed all practice questions correctly.': 恭喜！您已正确完成所有练习题。
 'Connect to the WebSocket URL above using the generated Token': 使用生成的 Token 连接到上述 WebSocket URL
 'Connected': 已连接
@@ -124,6 +125,7 @@ __langname: 简体中文
 'Endpoint': Endpoint
 'Enter custom commit message (optional)': 请输入自定义提交消息（可选）
 'Enter new title': 输入新标题
+'Enter single card mode?': 进入单卡片模式？
 'Enter title for new': 输入新
 'Error Message': 错误信息
 'Error': 错误
@@ -214,6 +216,7 @@ __langname: 简体中文
 'No tools yet. Tools list will be automatically synced after server connection.': 暂无工具。服务器连接后会自动同步工具列表。
 'No': 否
 'Not enabled': 不启用
+'Open practice for card: {0}': 将为卡片「{0}」打开练习
 'Operations': 操作
 'Original score: {0}': '原得分: {0}'
 'Pending sections': 待完成
