@@ -229,7 +229,7 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
         body.uid = targetUid;
       }
       await request.post(`/d/${domainId}/learn/section/edit`, body);
-      setSavedSectionIds(sections.map(s => String(s._id)));
+      setSavedSectionIds(sectionOrder);
       UiNotification.success(i18n('Saved successfully') || '保存成功');
     } catch (err: any) {
       UiNotification.error(err?.message || i18n('Save failed') || '保存失败');
@@ -242,6 +242,8 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
     if (index < 0 || index >= sections.length) return;
     setIsSaving(true);
     try {
+      // sectionOrder = reverse(sections)：sectionOrder[0]=先学(顶部)，sectionOrder[length-1]=后学(底部)
+      // column-reverse：顶部=index 3(第1个)，底部=index 0(第4个) → learnSectionIndex = length-1-index
       const sectionOrder = [...sections].reverse().map(s => String(s._id));
       const learnSectionIndex = sections.length - 1 - index;
       const body: Record<string, unknown> = {
@@ -684,7 +686,7 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); handleSetLearningPoint(index); }}
-                disabled={isSaving || currentLearnSectionIndex === index}
+                disabled={isSaving || currentLearnSectionIndex === sections.length - 1 - index}
                 title={i18n('Set as start')}
                 style={{
                   width: '32px',
