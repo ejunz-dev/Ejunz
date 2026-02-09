@@ -14,6 +14,7 @@ interface SectionProgress {
 function LearnPage() {
   const domainId = (window as any).UiContext?.domainId as string;
   const currentProgress = (window as any).UiContext?.currentProgress || 0;
+  const totalProgress = (window as any).UiContext?.totalProgress || 0;
   const totalCards = (window as any).UiContext?.totalCards || 0;
   const totalCheckinDays = (window as any).UiContext?.totalCheckinDays ?? 0;
   const consecutiveDays = (window as any).UiContext?.consecutiveDays || 0;
@@ -118,7 +119,7 @@ function LearnPage() {
     }
   }, [domainId, goal, isSavingGoal]);
 
-  const progressPercentage = totalCards > 0 ? Math.round((currentProgress / totalCards) * 100) : 0;
+  const progressPercentage = totalProgress > 0 ? Math.round((currentProgress / totalProgress) * 100) : 0;
 
   const sidebarWidth = 220;
   const collapsedWidth = 36;
@@ -298,8 +299,8 @@ function LearnPage() {
               <span style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
                 {i18n('Total progress')}
               </span>
-              <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.textPrimary }}>
-                {currentProgress} / {totalCards}
+                <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.textPrimary }}>
+                {currentProgress} / {totalProgress}
               </span>
             </div>
             <div style={{

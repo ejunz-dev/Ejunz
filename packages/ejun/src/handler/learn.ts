@@ -3,9 +3,10 @@ import { Handler, param, post, Types } from '../service/server';
 import { BaseModel, CardModel } from '../model/base';
 import type { BaseDoc, BaseNode, BaseEdge } from '../interface';
 import domain from '../model/domain';
+import learn, { type LearnDAGNode } from '../model/learn';
 import user from '../model/user';
 import { PERM, PRIV } from '../model/builtin';
-import { NotFoundError, ValidationError } from '../error';
+import { BadRequestError, NotFoundError, ValidationError } from '../error';
 import { MethodNotAllowedError } from '@ejunz/framework';
 import { ObjectId } from 'mongodb';
 import db from '../service/db';
@@ -235,29 +236,6 @@ interface BaseNodeWithCards {
     children?: BaseNodeWithCards[];
 }
 
-interface LearnDAGNode {
-    _id: string;
-    title: string;
-    requireNids: string[];
-    cards: Array<{
-        cardId: string;
-        title: string;
-        order?: number;
-    }>;
-    content?: string;
-    order?: number;
-}
-
-interface LearnDAGDoc {
-    domainId: string;
-    baseDocId: ObjectId;
-    branch: string;
-    sections: LearnDAGNode[];
-    dag: LearnDAGNode[];
-    version: number;
-    updateAt: Date;
-}
-
 class LearnHandler extends Handler {
     async after(domainId: string) {
         if (this.request.json || !this.response.template) return;
@@ -299,7 +277,7 @@ class LearnHandler extends Handler {
             throw new ValidationError('Invalid daily goal');
         }
         
-        await domain.setUserInDomain(finalDomainId, this.user._id, { dailyGoal });
+        await learn.setUserLearnState(finalDomainId, this.user._id, { dailyGoal });
         
         this.response.body = { success: true, dailyGoal };
     }
@@ -368,14 +346,8 @@ class LearnHandler extends Handler {
         }
 
         
-        const learnDAGColl = this.ctx.db.db.collection('learn_dag');
-        const existingDAG = await learnDAGColl.findOne({
-            domainId: finalDomainId,
-            baseDocId: base.docId,
-            branch: branch,
-        });
+        const existingDAG = await learn.getDAG(finalDomainId, base.docId, branch);
 
-        
         const baseVersion = base.updateAt ? base.updateAt.getTime() : 0;
         const needsUpdate = !existingDAG || (existingDAG.version || 0) < baseVersion;
         
@@ -391,44 +363,40 @@ class LearnHandler extends Handler {
             sections = result.sections;
             allDagNodes = result.dag;
             
-            await learnDAGColl.updateOne(
-                {
-                    domainId: finalDomainId,
-                    baseDocId: base.docId,
-                    branch: branch,
-                },
-                {
-                    $set: {
-                        domainId: finalDomainId,
-                        baseDocId: base.docId,
-                        branch: branch,
-                        sections: sections,
-                        dag: allDagNodes,
-                        version: baseVersion,
-                        updateAt: new Date(),
-                    },
-                },
-                { upsert: true }
-            );
+            await learn.setDAG(finalDomainId, base.docId, branch, {
+                sections,
+                dag: allDagNodes,
+                version: baseVersion,
+                updateAt: new Date(),
+            });
         } else {
             sections = existingDAG.sections || [];
             allDagNodes = existingDAG.dag || [];
         }
 
-        const dudoc = await domain.getDomainUser(finalDomainId, { _id: this.user._id, priv: this.user.priv });
+        const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv });
         const savedSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
         const savedSectionId = (dudoc as any)?.currentLearnSectionId;
         const dailyGoal = (dudoc as any)?.dailyGoal || 0;
         const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
+        const savedLearnProgressPosition = (dudoc as any)?.learnProgressPosition;
+        const savedLearnProgressTotal = (dudoc as any)?.learnProgressTotal;
         sections = applyUserSectionOrder(sections, learnSectionOrder);
         
         let finalSectionId: string | null = null;
         let currentSectionIndex: number = 0;
+        const totalSectionsForProgress = sections.length;
         if (sectionId) {
             const idx = sections.findIndex(s => s._id === sectionId);
             finalSectionId = sectionId;
             currentSectionIndex = idx >= 0 ? idx : 0;
-            await domain.setUserInDomain(finalDomainId, this.user._id, { currentLearnSectionId: sectionId, currentLearnSectionIndex: currentSectionIndex });
+            // 第一个=0/4，最后一个=3/4：已完成数 = currentSectionIndex
+            await learn.setUserLearnState(finalDomainId, this.user._id, {
+                currentLearnSectionId: sectionId,
+                currentLearnSectionIndex: currentSectionIndex,
+                learnProgressPosition: Math.max(0, currentSectionIndex),
+                learnProgressTotal: totalSectionsForProgress,
+            });
         } else if (typeof savedSectionIndex === 'number' && savedSectionIndex >= 0 && savedSectionIndex < sections.length) {
             finalSectionId = sections[savedSectionIndex]._id;
             currentSectionIndex = savedSectionIndex;
@@ -436,11 +404,20 @@ class LearnHandler extends Handler {
             const idx = sections.findIndex(s => s._id === savedSectionId);
             finalSectionId = savedSectionId;
             currentSectionIndex = idx >= 0 ? idx : 0;
-            await domain.setUserInDomain(finalDomainId, this.user._id, { currentLearnSectionIndex: currentSectionIndex });
+            await learn.setUserLearnState(finalDomainId, this.user._id, {
+                currentLearnSectionIndex: currentSectionIndex,
+                learnProgressPosition: Math.max(0, currentSectionIndex),
+                learnProgressTotal: totalSectionsForProgress,
+            });
         } else if (sections.length > 0) {
             finalSectionId = sections[0]._id;
             currentSectionIndex = 0;
-            await domain.setUserInDomain(finalDomainId, this.user._id, { currentLearnSectionId: finalSectionId, currentLearnSectionIndex: 0 });
+            await learn.setUserLearnState(finalDomainId, this.user._id, {
+                currentLearnSectionId: finalSectionId,
+                currentLearnSectionIndex: 0,
+                learnProgressPosition: 0,
+                learnProgressTotal: totalSectionsForProgress,
+            });
         }
 
         let dag: LearnDAGNode[] = [];
@@ -493,13 +470,7 @@ class LearnHandler extends Handler {
             collectChildren(firstSection._id, collected);
         }
 
-        const learnProgressColl = this.ctx.db.db.collection('learn_progress');
-        const passedCards = await learnProgressColl.find({
-            domainId: finalDomainId,
-            userId: this.user._id,
-            passed: true,
-        }).toArray();
-        const passedCardIds = new Set(passedCards.map(p => p.cardId.toString()));
+        const passedCardIds = await learn.getPassedCardIds(finalDomainId, this.user._id);
 
         const flatCards: Array<{ nodeId: string; cardId: string; order: number; nodeIndex: number; cardIndex: number }> = [];
         dag.forEach((node, nodeIndex) => {
@@ -515,16 +486,17 @@ class LearnHandler extends Handler {
         });
 
         const totalCards = flatCards.length;
-        const passedCardsCount = passedCardIds.size;
-        const currentProgress = totalCards > 0 ? passedCardsCount : 0;
+
+        // 总进度 = 已完成节数/总节数，仅用数据库 learnProgressPosition / learnProgressTotal
+        const totalSections = sections.length;
+        const currentProgress = typeof savedLearnProgressPosition === 'number' && typeof savedLearnProgressTotal === 'number' && savedLearnProgressTotal > 0
+            ? Math.max(0, Math.min(savedLearnProgressPosition, savedLearnProgressTotal))
+            : 0;
+        const totalProgress = typeof savedLearnProgressTotal === 'number' && savedLearnProgressTotal > 0 ? savedLearnProgressTotal : 0;
 
         const { pending: pendingSections, completed: completedSections } = getSectionProgress(sections, allDagNodes, passedCardIds);
 
-        const learnResultColl = this.ctx.db.db.collection('learn_result');
-        const allResults = await learnResultColl.find({
-            domainId: finalDomainId,
-            userId: this.user._id,
-        }).toArray();
+        const allResults = await learn.getResults(finalDomainId, this.user._id);
 
         const practiceDates = new Set<string>();
         const todayStart = moment.utc().startOf('day').toDate();
@@ -588,10 +560,16 @@ class LearnHandler extends Handler {
             }
         }
 
-        if (!nextCard && sections.length > 0 && currentSectionIndex + 1 < sections.length) {
+        // 仅在非第一节时自动进入下一节，否则第一节无卡片时会从 0/4 被写成 1/4
+        if (!nextCard && sections.length > 0 && currentSectionIndex > 0 && currentSectionIndex + 1 < sections.length) {
             const nextIndex = currentSectionIndex + 1;
             const nextSectionId = sections[nextIndex]._id;
-            await domain.setUserInDomain(finalDomainId, this.user._id, { currentLearnSectionIndex: nextIndex, currentLearnSectionId: nextSectionId });
+            await learn.setUserLearnState(finalDomainId, this.user._id, {
+                currentLearnSectionIndex: nextIndex,
+                currentLearnSectionId: nextSectionId,
+                learnProgressPosition: Math.max(0, nextIndex),
+                learnProgressTotal: totalSections,
+            });
             this.response.redirect = this.url('learn', { domainId: finalDomainId });
             return;
         }
@@ -604,6 +582,7 @@ class LearnHandler extends Handler {
             domainId: finalDomainId,
             baseDocId: base.docId.toString(),
             currentProgress,
+            totalProgress,
             totalCards,
             totalCheckinDays,
             consecutiveDays,
@@ -689,7 +668,7 @@ class LearnEditHandler extends Handler {
             throw new ValidationError('Invalid branch');
         }
 
-        await domain.setUserInDomain(domainId, this.user._id, { learnBranch: branch });
+        await learn.setUserLearnState(domainId, this.user._id, { learnBranch: branch });
         this.back();
     }
 }
@@ -781,12 +760,7 @@ class LessonHandler extends Handler {
             throw new NotFoundError('No nodes available');
         }
 
-        const learnDAGColl = this.ctx.db.db.collection('learn_dag');
-        const existingDAG = await learnDAGColl.findOne({
-            domainId: finalDomainId,
-            baseDocId: base.docId,
-            branch: branch,
-        });
+        const existingDAG = await learn.getDAG(finalDomainId, base.docId, branch);
 
         const baseVersion = base.updateAt ? base.updateAt.getTime() : 0;
         const needsUpdate = !existingDAG || (existingDAG.version || 0) < baseVersion;
@@ -802,31 +776,18 @@ class LessonHandler extends Handler {
             sections = result.sections;
             allDagNodes = result.dag;
             
-            await learnDAGColl.updateOne(
-                {
-                    domainId: finalDomainId,
-                    baseDocId: base.docId,
-                    branch: branch,
-                },
-                {
-                    $set: {
-                        domainId: finalDomainId,
-                        baseDocId: base.docId,
-                        branch: branch,
-                        sections: sections,
-                        dag: allDagNodes,
-                        version: baseVersion,
-                        updateAt: new Date(),
-                    },
-                },
-                { upsert: true }
-            );
+            await learn.setDAG(finalDomainId, base.docId, branch, {
+                sections,
+                dag: allDagNodes,
+                version: baseVersion,
+                updateAt: new Date(),
+            });
         } else {
             sections = existingDAG.sections || [];
             allDagNodes = existingDAG.dag || [];
         }
 
-        const dudoc = await domain.getDomainUser(finalDomainId, { _id: this.user._id, priv: this.user.priv });
+        const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv });
         const savedSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
         const savedSectionId = (dudoc as any)?.currentLearnSectionId;
         const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
@@ -841,11 +802,11 @@ class LessonHandler extends Handler {
             const idx = sections.findIndex(s => s._id === savedSectionId);
             finalSectionId = savedSectionId;
             currentSectionIndex = idx >= 0 ? idx : 0;
-            await domain.setUserInDomain(finalDomainId, this.user._id, { currentLearnSectionIndex: currentSectionIndex });
+            await learn.setUserLearnState(finalDomainId, this.user._id, { currentLearnSectionIndex: currentSectionIndex });
         } else if (sections.length > 0) {
             finalSectionId = sections[0]._id;
             currentSectionIndex = 0;
-            await domain.setUserInDomain(finalDomainId, this.user._id, { currentLearnSectionId: finalSectionId, currentLearnSectionIndex: 0 });
+            await learn.setUserLearnState(finalDomainId, this.user._id, { currentLearnSectionId: finalSectionId, currentLearnSectionIndex: 0 });
         }
 
         let dag: LearnDAGNode[] = [];
@@ -873,13 +834,7 @@ class LessonHandler extends Handler {
             collectChildren(finalSectionId, collected);
         }
 
-        const learnProgressColl = this.ctx.db.db.collection('learn_progress');
-        const passedCards = await learnProgressColl.find({
-            domainId: finalDomainId,
-            userId: this.user._id,
-            passed: true,
-        }).toArray();
-        const passedCardIds = new Set(passedCards.map(p => p.cardId.toString()));
+        const passedCardIds = await learn.getPassedCardIds(finalDomainId, this.user._id);
 
         const flatCards: Array<{ nodeId: string; cardId: string; order: number; nodeIndex: number; cardIndex: number }> = [];
         dag.forEach((node, nodeIndex) => {
@@ -906,10 +861,10 @@ class LessonHandler extends Handler {
         }
 
         if (!nextCard) {
-            if (sections.length > 0 && currentSectionIndex + 1 < sections.length) {
+            if (sections.length > 0 && currentSectionIndex > 0 && currentSectionIndex + 1 < sections.length) {
                 const nextIndex = currentSectionIndex + 1;
                 const nextSectionId = sections[nextIndex]._id;
-                await domain.setUserInDomain(finalDomainId, this.user._id, { currentLearnSectionIndex: nextIndex, currentLearnSectionId: nextSectionId });
+                await learn.setUserLearnState(finalDomainId, this.user._id, { currentLearnSectionIndex: nextIndex, currentLearnSectionId: nextSectionId });
                 this.response.redirect = this.url('learn', { domainId: finalDomainId });
                 return;
             }
@@ -963,12 +918,7 @@ class LessonHandler extends Handler {
             throw new NotFoundError('No nodes available');
         }
 
-        const learnDAGColl = this.ctx.db.db.collection('learn_dag');
-        const existingDAG = await learnDAGColl.findOne({
-            domainId: finalDomainId,
-            baseDocId: base.docId,
-            branch: branch,
-        });
+        const existingDAG = await learn.getDAG(finalDomainId, base.docId, branch);
 
         const baseVersion = base.updateAt ? base.updateAt.getTime() : 0;
         const needsUpdate = !existingDAG || (existingDAG.version || 0) < baseVersion;
@@ -984,31 +934,18 @@ class LessonHandler extends Handler {
             sections = result.sections;
             allDagNodes = result.dag;
             
-            await learnDAGColl.updateOne(
-                {
-                    domainId: finalDomainId,
-                    baseDocId: base.docId,
-                    branch: branch,
-                },
-                {
-                    $set: {
-                        domainId: finalDomainId,
-                        baseDocId: base.docId,
-                        branch: branch,
-                        sections: sections,
-                        dag: allDagNodes,
-                        version: baseVersion,
-                        updateAt: new Date(),
-                    },
-                },
-                { upsert: true }
-            );
+            await learn.setDAG(finalDomainId, base.docId, branch, {
+                sections,
+                dag: allDagNodes,
+                version: baseVersion,
+                updateAt: new Date(),
+            });
         } else {
             sections = existingDAG.sections || [];
             allDagNodes = existingDAG.dag || [];
         }
 
-        const dudoc = await domain.getDomainUser(finalDomainId, { _id: this.user._id, priv: this.user.priv });
+        const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv });
         const savedSectionId = (dudoc as any)?.currentLearnSectionId;
         
         let finalSectionId: string | null = null;
@@ -1043,13 +980,7 @@ class LessonHandler extends Handler {
             collectChildren(finalSectionId, collected);
         }
 
-        const learnProgressColl = this.ctx.db.db.collection('learn_progress');
-        const passedCards = await learnProgressColl.find({
-            domainId: finalDomainId,
-            userId: this.user._id,
-            passed: true,
-        }).toArray();
-        const passedCardIds = new Set(passedCards.map(p => p.cardId.toString()));
+        const passedCardIds = await learn.getPassedCardIds(finalDomainId, this.user._id);
 
         const flatCards: Array<{ nodeId: string; cardId: string; order: number }> = [];
         for (const node of dag) {
@@ -1104,25 +1035,8 @@ class LessonHandler extends Handler {
             throw new NotFoundError('Card not found');
         }
 
-        if (!isAlonePractice) {
-            await learnProgressColl.updateOne(
-                {
-                    domainId: finalDomainId,
-                    userId: this.user._id,
-                    cardId: currentCardId,
-                },
-                {
-                    $set: {
-                        domainId: finalDomainId,
-                        userId: this.user._id,
-                        cardId: currentCardId,
-                        nodeId: currentCardNodeId,
-                        passed: true,
-                        passedAt: new Date(),
-                    },
-                },
-                { upsert: true }
-            );
+        if (!isAlonePractice && currentCardNodeId) {
+            await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId);
         }
 
         const node = (getBranchData(base, 'main').nodes || []).find(n => n.id === currentCardNodeId);
@@ -1140,70 +1054,37 @@ class LessonHandler extends Handler {
         };
 
         const score = answerHistory.length * 5;
-        
-        const resultId = new ObjectId();
-        const resultColl = this.ctx.db.db.collection('learn_result');
-        await resultColl.insertOne({
-            _id: resultId,
-            domainId: finalDomainId,
-            userId: this.user._id,
+        const resultId = await learn.addResult(finalDomainId, this.user._id, {
             cardId: currentCardId,
             nodeId: currentCardNodeId,
-            answerHistory: answerHistory,
-            totalTime: totalTime,
-            score: score,
+            answerHistory,
+            totalTime,
+            score,
             createdAt: new Date(),
         });
 
-        // 触发事件通知更新排名
         await bus.parallel('learn_result/add', finalDomainId);
 
         const today = moment.utc().format('YYYY-MM-DD');
-        const uniqueProblemIds = new Set<string>();
+        let problemCount = 0;
         for (const history of answerHistory) {
-            if (history.problemId) {
-                uniqueProblemIds.add(history.problemId);
-            }
+            if (history.problemId) problemCount++;
         }
-        const problemCount = uniqueProblemIds.size;
-
-        const consumptionStatsColl = this.ctx.db.db.collection('learn_consumption_stats');
         const timeToAdd = (totalTime && typeof totalTime === 'number' && totalTime > 0) ? totalTime : 0;
-        const updateData: any = {
-            $inc: {
-                nodes: currentCardNodeId ? 1 : 0,
-                cards: 1,
-                problems: problemCount,
-                practices: 1,
-            },
-            $set: {
-                updateAt: new Date(),
-            },
-        };
-        if (timeToAdd > 0) {
-            updateData.$inc.totalTime = timeToAdd;
-        }
-        await consumptionStatsColl.updateOne(
-            {
-                userId: this.user._id,
-                domainId: finalDomainId,
-                date: today,
-            },
-            updateData,
-            { upsert: true }
-        );
+        await learn.incConsumptionStats(finalDomainId, this.user._id, today, {
+            nodes: currentCardNodeId ? 1 : 0,
+            cards: 1,
+            problems: problemCount,
+            practices: 1,
+            ...(timeToAdd > 0 ? { totalTime: timeToAdd } : {}),
+        });
 
         this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn/lesson/result/${resultId}` };
     }
 
     async getResult(domainId: string, resultId: ObjectId) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
-        const resultColl = this.ctx.db.db.collection('learn_result');
-        const result = await resultColl.findOne({
-            _id: resultId,
-            domainId: finalDomainId,
-            userId: this.user._id,
-        });
+        const result = await learn.getResultById(finalDomainId, this.user._id, resultId);
 
         if (!result) {
             throw new NotFoundError('Result not found');
@@ -1310,32 +1191,46 @@ class LearnSectionEditHandler extends Handler {
         const targetUid = await this.resolveTargetUid(finalDomainId);
         const body: any = this.request?.body || {};
         const sectionOrder: string[] = Array.isArray(body.sectionOrder) ? body.sectionOrder : [];
-        const currentLearnSectionIndex = body.currentLearnSectionIndex;
+        const rawIndex = body.currentLearnSectionIndex;
+        const currentLearnSectionIndex = typeof rawIndex === 'number' ? rawIndex : parseInt(String(rawIndex), 10);
 
         const base = await BaseModel.getByDomain(finalDomainId);
         if (!base) {
             throw new NotFoundError('Base not found for this domain');
         }
 
-        const learnDAGColl = this.ctx.db.db.collection('learn_dag');
-        const existingDAG = await learnDAGColl.findOne({
-            domainId: finalDomainId,
-            baseDocId: base.docId,
-            branch: 'main',
-        });
+        const existingDAG = await learn.getDAG(finalDomainId, base.docId, 'main');
 
         if (!existingDAG || !existingDAG.sections || existingDAG.sections.length === 0) {
             throw new NotFoundError('No sections to reorder');
         }
 
-        const update: Record<string, unknown> = { learnSectionOrder: sectionOrder };
-        if (typeof currentLearnSectionIndex === 'number' && currentLearnSectionIndex >= 0 && currentLearnSectionIndex < sectionOrder.length) {
-            update.currentLearnSectionIndex = currentLearnSectionIndex;
-            update.currentLearnSectionId = sectionOrder[currentLearnSectionIndex];
+        const totalSections = sectionOrder.length;
+        let indexToUse = Number.isNaN(currentLearnSectionIndex) || currentLearnSectionIndex < 0 || currentLearnSectionIndex >= totalSections
+            ? null
+            : currentLearnSectionIndex;
+        if (indexToUse === null) {
+            const dudoc = await domain.getDomainUser(finalDomainId, { _id: targetUid, priv: this.user.priv });
+            const saved = (dudoc as any)?.currentLearnSectionIndex;
+            if (typeof saved === 'number' && saved >= 0 && saved < totalSections) indexToUse = saved;
+            else indexToUse = 0;
         }
-        await domain.setUserInDomain(finalDomainId, targetUid, update);
+        const currentLearnSectionIndexFinal = indexToUse;
 
-        this.response.body = { success: true, sectionOrder, currentLearnSectionIndex: (update as any).currentLearnSectionIndex };
+        // 前端 sectionOrder：[0]=先学，[i]=第 i+1 个，故已完成数 = currentLearnSectionIndex
+        const learnProgressPosition = Math.max(0, Math.min(currentLearnSectionIndexFinal, totalSections));
+        const learnProgressTotal = totalSections;
+
+        const update = {
+            learnSectionOrder: sectionOrder,
+            currentLearnSectionIndex: currentLearnSectionIndexFinal,
+            currentLearnSectionId: sectionOrder[currentLearnSectionIndexFinal],
+            learnProgressPosition,
+            learnProgressTotal,
+        };
+        await learn.setUserLearnState(finalDomainId, targetUid, update);
+
+        this.response.body = { success: true, sectionOrder, currentLearnSectionIndex: currentLearnSectionIndexFinal };
     }
 
     async get(domainId: string) {
@@ -1358,12 +1253,7 @@ class LearnSectionEditHandler extends Handler {
         }
 
         const branch = 'main';
-        const learnDAGColl = this.ctx.db.db.collection('learn_dag');
-        const existingDAG = await learnDAGColl.findOne({
-            domainId: finalDomainId,
-            baseDocId: base.docId,
-            branch: branch,
-        });
+        const existingDAG = await learn.getDAG(finalDomainId, base.docId, branch);
 
         const allSections: LearnDAGNode[] = [];
         const dag: LearnDAGNode[] = [];
@@ -1464,12 +1354,7 @@ class LearnSectionsHandler extends Handler {
         }
 
         
-        const learnDAGColl = this.ctx.db.db.collection('learn_dag');
-        const existingDAG = await learnDAGColl.findOne({
-            domainId: finalDomainId,
-            baseDocId: base.docId,
-            branch: branch,
-        });
+        const existingDAG = await learn.getDAG(finalDomainId, base.docId, branch);
 
         const baseVersion = base.updateAt ? base.updateAt.getTime() : 0;
         const DAG_SCHEMA_VERSION = 2; // 增量：每个节点只存自身卡片，不聚合子节点
@@ -1497,32 +1382,18 @@ class LearnSectionsHandler extends Handler {
             sections = result.sections;
             dag = result.dag;
 
-            await learnDAGColl.updateOne(
-                {
-                    domainId: finalDomainId,
-                    baseDocId: base.docId,
-                    branch: branch,
-                },
-                {
-                    $set: {
-                        domainId: finalDomainId,
-                        baseDocId: base.docId,
-                        branch: branch,
-                        sections: sections,
-                        dag: result.dag,
-                        version: baseVersion,
-                        dagSchemaVersion: DAG_SCHEMA_VERSION,
-                        updateAt: new Date(),
-                    },
-                },
-                { upsert: true }
-            );
+            await learn.setDAG(finalDomainId, base.docId, branch, {
+                sections,
+                dag: result.dag,
+                version: baseVersion,
+                updateAt: new Date(),
+            }, { dagSchemaVersion: DAG_SCHEMA_VERSION });
         } else {
             sections = existingDAG.sections || [];
             dag = existingDAG.dag || [];
         }
 
-        const dudoc = await domain.getDomainUser(finalDomainId, { _id: this.user._id, priv: this.user.priv });
+        const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv });
         const currentLearnSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
         const currentSectionId = (dudoc as any)?.currentLearnSectionId || null;
         const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
