@@ -34,6 +34,10 @@ function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edge
     return { nodes: [], edges: [] };
 }
 
+/**
+ * 按用户的学习顺序组装 section 列表。learnSectionOrder 为每人独立、可含重复 id（同一节出现多次）。
+ * 不做去重，严格按 learnSectionOrder 顺序；无 order 时回退为 DAG 默认排序。
+ */
 function applyUserSectionOrder(sections: LearnDAGNode[], learnSectionOrder: string[] | undefined): LearnDAGNode[] {
     if (!learnSectionOrder || learnSectionOrder.length === 0) {
         return [...sections].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -48,11 +52,19 @@ function applyUserSectionOrder(sections: LearnDAGNode[], learnSectionOrder: stri
     return result;
 }
 
+interface SectionProgressItem {
+    _id: string;
+    title: string;
+    passed: number;
+    total: number;
+    slotIndex: number;  // 顺序中的位置，用于列表 key 和 sectionId 跳转时区分同 id 的 slot
+}
+
 function getSectionProgress(
     sections: LearnDAGNode[],
     allDagNodes: LearnDAGNode[],
     passedCardIds: Set<string>
-): { pending: Array<{ _id: string; title: string; passed: number; total: number }>; completed: Array<{ _id: string; title: string; passed: number; total: number }> } {
+): { pending: SectionProgressItem[]; completed: SectionProgressItem[] } {
     const nodeMap = new Map<string, LearnDAGNode>();
     sections.forEach(s => nodeMap.set(String(s._id), s));
     allDagNodes.forEach(n => nodeMap.set(String(n._id), n));
@@ -70,14 +82,21 @@ function getSectionProgress(
         return cards;
     };
 
-    const pending: Array<{ _id: string; title: string; passed: number; total: number }> = [];
-    const completed: Array<{ _id: string; title: string; passed: number; total: number }> = [];
+    const pending: SectionProgressItem[] = [];
+    const completed: SectionProgressItem[] = [];
 
-    for (const section of sections) {
+    for (let i = 0; i < sections.length; i++) {
+        const section = sections[i];
         const cards = collectCards(section._id, new Set());
         const total = cards.length;
         const passed = cards.filter((c: any) => passedCardIds.has(String(c.cardId))).length;
-        const item = { _id: section._id, title: section.title || 'Unnamed', passed, total };
+        const item: SectionProgressItem = {
+            _id: section._id,
+            title: section.title || 'Unnamed',
+            passed,
+            total,
+            slotIndex: i,
+        };
         if (total > 0 && passed >= total) {
             completed.push(item);
         } else {
@@ -86,6 +105,77 @@ function getSectionProgress(
     }
 
     return { pending, completed };
+}
+
+/** 今日已完成的节：根据今日 learn_result 统计，与学习点无关，持久化在库中 */
+function getCompletedSectionsToday(
+    sections: LearnDAGNode[],
+    allDagNodes: LearnDAGNode[],
+    todayResultCardIds: Set<string>
+): Array<{ _id: string; title: string; passed: number; total: number }> {
+    const nodeMap = new Map<string, LearnDAGNode>();
+    sections.forEach(s => nodeMap.set(String(s._id), s));
+    allDagNodes.forEach(n => nodeMap.set(String(n._id), n));
+
+    const collectCards = (nodeId: string, collected: Set<string>): Array<{ cardId: string }> => {
+        if (collected.has(nodeId)) return [];
+        collected.add(nodeId);
+        const node = nodeMap.get(nodeId);
+        if (!node) return [];
+        const cards = (node.cards || []).map((c: any) => ({ cardId: String(c.cardId) }));
+        const children = allDagNodes.filter((n: any) => n.requireNids?.length > 0 && n.requireNids[n.requireNids.length - 1] === nodeId);
+        for (const child of children) {
+            cards.push(...collectCards(child._id, collected));
+        }
+        return cards;
+    };
+
+    const result: Array<{ _id: string; title: string; passed: number; total: number }> = [];
+    for (const section of sections) {
+        const cards = collectCards(section._id, new Set());
+        const total = cards.length;
+        const passed = cards.filter((c) => todayResultCardIds.has(c.cardId)).length;
+        if (total > 0 && passed > 0) {
+            result.push({ _id: section._id, title: section.title || 'Unnamed', passed, total });
+        }
+    }
+    return result;
+}
+
+/** 从当前学习点起的节点列表：每个节点一条，带顺序号，及该节点（含子节点）下的卡片与题目题干 */
+function getPendingNodeList(
+    sections: LearnDAGNode[],
+    allDagNodes: LearnDAGNode[]
+): Array<{ orderIndex: number; _id: string; title: string; cards: Array<{ cardId: string; title: string; problems?: Array<{ stem?: string }> }> }> {
+    const fromLearningPoint = sections;
+    if (fromLearningPoint.length === 0) return [];
+    const nodeMap = new Map<string, LearnDAGNode>();
+    fromLearningPoint.forEach(s => nodeMap.set(String(s._id), s));
+    allDagNodes.forEach(n => nodeMap.set(String(n._id), n));
+
+    const collectCardsUnder = (nodeId: string, collected: Set<string>): Array<{ cardId: string; title: string; problems?: Array<{ stem?: string }> }> => {
+        if (collected.has(nodeId)) return [];
+        collected.add(nodeId);
+        const node = nodeMap.get(nodeId);
+        if (!node) return [];
+        const cardList: Array<{ cardId: string; title: string; problems?: Array<{ stem?: string }> }> = (node.cards || []).map((c: any) => ({
+            cardId: String(c.cardId),
+            title: c.title || 'Unnamed',
+            problems: (c.problems || []).map((p: any) => ({ stem: p.stem })),
+        }));
+        const children = allDagNodes.filter((n: any) => n.requireNids?.length > 0 && n.requireNids[n.requireNids.length - 1] === nodeId);
+        for (const child of children) {
+            cardList.push(...collectCardsUnder(child._id, collected));
+        }
+        return cardList;
+    };
+
+    return fromLearningPoint.map((section, i) => ({
+        orderIndex: i + 1,
+        _id: section._id,
+        title: section.title || 'Unnamed',
+        cards: collectCardsUnder(section._id, new Set()),
+    }));
 }
 
 async function generateDAG(
@@ -339,7 +429,7 @@ class LearnHandler extends Handler {
                 sections: [],
                 domainId: finalDomainId,
                 baseDocId: base.docId.toString() || null,
-                pendingSections: [],
+                pendingNodeList: [],
                 completedSections: [],
             };
             return;
@@ -386,7 +476,18 @@ class LearnHandler extends Handler {
         let finalSectionId: string | null = null;
         let currentSectionIndex: number = 0;
         const totalSectionsForProgress = sections.length;
-        if (sectionId) {
+        const sectionIndexParam = this.request.query?.sectionIndex;
+        const sectionIndexFromQuery = typeof sectionIndexParam === 'string' ? parseInt(sectionIndexParam, 10) : typeof sectionIndexParam === 'number' ? sectionIndexParam : NaN;
+        if (!Number.isNaN(sectionIndexFromQuery) && sectionIndexFromQuery >= 0 && sectionIndexFromQuery < sections.length) {
+            currentSectionIndex = sectionIndexFromQuery;
+            finalSectionId = sections[sectionIndexFromQuery]._id;
+            await learn.setUserLearnState(finalDomainId, this.user._id, {
+                currentLearnSectionId: finalSectionId,
+                currentLearnSectionIndex: currentSectionIndex,
+                learnProgressPosition: Math.max(0, currentSectionIndex),
+                learnProgressTotal: totalSectionsForProgress,
+            });
+        } else if (sectionId) {
             const idx = sections.findIndex(s => s._id === sectionId);
             finalSectionId = sectionId;
             currentSectionIndex = idx >= 0 ? idx : 0;
@@ -494,23 +595,26 @@ class LearnHandler extends Handler {
             : 0;
         const totalProgress = typeof savedLearnProgressTotal === 'number' && savedLearnProgressTotal > 0 ? savedLearnProgressTotal : 0;
 
-        const { pending: pendingSections, completed: completedSections } = getSectionProgress(sections, allDagNodes, passedCardIds);
-
         const allResults = await learn.getResults(finalDomainId, this.user._id);
 
         const practiceDates = new Set<string>();
         const todayStart = moment.utc().startOf('day').toDate();
         const todayEnd = moment.utc().add(1, 'day').startOf('day').toDate();
         let todayCompletedCount = 0;
+        const todayResultCardIds = new Set<string>();
         for (const result of allResults) {
             if (result.createdAt) {
                 const date = moment.utc(result.createdAt).format('YYYY-MM-DD');
                 practiceDates.add(date);
                 if (result.createdAt >= todayStart && result.createdAt < todayEnd) {
                     todayCompletedCount++;
+                    if (result.cardId) todayResultCardIds.add(String(result.cardId));
                 }
             }
         }
+
+        const pendingNodeList = getPendingNodeList(sections.slice(currentSectionIndex), allDagNodes);
+        const completedSections = getCompletedSectionsToday(sections, allDagNodes, todayResultCardIds);
 
         const totalCheckinDays = practiceDates.size;
 
@@ -588,7 +692,7 @@ class LearnHandler extends Handler {
             consecutiveDays,
             dailyGoal,
             todayCompletedCount,
-            pendingSections,
+            pendingNodeList,
             completedSections,
             nextCard,
         };
@@ -1190,6 +1294,7 @@ class LearnSectionEditHandler extends Handler {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const targetUid = await this.resolveTargetUid(finalDomainId);
         const body: any = this.request?.body || {};
+        // 原样保存，不去重：每人 learnSectionOrder 可含重复 section id
         const sectionOrder: string[] = Array.isArray(body.sectionOrder) ? body.sectionOrder : [];
         const rawIndex = body.currentLearnSectionIndex;
         const currentLearnSectionIndex = typeof rawIndex === 'number' ? rawIndex : parseInt(String(rawIndex), 10);
