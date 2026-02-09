@@ -947,6 +947,10 @@ declare module './service/db' {
         'client.widget': import('./model/client').ClientWidgetDoc;
         'client.gsifield': import('./model/client').ClientGsiFieldDoc;
         'workflow_timer': import('./model/workflow_timer').WorkflowTimerDoc;
+        'learn_dag': any;
+        'learn_progress': any;
+        'learn_result': any;
+        'learn_consumption_stats': any;
     }
 }
 
@@ -976,6 +980,7 @@ export interface Model {
     workflow: typeof import('./model/workflow').default,
     workflowNode: typeof import('./model/workflow_node').default,
     workflowTimer: typeof import('./model/workflow_timer').default,
+    learn: typeof import('./model/learn').default,
     scene: typeof import('./model/scene').default,
     sceneEvent: typeof import('./model/scene').SceneEventModel,
 }
