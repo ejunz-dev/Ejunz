@@ -138,6 +138,7 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
     });
   }, [sections, dag]);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [singleCardModal, setSingleCardModal] = useState<{ cardId: string; title: string } | null>(null);
 
   const nodeMap = useMemo(() => buildNodeMap(sections, dag), [sections, dag]);
 
@@ -157,6 +158,17 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
   const getLessonUrl = useCallback((cardId: string) => {
     return `/d/${domainId}/learn/lesson?cardId=${cardId}`;
   }, [domainId]);
+
+  const openSingleCardModal = useCallback((card: LearnCard) => {
+    setSingleCardModal({ cardId: String(card.cardId), title: card.title || i18n('Unnamed Card') });
+  }, []);
+
+  const confirmSingleCardMode = useCallback(() => {
+    if (!singleCardModal) return;
+    const url = getLessonUrl(singleCardModal.cardId);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setSingleCardModal(null);
+  }, [singleCardModal, getLessonUrl]);
 
   const toggleCardExpand = useCallback((cardId: string) => {
     const id = String(cardId);
@@ -289,7 +301,7 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
                     <div key={`card-${card.cardId}`} style={{ marginLeft: '24px', marginTop: '4px', marginBottom: '4px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <div
-                          onClick={(e) => { e.stopPropagation(); window.location.href = getLessonUrl(card.cardId); }}
+                          onClick={(e) => { e.stopPropagation(); openSingleCardModal(card); }}
                           style={{
                             display: 'inline-block',
                             padding: '4px 8px',
@@ -392,7 +404,7 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
         )}
       </div>
     );
-  }, [sections, dag, expandedNodes, expandedCards, currentSectionId, toggleExpand, toggleCardExpand, getLearnUrl, getLessonUrl, themeStyles]);
+  }, [sections, dag, expandedNodes, expandedCards, currentSectionId, toggleExpand, toggleCardExpand, getLearnUrl, getLessonUrl, openSingleCardModal, themeStyles]);
 
   if (!sections || sections.length === 0) {
     return (
@@ -405,6 +417,7 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
 
   const selectedSection = sections[selectedSectionIndex];
   return (
+    <>
     <div
       style={{
         display: 'flex',
@@ -514,6 +527,88 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
         )}
       </main>
     </div>
+
+    {/* 单卡片模式确认弹窗 */}
+    {singleCardModal && (
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="single-card-modal-title"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(0,0,0,0.5)',
+        }}
+        onClick={() => setSingleCardModal(null)}
+      >
+        <div
+          style={{
+            background: themeStyles.bgPrimary,
+            borderRadius: '12px',
+            padding: '24px',
+            maxWidth: '360px',
+            width: '90%',
+            boxShadow: theme === 'dark' ? '0 8px 32px rgba(0,0,0,0.5)' : '0 8px 24px rgba(0,0,0,0.15)',
+            border: `1px solid ${themeStyles.border}`,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h3
+            id="single-card-modal-title"
+            style={{
+              margin: '0 0 12px',
+              fontSize: '16px',
+              fontWeight: 600,
+              color: themeStyles.textPrimary,
+            }}
+          >
+            {i18n('Enter single card mode?')}
+          </h3>
+          <p style={{ margin: '0 0 20px', fontSize: '14px', color: themeStyles.textSecondary, lineHeight: 1.5 }}>
+            {i18n('Open practice for card: {0}').format(singleCardModal.title)}
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <button
+              type="button"
+              onClick={() => setSingleCardModal(null)}
+              style={{
+                padding: '8px 16px',
+                fontSize: '14px',
+                fontWeight: 500,
+                color: themeStyles.textPrimary,
+                background: themeStyles.bgSecondary,
+                border: `1px solid ${themeStyles.border}`,
+                borderRadius: '8px',
+                cursor: 'pointer',
+              }}
+            >
+              {i18n('Cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={confirmSingleCardMode}
+              style={{
+                padding: '8px 16px',
+                fontSize: '14px',
+                fontWeight: 600,
+                color: '#fff',
+                background: themeStyles.accent,
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+              }}
+            >
+              {i18n('Confirm')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 

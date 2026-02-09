@@ -64,6 +64,7 @@ __langname: English
 'Completed sections': Completed
 'Completed today': Completed today
 'Configuration': Configuration
+'Confirm': Confirm
 'Congratulations! You have completed all practice questions correctly.': Congratulations! You have completed all practice questions correctly.
 'Connect to the WebSocket URL above using the generated Token': Connect to the WebSocket URL above using the generated Token
 'Connected': Connected
@@ -111,6 +112,7 @@ __langname: English
 'Endpoint': Endpoint
 'Enter custom commit message (optional)': Enter custom commit message (optional)
 'Enter new title': Enter new title
+'Enter single card mode?': Enter single card mode?
 'Enter title for new': Enter title for new
 'Error Message': Error Message
 'Error': Error
@@ -197,6 +199,7 @@ __langname: English
 'No system tools.': No system tools.
 'No tools available': No tools available
 'No tools yet. Tools list will be automatically synced after server connection.': No tools yet. Tools list will be automatically synced after server connection.
+'Open practice for card: {0}': Open practice for card: {0}
 'Operations': Operations
 'Pending sections': To do
 'Play Audio': Play Audio
