@@ -26,6 +26,13 @@ export class BaseModel {
         return result.length > 0 ? result[0] : null;
     }
 
+    static async getSkillBaseDocId(domainId: string): Promise<ObjectId | null> {
+        const result = await document.getMulti(domainId, TYPE_MM, { type: 'skill' }).limit(1).toArray();
+        if (result.length === 0) return null;
+        const docId = (result[0] as any).docId;
+        return docId != null ? docId : null;
+    }
+
     /**
      * 创建或获取思维导图（一个 domain 一个 base）
      */

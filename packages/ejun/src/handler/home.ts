@@ -64,19 +64,35 @@ export class HomeHandler extends Handler {
     }
 
     async getCard(domainId: string, limit = 10) {
-        const cards = await CardModel.getRecentUpdated(domainId, typeof limit === 'number' ? limit : 10);
-        this.collectUser(cards.map((c) => c.owner));
-        return cards
-            .filter((c) => c.baseDocId != null)
+        const limitNum = typeof limit === 'number' ? limit : 10;
+        const cap = Math.min(limitNum * 30, 300);
+        const [cards, skillBaseDocId] = await Promise.all([
+            CardModel.getRecentUpdated(domainId, cap),
+            BaseModel.getSkillBaseDocId(domainId),
+        ]);
+        const skillBaseIdStr = skillBaseDocId != null ? skillBaseDocId.toString() : null;
+        const withBase = cards.filter((c) => c.baseDocId != null);
+        const nonSkillCards = withBase.filter(
+            (c) => skillBaseIdStr === null || (c.baseDocId as ObjectId).toString() !== skillBaseIdStr,
+        );
+        this.collectUser(nonSkillCards.map((c) => c.owner));
+        return nonSkillCards
+            .slice(0, limitNum)
             .map((c) => ({ ...c, baseDocId: String(c.baseDocId), docId: String((c as any)._id) }));
     }
 
     async getNode(domainId: string, limit = 10) {
-        const cap = Math.min((typeof limit === 'number' ? limit : 10) * 5, 100);
-        const cards = await CardModel.getRecentUpdated(domainId, cap);
+        const limitNum = typeof limit === 'number' ? limit : 10;
+        const cap = Math.min(limitNum * 30, 300);
+        const [cards, skillBaseDocId] = await Promise.all([
+            CardModel.getRecentUpdated(domainId, cap),
+            BaseModel.getSkillBaseDocId(domainId),
+        ]);
+        const skillBaseIdStr = skillBaseDocId != null ? skillBaseDocId.toString() : null;
         const byKey = new Map<string, { updateAt: Date; owner: number }>();
         for (const c of cards) {
             if (!c.baseDocId || !c.nodeId) continue;
+            if (skillBaseIdStr !== null && (c.baseDocId as ObjectId).toString() === skillBaseIdStr) continue;
             const key = `${(c.baseDocId as ObjectId).toString()}\t${c.nodeId}`;
             const existing = byKey.get(key);
             if (!existing || c.updateAt > existing.updateAt) {
@@ -84,8 +100,7 @@ export class HomeHandler extends Handler {
             }
         }
         const entries = Array.from(byKey.entries())
-            .sort((a, b) => (b[1].updateAt as Date).getTime() - (a[1].updateAt as Date).getTime())
-            .slice(0, typeof limit === 'number' ? limit : 10);
+            .sort((a, b) => (b[1].updateAt as Date).getTime() - (a[1].updateAt as Date).getTime());
         const result: Array<{ nodeId: string; baseDocId: string; text: string; updateAt: Date; owner: number; baseTitle?: string }> = [];
         const baseIds = new Set<string>();
         for (const [key] of entries) {
@@ -99,6 +114,7 @@ export class HomeHandler extends Handler {
         }
         for (const [key, { updateAt, owner }] of entries) {
             const [baseIdStr, nodeId] = key.split('\t');
+            if (skillBaseIdStr !== null && baseIdStr === skillBaseIdStr) continue;
             const base = baseDocs.get(baseIdStr);
             let text = nodeId;
             let baseTitle: string | undefined;
@@ -112,6 +128,7 @@ export class HomeHandler extends Handler {
                 if (node && node.text) text = node.text;
             }
             result.push({ nodeId, baseDocId: baseIdStr, text, updateAt, owner, baseTitle });
+            if (result.length >= limitNum) break;
         }
         this.collectUser(result.map((r) => r.owner));
         return result;
