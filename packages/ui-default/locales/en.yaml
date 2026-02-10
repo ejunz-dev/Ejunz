@@ -60,6 +60,7 @@ __langname: English
 'Client Management': Client Management
 'Client Name': Client Name
 'Clients can connect via the following WebSocket URL (Token must be generated first)': Clients can connect via the following WebSocket URL (Token must be generated first)
+'Close and retry': Close and retry
 'Commit Message': Commit Message
 'commits': commits
 'Completed cards': Completed cards
@@ -84,6 +85,7 @@ __langname: English
 'Copy failed': Copy failed
 'Copy': Copy
 'Correct Answer': Correct Answer
+'Correct needed': Correct needed
 'Correct': Correct
 'Create Client': Create Client
 'Create remote branch': Create remote branch
@@ -207,6 +209,7 @@ __langname: English
 'Open practice for card: {0}': 'Open practice for card: {0}'
 'Open practice for node: {0}': 'Open practice for node: {0}'
 'Operations': Operations
+'Peek': Peek
 'Pending sections': To do
 'Play Audio': Play Audio
 'Play Recording': Play Recording
@@ -261,6 +264,7 @@ __langname: English
 'Server': Server
 'Show Answer': Show Answer
 'Skill branch': Skill branch
+'Source card': Source card
 'Source': Source
 'Start Learning': Start Learning
 'Status': Status
@@ -273,6 +277,7 @@ __langname: English
 'This section requires completion of the following sections first': This section requires completion of the following sections first
 'This tool has no input parameters defined.': This tool has no input parameters defined.
 'Time Spent': Time Spent
+'To review': To review
 'Today progress': Today progress
 'Today remaining': Today remaining
 'Today task': Today task

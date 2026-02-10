@@ -98,6 +98,9 @@ function LessonPage() {
   const [problemStartTime, setProblemStartTime] = useState<number>(Date.now());
   const [problemAttempts, setProblemAttempts] = useState<Record<string, number>>({});
   const [sessionStartTime] = useState<number>(Date.now());
+  const [showPeekCard, setShowPeekCard] = useState(false);
+  const [peekCount, setPeekCount] = useState<Record<string, number>>({});
+  const [correctNeeded, setCorrectNeeded] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (allProblems.length > 0 && problemQueue.length === 0 && answerHistory.length === 0) {
@@ -110,7 +113,7 @@ function LessonPage() {
   }, [allProblems, problemQueue.length, answerHistory.length]);
 
   const currentProblem = problemQueue[currentProblemIndex];
-  const isCorrect = currentProblem && selectedAnswer === currentProblem.answer;
+  const isCorrect = currentProblem && selectedAnswer !== null && selectedAnswer === currentProblem.answer;
   const allCorrect = problemQueue.length === 0 && answerHistory.length > 0;
 
   useEffect(() => {
@@ -120,7 +123,10 @@ function LessonPage() {
       setShowAnalysis(false);
       setProblemStartTime(Date.now());
     }
-  }, [currentProblemIndex, currentProblem]);
+  }, [currentProblemIndex, currentProblem?.pid]);
+
+  const currentPeekCount = currentProblem ? (peekCount[currentProblem.pid] || 0) : 0;
+  const currentCorrectNeeded = currentProblem ? (correctNeeded[currentProblem.pid] || 0) : 0;
 
   const handlePass = async () => {
     if (isPassed || isSubmitting || hasCalledPassRef.current) return;
@@ -167,17 +173,17 @@ function LessonPage() {
 
   const handleAnswerSelect = (answerIndex: number) => {
     if (isAnswered || !currentProblem) return;
-    const isCorrect = answerIndex === currentProblem.answer;
+    const correct = answerIndex === currentProblem.answer;
     const timeSpent = Date.now() - problemStartTime;
     const problemId = currentProblem.pid;
     const currentAttempts = (problemAttempts[problemId] || 0) + 1;
-    
+
     setSelectedAnswer(answerIndex);
     setIsAnswered(true);
     setShowAnalysis(true);
     setProblemAttempts(prev => ({ ...prev, [problemId]: currentAttempts }));
 
-    if (isCorrect) {
+    if (correct) {
       setAnswerHistory(prev => {
         const existingIndex = prev.findIndex(h => h.problem.pid === problemId && h.correct);
         if (existingIndex >= 0) {
@@ -185,7 +191,7 @@ function LessonPage() {
           updated[existingIndex] = {
             problem: currentProblem,
             selected: answerIndex,
-            correct: isCorrect,
+            correct: true,
             timeSpent: updated[existingIndex].timeSpent + timeSpent,
             attempts: currentAttempts,
           };
@@ -194,18 +200,22 @@ function LessonPage() {
         return [...prev, {
           problem: currentProblem,
           selected: answerIndex,
-          correct: isCorrect,
+          correct: true,
           timeSpent,
           attempts: currentAttempts,
         }];
       });
-      setTimeout(() => {
-        handleNextProblem();
-      }, 1500);
+      const need = correctNeeded[problemId] || 0;
+      if (need > 0) {
+        setCorrectNeeded(prev => ({ ...prev, [problemId]: need - 1 }));
+        setTimeout(() => handleCorrectButNeedMore(), 1500);
+      } else {
+        setTimeout(() => handleNextProblem(), 1500);
+      }
     } else {
-      setTimeout(() => {
-        handleWrongAnswer();
-      }, 2000);
+      setPeekCount(prev => ({ ...prev, [problemId]: (prev[problemId] || 0) + 1 }));
+      setCorrectNeeded(prev => ({ ...prev, [problemId]: (prev[problemId] || 0) + 1 }));
+      setTimeout(() => handleWrongAnswer(), 2000);
     }
   };
 
@@ -226,19 +236,38 @@ function LessonPage() {
     }
   };
 
-  const handleWrongAnswer = () => {
+  const requeueCurrent = () => {
     setSelectedAnswer(null);
     setIsAnswered(false);
     setShowAnalysis(false);
-    
     const newQueue = [...problemQueue];
-    const wrongProblem = newQueue[currentProblemIndex];
+    const problem = newQueue[currentProblemIndex];
     newQueue.splice(currentProblemIndex, 1);
-    newQueue.push(wrongProblem);
+    newQueue.push(problem);
     setProblemQueue(newQueue);
-    
     const nextIndex = currentProblemIndex < newQueue.length - 1 ? currentProblemIndex : 0;
     setCurrentProblemIndex(nextIndex);
+  };
+
+  const handleWrongAnswer = () => {
+    requeueCurrent();
+  };
+
+  const handleCorrectButNeedMore = () => {
+    requeueCurrent();
+  };
+
+  const handlePeek = () => {
+    setShowPeekCard(true);
+  };
+
+  const handlePeekClose = () => {
+    if (currentProblem) {
+      setPeekCount(prev => ({ ...prev, [currentProblem.pid]: (prev[currentProblem.pid] || 0) + 1 }));
+      setCorrectNeeded(prev => ({ ...prev, [currentProblem.pid]: (prev[currentProblem.pid] || 0) + 1 }));
+    }
+    setShowPeekCard(false);
+    handleWrongAnswer();
   };
 
   if (allCorrect && !isPassed && !isSubmitting) {
@@ -535,7 +564,7 @@ function LessonPage() {
         borderRadius: '8px',
         border: '1px solid #e0e0e0',
       }}>
-        <div style={{ marginBottom: '16px' }}>
+        <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
           <span style={{
             display: 'inline-block',
             padding: '4px 8px',
@@ -547,6 +576,38 @@ function LessonPage() {
           }}>
             {i18n('Question')}
           </span>
+          {!isAnswered && (
+            <button
+              type="button"
+              onClick={handlePeek}
+              style={{
+                padding: '6px 14px',
+                border: '1px solid #ff9800',
+                borderRadius: '6px',
+                backgroundColor: '#fff3e0',
+                color: '#e65100',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: 500,
+              }}
+            >
+              {i18n('Peek')}
+            </button>
+          )}
+          {currentProblem && (currentPeekCount > 0 || currentCorrectNeeded > 0) && (
+            <span style={{
+              display: 'inline-block',
+              padding: '4px 8px',
+              backgroundColor: '#ff9800',
+              color: '#fff',
+              borderRadius: '4px',
+              fontSize: '12px',
+            }}>
+              {i18n('To review')}
+              {currentPeekCount > 1 ? ` ×${currentPeekCount}` : ''}
+              {currentCorrectNeeded > 0 ? ` · ${i18n('Correct needed')} ${currentCorrectNeeded}` : ''}
+            </span>
+          )}
           {isAnswered && (
             <span style={{
               display: 'inline-block',
@@ -626,6 +687,69 @@ function LessonPage() {
             lineHeight: '1.6',
           }}>
             <strong style={{ color: '#333' }}>{i18n('Analysis')}:</strong> {currentProblem.analysis}
+          </div>
+        )}
+
+        {showPeekCard && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999,
+              padding: '20px',
+            }}
+            onClick={(e) => e.target === e.currentTarget && handlePeekClose()}
+          >
+            <div
+              style={{
+                maxWidth: '640px',
+                maxHeight: '85vh',
+                overflow: 'auto',
+                backgroundColor: '#fff',
+                borderRadius: '12px',
+                padding: '24px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: '0 0 16px', fontSize: '18px', color: '#333' }}>
+                {i18n('Source card')}: {card.title || i18n('Unnamed Card')}
+              </h3>
+              <div
+                style={{
+                  fontSize: '15px',
+                  lineHeight: '1.6',
+                  color: '#555',
+                  marginBottom: '20px',
+                }}
+                dangerouslySetInnerHTML={{ __html: renderedContent || card.content || '' }}
+              />
+              <div style={{ textAlign: 'right' }}>
+                <button
+                  type="button"
+                  onClick={handlePeekClose}
+                  style={{
+                    padding: '10px 20px',
+                    border: 'none',
+                    borderRadius: '6px',
+                    backgroundColor: '#ff9800',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                  }}
+                >
+                  {i18n('Close and retry')}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
