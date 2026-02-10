@@ -56,6 +56,7 @@ __langname: 简体中文
 'Basic Info': 基本信息
 'Behind remote by {0} commit(s)': 落后远程 {0} 个提交
 'Block': 块
+'Card Results': 各卡片结果
 'Card': 卡片
 'Check-in Days': 打卡天数
 'Check-in remaining': 今日还需
@@ -73,6 +74,7 @@ __langname: 简体中文
 'Clients can connect via the following WebSocket URL (Token must be generated first)': 客户端可以通过以下 WebSocket URL 连接（需要先为客户端生成 Token）
 'Commit Message': 提交消息
 'commits': 提交
+'Completed cards': 已完成卡片
 'Completed sections': 已完成
 'Completed today': 今日已完成
 'Configuration': 配置
@@ -126,6 +128,7 @@ __langname: 简体中文
 'Enter custom commit message (optional)': 请输入自定义提交消息（可选）
 'Enter new title': 输入新标题
 'Enter single card mode?': 进入单卡片模式？
+'Enter single node mode?': 进入单节点模式？
 'Enter title for new': 输入新
 'Error Message': 错误信息
 'Error': 错误
@@ -195,6 +198,7 @@ __langname: 简体中文
 'No chat history yet': 暂无聊天记录
 'No clients created yet': 暂无已创建的客户端
 'No commit message': 无提交消息
+'No completed cards': 今日暂无已完成卡片
 'No completed sections': 暂无已完成
 'No content or practice questions available.': 暂无内容或练习题。
 'No content': 无内容
@@ -215,8 +219,10 @@ __langname: 简体中文
 'No tools available': 暂无工具
 'No tools yet. Tools list will be automatically synced after server connection.': 暂无工具。服务器连接后会自动同步工具列表。
 'No': 否
+'Node Complete': 节点完成
 'Not enabled': 不启用
 'Open practice for card: {0}': 将为卡片「{0}」打开练习
+'Open practice for node: {0}': 将为节点「{0}」打开练习
 'Operations': 操作
 'Original score: {0}': '原得分: {0}'
 'Pending sections': 待完成

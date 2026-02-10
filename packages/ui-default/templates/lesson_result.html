@@ -1,5 +1,7 @@
 {% extends "layout/basic.html" %}
 {% block content %}
+<div class="row">
+  <div class="medium-12 columns">
 <div data-fragment-id="lesson_result">
   <div class="section">
     <div class="section__header">
@@ -18,8 +20,8 @@
           <h2 style="font-size: 18px; margin-bottom: 12px; color: #333;">
             {{ _('Content') }}
           </h2>
-          <div style="font-size: 16px; line-height: 1.6; color: #555;">
-            {{ card.content | markdown }}
+          <div class="typo richmedia" style="font-size: 16px; line-height: 1.6; color: #555;">
+            {{ card.content | markdown | safe }}
           </div>
         </div>
       {% endif %}
@@ -90,6 +92,8 @@
         </div>
       </div>
     </div>
+  </div>
+</div>
   </div>
 </div>
 {% endblock %}
