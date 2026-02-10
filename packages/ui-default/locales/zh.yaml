@@ -72,6 +72,7 @@ __langname: 简体中文
 'Client Management': 客户端管理
 'Client Name': 客户端名称
 'Clients can connect via the following WebSocket URL (Token must be generated first)': 客户端可以通过以下 WebSocket URL 连接（需要先为客户端生成 Token）
+'Close and retry': 关闭并重新作答
 'Commit Message': 提交消息
 'commits': 提交
 'Completed cards': 已完成卡片
@@ -96,6 +97,7 @@ __langname: 简体中文
 'Copy "{data}" failed :(': '复制“{data}”失败 :('
 'Copy failed :(': '复制失败 :('
 'Correct Answer': 正确答案
+'Correct needed': 再答对
 'Correct': 正确
 'Create Client': 创建客户端
 'Create remote branch': 创建远程分支
@@ -225,6 +227,7 @@ __langname: 简体中文
 'Open practice for node: {0}': 将为节点「{0}」打开练习
 'Operations': 操作
 'Original score: {0}': '原得分: {0}'
+'Peek': 偷看
 'Pending sections': 待完成
 'Play Audio': 播放音频
 'Play Recording': 播放录音
@@ -281,6 +284,7 @@ __langname: 简体中文
 'Set as start': 设为学习起点
 'Show Answer': 显示答案
 'Skill branch': Skill 分支
+'Source card': 题目来源
 'Source': 来源
 'Start Learning': 开始学习
 'Status': 状态
@@ -294,6 +298,7 @@ __langname: 简体中文
 'This section requires completion of the following sections first': 此章节需要先完成以下章节
 'This tool has no input parameters defined.': 该工具没有定义输入参数。
 'Time Spent': 用时
+'To review': 待复习
 'Today progress': 今日进度
 'Today remaining': 今日待完成
 'Today task': 今日任务
