@@ -208,12 +208,8 @@ function LearnPage() {
   };
 
   const handleStart = useCallback(() => {
-    if (nextCard) {
-      window.location.href = `/d/${domainId}/learn/lesson?cardId=${nextCard.cardId}`;
-    } else {
-      window.location.href = `/d/${domainId}/learn/lesson`;
-    }
-  }, [domainId, nextCard]);
+    window.location.href = `/d/${domainId}/learn/lesson?today=1`;
+  }, [domainId]);
 
   const handleSaveGoal = useCallback(async () => {
     if (isSavingGoal) return;
