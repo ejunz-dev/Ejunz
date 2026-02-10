@@ -139,6 +139,7 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
   }, [sections, dag]);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [singleCardModal, setSingleCardModal] = useState<{ cardId: string; title: string } | null>(null);
+  const [singleNodeModal, setSingleNodeModal] = useState<{ nodeId: string; title: string } | null>(null);
 
   const nodeMap = useMemo(() => buildNodeMap(sections, dag), [sections, dag]);
 
@@ -158,6 +159,21 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
   const getLessonUrl = useCallback((cardId: string) => {
     return `/d/${domainId}/learn/lesson?cardId=${cardId}`;
   }, [domainId]);
+
+  const getNodeLessonUrl = useCallback((nodeId: string) => {
+    return `/d/${domainId}/learn/lesson?nodeId=${encodeURIComponent(nodeId)}`;
+  }, [domainId]);
+
+  const openSingleNodeModal = useCallback((node: LearnDAGNode) => {
+    setSingleNodeModal({ nodeId: node._id, title: node.title || i18n('Unnamed Node') });
+  }, []);
+
+  const confirmSingleNodeMode = useCallback(() => {
+    if (!singleNodeModal) return;
+    const url = getNodeLessonUrl(singleNodeModal.nodeId);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setSingleNodeModal(null);
+  }, [singleNodeModal, getNodeLessonUrl]);
 
   const openSingleCardModal = useCallback((card: LearnCard) => {
     setSingleCardModal({ cardId: String(card.cardId), title: card.title || i18n('Unnamed Card') });
@@ -208,7 +224,7 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
                 zIndex: 1,
                 width: '100%',
               }}
-              onClick={() => window.location.href = getLearnUrl(node._id)}
+              onClick={(e) => { e.stopPropagation(); openSingleNodeModal(node); }}
               onMouseEnter={(e) => {
                 if (!isCurrentSection) e.currentTarget.style.backgroundColor = themeStyles.bgHover;
               }}
@@ -404,7 +420,7 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
         )}
       </div>
     );
-  }, [sections, dag, expandedNodes, expandedCards, currentSectionId, toggleExpand, toggleCardExpand, getLearnUrl, getLessonUrl, openSingleCardModal, themeStyles]);
+  }, [sections, dag, expandedNodes, expandedCards, currentSectionId, toggleExpand, toggleCardExpand, getLearnUrl, getLessonUrl, openSingleCardModal, openSingleNodeModal, themeStyles]);
 
   if (!sections || sections.length === 0) {
     return (
@@ -591,6 +607,87 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
             <button
               type="button"
               onClick={confirmSingleCardMode}
+              style={{
+                padding: '8px 16px',
+                fontSize: '14px',
+                fontWeight: 600,
+                color: '#fff',
+                background: themeStyles.accent,
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+              }}
+            >
+              {i18n('Confirm')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* 单 node 模式确认弹窗 */}
+    {singleNodeModal && (
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="single-node-modal-title"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(0,0,0,0.5)',
+        }}
+        onClick={() => setSingleNodeModal(null)}
+      >
+        <div
+          style={{
+            background: themeStyles.bgPrimary,
+            borderRadius: '12px',
+            padding: '24px',
+            maxWidth: '360px',
+            width: '90%',
+            boxShadow: theme === 'dark' ? '0 8px 32px rgba(0,0,0,0.5)' : '0 8px 24px rgba(0,0,0,0.15)',
+            border: `1px solid ${themeStyles.border}`,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h3
+            id="single-node-modal-title"
+            style={{
+              margin: '0 0 12px',
+              fontSize: '16px',
+              fontWeight: 600,
+              color: themeStyles.textPrimary,
+            }}
+          >
+            {i18n('Enter single node mode?')}
+          </h3>
+          <p style={{ margin: '0 0 20px', fontSize: '14px', color: themeStyles.textSecondary, lineHeight: 1.5 }}>
+            {i18n('Open practice for node: {0}').format(singleNodeModal.title)}
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <button
+              type="button"
+              onClick={() => setSingleNodeModal(null)}
+              style={{
+                padding: '8px 16px',
+                fontSize: '14px',
+                fontWeight: 500,
+                color: themeStyles.textPrimary,
+                background: themeStyles.bgSecondary,
+                border: `1px solid ${themeStyles.border}`,
+                borderRadius: '8px',
+                cursor: 'pointer',
+              }}
+            >
+              {i18n('Cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={confirmSingleNodeMode}
               style={{
                 padding: '8px 16px',
                 fontSize: '14px',

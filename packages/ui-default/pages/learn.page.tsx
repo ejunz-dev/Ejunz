@@ -12,6 +12,14 @@ interface SectionProgress {
   slotIndex?: number;
 }
 
+interface CompletedCardToday {
+  cardId: string;
+  resultId: string;
+  cardTitle: string;
+  nodeTitle: string;
+  completedAt?: Date | string;
+}
+
 interface PendingNodeCard {
   cardId: string;
   title: string;
@@ -80,7 +88,7 @@ function LearnPage() {
   const dailyGoal = (window as any).UiContext?.dailyGoal || 0;
   const todayCompletedCount = (window as any).UiContext?.todayCompletedCount ?? 0;
   const pendingNodeList = ((window as any).UiContext?.pendingNodeList || []) as PendingNode[];
-  const completedSections = ((window as any).UiContext?.completedSections || []) as SectionProgress[];
+  const completedCardsToday = ((window as any).UiContext?.completedCardsToday || []) as CompletedCardToday[];
   const nextCard = (window as any).UiContext?.nextCard as { nodeId: string; cardId: string } | null;
   const sections = ((window as any).UiContext?.sections || []) as MapDAGNode[];
   const fullDag = ((window as any).UiContext?.fullDag || []) as MapDAGNode[];
@@ -1005,7 +1013,7 @@ function LearnPage() {
                   textTransform: 'uppercase',
                   letterSpacing: '0.04em',
                 }}>
-                  {i18n('Completed sections')}
+                  {i18n('Completed cards')}
                 </span>
                 <button
                   type="button"
@@ -1024,14 +1032,20 @@ function LearnPage() {
                 </button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {completedSections.length === 0 ? (
+                {completedCardsToday.length === 0 ? (
                   <div style={{ fontSize: '13px', color: themeStyles.textTertiary, fontStyle: 'italic' }}>
-                    {i18n('No completed sections')}
+                    {i18n('No completed cards')}
                   </div>
                 ) : (
-                  completedSections.map((s) => (
-                    <div
-                      key={s._id}
+                  completedCardsToday.map((c) => (
+                    <button
+                      key={c.cardId}
+                      type="button"
+                      onClick={() => {
+                        if (c.resultId) {
+                          window.open(`/d/${domainId}/learn/lesson/result/${c.resultId}`, '_blank', 'noopener,noreferrer');
+                        }
+                      }}
                       style={{
                         padding: '10px 12px',
                         fontSize: '14px',
@@ -1039,13 +1053,34 @@ function LearnPage() {
                         borderRadius: '8px',
                         background: themeStyles.bgPrimary,
                         border: `1px solid ${themeStyles.border}`,
+                        cursor: c.resultId ? 'pointer' : 'default',
+                        textAlign: 'left',
+                        width: '100%',
+                        transition: 'background 0.2s',
                       }}
+                      onMouseEnter={(e) => {
+                        if (c.resultId) e.currentTarget.style.background = themeStyles.bgHover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = themeStyles.bgPrimary;
+                      }}
+                      title={c.resultId ? i18n('View result') : undefined}
                     >
-                      <div style={{ fontWeight: 500, color: themeStyles.textPrimary }}>{s.title}</div>
-                      <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginTop: '4px' }}>
-                        {s.passed}/{s.total} ✓
+                      <div style={{ fontWeight: 500, color: themeStyles.textPrimary }}>
+                        {c.cardTitle || i18n('Unnamed Card')}
                       </div>
-                    </div>
+                      <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginTop: '4px' }}>
+                        {c.nodeTitle ? `${c.nodeTitle} · ` : ''}
+                        {c.completedAt
+                          ? (() => {
+                              const d = typeof c.completedAt === 'string' ? new Date(c.completedAt) : c.completedAt;
+                              const pad = (n: number) => String(n).padStart(2, '0');
+                              return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                            })()
+                          : ''}{' '}
+                        ✓
+                      </div>
+                    </button>
                   ))
                 )}
               </div>
@@ -1055,7 +1090,7 @@ function LearnPage() {
           <button
             type="button"
             onClick={() => setRightSidebarOpen(true)}
-            title={i18n('Completed sections')}
+            title={i18n('Completed cards')}
             style={{
               width: '100%',
               padding: '16px 0',

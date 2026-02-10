@@ -32,7 +32,26 @@ function LessonPage() {
   const domainId = (window.UiContext?.domainId || '') as string;
   const baseDocId = (window.UiContext?.baseDocId || '') as string;
   const isAlonePractice = (window.UiContext?.isAlonePractice || false) as boolean;
-  
+  const isSingleNodeMode = (window.UiContext?.isSingleNodeMode || false) as boolean;
+  const rootNodeId = (window.UiContext?.rootNodeId || '') as string;
+  const rootNodeTitle = (window.UiContext?.rootNodeTitle || '') as string;
+  const flatCards = ((window.UiContext?.flatCards || []) as Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string }>);
+  const nodeTree = ((window.UiContext?.nodeTree || []) as Array<{
+    type: 'node';
+    id: string;
+    title: string;
+    children: Array<{ type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }>;
+  }>);
+  const currentCardIndex = (window.UiContext?.currentCardIndex ?? 0) as number;
+
+  const cardIdToFlatIndex = useMemo(() => {
+    const m: Record<string, number> = {};
+    flatCards.forEach((item, idx) => {
+      m[String(item.cardId)] = idx;
+    });
+    return m;
+  }, [flatCards]);
+
   const [renderedContent, setRenderedContent] = useState<string>('');
 
   useEffect(() => {
@@ -118,12 +137,16 @@ function LessonPage() {
           attempts: h.attempts,
         })),
         totalTime,
-        isAlonePractice: isAlonePractice,
-        cardId: isAlonePractice ? card.docId : undefined,
+        isAlonePractice: isAlonePractice && !isSingleNodeMode,
+        cardId: (isAlonePractice || isSingleNodeMode) ? card.docId : undefined,
+        singleNodeMode: isSingleNodeMode || undefined,
+        nodeId: isSingleNodeMode ? rootNodeId : undefined,
+        cardIndex: isSingleNodeMode ? currentCardIndex : undefined,
       });
       setIsPassed(true);
-      if (!isAlonePractice && result && (result.redirect || result.body?.redirect)) {
-        window.location.href = result.redirect || result.body.redirect;
+      const redirect = result?.redirect ?? result?.body?.redirect;
+      if (redirect && (!isAlonePractice || isSingleNodeMode)) {
+        window.location.href = redirect;
         return;
       }
     } catch (error: any) {
@@ -477,9 +500,10 @@ function LessonPage() {
     );
   }
 
-  return (
+  const mainContent = (
     <div style={{
       maxWidth: '900px',
+      width: '100%',
       margin: '0 auto',
       padding: '20px',
     }}>
@@ -605,6 +629,80 @@ function LessonPage() {
       </div>
     </div>
   );
+
+  const renderNodeTreeItem = (item: { type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }, depth: number): React.ReactNode => {
+    if (item.type === 'card') {
+      const idx = cardIdToFlatIndex[item.id];
+      const isDone = typeof idx === 'number' && idx < currentCardIndex;
+      const isCurrent = typeof idx === 'number' && idx === currentCardIndex;
+      return (
+        <div
+          key={`card-${item.id}`}
+          style={{
+            padding: '6px 10px',
+            marginLeft: `${depth * 12}px`,
+            marginBottom: '2px',
+            fontSize: '13px',
+            borderRadius: '6px',
+            backgroundColor: isCurrent ? '#e3f2fd' : isDone ? '#e8f5e9' : 'transparent',
+            color: isCurrent ? '#1976d2' : isDone ? '#2e7d32' : '#666',
+            fontWeight: isCurrent ? 600 : 400,
+          }}
+        >
+          {isDone && <span style={{ marginRight: '6px' }}>✓</span>}
+          {item.title || i18n('Unnamed Card')}
+        </div>
+      );
+    }
+    const nodeItem = item as { type: 'node'; id: string; title: string; children: Array<{ type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }> };
+    return (
+      <div key={`node-${nodeItem.id}`} style={{ marginBottom: '4px' }}>
+        <div style={{
+          padding: '6px 10px',
+          marginLeft: `${depth * 12}px`,
+          fontSize: '13px',
+          fontWeight: 600,
+          color: '#333',
+        }}>
+          {nodeItem.title || i18n('Unnamed Node')}
+        </div>
+        {(nodeItem.children || []).map((child, i) => (
+          <React.Fragment key={i}>{renderNodeTreeItem(child as { type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }, depth + 1)}</React.Fragment>
+        ))}
+      </div>
+    );
+  };
+
+  if (isSingleNodeMode && nodeTree.length > 0) {
+    return (
+      <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#fafafa' }}>
+        <aside style={{
+          width: '240px',
+          flexShrink: 0,
+          padding: '16px',
+          backgroundColor: '#fff',
+          borderRight: '1px solid #e0e0e0',
+          overflowY: 'auto',
+        }}>
+          <div style={{ fontSize: '12px', color: '#999', marginBottom: '8px', textTransform: 'uppercase' }}>
+            {i18n('Progress')}
+          </div>
+          <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#333' }}>
+            {rootNodeTitle || i18n('Unnamed Node')}
+          </div>
+          <div style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
+            {currentCardIndex + 1} / {flatCards.length} {i18n('cards')}
+          </div>
+          {nodeTree.map((root, i) => renderNodeTreeItem(root, 0))}
+        </aside>
+        <main style={{ flex: 1, overflowY: 'auto' }}>
+          {mainContent}
+        </main>
+      </div>
+    );
+  }
+
+  return mainContent;
 }
 
 const page = new NamedPage('lessonPage', async () => {
