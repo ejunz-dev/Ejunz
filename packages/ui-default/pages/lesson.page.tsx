@@ -33,6 +33,7 @@ function LessonPage() {
   const baseDocId = (window.UiContext?.baseDocId || '') as string;
   const isAlonePractice = (window.UiContext?.isAlonePractice || false) as boolean;
   const isSingleNodeMode = (window.UiContext?.isSingleNodeMode || false) as boolean;
+  const isTodayMode = (window.UiContext?.isTodayMode || false) as boolean;
   const rootNodeId = (window.UiContext?.rootNodeId || '') as string;
   const rootNodeTitle = (window.UiContext?.rootNodeTitle || '') as string;
   const flatCards = ((window.UiContext?.flatCards || []) as Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string }>);
@@ -137,11 +138,12 @@ function LessonPage() {
           attempts: h.attempts,
         })),
         totalTime,
-        isAlonePractice: isAlonePractice && !isSingleNodeMode,
-        cardId: (isAlonePractice || isSingleNodeMode) ? card.docId : undefined,
+        isAlonePractice: isAlonePractice && !isSingleNodeMode && !isTodayMode,
+        cardId: (isAlonePractice || isSingleNodeMode || isTodayMode) ? card.docId : undefined,
         singleNodeMode: isSingleNodeMode || undefined,
+        todayMode: isTodayMode || undefined,
         nodeId: isSingleNodeMode ? rootNodeId : undefined,
-        cardIndex: isSingleNodeMode ? currentCardIndex : undefined,
+        cardIndex: (isSingleNodeMode || isTodayMode) ? currentCardIndex : undefined,
       });
       setIsPassed(true);
       const redirect = result?.redirect ?? result?.body?.redirect;
@@ -673,7 +675,8 @@ function LessonPage() {
     );
   };
 
-  if (isSingleNodeMode && nodeTree.length > 0) {
+  const showSidebar = (isSingleNodeMode || isTodayMode) && nodeTree.length > 0;
+  if (showSidebar) {
     return (
       <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#fafafa' }}>
         <aside style={{
