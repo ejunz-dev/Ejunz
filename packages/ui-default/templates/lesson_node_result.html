@@ -1,0 +1,72 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div data-fragment-id="lesson_node_result">
+  <div class="section">
+    <div class="section__header">
+      <h1 class="section__title" style="font-size: 24px; font-weight: bold; margin: 0;">
+        {{ rootNodeTitle or _('Unnamed Node') }} — {{ _('Node Complete') }}
+      </h1>
+    </div>
+    <div class="section__body">
+      <div style="margin-bottom: 30px; padding: 30px; background-color: #fff; border-radius: 8px; border: 1px solid #e0e0e0;">
+        <h2 style="font-size: 20px; margin-bottom: 20px; color: #333;">
+          {{ _('Practice Results') }}
+        </h2>
+        <div style="display: flex; justify-content: space-around; margin-bottom: 30px; padding: 20px; background-color: #f5f5f5; border-radius: 8px;">
+          <div style="text-align: center;">
+            <div style="font-size: 32px; font-weight: bold; color: #4caf50; margin-bottom: 8px;">
+              {{ aggregate.totalCorrect }}/{{ aggregate.totalProblems }}
+            </div>
+            <div style="font-size: 14px; color: #666;">{{ _('Correct') }}</div>
+          </div>
+          <div style="text-align: center;">
+            <div style="font-size: 32px; font-weight: bold; color: #2196f3; margin-bottom: 8px;">
+              {{ aggregate.accuracy }}%
+            </div>
+            <div style="font-size: 14px; color: #666;">{{ _('Accuracy') }}</div>
+          </div>
+          <div style="text-align: center;">
+            <div style="font-size: 32px; font-weight: bold; color: #ff9800; margin-bottom: 8px;">
+              {{ (aggregate.totalTime / 1000) | round(1) }}s
+            </div>
+            <div style="font-size: 14px; color: #666;">{{ _('Total Time') }}</div>
+          </div>
+        </div>
+
+        <h3 style="font-size: 16px; margin-bottom: 16px; color: #333;">
+          {{ _('Card Results') }}
+        </h3>
+        {% for cr in cardResults %}
+          <div style="padding: 16px; margin-bottom: 12px; border-radius: 8px; background-color: #fafafa; border: 1px solid #e0e0e0;">
+            <div style="font-size: 15px; font-weight: 600; margin-bottom: 8px; color: #333;">
+              {{ cr.cardTitle or cr.card.title or _('Unnamed Card') }}
+            </div>
+            <div style="font-size: 13px; color: #666;">
+              {{ cr.problemStats | selectattr('correct') | list | length }}/{{ cr.problemStats | length }} {{ _('Correct') }}
+              · {{ (cr.totalTime / 1000) | round(1) }}s
+            </div>
+            <div style="margin-top: 10px; padding-left: 12px; border-left: 2px solid #e0e0e0;">
+              {% for stat in cr.problemStats %}
+                <div style="font-size: 12px; color: #666; margin-bottom: 4px;">
+                  {{ loop.index }}. {{ (stat.problem.stem or '') | truncate(80) }}
+                  {% if stat.correct %}
+                    <span style="color: #4caf50;">✓</span>
+                  {% else %}
+                    <span style="color: #f44336;">✗</span>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <div style="text-align: center; padding: 20px;">
+        <a href="/d/{{ domainId }}/learn" class="button primary" style="padding: 12px 32px; font-size: 16px; font-weight: bold;">
+          {{ _('Back to Learn') }}
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

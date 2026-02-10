@@ -107,7 +107,7 @@ function getSectionProgress(
     return { pending, completed };
 }
 
-/** 今日已完成的节：根据今日 learn_result 统计，与学习点无关，持久化在库中 */
+/** 今日已完成的节：根据今日 learn_result 统计（含单卡片刷题、node 模式刷题），与学习点无关 */
 function getCompletedSectionsToday(
     sections: LearnDAGNode[],
     allDagNodes: LearnDAGNode[],
@@ -434,6 +434,7 @@ class LearnHandler extends Handler {
                 baseDocId: base.docId.toString() || null,
                 pendingNodeList: [],
                 completedSections: [],
+                completedCardsToday: [],
                 passedCardIds: [],
             };
             return;
@@ -620,6 +621,35 @@ class LearnHandler extends Handler {
         const pendingNodeList = getPendingNodeList(sections.slice(currentSectionIndex), allDagNodes);
         const completedSections = getCompletedSectionsToday(sections, allDagNodes, todayResultCardIds);
 
+        const todayResults = allResults.filter(
+            (r: any) => r.createdAt && r.createdAt >= todayStart && r.createdAt < todayEnd && r.cardId
+        );
+        const latestByCardId = new Map<string, { createdAt: Date; resultId: string }>();
+        for (const r of todayResults) {
+            const cid = String(r.cardId);
+            const rid = r._id ? String(r._id) : '';
+            const existing = latestByCardId.get(cid);
+            if (!existing || (r.createdAt && r.createdAt > existing.createdAt)) {
+                latestByCardId.set(cid, { createdAt: r.createdAt, resultId: rid });
+            }
+        }
+        const completedCardsToday: Array<{ cardId: string; resultId: string; cardTitle: string; nodeTitle: string; completedAt: Date }> = [];
+        const baseNodes = getBranchData(base, 'main').nodes || [];
+        for (const [cardIdStr, { createdAt, resultId }] of latestByCardId) {
+            if (!resultId) continue;
+            const cardDoc = await CardModel.get(finalDomainId, new ObjectId(cardIdStr));
+            if (!cardDoc) continue;
+            const nodeDoc = baseNodes.find((n: BaseNode) => n.id === cardDoc.nodeId);
+            completedCardsToday.push({
+                cardId: cardIdStr,
+                resultId,
+                cardTitle: cardDoc.title || '',
+                nodeTitle: nodeDoc?.text || '',
+                completedAt: createdAt,
+            });
+        }
+        completedCardsToday.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime());
+
         const totalCheckinDays = practiceDates.size;
 
         let consecutiveDays = 0;
@@ -700,6 +730,7 @@ class LearnHandler extends Handler {
             todayCompletedCount,
             pendingNodeList,
             completedSections,
+            completedCardsToday,
             nextCard,
             passedCardIds: Array.from(passedCardIds),
         };
@@ -824,6 +855,8 @@ class LessonHandler extends Handler {
         }
 
         const queryCardId = this.request.query?.cardId;
+        const queryNodeId = this.request.query?.nodeId as string | undefined;
+
         if (queryCardId) {
             let cardId: ObjectId;
             try {
@@ -858,6 +891,105 @@ class LessonHandler extends Handler {
                 domainId: finalDomainId,
                 baseDocId: base.docId.toString(),
                 isAlonePractice: true,
+            };
+            return;
+        }
+
+        if (queryNodeId) {
+            const branch = 'main';
+            const branchData = getBranchData(base, branch);
+            const nodes = branchData.nodes || [];
+            const edges = branchData.edges || [];
+            if (nodes.length === 0) throw new NotFoundError('No nodes available');
+            const result = await generateDAG(finalDomainId, base.docId, nodes, edges, (k: string) => this.translate(k));
+            const sections = result.sections;
+            const allDagNodes = result.dag;
+            const nodeMap = new Map<string, LearnDAGNode>();
+            sections.forEach(n => nodeMap.set(n._id, n));
+            allDagNodes.forEach(n => nodeMap.set(n._id, n));
+            const rootNode = nodeMap.get(queryNodeId);
+            if (!rootNode) throw new NotFoundError('Node not found');
+
+            const getChildNodes = (parentId: string): LearnDAGNode[] => {
+                return allDagNodes
+                    .filter(n => n.requireNids && n.requireNids[n.requireNids.length - 1] === parentId)
+                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            };
+
+            const flatCards: Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string }> = [];
+            const nodeTree: Array<{ type: 'node'; id: string; title: string; children: Array<{ type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }> }> = [];
+
+            const collectUnder = (nodeId: string): Array<{ type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }> => {
+                const node = nodeMap.get(nodeId);
+                if (!node) return [];
+                const children: Array<{ type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }> = [];
+                const cardList = (node.cards || []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+                for (const c of cardList) {
+                    flatCards.push({
+                        nodeId: node._id,
+                        cardId: c.cardId,
+                        nodeTitle: node.title || '',
+                        cardTitle: c.title || '',
+                    });
+                    children.push({ type: 'card', id: c.cardId, title: c.title || '' });
+                }
+                const childNodes = getChildNodes(nodeId);
+                for (const ch of childNodes) {
+                    const sub = collectUnder(ch._id);
+                    children.push({ type: 'node', id: ch._id, title: ch.title || '', children: sub });
+                }
+                return children;
+            };
+
+            nodeTree.push({
+                type: 'node',
+                id: rootNode._id,
+                title: rootNode.title || '',
+                children: collectUnder(queryNodeId),
+            });
+
+            const cardIndexParam = this.request.query?.cardIndex;
+            let currentCardIndex = typeof cardIndexParam === 'string' ? parseInt(cardIndexParam, 10) : 0;
+            if (Number.isNaN(currentCardIndex) || currentCardIndex < 0) currentCardIndex = 0;
+
+            const cardsWithProblems: Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string }> = [];
+            for (const item of flatCards) {
+                const cardDoc = await CardModel.get(finalDomainId, new ObjectId(item.cardId));
+                if (cardDoc && cardDoc.problems && cardDoc.problems.length > 0) {
+                    cardsWithProblems.push(item);
+                }
+            }
+
+            if (cardsWithProblems.length === 0) {
+                throw new NotFoundError('No practice questions under this node');
+            }
+            if (currentCardIndex >= cardsWithProblems.length) currentCardIndex = 0;
+
+            const currentItem = cardsWithProblems[currentCardIndex];
+            const currentCard = await CardModel.get(finalDomainId, new ObjectId(currentItem.cardId));
+            if (!currentCard || !currentCard.problems || currentCard.problems.length === 0) {
+                throw new NotFoundError('Card not found');
+            }
+            const currentNode = (getBranchData(base, 'main').nodes || []).find(n => n.id === currentItem.nodeId);
+            if (!currentNode) throw new NotFoundError('Node not found');
+            const currentCardList = await CardModel.getByNodeId(finalDomainId, base.docId, currentItem.nodeId);
+            const currentIndexInNode = currentCardList.findIndex(c => c.docId.toString() === currentItem.cardId);
+
+            this.response.template = 'lesson.html';
+            this.response.body = {
+                card: currentCard,
+                node: currentNode,
+                cards: currentCardList,
+                currentIndex: currentIndexInNode >= 0 ? currentIndexInNode : 0,
+                domainId: finalDomainId,
+                baseDocId: base.docId.toString(),
+                isAlonePractice: false,
+                isSingleNodeMode: true,
+                rootNodeId: queryNodeId,
+                rootNodeTitle: rootNode.title || '',
+                flatCards: cardsWithProblems,
+                nodeTree,
+                currentCardIndex,
             };
             return;
         }
@@ -1013,11 +1145,82 @@ class LessonHandler extends Handler {
         const answerHistory = body.answerHistory || [];
         const totalTime = body.totalTime || 0;
         const isAlonePractice = body.isAlonePractice || false;
+        const isSingleNodeMode = body.singleNodeMode === true;
+        const nodeIdFromBody = body.nodeId as string | undefined;
+        const cardIndexFromBody = typeof body.cardIndex === 'number' ? body.cardIndex : parseInt(body.cardIndex, 10);
         const cardIdFromBody = body.cardId;
-        
+
         const base = await BaseModel.getByDomain(finalDomainId);
         if (!base) {
             throw new NotFoundError('Base not found for this domain');
+        }
+
+        if (isSingleNodeMode && nodeIdFromBody) {
+            const branch = 'main';
+            const branchData = getBranchData(base, branch);
+            const nodes = branchData.nodes || [];
+            const edges = branchData.edges || [];
+            if (nodes.length === 0) throw new NotFoundError('No nodes available');
+            const result = await generateDAG(finalDomainId, base.docId, nodes, edges, (k: string) => this.translate(k));
+            const allDagNodes = result.dag;
+            const nodeMap = new Map<string, LearnDAGNode>();
+            result.sections.forEach((n: LearnDAGNode) => nodeMap.set(n._id, n));
+            allDagNodes.forEach((n: LearnDAGNode) => nodeMap.set(n._id, n));
+            const getChildNodes = (parentId: string): LearnDAGNode[] =>
+                allDagNodes
+                    .filter((n: LearnDAGNode) => n.requireNids && n.requireNids[n.requireNids.length - 1] === parentId)
+                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            const flatCardsRaw: Array<{ nodeId: string; cardId: string }> = [];
+            const collectUnder = (nid: string) => {
+                const node = nodeMap.get(nid);
+                if (!node) return;
+                for (const c of (node.cards || []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))) {
+                    flatCardsRaw.push({ nodeId: node._id, cardId: c.cardId });
+                }
+                for (const ch of getChildNodes(nid)) collectUnder(ch._id);
+            };
+            collectUnder(nodeIdFromBody);
+            const cardsWithProblems: Array<{ nodeId: string; cardId: string }> = [];
+            for (const item of flatCardsRaw) {
+                const cardDoc = await CardModel.get(finalDomainId, new ObjectId(item.cardId));
+                if (cardDoc && cardDoc.problems && cardDoc.problems.length > 0) cardsWithProblems.push(item);
+            }
+            const currentCardId = cardIdFromBody ? new ObjectId(cardIdFromBody) : (cardsWithProblems[cardIndexFromBody] ? new ObjectId(cardsWithProblems[cardIndexFromBody].cardId) : null);
+            if (!currentCardId) {
+                this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn` };
+                return;
+            }
+            const card = await CardModel.get(finalDomainId, currentCardId);
+            if (!card) {
+                this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn` };
+                return;
+            }
+            const currentCardNodeId = card.nodeId;
+            await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId);
+            const score = answerHistory.length * 5;
+            const resultId = await learn.addResult(finalDomainId, this.user._id, {
+                cardId: currentCardId,
+                nodeId: currentCardNodeId,
+                answerHistory,
+                totalTime,
+                score,
+                createdAt: new Date(),
+            });
+            await bus.parallel('learn_result/add', finalDomainId);
+            const today = moment.utc().format('YYYY-MM-DD');
+            let problemCount = 0;
+            for (const h of answerHistory) {
+                if (h.problemId) problemCount++;
+            }
+            const timeToAdd = (totalTime && typeof totalTime === 'number' && totalTime > 0) ? totalTime : 0;
+            await learn.incConsumptionStats(finalDomainId, this.user._id, today, { nodes: 1, cards: 1, problems: problemCount, practices: 1, ...(timeToAdd > 0 ? { totalTime: timeToAdd } : {}) });
+            const nextIndex = cardIndexFromBody + 1;
+            if (nextIndex < cardsWithProblems.length) {
+                this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn/lesson?nodeId=${encodeURIComponent(nodeIdFromBody)}&cardIndex=${nextIndex}` };
+            } else {
+                this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn/lesson/node-result?nodeId=${encodeURIComponent(nodeIdFromBody)}` };
+            }
+            return;
         }
 
         const branch = 'main';
@@ -1146,7 +1349,7 @@ class LessonHandler extends Handler {
             throw new NotFoundError('Card not found');
         }
 
-        if (!isAlonePractice && currentCardNodeId) {
+        if (currentCardNodeId) {
             await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId);
         }
 
@@ -1243,6 +1446,128 @@ class LessonHandler extends Handler {
             totalTime: result.totalTime,
             domainId: finalDomainId,
             baseDocId: base.docId.toString(),
+        };
+    }
+}
+
+class LessonNodeResultHandler extends Handler {
+    async after(domainId: string) {
+        if (this.request.json || !this.response.template) return;
+        this.response.body.overrideNav = [
+            { name: 'homepage', args: {}, displayName: this.translate('Home'), checker: () => true },
+            { name: 'learn', args: {}, displayName: this.translate('Learn'), checker: () => true },
+        ];
+    }
+
+    async get(domainId: string) {
+        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+        const nodeId = this.request.query?.nodeId as string | undefined;
+        if (!nodeId) throw new ValidationError('nodeId is required');
+
+        const base = await BaseModel.getByDomain(finalDomainId);
+        if (!base) throw new NotFoundError('Base not found for this domain');
+
+        const branch = 'main';
+        const branchData = getBranchData(base, branch);
+        const nodes = branchData.nodes || [];
+        const edges = branchData.edges || [];
+        if (nodes.length === 0) throw new NotFoundError('No nodes available');
+
+        const result = await generateDAG(finalDomainId, base.docId, nodes, edges, (k: string) => this.translate(k));
+        const allDagNodes = result.dag;
+        const nodeMap = new Map<string, LearnDAGNode>();
+        result.sections.forEach((n: LearnDAGNode) => nodeMap.set(n._id, n));
+        allDagNodes.forEach((n: LearnDAGNode) => nodeMap.set(n._id, n));
+        const rootNode = nodeMap.get(nodeId);
+        if (!rootNode) throw new NotFoundError('Node not found');
+
+        const getChildNodes = (parentId: string): LearnDAGNode[] =>
+            allDagNodes
+                .filter((n: LearnDAGNode) => n.requireNids && n.requireNids[n.requireNids.length - 1] === parentId)
+                .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        const flatCards: Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string }> = [];
+        const collectUnder = (nid: string) => {
+            const node = nodeMap.get(nid);
+            if (!node) return;
+            for (const c of (node.cards || []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))) {
+                flatCards.push({ nodeId: node._id, cardId: c.cardId, nodeTitle: node.title || '', cardTitle: c.title || '' });
+            }
+            for (const ch of getChildNodes(nid)) collectUnder(ch._id);
+        };
+        collectUnder(nodeId);
+        const cardsWithProblems: typeof flatCards = [];
+        for (const item of flatCards) {
+            const cardDoc = await CardModel.get(finalDomainId, new ObjectId(item.cardId));
+            if (cardDoc?.problems?.length) cardsWithProblems.push(item);
+        }
+        const cardIdsSet = new Set(cardsWithProblems.map(c => c.cardId));
+        const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+        const allResults = await learn.getResults(finalDomainId, this.user._id, {
+            createdAt: { $gte: thirtyMinAgo, $lte: new Date() },
+        });
+        const recentForCards = allResults
+            .filter((r: any) => cardIdsSet.has(String(r.cardId)))
+            .sort((a: any, b: any) => (a.createdAt?.getTime?.() ?? 0) - (b.createdAt?.getTime?.() ?? 0));
+        const seenCardIds = new Set<string>();
+        const resultsInOrder: any[] = [];
+        for (const r of recentForCards) {
+            const cid = String(r.cardId);
+            if (!seenCardIds.has(cid)) {
+                seenCardIds.add(cid);
+                resultsInOrder.push(r);
+            }
+        }
+
+        const cardResults: Array<{
+            card: any;
+            node: any;
+            problemStats: Array<{ problem: any; totalTime: number; attempts: number; correct: boolean }>;
+            totalTime: number;
+            resultId: string;
+            cardTitle: string;
+        }> = [];
+        let totalCorrect = 0;
+        let totalProblems = 0;
+        let totalTime = 0;
+
+        for (let i = 0; i < cardsWithProblems.length; i++) {
+            const item = cardsWithProblems[i];
+            const res = resultsInOrder.find((r: any) => String(r.cardId) === item.cardId);
+            if (!res) continue;
+            const cardDoc = await CardModel.get(finalDomainId, res.cardId);
+            if (!cardDoc) continue;
+            const nodeDoc = (getBranchData(base, 'main').nodes || []).find((n: BaseNode) => n.id === res.nodeId);
+            const allProblems = (cardDoc.problems || []).map((p: any, idx: number) => ({ ...p, index: idx }));
+            const problemStats = allProblems.map((problem: any) => {
+                const history = (res.answerHistory || []).filter((h: any) => h.problemId === problem.pid);
+                const correctHistory = history.filter((h: any) => h.correct);
+                const problemTime = history.reduce((sum: number, h: any) => sum + (h.timeSpent || 0), 0);
+                const attempts = history.length > 0 ? Math.max(...history.map((h: any) => h.attempts || 1)) : 0;
+                if (correctHistory.length > 0) totalCorrect++;
+                totalProblems++;
+                return { problem, totalTime: problemTime, attempts, correct: correctHistory.length > 0 };
+            });
+            totalTime += res.totalTime || 0;
+            cardResults.push({
+                card: cardDoc,
+                node: nodeDoc,
+                problemStats,
+                totalTime: res.totalTime || 0,
+                resultId: res._id.toString(),
+                cardTitle: item.cardTitle || cardDoc.title || '',
+            });
+        }
+
+        const accuracy = totalProblems > 0 ? Math.round((totalCorrect / totalProblems) * 100) : 0;
+
+        this.response.template = 'lesson_node_result.html';
+        this.response.body = {
+            domainId: finalDomainId,
+            baseDocId: base.docId.toString(),
+            rootNodeTitle: rootNode.title || '',
+            rootNodeId: nodeId,
+            cardResults,
+            aggregate: { totalCorrect, totalProblems, totalTime, accuracy },
         };
     }
 }
@@ -1535,5 +1860,7 @@ export async function apply(ctx: Context) {
     ctx.Route('learn_section_edit', '/learn/section/edit', LearnSectionEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_edit', '/learn/edit', LearnEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('learn_lesson', '/learn/lesson', LessonHandler);
+    ctx.Route('learn_lesson_result', '/learn/lesson/result/:resultId', LessonHandler);
     ctx.Route('learn_lesson_pass', '/learn/lesson/pass', LessonHandler);
+    ctx.Route('learn_lesson_node_result', '/learn/lesson/node-result', LessonNodeResultHandler);
 }

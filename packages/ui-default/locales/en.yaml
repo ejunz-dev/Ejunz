@@ -44,6 +44,7 @@ __langname: English
 'Behind remote by {0} commit(s)': Behind remote by {0} commit(s)
 'Block': Block
 'Cancel': Cancel
+'Card Results': Card Results
 'Card': Card
 'Check-in Days': Check-in Days
 'Check-in remaining': Remaining today
@@ -61,6 +62,7 @@ __langname: English
 'Clients can connect via the following WebSocket URL (Token must be generated first)': Clients can connect via the following WebSocket URL (Token must be generated first)
 'Commit Message': Commit Message
 'commits': commits
+'Completed cards': Completed cards
 'Completed sections': Completed
 'Completed today': Completed today
 'Configuration': Configuration
@@ -113,6 +115,7 @@ __langname: English
 'Enter custom commit message (optional)': Enter custom commit message (optional)
 'Enter new title': Enter new title
 'Enter single card mode?': Enter single card mode?
+'Enter single node mode?': Enter single node mode?
 'Enter title for new': Enter title for new
 'Error Message': Error Message
 'Error': Error
@@ -180,6 +183,7 @@ __langname: English
 'No chat history yet': No chat history yet
 'No clients created yet': No clients created yet
 'No commit message': No commit message
+'No completed cards': No completed cards
 'No completed sections': No completed sections
 'No content or practice questions available.': No content or practice questions available.
 'No content': No content
@@ -199,7 +203,9 @@ __langname: English
 'No system tools.': No system tools.
 'No tools available': No tools available
 'No tools yet. Tools list will be automatically synced after server connection.': No tools yet. Tools list will be automatically synced after server connection.
-'Open practice for card: {0}': Open practice for card: {0}
+'Node Complete': Node Complete
+'Open practice for card: {0}': 'Open practice for card: {0}'
+'Open practice for node: {0}': 'Open practice for node: {0}'
 'Operations': Operations
 'Pending sections': To do
 'Play Audio': Play Audio
