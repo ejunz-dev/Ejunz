@@ -21,6 +21,9 @@
   {{ set(UiContext, 'flatCards', flatCards or []) }}
   {{ set(UiContext, 'nodeTree', nodeTree or []) }}
   {{ set(UiContext, 'currentCardIndex', currentCardIndex or 0) }}
+  {{ set(UiContext, 'hasProblems', hasProblems or false) }}
+  {{ set(UiContext, 'lessonReviewCardIds', lessonReviewCardIds or []) }}
+  {{ set(UiContext, 'lessonCardTimesMs', lessonCardTimesMs or []) }}
 </script>
 <div id="lesson-container"></div>
 {% endblock %}
