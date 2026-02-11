@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 're
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n, request } from 'vj/utils';
+import Notification from 'vj/components/notification';
 
 interface Problem {
   pid: string;
@@ -103,6 +104,9 @@ function LessonPage() {
   const [correctNeeded, setCorrectNeeded] = useState<Record<string, number>>({});
   const [optionOrder, setOptionOrder] = useState<number[]>([]);
   const [shuffleTrigger, setShuffleTrigger] = useState(0);
+  const [browseFlipped, setBrowseFlipped] = useState(false);
+  const [browseNoImpression, setBrowseNoImpression] = useState(false);
+  const [browseSubmitting, setBrowseSubmitting] = useState(false);
 
   useEffect(() => {
     if (allProblems.length > 0 && problemQueue.length === 0 && answerHistory.length === 0) {
@@ -113,6 +117,46 @@ function LessonPage() {
       setShowAnalysis(false);
     }
   }, [allProblems, problemQueue.length, answerHistory.length]);
+
+  useEffect(() => {
+    const handleImageClick = async (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName !== 'IMG' || !target.closest('.lesson-markdown-body')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const src = (target as HTMLImageElement).src;
+      if (!src) return;
+      try {
+        let previewImage = (window as any).Ejunz?.components?.preview?.previewImage;
+        if (!previewImage) {
+          await import('vj/components/preview/preview.page');
+          previewImage = (window as any).Ejunz?.components?.preview?.previewImage;
+        }
+        if (previewImage) {
+          await previewImage(src);
+        } else {
+          const { InfoDialog } = await import('vj/components/dialog/index');
+          const $ = (await import('jquery')).default;
+          const isMobile = window.innerWidth <= 600;
+          const maxHeight = isMobile ? 'calc(90vh - 60px)' : 'calc(80vh - 45px)';
+          const padding = isMobile ? '10px' : '20px';
+          const $img = $(`<img src="${src}" style="max-width: 100%; max-height: ${maxHeight}; width: auto; height: auto; cursor: pointer;" />`);
+          const dialog = new InfoDialog({
+            $body: $(`<div class="typo" style="padding: ${padding}; text-align: center;"></div>`).append($img),
+            $action: null,
+            cancelByClickingBack: true,
+            cancelByEsc: true,
+          });
+          await dialog.open();
+        }
+      } catch (err) {
+        console.error('预览图片失败:', err);
+        Notification.error(i18n('Image preview failed'));
+      }
+    };
+    document.addEventListener('click', handleImageClick, true);
+    return () => document.removeEventListener('click', handleImageClick, true);
+  }, []);
 
   const currentProblem = problemQueue[currentProblemIndex];
   const displayOrder = currentProblem?.options && optionOrder.length === currentProblem.options.length
@@ -173,6 +217,34 @@ function LessonPage() {
       setIsPassed(true);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handlePassBrowse = async (noImpression: boolean) => {
+    if (browseSubmitting) return;
+    setBrowseSubmitting(true);
+    try {
+      const totalTime = Date.now() - sessionStartTime;
+      const result = await request.post(`/d/${domainId}/learn/lesson/pass`, {
+        answerHistory: [],
+        totalTime,
+        isAlonePractice: false,
+        cardId: card.docId,
+        singleNodeMode: isSingleNodeMode || undefined,
+        todayMode: isTodayMode || undefined,
+        nodeId: isSingleNodeMode ? rootNodeId : undefined,
+        cardIndex: (isSingleNodeMode || isTodayMode) ? currentCardIndex : undefined,
+        noImpression: isSingleNodeMode ? noImpression : undefined,
+      });
+      const redirect = result?.redirect ?? result?.body?.redirect;
+      if (redirect) {
+        window.location.href = redirect;
+        return;
+      }
+    } catch (error: any) {
+      console.error('Failed to submit browse pass:', error);
+    } finally {
+      setBrowseSubmitting(false);
     }
   };
 
@@ -342,6 +414,7 @@ function LessonPage() {
               {i18n('Content')}
             </h2>
             <div
+              className="lesson-markdown-body"
               style={{
                 fontSize: '16px',
                 lineHeight: '1.6',
@@ -501,6 +574,118 @@ function LessonPage() {
             </button>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (allProblems.length === 0 && (isSingleNodeMode || isTodayMode)) {
+    return (
+      <div style={{
+        maxWidth: '900px',
+        width: '100%',
+        margin: '0 auto',
+        padding: '20px',
+      }}>
+        <div style={{
+          marginBottom: '20px',
+          padding: '16px',
+          backgroundColor: '#f5f5f5',
+          borderRadius: '8px',
+        }}>
+          <div style={{ fontSize: '14px', color: '#666', marginBottom: '8px' }}>
+            {node.text || i18n('Unnamed Node')}
+          </div>
+          <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0 }}>
+            {card.title || i18n('Unnamed Card')}
+          </h1>
+        </div>
+
+        {!browseFlipped ? (
+          <div style={{
+            marginBottom: '30px',
+            padding: '30px',
+            backgroundColor: '#fff',
+            borderRadius: '8px',
+            border: '1px solid #e0e0e0',
+            display: 'flex',
+            gap: '16px',
+            justifyContent: 'center',
+            flexWrap: 'wrap',
+          }}>
+            <button
+              type="button"
+              onClick={() => { setBrowseFlipped(true); setBrowseNoImpression(false); }}
+              style={{
+                padding: '12px 28px',
+                border: 'none',
+                borderRadius: '8px',
+                backgroundColor: '#4caf50',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '16px',
+                fontWeight: 'bold',
+              }}
+            >
+              {i18n('Know it')}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setBrowseFlipped(true); setBrowseNoImpression(true); }}
+              style={{
+                padding: '12px 28px',
+                border: 'none',
+                borderRadius: '8px',
+                backgroundColor: '#ff9800',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '16px',
+                fontWeight: 'bold',
+              }}
+            >
+              {i18n('No impression')}
+            </button>
+          </div>
+        ) : (
+          <>
+            {card.content && (
+              <div style={{
+                marginBottom: '24px',
+                padding: '20px',
+                backgroundColor: '#fff',
+                borderRadius: '8px',
+                border: '1px solid #e0e0e0',
+              }}>
+                <h2 style={{ fontSize: '18px', marginBottom: '12px', color: '#333' }}>
+                  {i18n('Content')}
+                </h2>
+                <div
+                  className="lesson-markdown-body"
+                  style={{ fontSize: '16px', lineHeight: '1.6', color: '#555' }}
+                  dangerouslySetInnerHTML={{ __html: renderedContent || card.content }}
+                />
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+              <button
+                type="button"
+                disabled={browseSubmitting}
+                onClick={() => handlePassBrowse(browseNoImpression)}
+                style={{
+                  padding: '12px 32px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  backgroundColor: '#2196f3',
+                  color: '#fff',
+                  cursor: browseSubmitting ? 'not-allowed' : 'pointer',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                }}
+              >
+                {browseSubmitting ? i18n('Redirecting') : i18n('Next Card')}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     );
   }
