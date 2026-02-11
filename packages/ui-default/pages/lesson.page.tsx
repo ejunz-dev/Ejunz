@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n, request } from 'vj/utils';
@@ -121,7 +121,7 @@ function LessonPage() {
   const isCorrect = currentProblem && selectedAnswer !== null && displayOrder[selectedAnswer] === currentProblem.answer;
   const allCorrect = problemQueue.length === 0 && answerHistory.length > 0;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (currentProblem?.options?.length) {
       setSelectedAnswer(null);
       setIsAnswered(false);
@@ -645,34 +645,31 @@ function LessonPage() {
           {currentProblem?.stem || i18n('No stem')}
         </div>
 
-        <div style={{ marginBottom: '20px' }}>
+        <div style={{ marginBottom: '20px' }} key={`options-${currentProblem?.pid}-${currentProblemIndex}-${shuffleTrigger}`}>
           {(currentProblem?.options && Array.isArray(currentProblem.options) ? displayOrder : []).map((originalIdx, displayIdx) => {
             const option = currentProblem.options[originalIdx];
             const isSelected = selectedAnswer === displayIdx;
             const isAnswer = originalIdx === currentProblem.answer;
-            let optionStyle: React.CSSProperties = {
+            const baseStyle: React.CSSProperties = {
               padding: '14px',
               marginBottom: '12px',
               borderRadius: '6px',
-              border: '2px solid #e0e0e0',
               cursor: isAnswered ? 'not-allowed' : 'pointer',
               transition: 'all 0.2s',
-              backgroundColor: '#fff',
             };
-
+            let optionStyle: React.CSSProperties;
             if (showAnalysis) {
               if (isAnswer) {
-                optionStyle.borderColor = '#4caf50';
-                optionStyle.backgroundColor = '#e8f5e9';
+                optionStyle = { ...baseStyle, border: '2px solid #4caf50', backgroundColor: '#e8f5e9' };
               } else if (isSelected) {
-                optionStyle.borderColor = '#f44336';
-                optionStyle.backgroundColor = '#ffebee';
+                optionStyle = { ...baseStyle, border: '2px solid #f44336', backgroundColor: '#ffebee' };
               } else {
-                optionStyle.opacity = 0.6;
+                optionStyle = { ...baseStyle, border: '2px solid #e0e0e0', backgroundColor: '#fff', opacity: 0.6 };
               }
             } else if (isSelected) {
-              optionStyle.borderColor = '#2196f3';
-              optionStyle.backgroundColor = '#e3f2fd';
+              optionStyle = { ...baseStyle, border: '2px solid #2196f3', backgroundColor: '#e3f2fd' };
+            } else {
+              optionStyle = { ...baseStyle, border: '2px solid #e0e0e0', backgroundColor: '#fff' };
             }
 
             return (
