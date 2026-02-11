@@ -1049,6 +1049,7 @@ class LessonHandler extends Handler {
                 hasProblems: !!(currentCard?.problems?.length),
                 lessonReviewCardIds,
                 lessonCardTimesMs,
+                reviewCardId: reviewCardId || '',
             };
             return;
         }
@@ -1516,7 +1517,12 @@ class LessonHandler extends Handler {
             const totalTimeMs = (typeof totalTime === 'number' && totalTime >= 0) ? totalTime : 0;
             const dudocPass = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
             const timesMs: number[] = Array.isArray(dudocPass?.lessonCardTimesMs) ? [...dudocPass.lessonCardTimesMs] : [];
-            timesMs.push(totalTimeMs);
+            const isReviewCard = Array.isArray(dudocPass?.lessonReviewCardIds) && dudocPass.lessonReviewCardIds.includes(currentCardId.toString());
+            if (isReviewCard && cardIndexFromBody >= 0 && cardIndexFromBody < timesMs.length) {
+                timesMs[cardIndexFromBody] = (timesMs[cardIndexFromBody] ?? 0) + totalTimeMs;
+            } else {
+                timesMs.push(totalTimeMs);
+            }
             if (noImpression) {
                 const reviewIds: string[] = Array.isArray(dudocPass?.lessonReviewCardIds) ? [...dudocPass.lessonReviewCardIds] : [];
                 if (!reviewIds.includes(currentCardId.toString())) reviewIds.push(currentCardId.toString());
