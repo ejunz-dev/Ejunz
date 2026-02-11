@@ -52,6 +52,7 @@ function LessonPage() {
   }>);
   const currentCardIndex = (window.UiContext?.currentCardIndex ?? 0) as number;
   const lessonReviewCardIds = ((window.UiContext?.lessonReviewCardIds || []) as string[]);
+  const reviewCardId = (window.UiContext?.reviewCardId || '') as string;
 
   const cardIdToFlatIndex = useMemo(() => {
     const m: Record<string, number> = {};
@@ -305,8 +306,8 @@ function LessonPage() {
             marginBottom: '2px',
             fontSize: '13px',
             borderRadius: '6px',
-            backgroundColor: isCurrent ? '#e3f2fd' : isDone ? '#e8f5e9' : 'transparent',
-            color: isCurrent ? '#1976d2' : isDone ? '#2e7d32' : '#666',
+            backgroundColor: isCurrent ? '#e3f2fd' : inReview ? '#fff3e0' : isDone ? '#e8f5e9' : 'transparent',
+            color: isCurrent ? '#1976d2' : inReview ? '#e65100' : isDone ? '#2e7d32' : '#666',
             fontWeight: isCurrent ? 600 : 400,
             display: 'flex',
             justifyContent: 'space-between',
@@ -316,6 +317,7 @@ function LessonPage() {
         >
           <span>
             {isDone && <span style={{ marginRight: '6px' }}>✓</span>}
+            {inReview && <span style={{ marginRight: '6px', fontSize: '11px', color: '#e65100', fontWeight: 600 }}>{i18n('Review')}</span>}
             {item.title || i18n('Unnamed Card')}
           </span>
           <span style={{ fontSize: '12px', color: '#999', flexShrink: 0 }}>{timeText}</span>
@@ -418,7 +420,13 @@ function LessonPage() {
         try {
           const raw = sessionStorage.getItem(cardTimesStorageKey);
           const arr = raw ? JSON.parse(raw) : [];
-          nextTimes = Array.isArray(arr) ? [...arr, totalTimeMs] : [totalTimeMs];
+          const isReviewCard = lessonReviewCardIds.includes(String(card.docId)) || (reviewCardId && String(card.docId) === reviewCardId);
+          if (isReviewCard && currentCardIndex >= 0 && currentCardIndex < (Array.isArray(arr) ? arr.length : 0)) {
+            nextTimes = Array.isArray(arr) ? [...arr] : [];
+            nextTimes[currentCardIndex] = (nextTimes[currentCardIndex] ?? 0) + totalTimeMs;
+          } else {
+            nextTimes = Array.isArray(arr) ? [...arr, totalTimeMs] : [totalTimeMs];
+          }
           sessionStorage.setItem(cardTimesStorageKey, JSON.stringify(nextTimes));
         } catch (_) {}
       }
@@ -463,7 +471,13 @@ function LessonPage() {
         try {
           const raw = sessionStorage.getItem(cardTimesStorageKey);
           const arr = raw ? JSON.parse(raw) : [];
-          nextTimes = Array.isArray(arr) ? [...arr, totalTimeMs] : [totalTimeMs];
+          const isReviewCard = lessonReviewCardIds.includes(String(card.docId)) || (reviewCardId && String(card.docId) === reviewCardId);
+          if (isReviewCard && currentCardIndex >= 0 && currentCardIndex < (Array.isArray(arr) ? arr.length : 0)) {
+            nextTimes = Array.isArray(arr) ? [...arr] : [];
+            nextTimes[currentCardIndex] = (nextTimes[currentCardIndex] ?? 0) + totalTimeMs;
+          } else {
+            nextTimes = Array.isArray(arr) ? [...arr, totalTimeMs] : [totalTimeMs];
+          }
           sessionStorage.setItem(cardTimesStorageKey, JSON.stringify(nextTimes));
         } catch (_) {}
       }
@@ -474,7 +488,7 @@ function LessonPage() {
         cardId: card.docId,
         singleNodeMode: isSingleNodeMode || undefined,
         todayMode: isTodayMode || undefined,
-        nodeId: isSingleNodeMode ? rootNodeId : undefined,
+        nodeId: (isSingleNodeMode || isTodayMode) && rootNodeId ? rootNodeId : undefined,
         cardIndex: (isSingleNodeMode || isTodayMode) ? currentCardIndex : undefined,
         noImpression: isSingleNodeMode ? noImpression : undefined,
       });
@@ -841,8 +855,13 @@ function LessonPage() {
           <div style={{ fontSize: '14px', color: '#666', marginBottom: '8px' }}>
             {node.text || i18n('Unnamed Node')}
           </div>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0 }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             {card.title || i18n('Unnamed Card')}
+            {(lessonReviewCardIds.includes(String(card.docId)) || (reviewCardId && String(card.docId) === reviewCardId)) && (
+              <span style={{ fontSize: '14px', fontWeight: 600, color: '#e65100', backgroundColor: '#fff3e0', padding: '4px 10px', borderRadius: '6px' }}>
+                {i18n('Review')}
+              </span>
+            )}
           </h1>
           <div style={{ fontSize: '14px', color: '#2196f3', marginTop: '8px', fontWeight: 600 }}>
             {i18n('This card')}: {(currentCardCumulativeMs / 1000).toFixed(1)}s
@@ -1031,8 +1050,13 @@ function LessonPage() {
         <div style={{ fontSize: '14px', color: '#666', marginBottom: '8px' }}>
           {node.text || i18n('Unnamed Node')}
         </div>
-        <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0 }}>
+        <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {card.title || i18n('Unnamed Card')}
+          {lessonReviewCardIds.includes(String(card.docId)) && (
+            <span style={{ fontSize: '14px', fontWeight: 600, color: '#e65100', backgroundColor: '#fff3e0', padding: '4px 10px', borderRadius: '6px' }}>
+              {i18n('Review')}
+            </span>
+          )}
         </h1>
         <div style={{ fontSize: '12px', color: '#999', marginTop: '8px' }}>
           {i18n('Question')} {allProblems.length - problemQueue.length + 1} / {allProblems.length}
