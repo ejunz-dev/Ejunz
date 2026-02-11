@@ -101,6 +101,8 @@ function LessonPage() {
   const [showPeekCard, setShowPeekCard] = useState(false);
   const [peekCount, setPeekCount] = useState<Record<string, number>>({});
   const [correctNeeded, setCorrectNeeded] = useState<Record<string, number>>({});
+  const [optionOrder, setOptionOrder] = useState<number[]>([]);
+  const [shuffleTrigger, setShuffleTrigger] = useState(0);
 
   useEffect(() => {
     if (allProblems.length > 0 && problemQueue.length === 0 && answerHistory.length === 0) {
@@ -113,17 +115,26 @@ function LessonPage() {
   }, [allProblems, problemQueue.length, answerHistory.length]);
 
   const currentProblem = problemQueue[currentProblemIndex];
-  const isCorrect = currentProblem && selectedAnswer !== null && selectedAnswer === currentProblem.answer;
+  const displayOrder = currentProblem?.options && optionOrder.length === currentProblem.options.length
+    ? optionOrder
+    : (currentProblem?.options?.map((_, i) => i) ?? []);
+  const isCorrect = currentProblem && selectedAnswer !== null && displayOrder[selectedAnswer] === currentProblem.answer;
   const allCorrect = problemQueue.length === 0 && answerHistory.length > 0;
 
   useEffect(() => {
-    if (currentProblem) {
+    if (currentProblem?.options?.length) {
       setSelectedAnswer(null);
       setIsAnswered(false);
       setShowAnalysis(false);
       setProblemStartTime(Date.now());
+      const indices = currentProblem.options.map((_, i) => i);
+      for (let i = indices.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [indices[i], indices[j]] = [indices[j], indices[i]];
+      }
+      setOptionOrder(indices);
     }
-  }, [currentProblemIndex, currentProblem?.pid]);
+  }, [currentProblemIndex, currentProblem?.pid, shuffleTrigger]);
 
   const currentPeekCount = currentProblem ? (peekCount[currentProblem.pid] || 0) : 0;
   const currentCorrectNeeded = currentProblem ? (correctNeeded[currentProblem.pid] || 0) : 0;
@@ -171,14 +182,16 @@ function LessonPage() {
     }
   }, [allCorrect, isPassed, isSubmitting, allProblems.length]);
 
-  const handleAnswerSelect = (answerIndex: number) => {
-    if (isAnswered || !currentProblem) return;
-    const correct = answerIndex === currentProblem.answer;
+  const handleAnswerSelect = (displayedIndex: number) => {
+    if (isAnswered || !currentProblem?.options) return;
+    const order = displayOrder.length === currentProblem.options.length ? displayOrder : currentProblem.options.map((_, i) => i);
+    const originalIndex = order[displayedIndex] ?? displayedIndex;
+    const correct = originalIndex === currentProblem.answer;
     const timeSpent = Date.now() - problemStartTime;
     const problemId = currentProblem.pid;
     const currentAttempts = (problemAttempts[problemId] || 0) + 1;
 
-    setSelectedAnswer(answerIndex);
+    setSelectedAnswer(displayedIndex);
     setIsAnswered(true);
     setShowAnalysis(true);
     setProblemAttempts(prev => ({ ...prev, [problemId]: currentAttempts }));
@@ -190,7 +203,7 @@ function LessonPage() {
           const updated = [...prev];
           updated[existingIndex] = {
             problem: currentProblem,
-            selected: answerIndex,
+            selected: originalIndex,
             correct: true,
             timeSpent: updated[existingIndex].timeSpent + timeSpent,
             attempts: currentAttempts,
@@ -199,7 +212,7 @@ function LessonPage() {
         }
         return [...prev, {
           problem: currentProblem,
-          selected: answerIndex,
+          selected: originalIndex,
           correct: true,
           timeSpent,
           attempts: currentAttempts,
@@ -223,11 +236,10 @@ function LessonPage() {
     setSelectedAnswer(null);
     setIsAnswered(false);
     setShowAnalysis(false);
-    
+    setShuffleTrigger((t) => t + 1);
     const newQueue = [...problemQueue];
     newQueue.splice(currentProblemIndex, 1);
     setProblemQueue(newQueue);
-    
     if (newQueue.length > 0) {
       const nextIndex = currentProblemIndex < newQueue.length ? currentProblemIndex : 0;
       setCurrentProblemIndex(nextIndex);
@@ -240,6 +252,7 @@ function LessonPage() {
     setSelectedAnswer(null);
     setIsAnswered(false);
     setShowAnalysis(false);
+    setShuffleTrigger((t) => t + 1);
     const newQueue = [...problemQueue];
     const problem = newQueue[currentProblemIndex];
     newQueue.splice(currentProblemIndex, 1);
@@ -633,9 +646,10 @@ function LessonPage() {
         </div>
 
         <div style={{ marginBottom: '20px' }}>
-          {currentProblem.options.map((option, optIndex) => {
-            const isSelected = selectedAnswer === optIndex;
-            const isAnswer = optIndex === currentProblem.answer;
+          {(currentProblem?.options && Array.isArray(currentProblem.options) ? displayOrder : []).map((originalIdx, displayIdx) => {
+            const option = currentProblem.options[originalIdx];
+            const isSelected = selectedAnswer === displayIdx;
+            const isAnswer = originalIdx === currentProblem.answer;
             let optionStyle: React.CSSProperties = {
               padding: '14px',
               marginBottom: '12px',
@@ -663,12 +677,12 @@ function LessonPage() {
 
             return (
               <div
-                key={`${currentProblem.pid || currentProblemIndex}-${optIndex}`}
-                onClick={() => !isAnswered && handleAnswerSelect(optIndex)}
+                key={`${currentProblem.pid || currentProblemIndex}-${displayIdx}`}
+                onClick={() => !isAnswered && handleAnswerSelect(displayIdx)}
                 style={optionStyle}
               >
                 <span style={{ marginRight: '10px', fontWeight: 'bold', fontSize: '16px' }}>
-                  {String.fromCharCode(65 + optIndex)}.
+                  {String.fromCharCode(65 + displayIdx)}.
                 </span>
                 <span style={{ fontSize: '16px' }}>{option}</span>
               </div>
