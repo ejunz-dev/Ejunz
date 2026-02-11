@@ -1,6 +1,11 @@
 {% set page_name = "lessonPage" %}
 {% extends "layout/basic.html" %}
 {% block content %}
+<style>
+.lesson-markdown-body { overflow: auto; word-wrap: break-word; }
+.lesson-markdown-body img { max-width: 100%; height: auto; display: block; cursor: pointer; }
+.lesson-markdown-body video, .lesson-markdown-body iframe { max-width: 100%; }
+</style>
 <script>
   {{ set(UiContext, 'card', card) }}
   {{ set(UiContext, 'node', node) }}

@@ -984,24 +984,31 @@ class LessonHandler extends Handler {
                 }
             }
 
-            const cardsWithProblems: Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string }> = [];
-            for (const item of flatCards) {
-                const cardDoc = await CardModel.get(finalDomainId, new ObjectId(item.cardId));
-                if (cardDoc && cardDoc.problems && cardDoc.problems.length > 0) {
-                    cardsWithProblems.push(item);
+            if (flatCards.length === 0) {
+                throw new NotFoundError('No cards under this node');
+            }
+            if (currentCardIndex >= flatCards.length) currentCardIndex = 0;
+
+            const reviewCardId = this.request.query?.reviewCardId as string | undefined;
+            let currentItem: { nodeId: string; cardId: string; nodeTitle: string; cardTitle: string };
+            if (reviewCardId) {
+                const fromReview = flatCards.find(c => c.cardId === reviewCardId);
+                if (fromReview) {
+                    currentItem = fromReview;
+                    currentCardIndex = flatCards.findIndex(c => c.cardId === reviewCardId);
+                    const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+                    const reviewIds: string[] = Array.isArray(dudoc?.lessonReviewCardIds) ? dudoc.lessonReviewCardIds : [];
+                    const newReviewIds = reviewIds.filter(id => id !== reviewCardId);
+                    await learn.setUserLearnState(finalDomainId, this.user._id, { lessonReviewCardIds: newReviewIds, lessonUpdatedAt: new Date() });
+                } else {
+                    currentItem = flatCards[currentCardIndex];
                 }
+            } else {
+                currentItem = flatCards[currentCardIndex];
             }
 
-            if (cardsWithProblems.length === 0) {
-                throw new NotFoundError('No practice questions under this node');
-            }
-            if (currentCardIndex >= cardsWithProblems.length) currentCardIndex = 0;
-
-            const currentItem = cardsWithProblems[currentCardIndex];
             const currentCard = await CardModel.get(finalDomainId, new ObjectId(currentItem.cardId));
-            if (!currentCard || !currentCard.problems || currentCard.problems.length === 0) {
-                throw new NotFoundError('Card not found');
-            }
+            if (!currentCard) throw new NotFoundError('Card not found');
             const currentNode = (getBranchData(base, 'main').nodes || []).find(n => n.id === currentItem.nodeId);
             if (!currentNode) throw new NotFoundError('Node not found');
             const currentCardList = await CardModel.getByNodeId(finalDomainId, base.docId, currentItem.nodeId);
@@ -1026,7 +1033,7 @@ class LessonHandler extends Handler {
                 isSingleNodeMode: true,
                 rootNodeId: queryNodeId,
                 rootNodeTitle: rootNode.title || '',
-                flatCards: cardsWithProblems,
+                flatCards: flatCards,
                 nodeTree,
                 currentCardIndex,
             };
@@ -1479,12 +1486,8 @@ class LessonHandler extends Handler {
                 for (const ch of getChildNodes(nid)) collectUnder(ch._id);
             };
             collectUnder(nodeIdFromBody);
-            const cardsWithProblems: Array<{ nodeId: string; cardId: string }> = [];
-            for (const item of flatCardsRaw) {
-                const cardDoc = await CardModel.get(finalDomainId, new ObjectId(item.cardId));
-                if (cardDoc && cardDoc.problems && cardDoc.problems.length > 0) cardsWithProblems.push(item);
-            }
-            const currentCardId = cardIdFromBody ? new ObjectId(cardIdFromBody) : (cardsWithProblems[cardIndexFromBody] ? new ObjectId(cardsWithProblems[cardIndexFromBody].cardId) : null);
+            const noImpression = body.noImpression === true;
+            const currentCardId = cardIdFromBody ? new ObjectId(cardIdFromBody) : (flatCardsRaw[cardIndexFromBody] ? new ObjectId(flatCardsRaw[cardIndexFromBody].cardId) : null);
             if (!currentCardId) {
                 this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn` };
                 return;
@@ -1495,27 +1498,40 @@ class LessonHandler extends Handler {
                 return;
             }
             const currentCardNodeId = card.nodeId;
-            await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId);
-            const score = answerHistory.length * 5;
-            const resultId = await learn.addResult(finalDomainId, this.user._id, {
-                cardId: currentCardId,
-                nodeId: currentCardNodeId,
-                answerHistory,
-                totalTime,
-                score,
-                createdAt: new Date(),
-            });
-            await bus.parallel('learn_result/add', finalDomainId);
-            const today = moment.utc().format('YYYY-MM-DD');
-            let problemCount = 0;
-            for (const h of answerHistory) {
-                if (h.problemId) problemCount++;
+            if (noImpression) {
+                const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+                const reviewIds: string[] = Array.isArray(dudoc?.lessonReviewCardIds) ? [...dudoc.lessonReviewCardIds] : [];
+                if (!reviewIds.includes(currentCardId.toString())) reviewIds.push(currentCardId.toString());
+                await learn.setUserLearnState(finalDomainId, this.user._id, { lessonReviewCardIds: reviewIds, lessonUpdatedAt: new Date() });
+            } else if (answerHistory.length > 0) {
+                await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId);
+                const score = answerHistory.length * 5;
+                await learn.addResult(finalDomainId, this.user._id, {
+                    cardId: currentCardId,
+                    nodeId: currentCardNodeId,
+                    answerHistory,
+                    totalTime,
+                    score,
+                    createdAt: new Date(),
+                });
+                await bus.parallel('learn_result/add', finalDomainId);
+                const today = moment.utc().format('YYYY-MM-DD');
+                let problemCount = 0;
+                for (const h of answerHistory) {
+                    if (h.problemId) problemCount++;
+                }
+                const timeToAdd = (totalTime && typeof totalTime === 'number' && totalTime > 0) ? totalTime : 0;
+                await learn.incConsumptionStats(finalDomainId, this.user._id, today, { nodes: 1, cards: 1, problems: problemCount, practices: 1, ...(timeToAdd > 0 ? { totalTime: timeToAdd } : {}) });
             }
-            const timeToAdd = (totalTime && typeof totalTime === 'number' && totalTime > 0) ? totalTime : 0;
-            await learn.incConsumptionStats(finalDomainId, this.user._id, today, { nodes: 1, cards: 1, problems: problemCount, practices: 1, ...(timeToAdd > 0 ? { totalTime: timeToAdd } : {}) });
             const nextIndex = cardIndexFromBody + 1;
-            if (nextIndex < cardsWithProblems.length) {
+            if (nextIndex < flatCardsRaw.length) {
                 this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn/lesson?nodeId=${encodeURIComponent(nodeIdFromBody)}&cardIndex=${nextIndex}` };
+                return;
+            }
+            const dudoc2 = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+            const reviewIds2: string[] = Array.isArray(dudoc2?.lessonReviewCardIds) ? dudoc2.lessonReviewCardIds : [];
+            if (reviewIds2.length > 0) {
+                this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn/lesson?nodeId=${encodeURIComponent(nodeIdFromBody)}&reviewCardId=${encodeURIComponent(reviewIds2[0])}` };
             } else {
                 this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn/lesson/node-result?nodeId=${encodeURIComponent(nodeIdFromBody)}` };
             }

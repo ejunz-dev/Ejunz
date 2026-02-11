@@ -154,6 +154,8 @@ __langname: English
 'Insert here': Insert here
 'Join Domain': Join Domain
 'Jump to {0}': Jump to {0}
+'Image preview failed': Image preview failed
+'Know it': Know it
 'Language Type': Language Type
 'Language': Language
 'Last check-in': Last check-in
@@ -191,6 +193,7 @@ __langname: English
 'No content': No content
 'No courses available.': No courses available.
 'No description': No description
+'No impression': No impression
 'No local git repository': No local git repository
 'No MCP tools yet. When MCP server connects and registers, they will appear here.': No MCP tools yet. When MCP server connects and registers, they will appear here.
 'No messages in this conversation': No messages in this conversation
@@ -237,6 +240,7 @@ __langname: English
 'Question': Question
 'Recent Cards': Recent Cards
 'Recent Nodes': Recent Nodes
+'Redirecting': Redirecting
 'Refresh Tools List': Refresh Tools List
 'Remaining': Remaining
 'Remote branch exists. Use Pull to sync with remote changes.': Remote branch exists. Use Pull to sync with remote changes.
