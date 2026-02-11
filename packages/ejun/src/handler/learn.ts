@@ -916,6 +916,7 @@ class LessonHandler extends Handler {
                 domainId: finalDomainId,
                 baseDocId: base.docId.toString(),
                 isAlonePractice: true,
+                hasProblems: true,
             };
             return;
         }
@@ -991,20 +992,29 @@ class LessonHandler extends Handler {
 
             const reviewCardId = this.request.query?.reviewCardId as string | undefined;
             let currentItem: { nodeId: string; cardId: string; nodeTitle: string; cardTitle: string };
+            let lessonReviewCardIds: string[] = [];
+            let lessonCardTimesMs: number[] = [];
             if (reviewCardId) {
                 const fromReview = flatCards.find(c => c.cardId === reviewCardId);
                 if (fromReview) {
                     currentItem = fromReview;
                     currentCardIndex = flatCards.findIndex(c => c.cardId === reviewCardId);
-                    const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-                    const reviewIds: string[] = Array.isArray(dudoc?.lessonReviewCardIds) ? dudoc.lessonReviewCardIds : [];
-                    const newReviewIds = reviewIds.filter(id => id !== reviewCardId);
-                    await learn.setUserLearnState(finalDomainId, this.user._id, { lessonReviewCardIds: newReviewIds, lessonUpdatedAt: new Date() });
+                    const dudocReview = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+                    const reviewIds: string[] = Array.isArray(dudocReview?.lessonReviewCardIds) ? dudocReview.lessonReviewCardIds : [];
+                    lessonReviewCardIds = reviewIds.filter(id => id !== reviewCardId);
+                    lessonCardTimesMs = Array.isArray(dudocReview?.lessonCardTimesMs) ? dudocReview.lessonCardTimesMs : [];
+                    await learn.setUserLearnState(finalDomainId, this.user._id, { lessonReviewCardIds, lessonUpdatedAt: new Date() });
                 } else {
                     currentItem = flatCards[currentCardIndex];
+                    const dudocReview = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+                    lessonReviewCardIds = Array.isArray(dudocReview?.lessonReviewCardIds) ? dudocReview.lessonReviewCardIds : [];
+                    lessonCardTimesMs = Array.isArray(dudocReview?.lessonCardTimesMs) ? dudocReview.lessonCardTimesMs : [];
                 }
             } else {
                 currentItem = flatCards[currentCardIndex];
+                const dudocReview = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+                lessonReviewCardIds = Array.isArray(dudocReview?.lessonReviewCardIds) ? dudocReview.lessonReviewCardIds : [];
+                lessonCardTimesMs = Array.isArray(dudocReview?.lessonCardTimesMs) ? dudocReview.lessonCardTimesMs : [];
             }
 
             const currentCard = await CardModel.get(finalDomainId, new ObjectId(currentItem.cardId));
@@ -1036,6 +1046,9 @@ class LessonHandler extends Handler {
                 flatCards: flatCards,
                 nodeTree,
                 currentCardIndex,
+                hasProblems: !!(currentCard?.problems?.length),
+                lessonReviewCardIds,
+                lessonCardTimesMs,
             };
             return;
         }
@@ -1200,6 +1213,7 @@ class LessonHandler extends Handler {
                 flatCards: cardsWithProblems,
                 nodeTree: todayNodeTree,
                 currentCardIndex,
+                hasProblems: !!(currentCard?.problems?.length),
             };
             return;
         }
@@ -1346,6 +1360,7 @@ class LessonHandler extends Handler {
             currentIndex: currentIndex >= 0 ? currentIndex : 0,
             domainId: finalDomainId,
             baseDocId: base.docId.toString(),
+            hasProblems: !!(card?.problems?.length),
         };
     }
 
@@ -1461,7 +1476,7 @@ class LessonHandler extends Handler {
             return;
         }
 
-        if (isSingleNodeMode && nodeIdFromBody) {
+        if (nodeIdFromBody) {
             const branch = 'main';
             const branchData = getBranchData(base, branch);
             const nodes = branchData.nodes || [];
@@ -1498,11 +1513,14 @@ class LessonHandler extends Handler {
                 return;
             }
             const currentCardNodeId = card.nodeId;
+            const totalTimeMs = (typeof totalTime === 'number' && totalTime >= 0) ? totalTime : 0;
+            const dudocPass = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+            const timesMs: number[] = Array.isArray(dudocPass?.lessonCardTimesMs) ? [...dudocPass.lessonCardTimesMs] : [];
+            timesMs.push(totalTimeMs);
             if (noImpression) {
-                const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-                const reviewIds: string[] = Array.isArray(dudoc?.lessonReviewCardIds) ? [...dudoc.lessonReviewCardIds] : [];
+                const reviewIds: string[] = Array.isArray(dudocPass?.lessonReviewCardIds) ? [...dudocPass.lessonReviewCardIds] : [];
                 if (!reviewIds.includes(currentCardId.toString())) reviewIds.push(currentCardId.toString());
-                await learn.setUserLearnState(finalDomainId, this.user._id, { lessonReviewCardIds: reviewIds, lessonUpdatedAt: new Date() });
+                await learn.setUserLearnState(finalDomainId, this.user._id, { lessonReviewCardIds: reviewIds, lessonCardTimesMs: timesMs, lessonUpdatedAt: new Date() });
             } else if (answerHistory.length > 0) {
                 await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId);
                 const score = answerHistory.length * 5;
@@ -1518,10 +1536,31 @@ class LessonHandler extends Handler {
                 const today = moment.utc().format('YYYY-MM-DD');
                 let problemCount = 0;
                 for (const h of answerHistory) {
-                    if (h.problemId) problemCount++;
+                    if ((h as any).problemId) problemCount++;
                 }
                 const timeToAdd = (totalTime && typeof totalTime === 'number' && totalTime > 0) ? totalTime : 0;
                 await learn.incConsumptionStats(finalDomainId, this.user._id, today, { nodes: 1, cards: 1, problems: problemCount, practices: 1, ...(timeToAdd > 0 ? { totalTime: timeToAdd } : {}) });
+                const reviewIdsPass: string[] = Array.isArray(dudocPass?.lessonReviewCardIds) ? dudocPass.lessonReviewCardIds : [];
+                const nextReviewIds = reviewIdsPass.filter(id => id !== currentCardId.toString());
+                await learn.setUserLearnState(finalDomainId, this.user._id, { lessonReviewCardIds: nextReviewIds, lessonCardTimesMs: timesMs, lessonUpdatedAt: new Date() });
+            } else {
+                // 卡片 view「Know it」：无题目时当作判断题通过，记 pass 并写入 result（不跳 result 页，走下方下一张 / node-result）
+                await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId);
+                const browseHistory = [{ problemId: 'browse_judge', correct: true, selected: 0, timeSpent: totalTime || 0, attempts: 1 }];
+                await learn.addResult(finalDomainId, this.user._id, {
+                    cardId: currentCardId,
+                    nodeId: currentCardNodeId,
+                    answerHistory: browseHistory,
+                    totalTime: totalTime || 0,
+                    score: 5,
+                    createdAt: new Date(),
+                });
+                await bus.parallel('learn_result/add', finalDomainId);
+                const timeToAdd = (totalTime && typeof totalTime === 'number' && totalTime > 0) ? totalTime : 0;
+                await learn.incConsumptionStats(finalDomainId, this.user._id, moment.utc().format('YYYY-MM-DD'), { nodes: 1, cards: 1, problems: 1, practices: 1, ...(timeToAdd > 0 ? { totalTime: timeToAdd } : {}) });
+                const reviewIdsKnow: string[] = Array.isArray(dudocPass?.lessonReviewCardIds) ? dudocPass.lessonReviewCardIds : [];
+                const nextReviewIdsKnow = reviewIdsKnow.filter(id => id !== currentCardId.toString());
+                await learn.setUserLearnState(finalDomainId, this.user._id, { lessonReviewCardIds: nextReviewIdsKnow, lessonCardTimesMs: timesMs, lessonUpdatedAt: new Date() });
             }
             const nextIndex = cardIndexFromBody + 1;
             if (nextIndex < flatCardsRaw.length) {
@@ -1533,6 +1572,13 @@ class LessonHandler extends Handler {
             if (reviewIds2.length > 0) {
                 this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn/lesson?nodeId=${encodeURIComponent(nodeIdFromBody)}&reviewCardId=${encodeURIComponent(reviewIds2[0])}` };
             } else {
+                await learn.setUserLearnState(finalDomainId, this.user._id, {
+                    lessonMode: null,
+                    lessonNodeId: null,
+                    lessonCardIndex: 0,
+                    lessonCardTimesMs: [],
+                    lessonUpdatedAt: new Date(),
+                });
                 this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn/lesson/node-result?nodeId=${encodeURIComponent(nodeIdFromBody)}` };
             }
             return;
@@ -1739,19 +1785,30 @@ class LessonHandler extends Handler {
             index: idx,
         }));
 
-        const problemStats = allProblems.map(problem => {
-            const history = result.answerHistory.filter((h: any) => h.problemId === problem.pid);
-            const correctHistory = history.filter((h: any) => h.correct);
-            const totalTime = history.reduce((sum: number, h: any) => sum + (h.timeSpent || 0), 0);
-            const attempts = history.length > 0 ? Math.max(...history.map((h: any) => h.attempts || 1)) : 0;
-            
-            return {
-                problem,
-                totalTime,
-                attempts,
-                correct: correctHistory.length > 0,
-            };
-        });
+        let problemStats: Array<{ problem: any; totalTime: number; attempts: number; correct: boolean }>;
+        if (allProblems.length === 0 && result.answerHistory && result.answerHistory.length > 0) {
+            // 卡片 view 判断题结果（无题目，仅 Know it / No impression）
+            const judgeLabel = this.translate('Know it') + ' / ' + this.translate('No impression');
+            problemStats = result.answerHistory.map((h: any) => ({
+                problem: { stem: h.problemId === 'browse_judge' ? judgeLabel : String(h.problemId), pid: h.problemId, options: [], answer: 0 },
+                totalTime: h.timeSpent || 0,
+                attempts: h.attempts || 1,
+                correct: !!h.correct,
+            }));
+        } else {
+            problemStats = allProblems.map(problem => {
+                const history = (result.answerHistory || []).filter((h: any) => h.problemId === problem.pid);
+                const correctHistory = history.filter((h: any) => h.correct);
+                const totalTime = history.reduce((sum: number, h: any) => sum + (h.timeSpent || 0), 0);
+                const attempts = history.length > 0 ? Math.max(...history.map((h: any) => h.attempts || 1)) : 0;
+                return {
+                    problem,
+                    totalTime,
+                    attempts,
+                    correct: correctHistory.length > 0,
+                };
+            });
+        }
 
         this.response.template = 'lesson_result.html';
         this.response.body = {
@@ -1810,22 +1867,17 @@ class LessonNodeResultHandler extends Handler {
             for (const ch of getChildNodes(nid)) collectUnder(ch._id);
         };
         collectUnder(nodeId);
-        const cardsWithProblems: typeof flatCards = [];
-        for (const item of flatCards) {
-            const cardDoc = await CardModel.get(finalDomainId, new ObjectId(item.cardId));
-            if (cardDoc?.problems?.length) cardsWithProblems.push(item);
-        }
-        const cardIdsSet = new Set(cardsWithProblems.map(c => c.cardId));
+        const cardIdsSet = new Set(flatCards.map(c => c.cardId));
         const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
         const allResults = await learn.getResults(finalDomainId, this.user._id, {
             createdAt: { $gte: thirtyMinAgo, $lte: new Date() },
         });
-        const recentForCards = allResults
+        const recentForNode = allResults
             .filter((r: any) => cardIdsSet.has(String(r.cardId)))
             .sort((a: any, b: any) => (a.createdAt?.getTime?.() ?? 0) - (b.createdAt?.getTime?.() ?? 0));
         const seenCardIds = new Set<string>();
         const resultsInOrder: any[] = [];
-        for (const r of recentForCards) {
+        for (const r of recentForNode) {
             const cid = String(r.cardId);
             if (!seenCardIds.has(cid)) {
                 seenCardIds.add(cid);
@@ -1844,24 +1896,39 @@ class LessonNodeResultHandler extends Handler {
         let totalCorrect = 0;
         let totalProblems = 0;
         let totalTime = 0;
+        const judgeLabel = this.translate('Know it') + ' / ' + this.translate('No impression');
 
-        for (let i = 0; i < cardsWithProblems.length; i++) {
-            const item = cardsWithProblems[i];
+        for (let i = 0; i < flatCards.length; i++) {
+            const item = flatCards[i];
             const res = resultsInOrder.find((r: any) => String(r.cardId) === item.cardId);
             if (!res) continue;
             const cardDoc = await CardModel.get(finalDomainId, res.cardId);
             if (!cardDoc) continue;
             const nodeDoc = (getBranchData(base, 'main').nodes || []).find((n: BaseNode) => n.id === res.nodeId);
             const allProblems = (cardDoc.problems || []).map((p: any, idx: number) => ({ ...p, index: idx }));
-            const problemStats = allProblems.map((problem: any) => {
-                const history = (res.answerHistory || []).filter((h: any) => h.problemId === problem.pid);
-                const correctHistory = history.filter((h: any) => h.correct);
-                const problemTime = history.reduce((sum: number, h: any) => sum + (h.timeSpent || 0), 0);
-                const attempts = history.length > 0 ? Math.max(...history.map((h: any) => h.attempts || 1)) : 0;
-                if (correctHistory.length > 0) totalCorrect++;
-                totalProblems++;
-                return { problem, totalTime: problemTime, attempts, correct: correctHistory.length > 0 };
-            });
+            let problemStats: Array<{ problem: any; totalTime: number; attempts: number; correct: boolean }>;
+            if (allProblems.length === 0 && res.answerHistory && res.answerHistory.length > 0) {
+                problemStats = (res.answerHistory as any[]).map((h: any) => {
+                    totalCorrect += h.correct ? 1 : 0;
+                    totalProblems++;
+                    return {
+                        problem: { stem: h.problemId === 'browse_judge' ? judgeLabel : String(h.problemId), pid: h.problemId },
+                        totalTime: h.timeSpent || 0,
+                        attempts: h.attempts || 1,
+                        correct: !!h.correct,
+                    };
+                });
+            } else {
+                problemStats = allProblems.map((problem: any) => {
+                    const history = (res.answerHistory || []).filter((h: any) => h.problemId === problem.pid);
+                    const correctHistory = history.filter((h: any) => h.correct);
+                    const problemTime = history.reduce((sum: number, h: any) => sum + (h.timeSpent || 0), 0);
+                    const attempts = history.length > 0 ? Math.max(...history.map((h: any) => h.attempts || 1)) : 0;
+                    if (correctHistory.length > 0) totalCorrect++;
+                    totalProblems++;
+                    return { problem, totalTime: problemTime, attempts, correct: correctHistory.length > 0 };
+                });
+            }
             totalTime += res.totalTime || 0;
             cardResults.push({
                 card: cardDoc,

@@ -40,6 +40,7 @@ function LessonPage() {
   const isAlonePractice = (window.UiContext?.isAlonePractice || false) as boolean;
   const isSingleNodeMode = (window.UiContext?.isSingleNodeMode || false) as boolean;
   const isTodayMode = (window.UiContext?.isTodayMode || false) as boolean;
+  const hasProblems = (window.UiContext?.hasProblems ?? false) as boolean;
   const rootNodeId = (window.UiContext?.rootNodeId || '') as string;
   const rootNodeTitle = (window.UiContext?.rootNodeTitle || '') as string;
   const flatCards = ((window.UiContext?.flatCards || []) as Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string }>);
@@ -50,6 +51,7 @@ function LessonPage() {
     children: Array<{ type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }>;
   }>);
   const currentCardIndex = (window.UiContext?.currentCardIndex ?? 0) as number;
+  const lessonReviewCardIds = ((window.UiContext?.lessonReviewCardIds || []) as string[]);
 
   const cardIdToFlatIndex = useMemo(() => {
     const m: Record<string, number> = {};
@@ -217,7 +219,12 @@ function LessonPage() {
   const [answerHistory, setAnswerHistory] = useState<Array<{ problem: Problem & { cardId: string }; selected: number; correct: boolean; timeSpent: number; attempts: number }>>([]);
   const [problemStartTime, setProblemStartTime] = useState<number>(Date.now());
   const [problemAttempts, setProblemAttempts] = useState<Record<string, number>>({});
-  const [sessionStartTime] = useState<number>(Date.now());
+  const sessionStartTimeRef = useRef<number>(Date.now());
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [cardTimesMs, setCardTimesMs] = useState<number[]>(() => {
+    const fromServer = (window as any).UiContext?.lessonCardTimesMs;
+    return Array.isArray(fromServer) ? fromServer : [];
+  });
   const [showPeekCard, setShowPeekCard] = useState(false);
   const [peekCount, setPeekCount] = useState<Record<string, number>>({});
   const [correctNeeded, setCorrectNeeded] = useState<Record<string, number>>({});
@@ -236,6 +243,103 @@ function LessonPage() {
       setShowAnalysis(false);
     }
   }, [allProblems, problemQueue.length, answerHistory.length]);
+
+  const isNodeOrToday = isSingleNodeMode || isTodayMode;
+  const cardTimesStorageKey = domainId && rootNodeId ? `lesson-card-times-${domainId}-${rootNodeId}` : '';
+
+  useEffect(() => {
+    if (!cardTimesStorageKey || !isNodeOrToday) return;
+    if (currentCardIndex === 0) {
+      try {
+        sessionStorage.removeItem(cardTimesStorageKey);
+      } catch (_) {}
+      setCardTimesMs([]);
+      return;
+    }
+    const fromServer = (window as any).UiContext?.lessonCardTimesMs;
+    const serverArr = Array.isArray(fromServer) ? fromServer : [];
+    try {
+      const raw = sessionStorage.getItem(cardTimesStorageKey);
+      const fromStorage = raw ? JSON.parse(raw) : [];
+      const arr = Array.isArray(fromStorage) ? fromStorage : [];
+      // 优先用条目数不少于服务端的一方，避免刚提交的那张卡时间未及时从服务端返回时显示为 —
+      if (arr.length >= serverArr.length) {
+        setCardTimesMs(arr);
+      } else if (serverArr.length > 0) {
+        setCardTimesMs(serverArr);
+      } else {
+        setCardTimesMs(arr);
+      }
+    } catch (_) {
+      setCardTimesMs(serverArr.length > 0 ? serverArr : []);
+    }
+  }, [cardTimesStorageKey, isNodeOrToday, currentCardIndex]);
+
+  useEffect(() => {
+    const tick = () => setElapsedMs(Date.now() - sessionStartTimeRef.current);
+    const id = setInterval(tick, 1000);
+    tick();
+    return () => clearInterval(id);
+  }, []);
+
+  const cumulativeMs = cardTimesMs.reduce((a, b) => a + b, 0) + (isNodeOrToday ? elapsedMs : 0);
+  const currentCardCumulativeMs = elapsedMs + (cardTimesMs[currentCardIndex] ?? 0);
+
+  const renderNodeTreeItem = (item: { type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }, depth: number): React.ReactNode => {
+    if (item.type === 'card') {
+      const idx = cardIdToFlatIndex[item.id];
+      const inReview = lessonReviewCardIds.includes(item.id);
+      const isDone = typeof idx === 'number' && idx < currentCardIndex && !inReview;
+      const isCurrent = typeof idx === 'number' && idx === currentCardIndex;
+      let timeText = '—';
+      if (typeof idx === 'number') {
+        if (isCurrent) timeText = `${(currentCardCumulativeMs / 1000).toFixed(1)}s`;
+        else if (idx < cardTimesMs.length) timeText = `${(cardTimesMs[idx] / 1000).toFixed(1)}s`;
+      }
+      return (
+        <div
+          key={`card-${item.id}`}
+          style={{
+            padding: '6px 10px',
+            marginLeft: `${depth * 12}px`,
+            marginBottom: '2px',
+            fontSize: '13px',
+            borderRadius: '6px',
+            backgroundColor: isCurrent ? '#e3f2fd' : isDone ? '#e8f5e9' : 'transparent',
+            color: isCurrent ? '#1976d2' : isDone ? '#2e7d32' : '#666',
+            fontWeight: isCurrent ? 600 : 400,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <span>
+            {isDone && <span style={{ marginRight: '6px' }}>✓</span>}
+            {item.title || i18n('Unnamed Card')}
+          </span>
+          <span style={{ fontSize: '12px', color: '#999', flexShrink: 0 }}>{timeText}</span>
+        </div>
+      );
+    }
+    const nodeItem = item as { type: 'node'; id: string; title: string; children: Array<{ type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }> };
+    return (
+      <div key={`node-${nodeItem.id}`} style={{ marginBottom: '4px' }}>
+        <div style={{
+          padding: '6px 10px',
+          marginLeft: `${depth * 12}px`,
+          fontSize: '13px',
+          fontWeight: 600,
+          color: '#333',
+        }}>
+          {nodeItem.title || i18n('Unnamed Node')}
+        </div>
+        {(nodeItem.children || []).map((child, i) => (
+          <React.Fragment key={i}>{renderNodeTreeItem(child as { type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }, depth + 1)}</React.Fragment>
+        ))}
+      </div>
+    );
+  };
 
   useEffect(() => {
     const handleImageClick = async (e: MouseEvent) => {
@@ -308,7 +412,16 @@ function LessonPage() {
     hasCalledPassRef.current = true;
     setIsSubmitting(true);
     try {
-      const totalTime = Date.now() - sessionStartTime;
+      const totalTimeMs = Date.now() - sessionStartTimeRef.current;
+      let nextTimes: number[] | null = null;
+      if (cardTimesStorageKey && isNodeOrToday) {
+        try {
+          const raw = sessionStorage.getItem(cardTimesStorageKey);
+          const arr = raw ? JSON.parse(raw) : [];
+          nextTimes = Array.isArray(arr) ? [...arr, totalTimeMs] : [totalTimeMs];
+          sessionStorage.setItem(cardTimesStorageKey, JSON.stringify(nextTimes));
+        } catch (_) {}
+      }
       const result = await request.post(`/d/${domainId}/learn/lesson/pass`, {
         answerHistory: answerHistory.map(h => ({
           problemId: h.problem.pid,
@@ -317,7 +430,7 @@ function LessonPage() {
           timeSpent: h.timeSpent,
           attempts: h.attempts,
         })),
-        totalTime,
+        totalTime: totalTimeMs,
         isAlonePractice: isAlonePractice && !isSingleNodeMode && !isTodayMode,
         cardId: (isAlonePractice || isSingleNodeMode || isTodayMode) ? card.docId : undefined,
         singleNodeMode: isSingleNodeMode || undefined,
@@ -326,6 +439,7 @@ function LessonPage() {
         cardIndex: (isSingleNodeMode || isTodayMode) ? currentCardIndex : undefined,
       });
       setIsPassed(true);
+      if (nextTimes) setCardTimesMs(nextTimes);
       const redirect = result?.redirect ?? result?.body?.redirect;
       if (redirect && (!isAlonePractice || isSingleNodeMode)) {
         window.location.href = redirect;
@@ -343,10 +457,19 @@ function LessonPage() {
     if (browseSubmitting) return;
     setBrowseSubmitting(true);
     try {
-      const totalTime = Date.now() - sessionStartTime;
+      const totalTimeMs = Date.now() - sessionStartTimeRef.current;
+      let nextTimes: number[] | null = null;
+      if (cardTimesStorageKey && isNodeOrToday) {
+        try {
+          const raw = sessionStorage.getItem(cardTimesStorageKey);
+          const arr = raw ? JSON.parse(raw) : [];
+          nextTimes = Array.isArray(arr) ? [...arr, totalTimeMs] : [totalTimeMs];
+          sessionStorage.setItem(cardTimesStorageKey, JSON.stringify(nextTimes));
+        } catch (_) {}
+      }
       const result = await request.post(`/d/${domainId}/learn/lesson/pass`, {
         answerHistory: [],
-        totalTime,
+        totalTime: totalTimeMs,
         isAlonePractice: false,
         cardId: card.docId,
         singleNodeMode: isSingleNodeMode || undefined,
@@ -355,6 +478,7 @@ function LessonPage() {
         cardIndex: (isSingleNodeMode || isTodayMode) ? currentCardIndex : undefined,
         noImpression: isSingleNodeMode ? noImpression : undefined,
       });
+      if (nextTimes) setCardTimesMs(nextTimes);
       const redirect = result?.redirect ?? result?.body?.redirect;
       if (redirect) {
         window.location.href = redirect;
@@ -499,7 +623,7 @@ function LessonPage() {
     const correctCount = answerHistory.filter(h => h.correct).length;
     const totalCount = allProblems.length;
     const accuracy = totalCount > 0 ? Math.round((correctCount / totalCount) * 100) : 0;
-    const totalTime = Date.now() - sessionStartTime;
+    const totalTimeMs = Date.now() - sessionStartTimeRef.current;
 
     return (
       <div style={{
@@ -576,7 +700,7 @@ function LessonPage() {
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#ff9800', marginBottom: '8px' }}>
-                {(totalTime / 1000).toFixed(1)}s
+                {(totalTimeMs / 1000).toFixed(1)}s
               </div>
               <div style={{ fontSize: '14px', color: '#666' }}>{i18n('Total Time')}</div>
             </div>
@@ -697,8 +821,11 @@ function LessonPage() {
     );
   }
 
-  if (allProblems.length === 0 && (isSingleNodeMode || isTodayMode)) {
-    return (
+  // 仅当「无题目」时使用卡片 view（Know it / No impression）；有题目的走下方题目刷题模式。与刷题模式共用侧边栏布局。
+  const useCardViewMode = (isSingleNodeMode || isTodayMode) && !hasProblems && allProblems.length === 0;
+  let cardViewContent: React.ReactNode = null;
+  if (useCardViewMode) {
+    cardViewContent = (
       <div style={{
         maxWidth: '900px',
         width: '100%',
@@ -717,6 +844,9 @@ function LessonPage() {
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0 }}>
             {card.title || i18n('Unnamed Card')}
           </h1>
+          <div style={{ fontSize: '14px', color: '#2196f3', marginTop: '8px', fontWeight: 600 }}>
+            {i18n('This card')}: {(currentCardCumulativeMs / 1000).toFixed(1)}s
+          </div>
         </div>
 
         {!browseFlipped ? (
@@ -809,6 +939,43 @@ function LessonPage() {
     );
   }
 
+  // 卡片 view 与刷题模式共用侧边栏：有侧边栏时用同一布局
+  if (cardViewContent) {
+    const showSidebarHere = (isSingleNodeMode || isTodayMode) && nodeTree.length > 0;
+    if (showSidebarHere) {
+      return (
+        <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#fafafa' }}>
+          <aside style={{
+            width: '240px',
+            flexShrink: 0,
+            padding: '16px',
+            backgroundColor: '#fff',
+            borderRight: '1px solid #e0e0e0',
+            overflowY: 'auto',
+          }}>
+            <div style={{ fontSize: '12px', color: '#999', marginBottom: '8px', textTransform: 'uppercase' }}>
+              {i18n('Progress')}
+            </div>
+            <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#333' }}>
+              {rootNodeTitle || i18n('Unnamed Node')}
+            </div>
+            <div style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
+              {currentCardIndex + 1} / {flatCards.length} {i18n('cards')}
+            </div>
+            <div style={{ fontSize: '12px', color: '#333', marginBottom: '12px', fontWeight: 600 }}>
+              {i18n('Cumulative')}: {(cumulativeMs / 1000).toFixed(1)}s
+            </div>
+            {nodeTree.map((root, i) => renderNodeTreeItem(root, 0))}
+          </aside>
+          <main style={{ flex: 1, overflowY: 'auto' }}>
+            {cardViewContent}
+          </main>
+        </div>
+      );
+    }
+    return <>{cardViewContent}</>;
+  }
+
   if (!currentProblem && !allCorrect && answerHistory.length === 0) {
     return (
       <div style={{
@@ -871,6 +1038,11 @@ function LessonPage() {
           {i18n('Question')} {allProblems.length - problemQueue.length + 1} / {allProblems.length}
           {problemQueue.length > 0 && ` (${i18n('Remaining')}: ${problemQueue.length})`}
         </div>
+        {(isSingleNodeMode || isTodayMode) && (
+          <div style={{ fontSize: '14px', color: '#2196f3', marginTop: '8px', fontWeight: 600 }}>
+            {i18n('This card')}: {(elapsedMs / 1000).toFixed(1)}s
+          </div>
+        )}
       </div>
 
 
@@ -1071,49 +1243,6 @@ function LessonPage() {
     </div>
   );
 
-  const renderNodeTreeItem = (item: { type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }, depth: number): React.ReactNode => {
-    if (item.type === 'card') {
-      const idx = cardIdToFlatIndex[item.id];
-      const isDone = typeof idx === 'number' && idx < currentCardIndex;
-      const isCurrent = typeof idx === 'number' && idx === currentCardIndex;
-      return (
-        <div
-          key={`card-${item.id}`}
-          style={{
-            padding: '6px 10px',
-            marginLeft: `${depth * 12}px`,
-            marginBottom: '2px',
-            fontSize: '13px',
-            borderRadius: '6px',
-            backgroundColor: isCurrent ? '#e3f2fd' : isDone ? '#e8f5e9' : 'transparent',
-            color: isCurrent ? '#1976d2' : isDone ? '#2e7d32' : '#666',
-            fontWeight: isCurrent ? 600 : 400,
-          }}
-        >
-          {isDone && <span style={{ marginRight: '6px' }}>✓</span>}
-          {item.title || i18n('Unnamed Card')}
-        </div>
-      );
-    }
-    const nodeItem = item as { type: 'node'; id: string; title: string; children: Array<{ type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }> };
-    return (
-      <div key={`node-${nodeItem.id}`} style={{ marginBottom: '4px' }}>
-        <div style={{
-          padding: '6px 10px',
-          marginLeft: `${depth * 12}px`,
-          fontSize: '13px',
-          fontWeight: 600,
-          color: '#333',
-        }}>
-          {nodeItem.title || i18n('Unnamed Node')}
-        </div>
-        {(nodeItem.children || []).map((child, i) => (
-          <React.Fragment key={i}>{renderNodeTreeItem(child as { type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }, depth + 1)}</React.Fragment>
-        ))}
-      </div>
-    );
-  };
-
   const showSidebar = (isSingleNodeMode || isTodayMode) && nodeTree.length > 0;
   if (showSidebar) {
     return (
@@ -1134,6 +1263,9 @@ function LessonPage() {
           </div>
           <div style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
             {currentCardIndex + 1} / {flatCards.length} {i18n('cards')}
+          </div>
+          <div style={{ fontSize: '12px', color: '#333', marginBottom: '12px', fontWeight: 600 }}>
+            {i18n('Cumulative')}: {(cumulativeMs / 1000).toFixed(1)}s
           </div>
           {nodeTree.map((root, i) => renderNodeTreeItem(root, 0))}
         </aside>
