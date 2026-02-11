@@ -1,8 +1,12 @@
-import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n, request } from 'vj/utils';
 import Notification from 'vj/components/notification';
+
+// 与 base outline 相同的缓存 key 和图片 Cache 名，便于复用 base 的缓存
+const BASE_OUTLINE_CARD_CACHE_PREFIX = 'base-outline-card-';
+const BASE_OUTLINE_IMAGES_CACHE_NAME = 'base-outline-images-v1';
 
 interface Problem {
   pid: string;
@@ -18,6 +22,7 @@ interface Card {
   title: string;
   content: string;
   problems?: Problem[];
+  updateAt?: string;
 }
 
 interface Node {
@@ -55,33 +60,147 @@ function LessonPage() {
   }, [flatCards]);
 
   const [renderedContent, setRenderedContent] = useState<string>('');
+  const imageCacheRef = useRef<Cache | null>(null);
 
-  useEffect(() => {
-    if (card.content) {
-      fetch('/markdown', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: card.content,
-          inline: false,
-        }),
-      })
-        .then(response => {
-          if (!response.ok) {
-            throw new Error('Failed to render markdown');
-          }
-          return response.text();
-        })
-        .then(html => {
-          setRenderedContent(html);
-        })
-        .catch(error => {
-          setRenderedContent(card.content);
-        });
+  // 与 base outline 共用图片 Cache API
+  const initImageCache = useCallback(async () => {
+    if ('caches' in window && !imageCacheRef.current) {
+      try {
+        imageCacheRef.current = await caches.open(BASE_OUTLINE_IMAGES_CACHE_NAME);
+      } catch (error) {
+        console.error('Failed to open image cache:', error);
+      }
     }
-  }, [card.content]);
+  }, []);
+
+  const getCachedImage = useCallback(async (url: string): Promise<string> => {
+    if (!imageCacheRef.current) await initImageCache();
+    if (!imageCacheRef.current) return url;
+    try {
+      const cachedResponse = await imageCacheRef.current.match(url);
+      if (cachedResponse) {
+        const blob = await cachedResponse.blob();
+        return URL.createObjectURL(blob);
+      }
+      const response = await fetch(url);
+      if (response.ok) {
+        const responseClone = response.clone();
+        await imageCacheRef.current.put(url, responseClone);
+        const blob = await response.blob();
+        return URL.createObjectURL(blob);
+      }
+    } catch (error) {
+      console.error('Failed to cache image:', error);
+    }
+    return url;
+  }, [initImageCache]);
+
+  const replaceImagesWithCache = useCallback(async (html: string): Promise<string> => {
+    if (!html) return html;
+    const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+    const imageUrls: string[] = [];
+    let match;
+    while ((match = imgRegex.exec(html)) !== null) {
+      const url = match[1];
+      if (url && !url.startsWith('blob:') && !url.startsWith('data:')) imageUrls.push(url);
+    }
+    if (imageUrls.length === 0) return html;
+    await initImageCache();
+    const urlMap = new Map<string, string>();
+    await Promise.all(imageUrls.map(async (originalUrl) => {
+      try {
+        const cachedUrl = await getCachedImage(originalUrl);
+        if (cachedUrl !== originalUrl) urlMap.set(originalUrl, cachedUrl);
+      } catch (e) {
+        console.error('Failed to get cached image:', e);
+      }
+    }));
+    let updatedHtml = html;
+    urlMap.forEach((cachedUrl, originalUrl) => {
+      const escapedUrl = originalUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      updatedHtml = updatedHtml.replace(new RegExp(escapedUrl, 'g'), cachedUrl);
+    });
+    return updatedHtml;
+  }, [initImageCache, getCachedImage]);
+
+  const preloadAndCacheImages = useCallback(async (html: string): Promise<void> => {
+    if (!html) return;
+    const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+    const imageUrls: string[] = [];
+    let match;
+    while ((match = imgRegex.exec(html)) !== null) {
+      const url = match[1];
+      if (url && !url.startsWith('blob:') && !url.startsWith('data:')) imageUrls.push(url);
+    }
+    if (imageUrls.length === 0) return;
+    await initImageCache();
+    await Promise.all(imageUrls.map((url) => getCachedImage(url)));
+  }, [initImageCache, getCachedImage]);
+
+  // 使用 base 的缓存：有缓存则用，无缓存则请求并写入缓存（与 base outline 一致）
+  useEffect(() => {
+    const cardIdStr = card?.docId != null ? String(card.docId) : '';
+    if (!cardIdStr) return;
+
+    if (!card.content) {
+      setRenderedContent('');
+      return;
+    }
+
+    const cacheKey = `${BASE_OUTLINE_CARD_CACHE_PREFIX}${cardIdStr}`;
+    const cachedDataStr = localStorage.getItem(cacheKey);
+
+    if (cachedDataStr) {
+      try {
+        const cachedData = JSON.parse(cachedDataStr);
+        const cachedHtml = cachedData?.html ?? (typeof cachedDataStr === 'string' ? cachedDataStr : '');
+        if (cachedHtml) {
+          const updateAt = (card as Card).updateAt ?? '';
+          if (cachedData.updateAt != null && updateAt && cachedData.updateAt !== updateAt) {
+            localStorage.removeItem(cacheKey);
+          } else {
+            replaceImagesWithCache(cachedHtml)
+              .then((htmlWithImages) => setRenderedContent(htmlWithImages))
+              .catch(() => setRenderedContent(cachedHtml));
+            return;
+          }
+        }
+      } catch {
+        const cachedHtml = typeof cachedDataStr === 'string' ? cachedDataStr : '';
+        if (cachedHtml) {
+          replaceImagesWithCache(cachedHtml)
+            .then((htmlWithImages) => setRenderedContent(htmlWithImages))
+            .catch(() => setRenderedContent(cachedHtml));
+          return;
+        }
+      }
+    }
+
+    // 无缓存：请求 /markdown 后写入缓存（与 base 一致）
+    fetch('/markdown', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: card.content, inline: false }),
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error('Failed to render markdown');
+        return response.text();
+      })
+      .then(async (html) => {
+        setRenderedContent(html);
+        try {
+          const cacheData = {
+            html,
+            updateAt: (card as Card).updateAt ?? '',
+          };
+          localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+        } catch (e) {
+          console.error('Failed to save to localStorage:', e);
+        }
+        preloadAndCacheImages(html).catch((e) => console.error('Failed to preload images:', e));
+      })
+      .catch(() => setRenderedContent(card.content));
+  }, [card?.docId, card?.content, (card as Card).updateAt, replaceImagesWithCache, preloadAndCacheImages]);
 
   const allProblems = useMemo(() => {
     return (card.problems || []).map(p => ({ ...p, cardId: card.docId }));
