@@ -168,6 +168,8 @@ __langname: 简体中文
 'Join {0}': '加入 {0}'
 'Join Domain': 加入域
 'Jump to {0}': 跳至 {0}
+'Image preview failed': 预览图片失败
+'Know it': 认识
 'Language Type': 语言类型
 'Last check-in': 上次打卡
 'Last Commit': 最后提交
@@ -206,6 +208,7 @@ __langname: 简体中文
 'No content': 无内容
 'No courses available.': 暂无可用课程。
 'No description': 无描述
+'No impression': 没印象
 'No local git repository': 无本地 git 仓库
 'No MCP tools yet. When MCP server connects and registers, they will appear here.': 暂无注册的 MCP 工具。当 MCP 服务器连接并注册工具后，它们将显示在这里。
 'No messages in this conversation': 此对话中暂无消息
@@ -255,6 +258,7 @@ __langname: 简体中文
 'Question': 题目
 'Recent Cards': 最近更新的卡片
 'Recent Nodes': 最近更新的节点
+'Redirecting': 跳转中
 'Refresh Tools List': 刷新工具列表
 'Remaining': 剩余
 'Remote branch exists. Use Pull to sync with remote changes.': 远程分支存在。使用 Pull 同步远程更改。
