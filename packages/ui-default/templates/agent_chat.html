@@ -13,14 +13,21 @@
 
 <div class="row">
   {% if mode == 'chat' %}
+  <!-- Mobile: overlay for sidebar drawer -->
+  <div class="agent-chat-sidebar-overlay" id="agentChatSidebarOverlay" aria-hidden="true"></div>
   <!-- Chat Mode: Left Sidebar (Session List) -->
-  <div class="medium-3 columns">
+  <div class="medium-3 columns agent-chat-sidebar-column" id="agentChatSidebarColumn">
     <div class="section side">
       <div class="section__header" style="display: flex; justify-content: space-between; align-items: center;">
         <h2 class="section__title">{{ _('Sessions') }}</h2>
-        <button id="newChatBtnSidebar" class="button" style="padding: 4px 8px; min-width: auto;" title="{{ _('New Chat') }}">
-          <span class="icon icon-add"></span>
-        </button>
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <button type="button" class="button agent-chat-sidebar-close" id="agentChatSidebarClose" style="padding: 4px 8px; min-width: auto;" title="{{ _('Close') }}" aria-label="{{ _('Close') }}">
+            <span class="icon icon-close"></span>
+          </button>
+          <button id="newChatBtnSidebar" class="button" style="padding: 4px 8px; min-width: auto;" title="{{ _('New Chat') }}">
+            <span class="icon icon-add"></span>
+          </button>
+        </div>
       </div>
       <div class="section__body" style="max-height: calc(100vh - 200px); overflow-y: auto;">
         <div id="sessionListSidebar">
@@ -66,8 +73,11 @@
         <span class="skill-branch-inline" style="font-size: 0.95em; color: var(--color-text-secondary, #666);">
           {{ _('Skill 分支') }}: <strong>{{ adoc.skillBranch or _('未启用') }}</strong>
         </span>
-        <div class="section__tools" style="margin-left: auto;">
+        <div class="section__tools" style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
           {% if mode == 'chat' %}
+          <button type="button" id="agentChatSidebarToggle" class="button agent-chat-sidebar-toggle" title="{{ _('Sessions') }}" aria-label="{{ _('Sessions') }}">
+            <span class="icon icon-menu"></span> {{ _('Sessions') }}
+          </button>
           <a href="{{ url('agent_detail', domainId=domainId, aid=adoc.aid) }}" class="button" id="backToAgentBtn">
             <span class="icon icon-back"></span> {{ _('Back to Agent') }}
           </a>
