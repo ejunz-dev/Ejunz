@@ -384,3 +384,49 @@
   font-style: italic
   text-align: center
 
+// Mobile: session list as drawer, toggle button to open
+.agent-chat-sidebar-toggle
+  +above(rupture.mobile-cutoff)
+    display: none
+
+.agent-chat-sidebar-close
+  +above(rupture.mobile-cutoff)
+    display: none
+
+.agent-chat-sidebar-overlay
+  display: none
+  +below(rupture.mobile-cutoff)
+    display: block
+    position: fixed
+    left: 0
+    top: 0
+    right: 0
+    bottom: 0
+    background: rgba(0, 0, 0, 0.4)
+    z-index: 1000
+    opacity: 0
+    pointer-events: none
+    transition: opacity 0.2s ease
+  .agent-chat-sidebar-open &
+    +below(rupture.mobile-cutoff)
+      opacity: 1
+      pointer-events: auto
+
+.agent-chat-sidebar-column
+  +below(rupture.mobile-cutoff)
+    position: fixed
+    left: 0
+    top: 0
+    bottom: 0
+    width: 85%
+    max-width: 320px
+    z-index: 1001
+    background: #fff
+    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15)
+    overflow-y: auto
+    transform: translateX(-100%)
+    transition: transform 0.2s ease
+  .agent-chat-sidebar-open &
+    +below(rupture.mobile-cutoff)
+      transform: translateX(0)
+
