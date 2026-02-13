@@ -1349,6 +1349,7 @@ const page = new NamedPage('agent_chat', async () => {
         if (sid) {
           item.addEventListener('click', async () => {
             await switchToSession(sid);
+            document.body.classList.remove('agent-chat-sidebar-open'); // close mobile drawer after select
           });
         }
       });
@@ -3441,6 +3442,15 @@ const page = new NamedPage('agent_chat', async () => {
     // Don't block page loading if connection fails
   }
 
+  // Mobile: sidebar drawer open/close (session list)
+  const sidebarOpenClass = 'agent-chat-sidebar-open';
+  const openMobileSidebar = () => document.body.classList.add(sidebarOpenClass);
+  const closeMobileSidebar = () => document.body.classList.remove(sidebarOpenClass);
+  const toggleMobileSidebar = () => document.body.classList.toggle(sidebarOpenClass);
+  document.getElementById('agentChatSidebarToggle')?.addEventListener('click', () => toggleMobileSidebar());
+  document.getElementById('agentChatSidebarOverlay')?.addEventListener('click', () => closeMobileSidebar());
+  document.getElementById('agentChatSidebarClose')?.addEventListener('click', () => closeMobileSidebar());
+
   // Bind click events for initially rendered session items (if in template)
   const initialSessionItems = document.querySelectorAll('.session-item-sidebar');
   initialSessionItems.forEach(item => {
@@ -3450,6 +3460,7 @@ const page = new NamedPage('agent_chat', async () => {
         e.preventDefault();
         e.stopPropagation();
         await switchToSession(sid);
+        closeMobileSidebar(); // on mobile, close drawer after selecting session
       });
     }
   });
