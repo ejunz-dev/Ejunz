@@ -129,6 +129,12 @@ export class BaseModel {
         return await document.get(domainId, TYPE_MM, docId);
     }
 
+
+    static async getBybid(domainId: string, bid: number): Promise<BaseDoc | null> {
+        const list = await document.getMulti(domainId, TYPE_MM, { bid } as Filter<BaseDoc>).limit(1).toArray();
+        return list.length > 0 ? (list[0] as BaseDoc) : null;
+    }
+
     /**
      * 获取所有思维导图（向后兼容，现在一个 domain 只有一个）
      */
