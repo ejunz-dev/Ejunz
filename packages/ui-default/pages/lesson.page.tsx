@@ -235,6 +235,16 @@ function LessonPage() {
   const [browseNoImpression, setBrowseNoImpression] = useState(false);
   const [browseSubmitting, setBrowseSubmitting] = useState(false);
 
+  const MOBILE_BREAKPOINT = 768;
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   useEffect(() => {
     if (allProblems.length > 0 && problemQueue.length === 0 && answerHistory.length === 0) {
       setProblemQueue(allProblems);
@@ -958,33 +968,121 @@ function LessonPage() {
     );
   }
 
-  // 卡片 view 与刷题模式共用侧边栏：有侧边栏时用同一布局
+  const sidebarInner = (
+    <>
+      <div style={{ fontSize: '12px', color: '#999', marginBottom: '8px', textTransform: 'uppercase' }}>
+        {i18n('Progress')}
+      </div>
+      <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#333' }}>
+        {rootNodeTitle || i18n('Unnamed Node')}
+      </div>
+      <div style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
+        {currentCardIndex + 1} / {flatCards.length} {i18n('cards')}
+      </div>
+      <div style={{ fontSize: '12px', color: '#333', marginBottom: '12px', fontWeight: 600 }}>
+        {i18n('Cumulative')}: {(cumulativeMs / 1000).toFixed(1)}s
+      </div>
+      {nodeTree.map((root, i) => renderNodeTreeItem(root, 0))}
+    </>
+  );
+
+  const asideBaseStyle: React.CSSProperties = {
+    padding: '16px',
+    backgroundColor: '#fff',
+    borderRight: '1px solid #e0e0e0',
+    overflowY: 'auto',
+  };
+
+  // 卡片 view 与刷题模式共用侧边栏：有侧边栏时用同一布局；手机端侧栏为抽屉
   if (cardViewContent) {
     const showSidebarHere = (isSingleNodeMode || isTodayMode) && nodeTree.length > 0;
     if (showSidebarHere) {
+      if (isMobile) {
+        return (
+          <>
+            <div style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: '48px',
+              zIndex: 1000,
+              backgroundColor: '#fff',
+              borderBottom: '1px solid #e0e0e0',
+              display: 'flex',
+              alignItems: 'center',
+              padding: '0 12px',
+              gap: '8px',
+            }}>
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                style={{
+                  padding: '8px 12px',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '6px',
+                  background: '#fff',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  minHeight: '40px',
+                }}
+                aria-label={i18n('Menu')}
+              >
+                ☰ {i18n('Progress')}
+              </button>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '14px', fontWeight: 600 }}>
+                {rootNodeTitle || i18n('Unnamed Node')}
+              </span>
+            </div>
+            {sidebarOpen && (
+              <div
+                role="presentation"
+                style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: 'rgba(0,0,0,0.4)' }}
+                onClick={() => setSidebarOpen(false)}
+                aria-hidden
+              />
+            )}
+            <aside style={{
+              ...asideBaseStyle,
+              position: 'fixed',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: '280px',
+              maxWidth: '85vw',
+              zIndex: 1002,
+              transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+              transition: 'transform 0.2s ease-out',
+              boxShadow: sidebarOpen ? '2px 0 8px rgba(0,0,0,0.15)' : 'none',
+            }}>
+              {sidebarInner}
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(false)}
+                style={{
+                  marginTop: '12px',
+                  padding: '8px 16px',
+                  width: '100%',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '6px',
+                  background: '#f5f5f5',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                }}
+              >
+                {i18n('Close')}
+              </button>
+            </aside>
+            <main style={{ flex: 1, overflowY: 'auto', paddingTop: '56px', paddingLeft: '12px', paddingRight: '12px', paddingBottom: '24px', minHeight: '100vh', backgroundColor: '#fafafa' }}>
+              {cardViewContent}
+            </main>
+          </>
+        );
+      }
       return (
         <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#fafafa' }}>
-          <aside style={{
-            width: '240px',
-            flexShrink: 0,
-            padding: '16px',
-            backgroundColor: '#fff',
-            borderRight: '1px solid #e0e0e0',
-            overflowY: 'auto',
-          }}>
-            <div style={{ fontSize: '12px', color: '#999', marginBottom: '8px', textTransform: 'uppercase' }}>
-              {i18n('Progress')}
-            </div>
-            <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#333' }}>
-              {rootNodeTitle || i18n('Unnamed Node')}
-            </div>
-            <div style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
-              {currentCardIndex + 1} / {flatCards.length} {i18n('cards')}
-            </div>
-            <div style={{ fontSize: '12px', color: '#333', marginBottom: '12px', fontWeight: 600 }}>
-              {i18n('Cumulative')}: {(cumulativeMs / 1000).toFixed(1)}s
-            </div>
-            {nodeTree.map((root, i) => renderNodeTreeItem(root, 0))}
+          <aside style={{ width: '240px', flexShrink: 0, ...asideBaseStyle }}>
+            {sidebarInner}
           </aside>
           <main style={{ flex: 1, overflowY: 'auto' }}>
             {cardViewContent}
@@ -1034,12 +1132,13 @@ function LessonPage() {
     );
   }
 
+  const contentPadding = isMobile ? '12px' : '20px';
   const mainContent = (
     <div style={{
       maxWidth: '900px',
       width: '100%',
       margin: '0 auto',
-      padding: '20px',
+      padding: contentPadding,
     }}>
       <div style={{
         marginBottom: '20px',
@@ -1072,7 +1171,7 @@ function LessonPage() {
 
       <div style={{
         marginBottom: '30px',
-        padding: '30px',
+        padding: isMobile ? '16px' : '30px',
         backgroundColor: '#fff',
         borderRadius: '8px',
         border: '1px solid #e0e0e0',
@@ -1151,11 +1250,12 @@ function LessonPage() {
             const isSelected = selectedAnswer === displayIdx;
             const isAnswer = originalIdx === currentProblem.answer;
             const baseStyle: React.CSSProperties = {
-              padding: '14px',
+              padding: isMobile ? '16px' : '14px',
               marginBottom: '12px',
               borderRadius: '6px',
               cursor: isAnswered ? 'not-allowed' : 'pointer',
               transition: 'all 0.2s',
+              ...(isMobile ? { minHeight: '48px', display: 'flex', alignItems: 'center' } : {}),
             };
             let optionStyle: React.CSSProperties;
             if (showAnalysis) {
@@ -1269,29 +1369,92 @@ function LessonPage() {
 
   const showSidebar = (isSingleNodeMode || isTodayMode) && nodeTree.length > 0;
   if (showSidebar) {
+    if (isMobile) {
+      return (
+        <>
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: '48px',
+            zIndex: 1000,
+            backgroundColor: '#fff',
+            borderBottom: '1px solid #e0e0e0',
+            display: 'flex',
+            alignItems: 'center',
+            padding: '0 12px',
+            gap: '8px',
+          }}>
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+              style={{
+                padding: '8px 12px',
+                border: '1px solid #e0e0e0',
+                borderRadius: '6px',
+                background: '#fff',
+                cursor: 'pointer',
+                fontSize: '14px',
+                minHeight: '40px',
+              }}
+              aria-label={i18n('Menu')}
+            >
+              ☰ {i18n('Progress')}
+            </button>
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '14px', fontWeight: 600 }}>
+              {rootNodeTitle || i18n('Unnamed Node')}
+            </span>
+          </div>
+          {sidebarOpen && (
+            <div
+              role="presentation"
+              style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: 'rgba(0,0,0,0.4)' }}
+              onClick={() => setSidebarOpen(false)}
+              aria-hidden
+            />
+          )}
+          <aside style={{
+            ...asideBaseStyle,
+            position: 'fixed',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: '280px',
+            maxWidth: '85vw',
+            zIndex: 1002,
+            transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+            transition: 'transform 0.2s ease-out',
+            boxShadow: sidebarOpen ? '2px 0 8px rgba(0,0,0,0.15)' : 'none',
+          }}>
+            {sidebarInner}
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(false)}
+              style={{
+                marginTop: '12px',
+                padding: '8px 16px',
+                width: '100%',
+                border: '1px solid #e0e0e0',
+                borderRadius: '6px',
+                background: '#f5f5f5',
+                cursor: 'pointer',
+                fontSize: '14px',
+              }}
+            >
+              {i18n('Close')}
+            </button>
+          </aside>
+          <main style={{ flex: 1, overflowY: 'auto', paddingTop: '56px', paddingLeft: '12px', paddingRight: '12px', paddingBottom: '24px', minHeight: '100vh', backgroundColor: '#fafafa' }}>
+            {mainContent}
+          </main>
+        </>
+      );
+    }
     return (
       <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#fafafa' }}>
-        <aside style={{
-          width: '240px',
-          flexShrink: 0,
-          padding: '16px',
-          backgroundColor: '#fff',
-          borderRight: '1px solid #e0e0e0',
-          overflowY: 'auto',
-        }}>
-          <div style={{ fontSize: '12px', color: '#999', marginBottom: '8px', textTransform: 'uppercase' }}>
-            {i18n('Progress')}
-          </div>
-          <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#333' }}>
-            {rootNodeTitle || i18n('Unnamed Node')}
-          </div>
-          <div style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
-            {currentCardIndex + 1} / {flatCards.length} {i18n('cards')}
-          </div>
-          <div style={{ fontSize: '12px', color: '#333', marginBottom: '12px', fontWeight: 600 }}>
-            {i18n('Cumulative')}: {(cumulativeMs / 1000).toFixed(1)}s
-          </div>
-          {nodeTree.map((root, i) => renderNodeTreeItem(root, 0))}
+        <aside style={{ width: '240px', flexShrink: 0, ...asideBaseStyle }}>
+          {sidebarInner}
         </aside>
         <main style={{ flex: 1, overflowY: 'auto' }}>
           {mainContent}

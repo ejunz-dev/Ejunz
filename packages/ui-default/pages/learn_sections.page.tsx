@@ -141,6 +141,16 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
   const [singleCardModal, setSingleCardModal] = useState<{ cardId: string; title: string } | null>(null);
   const [singleNodeModal, setSingleNodeModal] = useState<{ nodeId: string; title: string } | null>(null);
 
+  const MOBILE_BREAKPOINT = 768;
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const nodeMap = useMemo(() => buildNodeMap(sections, dag), [sections, dag]);
 
   const toggleExpand = useCallback((nodeId: string) => {
@@ -432,8 +442,131 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
   }
 
   const selectedSection = sections[selectedSectionIndex];
+
+  const sidebarInner = (
+    <>
+      <div style={{ padding: '0 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+        <span style={{ fontSize: '12px', fontWeight: '600', color: themeStyles.textSecondary, textTransform: 'uppercase' }}>
+          {i18n('Sections')}
+        </span>
+        <a
+          href={`/d/${domainId}/learn/section/edit?uid=${(window as any).UserContext?._id ?? ''}`}
+          style={{
+            fontSize: '12px',
+            color: themeStyles.accent,
+            textDecoration: 'none',
+          }}
+          title={i18n('Section Order')}
+        >
+          {i18n('Section Order')}
+        </a>
+      </div>
+      {sections.map((section, index) => {
+        const isSelected = selectedSectionIndex === index;
+        const isCurrent = typeof currentLearnSectionIndex === 'number'
+          ? index === currentLearnSectionIndex
+          : currentSectionId === section._id && index === sections.findIndex(s => s._id === currentSectionId);
+        return (
+          <div
+            key={`${index}-${section._id}`}
+            onClick={() => {
+              setSelectedSectionIndex(index);
+              if (isMobile) setSidebarOpen(false);
+            }}
+            style={{
+              padding: isMobile ? '14px 16px' : '10px 16px',
+              minHeight: isMobile ? '48px' : undefined,
+              display: isMobile ? 'flex' : undefined,
+              alignItems: isMobile ? 'center' : undefined,
+              cursor: 'pointer',
+              backgroundColor: isSelected ? themeStyles.bgHover : 'transparent',
+              borderLeft: `3px solid ${isSelected ? themeStyles.accent : 'transparent'}`,
+              color: isSelected ? themeStyles.accent : themeStyles.textPrimary,
+              fontWeight: isSelected ? '600' : 'normal',
+              fontSize: '14px',
+              transition: 'background-color 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              if (!isSelected) e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+            }}
+            onMouseLeave={(e) => {
+              if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            {section.title}
+            {isCurrent && (
+              <span style={{ color: '#4CAF50', fontSize: '0.75em', marginLeft: '6px' }}>
+                ({i18n('Current Progress')})
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+
+  const asideBaseStyle = {
+    backgroundColor: themeStyles.bgSidebar,
+    borderRight: `1px solid ${themeStyles.border}`,
+    overflowY: 'auto' as const,
+    padding: '12px 0',
+  };
+
   return (
     <>
+    {isMobile && (
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '48px',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          paddingLeft: '12px',
+          paddingRight: '12px',
+          backgroundColor: themeStyles.bgSidebar,
+          borderBottom: `1px solid ${themeStyles.border}`,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setSidebarOpen(true)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 12px',
+            minHeight: '44px',
+            fontSize: '14px',
+            fontWeight: 500,
+            color: themeStyles.textPrimary,
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            borderRadius: '8px',
+          }}
+        >
+          ☰ {i18n('Sections')}
+        </button>
+      </div>
+    )}
+
+    {isMobile && sidebarOpen && (
+      <div
+        role="presentation"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 1001,
+          backgroundColor: 'rgba(0,0,0,0.4)',
+        }}
+        onClick={() => setSidebarOpen(false)}
+      />
+    )}
+
     <div
       style={{
         display: 'flex',
@@ -441,77 +574,59 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
         minHeight: 'calc(100vh - 120px)',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
         backgroundColor: themeStyles.bgPrimary,
+        paddingTop: isMobile ? '56px' : 0,
       }}
     >
-      {/* 侧边栏：根节点列表 */}
+      {/* 侧边栏：根节点列表（桌面常显，移动端为抽屉） */}
       <aside
         style={{
-          width: '220px',
-          flexShrink: 0,
-          backgroundColor: themeStyles.bgSidebar,
-          borderRight: `1px solid ${themeStyles.border}`,
-          overflowY: 'auto',
-          padding: '12px 0',
+          ...asideBaseStyle,
+          ...(isMobile
+            ? {
+                position: 'fixed' as const,
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: '280px',
+                maxWidth: '85vw',
+                zIndex: 1002,
+                transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+                transition: 'transform 0.2s ease',
+                boxShadow: sidebarOpen ? (theme === 'dark' ? '4px 0 16px rgba(0,0,0,0.4)' : '4px 0 16px rgba(0,0,0,0.1)') : 'none',
+              }
+            : {
+                width: '220px',
+                flexShrink: 0,
+              }),
         }}
       >
-        <div style={{ padding: '0 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-          <span style={{ fontSize: '12px', fontWeight: '600', color: themeStyles.textSecondary, textTransform: 'uppercase' }}>
-            {i18n('Sections')}
-          </span>
-          <a
-            href={`/d/${domainId}/learn/section/edit?uid=${(window as any).UserContext?._id ?? ''}`}
-            style={{
-              fontSize: '12px',
-              color: themeStyles.accent,
-              textDecoration: 'none',
-            }}
-            title={i18n('Section Order')}
-          >
-            {i18n('Section Order')}
-          </a>
-        </div>
-        {sections.map((section, index) => {
-          const isSelected = selectedSectionIndex === index;
-          const isCurrent = typeof currentLearnSectionIndex === 'number'
-            ? index === currentLearnSectionIndex
-            : currentSectionId === section._id && index === sections.findIndex(s => s._id === currentSectionId);
-          return (
-            <div
-              key={`${index}-${section._id}`}
-              onClick={() => setSelectedSectionIndex(index)}
+        {isMobile && (
+          <div style={{ padding: '12px 16px', borderBottom: `1px solid ${themeStyles.border}`, display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(false)}
               style={{
-                padding: '10px 16px',
-                cursor: 'pointer',
-                backgroundColor: isSelected ? themeStyles.bgHover : 'transparent',
-                borderLeft: `3px solid ${isSelected ? themeStyles.accent : 'transparent'}`,
-                color: isSelected ? themeStyles.accent : themeStyles.textPrimary,
-                fontWeight: isSelected ? '600' : 'normal',
+                padding: '8px 12px',
                 fontSize: '14px',
-                transition: 'background-color 0.15s',
-              }}
-              onMouseEnter={(e) => {
-                if (!isSelected) e.currentTarget.style.backgroundColor = themeStyles.bgHover;
-              }}
-              onMouseLeave={(e) => {
-                if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+                color: themeStyles.textPrimary,
+                background: 'transparent',
+                border: `1px solid ${themeStyles.border}`,
+                borderRadius: '6px',
+                cursor: 'pointer',
               }}
             >
-              {section.title}
-              {isCurrent && (
-                <span style={{ color: '#4CAF50', fontSize: '0.75em', marginLeft: '6px' }}>
-                  ({i18n('Current Progress')})
-                </span>
-              )}
-            </div>
-          );
-        })}
+              {i18n('Close')}
+            </button>
+          </div>
+        )}
+        {sidebarInner}
       </aside>
 
       {/* 主内容区：选中章节的树形大纲 */}
       <main
         style={{
           flex: 1,
-          padding: '24px 32px',
+          padding: isMobile ? '16px 12px' : '24px 32px',
           overflowY: 'auto',
           backgroundColor: themeStyles.bgPrimary,
         }}
@@ -520,24 +635,24 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
           <>
             <div
               style={{
-                fontSize: '20px',
+                fontSize: isMobile ? '18px' : '20px',
                 fontWeight: '600',
                 color: themeStyles.textPrimary,
-                marginBottom: '24px',
-                paddingBottom: '16px',
+                marginBottom: isMobile ? '16px' : '24px',
+                paddingBottom: isMobile ? '12px' : '16px',
                 borderBottom: `1px solid ${themeStyles.border}`,
               }}
             >
               {selectedSection.title}
             </div>
-            <div style={{ paddingLeft: '4px' }}>
+            <div style={{ paddingLeft: isMobile ? '0' : '4px' }}>
               {renderNode(selectedSection, 0, typeof currentLearnSectionIndex === 'number'
                 ? selectedSectionIndex === currentLearnSectionIndex
                 : currentSectionId === selectedSection._id && selectedSectionIndex === sections.findIndex(s => s._id === currentSectionId))}
             </div>
           </>
         ) : (
-          <div style={{ textAlign: 'center', color: themeStyles.textSecondary, padding: '40px 20px' }}>
+          <div style={{ textAlign: 'center', color: themeStyles.textSecondary, padding: isMobile ? '24px 12px' : '40px 20px' }}>
             {i18n('Select a section from the sidebar')}
           </div>
         )}
