@@ -7,7 +7,7 @@ export interface SystemToolEntry {
     description: string;
     inputSchema: {
         type: string;
-        properties?: Record<string, { type: string; description?: string }>;
+        properties?: Record<string, { type: string; description?: string; items?: unknown }>;
     };
 }
 
