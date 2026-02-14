@@ -494,13 +494,13 @@ function LessonPage() {
       const result = await request.post(`/d/${domainId}/learn/lesson/pass`, {
         answerHistory: [],
         totalTime: totalTimeMs,
-        isAlonePractice: false,
+        isAlonePractice: isAlonePractice && !isSingleNodeMode && !isTodayMode,
         cardId: card.docId,
         singleNodeMode: isSingleNodeMode || undefined,
         todayMode: isTodayMode || undefined,
         nodeId: (isSingleNodeMode || isTodayMode) && rootNodeId ? rootNodeId : undefined,
         cardIndex: (isSingleNodeMode || isTodayMode) ? currentCardIndex : undefined,
-        noImpression: isSingleNodeMode ? noImpression : undefined,
+        noImpression: (isSingleNodeMode || isAlonePractice) ? noImpression : undefined,
       });
       if (nextTimes) setCardTimesMs(nextTimes);
       const redirect = result?.redirect ?? result?.body?.redirect;
@@ -845,8 +845,8 @@ function LessonPage() {
     );
   }
 
-  // 仅当「无题目」时使用卡片 view（Know it / No impression）；有题目的走下方题目刷题模式。与刷题模式共用侧边栏布局。
-  const useCardViewMode = (isSingleNodeMode || isTodayMode) && !hasProblems && allProblems.length === 0;
+  // 仅当「无题目」时使用卡片 view（Know it / No impression）；有题目的走下方题目刷题模式。单卡片模式无题目时与 node 模式无题目一致，也用卡片 view。
+  const useCardViewMode = (isSingleNodeMode || isTodayMode || isAlonePractice) && !hasProblems && allProblems.length === 0;
   let cardViewContent: React.ReactNode = null;
   if (useCardViewMode) {
     cardViewContent = (
@@ -867,7 +867,7 @@ function LessonPage() {
           </div>
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             {card.title || i18n('Unnamed Card')}
-            {(lessonReviewCardIds.includes(String(card.docId)) || (reviewCardId && String(card.docId) === reviewCardId)) && (
+            {(isAlonePractice ? (reviewCardId && String(card.docId) === reviewCardId) : (lessonReviewCardIds.includes(String(card.docId)) || (reviewCardId && String(card.docId) === reviewCardId))) && (
               <span style={{ fontSize: '14px', fontWeight: 600, color: '#e65100', backgroundColor: '#fff3e0', padding: '4px 10px', borderRadius: '6px' }}>
                 {i18n('Review')}
               </span>
@@ -1151,7 +1151,7 @@ function LessonPage() {
         </div>
         <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {card.title || i18n('Unnamed Card')}
-          {lessonReviewCardIds.includes(String(card.docId)) && (
+          {(isAlonePractice ? (reviewCardId && String(card.docId) === reviewCardId) : lessonReviewCardIds.includes(String(card.docId))) && (
             <span style={{ fontSize: '14px', fontWeight: 600, color: '#e65100', backgroundColor: '#fff3e0', padding: '4px 10px', borderRadius: '6px' }}>
               {i18n('Review')}
             </span>

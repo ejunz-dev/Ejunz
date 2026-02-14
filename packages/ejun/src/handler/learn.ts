@@ -888,18 +888,13 @@ class LessonHandler extends Handler {
                 throw new NotFoundError('Card not found');
             }
 
-            if (!card.problems || card.problems.length === 0) {
-                throw new NotFoundError('Card has no practice questions');
-            }
-
+            const hasCardProblems = !!(card.problems && card.problems.length > 0);
             const node = (getBranchData(base, 'main').nodes || []).find(n => n.id === card.nodeId);
-            if (!node) {
+            if (hasCardProblems && !node) {
                 throw new NotFoundError('Node not found');
             }
 
-            const cards = await CardModel.getByNodeId(finalDomainId, base.docId, card.nodeId);
-            const currentIndex = cards.findIndex(c => c.docId.toString() === cardId.toString());
-
+            const queryReviewCardId = (this.request.query?.reviewCardId as string) || '';
             await learn.setUserLearnState(finalDomainId, this.user._id, {
                 lessonMode: null,
                 lessonNodeId: null,
@@ -907,16 +902,41 @@ class LessonHandler extends Handler {
                 lessonUpdatedAt: new Date(),
             });
 
+            const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+            const lessonReviewCardIds = Array.isArray(dudoc?.lessonReviewCardIds) ? dudoc.lessonReviewCardIds : [];
+            const lessonCardTimesMs = Array.isArray(dudoc?.lessonCardTimesMs) ? dudoc.lessonCardTimesMs : [];
+
+            const nodeForResponse = node || { id: card.nodeId || '', title: '', text: '' };
+            const cards = node
+                ? await CardModel.getByNodeId(finalDomainId, base.docId, card.nodeId)
+                : [card];
+            const currentIndex = cards.findIndex((c: any) => c.docId.toString() === cardId.toString());
+
+            const flatCards = [{
+                nodeId: nodeForResponse.id || '',
+                cardId: card.docId.toString(),
+                nodeTitle: (nodeForResponse as any).title || '',
+                cardTitle: card.title || '',
+            }];
+
             this.response.template = 'lesson.html';
             this.response.body = {
                 card,
-                node,
+                node: nodeForResponse,
                 cards,
                 currentIndex: currentIndex >= 0 ? currentIndex : 0,
                 domainId: finalDomainId,
                 baseDocId: base.docId.toString(),
                 isAlonePractice: true,
-                hasProblems: true,
+                hasProblems: hasCardProblems,
+                flatCards,
+                nodeTree: [],
+                currentCardIndex: 0,
+                rootNodeId: nodeForResponse.id || '',
+                rootNodeTitle: (nodeForResponse as any).title || '',
+                lessonReviewCardIds,
+                lessonCardTimesMs,
+                reviewCardId: queryReviewCardId,
             };
             return;
         }
@@ -1372,6 +1392,7 @@ class LessonHandler extends Handler {
         const totalTime = body.totalTime || 0;
         const isAlonePractice = body.isAlonePractice || false;
         const isSingleNodeMode = body.singleNodeMode === true;
+        const noImpressionBody = body.noImpression === true;
         const nodeIdFromBody = body.nodeId as string | undefined;
         const cardIndexFromBody = typeof body.cardIndex === 'number' ? body.cardIndex : parseInt(body.cardIndex, 10);
         const cardIdFromBody = body.cardId;
@@ -1716,6 +1737,22 @@ class LessonHandler extends Handler {
             throw new NotFoundError('Card not found');
         }
 
+        const hasCardProblems = !!(card.problems && card.problems.length > 0);
+        const isBrowseOnly = isAlonePractice && !hasCardProblems && answerHistory.length === 0;
+
+        // 单卡片「不认识」：与 node 一致——不记 result、加入复习列表，并重定向回同一张卡（复习滚动）
+        if (isBrowseOnly && noImpressionBody) {
+            const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+            const reviewIds: string[] = Array.isArray(dudoc?.lessonReviewCardIds) ? [...dudoc.lessonReviewCardIds] : [];
+            if (!reviewIds.includes(currentCardId!.toString())) reviewIds.push(currentCardId!.toString());
+            const timesMs: number[] = Array.isArray(dudoc?.lessonCardTimesMs) ? [...dudoc.lessonCardTimesMs] : [];
+            timesMs.push(typeof totalTime === 'number' && totalTime >= 0 ? totalTime : 0);
+            await learn.setUserLearnState(finalDomainId, this.user._id, { lessonReviewCardIds: reviewIds, lessonCardTimesMs: timesMs, lessonUpdatedAt: new Date() });
+            const cardIdStr = currentCardId!.toString();
+            this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn/lesson?cardId=${cardIdStr}&reviewCardId=${encodeURIComponent(cardIdStr)}` };
+            return;
+        }
+
         if (currentCardNodeId) {
             await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId);
         }
@@ -1725,20 +1762,16 @@ class LessonHandler extends Handler {
         const cardIndex = cards.findIndex(c => c.docId.toString() === currentCardId.toString());
         const currentCardDoc = cards[cardIndex];
 
-        const resultData = {
-            card: currentCardDoc,
-            node: node,
-            answerHistory: answerHistory,
-            totalTime: totalTime,
-            domainId: finalDomainId,
-            baseDocId: base.docId.toString(),
-        };
+        // 单卡片无题目时（卡片 view「认识」）：写入 browse_judge correct: true
+        const effectiveHistory = isBrowseOnly
+            ? [{ problemId: 'browse_judge', correct: true, selected: 0, timeSpent: totalTime || 0, attempts: 1 }]
+            : answerHistory;
 
-        const score = answerHistory.length * 5;
+        const score = effectiveHistory.length * 5;
         const resultId = await learn.addResult(finalDomainId, this.user._id, {
             cardId: currentCardId,
             nodeId: currentCardNodeId,
-            answerHistory,
+            answerHistory: effectiveHistory,
             totalTime,
             score,
             createdAt: new Date(),
@@ -1748,8 +1781,8 @@ class LessonHandler extends Handler {
 
         const today = moment.utc().format('YYYY-MM-DD');
         let problemCount = 0;
-        for (const history of answerHistory) {
-            if (history.problemId) problemCount++;
+        for (const history of effectiveHistory) {
+            if ((history as any).problemId) problemCount++;
         }
         const timeToAdd = (totalTime && typeof totalTime === 'number' && totalTime > 0) ? totalTime : 0;
         await learn.incConsumptionStats(finalDomainId, this.user._id, today, {
@@ -1759,6 +1792,16 @@ class LessonHandler extends Handler {
             practices: 1,
             ...(timeToAdd > 0 ? { totalTime: timeToAdd } : {}),
         });
+
+        // 单卡片「认识」后：若该卡在复习列表中则移除（与 node 一致）
+        if (isAlonePractice) {
+            const dudocAfter = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+            const reviewIdsAfter: string[] = Array.isArray(dudocAfter?.lessonReviewCardIds) ? dudocAfter.lessonReviewCardIds : [];
+            const nextReviewIds = reviewIdsAfter.filter(id => id !== currentCardId!.toString());
+            if (nextReviewIds.length !== reviewIdsAfter.length) {
+                await learn.setUserLearnState(finalDomainId, this.user._id, { lessonReviewCardIds: nextReviewIds, lessonUpdatedAt: new Date() });
+            }
+        }
 
         this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn/lesson/result/${resultId}` };
     }
