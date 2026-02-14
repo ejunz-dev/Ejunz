@@ -233,6 +233,14 @@ function LearnPage() {
   const sidebarWidth = 220;
   const collapsedWidth = 36;
 
+  const MOBILE_BREAKPOINT = 768;
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -242,26 +250,125 @@ function LearnPage() {
       flexDirection: 'row',
       position: 'relative',
     }}>
-      {/* 左侧边栏：绝对定位，覆盖展开 */}
+      {/* 移动端顶栏：打开待学 / 已完成抽屉 */}
+      {isMobile && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: '48px',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingLeft: '12px',
+            paddingRight: '12px',
+            background: themeStyles.bgSecondary,
+            borderBottom: `1px solid ${themeStyles.border}`,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => { setLeftSidebarOpen(true); setRightSidebarOpen(false); }}
+            style={{
+              padding: '8px 12px',
+              minHeight: '44px',
+              fontSize: '14px',
+              fontWeight: 500,
+              color: themeStyles.textPrimary,
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            ☰ {i18n('Pending sections')}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setRightSidebarOpen(true); setLeftSidebarOpen(false); }}
+            style={{
+              padding: '8px 12px',
+              minHeight: '44px',
+              fontSize: '14px',
+              fontWeight: 500,
+              color: themeStyles.textPrimary,
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            {i18n('Completed cards')} ☰
+          </button>
+        </div>
+      )}
+
+      {isMobile && leftSidebarOpen && (
+        <div
+          role="presentation"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1001,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+          }}
+          onClick={() => setLeftSidebarOpen(false)}
+        />
+      )}
+      {isMobile && rightSidebarOpen && (
+        <div
+          role="presentation"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1001,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+          }}
+          onClick={() => setRightSidebarOpen(false)}
+        />
+      )}
+
+      {/* 左侧边栏：桌面为绝对定位条，移动端为抽屉 */}
       <aside style={{
-        position: 'absolute',
-        left: 0,
-        top: 0,
-        bottom: 0,
-        width: leftSidebarOpen ? sidebarWidth : collapsedWidth,
+        ...(isMobile
+          ? {
+              position: 'fixed' as const,
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: '280px',
+              maxWidth: '85vw',
+              zIndex: 1002,
+              transform: leftSidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+              transition: 'transform 0.2s ease',
+              boxShadow: leftSidebarOpen ? (theme === 'dark' ? '4px 0 16px rgba(0,0,0,0.4)' : '4px 0 16px rgba(0,0,0,0.1)') : 'none',
+            }
+          : {
+              position: 'absolute' as const,
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: leftSidebarOpen ? sidebarWidth : collapsedWidth,
+              transition: 'width 0.25s ease',
+            }),
         display: 'flex',
         flexDirection: 'row',
         background: themeStyles.bgSecondary,
         borderRight: `1px solid ${themeStyles.border}`,
-        transition: 'width 0.25s ease',
         overflow: 'hidden',
-        zIndex: 10,
       }}>
         {leftSidebarOpen ? (
           <>
             <div style={{
               flex: 1,
-              padding: '20px 16px',
+              padding: isMobile ? '12px 16px 20px' : '20px 16px',
               overflowY: 'auto',
               minWidth: 0,
             }}>
@@ -286,7 +393,8 @@ function LearnPage() {
                   type="button"
                   onClick={() => setLeftSidebarOpen(false)}
                   style={{
-                    padding: '4px 8px',
+                    padding: isMobile ? '8px 12px' : '4px 8px',
+                    minHeight: isMobile ? '44px' : undefined,
                     fontSize: '12px',
                     background: 'transparent',
                     border: `1px solid ${themeStyles.border}`,
@@ -295,7 +403,7 @@ function LearnPage() {
                     cursor: 'pointer',
                   }}
                 >
-                  ×
+                  {isMobile ? i18n('Close') : '×'}
                 </button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -325,7 +433,8 @@ function LearnPage() {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '8px',
-                            padding: '10px 12px',
+                            padding: isMobile ? '14px 12px' : '10px 12px',
+                            minHeight: isMobile ? '48px' : undefined,
                             fontSize: '14px',
                             fontWeight: 500,
                             color: themeStyles.textPrimary,
@@ -412,7 +521,7 @@ function LearnPage() {
               </div>
             </div>
           </>
-        ) : (
+        ) : !isMobile ? (
           <button
             type="button"
             onClick={() => setLeftSidebarOpen(true)}
@@ -436,14 +545,14 @@ function LearnPage() {
           >
             →
           </button>
-        )}
+        ) : null}
       </aside>
 
       {/* 主内容 */}
       <main style={{
         flex: 1,
         minWidth: 0,
-        padding: '32px 24px 48px',
+        padding: isMobile ? '56px 12px 32px' : '32px 24px 48px',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -470,6 +579,7 @@ function LearnPage() {
             style={{
               flex: 1,
               padding: '10px 16px',
+              minHeight: isMobile ? '48px' : undefined,
               fontSize: '14px',
               fontWeight: 600,
               border: 'none',
@@ -489,6 +599,7 @@ function LearnPage() {
             style={{
               flex: 1,
               padding: '10px 16px',
+              minHeight: isMobile ? '48px' : undefined,
               fontSize: '14px',
               fontWeight: 600,
               border: 'none',
@@ -508,7 +619,7 @@ function LearnPage() {
         {viewMode === 'progress' && (
         <>
         <div style={{
-          padding: '28px',
+          padding: isMobile ? '20px 16px' : '28px',
           background: themeStyles.bgCard,
           borderRadius: '20px',
           border: `1px solid ${themeStyles.border}`,
@@ -746,7 +857,8 @@ function LearnPage() {
           onClick={handleStart}
           type="button"
           style={{
-            padding: '18px 28px',
+            padding: isMobile ? '16px 24px' : '18px 28px',
+            minHeight: isMobile ? '52px' : undefined,
             fontSize: '16px',
             fontWeight: 600,
             background: themeStyles.primary,
@@ -827,7 +939,8 @@ function LearnPage() {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        padding: '14px 18px',
+                        padding: isMobile ? '16px 14px' : '14px 18px',
+                        minHeight: isMobile ? '52px' : undefined,
                         background: 'transparent',
                         border: 'none',
                         cursor: 'pointer',
@@ -888,7 +1001,8 @@ function LearnPage() {
                                   display: 'inline-flex',
                                   alignItems: 'center',
                                   gap: '8px',
-                                  padding: '8px 12px',
+                                  padding: isMobile ? '12px 14px' : '8px 12px',
+                                  minHeight: isMobile ? '48px' : undefined,
                                   fontSize: '13px',
                                   fontWeight: 500,
                                   color: themeStyles.textPrimary,
@@ -971,26 +1085,41 @@ function LearnPage() {
       </div>
       </main>
 
-      {/* 右侧边栏：绝对定位，覆盖展开 */}
+      {/* 右侧边栏：桌面绝对定位，移动端为抽屉 */}
       <aside style={{
-        position: 'absolute',
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: rightSidebarOpen ? sidebarWidth : collapsedWidth,
+        ...(isMobile
+          ? {
+              position: 'fixed' as const,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: '280px',
+              maxWidth: '85vw',
+              zIndex: 1002,
+              transform: rightSidebarOpen ? 'translateX(0)' : 'translateX(100%)',
+              transition: 'transform 0.2s ease',
+              boxShadow: rightSidebarOpen ? (theme === 'dark' ? '-4px 0 16px rgba(0,0,0,0.4)' : '-4px 0 16px rgba(0,0,0,0.1)') : 'none',
+            }
+          : {
+              position: 'absolute' as const,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: rightSidebarOpen ? sidebarWidth : collapsedWidth,
+              transition: 'width 0.25s ease',
+              zIndex: 10,
+            }),
         display: 'flex',
         flexDirection: 'row',
         background: themeStyles.bgCard,
         borderLeft: `1px solid ${themeStyles.border}`,
-        transition: 'width 0.25s ease',
         overflow: 'hidden',
-        zIndex: 10,
       }}>
         {rightSidebarOpen ? (
           <>
             <div style={{
               flex: 1,
-              padding: '20px 16px',
+              padding: isMobile ? '12px 16px 20px' : '20px 16px',
               overflowY: 'auto',
               minWidth: 0,
             }}>
@@ -1015,7 +1144,8 @@ function LearnPage() {
                   type="button"
                   onClick={() => setRightSidebarOpen(false)}
                   style={{
-                    padding: '4px 8px',
+                    padding: isMobile ? '8px 12px' : '4px 8px',
+                    minHeight: isMobile ? '44px' : undefined,
                     fontSize: '12px',
                     background: 'transparent',
                     border: `1px solid ${themeStyles.border}`,
@@ -1024,7 +1154,7 @@ function LearnPage() {
                     cursor: 'pointer',
                   }}
                 >
-                  ×
+                  {isMobile ? i18n('Close') : '×'}
                 </button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1043,7 +1173,8 @@ function LearnPage() {
                         }
                       }}
                       style={{
-                        padding: '10px 12px',
+                        padding: isMobile ? '14px 12px' : '10px 12px',
+                        minHeight: isMobile ? '48px' : undefined,
                         fontSize: '14px',
                         color: themeStyles.textSecondary,
                         borderRadius: '8px',
@@ -1082,7 +1213,7 @@ function LearnPage() {
               </div>
             </div>
           </>
-        ) : (
+        ) : !isMobile ? (
           <button
             type="button"
             onClick={() => setRightSidebarOpen(true)}
@@ -1106,7 +1237,7 @@ function LearnPage() {
           >
             ←
           </button>
-        )}
+        ) : null}
       </aside>
     </div>
   );
