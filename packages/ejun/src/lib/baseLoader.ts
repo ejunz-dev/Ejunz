@@ -95,17 +95,27 @@ function buildNodeTree(nodes: BaseNode[], edges: BaseEdge[]): Map<string, BaseNo
     return childrenMap;
 }
 
-/** Build relative URL for a card. Outline page with ?cardId= (e.g. /d/Bazi/base/branch/main?cardId=xxx). */
+/** Build relative URL for a card (knowledge base outline). */
 function cardUrl(domainId: string, _baseDocId: ObjectId, branch: string, _nodeId: string, cardId: ObjectId): string {
     return `/d/${domainId}/base/branch/${branch}?cardId=${cardId}`;
 }
 
-/** Build relative URL for a node. Outline page with ?nodeId= (e.g. /d/Bazi/base/branch/main?nodeId=xxx). */
+/** Build relative URL for a node (knowledge base outline). */
 function nodeUrl(domainId: string, _baseDocId: ObjectId, branch: string, nodeId: string): string {
     return `/d/${domainId}/base/branch/${branch}?nodeId=${nodeId}`;
 }
 
-/** Load node and children by level: only node names and card titles (with links), no card body. Detail via urls later. */
+/** Build relative URL for card lesson (e.g. /d/Bazi/learn/lesson?cardId=xxx). */
+function lessonCardUrl(domainId: string, cardId: ObjectId): string {
+    return `/d/${domainId}/learn/lesson?cardId=${cardId}`;
+}
+
+/** Build relative URL for node lesson (e.g. /d/Bazi/learn/lesson?nodeId=xxx). */
+function lessonNodeUrl(domainId: string, nodeId: string): string {
+    return `/d/${domainId}/learn/lesson?nodeId=${nodeId}`;
+}
+
+/** Load node tree by level: nodes only (no cards). Agent sees full node structure, then opens one node via urls to see its cards. */
 async function loadBaseNodeRecursive(
     domainId: string,
     baseDocId: ObjectId,
@@ -126,34 +136,25 @@ async function loadBaseNodeRecursive(
     const indent = '  '.repeat(level);
     let content = '';
     const nodeLink = nodeUrl(domainId, baseDocId, branch, nodeId);
-    const nodeCards = await CardModel.getByNodeId(domainId, baseDocId, nodeId);
+    const nodeLessonLink = lessonNodeUrl(domainId, nodeId);
+    const nodeTitle = node.text || 'Untitled';
 
     if (level === 0) {
         // root: no heading, just recurse into children
     } else {
         const headingLevel = level === 1 ? 1 : Math.min(level + 1, 6);
         const headingMark = '#'.repeat(headingLevel);
-        const nodeTitle = node.text || (nodeCards.length > 0 ? nodeCards[0].title : 'Untitled');
-        content += `\n${indent}${headingMark} [${nodeTitle}](${nodeLink})\n\n`;
-
-        if (nodeCards.length > 0) {
-            for (const card of nodeCards) {
-                const title = card.title || node.text || 'Untitled';
-                const link = cardUrl(domainId, baseDocId, branch, nodeId, card.docId);
-                content += `${indent}- [${title}](${link})\n`;
-            }
-            content += '\n';
-        }
+        content += `\n${indent}${headingMark} [${nodeTitle}](${nodeLink}) [Lesson](${nodeLessonLink})\n\n`;
 
         if (maxLevel >= 0 && level === maxLevel) {
             const children = childrenMap.get(nodeId) || [];
             if (children.length > 0) {
-                content += `${indent}**子节点:**\n`;
+                content += `${indent}**Child nodes:**\n`;
                 for (const child of children) {
-                    const childCards = await CardModel.getByNodeId(domainId, baseDocId, child.id);
-                    const childName = childCards.length > 0 ? (childCards[0].title || child.text) : child.text;
+                    const childName = child.text || 'Untitled';
                     const childLink = nodeUrl(domainId, baseDocId, branch, child.id);
-                    content += `${indent}- [${childName}](${childLink})\n`;
+                    const childLessonLink = lessonNodeUrl(domainId, child.id);
+                    content += `${indent}- [${childName}](${childLink}) [Lesson](${childLessonLink})\n`;
                 }
                 content += '\n';
             }
@@ -219,7 +220,7 @@ export async function loadBaseInstructions(
         );
 
         return fullContent
-            ? `以下为知识库目录（仅节点与卡片标题，无正文）。回复用户时请将链接以 Markdown 超链接形式展示，例如 [甲子详情](/d/Bazi/base/branch/main?cardId=xxx)，不要只贴纯 URL。若用户需要某卡片/节点的详细内容，请用本工具 urls 参数细查。\n\n${fullContent}\n\n---\n\n`
+            ? `Below is the full node structure only (no cards listed). Each line is a node with base link and Lesson link. Use this to let the agent know all nodes; to see cards under a node, call this tool again with urls containing that node's URL (one node per call).\n\n${fullContent}\n\n---\n\n`
             : null;
     } catch (e) {
         logger.warn('Failed to load base instructions:', e);
@@ -254,7 +255,10 @@ export async function loadBaseInstructionsByUrls(
         const seenCardIds = new Set<string>();
         const parts: string[] = [];
 
-        for (const raw of urls) {
+        const oneUrlOnly = urls.length > 1 ? [urls[0]] : urls;
+        const multiUrlNote = urls.length > 1 ? '\n(Only the first URL was loaded. Pass one node or one card URL per call and call again for more to avoid hanging.)\n\n' : '';
+
+        for (const raw of oneUrlOnly) {
             const parsed = parseCardNodeUrl(typeof raw === 'string' ? raw : String(raw));
             if (parsed.parseError) {
                 logger.debug('Skip invalid URL: %s (%s)', parsed.url, parsed.parseError);
@@ -276,7 +280,12 @@ export async function loadBaseInstructionsByUrls(
                         const body = (card.content || '').trim();
                         const nodeId = (card as any).nodeId;
                         const link = nodeId ? cardUrl(domainId, baseDocId, branchName, nodeId, card.docId) : '';
-                        parts.push(link ? `\n\n## [${title}](${link})\n\n${body}\n\n` : `\n\n## ${title}\n\n${body}\n\n`);
+                        const lessonLink = lessonCardUrl(domainId, card.docId);
+                        parts.push(
+                            link
+                                ? `\n\n## [${title}](${link}) [Lesson](${lessonLink})\n\n${body}\n\n`
+                                : `\n\n## [${title}](${lessonLink})\n\n${body}\n\n`
+                        );
                     }
                 } catch (e) {
                     logger.debug('Failed to load card %s: %s', parsed.cardId, (e as Error).message);
@@ -286,22 +295,27 @@ export async function loadBaseInstructionsByUrls(
 
             if (parsed.nodeId) {
                 const node = nodes.find((n) => n.id === parsed.nodeId);
-                const nodeTitle = node?.text || '节点';
+                const nodeTitle = node?.text || 'Node';
                 const nodeLink = nodeUrl(domainId, baseDocId, branchName, parsed.nodeId);
+                const nodeLessonLink = lessonNodeUrl(domainId, parsed.nodeId);
                 const nodeCards = await CardModel.getByNodeId(domainId, baseDocId, parsed.nodeId);
                 const cardLines = nodeCards.map((card) => {
                     const title = card.title || 'Untitled';
-                    const link = cardUrl(domainId, baseDocId, branchName, parsed.nodeId, card.docId);
-                    return `- [${title}](${link})`;
+                    const lessonLink = lessonCardUrl(domainId, card.docId);
+                    return `- [${title}](${lessonLink})`;
                 });
-                parts.push(`\n\n## [${nodeTitle}](${nodeLink})\n\n${cardLines.join('\n')}\n\n`);
+                parts.push(
+                    `\n\n**Node course URL (give this first when user asks for this node's course):** [${nodeTitle} – open lesson](${nodeLessonLink})\n\n` +
+                    `## [${nodeTitle}](${nodeLink}) [Lesson](${nodeLessonLink})\n\n` +
+                    (cardLines.length > 0 ? `Cards under this node (use these exact URLs; cardId must be the hex ID in the link, never the card title):\n${cardLines.join('\n')}\n\n` : '')
+                );
             }
         }
 
         if (parts.length === 0) return null;
-        let out = `以下为链接对应的目录或单卡正文。回复用户时请将链接以 Markdown 超链接形式展示，例如 [甲子](/d/Bazi/base/branch/main?cardId=xxx)，不要只贴纯 URL。\n\n` + parts.join('');
+        let out = `Below is the outline or single-card content for the given link. When giving course URLs, use only the URLs returned here. Never construct a card URL yourself: cardId must be the 24-char hex ID from the link, never the card title (e.g. never ?cardId=壬申). When replying, show links as Markdown hyperlinks.\n\n${multiUrlNote}` + parts.join('');
         if (out.length > INSTRUCTIONS_MAX_LENGTH) {
-            out = out.slice(0, INSTRUCTIONS_MAX_LENGTH) + `\n\n---\n（内容已截断，超过 ${INSTRUCTIONS_MAX_LENGTH} 字。可缩小 urls 范围或按 cardId 单独查询。）`;
+            out = out.slice(0, INSTRUCTIONS_MAX_LENGTH) + `\n\n---\n(Content truncated, over ${INSTRUCTIONS_MAX_LENGTH} chars. Narrow urls or query by cardId alone.)`;
         }
         return out + '\n\n---\n\n';
     } catch (e) {

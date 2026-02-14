@@ -9,7 +9,7 @@ export const load_base_instructions: ToolModule = {
         id: 'load_base_instructions',
         name: 'load_base_instructions',
         description:
-            'Load base (knowledge base): by level returns outline only (node names and card titles with links, no card body); by urls returns full content for those cards. When replying to the user, always present links as Markdown hyperlinks, e.g. [标题](url), not as plain URL. Parameters: level (optional) - 1=overview, 2+=depth; urls (optional) - card/node URLs to load content.',
+            'Load base (knowledge base) in two steps. 1) By level: full node structure only. 2) By urls (one node URL per call): node course URL + cards with real lesson links. Never invent card URLs: use only returned links; cardId in URL must be the 24-char hex ID, never the card title. Parameters: level (optional); urls (optional) - single node or card URL.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -20,7 +20,7 @@ export const load_base_instructions: ToolModule = {
                 urls: {
                     type: 'array',
                     items: { type: 'string' },
-                    description: 'Card/node URLs to load full content (e.g. .../base/branch/main?cardId=xxx or ?nodeId=xxx). Use after outline when user needs detail.',
+                    description: 'Pass only one URL per call (one node or one card, e.g. .../base/branch/main?nodeId=xxx or ?cardId=xxx). Call the tool again to open the next.',
                 },
             },
         },
