@@ -8,13 +8,19 @@ export const load_base_instructions: ToolModule = {
     catalog: {
         id: 'load_base_instructions',
         name: 'load_base_instructions',
-        description: 'Load base (knowledge base) instructions progressively. Use when you need domain base content. Parameters: level (optional, number) - 1 for overview, 2+ for depth, omit for full content.',
+        description:
+            'Load base (knowledge base) instructions. Either by level (overview/depth/full) or by multiple card/node URLs (e.g. http://localhost:8000/d/Bazi/base/branch/main?cardId=xxx). Parameters: level (optional) - 1=overview, 2+=depth, omit for full; urls (optional) - array of card/node URLs to load those cards only.',
         inputSchema: {
             type: 'object',
             properties: {
                 level: {
                     type: 'number',
-                    description: 'Maximum level to load (1=overview, 2+=depth, omit for full content).',
+                    description: 'Maximum level to load (1=overview, 2+=depth, omit for full content). Ignored when urls is provided.',
+                },
+                urls: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Card/node URLs to load (e.g. with cardId in query). When provided, only these cards are loaded.',
                 },
             },
         },

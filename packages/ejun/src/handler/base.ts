@@ -2496,9 +2496,11 @@ class BaseCardListHandler extends Handler {
     @param('branch', Types.String, true)
     @param('cardId', Types.ObjectId, true)
     async get(domainId: string, docId: ObjectId, bid: number, nodeId: string, branch?: string, cardId?: ObjectId) {
-        const base = docId 
+        const base = docId
             ? await BaseModel.get(domainId, docId)
-            : await BaseModel.getBybid(domainId, bid);
+            : bid
+                ? await BaseModel.getBybid(domainId, bid)
+                : await BaseModel.getByDomain(domainId);
         if (!base) throw new NotFoundError('Base not found');
         
         const effectiveBranch = branch || 'main';

@@ -438,7 +438,19 @@ export class McpClient {
                             message: 'Base 未启用：请在 Agent 设置中选择分支后再使用。'
                         };
                     }
-                    const { loadBaseInstructions } = require('../lib/baseLoader');
+                    const { loadBaseInstructions, loadBaseInstructionsByUrls } = require('../lib/baseLoader');
+                    const urls = args.urls;
+                    const useUrls = Array.isArray(urls) && urls.length > 0;
+
+                    if (useUrls) {
+                        ClientLogger.info('Loading base instructions by urls: count=%s, domainId=%s', urls.length, domainId);
+                        const instructions = await loadBaseInstructionsByUrls(domainId, urls, skillBranch);
+                        return {
+                            success: true,
+                            instructions: instructions ?? '',
+                            message: instructions ? `Successfully loaded ${urls.length} card/node URL(s).` : 'No content resolved from the given URLs.'
+                        };
+                    }
                     const level = args.level !== undefined ? args.level : (args.maxLevel !== undefined ? args.maxLevel : -1);
                     ClientLogger.info('Loading base instructions: level=%s, domainId=%s, branch=%s', level, domainId, skillBranch);
                     const instructions = await loadBaseInstructions(domainId, level, skillBranch);
