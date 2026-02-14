@@ -105,7 +105,7 @@ function nodeUrl(domainId: string, _baseDocId: ObjectId, branch: string, nodeId:
     return `/d/${domainId}/base/branch/${branch}?nodeId=${nodeId}`;
 }
 
-/** Load node and children content by level; maxLevel -1 = all. Base uses raw card content (no SKILL frontmatter). Each card block includes a link URL. */
+/** Load node and children by level: only node names and card titles (with links), no card body. Detail via urls later. */
 async function loadBaseNodeRecursive(
     domainId: string,
     baseDocId: ObjectId,
@@ -125,67 +125,37 @@ async function loadBaseNodeRecursive(
 
     const indent = '  '.repeat(level);
     let content = '';
-
+    const nodeLink = nodeUrl(domainId, baseDocId, branch, nodeId);
     const nodeCards = await CardModel.getByNodeId(domainId, baseDocId, nodeId);
-    if (nodeCards.length > 0) {
-        for (const card of nodeCards) {
-            const title = card.title || node.text || 'Untitled';
-            const body = (card.content || '').trim();
-            const link = cardUrl(domainId, baseDocId, branch, nodeId, card.docId);
 
-            if (level === 0) {
-                continue;
-            } else if (level === 1) {
-                content += `\n\n# [${title}](${link})\n\n`;
-                if (body && (maxLevel < 0 || maxLevel >= 2)) {
-                    content += `${body}\n\n`;
-                }
-            } else {
-                const headingLevel = level === 2 ? '##' : level === 3 ? '###' : '####';
-                content += `\n${indent}${headingLevel} [${title}](${link})\n\n`;
+    if (level === 0) {
+        // root: no heading, just recurse into children
+    } else {
+        const headingLevel = level === 1 ? 1 : Math.min(level + 1, 6);
+        const headingMark = '#'.repeat(headingLevel);
+        const nodeTitle = node.text || (nodeCards.length > 0 ? nodeCards[0].title : 'Untitled');
+        content += `\n${indent}${headingMark} [${nodeTitle}](${nodeLink})\n\n`;
 
-                if (maxLevel >= 0 && level === maxLevel) {
-                    if (body) content += `${indent}${body}\n\n`;
-                    const children = childrenMap.get(nodeId) || [];
-                    if (children.length > 0) {
-                        content += `${indent}**子节点:**\n`;
-                        for (const child of children) {
-                            const childCards = await CardModel.getByNodeId(domainId, baseDocId, child.id);
-                            const childName = childCards.length > 0 ? (childCards[0].title || child.text) : child.text;
-                            const childLink = nodeUrl(domainId, baseDocId, branch, child.id);
-                            content += `${indent}- [${childName}](${childLink})\n`;
-                        }
-                        content += '\n';
-                    }
-                } else {
-                    if (body) {
-                        const indentedBody = body.split('\n')
-                            .map(line => line.trim() ? `${indent}${line}` : '')
-                            .join('\n');
-                        content += `${indentedBody}\n\n`;
-                    }
-                }
+        if (nodeCards.length > 0) {
+            for (const card of nodeCards) {
+                const title = card.title || node.text || 'Untitled';
+                const link = cardUrl(domainId, baseDocId, branch, nodeId, card.docId);
+                content += `${indent}- [${title}](${link})\n`;
             }
+            content += '\n';
         }
-    } else if (node.text) {
-        const link = nodeUrl(domainId, baseDocId, branch, nodeId);
-        if (level === 1) {
-            content += `\n\n# [${node.text}](${link})\n\n`;
-        } else {
-            const headingLevel = Math.min(level + 1, 6);
-            const headingMark = '#'.repeat(headingLevel);
-            content += `\n${indent}${headingMark} [${node.text}](${link})\n\n`;
 
-            if (maxLevel >= 0 && level === maxLevel) {
-                const children = childrenMap.get(nodeId) || [];
-                if (children.length > 0) {
-                    content += `${indent}**子节点:**\n`;
-                    for (const child of children) {
-                        const childLink = nodeUrl(domainId, baseDocId, branch, child.id);
-                        content += `${indent}- [${child.text}](${childLink})\n`;
-                    }
-                    content += '\n';
+        if (maxLevel >= 0 && level === maxLevel) {
+            const children = childrenMap.get(nodeId) || [];
+            if (children.length > 0) {
+                content += `${indent}**子节点:**\n`;
+                for (const child of children) {
+                    const childCards = await CardModel.getByNodeId(domainId, baseDocId, child.id);
+                    const childName = childCards.length > 0 ? (childCards[0].title || child.text) : child.text;
+                    const childLink = nodeUrl(domainId, baseDocId, branch, child.id);
+                    content += `${indent}- [${childName}](${childLink})\n`;
                 }
+                content += '\n';
             }
         }
     }
@@ -248,17 +218,23 @@ export async function loadBaseInstructions(
             maxLevel
         );
 
-        return fullContent ? `以下知识库内容中每项均带有「打开卡片」或「打开节点」链接，回复用户时请原样保留并展示这些链接。\n\n${fullContent}\n\n---\n\n` : null;
+        return fullContent
+            ? `以下为知识库目录（仅节点与卡片标题，无正文）。回复用户时请将链接以 Markdown 超链接形式展示，例如 [甲子详情](/d/Bazi/base/branch/main?cardId=xxx)，不要只贴纯 URL。若用户需要某卡片/节点的详细内容，请用本工具 urls 参数细查。\n\n${fullContent}\n\n---\n\n`
+            : null;
     } catch (e) {
         logger.warn('Failed to load base instructions:', e);
         return null;
     }
 }
 
+/** Max length for instructions string to avoid agent overflow; truncate with note if over. */
+const INSTRUCTIONS_MAX_LENGTH = 12000;
+
 /**
  * Load base instructions for multiple card/node URLs.
- * Only loads URLs whose parsed domainId matches the given domainId.
- * Returns combined content for all resolved cards (by cardId or by nodeId); dedupes by cardId.
+ * - cardId URL: returns that card's full content (one card only).
+ * - nodeId URL: returns only node name + card titles with links (no card body), to avoid huge output.
+ * Total length is capped at INSTRUCTIONS_MAX_LENGTH; excess is truncated.
  */
 export async function loadBaseInstructionsByUrls(
     domainId: string,
@@ -272,6 +248,9 @@ export async function loadBaseInstructionsByUrls(
 
         const baseDocId = (base as any).docId || (base as any)._id;
         const branchName = branch || (base as any).currentBranch || (base as any).branch || 'main';
+        const branchData = (base as any).branchData || {};
+        const data = branchData[branchName] || (branchName === 'main' ? { nodes: (base as any).nodes || [], edges: (base as any).edges || [] } : { nodes: [], edges: [] });
+        const nodes: BaseNode[] = data.nodes || [];
         const seenCardIds = new Set<string>();
         const parts: string[] = [];
 
@@ -306,21 +285,25 @@ export async function loadBaseInstructionsByUrls(
             }
 
             if (parsed.nodeId) {
+                const node = nodes.find((n) => n.id === parsed.nodeId);
+                const nodeTitle = node?.text || '节点';
+                const nodeLink = nodeUrl(domainId, baseDocId, branchName, parsed.nodeId);
                 const nodeCards = await CardModel.getByNodeId(domainId, baseDocId, parsed.nodeId);
-                for (const card of nodeCards) {
-                    const cid = card.docId.toString();
-                    if (seenCardIds.has(cid)) continue;
-                    seenCardIds.add(cid);
+                const cardLines = nodeCards.map((card) => {
                     const title = card.title || 'Untitled';
-                    const body = (card.content || '').trim();
-                    const nodeId = (card as any).nodeId || parsed.nodeId;
-                    const link = nodeId ? cardUrl(domainId, baseDocId, branchName, nodeId, card.docId) : '';
-                    parts.push(link ? `\n\n## [${title}](${link})\n\n${body}\n\n` : `\n\n## ${title}\n\n${body}\n\n`);
-                }
+                    const link = cardUrl(domainId, baseDocId, branchName, parsed.nodeId, card.docId);
+                    return `- [${title}](${link})`;
+                });
+                parts.push(`\n\n## [${nodeTitle}](${nodeLink})\n\n${cardLines.join('\n')}\n\n`);
             }
         }
 
-        return parts.length > 0 ? `以下内容中每项均带有「打开卡片」链接，回复用户时请原样保留并展示这些链接。\n\n` + parts.join('') + '\n---\n\n' : null;
+        if (parts.length === 0) return null;
+        let out = `以下为链接对应的目录或单卡正文。回复用户时请将链接以 Markdown 超链接形式展示，例如 [甲子](/d/Bazi/base/branch/main?cardId=xxx)，不要只贴纯 URL。\n\n` + parts.join('');
+        if (out.length > INSTRUCTIONS_MAX_LENGTH) {
+            out = out.slice(0, INSTRUCTIONS_MAX_LENGTH) + `\n\n---\n（内容已截断，超过 ${INSTRUCTIONS_MAX_LENGTH} 字。可缩小 urls 范围或按 cardId 单独查询。）`;
+        }
+        return out + '\n\n---\n\n';
     } catch (e) {
         logger.warn('Failed to load base instructions by URLs:', e);
         return null;
