@@ -1,0 +1,15 @@
+{% set page_name = "userLearnPage" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<script>
+  {{ set(UiContext, 'udoc', udoc) }}
+  {{ set(UiContext, 'domainTasks', domainTasks) }}
+  {{ set(UiContext, 'allDomainsForGoal', allDomainsForGoal or []) }}
+  {{ set(UiContext, 'summary', summary) }}
+  {{ set(UiContext, 'completedAllDomainsToday', completedAllDomainsToday or false) }}
+  {{ set(UiContext, 'totalCheckinDays', totalCheckinDays or 0) }}
+  {{ set(UiContext, 'consecutiveDays', consecutiveDays or 0) }}
+  {{ set(UiContext, 'domainId', domainId or '') }}
+</script>
+<div id="user-learn-container"></div>
+{% endblock %}
