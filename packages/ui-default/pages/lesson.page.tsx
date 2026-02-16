@@ -40,10 +40,14 @@ function LessonPage() {
   const isAlonePractice = (window.UiContext?.isAlonePractice || false) as boolean;
   const isSingleNodeMode = (window.UiContext?.isSingleNodeMode || false) as boolean;
   const isTodayMode = (window.UiContext?.isTodayMode || false) as boolean;
+  const isAllDomainsMode = (window.UiContext?.isAllDomainsMode || false) as boolean;
   const hasProblems = (window.UiContext?.hasProblems ?? false) as boolean;
   const rootNodeId = (window.UiContext?.rootNodeId || '') as string;
   const rootNodeTitle = (window.UiContext?.rootNodeTitle || '') as string;
-  const flatCards = ((window.UiContext?.flatCards || []) as Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string }>);
+  const allDomainsEntryDomainId = (window.UiContext?.allDomainsEntryDomainId || '') as string;
+  const domainProgress = ((window.UiContext?.domainProgress || []) as Array<{ domainId: string; domainName: string; dailyGoal: number; todayCompleted: number; cardCount: number }>);
+  const excludedDomains = ((window.UiContext?.excludedDomains || []) as Array<{ domainId: string; domainName: string; reason: 'no_daily_goal' | 'no_cards' }>);
+  const flatCards = ((window.UiContext?.flatCards || []) as Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string; domainId?: string }>);
   const nodeTree = ((window.UiContext?.nodeTree || []) as Array<{
     type: 'node';
     id: string;
@@ -255,8 +259,12 @@ function LessonPage() {
     }
   }, [allProblems, problemQueue.length, answerHistory.length]);
 
-  const isNodeOrToday = isSingleNodeMode || isTodayMode;
-  const cardTimesStorageKey = domainId && rootNodeId ? `lesson-card-times-${domainId}-${rootNodeId}` : '';
+  const isNodeOrToday = isSingleNodeMode || isTodayMode || isAllDomainsMode;
+  const cardTimesStorageKey = isAllDomainsMode && allDomainsEntryDomainId
+    ? `lesson-card-times-${allDomainsEntryDomainId}-allDomains`
+    : domainId && rootNodeId
+      ? `lesson-card-times-${domainId}-${rootNodeId}`
+      : '';
 
   useEffect(() => {
     if (!cardTimesStorageKey || !isNodeOrToday) return;
@@ -296,6 +304,8 @@ function LessonPage() {
   const cumulativeMs = cardTimesMs.reduce((a, b) => a + b, 0) + (isNodeOrToday ? elapsedMs : 0);
   const currentCardCumulativeMs = elapsedMs + (cardTimesMs[currentCardIndex] ?? 0);
 
+  const [excludedDomainsCollapsed, setExcludedDomainsCollapsed] = useState(true);
+
   const renderNodeTreeItem = (item: { type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }, depth: number): React.ReactNode => {
     if (item.type === 'card') {
       const idx = cardIdToFlatIndex[item.id];
@@ -307,34 +317,49 @@ function LessonPage() {
         if (isCurrent) timeText = `${(currentCardCumulativeMs / 1000).toFixed(1)}s`;
         else if (idx < cardTimesMs.length) timeText = `${(cardTimesMs[idx] / 1000).toFixed(1)}s`;
       }
-      return (
-        <div
-          key={`card-${item.id}`}
-          style={{
-            padding: '6px 10px',
-            marginLeft: `${depth * 12}px`,
-            marginBottom: '2px',
-            fontSize: '13px',
-            borderRadius: '6px',
-            backgroundColor: isCurrent ? '#e3f2fd' : inReview ? '#fff3e0' : isDone ? '#e8f5e9' : 'transparent',
-            color: isCurrent ? '#1976d2' : inReview ? '#e65100' : isDone ? '#2e7d32' : '#666',
-            fontWeight: isCurrent ? 600 : 400,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: '8px',
-          }}
-        >
+      const cardStyle: React.CSSProperties = {
+        padding: '6px 10px',
+        marginLeft: `${depth * 12}px`,
+        marginBottom: '2px',
+        fontSize: '13px',
+        borderRadius: '6px',
+        backgroundColor: isCurrent ? '#e3f2fd' : inReview ? '#fff3e0' : isDone ? '#e8f5e9' : 'transparent',
+        color: isCurrent ? '#1976d2' : inReview ? '#e65100' : isDone ? '#2e7d32' : '#666',
+        fontWeight: isCurrent ? 600 : 400,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: '8px',
+      };
+      const content = (
+        <>
           <span>
             {isDone && <span style={{ marginRight: '6px' }}>✓</span>}
             {inReview && <span style={{ marginRight: '6px', fontSize: '11px', color: '#e65100', fontWeight: 600 }}>{i18n('Review')}</span>}
             {item.title || i18n('Unnamed Card')}
           </span>
           <span style={{ fontSize: '12px', color: '#999', flexShrink: 0 }}>{timeText}</span>
+        </>
+      );
+      if (isAllDomainsMode && allDomainsEntryDomainId && typeof idx === 'number') {
+        return (
+          <a
+            key={`card-${item.id}`}
+            href={`/d/${allDomainsEntryDomainId}/learn/lesson?allDomains=1&cardIndex=${idx}`}
+            style={{ ...cardStyle, textDecoration: 'none', cursor: 'pointer' }}
+          >
+            {content}
+          </a>
+        );
+      }
+      return (
+        <div key={`card-${item.id}`} style={cardStyle}>
+          {content}
         </div>
       );
     }
     const nodeItem = item as { type: 'node'; id: string; title: string; children: Array<{ type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }> };
+    const progress = isAllDomainsMode ? domainProgress.find((p) => p.domainId === nodeItem.id) : null;
     return (
       <div key={`node-${nodeItem.id}`} style={{ marginBottom: '4px' }}>
         <div style={{
@@ -343,8 +368,17 @@ function LessonPage() {
           fontSize: '13px',
           fontWeight: 600,
           color: '#333',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          flexWrap: 'wrap',
         }}>
-          {nodeItem.title || i18n('Unnamed Node')}
+          <span>{nodeItem.title || i18n('Unnamed Node')}</span>
+          {progress != null && (
+            <span style={{ fontSize: '12px', fontWeight: 500, color: '#666' }}>
+              {progress.todayCompleted} / {progress.dailyGoal}
+            </span>
+          )}
         </div>
         {(nodeItem.children || []).map((child, i) => (
           <React.Fragment key={i}>{renderNodeTreeItem(child as { type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }, depth + 1)}</React.Fragment>
@@ -449,17 +483,20 @@ function LessonPage() {
           attempts: h.attempts,
         })),
         totalTime: totalTimeMs,
-        isAlonePractice: isAlonePractice && !isSingleNodeMode && !isTodayMode,
-        cardId: (isAlonePractice || isSingleNodeMode || isTodayMode) ? card.docId : undefined,
+        isAlonePractice: isAlonePractice && !isSingleNodeMode && !isTodayMode && !isAllDomainsMode,
+        cardId: (isAlonePractice || isSingleNodeMode || isTodayMode || isAllDomainsMode) ? card.docId : undefined,
         singleNodeMode: isSingleNodeMode || undefined,
         todayMode: isTodayMode || undefined,
+        allDomainsMode: isAllDomainsMode || undefined,
+        allDomainsEntryDomainId: isAllDomainsMode ? allDomainsEntryDomainId : undefined,
+        domainId: isAllDomainsMode ? domainId : undefined,
         nodeId: isSingleNodeMode ? rootNodeId : undefined,
-        cardIndex: (isSingleNodeMode || isTodayMode) ? currentCardIndex : undefined,
+        cardIndex: (isSingleNodeMode || isTodayMode || isAllDomainsMode) ? currentCardIndex : undefined,
       });
       setIsPassed(true);
       if (nextTimes) setCardTimesMs(nextTimes);
       const redirect = result?.redirect ?? result?.body?.redirect;
-      if (redirect && (!isAlonePractice || isSingleNodeMode)) {
+      if (redirect && (!isAlonePractice || isSingleNodeMode || isTodayMode || isAllDomainsMode)) {
         window.location.href = redirect;
         return;
       }
@@ -494,13 +531,16 @@ function LessonPage() {
       const result = await request.post(`/d/${domainId}/learn/lesson/pass`, {
         answerHistory: [],
         totalTime: totalTimeMs,
-        isAlonePractice: isAlonePractice && !isSingleNodeMode && !isTodayMode,
+        isAlonePractice: isAlonePractice && !isSingleNodeMode && !isTodayMode && !isAllDomainsMode,
         cardId: card.docId,
         singleNodeMode: isSingleNodeMode || undefined,
         todayMode: isTodayMode || undefined,
+        allDomainsMode: isAllDomainsMode || undefined,
+        allDomainsEntryDomainId: isAllDomainsMode ? allDomainsEntryDomainId : undefined,
+        domainId: isAllDomainsMode ? domainId : undefined,
         nodeId: (isSingleNodeMode || isTodayMode) && rootNodeId ? rootNodeId : undefined,
-        cardIndex: (isSingleNodeMode || isTodayMode) ? currentCardIndex : undefined,
-        noImpression: (isSingleNodeMode || isAlonePractice) ? noImpression : undefined,
+        cardIndex: (isSingleNodeMode || isTodayMode || isAllDomainsMode) ? currentCardIndex : undefined,
+        noImpression: (isSingleNodeMode || isAlonePractice || isAllDomainsMode) ? noImpression : undefined,
       });
       if (nextTimes) setCardTimesMs(nextTimes);
       const redirect = result?.redirect ?? result?.body?.redirect;
@@ -846,7 +886,7 @@ function LessonPage() {
   }
 
   // 仅当「无题目」时使用卡片 view（Know it / No impression）；有题目的走下方题目刷题模式。单卡片模式无题目时与 node 模式无题目一致，也用卡片 view。
-  const useCardViewMode = (isSingleNodeMode || isTodayMode || isAlonePractice) && !hasProblems && allProblems.length === 0;
+  const useCardViewMode = (isSingleNodeMode || isTodayMode || isAllDomainsMode || isAlonePractice) && !hasProblems && allProblems.length === 0;
   let cardViewContent: React.ReactNode = null;
   if (useCardViewMode) {
     cardViewContent = (
@@ -983,6 +1023,41 @@ function LessonPage() {
         {i18n('Cumulative')}: {(cumulativeMs / 1000).toFixed(1)}s
       </div>
       {nodeTree.map((root, i) => renderNodeTreeItem(root, 0))}
+      {isAllDomainsMode && excludedDomains.length > 0 && (
+        <div style={{ marginTop: '16px', borderTop: '1px solid #e0e0e0', paddingTop: '12px' }}>
+          <button
+            type="button"
+            onClick={() => setExcludedDomainsCollapsed(!excludedDomainsCollapsed)}
+            style={{
+              width: '100%',
+              textAlign: 'left',
+              padding: '8px 10px',
+              fontSize: '13px',
+              fontWeight: 600,
+              color: '#666',
+              background: '#f5f5f5',
+              border: '1px solid #e0e0e0',
+              borderRadius: '6px',
+              cursor: 'pointer',
+            }}
+          >
+            {excludedDomainsCollapsed ? '▶ ' : '▼ '}
+            {i18n('Not participating') || '未参与'} ({excludedDomains.length})
+          </button>
+          {!excludedDomainsCollapsed && (
+            <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
+              {excludedDomains.map((ex) => (
+                <div key={ex.domainId} style={{ padding: '4px 10px', marginBottom: '2px' }}>
+                  <span style={{ fontWeight: 500 }}>{ex.domainName}</span>
+                  <span style={{ marginLeft: '6px', color: '#999' }}>
+                    {ex.reason === 'no_daily_goal' ? (i18n('No daily goal set') || '未设置每日任务') : (i18n('No cards') || '暂无题目')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 
@@ -995,7 +1070,7 @@ function LessonPage() {
 
   // 卡片 view 与刷题模式共用侧边栏：有侧边栏时用同一布局；手机端侧栏为抽屉
   if (cardViewContent) {
-    const showSidebarHere = (isSingleNodeMode || isTodayMode) && nodeTree.length > 0;
+    const showSidebarHere = (isSingleNodeMode || isTodayMode || isAllDomainsMode) && nodeTree.length > 0;
     if (showSidebarHere) {
       if (isMobile) {
         return (
@@ -1161,7 +1236,7 @@ function LessonPage() {
           {i18n('Question')} {allProblems.length - problemQueue.length + 1} / {allProblems.length}
           {problemQueue.length > 0 && ` (${i18n('Remaining')}: ${problemQueue.length})`}
         </div>
-        {(isSingleNodeMode || isTodayMode) && (
+        {(isSingleNodeMode || isTodayMode || isAllDomainsMode) && (
           <div style={{ fontSize: '14px', color: '#2196f3', marginTop: '8px', fontWeight: 600 }}>
             {i18n('This card')}: {(elapsedMs / 1000).toFixed(1)}s
           </div>
@@ -1367,7 +1442,7 @@ function LessonPage() {
     </div>
   );
 
-  const showSidebar = (isSingleNodeMode || isTodayMode) && nodeTree.length > 0;
+  const showSidebar = (isSingleNodeMode || isTodayMode || isAllDomainsMode) && nodeTree.length > 0;
   if (showSidebar) {
     if (isMobile) {
       return (

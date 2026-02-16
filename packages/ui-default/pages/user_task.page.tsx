@@ -23,6 +23,7 @@ interface TaskSummary {
 function UserTaskPage() {
   const udoc = (window as any).UiContext?.udoc;
   const domainTasks: DomainTask[] = (window as any).UiContext?.domainTasks || [];
+  const currentDomainId = (window as any).UiContext?.domainId as string | undefined;
   const summary: TaskSummary = (window as any).UiContext?.summary || {
     totalDomains: 0,
     totalDailyGoal: 0,
@@ -93,21 +94,47 @@ function UserTaskPage() {
       }}>
         <div style={{
           marginBottom: '30px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '16px',
         }}>
-          <h1 style={{
-            fontSize: '28px',
-            fontWeight: 'bold',
-            color: themeStyles.textPrimary,
-            marginBottom: '10px',
-          }}>
-            {i18n('My Tasks')}
-          </h1>
-          <p style={{
-            fontSize: '14px',
-            color: themeStyles.textSecondary,
-          }}>
-            {i18n('Daily task completion and consecutive days for each domain')}
-          </p>
+          <div>
+            <h1 style={{
+              fontSize: '28px',
+              fontWeight: 'bold',
+              color: themeStyles.textPrimary,
+              marginBottom: '10px',
+            }}>
+              {i18n('My Tasks')}
+            </h1>
+            <p style={{
+              fontSize: '14px',
+              color: themeStyles.textSecondary,
+            }}>
+              {i18n('Daily task completion and consecutive days for each domain')}
+            </p>
+          </div>
+          {domainTasks.length > 0 && (
+            <a
+              href={typeof (window as any).UserContext?._id === 'number'
+                ? `/d/${currentDomainId || domainTasks[0].domainId}/user/${(window as any).UserContext._id}/learn`
+                : '#'}
+              style={{
+                padding: '12px 20px',
+                borderRadius: '8px',
+                background: themeStyles.accent,
+                color: '#fff',
+                fontSize: '14px',
+                fontWeight: 600,
+                textDecoration: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {i18n('All Domains Learn') || '全域学习'}
+            </a>
+          )}
         </div>
 
         {domainTasks.length > 0 && (

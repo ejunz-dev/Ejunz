@@ -16,6 +16,10 @@
   {{ set(UiContext, 'isAlonePractice', isAlonePractice or false) }}
   {{ set(UiContext, 'isSingleNodeMode', isSingleNodeMode or false) }}
   {{ set(UiContext, 'isTodayMode', isTodayMode or false) }}
+  {{ set(UiContext, 'isAllDomainsMode', isAllDomainsMode or false) }}
+  {{ set(UiContext, 'allDomainsEntryDomainId', allDomainsEntryDomainId or '') }}
+  {{ set(UiContext, 'domainProgress', domainProgress or []) }}
+  {{ set(UiContext, 'excludedDomains', excludedDomains or []) }}
   {{ set(UiContext, 'rootNodeId', rootNodeId or '') }}
   {{ set(UiContext, 'rootNodeTitle', rootNodeTitle or '') }}
   {{ set(UiContext, 'flatCards', flatCards or []) }}

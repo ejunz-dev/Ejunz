@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import { i18n } from 'vj/utils';
 import { request } from 'vj/utils';
+import Notification from 'vj/components/notification';
 
 interface SectionProgress {
   _id: string;
@@ -222,7 +223,9 @@ function LearnPage() {
       window.location.reload();
     } catch (error: any) {
       console.error('Failed to save daily goal:', error);
-      alert(i18n('Failed to save daily goal'));
+      setGoal(0);
+      const msg = error?.response?.data?.message ?? error?.response?.data?.error ?? error?.message ?? i18n('Failed to save daily goal');
+      Notification.error(typeof msg === 'string' ? msg : (Array.isArray(msg) ? msg.join(' ') : i18n('Failed to save daily goal')));
     } finally {
       setIsSavingGoal(false);
     }
@@ -243,14 +246,14 @@ function LearnPage() {
 
   return (
     <div style={{
-      minHeight: '100vh',
+      minHeight: isMobile ? '100dvh' : '100vh',
       background: themeStyles.bgPage,
       fontFamily: '"SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif',
       display: 'flex',
       flexDirection: 'row',
       position: 'relative',
     }}>
-      {/* 移动端顶栏：打开待学 / 已完成抽屉 */}
+      {/* 移动端顶栏：安全区 + 44px 触控区 */}
       {isMobile && (
         <div
           style={{
@@ -258,13 +261,14 @@ function LearnPage() {
             top: 0,
             left: 0,
             right: 0,
-            height: '48px',
+            minHeight: '48px',
+            paddingTop: 'env(safe-area-inset-top, 0px)',
+            paddingLeft: 'max(12px, env(safe-area-inset-left, 0px))',
+            paddingRight: 'max(12px, env(safe-area-inset-right, 0px))',
             zIndex: 1000,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            paddingLeft: '12px',
-            paddingRight: '12px',
             background: themeStyles.bgSecondary,
             borderBottom: `1px solid ${themeStyles.border}`,
           }}
@@ -275,6 +279,7 @@ function LearnPage() {
             style={{
               padding: '8px 12px',
               minHeight: '44px',
+              minWidth: '44px',
               fontSize: '14px',
               fontWeight: 500,
               color: themeStyles.textPrimary,
@@ -284,6 +289,7 @@ function LearnPage() {
               borderRadius: '8px',
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             ☰ {i18n('Pending sections')}
@@ -294,6 +300,7 @@ function LearnPage() {
             style={{
               padding: '8px 12px',
               minHeight: '44px',
+              minWidth: '44px',
               fontSize: '14px',
               fontWeight: 500,
               color: themeStyles.textPrimary,
@@ -303,6 +310,7 @@ function LearnPage() {
               borderRadius: '8px',
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             {i18n('Completed cards')} ☰
@@ -349,6 +357,7 @@ function LearnPage() {
               transform: leftSidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
               transition: 'transform 0.2s ease',
               boxShadow: leftSidebarOpen ? (theme === 'dark' ? '4px 0 16px rgba(0,0,0,0.4)' : '4px 0 16px rgba(0,0,0,0.1)') : 'none',
+              paddingTop: 'env(safe-area-inset-top, 0px)',
             }
           : {
               position: 'absolute' as const,
@@ -371,7 +380,8 @@ function LearnPage() {
               padding: isMobile ? '12px 16px 20px' : '20px 16px',
               overflowY: 'auto',
               minWidth: 0,
-            }}>
+              WebkitOverflowScrolling: 'touch',
+            } as React.CSSProperties}>
               <div style={{
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -548,11 +558,13 @@ function LearnPage() {
         ) : null}
       </aside>
 
-      {/* 主内容 */}
+      {/* 主内容：移动端留出顶栏+安全区、底部安全区 */}
       <main style={{
         flex: 1,
         minWidth: 0,
-        padding: isMobile ? '56px 12px 32px' : '32px 24px 48px',
+        padding: isMobile
+          ? 'calc(48px + env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) max(32px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px))'
+          : '32px 24px 48px',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -1099,6 +1111,7 @@ function LearnPage() {
               transform: rightSidebarOpen ? 'translateX(0)' : 'translateX(100%)',
               transition: 'transform 0.2s ease',
               boxShadow: rightSidebarOpen ? (theme === 'dark' ? '-4px 0 16px rgba(0,0,0,0.4)' : '-4px 0 16px rgba(0,0,0,0.1)') : 'none',
+              paddingTop: 'env(safe-area-inset-top, 0px)',
             }
           : {
               position: 'absolute' as const,
@@ -1122,7 +1135,8 @@ function LearnPage() {
               padding: isMobile ? '12px 16px 20px' : '20px 16px',
               overflowY: 'auto',
               minWidth: 0,
-            }}>
+              WebkitOverflowScrolling: 'touch',
+            } as React.CSSProperties}>
               <div style={{
                 display: 'flex',
                 justifyContent: 'space-between',
