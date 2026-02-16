@@ -1362,9 +1362,109 @@ class UserTaskHandler extends Handler {
             udoc,
             domainTasks,
             summary,
+            domainId,  // 当前页所在域，用于“全域每日练习”等链接保持从当前域进入
         };
-        
+
         this.UiContext.extraTitleContent = this.translate('My Tasks');
+    }
+}
+
+/** 全域学习页：展示所有域的进度、全域打卡，点击开始学习进入 lesson?allDomains=1 */
+class UserAllDomainsLearnHandler extends Handler {
+    @param('uid', Types.Int)
+    async get(domainId: string, uid: number) {
+        if (uid === 0) throw new UserNotFoundError(0);
+        const udoc = await user.getById(domainId, uid);
+        if (!udoc) throw new UserNotFoundError(uid);
+        if (uid !== this.user._id) throw new ForbiddenError();
+
+        const dudict = await domain.getDictUserByDomainId(uid);
+        const domainIds = Object.keys(dudict).filter((did) => dudict[did].join);
+        const learnResultColl = this.ctx.db.db.collection('learn_result');
+        const today = moment.utc().format('YYYY-MM-DD');
+        const startOfToday = moment.utc(today).startOf('day').toDate();
+        const endOfToday = moment.utc(today).endOf('day').toDate();
+
+        const domainTasks: Array<{ domainId: string; domainName: string; domainAvatar: string; dailyGoal: number; todayCompleted: number }> = [];
+        const allDomainsForGoal: Array<{ domainId: string; domainName: string; dailyGoal: number }> = [];
+        for (const did of domainIds) {
+            const ddoc = await domain.get(did);
+            if (!ddoc) continue;
+            const dudoc = dudict[did];
+            const dailyGoal = (dudoc as any)?.dailyGoal || 0;
+            const todayResults = await learnResultColl.find({
+                domainId: did,
+                userId: uid,
+                createdAt: { $gte: startOfToday, $lte: endOfToday },
+            }).toArray();
+            const todayCards = new Set<string>();
+            for (const r of todayResults) {
+                if (r.cardId) todayCards.add(r.cardId.toString());
+            }
+            const todayCompleted = todayCards.size;
+            allDomainsForGoal.push({
+                domainId: did,
+                domainName: ddoc.name,
+                dailyGoal,
+            });
+            if (dailyGoal <= 0) continue;
+            domainTasks.push({
+                domainId: did,
+                domainName: ddoc.name,
+                domainAvatar: ddoc.avatar ? avatar(ddoc.avatar, 32) : '/img/team_avatar.png',
+                dailyGoal,
+                todayCompleted,
+            });
+        }
+
+        let totalDailyGoal = 0;
+        let totalTodayCompleted = 0;
+        for (const t of domainTasks) {
+            totalDailyGoal += t.dailyGoal;
+            totalTodayCompleted += t.todayCompleted;
+        }
+        const completedAllDomainsToday = domainTasks.length > 0
+            && domainTasks.every((t) => t.todayCompleted >= t.dailyGoal);
+
+        const globalCheckinColl = this.ctx.db.db.collection('user_global_checkin');
+        if (completedAllDomainsToday) {
+            await globalCheckinColl.updateOne(
+                { userId: uid, date: today },
+                { $setOnInsert: { userId: uid, date: today, createdAt: new Date() } },
+                { upsert: true }
+            );
+        }
+
+        const allCheckins = await globalCheckinColl.find({ userId: uid }).toArray();
+        const practiceDates = new Set<string>();
+        for (const row of allCheckins) {
+            if (row.date) practiceDates.add(row.date);
+        }
+        const totalCheckinDays = practiceDates.size;
+        let consecutiveDays = 0;
+        let checkDate = moment.utc();
+        while (true) {
+            const dateStr = checkDate.format('YYYY-MM-DD');
+            if (practiceDates.has(dateStr)) {
+                consecutiveDays++;
+                checkDate = checkDate.subtract(1, 'day');
+            } else {
+                break;
+            }
+        }
+
+        this.response.template = 'user_learn.html';
+        this.response.body = {
+            udoc,
+            domainTasks,
+            allDomainsForGoal,
+            summary: { totalDomains: domainTasks.length, totalDailyGoal, totalTodayCompleted },
+            completedAllDomainsToday,
+            totalCheckinDays,
+            consecutiveDays,
+            domainId,
+        };
+        this.UiContext.extraTitleContent = this.translate('All Domains Learn') || '全域学习';
     }
 }
 
@@ -1549,6 +1649,7 @@ export async function apply(ctx: Context) {
     ctx.Route('user_delete', '/user/delete', UserDeleteHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('user_detail', '/user/:uid', UserDetailHandler);
     ctx.Route('user_task', '/user/:uid/task', UserTaskHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('user_learn', '/user/:uid/learn', UserAllDomainsLearnHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('user_contribution_detail', '/user/:uid/contributions/:date/:domainId', UserContributionDetailHandler);
     ctx.Route('user_consumption_detail', '/user/:uid/consumption/:date/:domainId', UserConsumptionDetailHandler);
     if (system.get('server.contestmode')) {

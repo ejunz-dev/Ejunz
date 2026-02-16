@@ -52,6 +52,14 @@ function applyUserSectionOrder(sections: LearnDAGNode[], learnSectionOrder: stri
     return result;
 }
 
+/** 将数组循环填充到指定长度（daily goal > card 数量时循环消费） */
+function cycleList<T>(arr: T[], length: number): T[] {
+    if (length <= 0 || arr.length === 0) return [];
+    const out: T[] = [];
+    for (let i = 0; i < length; i++) out.push(arr[i % arr.length]);
+    return out;
+}
+
 interface SectionProgressItem {
     _id: string;
     title: string;
@@ -362,13 +370,64 @@ class LearnHandler extends Handler {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const body: any = this.request?.body || {};
         const dailyGoal = parseInt(body.dailyGoal || '0', 10);
-        
+
         if (isNaN(dailyGoal) || dailyGoal < 0) {
             throw new ValidationError('Invalid daily goal');
         }
-        
+
+        if (dailyGoal > 0) {
+            const base = await BaseModel.getByDomain(finalDomainId);
+            if (!base) throw new NotFoundError('Base not found');
+            const existingDAG = await learn.getDAG(finalDomainId, base.docId, 'main');
+            const sections: LearnDAGNode[] = existingDAG?.sections || [];
+            const allDagNodes: LearnDAGNode[] = existingDAG?.dag || [];
+            if (sections.length === 0 || allDagNodes.length === 0) {
+                throw new ValidationError(this.translate('No cards in this domain') || '该域暂无题目卡片');
+            }
+            const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+            const savedSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
+            const currentSectionIndex = typeof savedSectionIndex === 'number' && savedSectionIndex >= 0 && savedSectionIndex < sections.length
+                ? savedSectionIndex
+                : 0;
+            const finalSectionId = sections[currentSectionIndex]?._id ?? sections[0]._id;
+            let dag: LearnDAGNode[] = [];
+            if (finalSectionId) {
+                const collectChildren = (parentId: string, collected: Set<string>) => {
+                    if (collected.has(parentId)) return;
+                    collected.add(parentId);
+                    const children = allDagNodes.filter(n =>
+                        n.requireNids && n.requireNids[n.requireNids.length - 1] === parentId && !collected.has(n._id)
+                    );
+                    for (const ch of children) {
+                        dag.push(ch);
+                        collectChildren(ch._id, collected);
+                    }
+                };
+                collectChildren(finalSectionId, new Set());
+            }
+            const nodeMap = new Map(allDagNodes.map(n => [n._id, n]));
+            sections.forEach(s => nodeMap.set(s._id, s));
+            const cardIdsToCheck: string[] = [];
+            for (const node of dag) {
+                const n = nodeMap.get(node._id);
+                if (!n) continue;
+                for (const c of (n.cards || [])) cardIdsToCheck.push(c.cardId);
+            }
+            let hasCardWithProblems = false;
+            for (const cid of cardIdsToCheck) {
+                const cardDoc = await CardModel.get(finalDomainId, new ObjectId(cid));
+                if (cardDoc?.problems?.length) {
+                    hasCardWithProblems = true;
+                    break;
+                }
+            }
+            if (!hasCardWithProblems) {
+                throw new ValidationError(this.translate('No cards with problems in this domain') || '该域暂无带题目的卡片');
+            }
+        }
+
         await learn.setUserLearnState(finalDomainId, this.user._id, { dailyGoal });
-        
+
         this.response.body = { success: true, dailyGoal };
     }
 
@@ -857,12 +916,21 @@ class LessonHandler extends Handler {
         const queryCardId = this.request.query?.cardId;
         const queryNodeId = this.request.query?.nodeId as string | undefined;
         const queryToday = this.request.query?.today === '1' || this.request.query?.today === 'true';
+        const queryAllDomains = this.request.query?.allDomains === '1' || this.request.query?.allDomains === 'true';
+
+        if (queryAllDomains) {
+            return await this.getAllDomainsLesson(finalDomainId);
+        }
 
         if (!queryCardId && !queryNodeId && !queryToday) {
             const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
             const lessonMode = dudoc?.lessonMode;
             const lessonCardIndex = typeof dudoc?.lessonCardIndex === 'number' ? dudoc.lessonCardIndex : 0;
             const lessonNodeId = dudoc?.lessonNodeId as string | undefined;
+            if (lessonMode === 'allDomains') {
+                this.response.redirect = `/d/${finalDomainId}/learn/lesson?allDomains=1&cardIndex=${Math.max(0, lessonCardIndex)}`;
+                return;
+            }
             if (lessonMode === 'today') {
                 this.response.redirect = `/d/${finalDomainId}/learn/lesson?today=1&cardIndex=${Math.max(0, lessonCardIndex)}`;
                 return;
@@ -1161,8 +1229,10 @@ class LessonHandler extends Handler {
                     cardsWithProblems.push(item);
                 }
             }
+            const dailyGoalToday = Math.max(0, (dudoc as any)?.dailyGoal || 0);
+            const cardsForToday = dailyGoalToday > 0 ? cycleList(cardsWithProblems, dailyGoalToday) : cardsWithProblems;
 
-            if (cardsWithProblems.length === 0) {
+            if (cardsForToday.length === 0) {
                 if (sections.length > 0 && currentSectionIndex + 1 < sections.length) {
                     await learn.setUserLearnState(finalDomainId, this.user._id, {
                         currentLearnSectionIndex: currentSectionIndex + 1,
@@ -1194,9 +1264,9 @@ class LessonHandler extends Handler {
                     currentCardIndex = 0;
                 }
             }
-            if (currentCardIndex >= cardsWithProblems.length) currentCardIndex = 0;
+            if (currentCardIndex >= cardsForToday.length) currentCardIndex = 0;
 
-            const currentItem = cardsWithProblems[currentCardIndex];
+            const currentItem = cardsForToday[currentCardIndex];
             const currentCard = await CardModel.get(finalDomainId, new ObjectId(currentItem.cardId));
             if (!currentCard || !currentCard.problems || currentCard.problems.length === 0) {
                 throw new NotFoundError('Card not found');
@@ -1217,7 +1287,7 @@ class LessonHandler extends Handler {
                 type: 'node' as const,
                 id: 'today',
                 title: this.translate('Today task') || '今日任务',
-                children: cardsWithProblems.map(c => ({ type: 'card' as const, id: c.cardId, title: c.cardTitle })),
+                children: cardsForToday.map(c => ({ type: 'card' as const, id: c.cardId, title: c.cardTitle })),
             }];
 
             this.response.template = 'lesson.html';
@@ -1231,7 +1301,7 @@ class LessonHandler extends Handler {
                 isAlonePractice: false,
                 isTodayMode: true,
                 rootNodeTitle: this.translate('Today task') || '今日任务',
-                flatCards: cardsWithProblems,
+                flatCards: cardsForToday,
                 nodeTree: todayNodeTree,
                 currentCardIndex,
                 hasProblems: !!(currentCard?.problems?.length),
@@ -1385,6 +1455,289 @@ class LessonHandler extends Handler {
         };
     }
 
+    /** 全 domain 模式：聚合所有设置了每日任务且有题目的域，侧边栏按域折叠并显示进度，未参与域折叠并显示原因 */
+    async getAllDomainsLesson(entryDomainId: string) {
+        const dudict = await domain.getDictUserByDomainId(this.user._id);
+        const domainIds = Object.keys(dudict).filter((did) => dudict[did].join);
+        const learnResultColl = this.ctx.db.db.collection('learn_result');
+        const today = moment.utc().format('YYYY-MM-DD');
+        const startOfToday = moment.utc(today).startOf('day').toDate();
+        const endOfToday = moment.utc(today).endOf('day').toDate();
+
+        interface DomainCardItem { domainId: string; nodeId: string; cardId: string; nodeTitle: string; cardTitle: string; }
+        const allDomainsFlatCards: DomainCardItem[] = [];
+        const domainTasks: Array<{ domainId: string; domainName: string; dailyGoal: number; todayCompleted: number; cardCount: number }> = [];
+        const excludedDomains: Array<{ domainId: string; domainName: string; reason: 'no_daily_goal' | 'no_cards' }> = [];
+
+        for (const did of domainIds) {
+            const ddoc = await domain.get(did);
+            const domainName = ddoc?.name || did;
+            const base = await BaseModel.getByDomain(did);
+            if (!base) {
+                excludedDomains.push({ domainId: did, domainName, reason: 'no_cards' });
+                continue;
+            }
+            const dudoc = await learn.getUserLearnState(did, { _id: this.user._id, priv: this.user.priv }) as any;
+            const dailyGoal = (dudoc?.dailyGoal || 0) | 0;
+            if (dailyGoal <= 0) {
+                excludedDomains.push({ domainId: did, domainName, reason: 'no_daily_goal' });
+                continue;
+            }
+            const branch = 'main';
+            const branchData = getBranchData(base, branch);
+            const nodes = branchData.nodes || [];
+            const edges = branchData.edges || [];
+            if (nodes.length === 0) {
+                excludedDomains.push({ domainId: did, domainName, reason: 'no_cards' });
+                continue;
+            }
+            const existingDAG = await learn.getDAG(did, base.docId, branch);
+            const baseVersion = base.updateAt ? base.updateAt.getTime() : 0;
+            const needsUpdate = !existingDAG || (existingDAG.version || 0) < baseVersion;
+            const hasEmptySections = existingDAG && (!existingDAG.sections || existingDAG.sections.length === 0);
+            const cachedNodesCount = existingDAG ? ((existingDAG.dag?.length || 0) + (existingDAG.sections?.length || 0)) : 0;
+            const shouldRegenerate = needsUpdate || !existingDAG || hasEmptySections || (nodes.length > 0 && cachedNodesCount === 0);
+
+            let sections: LearnDAGNode[] = [];
+            let allDagNodes: LearnDAGNode[] = [];
+            if (shouldRegenerate) {
+                const result = await generateDAG(did, base.docId, nodes, edges, (k: string) => this.translate(k));
+                sections = result.sections;
+                allDagNodes = result.dag;
+                await learn.setDAG(did, base.docId, branch, { sections, dag: allDagNodes, version: baseVersion, updateAt: new Date() });
+            } else {
+                sections = existingDAG!.sections || [];
+                allDagNodes = existingDAG!.dag || [];
+            }
+            const savedSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
+            const savedSectionId = (dudoc as any)?.currentLearnSectionId;
+            const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
+            sections = applyUserSectionOrder(sections, learnSectionOrder);
+
+            let finalSectionId: string | null = null;
+            if (typeof savedSectionIndex === 'number' && savedSectionIndex >= 0 && savedSectionIndex < sections.length) {
+                finalSectionId = sections[savedSectionIndex]._id;
+            } else if (savedSectionId && sections.find(s => s._id === savedSectionId)) {
+                finalSectionId = savedSectionId;
+            } else if (sections.length > 0) {
+                finalSectionId = sections[0]._id;
+            }
+            let dag: LearnDAGNode[] = [];
+            if (finalSectionId) {
+                const collectChildren = (parentId: string, collected: Set<string>) => {
+                    if (collected.has(parentId)) return;
+                    collected.add(parentId);
+                    const children = allDagNodes.filter(n =>
+                        n.requireNids && n.requireNids[n.requireNids.length - 1] === parentId && !collected.has(n._id)
+                    );
+                    for (const ch of children) {
+                        dag.push(ch);
+                        collectChildren(ch._id, collected);
+                    }
+                };
+                collectChildren(finalSectionId, new Set());
+            }
+            const nodeMap = new Map(allDagNodes.map(n => [n._id, n]));
+            sections.forEach(s => nodeMap.set(s._id, s));
+            const todayFlatCards: DomainCardItem[] = [];
+            for (const node of dag) {
+                const n = nodeMap.get(node._id);
+                if (!n) continue;
+                const cardList = (n.cards || []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+                for (const c of cardList) {
+                    todayFlatCards.push({
+                        domainId: did,
+                        nodeId: n._id,
+                        cardId: c.cardId,
+                        nodeTitle: n.title || '',
+                        cardTitle: c.title || '',
+                    });
+                }
+            }
+            const cardsWithProblems: DomainCardItem[] = [];
+            for (const item of todayFlatCards) {
+                const cardDoc = await CardModel.get(did, new ObjectId(item.cardId));
+                if (cardDoc && cardDoc.problems && cardDoc.problems.length > 0) {
+                    cardsWithProblems.push(item);
+                }
+            }
+            if (cardsWithProblems.length === 0) {
+                excludedDomains.push({ domainId: did, domainName, reason: 'no_cards' });
+                continue;
+            }
+            const todayResults = await learnResultColl.find({
+                domainId: did,
+                userId: this.user._id,
+                createdAt: { $gte: startOfToday, $lte: endOfToday },
+            }).toArray();
+            const todayCards = new Set<string>();
+            for (const r of todayResults) {
+                if (r.cardId) todayCards.add(r.cardId.toString());
+            }
+            const todayCompleted = todayCards.size;
+            // 仅当该域今日未完成时，才把「剩余要刷的卡片」加入列表；若目标数大于剩余卡片数则循环消费
+            const remainingCount = dailyGoal > 0 ? Math.max(0, dailyGoal - todayCompleted) : cardsWithProblems.length;
+            const available = cardsWithProblems.filter((c) => !todayCards.has(c.cardId));
+            const cardsStillToDo = remainingCount <= 0 ? [] : cycleList(available, remainingCount);
+            domainTasks.push({
+                domainId: did,
+                domainName,
+                dailyGoal,
+                todayCompleted,
+                cardCount: cardsStillToDo.length,
+            });
+            if (cardsStillToDo.length > 0) {
+                allDomainsFlatCards.push(...cardsStillToDo);
+            }
+        }
+
+        const cardIndexParam = this.request.query?.cardIndex;
+        let currentCardIndex = typeof cardIndexParam === 'string' ? parseInt(cardIndexParam, 10) : NaN;
+        if (Number.isNaN(currentCardIndex) || currentCardIndex < 0) {
+            const dudocEntry = await learn.getUserLearnState(entryDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+            if ((dudocEntry as any)?.lessonMode === 'allDomains' && typeof (dudocEntry as any)?.lessonCardIndex === 'number') {
+                currentCardIndex = Math.max(0, (dudocEntry as any).lessonCardIndex);
+            } else {
+                currentCardIndex = 0;
+            }
+        }
+        if (allDomainsFlatCards.length === 0) {
+            await learn.setUserLearnState(entryDomainId, this.user._id, { lessonMode: null, lessonCardIndex: 0, lessonUpdatedAt: new Date() });
+            this.response.redirect = this.url('user_learn', { uid: this.user._id });
+            return;
+        }
+        if (currentCardIndex >= allDomainsFlatCards.length && allDomainsFlatCards.length > 0) {
+            this.response.redirect = this.url('user_learn', { uid: this.user._id });
+            return;
+        }
+        if (currentCardIndex >= allDomainsFlatCards.length) currentCardIndex = 0;
+
+        const currentItem = allDomainsFlatCards[currentCardIndex];
+        const currentDomainId = currentItem.domainId;
+        const currentCard = await CardModel.get(currentDomainId, new ObjectId(currentItem.cardId));
+        if (!currentCard || !currentCard.problems || currentCard.problems.length === 0) {
+            this.response.redirect = `/d/${entryDomainId}/learn/lesson?allDomains=1&cardIndex=0`;
+            return;
+        }
+        const baseCurrent = await BaseModel.getByDomain(currentDomainId);
+        if (!baseCurrent) throw new NotFoundError('Base not found');
+        const currentNode = (getBranchData(baseCurrent, 'main').nodes || []).find((n: any) => n.id === currentItem.nodeId);
+        if (!currentNode) throw new NotFoundError('Node not found');
+        const currentCardList = await CardModel.getByNodeId(currentDomainId, baseCurrent.docId, currentItem.nodeId);
+        const currentIndexInNode = currentCardList.findIndex((c: any) => c.docId.toString() === currentItem.cardId);
+
+        await learn.setUserLearnState(entryDomainId, this.user._id, {
+            lessonMode: 'allDomains',
+            lessonNodeId: null,
+            lessonCardIndex: currentCardIndex,
+            lessonUpdatedAt: new Date(),
+        });
+
+        const allDomainsNodeTree = domainTasks.map((d) => {
+            const domainCards = allDomainsFlatCards.filter((c) => c.domainId === d.domainId);
+            return {
+                type: 'node' as const,
+                id: d.domainId,
+                title: d.domainName,
+                children: domainCards.map((c) => ({ type: 'card' as const, id: c.cardId, title: c.cardTitle })),
+            };
+        });
+
+        const flatCardsForFront = allDomainsFlatCards.map((c) => ({
+            domainId: c.domainId,
+            nodeId: c.nodeId,
+            cardId: c.cardId,
+            nodeTitle: c.nodeTitle,
+            cardTitle: c.cardTitle,
+        }));
+
+        const dudocCurrent = await learn.getUserLearnState(currentDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+        const lessonReviewCardIds = Array.isArray(dudocCurrent?.lessonReviewCardIds) ? dudocCurrent.lessonReviewCardIds : [];
+        const lessonCardTimesMs = Array.isArray(dudocCurrent?.lessonCardTimesMs) ? dudocCurrent.lessonCardTimesMs : [];
+
+        this.response.template = 'lesson.html';
+        this.response.body = {
+            card: currentCard,
+            node: currentNode,
+            cards: currentCardList,
+            currentIndex: currentIndexInNode >= 0 ? currentIndexInNode : 0,
+            domainId: currentDomainId,
+            baseDocId: baseCurrent.docId.toString(),
+            isAlonePractice: false,
+            isTodayMode: false,
+            isAllDomainsMode: true,
+            allDomainsEntryDomainId: entryDomainId,
+            rootNodeTitle: this.translate('All Domains Task') || '全域每日任务',
+            flatCards: flatCardsForFront,
+            nodeTree: allDomainsNodeTree,
+            currentCardIndex,
+            hasProblems: true,
+            domainProgress: domainTasks,
+            excludedDomains,
+            lessonReviewCardIds,
+            lessonCardTimesMs,
+        };
+    }
+
+    /** 全 domain 模式提交：在当前域记录通过并重定向到下一题或首页 */
+    async postPassAllDomains(domainId: string, body: any) {
+        const entryDomainId = body.allDomainsEntryDomainId || domainId;
+        const cardIndexFromBody = typeof body.cardIndex === 'number' ? body.cardIndex : parseInt(body.cardIndex, 10);
+        const cardIdFromBody = body.cardId;
+        const currentCardDomainId = body.domainId || entryDomainId;
+        const answerHistory = body.answerHistory || [];
+        const totalTime = body.totalTime || 0;
+        const noImpression = body.noImpression === true;
+
+        const base = await BaseModel.getByDomain(currentCardDomainId);
+        if (!base) {
+            this.response.body = { success: true, redirect: `/d/${entryDomainId}/learn/lesson?allDomains=1&cardIndex=0` };
+            return;
+        }
+        let currentCardId: ObjectId;
+        try {
+            currentCardId = cardIdFromBody ? new ObjectId(cardIdFromBody) : new ObjectId();
+        } catch {
+            this.response.body = { success: true, redirect: `/d/${entryDomainId}/learn/lesson?allDomains=1&cardIndex=0` };
+            return;
+        }
+        const card = await CardModel.get(currentCardDomainId, currentCardId);
+        if (!card) {
+            this.response.body = { success: true, redirect: `/d/${entryDomainId}/learn/lesson?allDomains=1&cardIndex=0` };
+            return;
+        }
+        const currentCardNodeId = card.nodeId;
+
+        if (noImpression) {
+            const dudocPass = await learn.getUserLearnState(currentCardDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+            const reviewIds: string[] = Array.isArray(dudocPass?.lessonReviewCardIds) ? [...dudocPass.lessonReviewCardIds] : [];
+            if (!reviewIds.includes(currentCardId.toString())) reviewIds.push(currentCardId.toString());
+            await learn.setUserLearnState(currentCardDomainId, this.user._id, { lessonReviewCardIds: reviewIds, lessonUpdatedAt: new Date() });
+        } else {
+            await learn.setCardPassed(currentCardDomainId, this.user._id, currentCardId, currentCardNodeId);
+            const score = answerHistory.length * 5;
+            await learn.addResult(currentCardDomainId, this.user._id, {
+                cardId: currentCardId,
+                nodeId: currentCardNodeId,
+                answerHistory,
+                totalTime,
+                score,
+                createdAt: new Date(),
+            });
+            await bus.parallel('learn_result/add', currentCardDomainId);
+            const today = moment.utc().format('YYYY-MM-DD');
+            let problemCount = 0;
+            for (const h of answerHistory) {
+                if (h.problemId) problemCount++;
+            }
+            const timeToAdd = (totalTime && typeof totalTime === 'number' && totalTime > 0) ? totalTime : 0;
+            await learn.incConsumptionStats(currentCardDomainId, this.user._id, today, { nodes: 1, cards: 1, problems: problemCount, practices: 1, ...(timeToAdd > 0 ? { totalTime: timeToAdd } : {}) });
+        }
+
+        const nextIndex = (Number.isNaN(cardIndexFromBody) ? 0 : cardIndexFromBody) + 1;
+        this.response.body = { success: true, redirect: `/d/${entryDomainId}/learn/lesson?allDomains=1&cardIndex=${nextIndex}` };
+    }
+
     async postPass(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const body: any = this.request?.body || {};
@@ -1396,6 +1749,11 @@ class LessonHandler extends Handler {
         const nodeIdFromBody = body.nodeId as string | undefined;
         const cardIndexFromBody = typeof body.cardIndex === 'number' ? body.cardIndex : parseInt(body.cardIndex, 10);
         const cardIdFromBody = body.cardId;
+
+        const isAllDomainsMode = body.allDomainsMode === true;
+        if (isAllDomainsMode) {
+            return await this.postPassAllDomains(domainId, body);
+        }
 
         const base = await BaseModel.getByDomain(finalDomainId);
         if (!base) {
@@ -1458,8 +1816,10 @@ class LessonHandler extends Handler {
                     cardsWithProblems.push(item);
                 }
             }
+            const dailyGoalToday = Math.max(0, (dudoc as any)?.dailyGoal || 0);
+            const cardsForToday = dailyGoalToday > 0 ? cycleList(cardsWithProblems, dailyGoalToday) : cardsWithProblems;
 
-            const currentCardId = cardIdFromBody ? new ObjectId(cardIdFromBody) : (cardsWithProblems[cardIndexFromBody] ? new ObjectId(cardsWithProblems[cardIndexFromBody].cardId) : null);
+            const currentCardId = cardIdFromBody ? new ObjectId(cardIdFromBody) : (cardsForToday[cardIndexFromBody] ? new ObjectId(cardsForToday[cardIndexFromBody].cardId) : null);
             if (!currentCardId) {
                 this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn` };
                 return;
@@ -1490,7 +1850,7 @@ class LessonHandler extends Handler {
             await learn.incConsumptionStats(finalDomainId, this.user._id, today, { nodes: 1, cards: 1, problems: problemCount, practices: 1, ...(timeToAdd > 0 ? { totalTime: timeToAdd } : {}) });
 
             const nextIndex = (Number.isNaN(cardIndexFromBody) ? 0 : cardIndexFromBody) + 1;
-            if (nextIndex < cardsWithProblems.length) {
+            if (nextIndex < cardsForToday.length) {
                 this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn/lesson?today=1&cardIndex=${nextIndex}` };
             } else {
                 this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn` };
