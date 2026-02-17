@@ -1,11 +1,13 @@
 <div class="header--mobile">
   <div class="row"><div class="columns clearfix">
-    <div class="float-left">
+    <div class="float-left header--mobile__left">
       <a class="header--mobile__domain" href="/" target="_self">
         <img src="{{ ctx.setting.get('ui-default.nav_logo_dark') }}">
       </a>
+      <div class="header--mobile__extra" id="header-mobile-extra-left"></div>
     </div>
-    <div class="float-right">
+    <div class="float-right header--mobile__right">
+      <div class="header--mobile__extra" id="header-mobile-extra"></div>
       {% include "partials/hamburger.html" %}
     </div>
   </div></div>

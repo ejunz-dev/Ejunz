@@ -72,6 +72,36 @@ $header-gap-mini-domain = ($header-bg-height-mini - $nav-item-height - $header-l
   img
     height: 100%
 
+.header--mobile__left
+  display: flex
+  align-items: center
+  gap: rem(8px)
+
+.header--mobile__right
+  display: flex
+  align-items: center
+  gap: rem(8px)
+
+.header--mobile__extra
+  display: flex
+  align-items: center
+  gap: rem(6px)
+
+  button
+    padding: rem(6px 10px)
+    min-height: 36px
+    font-size: rem($font-size-secondary)
+    font-weight: 500
+    color: #FFF
+    background: rgba(255, 255, 255, 0.15)
+    border: none
+    border-radius: rem(6px)
+    cursor: pointer
+    white-space: nowrap
+
+    &:active
+      background: rgba(255, 255, 255, 0.25)
+
 .header__hamburger
   background: none
   border: 0

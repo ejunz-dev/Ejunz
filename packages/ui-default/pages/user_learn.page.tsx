@@ -154,6 +154,32 @@ function UserLearnPage() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  useEffect(() => {
+    if (!isMobile) return;
+    const onPending = () => { setLeftSidebarOpen(true); setRightSidebarOpen(false); };
+    const onCompleted = () => { setRightSidebarOpen(true); setLeftSidebarOpen(false); };
+    const leftEl = document.getElementById('header-mobile-extra-left');
+    const rightEl = document.getElementById('header-mobile-extra');
+    const leftWrap = leftEl ? (() => { const w = document.createElement('div'); leftEl.appendChild(w); return w; })() : null;
+    const rightWrap = rightEl ? (() => { const w = document.createElement('div'); rightEl.appendChild(w); return w; })() : null;
+    if (leftWrap) {
+      ReactDOM.render(
+        <button type="button" onClick={onPending}>☰ {i18n('Pending') || '待完成'}</button>,
+        leftWrap,
+      );
+    }
+    if (rightWrap) {
+      ReactDOM.render(
+        <button type="button" onClick={onCompleted}>{i18n('Completed') || '已完成'} ☰</button>,
+        rightWrap,
+      );
+    }
+    return () => {
+      if (leftWrap) { ReactDOM.unmountComponentAtNode(leftWrap); leftWrap.remove(); }
+      if (rightWrap) { ReactDOM.unmountComponentAtNode(rightWrap); rightWrap.remove(); }
+    };
+  }, [isMobile]);
+
   return (
     <div style={{
       minHeight: isMobile ? '100dvh' : '100vh',
@@ -163,71 +189,6 @@ function UserLearnPage() {
       flexDirection: 'row',
       position: 'relative',
     }}>
-      {/* 移动端顶栏：安全区 + 44px 触控区 */}
-      {isMobile && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            minHeight: '48px',
-            paddingTop: 'env(safe-area-inset-top, 0px)',
-            paddingLeft: 'max(12px, env(safe-area-inset-left, 0px))',
-            paddingRight: 'max(12px, env(safe-area-inset-right, 0px))',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: themeStyles.bgSecondary,
-            borderBottom: `1px solid ${themeStyles.border}`,
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => { setLeftSidebarOpen(true); setRightSidebarOpen(false); }}
-            style={{
-              padding: '8px 12px',
-              minHeight: '44px',
-              minWidth: '44px',
-              fontSize: '14px',
-              fontWeight: 500,
-              color: themeStyles.textPrimary,
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              borderRadius: '8px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            ☰ {i18n('Pending') || '待完成'}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setRightSidebarOpen(true); setLeftSidebarOpen(false); }}
-            style={{
-              padding: '8px 12px',
-              minHeight: '44px',
-              minWidth: '44px',
-              fontSize: '14px',
-              fontWeight: 500,
-              color: themeStyles.textPrimary,
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              borderRadius: '8px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {i18n('Completed') || '已完成'} ☰
-          </button>
-        </div>
-      )}
-
       {isMobile && leftSidebarOpen && (
         <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={() => setLeftSidebarOpen(false)} />
       )}
@@ -235,7 +196,6 @@ function UserLearnPage() {
         <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={() => setRightSidebarOpen(false)} />
       )}
 
-      {/* 左侧边栏：待完成；移动端抽屉带安全区、iOS 弹性滚动 */}
       <aside style={{
         ...(isMobile
           ? {
@@ -320,12 +280,11 @@ function UserLearnPage() {
         ) : null}
       </aside>
 
-      {/* 主内容：移动端留出顶栏+安全区、底部安全区 */}
       <main style={{
         flex: 1,
         minWidth: 0,
         padding: isMobile
-          ? 'calc(48px + env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) max(32px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px))'
+          ? `24px max(12px, env(safe-area-inset-right, 0px)) max(32px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px))`
           : '32px 24px 48px',
         display: 'flex',
         flexDirection: 'column',
@@ -419,7 +378,6 @@ function UserLearnPage() {
         </div>
       </main>
 
-      {/* 右侧边栏：已完成；移动端抽屉带安全区、iOS 弹性滚动 */}
       <aside style={{
         ...(isMobile
           ? {
@@ -499,7 +457,6 @@ function UserLearnPage() {
         ) : null}
       </aside>
 
-      {/* 弹窗：设置各域每日任务 */}
       {goalModalOpen && (
         <>
           <div
