@@ -249,6 +249,29 @@ function LessonPage() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  const showSidebarInNav = (isSingleNodeMode || isTodayMode || isAllDomainsMode) && nodeTree.length > 0;
+  useEffect(() => {
+    if (!isMobile || !showSidebarInNav) return;
+    const leftEl = document.getElementById('header-mobile-extra-left');
+    if (!leftEl) return;
+    const wrapper = document.createElement('div');
+    leftEl.appendChild(wrapper);
+    ReactDOM.render(
+      <button
+        type="button"
+        onClick={() => setSidebarOpen(true)}
+        aria-label={i18n('Menu')}
+      >
+        ☰ {i18n('Progress')}
+      </button>,
+      wrapper,
+    );
+    return () => {
+      ReactDOM.unmountComponentAtNode(wrapper);
+      wrapper.remove();
+    };
+  }, [isMobile, showSidebarInNav]);
+
   useEffect(() => {
     if (allProblems.length > 0 && problemQueue.length === 0 && answerHistory.length === 0) {
       setProblemQueue(allProblems);
@@ -1075,40 +1098,6 @@ function LessonPage() {
       if (isMobile) {
         return (
           <>
-            <div style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              height: '48px',
-              zIndex: 1000,
-              backgroundColor: '#fff',
-              borderBottom: '1px solid #e0e0e0',
-              display: 'flex',
-              alignItems: 'center',
-              padding: '0 12px',
-              gap: '8px',
-            }}>
-              <button
-                type="button"
-                onClick={() => setSidebarOpen(true)}
-                style={{
-                  padding: '8px 12px',
-                  border: '1px solid #e0e0e0',
-                  borderRadius: '6px',
-                  background: '#fff',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  minHeight: '40px',
-                }}
-                aria-label={i18n('Menu')}
-              >
-                ☰ {i18n('Progress')}
-              </button>
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '14px', fontWeight: 600 }}>
-                {rootNodeTitle || i18n('Unnamed Node')}
-              </span>
-            </div>
             {sidebarOpen && (
               <div
                 role="presentation"
@@ -1148,7 +1137,7 @@ function LessonPage() {
                 {i18n('Close')}
               </button>
             </aside>
-            <main style={{ flex: 1, overflowY: 'auto', paddingTop: '56px', paddingLeft: '12px', paddingRight: '12px', paddingBottom: '24px', minHeight: '100vh', backgroundColor: '#fafafa' }}>
+            <main style={{ flex: 1, overflowY: 'auto', paddingTop: '24px', paddingLeft: '12px', paddingRight: '12px', paddingBottom: '24px', minHeight: '100vh', backgroundColor: '#fafafa' }}>
               {cardViewContent}
             </main>
           </>
@@ -1447,40 +1436,6 @@ function LessonPage() {
     if (isMobile) {
       return (
         <>
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: '48px',
-            zIndex: 1000,
-            backgroundColor: '#fff',
-            borderBottom: '1px solid #e0e0e0',
-            display: 'flex',
-            alignItems: 'center',
-            padding: '0 12px',
-            gap: '8px',
-          }}>
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(true)}
-              style={{
-                padding: '8px 12px',
-                border: '1px solid #e0e0e0',
-                borderRadius: '6px',
-                background: '#fff',
-                cursor: 'pointer',
-                fontSize: '14px',
-                minHeight: '40px',
-              }}
-              aria-label={i18n('Menu')}
-            >
-              ☰ {i18n('Progress')}
-            </button>
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '14px', fontWeight: 600 }}>
-              {rootNodeTitle || i18n('Unnamed Node')}
-            </span>
-          </div>
           {sidebarOpen && (
             <div
               role="presentation"
@@ -1520,7 +1475,7 @@ function LessonPage() {
               {i18n('Close')}
             </button>
           </aside>
-          <main style={{ flex: 1, overflowY: 'auto', paddingTop: '56px', paddingLeft: '12px', paddingRight: '12px', paddingBottom: '24px', minHeight: '100vh', backgroundColor: '#fafafa' }}>
+          <main style={{ flex: 1, overflowY: 'auto', paddingTop: '24px', paddingLeft: '12px', paddingRight: '12px', paddingBottom: '24px', minHeight: '100vh', backgroundColor: '#fafafa' }}>
             {mainContent}
           </main>
         </>

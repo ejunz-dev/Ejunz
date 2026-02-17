@@ -244,6 +244,32 @@ function LearnPage() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  useEffect(() => {
+    if (!isMobile) return;
+    const onPending = () => { setLeftSidebarOpen(true); setRightSidebarOpen(false); };
+    const onCompleted = () => { setRightSidebarOpen(true); setLeftSidebarOpen(false); };
+    const leftEl = document.getElementById('header-mobile-extra-left');
+    const rightEl = document.getElementById('header-mobile-extra');
+    const leftWrap = leftEl ? (() => { const w = document.createElement('div'); leftEl.appendChild(w); return w; })() : null;
+    const rightWrap = rightEl ? (() => { const w = document.createElement('div'); rightEl.appendChild(w); return w; })() : null;
+    if (leftWrap) {
+      ReactDOM.render(
+        <button type="button" onClick={onPending}>☰ {i18n('Pending sections')}</button>,
+        leftWrap,
+      );
+    }
+    if (rightWrap) {
+      ReactDOM.render(
+        <button type="button" onClick={onCompleted}>{i18n('Completed cards')} ☰</button>,
+        rightWrap,
+      );
+    }
+    return () => {
+      if (leftWrap) { ReactDOM.unmountComponentAtNode(leftWrap); leftWrap.remove(); }
+      if (rightWrap) { ReactDOM.unmountComponentAtNode(rightWrap); rightWrap.remove(); }
+    };
+  }, [isMobile]);
+
   return (
     <div style={{
       minHeight: isMobile ? '100dvh' : '100vh',
@@ -253,71 +279,6 @@ function LearnPage() {
       flexDirection: 'row',
       position: 'relative',
     }}>
-      {/* 移动端顶栏：安全区 + 44px 触控区 */}
-      {isMobile && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            minHeight: '48px',
-            paddingTop: 'env(safe-area-inset-top, 0px)',
-            paddingLeft: 'max(12px, env(safe-area-inset-left, 0px))',
-            paddingRight: 'max(12px, env(safe-area-inset-right, 0px))',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: themeStyles.bgSecondary,
-            borderBottom: `1px solid ${themeStyles.border}`,
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => { setLeftSidebarOpen(true); setRightSidebarOpen(false); }}
-            style={{
-              padding: '8px 12px',
-              minHeight: '44px',
-              minWidth: '44px',
-              fontSize: '14px',
-              fontWeight: 500,
-              color: themeStyles.textPrimary,
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            ☰ {i18n('Pending sections')}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setRightSidebarOpen(true); setLeftSidebarOpen(false); }}
-            style={{
-              padding: '8px 12px',
-              minHeight: '44px',
-              minWidth: '44px',
-              fontSize: '14px',
-              fontWeight: 500,
-              color: themeStyles.textPrimary,
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {i18n('Completed cards')} ☰
-          </button>
-        </div>
-      )}
-
       {isMobile && leftSidebarOpen && (
         <div
           role="presentation"
@@ -343,7 +304,6 @@ function LearnPage() {
         />
       )}
 
-      {/* 左侧边栏：桌面为绝对定位条，移动端为抽屉 */}
       <aside style={{
         ...(isMobile
           ? {
@@ -558,12 +518,11 @@ function LearnPage() {
         ) : null}
       </aside>
 
-      {/* 主内容：移动端留出顶栏+安全区、底部安全区 */}
       <main style={{
         flex: 1,
         minWidth: 0,
         padding: isMobile
-          ? 'calc(48px + env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) max(32px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px))'
+          ? `24px max(12px, env(safe-area-inset-right, 0px)) max(32px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px))`
           : '32px 24px 48px',
         display: 'flex',
         flexDirection: 'column',
@@ -576,7 +535,6 @@ function LearnPage() {
         flexDirection: 'column',
         gap: '24px',
       }}>
-        {/* 切换：Learning Progress / Learning Path */}
         <div style={{
           display: 'flex',
           gap: '4px',
@@ -627,7 +585,6 @@ function LearnPage() {
           </button>
         </div>
 
-        {/* 进度模式：总进度 + 今日进度 */}
         {viewMode === 'progress' && (
         <>
         <div style={{
@@ -637,7 +594,6 @@ function LearnPage() {
           border: `1px solid ${themeStyles.border}`,
           boxShadow: theme === 'dark' ? '0 4px 24px rgba(0,0,0,0.4)' : '0 2px 12px rgba(0,0,0,0.06)',
         }}>
-          {/* 总进度 */}
           <div style={{ marginBottom: '24px' }}>
             <div style={{
               display: 'flex',
@@ -669,7 +625,6 @@ function LearnPage() {
             </div>
           </div>
 
-          {/* 今日进度 */}
           <div>
             <div style={{
               display: 'flex',
@@ -778,10 +733,9 @@ function LearnPage() {
                 boxShadow: `0 0 12px ${themeStyles.accentGlow}`,
               }} />
             </div>
-          </div>
+            </div>
 
-          {/* 打卡天数：总打卡 + 连续打卡小气泡 */}
-          <div style={{
+            <div style={{
             marginTop: '24px',
             paddingTop: '20px',
             borderTop: `1px solid ${themeStyles.border}`,
@@ -914,7 +868,6 @@ function LearnPage() {
       </>
         )}
 
-        {/* Learning Path 模式：sections + 单卡片刷题 */}
         {viewMode === 'path' && sections.length > 0 && (
           <div style={{
             padding: '8px 0',
@@ -1097,7 +1050,6 @@ function LearnPage() {
       </div>
       </main>
 
-      {/* 右侧边栏：桌面绝对定位，移动端为抽屉 */}
       <aside style={{
         ...(isMobile
           ? {
