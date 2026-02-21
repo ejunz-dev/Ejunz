@@ -993,6 +993,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const dragOverTimeoutRef = useRef<NodeJS.Timeout | null>(null); // 用于节流 dragOver 更新
   const lastDragOverFileRef = useRef<FileItem | null>(null); // 上次悬停的文件
   const lastDropPositionRef = useRef<'before' | 'after' | 'into'>('after'); // 上次的放置位置
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressFileRef = useRef<FileItem | null>(null);
+  const longPressPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null); // 右键菜单
   const [emptyAreaContextMenu, setEmptyAreaContextMenu] = useState<{ x: number; y: number } | null>(null); // 空白区域右键菜单
   const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; items: FileItem[] } | null>(null); // 剪贴板（支持多个项目）
@@ -1071,6 +1074,32 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   // 用于触发题目列表重新渲染的版本号
   const [originalProblemsVersion, setOriginalProblemsVersion] = useState(0);
   const [isGeneratingProblemWithAgent, setIsGeneratingProblemWithAgent] = useState<boolean>(false); // 是否正在通过agent生成题目
+
+  const MOBILE_BREAKPOINT = 768;
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT);
+  const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  useEffect(() => {
+    if (!isMobile) return;
+    const leftEl = document.getElementById('header-mobile-extra-left');
+    if (!leftEl) return;
+    const wrapper = document.createElement('div');
+    leftEl.appendChild(wrapper);
+    ReactDOM.render(
+      <button type="button" onClick={() => setMobileExplorerOpen(true)} aria-label="Explorer">
+        ☰ Explorer
+      </button>,
+      wrapper,
+    );
+    return () => {
+      ReactDOM.unmountComponentAtNode(wrapper);
+      wrapper.remove();
+    };
+  }, [isMobile]);
 
   // 获取当前选中卡片的完整信息（包括 problems）
   const getSelectedCard = useCallback((): Card | null => {
@@ -6514,17 +6543,46 @@ ${currentCardContext}
   }, []);
 
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100%', backgroundColor: themeStyles.bgPrimary }}>
-      {/* 左侧文件树 */}
+    <div style={{
+      display: 'flex',
+      height: isMobile ? '100dvh' : '100vh',
+      width: '100%',
+      backgroundColor: themeStyles.bgPrimary,
+    }}>
+      {isMobile && mobileExplorerOpen && (
+        <div
+          role="presentation"
+          style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: 'rgba(0,0,0,0.4)' }}
+          onClick={() => setMobileExplorerOpen(false)}
+          aria-hidden
+        />
+      )}
       <div style={{
-        width: '250px',
+        ...(isMobile
+          ? {
+              position: 'fixed' as const,
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: '280px',
+              maxWidth: '85vw',
+              zIndex: 1002,
+              transform: mobileExplorerOpen ? 'translateX(0)' : 'translateX(-100%)',
+              transition: 'transform 0.2s ease',
+              boxShadow: mobileExplorerOpen ? '4px 0 16px rgba(0,0,0,0.15)' : 'none',
+              paddingTop: 'env(safe-area-inset-top, 0px)',
+            }
+          : {
+              width: '250px',
+              flexShrink: 0,
+            }),
         borderRight: `1px solid ${themeStyles.borderPrimary}`,
         backgroundColor: themeStyles.bgSecondary,
         overflow: 'auto',
-        flexShrink: 0,
-      }}>
+        WebkitOverflowScrolling: 'touch',
+      } as React.CSSProperties}>
         <div style={{
-          padding: '12px 16px',
+          padding: isMobile ? '12px 16px' : '12px 16px',
           borderBottom: `1px solid ${themeStyles.borderPrimary}`,
           fontSize: '12px',
           fontWeight: '600',
@@ -6536,6 +6594,24 @@ ${currentCardContext}
         }}>
           <span>EXPLORER</span>
           <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+            {isMobile && (
+              <button
+                type="button"
+                onClick={() => setMobileExplorerOpen(false)}
+                style={{
+                  padding: '6px 10px',
+                  minHeight: '36px',
+                  fontSize: '11px',
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  borderRadius: '4px',
+                  background: themeStyles.bgButton,
+                  color: themeStyles.textSecondary,
+                  cursor: 'pointer',
+                }}
+              >
+                Close
+              </button>
+            )}
             {explorerMode === 'tree' && (
               <>
                 <button
@@ -6546,7 +6622,8 @@ ${currentCardContext}
                     }
                   }}
                   style={{
-                    padding: '2px 8px',
+                    padding: isMobile ? '8px 10px' : '2px 8px',
+                    minHeight: isMobile ? '36px' : undefined,
                     fontSize: '11px',
                     border: `1px solid ${themeStyles.borderSecondary}`,
                     borderRadius: '3px',
@@ -6563,7 +6640,8 @@ ${currentCardContext}
             <button
               onClick={() => setExplorerMode('tree')}
               style={{
-                padding: '2px 8px',
+                padding: isMobile ? '8px 10px' : '2px 8px',
+                minHeight: isMobile ? '36px' : undefined,
                 fontSize: '11px',
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
@@ -6578,7 +6656,8 @@ ${currentCardContext}
             <button
               onClick={() => setExplorerMode('files')}
               style={{
-                padding: '2px 8px',
+                padding: isMobile ? '8px 10px' : '2px 8px',
+                minHeight: isMobile ? '36px' : undefined,
                 fontSize: '11px',
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
@@ -6593,7 +6672,8 @@ ${currentCardContext}
             <button
               onClick={() => setExplorerMode('pending')}
               style={{
-                padding: '2px 8px',
+                padding: isMobile ? '8px 10px' : '2px 8px',
+                minHeight: isMobile ? '36px' : undefined,
                 fontSize: '11px',
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
@@ -6643,21 +6723,42 @@ ${currentCardContext}
                 }}
                 onClick={(e) => {
                   if (isEditing) return;
-                  // 如果点击的是节点，且点击的不是展开/折叠按钮，则选择文件
                   if (file.type === 'node') {
                     const target = e.target as HTMLElement;
-                    // 如果点击的是展开/折叠按钮，不选择文件
                     if (target.style.cursor === 'pointer' && (target.textContent === '▼' || target.textContent === '▶')) {
                       return;
                     }
                   }
                   handleSelectFile(file);
+                  if (isMobile) setMobileExplorerOpen(false);
                 }}
                 onDoubleClick={(e) => handleStartRename(file, e)}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   setContextMenu({ x: e.clientX, y: e.clientY, file });
+                }}
+                onTouchStart={(e) => {
+                  if (!isMobile || isEditing) return;
+                  const touch = e.touches[0];
+                  longPressFileRef.current = file;
+                  longPressPosRef.current = { x: touch.clientX, y: touch.clientY };
+                  longPressTimerRef.current = window.setTimeout(() => {
+                    setContextMenu({ x: longPressPosRef.current.x, y: longPressPosRef.current.y, file: longPressFileRef.current! });
+                    longPressTimerRef.current = null;
+                  }, 500);
+                }}
+                onTouchEnd={() => {
+                  if (longPressTimerRef.current) {
+                    clearTimeout(longPressTimerRef.current);
+                    longPressTimerRef.current = null;
+                  }
+                }}
+                onTouchMove={() => {
+                  if (longPressTimerRef.current) {
+                    clearTimeout(longPressTimerRef.current);
+                    longPressTimerRef.current = null;
+                  }
                 }}
                 style={{
                   padding: `4px ${8 + file.level * 16}px`,
@@ -6830,6 +6931,34 @@ ${currentCardContext}
                     </span>
                   )}
                 </span>
+              )}
+              {isMobile && !isEditing && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    const rect = (e.target as HTMLElement).getBoundingClientRect();
+                    setContextMenu({ x: rect.left, y: rect.bottom + 4, file });
+                  }}
+                  style={{
+                    flexShrink: 0,
+                    width: '36px',
+                    minHeight: '36px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: 'none',
+                    background: 'transparent',
+                    color: themeStyles.textSecondary,
+                    cursor: 'pointer',
+                    fontSize: '18px',
+                    marginLeft: '4px',
+                  }}
+                  aria-label="操作"
+                >
+                  ⋯
+                </button>
               )}
             </div>
             );
@@ -7204,7 +7333,7 @@ ${currentCardContext}
             border: `1px solid ${themeStyles.borderSecondary}`,
             borderRadius: '4px',
             boxShadow: theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.15)',
-            zIndex: 1000,
+            zIndex: 1100,
             minWidth: '180px',
             padding: '4px 0',
           }}
@@ -7554,7 +7683,7 @@ ${currentCardContext}
             border: `1px solid ${themeStyles.borderSecondary}`,
             borderRadius: '4px',
             boxShadow: theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.15)',
-            zIndex: 1000,
+            zIndex: 1100,
             minWidth: '180px',
             padding: '4px 0',
           }}
@@ -7607,7 +7736,7 @@ ${currentCardContext}
             left: 0,
             right: 0,
             bottom: 0,
-            zIndex: 999,
+            zIndex: 1099,
           }}
           onClick={() => {
             setContextMenu(null);
@@ -7689,34 +7818,42 @@ ${currentCardContext}
         />
       )}
 
-      {/* 中间编辑器区域；skill 模式下不设 width:100%，以便右侧工具栏能显示 */}
-      <div style={{ 
-        flex: 1, 
+      <div style={{
+        flex: 1,
         minWidth: 0,
-        display: 'flex', 
-        flexDirection: 'column', 
+        display: 'flex',
+        flexDirection: 'column',
         overflow: 'hidden',
-        width: showAIChat ? `${100 - chatPanelWidth}%` : (basePath === 'base/skill' ? undefined : '100%'),
+        width: showAIChat && !isMobile ? `${100 - chatPanelWidth}%` : (basePath === 'base/skill' && !isMobile ? undefined : '100%'),
         transition: isResizing ? 'none' : 'width 0.3s ease',
+        paddingTop: isMobile ? 'env(safe-area-inset-top, 0px)' : 0,
+        paddingLeft: isMobile ? 'env(safe-area-inset-left, 0px)' : 0,
+        paddingRight: isMobile ? 'env(safe-area-inset-right, 0px)' : 0,
+        paddingBottom: isMobile ? 'env(safe-area-inset-bottom, 0px)' : 0,
       }}>
-        {/* 顶部工具栏 */}
         <div style={{
-          padding: '8px 16px',
+          padding: isMobile ? '12px 16px' : '8px 16px',
+          paddingTop: isMobile ? 'max(12px, env(safe-area-inset-top, 0px))' : '8px',
           borderBottom: `1px solid ${themeStyles.borderPrimary}`,
           backgroundColor: themeStyles.bgPrimary,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: isMobile ? '8px' : 0,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: isMobile ? '1 1 100%' : undefined }}>
             <a
               href={getBaseUrl(`/${docId}/branch/${base.currentBranch || 'main'}`)}
               style={{
-                padding: '4px 8px',
+                padding: isMobile ? '10px 12px' : '4px 8px',
+                minHeight: isMobile ? '44px' : undefined,
                 fontSize: '12px',
                 color: themeStyles.textSecondary,
                 textDecoration: 'none',
                 cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
               }}
             >
               ← 返回
@@ -7746,7 +7883,8 @@ ${currentCardContext}
             <button
               onClick={() => setShowAIChat(!showAIChat)}
               style={{
-                padding: '4px 12px',
+                padding: isMobile ? '10px 12px' : '4px 12px',
+                minHeight: isMobile ? '44px' : undefined,
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
                 backgroundColor: showAIChat ? themeStyles.accent : themeStyles.bgButton,
@@ -7765,7 +7903,8 @@ ${currentCardContext}
               }}
               disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0)}
               style={{
-                padding: '4px 12px',
+                padding: isMobile ? '10px 12px' : '4px 12px',
+                minHeight: isMobile ? '44px' : undefined,
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
                 backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
@@ -8326,8 +8465,7 @@ ${currentCardContext}
         </div>
       )}
 
-      {/* 分隔条 */}
-      {showAIChat && (
+      {showAIChat && !isMobile && (
         <div
           onMouseDown={(e) => {
             e.preventDefault();
@@ -8366,8 +8504,7 @@ ${currentCardContext}
         </div>
       )}
 
-      {/* AI 聊天侧边栏 */}
-      {showAIChat && (
+      {showAIChat && !isMobile && (
         <div style={{
           width: `${chatPanelWidth}px`,
           height: '100%',
