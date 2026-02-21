@@ -151,6 +151,19 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  useEffect(() => {
+    if (!isMobile) return;
+    const leftEl = document.getElementById('header-mobile-extra-left');
+    if (!leftEl) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'header-mobile-extra-btn';
+    btn.textContent = '☰ ' + (i18n('Sections') || '章节');
+    btn.onclick = () => setSidebarOpen(open => !open);
+    leftEl.appendChild(btn);
+    return () => { btn.remove(); };
+  }, [isMobile]);
+
   const nodeMap = useMemo(() => buildNodeMap(sections, dag), [sections, dag]);
 
   const toggleExpand = useCallback((nodeId: string) => {
@@ -514,45 +527,7 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
 
   return (
     <>
-    {isMobile && (
-      <div
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: '48px',
-          zIndex: 1000,
-          display: 'flex',
-          alignItems: 'center',
-          paddingLeft: '12px',
-          paddingRight: '12px',
-          backgroundColor: themeStyles.bgSidebar,
-          borderBottom: `1px solid ${themeStyles.border}`,
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => setSidebarOpen(true)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 12px',
-            minHeight: '44px',
-            fontSize: '14px',
-            fontWeight: 500,
-            color: themeStyles.textPrimary,
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            borderRadius: '8px',
-          }}
-        >
-          ☰ {i18n('Sections')}
-        </button>
-      </div>
-    )}
+    {/* 移动端不再使用本页固定顶栏，改为注入到 #header-mobile-extra-left，避免遮挡站点导航 */}
 
     {isMobile && sidebarOpen && (
       <div
@@ -571,10 +546,13 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
       style={{
         display: 'flex',
         flexDirection: 'row',
-        minHeight: 'calc(100vh - 120px)',
+        minHeight: isMobile ? '100dvh' : 'calc(100vh - 120px)',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
         backgroundColor: themeStyles.bgPrimary,
-        paddingTop: isMobile ? '56px' : 0,
+        paddingTop: isMobile ? 'max(16px, env(safe-area-inset-top, 0px))' : 0,
+        paddingLeft: isMobile ? 'env(safe-area-inset-left, 0px)' : undefined,
+        paddingRight: isMobile ? 'env(safe-area-inset-right, 0px)' : undefined,
+        paddingBottom: isMobile ? 'env(safe-area-inset-bottom, 0px)' : undefined,
       }}
     >
       {/* 侧边栏：根节点列表（桌面常显，移动端为抽屉） */}
@@ -600,25 +578,6 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
               }),
         }}
       >
-        {isMobile && (
-          <div style={{ padding: '12px 16px', borderBottom: `1px solid ${themeStyles.border}`, display: 'flex', justifyContent: 'flex-end' }}>
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(false)}
-              style={{
-                padding: '8px 12px',
-                fontSize: '14px',
-                color: themeStyles.textPrimary,
-                background: 'transparent',
-                border: `1px solid ${themeStyles.border}`,
-                borderRadius: '6px',
-                cursor: 'pointer',
-              }}
-            >
-              {i18n('Close')}
-            </button>
-          </div>
-        )}
         {sidebarInner}
       </aside>
 
