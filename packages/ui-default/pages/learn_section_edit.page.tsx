@@ -54,6 +54,8 @@ function getTheme(): 'light' | 'dark' {
   return 'light';
 }
 
+const MOBILE_BREAKPOINT = 768;
+
 function LearnSectionEdit({ sections: initialSections, allSections: allSectionsProp = [], dag: dagProp = [], domainId, targetUid, targetUser, currentLearnSectionIndex: initialLearnIndex = null, currentLearnSectionId: initialLearnId = null }: LearnSectionEditProps) {
   const [sections, setSections] = useState<LearnDAGNode[]>(initialSections || []);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -63,6 +65,8 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
   const [sidebarExpanded, setSidebarExpanded] = useState<Set<string>>(() => new Set());
   const [currentLearnSectionIndex, setCurrentLearnSectionIndex] = useState<number | null>(initialLearnIndex ?? null);
   const draggedIndexRef = useRef<number | null>(null);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const allSections = allSectionsProp || [];
   const dag = dagProp || [];
@@ -90,6 +94,25 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
     const interval = setInterval(checkTheme, 500);
     return () => clearInterval(interval);
   }, [theme]);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    const leftEl = document.getElementById('header-mobile-extra-left');
+    if (!leftEl) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'header-mobile-extra-btn';
+    btn.textContent = '☰ ' + (i18n('Sections') || '章节');
+    btn.onclick = () => setMobileSidebarOpen(open => !open);
+    leftEl.appendChild(btn);
+    return () => { btn.remove(); };
+  }, [isMobile]);
 
   const themeStyles = useMemo(() => ({
     bgPrimary: theme === 'dark' ? '#1e1e1e' : '#fff',
@@ -203,7 +226,8 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
       const next = [...prev, newItem];
       return next.map((s, i) => ({ ...s, order: i }));
     });
-  }, []);
+    if (isMobile) setMobileSidebarOpen(false);
+  }, [isMobile]);
 
   const toggleSidebarExpand = useCallback((id: string) => {
     setSidebarExpanded(prev => {
@@ -317,8 +341,9 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
               type="button"
               onClick={() => toggleSidebarExpand(node._id)}
               style={{
-                width: '20px',
-                height: '20px',
+                width: isMobile ? 36 : 20,
+                height: isMobile ? 36 : 20,
+                minHeight: isMobile ? 36 : undefined,
                 padding: 0,
                 border: 'none',
                 background: 'transparent',
@@ -326,12 +351,15 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
                 cursor: 'pointer',
                 fontSize: '12px',
                 flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
               {expanded ? '▼' : '▶'}
             </button>
           )}
-          {!hasChildren && <span style={{ width: '20px', display: 'inline-block', flexShrink: 0 }} />}
+          {!hasChildren && <span style={{ width: isMobile ? 36 : 20, display: 'inline-block', flexShrink: 0 }} />}
           <span style={{
             fontSize: isSection ? 14 : 13,
             fontWeight: isSection ? 600 : 400,
@@ -351,8 +379,9 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
               onClick={(e) => { e.stopPropagation(); handleSidebarSectionClick(node); }}
               title={i18n('Add to top of order')}
               style={{
-                width: '24px',
-                height: '24px',
+                width: isMobile ? 36 : 24,
+                height: isMobile ? 36 : 24,
+                minHeight: isMobile ? 36 : undefined,
                 padding: 0,
                 marginLeft: '6px',
                 border: `1px solid ${themeStyles.border}`,
@@ -398,14 +427,44 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
     <div style={{
       display: 'flex',
       flexDirection: 'row',
-      minHeight: 'calc(100vh - 120px)',
+      minHeight: isMobile ? '100dvh' : 'calc(100vh - 120px)',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       backgroundColor: themeStyles.bgPrimary,
+      paddingTop: isMobile ? 'env(safe-area-inset-top, 0px)' : undefined,
+      paddingLeft: isMobile ? 'env(safe-area-inset-left, 0px)' : undefined,
+      paddingRight: isMobile ? 'env(safe-area-inset-right, 0px)' : undefined,
+      paddingBottom: isMobile ? 'env(safe-area-inset-bottom, 0px)' : undefined,
     }}>
-      {/* 左侧边栏：靠边固定 */}
+      {isMobile && mobileSidebarOpen && (
+        <div
+          role="presentation"
+          onClick={() => setMobileSidebarOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+            zIndex: 1001,
+          }}
+        />
+      )}
+      {/* 左侧边栏：桌面固定宽度，移动端为抽屉 */}
       <aside style={{
-        width: '260px',
-        flexShrink: 0,
+        ...(isMobile
+          ? {
+              position: 'fixed',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 'min(280px, 85vw)',
+              zIndex: 1002,
+              transform: mobileSidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+              transition: 'transform 0.2s ease',
+              boxShadow: mobileSidebarOpen ? '4px 0 16px rgba(0,0,0,0.15)' : 'none',
+            }
+          : {
+              width: '260px',
+              flexShrink: 0,
+            }),
         backgroundColor: themeStyles.bgSecondary,
         borderRight: `1px solid ${themeStyles.border}`,
         overflowY: 'auto',
@@ -470,7 +529,8 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
         }}
         style={{
           flex: 1,
-          padding: '24px 32px',
+          padding: isMobile ? '16px 16px max(16px, env(safe-area-inset-bottom, 0px))' : '24px 32px',
+          paddingTop: isMobile ? 'max(16px, env(safe-area-inset-top, 0px))' : undefined,
           overflowY: 'auto',
           minWidth: 0,
         }}
@@ -506,13 +566,14 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
               {i18n(' Click "Set as start" to set where learning begins from.')}
             </p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <button
               type="button"
               onClick={handleSave}
               disabled={isSaving || !hasUnsavedChanges}
               style={{
-                padding: '10px 20px',
+                padding: isMobile ? '10px 16px' : '10px 20px',
+                minHeight: isMobile ? 44 : undefined,
                 fontSize: '14px',
                 fontWeight: 600,
                 color: '#fff',
@@ -527,7 +588,10 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
             <a
               href={`/d/${domainId}/learn/sections`}
               style={{
-                padding: '10px 20px',
+                padding: isMobile ? '10px 16px' : '10px 20px',
+                minHeight: isMobile ? 44 : undefined,
+                display: 'inline-flex',
+                alignItems: 'center',
                 fontSize: '14px',
                 color: themeStyles.textPrimary,
                 backgroundColor: themeStyles.bgSecondary,
@@ -542,7 +606,10 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
               <a
                 href={`/d/${domainId}/learn/section/edit`}
                 style={{
-                  padding: '10px 20px',
+                  padding: isMobile ? '10px 16px' : '10px 20px',
+                  minHeight: isMobile ? 44 : undefined,
+                  display: 'inline-flex',
+                  alignItems: 'center',
                   fontSize: '14px',
                   color: themeStyles.accent,
                   textDecoration: 'none',
@@ -691,8 +758,9 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
                 disabled={isSaving || currentLearnSectionIndex === sections.length - 1 - index}
                 title={i18n('Set as start')}
                 style={{
-                  width: '32px',
-                  height: '32px',
+                  width: isMobile ? 40 : 32,
+                  height: isMobile ? 40 : 32,
+                  minHeight: isMobile ? 40 : undefined,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -711,8 +779,9 @@ function LearnSectionEdit({ sections: initialSections, allSections: allSectionsP
                 onClick={(e) => { e.stopPropagation(); removeSection(index); }}
                 title={i18n('Remove from order')}
                 style={{
-                  width: '32px',
-                  height: '32px',
+                  width: isMobile ? 40 : 32,
+                  height: isMobile ? 40 : 32,
+                  minHeight: isMobile ? 40 : undefined,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
