@@ -969,7 +969,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [fileContent, setFileContent] = useState<string>('');
   const [isCommitting, setIsCommitting] = useState(false);
-  const [saveProgress, setSaveProgress] = useState<{ current: number; total: number; message: string } | null>(null);
   // 多选模式相关状态
   const [isMultiSelectMode, setIsMultiSelectMode] = useState<boolean>(false);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set()); // 选中的文件ID集合
@@ -1889,23 +1888,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       (hasDeleteChanges ? pendingDeletes.size : 0) +
       (hasProblemChanges ? (pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size) : 0);
     
-    let completedTasks = 0;
-    const updateProgress = (message: string) => {
-      completedTasks++;
-      setSaveProgress({
-        current: completedTasks,
-        total: totalTasks,
-        message,
-      });
-    };
-    
-    setSaveProgress({
-      current: 0,
-      total: totalTasks,
-      message: '准备保存...',
-    });
-    
     try {
+      Notification.info('正在保存...');
       const domainId = (window as any).UiContext?.domainId || 'system';
       
       // 收集所有更改到批量保存请求
@@ -1926,8 +1910,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       
       // 收集所有创建操作到批量保存数据
       if (hasCreateChanges) {
-        updateProgress('正在收集创建更改...');
-        
         const creates = Array.from(pendingCreatesRef.current.entries()).map(([tempId, create]) => ({ tempId, ...create })).filter(c => 
           c.tempId && (c.tempId.startsWith('temp-node-') || c.tempId.startsWith('temp-card-'))
         );
@@ -2003,7 +1985,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       
       // 收集所有更改到批量保存请求
       if (hasContentChanges) {
-        updateProgress('正在收集内容更改...');
         
         // 先收集所有需要移除的临时节点 key
         const tempNodeKeysToRemove: string[] = [];
@@ -2066,7 +2047,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
       // 仅题目发生变更但内容未变更的卡片：单独提交一次（不处理临时卡片）
       if (hasProblemChanges) {
-        updateProgress('正在保存题目更改...');
         
         const nodeCardsMapForProblems = (window as any).UiContext?.nodeCardsMap || {};
         // 已经通过内容变更提交过的 cardId 集合
@@ -2127,7 +2107,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           }
         }
         
-        updateProgress('正在收集题目更改...');
       }
       
       // 保存拖动更改（卡片的 nodeId 和 order，节点的 edges）
@@ -2260,12 +2239,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           }
         }
         
-        updateProgress('正在收集拖动更改...');
       }
       
       // 保存重命名更改
       if (hasRenameChanges) {
-        updateProgress('正在保存重命名...');
         
         // 使用更新后的 pendingRenames（如果节点创建后已更新）
         // 先获取最新的 pendingRenames 状态
@@ -2327,14 +2304,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           }
         }
         
-        updateProgress('正在收集重命名更改...');
       }
 
       const hasDeleteChanges = pendingDeletes.size > 0;
       
       // 收集删除操作到批量保存数据
       if (hasDeleteChanges) {
-        updateProgress('正在收集删除更改...');
         
         const deletes = Array.from(pendingDeletes.values());
         
@@ -2392,7 +2367,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         batchSaveData.edgeDeletes.length > 0;
       
       if (hasAnyChanges) {
-        updateProgress('正在批量保存所有更改...');
         
         try {
           const response = await request.post(getBaseUrl('/batch-save'), batchSaveData);
@@ -2558,8 +2532,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         + (hasDeleteChanges ? pendingDeletes.size : 0)
         + problemChangesCount;
       
-      updateProgress('保存完成！');
-      Notification.success(`已保存 ${totalChanges} 个更改`);
+      Notification.success(`保存成功，共 ${totalChanges} 项更改`);
       
       // 如果有创建更改，重新加载数据以确保同步
       if (hasCreateChanges || hasAnyChanges) {
@@ -2647,12 +2620,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       Notification.error('保存失败: ' + (error.message || '未知错误'));
     } finally {
       setIsCommitting(false);
-      // 延迟清除进度条，让用户看到完成状态
-      setTimeout(() => {
-        setSaveProgress(null);
-      }, 1000);
     }
-  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, setSaveProgress]);
+  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion]);
 
   // 重命名文件（仅前端修改，保存时才提交到后端）
   const handleRename = useCallback((file: FileItem, newName: string) => {
@@ -8072,49 +8041,6 @@ ${currentCardContext}
             >
               {isCommitting ? '保存中...' : `保存更改 (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size})`}
             </button>
-            
-            {/* 保存进度条 - 复用文件上传的UI样式 */}
-            {saveProgress && (
-              <div style={{
-                minWidth: '200px',
-                maxWidth: '400px',
-                padding: '8px 12px',
-                backgroundColor: themeStyles.bgSecondary,
-                border: `1px solid ${themeStyles.borderPrimary}`,
-                borderRadius: '4px',
-                fontSize: '12px',
-              }}>
-                <div style={{
-                  textAlign: 'center',
-                  marginBottom: '6px',
-                  color: themeStyles.textSecondary,
-                  fontSize: '11px',
-                }}>
-                  {saveProgress.message}
-                </div>
-                <div className="bp5-progress-bar bp5-intent-primary bp5-no-stripes" style={{
-                  height: '6px',
-                  backgroundColor: themeStyles.bgPrimary,
-                  borderRadius: '3px',
-                  overflow: 'hidden',
-                }}>
-                  <div className="bp5-progress-meter" style={{
-                    width: `${(saveProgress.current / saveProgress.total) * 100}%`,
-                    height: '100%',
-                    backgroundColor: themeStyles.success,
-                    transition: 'width 0.3s ease',
-                  }} />
-                </div>
-                <div style={{
-                  textAlign: 'center',
-                  marginTop: '4px',
-                  color: themeStyles.textSecondary,
-                  fontSize: '11px',
-                }}>
-                  {saveProgress.current} / {saveProgress.total}
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
