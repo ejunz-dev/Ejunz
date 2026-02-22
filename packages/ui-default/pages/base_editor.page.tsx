@@ -1014,6 +1014,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [sortWindow, setSortWindow] = useState<{ nodeId: string } | null>(null); // 排序窗口
   // AI 聊天相关状态
   const [showAIChat, setShowAIChat] = useState<boolean>(false);
+  const [showProblemPanel, setShowProblemPanel] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<Array<{ 
     role: 'user' | 'assistant' | 'operation'; 
     content: string; 
@@ -1052,6 +1053,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   }, []);
   
   const [chatPanelWidth, setChatPanelWidth] = useState<number>(300); // 像素
+  const PROBLEM_PANEL_WIDTH = 360;
   const [isResizing, setIsResizing] = useState<boolean>(false);
   const resizeStartXRef = useRef<number>(0);
   const resizeStartWidthRef = useRef<number>(300);
@@ -1118,23 +1120,38 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const rightEl = document.getElementById('header-mobile-extra');
     if (!rightEl) return;
     const wrapper = document.createElement('div');
+    wrapper.style.display = 'flex';
+    wrapper.style.alignItems = 'center';
+    wrapper.style.gap = '8px';
     rightEl.appendChild(wrapper);
     ReactDOM.render(
-      <button
-        type="button"
-        className={showAIChat ? 'header-mobile-extra-btn is-active' : 'header-mobile-extra-btn'}
-        onClick={() => setShowAIChat((prev) => !prev)}
-        aria-label="AI"
-      >
-        AI
-      </button>,
+      <>
+        {selectedFile?.type === 'card' && (
+          <button
+            type="button"
+            className={showProblemPanel ? 'header-mobile-extra-btn is-active' : 'header-mobile-extra-btn'}
+            onClick={() => setShowProblemPanel((prev) => !prev)}
+            aria-label="题目"
+          >
+            题目
+          </button>
+        )}
+        <button
+          type="button"
+          className={showAIChat ? 'header-mobile-extra-btn is-active' : 'header-mobile-extra-btn'}
+          onClick={() => setShowAIChat((prev) => !prev)}
+          aria-label="AI"
+        >
+          AI
+        </button>
+      </>,
       wrapper,
     );
     return () => {
       ReactDOM.unmountComponentAtNode(wrapper);
       wrapper.remove();
     };
-  }, [isMobile, showAIChat]);
+  }, [isMobile, showAIChat, showProblemPanel, selectedFile?.type]);
 
   // 获取当前选中卡片的完整信息（包括 problems）
   const getSelectedCard = useCallback((): Card | null => {
@@ -7909,7 +7926,9 @@ ${currentCardContext}
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        width: showAIChat && !isMobile ? `${100 - chatPanelWidth}%` : (basePath === 'base/skill' && !isMobile ? undefined : '100%'),
+        width: (showAIChat && !isMobile) || (showProblemPanel && !isMobile)
+          ? `calc(100% - ${(showAIChat && !isMobile ? chatPanelWidth : 0) + (showProblemPanel && !isMobile ? PROBLEM_PANEL_WIDTH : 0)}px)`
+          : (basePath === 'base/skill' && !isMobile ? undefined : '100%'),
         transition: isResizing ? 'none' : 'width 0.3s ease',
         paddingTop: isMobile ? 'env(safe-area-inset-top, 0px)' : 0,
         paddingLeft: isMobile ? 'env(safe-area-inset-left, 0px)' : 0,
@@ -7950,6 +7969,25 @@ ${currentCardContext}
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+            {selectedFile?.type === 'card' && (
+              <button
+                type="button"
+                onClick={() => setShowProblemPanel((prev) => !prev)}
+                aria-label="题目"
+                style={{
+                  padding: isMobile ? '10px 12px' : '4px 10px',
+                  minHeight: isMobile ? '44px' : undefined,
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  borderRadius: '3px',
+                  backgroundColor: showProblemPanel ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                  color: showProblemPanel ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                }}
+              >
+                题目
+              </button>
+            )}
             {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) && (
               <span style={{ fontSize: '12px', color: themeStyles.textSecondary }}>
                 {pendingChanges.size > 0 && `${pendingChanges.size} 个文件已修改`}
@@ -8079,354 +8117,246 @@ ${currentCardContext}
             )}
           </div>
 
-          {/* 当前卡片的本地单选题区域 */}
-          {selectedFile && selectedFile.type === 'card' && (
-            <div
-              style={{
-                borderTop: `1px solid ${themeStyles.borderPrimary}`,
-                padding: '8px 12px',
-                background: themeStyles.bgTertiary,
-                maxHeight: '260px',
-                overflowY: 'auto',
-              }}
+        </div>
+      </div>
+
+      {showProblemPanel && isMobile && (
+        <div
+          role="presentation"
+          style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: 'rgba(0,0,0,0.4)' }}
+          onClick={() => setShowProblemPanel(false)}
+          aria-hidden
+        />
+      )}
+      {showProblemPanel && selectedFile?.type === 'card' && (
+        <div style={{
+          ...(isMobile
+            ? { position: 'fixed' as const, right: 0, top: 0, bottom: 0, width: 'min(400px, 85vw)', zIndex: 1002, boxShadow: '-4px 0 16px rgba(0,0,0,0.15)', paddingTop: 'env(safe-area-inset-top, 0px)' }
+            : { width: `${PROBLEM_PANEL_WIDTH}px`, height: '100%', flexShrink: 0 }),
+          borderLeft: `1px solid ${themeStyles.borderPrimary}`,
+          display: 'flex',
+          flexDirection: 'column',
+          background: themeStyles.bgPrimary,
+        }}>
+          <div style={{
+            padding: '12px 16px',
+            borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+            background: themeStyles.bgSecondary,
+            fontWeight: 'bold',
+            color: themeStyles.textPrimary,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+            <span>本卡片的练习题</span>
+            <button
+              type="button"
+              onClick={() => setShowProblemPanel(false)}
+              style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: themeStyles.textTertiary }}
+              aria-label="关闭"
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontWeight: 600, fontSize: '13px', color: themeStyles.textPrimary }}>本卡片的练习题</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: '12px', color: themeStyles.textTertiary }}>支持本地单选题</span>
+              &times;
+            </button>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px', minHeight: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '12px', color: themeStyles.textTertiary }}>支持本地单选题</span>
+              <button
+                type="button"
+                onClick={() => setShowProblemForm(true)}
+                style={{
+                  padding: '2px 8px',
+                  fontSize: '12px',
+                  borderRadius: '3px',
+                  border: '1px solid #0366d6',
+                  background: '#0366d6',
+                  color: '#fff',
+                  cursor: 'pointer',
+                }}
+              >
+                新建题目
+              </button>
+            </div>
+            {(() => {
+              const card = getSelectedCard();
+              const problems = card?.problems || [];
+              const cardIdStr = String(selectedFile?.cardId || '');
+              const _ = originalProblemsVersion;
+              const originalProblems = originalProblemsRef.current.get(cardIdStr) || new Map();
+              if (!problems.length) {
+                return (
+                  <div style={{ fontSize: '12px', color: '#6a737d', marginBottom: '8px' }}>
+                    还没有为本卡片创建题目，可以点击「新建题目」按钮来添加。
+                  </div>
+                );
+              }
+              return (
+                <div style={{ marginBottom: '8px' }}>
+                  {problems.map((p, index) => {
+                    const isNew = newProblemIds.has(p.pid) || !originalProblems.has(p.pid);
+                    const originalProblem = originalProblems.get(p.pid);
+                    const isEdited = editedProblemIds.has(p.pid) || (originalProblem && (
+                      originalProblem.stem !== p.stem ||
+                      JSON.stringify(originalProblem.options) !== JSON.stringify(p.options) ||
+                      originalProblem.answer !== p.answer ||
+                      (originalProblem.analysis || '') !== (p.analysis || '')
+                    ));
+                    const isPendingDelete = pendingDeleteProblemIds.has(p.pid);
+                    let borderColor = '#e1e4e8';
+                    let borderStyle = 'solid';
+                    if (isPendingDelete) { borderColor = '#f44336'; borderStyle = 'dashed'; }
+                    else if (isNew) { borderColor = '#4caf50'; borderStyle = 'dashed'; }
+                    else if (isEdited) { borderColor = '#ff9800'; borderStyle = 'dashed'; }
+                    return (
+                      <EditableProblem
+                        key={p.pid}
+                        problem={p}
+                        index={index}
+                        cardId={cardIdStr}
+                        borderColor={borderColor}
+                        borderStyle={borderStyle}
+                        isNew={isNew}
+                        isEdited={isEdited}
+                        isPendingDelete={isPendingDelete}
+                        originalProblem={originalProblem}
+                        docId={docId}
+                        getBaseUrl={getBaseUrl}
+                        themeStyles={themeStyles}
+                        onUpdate={(updatedProblem) => {
+                          const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                          const nodeId = selectedFile?.nodeId || '';
+                          const nodeCards: Card[] = nodeCardsMap[nodeId] || [];
+                          const cardIndex = nodeCards.findIndex((c: Card) => c.docId === selectedFile?.cardId);
+                          if (cardIndex >= 0) {
+                            const existingProblems = nodeCards[cardIndex].problems || [];
+                            const problemIndex = existingProblems.findIndex(prob => prob.pid === p.pid);
+                            if (problemIndex >= 0) {
+                              existingProblems[problemIndex] = updatedProblem;
+                              nodeCards[cardIndex] = { ...nodeCards[cardIndex], problems: existingProblems };
+                              (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+                              setNodeCardsMapVersion(prev => prev + 1);
+                              if (isNew) setNewProblemIds(prev => new Set(prev).add(p.pid));
+                              else setEditedProblemIds(prev => new Set(prev).add(p.pid));
+                              if (cardIdStr && !cardIdStr.startsWith('temp-card-')) {
+                                setPendingProblemCardIds(prev => { const next = new Set(prev); next.add(cardIdStr); return next; });
+                                if (isNew) setPendingNewProblemCardIds(prev => { const next = new Set(prev); next.add(cardIdStr); return next; });
+                                else {
+                                  setPendingEditedProblemIds(prev => {
+                                    const next = new Map(prev);
+                                    if (!next.has(cardIdStr)) next.set(cardIdStr, new Set());
+                                    next.get(cardIdStr)!.add(p.pid);
+                                    return next;
+                                  });
+                                  setPendingNewProblemCardIds(prev => { const next = new Set(prev); next.delete(cardIdStr); return next; });
+                                }
+                              }
+                            }
+                          }
+                        }}
+                        onDelete={() => {
+                          setPendingDeleteProblemIds(prev => { const next = new Map(prev); next.set(p.pid, cardIdStr); return next; });
+                          if (cardIdStr && !cardIdStr.startsWith('temp-card-')) {
+                            setPendingProblemCardIds(prev => { const next = new Set(prev); next.add(cardIdStr); return next; });
+                          }
+                          setNewProblemIds(prev => { const next = new Set(prev); next.delete(p.pid); return next; });
+                          setEditedProblemIds(prev => { const next = new Set(prev); next.delete(p.pid); return next; });
+                          setPendingNewProblemCardIds(prev => { const next = new Set(prev); next.delete(cardIdStr); return next; });
+                          setPendingEditedProblemIds(prev => {
+                            const next = new Map(prev);
+                            const editedSet = next.get(cardIdStr);
+                            if (editedSet) { editedSet.delete(p.pid); if (editedSet.size === 0) next.delete(cardIdStr); }
+                            return next;
+                          });
+                          setNodeCardsMapVersion(prev => prev + 1);
+                          setOriginalProblemsVersion(prev => prev + 1);
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              );
+            })()}
+            {showProblemForm && (
+              <div style={{ borderTop: '1px dashed #e1e4e8', paddingTop: '8px', marginTop: '4px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>生成新的单选题</div>
+                <div style={{ marginBottom: '4px', display: 'flex', gap: 4 }}>
                   <button
-                    onClick={() => setShowProblemForm(true)}
+                    type="button"
+                    onClick={() => handleGenerateProblemWithAgent()}
+                    disabled={isGeneratingProblemWithAgent || isSavingProblem}
                     style={{
-                      padding: '2px 8px',
-                      fontSize: '12px',
-                      borderRadius: '3px',
-                      border: '1px solid #0366d6',
-                      background: '#0366d6',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      border: '1px solid #28a745',
+                      background: isGeneratingProblemWithAgent ? '#c0dfff' : '#28a745',
                       color: '#fff',
-                      cursor: 'pointer',
+                      fontSize: '11px',
+                      cursor: (isGeneratingProblemWithAgent || isSavingProblem) ? 'not-allowed' : 'pointer',
+                      flex: 1,
                     }}
                   >
-                    新建题目
+                    {isGeneratingProblemWithAgent ? '生成中...' : '通过Agent生成'}
+                  </button>
+                </div>
+                <div style={{ marginBottom: '4px' }}>
+                  <textarea
+                    value={problemStem}
+                    onChange={e => setProblemStem(e.target.value)}
+                    placeholder="题干或输入要求让Agent生成"
+                    style={{ width: '100%', minHeight: '40px', resize: 'vertical', fontSize: '12px', padding: '4px 6px', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '4px' }}>
+                  {problemOptions.map((opt, index) => (
+                    <input
+                      key={index}
+                      value={opt}
+                      onChange={e => { const next = [...problemOptions]; next[index] = e.target.value; setProblemOptions(next); }}
+                      placeholder={`选项 ${String.fromCharCode(65 + index)}`}
+                      style={{ fontSize: '12px', padding: '3px 6px', boxSizing: 'border-box' }}
+                    />
+                  ))}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px', fontSize: '12px' }}>
+                  <span style={{ marginRight: 4 }}>正确答案：</span>
+                  {problemOptions.map((_, index) => (
+                    <label key={index} style={{ marginRight: 6, cursor: 'pointer' }}>
+                      <input type="radio" name="problem-answer" checked={problemAnswer === index} onChange={() => setProblemAnswer(index)} style={{ marginRight: 2 }} />
+                      {String.fromCharCode(65 + index)}
+                    </label>
+                  ))}
+                </div>
+                <div style={{ marginBottom: '4px' }}>
+                  <textarea
+                    value={problemAnalysis}
+                    onChange={e => setProblemAnalysis(e.target.value)}
+                    placeholder="解析（可选）"
+                    style={{ width: '100%', minHeight: '32px', resize: 'vertical', fontSize: '12px', padding: '4px 6px', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => { setShowProblemForm(false); setProblemStem(''); setProblemOptions(['', '', '', '']); setProblemAnswer(0); setProblemAnalysis(''); }}
+                    disabled={isSavingProblem}
+                    style={{ padding: '4px 8px', borderRadius: '4px', border: `1px solid ${themeStyles.borderSecondary}`, background: themeStyles.bgButton, color: themeStyles.textPrimary, fontSize: '12px', cursor: isSavingProblem ? 'not-allowed' : 'pointer' }}
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCreateSingleProblem}
+                    disabled={isSavingProblem}
+                    style={{ padding: '4px 10px', borderRadius: '4px', border: `1px solid ${themeStyles.accent}`, background: isSavingProblem ? themeStyles.textTertiary : themeStyles.accent, color: themeStyles.textOnPrimary, fontSize: '12px', cursor: isSavingProblem ? 'not-allowed' : 'pointer' }}
+                  >
+                    {isSavingProblem ? '生成中...' : '生成单选题'}
                   </button>
                 </div>
               </div>
-
-              {/* 已有题目列表 - 所有题目都是可编辑的 */}
-              {(() => {
-                const card = getSelectedCard();
-                const problems = card?.problems || [];
-                const cardIdStr = String(selectedFile?.cardId || '');
-                // 使用originalProblemsVersion来触发重新渲染（当原始数据更新时）
-                const _ = originalProblemsVersion; // 确保依赖originalProblemsVersion
-                const originalProblems = originalProblemsRef.current.get(cardIdStr) || new Map();
-                
-                if (!problems.length) {
-                  return (
-                    <div style={{ fontSize: '12px', color: '#6a737d', marginBottom: '8px' }}>
-                      还没有为本卡片创建题目，可以点击右上角「新建题目」按钮来添加。
-                    </div>
-                  );
-                }
-                return (
-                  <div style={{ marginBottom: '8px' }}>
-                    {problems.map((p, index) => {
-                      // 判断problem状态
-                      const isNew = newProblemIds.has(p.pid) || !originalProblems.has(p.pid);
-                      const originalProblem = originalProblems.get(p.pid);
-                      const isEdited = editedProblemIds.has(p.pid) || (originalProblem && (
-                        originalProblem.stem !== p.stem ||
-                        JSON.stringify(originalProblem.options) !== JSON.stringify(p.options) ||
-                        originalProblem.answer !== p.answer ||
-                        (originalProblem.analysis || '') !== (p.analysis || '')
-                      ));
-                      const isPendingDelete = pendingDeleteProblemIds.has(p.pid);
-                      
-                      // 根据状态设置边框颜色
-                      let borderColor = '#e1e4e8'; // 默认：未改动
-                      let borderStyle = 'solid';
-                      if (isPendingDelete) {
-                        borderColor = '#f44336'; // 待删除：红色
-                        borderStyle = 'dashed';
-                      } else if (isNew) {
-                        borderColor = '#4caf50'; // 新建：绿色
-                        borderStyle = 'dashed';
-                      } else if (isEdited) {
-                        borderColor = '#ff9800'; // 已编辑：橙色
-                        borderStyle = 'dashed';
-                      }
-                      
-                      return (
-                        <EditableProblem
-                          key={p.pid}
-                          problem={p}
-                          index={index}
-                          cardId={cardIdStr}
-                          borderColor={borderColor}
-                          borderStyle={borderStyle}
-                          isNew={isNew}
-                          isEdited={isEdited}
-                          isPendingDelete={isPendingDelete}
-                          originalProblem={originalProblem}
-                          docId={docId}
-                          getBaseUrl={getBaseUrl}
-                          themeStyles={themeStyles}
-                          onUpdate={(updatedProblem) => {
-                            // 更新problem
-                            const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-                            const nodeId = selectedFile?.nodeId || '';
-                            const nodeCards: Card[] = nodeCardsMap[nodeId] || [];
-                            const cardIndex = nodeCards.findIndex((c: Card) => c.docId === selectedFile?.cardId);
-                            
-                            if (cardIndex >= 0) {
-                              const existingProblems = nodeCards[cardIndex].problems || [];
-                              const problemIndex = existingProblems.findIndex(prob => prob.pid === p.pid);
-                              
-                              if (problemIndex >= 0) {
-                                existingProblems[problemIndex] = updatedProblem;
-                                nodeCards[cardIndex] = {
-                                  ...nodeCards[cardIndex],
-                                  problems: existingProblems,
-                                };
-                                (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
-                                setNodeCardsMapVersion(prev => prev + 1);
-                                
-                                // 标记状态
-                                if (isNew) {
-                                  setNewProblemIds(prev => new Set(prev).add(p.pid));
-                                } else {
-                                  setEditedProblemIds(prev => new Set(prev).add(p.pid));
-                                }
-                                
-                                // 标记该卡片的题目有待提交
-                                if (cardIdStr && !cardIdStr.startsWith('temp-card-')) {
-                                  setPendingProblemCardIds(prev => {
-                                    const next = new Set(prev);
-                                    next.add(cardIdStr);
-                                    return next;
-                                  });
-                                  
-                                  if (isNew) {
-                                    setPendingNewProblemCardIds(prev => {
-                                      const next = new Set(prev);
-                                      next.add(cardIdStr);
-                                      return next;
-                                    });
-                                  } else {
-                                    setPendingEditedProblemIds(prev => {
-                                      const next = new Map(prev);
-                                      if (!next.has(cardIdStr)) {
-                                        next.set(cardIdStr, new Set());
-                                      }
-                                      next.get(cardIdStr)!.add(p.pid);
-                                      return next;
-                                    });
-                                    // 如果之前标记为新建，移除新建标记
-                                    setPendingNewProblemCardIds(prev => {
-                                      const next = new Set(prev);
-                                      next.delete(cardIdStr);
-                                      return next;
-                                    });
-                                  }
-                                }
-                              }
-                            }
-                          }}
-                          onDelete={() => {
-                            // 将problem标记为待删除
-                            setPendingDeleteProblemIds(prev => {
-                              const next = new Map(prev);
-                              next.set(p.pid, cardIdStr);
-                              return next;
-                            });
-                            
-                            // 标记该卡片的题目有待提交
-                            if (cardIdStr && !cardIdStr.startsWith('temp-card-')) {
-                              setPendingProblemCardIds(prev => {
-                                const next = new Set(prev);
-                                next.add(cardIdStr);
-                                return next;
-                              });
-                            }
-                            
-                            // 清除新建/编辑标记（因为要删除了）
-                            setNewProblemIds(prev => {
-                              const next = new Set(prev);
-                              next.delete(p.pid);
-                              return next;
-                            });
-                            setEditedProblemIds(prev => {
-                              const next = new Set(prev);
-                              next.delete(p.pid);
-                              return next;
-                            });
-                            
-                            // 如果之前标记为新建，移除新建标记
-                            setPendingNewProblemCardIds(prev => {
-                              const next = new Set(prev);
-                              next.delete(cardIdStr);
-                              return next;
-                            });
-                            
-                            // 如果之前标记为编辑，移除编辑标记
-                            setPendingEditedProblemIds(prev => {
-                              const next = new Map(prev);
-                              const editedSet = next.get(cardIdStr);
-                              if (editedSet) {
-                                editedSet.delete(p.pid);
-                                if (editedSet.size === 0) {
-                                  next.delete(cardIdStr);
-                                }
-                              }
-                              return next;
-                            });
-                            
-                            // 触发UI更新
-                            setNodeCardsMapVersion(prev => prev + 1);
-                            setOriginalProblemsVersion(prev => prev + 1);
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-
-              {/* 新建单选题表单（默认收起，点击“新建题目”后显示） */}
-              {showProblemForm && (
-                <div
-                  style={{
-                    borderTop: '1px dashed #e1e4e8',
-                    paddingTop: '8px',
-                    marginTop: '4px',
-                  }}
-                >
-                  <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>生成新的单选题</div>
-                  <div style={{ marginBottom: '4px', display: 'flex', gap: 4 }}>
-                    <button
-                      onClick={() => handleGenerateProblemWithAgent()}
-                      disabled={isGeneratingProblemWithAgent || isSavingProblem}
-                      style={{
-                        padding: '4px 8px',
-                        borderRadius: '4px',
-                        border: '1px solid #28a745',
-                        background: isGeneratingProblemWithAgent ? '#c0dfff' : '#28a745',
-                        color: '#fff',
-                        fontSize: '11px',
-                        cursor: (isGeneratingProblemWithAgent || isSavingProblem) ? 'not-allowed' : 'pointer',
-                        flex: 1,
-                      }}
-                    >
-                      {isGeneratingProblemWithAgent ? '生成中...' : '通过Agent生成'}
-                    </button>
-                  </div>
-                  <div style={{ marginBottom: '4px' }}>
-                    <textarea
-                      value={problemStem}
-                      onChange={e => setProblemStem(e.target.value)}
-                      placeholder="题干（例如：这段卡片主要讲了什么？）或输入要求让Agent生成"
-                      style={{
-                        width: '100%',
-                        minHeight: '40px',
-                        resize: 'vertical',
-                        fontSize: '12px',
-                        padding: '4px 6px',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '4px' }}>
-                    {problemOptions.map((opt, index) => (
-                      <input
-                        key={index}
-                        value={opt}
-                        onChange={e => {
-                          const next = [...problemOptions];
-                          next[index] = e.target.value;
-                          setProblemOptions(next);
-                        }}
-                        placeholder={`选项 ${String.fromCharCode(65 + index)}`}
-                        style={{
-                          fontSize: '12px',
-                          padding: '3px 6px',
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px', fontSize: '12px' }}>
-                    <span style={{ marginRight: 4 }}>正确答案：</span>
-                    {problemOptions.map((_, index) => (
-                      <label key={index} style={{ marginRight: 6, cursor: 'pointer' }}>
-                        <input
-                          type="radio"
-                          name="problem-answer"
-                          checked={problemAnswer === index}
-                          onChange={() => setProblemAnswer(index)}
-                          style={{ marginRight: 2 }}
-                        />
-                        {String.fromCharCode(65 + index)}
-                      </label>
-                    ))}
-                  </div>
-                  <div style={{ marginBottom: '4px' }}>
-                    <textarea
-                      value={problemAnalysis}
-                      onChange={e => setProblemAnalysis(e.target.value)}
-                      placeholder="解析（可选）"
-                      style={{
-                        width: '100%',
-                        minHeight: '32px',
-                        resize: 'vertical',
-                        fontSize: '12px',
-                        padding: '4px 6px',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                    <button
-                      onClick={() => {
-                        setShowProblemForm(false);
-                        setProblemStem('');
-                        setProblemOptions(['', '', '', '']);
-                        setProblemAnswer(0);
-                        setProblemAnalysis('');
-                      }}
-                      disabled={isSavingProblem}
-                      style={{
-                        padding: '4px 8px',
-                        borderRadius: '4px',
-                        border: `1px solid ${themeStyles.borderSecondary}`,
-                        background: themeStyles.bgButton,
-                        color: themeStyles.textPrimary,
-                        fontSize: '12px',
-                        cursor: isSavingProblem ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      取消
-                    </button>
-                    <button
-                      onClick={handleCreateSingleProblem}
-                      disabled={isSavingProblem}
-                      style={{
-                        padding: '4px 10px',
-                        borderRadius: '4px',
-                        border: `1px solid ${themeStyles.accent}`,
-                        background: isSavingProblem ? themeStyles.textTertiary : themeStyles.accent,
-                        color: themeStyles.textOnPrimary,
-                        fontSize: '12px',
-                        cursor: isSavingProblem ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      {isSavingProblem ? '生成中...' : '生成单选题'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Skill 模式：右侧工具侧边栏，点击工具可复制工具参数（tool + arguments 模板） */}
       {basePath === 'base/skill' && (
