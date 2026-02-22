@@ -996,6 +996,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const longPressTimerRef = useRef<number | null>(null);
   const longPressFileRef = useRef<FileItem | null>(null);
   const longPressPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const mobileExplorerCloseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null); // 右键菜单
   const [emptyAreaContextMenu, setEmptyAreaContextMenu] = useState<{ x: number; y: number } | null>(null); // 空白区域右键菜单
   const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; items: FileItem[] } | null>(null); // 剪贴板（支持多个项目）
@@ -6753,9 +6754,24 @@ ${currentCardContext}
                     }
                   }
                   handleSelectFile(file);
-                  if (isMobile) setMobileExplorerOpen(false);
+                  if (isMobile) {
+                    if (mobileExplorerCloseTimeoutRef.current) {
+                      clearTimeout(mobileExplorerCloseTimeoutRef.current);
+                      mobileExplorerCloseTimeoutRef.current = null;
+                    }
+                    mobileExplorerCloseTimeoutRef.current = setTimeout(() => {
+                      setMobileExplorerOpen(false);
+                      mobileExplorerCloseTimeoutRef.current = null;
+                    }, 400);
+                  }
                 }}
-                onDoubleClick={(e) => handleStartRename(file, e)}
+                onDoubleClick={(e) => {
+                  if (isMobile && mobileExplorerCloseTimeoutRef.current) {
+                    clearTimeout(mobileExplorerCloseTimeoutRef.current);
+                    mobileExplorerCloseTimeoutRef.current = null;
+                  }
+                  handleStartRename(file, e);
+                }}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
