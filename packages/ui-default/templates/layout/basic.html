@@ -2,6 +2,7 @@
 {% extends "layout/html5.html" %}
 {% block body %}
 {% if UserContext %}{% include "partials/nav.html" %}{% endif %}
+{% if UserContext and handler.user._id and model.system.get('ui-default.domainNavigation') %}{% include "partials/domains_slideout_menu.html" %}{% endif %}
 <div class="slideout-panel" id="panel">
   {% if handler.session.legacy and not handler.session.nohint %}
     <div class="typo hint flex-row flex-main-center flex-cross-center">

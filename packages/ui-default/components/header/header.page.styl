@@ -60,6 +60,7 @@ $header-gap-mini-domain = ($header-bg-height-mini - $nav-item-height - $header-l
     line-height: rem($nav-item-height)
     font-size: rem($font-size-title)
     padding: rem(10px 0)
+    position: relative
 
   a, a:visited, a:hover
     color: #FFF
@@ -72,15 +73,44 @@ $header-gap-mini-domain = ($header-bg-height-mini - $nav-item-height - $header-l
   img
     height: 100%
 
+.header--mobile__row
+  display: flex
+  align-items: center
+  justify-content: space-between
+  position: relative
+  min-height: rem($nav-item-height)
+
 .header--mobile__left
   display: flex
   align-items: center
   gap: rem(8px)
+  flex: 1
+  min-width: 0
+  justify-content: flex-start
+  position: relative
+  z-index: 1
+
+.header--mobile__center
+  position: absolute
+  left: 50%
+  top: 50%
+  transform: translate(-50%, -50%)
+  flex-shrink: 0
+  z-index: 0
+  pointer-events: none
+  .header--mobile__domain
+    pointer-events: auto
+    margin-top: 0
 
 .header--mobile__right
   display: flex
   align-items: center
   gap: rem(8px)
+  flex: 1
+  min-width: 0
+  justify-content: flex-end
+  position: relative
+  z-index: 1
 
 .header--mobile__extra
   display: flex

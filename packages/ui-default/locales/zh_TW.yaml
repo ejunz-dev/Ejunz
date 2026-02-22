@@ -38,6 +38,7 @@ Agent Configuration: Agent 配置
 Agent Skills: Agent Skills
 Agent uses all Skills in this Domain. Skills are managed via Base.: Agent 會自動使用此 Domain 的所有 Skills。Skills 透過 Base 的資料夾系統管理。
 All: 全部
+All Domains Learn: 全域學習
 Always granted all privileges: 總是擁有所有域許可權
 An error has occurred.: 發生了一個錯誤。
 API: API
