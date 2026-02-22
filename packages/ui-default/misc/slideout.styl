@@ -72,6 +72,7 @@ body, #panel
     overflow-y: auto
     overflow-x: hidden
     -webkit-overflow-scrolling: touch
+    touch-action: pan-y
 
   .domains-slideout__list
     list-style: none
@@ -141,7 +142,7 @@ body, #panel
     display: none !important
   body.slideout-domains-open .slideout-menu--left
     display: flex !important
-    z-index: 1
+    z-index: 2
     transform: translateX(0)
     pointer-events: auto
 
