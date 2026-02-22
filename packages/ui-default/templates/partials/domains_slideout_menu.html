@@ -1,5 +1,5 @@
 {% set _current_domain_id = (UiContext and UiContext.domainId) or (handler.context and handler.context.domainId) or (handler.domain and handler.domain._id) or 'system' %}
-<div id="menu-domains" class="slideout-menu slideout-menu--left domains-slideout" aria-hidden="true">
+<div id="menu-domains" class="slideout-menu slideout-menu--left domains-slideout" aria-hidden="true" data-slideout-ignore>
   <header class="domains-slideout__header">{{ _('Joined Domains') }}</header>
   <div class="domains-slideout__scroll" role="region" aria-label="{{ _('Joined Domains') }}">
     <ul class="domains-slideout__list">
