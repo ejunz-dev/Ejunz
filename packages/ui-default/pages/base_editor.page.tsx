@@ -1101,6 +1101,29 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     };
   }, [isMobile]);
 
+  useEffect(() => {
+    if (!isMobile) return;
+    const rightEl = document.getElementById('header-mobile-extra');
+    if (!rightEl) return;
+    const wrapper = document.createElement('div');
+    rightEl.appendChild(wrapper);
+    ReactDOM.render(
+      <button
+        type="button"
+        className={showAIChat ? 'header-mobile-extra-btn is-active' : 'header-mobile-extra-btn'}
+        onClick={() => setShowAIChat((prev) => !prev)}
+        aria-label="AI"
+      >
+        AI
+      </button>,
+      wrapper,
+    );
+    return () => {
+      ReactDOM.unmountComponentAtNode(wrapper);
+      wrapper.remove();
+    };
+  }, [isMobile, showAIChat]);
+
   // 获取当前选中卡片的完整信息（包括 problems）
   const getSelectedCard = useCallback((): Card | null => {
     if (!selectedFile || selectedFile.type !== 'card') return null;
@@ -7864,7 +7887,7 @@ ${currentCardContext}
               </div>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
             {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) && (
               <span style={{ fontSize: '12px', color: themeStyles.textSecondary }}>
                 {pendingChanges.size > 0 && `${pendingChanges.size} 个文件已修改`}
@@ -7880,22 +7903,6 @@ ${currentCardContext}
                 {pendingDeleteProblemIds.size > 0 && `${pendingDeleteProblemIds.size} 个题目删除`}
               </span>
             )}
-            <button
-              onClick={() => setShowAIChat(!showAIChat)}
-              style={{
-                padding: isMobile ? '10px 12px' : '4px 12px',
-                minHeight: isMobile ? '44px' : undefined,
-                border: `1px solid ${themeStyles.borderSecondary}`,
-                borderRadius: '3px',
-                backgroundColor: showAIChat ? themeStyles.accent : themeStyles.bgButton,
-                color: showAIChat ? themeStyles.textOnPrimary : themeStyles.textPrimary,
-                cursor: 'pointer',
-                fontSize: '12px',
-                fontWeight: '500',
-              }}
-            >
-              {showAIChat ? '隐藏 AI' : '显示 AI'}
-            </button>
             <button
               onClick={() => {
                 console.log('[保存按钮] 点击保存，pendingProblemCardIds:', Array.from(pendingProblemCardIds));
@@ -8465,6 +8472,14 @@ ${currentCardContext}
         </div>
       )}
 
+      {showAIChat && isMobile && (
+        <div
+          role="presentation"
+          style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: 'rgba(0,0,0,0.4)' }}
+          onClick={() => setShowAIChat(false)}
+          aria-hidden
+        />
+      )}
       {showAIChat && !isMobile && (
         <div
           onMouseDown={(e) => {
@@ -8504,16 +8519,29 @@ ${currentCardContext}
         </div>
       )}
 
-      {showAIChat && !isMobile && (
+      {showAIChat && (
         <div style={{
-          width: `${chatPanelWidth}px`,
-          height: '100%',
+          ...(isMobile
+            ? {
+                position: 'fixed' as const,
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: 'min(400px, 85vw)',
+                zIndex: 1002,
+                boxShadow: '-4px 0 16px rgba(0,0,0,0.15)',
+                paddingTop: 'env(safe-area-inset-top, 0px)',
+              }
+            : {
+                width: `${chatPanelWidth}px`,
+                height: '100%',
+                flexShrink: 0,
+                transition: isResizing ? 'none' : 'width 0.3s ease',
+              }),
           borderLeft: `1px solid ${themeStyles.borderPrimary}`,
           display: 'flex',
           flexDirection: 'column',
           background: themeStyles.bgPrimary,
-          transition: isResizing ? 'none' : 'width 0.3s ease',
-          flexShrink: 0,
         }}>
           <div style={{
             padding: '12px 16px',
@@ -8859,6 +8887,42 @@ ${currentCardContext}
               发送
             </button>
           </div>
+        </div>
+      )}
+
+      {!isMobile && (
+        <div
+          style={{
+            width: '32px',
+            flexShrink: 0,
+            borderLeft: `1px solid ${themeStyles.borderPrimary}`,
+            backgroundColor: themeStyles.bgSecondary,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setShowAIChat((prev) => !prev)}
+            aria-label="AI"
+            title={showAIChat ? '隐藏 AI 助手' : '显示 AI 助手'}
+            style={{
+              writingMode: 'vertical-rl',
+              textOrientation: 'mixed',
+              padding: '12px 6px',
+              fontSize: '12px',
+              fontWeight: '600',
+              letterSpacing: '0.05em',
+              border: 'none',
+              borderRadius: '4px',
+              background: showAIChat ? themeStyles.accent : themeStyles.bgButton,
+              color: showAIChat ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+              cursor: 'pointer',
+            }}
+          >
+            AI
+          </button>
         </div>
       )}
     </div>
