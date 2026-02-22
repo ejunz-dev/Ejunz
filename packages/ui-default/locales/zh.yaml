@@ -554,6 +554,7 @@ domain_role: 管理角色
 domain_user: 管理用户
 domain: 域
 Domain: 域
+'Domains': 域
 Don't have an account?: 还没有账户？
 Download: 下载
 Downvote: 差评
@@ -650,6 +651,7 @@ Invalid: 无效
 Invitation Code: 邀请码
 IO: 输入输出
 Italic: 斜体
+All Domains Learn: 全域学习
 Joined at: 加入于
 Joined Domains: 加入的域
 Language: 语言

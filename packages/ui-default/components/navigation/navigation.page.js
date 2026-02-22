@@ -83,14 +83,16 @@ function handleNavbar() {
 }
 
 const navigationPage = new AutoloadPage('navigationPage', () => {
-  if (!document.getElementById('panel') || !document.getElementById('menu')) return;
+  const panel = document.getElementById('panel');
+  const menu = document.getElementById('menu');
+  if (!panel || !menu) return;
 
   $(document).on('click', '[name="nav_logout"]', handleNavLogoutClick);
   $(document).on('click', '[name="nav_switch_account"]', handlerSwitchAccount);
 
   const slideout = new Slideout({
-    panel: document.getElementById('panel'),
-    menu: document.getElementById('menu'),
+    panel,
+    menu,
     padding: 200,
     tolerance: 70,
     side: 'right',
@@ -101,8 +103,48 @@ const navigationPage = new AutoloadPage('navigationPage', () => {
   });
 
   const $slideoutOverlay = $('.slideout-overlay');
-  $slideoutOverlay.on('click', () => slideout.close());
-  slideout.on('beforeopen', () => $slideoutOverlay.show());
+  $slideoutOverlay.on('click', () => {
+    slideout.close();
+    if (slideoutDomains) slideoutDomains.close();
+  });
+
+  let slideoutDomains = null;
+  const menuDomains = document.getElementById('menu-domains');
+  if (menuDomains) {
+    slideoutDomains = new Slideout({
+      panel,
+      menu: menuDomains,
+      padding: 260,
+      tolerance: 70,
+      side: 'left',
+      touch: false,
+    });
+    slideoutDomains.on('beforeopen', () => {
+      slideout.close();
+      document.body.classList.add('slideout-domains-open');
+      $slideoutOverlay.show();
+      $('.header__hamburger-domains .hamburger').addClass('is-active');
+      requestAnimationFrame(() => {
+        const current = document.querySelector('#menu-domains .domains-slideout__link.nav--active');
+        if (current) current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      });
+    });
+    slideoutDomains.on('beforeclose', () => {
+      document.body.classList.remove('slideout-domains-open');
+      $('.header__hamburger-domains .hamburger').removeClass('is-active');
+      $slideoutOverlay.hide();
+    });
+    $('#header-mobile-domains-btn').on('click', (e) => {
+      e.stopPropagation();
+      slideout.close();
+      slideoutDomains.toggle();
+    });
+  }
+
+  slideout.on('beforeopen', () => {
+    if (slideoutDomains) slideoutDomains.close();
+    $slideoutOverlay.show();
+  });
   slideout.on('beforeclose', () => $slideoutOverlay.hide());
 
   $('.header__hamburger').on('click', () => slideout.toggle());

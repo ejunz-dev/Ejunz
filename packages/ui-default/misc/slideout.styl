@@ -21,6 +21,9 @@ body, #panel
   height: 100%
   z-index: 99999
 
+.slideout-menu--left
+  display: none !important
+
 +mobile()
   .nav.slideout-menu
     position: fixed
@@ -36,10 +39,118 @@ body, #panel
     height: auto
     min-height: 100vh
 
+  .slideout-menu--left.domains-slideout
+    right: auto
+    left: 0
+    width: 260px
+    height: 100vh
+    max-height: 100vh
+    background: #1D1F20
+    color: #FFF
+    position: fixed
+    top: 0
+    bottom: 0
+    z-index: 0
+    display: flex !important
+    flex-direction: column
+    transform: translateX(-100%)
+    transition: transform 0.3s ease-out-cubic
+    pointer-events: none
+    overflow: hidden
+
+  .domains-slideout__header
+    flex-shrink: 0
+    padding: rem(16px 20px)
+    font-size: rem(15px)
+    font-weight: 600
+    border-bottom: 1px solid #333
+    background: #1D1F20
+
+  .domains-slideout__scroll
+    flex: 1
+    min-height: 0
+    overflow-y: auto
+    overflow-x: hidden
+    -webkit-overflow-scrolling: touch
+
+  .domains-slideout__list
+    list-style: none
+    margin: 0
+    padding: rem(8px 0)
+
+  .domains-slideout__item
+    margin: 0
+
+  .domains-slideout__seperator
+    list-style: none
+    height: 0
+    padding: 0
+    margin: rem(6px 0)
+    border-top: 1px solid #333
+
+  .domains-slideout__link
+    display: flex
+    align-items: center
+    gap: rem(10px)
+    padding: rem(10px 20px)
+    color: #FFF
+    text-decoration: none
+    border-left: 3px solid transparent
+    transition: border-color .2s, background .2s, color .2s
+    &:visited, &:active
+      color: #FFF
+    &:hover
+      border-left-color: $nav-item-hover-color
+      background: rgba(#FFF, 0.10)
+      color: #FFF
+    &.nav--active
+      border-left-color: $nav-item-active-color
+
+  .domains-slideout__avatar
+    flex-shrink: 0
+    line-height: 0
+
+  .domains-slideout__name
+    flex: 1
+    min-width: 0
+    font-size: rem(14px)
+    overflow: hidden
+    text-overflow: ellipsis
+    white-space: nowrap
+
+  .domains-slideout__footer
+    flex-shrink: 0
+    border-top: 1px solid #333
+    padding: rem(12px 20px)
+    background: #1D1F20
+
+  .domains-slideout__footer-link
+    display: inline-flex
+    align-items: center
+    gap: rem(8px)
+    color: #FFF
+    text-decoration: none
+    font-size: rem(14px)
+    &:visited, &:active
+      color: #FFF
+    &:hover
+      color: #FFF
+      text-decoration: underline
+
+  body.slideout-domains-open .nav.slideout-menu
+    display: none !important
+  body.slideout-domains-open .slideout-menu--left
+    display: flex !important
+    z-index: 1
+    transform: translateX(0)
+    pointer-events: auto
+
   .slideout-open,
   .slideout-open body,
   .slideout-open .slideout-panel
     overflow: hidden
 
-  .slideout-open .slideout-menu
+  .slideout-open .nav.slideout-menu
     display: block !important
+  .slideout-open .slideout-menu--left
+    display: none !important
