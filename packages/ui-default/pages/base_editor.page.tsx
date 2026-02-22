@@ -6756,9 +6756,12 @@ ${currentCardContext}
                   }
                 }}
                 onDoubleClick={(e) => {
-                  if (isMobile && mobileExplorerCloseTimeoutRef.current) {
-                    clearTimeout(mobileExplorerCloseTimeoutRef.current);
-                    mobileExplorerCloseTimeoutRef.current = null;
+                  if (isMobile) {
+                    if (mobileExplorerCloseTimeoutRef.current) {
+                      clearTimeout(mobileExplorerCloseTimeoutRef.current);
+                      mobileExplorerCloseTimeoutRef.current = null;
+                    }
+                    return; // 手机模式不启用双击重命名，改用菜单中的重命名
                   }
                   handleStartRename(file, e);
                 }}
@@ -6796,6 +6799,8 @@ ${currentCardContext}
                       longPressTimerRef.current = null;
                     }
                   }
+                  // 手机模式不启用长按拖动，仅保留长按打开菜单
+                  if (isMobile) return;
                   if (touchDragFileRef.current) return;
                   const touch = e.touches[0];
                   const start = touchDragStartPosRef.current;
@@ -7607,6 +7612,27 @@ ${currentCardContext}
                   padding: '6px 16px',
                   cursor: 'pointer',
                   fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => {
+                  handleStartRename(contextMenu.file, { stopPropagation: () => {} } as React.MouseEvent);
+                  setContextMenu(null);
+                }}
+              >
+                重命名
+              </div>
+              <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
                   color: '#24292e',
                 }}
                 onMouseEnter={(e) => {
@@ -7717,6 +7743,27 @@ ${currentCardContext}
                   <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
                 </>
               )}
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => {
+                  handleStartRename(contextMenu.file, { stopPropagation: () => {} } as React.MouseEvent);
+                  setContextMenu(null);
+                }}
+              >
+                重命名
+              </div>
+              <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
               <div
                 style={{
                   padding: '6px 16px',
