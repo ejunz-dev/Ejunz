@@ -158,13 +158,29 @@ export class User {
             const result = await Promise.allSettled(user.pinnedDomains.slice(0, 10).map((i) => domain.get(i)));
             user.domains = result.map((i) => (i.status === 'fulfilled' ? i.value : null)).filter((i) => i);
         }
+        try {
+            const dudict = await domain.getDictUserByDomainId(this._id);
+            let dids = Object.keys(dudict);
+            if (!dids.includes('system')) dids = ['system', ...dids];
+            if (dids.length > 0) {
+                const ddocs = await domain.getMulti({ _id: { $in: dids } } as any).toArray();
+                const list = ddocs.filter((d) => d != null);
+                list.sort((a, b) => (a._id === 'system' ? -1 : b._id === 'system' ? 1 : 0));
+                user.joinedDomains = list;
+            } else {
+                const sys = await domain.get('system');
+                user.joinedDomains = sys ? [sys] : [];
+            }
+        } catch {
+            user.joinedDomains = [];
+        }
         user._isPrivate = true;
         return user;
     }
 
     getFields(type: 'public' | 'private' = 'public') {
         const fields = ['_id', 'uname', 'mail', 'perm', 'role', 'priv', 'regat', 'loginat', 'tfa', 'authn'].concat(this._publicFields);
-        return type === 'public' ? fields : fields.concat(this._privateFields);
+        return type === 'public' ? fields : fields.concat(this._privateFields, 'domains', 'joinedDomains');
     }
 
     serialize(h) {
