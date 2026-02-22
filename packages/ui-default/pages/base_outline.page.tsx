@@ -3529,15 +3529,34 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             </div>
             <div style={{
               flex: 1,
+              minHeight: 0,
               padding: '16px',
               overflow: 'auto',
+              WebkitOverflowScrolling: 'touch',
             }}>
+              <style dangerouslySetInnerHTML={{ __html: `
+                #card-content-outline img, #card-content-outline .typo img, .topic__content img {
+                  max-width: 100% !important;
+                  height: auto !important;
+                  max-height: min(70vh, 600px);
+                  object-fit: contain;
+                  display: block;
+                  margin: 8px 0;
+                }
+                @media (max-width: 600px) {
+                  #card-content-outline img, #card-content-outline .typo img, .topic__content img {
+                    max-height: min(50vh, 400px);
+                  }
+                }
+              ` }} />
               <div
                 id="card-content-outline"
                 className="typo topic__content richmedia"
                 data-emoji-enabled
                 style={{
                   padding: '16px',
+                  overflowWrap: 'break-word',
+                  wordBreak: 'break-word',
                 }}
                 dangerouslySetInnerHTML={{ __html: '<p style="color: #999;">加载中...</p>' }}
               />
