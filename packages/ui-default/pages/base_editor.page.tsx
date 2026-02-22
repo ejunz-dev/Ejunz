@@ -997,6 +997,17 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const longPressFileRef = useRef<FileItem | null>(null);
   const longPressPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const mobileExplorerCloseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const touchDragFileRef = useRef<FileItem | null>(null);
+  const touchDragStartPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const touchDragOverFileRef = useRef<FileItem | null>(null);
+  const touchDropPositionRef = useRef<'before' | 'after' | 'into'>('after');
+  const touchDragListenersRef = useRef<{
+    move: (e: TouchEvent) => void;
+    end: (e: TouchEvent) => void;
+    cancel: (e: TouchEvent) => void;
+  } | null>(null);
+  const fileTreeRef = useRef<FileItem[]>([]);
+  const baseEdgesRef = useRef(base.edges);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null); // 右键菜单
   const [emptyAreaContextMenu, setEmptyAreaContextMenu] = useState<{ x: number; y: number } | null>(null); // 空白区域右键菜单
   const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; items: FileItem[] } | null>(null); // 剪贴板（支持多个项目）
@@ -1480,6 +1491,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
     return items;
   }, [base.nodes, base.edges, nodeCardsMapVersion, expandedNodes, pendingChanges, pendingRenames, pendingDragChanges, pendingDeletes, clipboard]);
+
+  useEffect(() => {
+    fileTreeRef.current = fileTree;
+    baseEdgesRef.current = base.edges;
+  }, [fileTree, base.edges]);
 
   // 触发自动保存展开状态（带防抖）- 复用 base_outline 的方式
   const triggerExpandAutoSave = useCallback(() => {
@@ -5852,6 +5868,33 @@ ${currentCardContext}
     setContextMenu(null);
   }, [base.edges, base.nodes, pendingDeletes, cleanupPendingForTempItem]);
 
+  const getDropPositionForTouch = useCallback((
+    dragged: FileItem,
+    target: FileItem,
+    clientY: number,
+    targetRect: DOMRect,
+    edges: typeof base.edges
+  ): 'before' | 'after' | 'into' => {
+    const midY = targetRect.top + targetRect.height / 2;
+    if (dragged.type === 'card') {
+      if (target.type === 'node') return 'into';
+      if (target.type === 'card') return clientY < midY ? 'before' : 'after';
+    }
+    if (dragged.type === 'node' && target.type === 'node') {
+      const draggedNodeId = dragged.nodeId || '';
+      const targetNodeId = target.nodeId || '';
+      const draggedParentEdge = edges.find(e => e.target === draggedNodeId);
+      const targetParentEdge = edges.find(e => e.target === targetNodeId);
+      const draggedParentId = draggedParentEdge?.source;
+      const targetParentId = targetParentEdge?.source;
+      if (draggedParentId && targetParentId && draggedParentId === targetParentId && draggedNodeId !== targetNodeId) {
+        return clientY < midY ? 'before' : 'after';
+      }
+      return 'into';
+    }
+    return 'after';
+  }, []);
+
   // 拖拽开始
   const handleDragStart = useCallback((e: React.DragEvent, file: FileItem) => {
     setDraggedFile(file);
@@ -5908,88 +5951,15 @@ ${currentCardContext}
     }
     
     // 如果悬停的文件和上次一样，只检查位置是否需要更新
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mouseY = e.clientY;
+    const newDropPosition = getDropPositionForTouch(draggedFile, file, mouseY, rect, base.edges);
     if (lastDragOverFileRef.current?.id === file.id) {
-      // 检测放置位置（之前、之后、或内部）
-      const rect = e.currentTarget.getBoundingClientRect();
-      const mouseY = e.clientY;
-      const itebiddle = rect.top + rect.height / 2;
-      
-      let newDropPosition: 'before' | 'after' | 'into' = 'after';
-      
-      if (draggedFile.type === 'card') {
-        if (file.type === 'node') {
-          newDropPosition = 'into';
-        } else if (file.type === 'card') {
-          newDropPosition = mouseY < itebiddle ? 'before' : 'after';
-        }
-      } else if (draggedFile.type === 'node' && file.type === 'node') {
-        // 检查是否在同一父节点下
-        const draggedNodeId = draggedFile.nodeId || '';
-        const targetNodeId = file.nodeId || '';
-        
-        // 找到拖动节点和目标节点的父节点
-        const draggedParentEdge = base.edges.find(e => e.target === draggedNodeId);
-        const targetParentEdge = base.edges.find(e => e.target === targetNodeId);
-        const draggedParentId = draggedParentEdge?.source;
-        const targetParentId = targetParentEdge?.source;
-        
-        // 如果两个节点有相同的父节点，可以进行排序（before/after）
-        if (draggedParentId && targetParentId && draggedParentId === targetParentId && draggedNodeId !== targetNodeId) {
-          // 在同一父节点下，根据鼠标位置判断是之前还是之后
-          newDropPosition = mouseY < itebiddle ? 'before' : 'after';
-        } else {
-          // 不同父节点或没有父节点，放在内部（作为子节点）
-          newDropPosition = 'into';
-        }
-      }
-      
-      // 只在位置改变时更新
       if (lastDropPositionRef.current !== newDropPosition) {
         setDropPosition(newDropPosition);
         lastDropPositionRef.current = newDropPosition;
       }
       return;
-    }
-    
-    // 检测放置位置（之前、之后、或内部）
-    const rect = e.currentTarget.getBoundingClientRect();
-    const mouseY = e.clientY;
-    const itebiddle = rect.top + rect.height / 2;
-    
-    let newDropPosition: 'before' | 'after' | 'into' = 'after';
-    
-    // 如果拖动的是卡片，可以放在节点内部或其他卡片之前/之后
-    if (draggedFile.type === 'card') {
-      if (file.type === 'node') {
-        // 拖动到节点上，放在内部（最后）
-        newDropPosition = 'into';
-      } else if (file.type === 'card') {
-        // 拖动到卡片上，根据鼠标位置判断是之前还是之后
-        if (mouseY < itebiddle) {
-          newDropPosition = 'before';
-        } else {
-          newDropPosition = 'after';
-        }
-      }
-    } else if (draggedFile.type === 'node' && file.type === 'node') {
-      // 检查是否在同一父节点下
-      const draggedNodeId = draggedFile.nodeId || '';
-      const targetNodeId = file.nodeId || '';
-      
-      // 找到拖动节点和目标节点的父节点
-      const draggedParentEdge = base.edges.find(e => e.target === draggedNodeId);
-      const targetParentEdge = base.edges.find(e => e.target === targetNodeId);
-      const draggedParentId = draggedParentEdge?.source;
-      const targetParentId = targetParentEdge?.source;
-      
-      // 如果两个节点有相同的父节点，可以进行排序（before/after）
-      if (draggedParentId && targetParentId && draggedParentId === targetParentId && draggedNodeId !== targetNodeId) {
-        // 在同一父节点下，根据鼠标位置判断是之前还是之后
-        newDropPosition = mouseY < itebiddle ? 'before' : 'after';
-      } else {
-        // 不同父节点或没有父节点，放在内部（作为子节点）
-        newDropPosition = 'into';
-      }
     }
     
     // 清除之前的延迟更新
@@ -6003,7 +5973,7 @@ ${currentCardContext}
     setDropPosition(newDropPosition);
     lastDragOverFileRef.current = file;
     lastDropPositionRef.current = newDropPosition;
-  }, [draggedFile, base.edges]);
+  }, [draggedFile, base.edges, getDropPositionForTouch]);
 
   // 拖拽离开
   const handleDragLeave = useCallback((e: React.DragEvent) => {
@@ -6022,8 +5992,8 @@ ${currentCardContext}
     }, 50);
   }, []);
 
-  // 放置（纯前端操作，不调用后端）
-  const handleDrop = useCallback((e: React.DragEvent, targetFile: FileItem) => {
+  // 放置（纯前端操作，不调用后端）；positionOverride 用于触屏拖动时传入最新位置（避免 state 未更新）
+  const handleDrop = useCallback((e: React.DragEvent, targetFile: FileItem, positionOverride?: 'before' | 'after' | 'into') => {
     e.preventDefault();
     e.stopPropagation();
     
@@ -6031,6 +6001,8 @@ ${currentCardContext}
       setDragOverFile(null);
       return;
     }
+
+    const effectivePosition = positionOverride ?? dropPosition;
 
     try {
       // 如果拖动的是卡片，可以移动到其他节点下
@@ -6084,9 +6056,9 @@ ${currentCardContext}
           if (draggedCardIndex >= 0 && targetCardIndex >= 0 && draggedCardIndex !== targetCardIndex) {
             // 移除被拖动的卡片
             const [draggedCard] = allCards.splice(draggedCardIndex, 1);
-            // 根据 dropPosition 插入到目标位置
+            // 根据 effectivePosition 插入到目标位置
             let newIndex: number;
-            if (dropPosition === 'before') {
+            if (effectivePosition === 'before') {
               newIndex = targetCardIndex;
             } else {
               // after
@@ -6110,7 +6082,7 @@ ${currentCardContext}
             setNodeCardsMapVersion(prev => prev + 1);
           }
         } else {
-          // 移动到不同节点，根据 dropPosition 设置顺序
+          // 移动到不同节点，根据 effectivePosition 设置顺序
           const draggedCard = nodeCardsMap[draggedFile.nodeId || '']?.find((c: Card) => c.docId === draggedFile.cardId);
           if (!draggedCard) {
             setDragOverFile(null);
@@ -6118,7 +6090,7 @@ ${currentCardContext}
           }
           
           let newOrder: number;
-          if (dropPosition === 'before') {
+          if (effectivePosition === 'before') {
             // 放在目标卡片之前
             newOrder = targetOrder;
             // 目标卡片及其后的卡片需要 order +1
@@ -6177,7 +6149,7 @@ ${currentCardContext}
         // 检查是否在同一父节点下（排序模式）
         const isSameParent = draggedParentId && targetParentId && draggedParentId === targetParentId;
         
-        if (isSameParent && dropPosition !== 'into') {
+        if (isSameParent && effectivePosition !== 'into') {
           // 排序模式：在同一父节点下改变顺序
           // 获取同一父节点下的所有子节点（按order排序）
           const siblingNodes = base.edges
@@ -6196,9 +6168,9 @@ ${currentCardContext}
             // 移除被拖动的节点
             const [draggedNodeData] = siblingNodes.splice(draggedNodeIndex, 1);
             
-            // 根据 dropPosition 插入到目标位置
+            // 根据 effectivePosition 插入到目标位置
             let newIndex: number;
-            if (dropPosition === 'before') {
+            if (effectivePosition === 'before') {
               newIndex = targetNodeIndex;
             } else {
               // after
@@ -6724,6 +6696,7 @@ ${currentCardContext}
               <div
                 key={file.id}
                 data-file-item
+                data-file-id={file.id}
                 draggable={true}
                 onDragStart={(e) => handleDragStart(e, file)}
                 onDragEnd={handleDragEnd}
@@ -6780,6 +6753,7 @@ ${currentCardContext}
                 onTouchStart={(e) => {
                   if (!isMobile || isEditing) return;
                   const touch = e.touches[0];
+                  touchDragStartPosRef.current = { x: touch.clientX, y: touch.clientY };
                   longPressFileRef.current = file;
                   longPressPosRef.current = { x: touch.clientX, y: touch.clientY };
                   longPressTimerRef.current = window.setTimeout(() => {
@@ -6793,11 +6767,83 @@ ${currentCardContext}
                     longPressTimerRef.current = null;
                   }
                 }}
-                onTouchMove={() => {
+                onTouchMove={(e) => {
+                  if (!isMobile) return;
                   if (longPressTimerRef.current) {
-                    clearTimeout(longPressTimerRef.current);
-                    longPressTimerRef.current = null;
+                    const touch = e.touches[0];
+                    const start = touchDragStartPosRef.current;
+                    const dx = touch.clientX - start.x;
+                    const dy = touch.clientY - start.y;
+                    if (Math.sqrt(dx * dx + dy * dy) > 10) {
+                      clearTimeout(longPressTimerRef.current);
+                      longPressTimerRef.current = null;
+                    }
                   }
+                  if (touchDragFileRef.current) return;
+                  const touch = e.touches[0];
+                  const start = touchDragStartPosRef.current;
+                  const dx = touch.clientX - start.x;
+                  const dy = touch.clientY - start.y;
+                  if (Math.sqrt(dx * dx + dy * dy) <= 10) return;
+                  touchDragFileRef.current = file;
+                  setDraggedFile(file);
+                  const onDocTouchMove = (ev: TouchEvent) => {
+                    if (ev.touches.length === 0) return;
+                    const t = ev.touches[0];
+                    ev.preventDefault();
+                    const el = document.elementFromPoint(t.clientX, t.clientY);
+                    const itemEl = el?.closest?.('[data-file-item]') as HTMLElement | null;
+                    const fileId = itemEl?.getAttribute?.('data-file-id');
+                    const tree = fileTreeRef.current;
+                    const targetFile = fileId && tree ? tree.find(f => f.id === fileId) : null;
+                    const dragged = touchDragFileRef.current;
+                    if (!dragged || !targetFile || targetFile.id === dragged.id) {
+                      if (targetFile?.id !== dragged?.id) {
+                        setDragOverFile(null);
+                        touchDragOverFileRef.current = null;
+                      }
+                      return;
+                    }
+                    const rect = itemEl.getBoundingClientRect();
+                    const edges = baseEdgesRef.current;
+                    const pos = getDropPositionForTouch(dragged, targetFile, t.clientY, rect, edges);
+                    setDragOverFile(targetFile);
+                    setDropPosition(pos);
+                    touchDragOverFileRef.current = targetFile;
+                    touchDropPositionRef.current = pos;
+                  };
+                  const removeListeners = () => {
+                    if (!touchDragListenersRef.current) return;
+                    document.removeEventListener('touchmove', touchDragListenersRef.current.move);
+                    document.removeEventListener('touchend', touchDragListenersRef.current.end);
+                    document.removeEventListener('touchcancel', touchDragListenersRef.current.cancel);
+                    touchDragListenersRef.current = null;
+                  };
+                  const onDocTouchEnd = () => {
+                    removeListeners();
+                    const over = touchDragOverFileRef.current;
+                    const dragged = touchDragFileRef.current;
+                    if (over && dragged && over.id !== dragged.id) {
+                      handleDrop(
+                        { preventDefault: () => {}, stopPropagation: () => {} } as React.DragEvent,
+                        over,
+                        touchDropPositionRef.current
+                      );
+                    }
+                    handleDragEnd();
+                    touchDragFileRef.current = null;
+                    touchDragOverFileRef.current = null;
+                  };
+                  const onDocTouchCancel = () => {
+                    removeListeners();
+                    handleDragEnd();
+                    touchDragFileRef.current = null;
+                    touchDragOverFileRef.current = null;
+                  };
+                  document.addEventListener('touchmove', onDocTouchMove, { passive: false });
+                  document.addEventListener('touchend', onDocTouchEnd, { passive: true });
+                  document.addEventListener('touchcancel', onDocTouchCancel, { passive: true });
+                  touchDragListenersRef.current = { move: onDocTouchMove, end: onDocTouchEnd, cancel: onDocTouchCancel };
                 }}
                 style={{
                   padding: `4px ${8 + file.level * 16}px`,
