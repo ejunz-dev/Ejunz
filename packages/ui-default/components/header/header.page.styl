@@ -117,7 +117,8 @@ $header-gap-mini-domain = ($header-bg-height-mini - $nav-item-height - $header-l
   align-items: center
   gap: rem(6px)
 
-  button
+  button,
+  .header-mobile-extra-btn
     padding: rem(6px 10px)
     min-height: 36px
     font-size: rem($font-size-secondary)
@@ -131,6 +132,9 @@ $header-gap-mini-domain = ($header-bg-height-mini - $nav-item-height - $header-l
 
     &:active
       background: rgba(255, 255, 255, 0.25)
+
+  .header-mobile-extra-btn.is-active
+    background: rgba(255, 255, 255, 0.35)
 
 .header__hamburger
   background: none
