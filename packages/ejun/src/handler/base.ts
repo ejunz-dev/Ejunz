@@ -3096,8 +3096,8 @@ export class BaseBatchSaveHandler extends Handler {
                 break;
             }
             
-            // 并行创建当前轮的所有节点
-            await Promise.all(currentRound.map(async (nodeCreate) => {
+            // 顺序创建当前轮节点，避免 addNode 读-改-写 并行导致互相覆盖、节点丢失
+            for (const nodeCreate of currentRound) {
                 try {
                     let realParentId = nodeCreate.parentId;
                     if (nodeCreate.parentId && nodeCreate.parentId.startsWith('temp-node-')) {
@@ -3136,7 +3136,7 @@ export class BaseBatchSaveHandler extends Handler {
                 } catch (error: any) {
                     errors.push(`创建节点失败: ${error.message || '未知错误'}`);
                 }
-            }));
+            }
             
             remainingNodeCreates.splice(0, remainingNodeCreates.length, 
                 ...remainingNodeCreates.filter(nc => !processedNodeCreates.has(nc.tempId))
