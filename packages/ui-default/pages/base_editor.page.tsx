@@ -1011,6 +1011,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [emptyAreaContextMenu, setEmptyAreaContextMenu] = useState<{ x: number; y: number } | null>(null); // 空白区域右键菜单
   const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; items: FileItem[] } | null>(null); // 剪贴板（支持多个项目）
   const [sortWindow, setSortWindow] = useState<{ nodeId: string } | null>(null); // 排序窗口
+  const [importWindow, setImportWindow] = useState<{ nodeId: string } | null>(null); // 导入窗口
+  const [importText, setImportText] = useState(''); // 导入窗口内粘贴的内容
   // AI 聊天相关状态
   const [showAIChat, setShowAIChat] = useState<boolean>(false);
   const [showProblemPanel, setShowProblemPanel] = useState<boolean>(false);
@@ -2755,6 +2757,103 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
     setNodeCardsMapVersion(prev => prev + 1);
     
+    setContextMenu(null);
+  }, [pendingDeletes, base.nodes]);
+
+  // 从剪贴板导入：解析 ## 标题 + 内容（--- 分隔），按块新建 card 并填充。text 由导入窗口传入。
+  const doImportFromText = useCallback((nodeId: string, text: string) => {
+    if (pendingDeletes.has(nodeId)) {
+      Notification.error('无法导入：该节点已在待删除列表中');
+      return;
+    }
+    const nodeExists = base.nodes.some(n => n.id === nodeId);
+    if (!nodeExists && !nodeId.startsWith('temp-node-')) {
+      Notification.error('无法导入：节点不存在');
+      return;
+    }
+    const trimmed = text.trim();
+    if (!trimmed) {
+      Notification.info('请输入或粘贴要导入的内容');
+      return;
+    }
+    // 按 --- 分隔块（兼容 \n\n---\n\n 或 \n---\n）
+    const blocks = trimmed.split(/\n\s*\n\s*---\s*\n\s*\n/).map(s => s.trim()).filter(Boolean);
+    if (blocks.length === 0) {
+      Notification.info('未识别到有效内容（请使用 ## 标题 与 --- 分隔）');
+      return;
+    }
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    if (!nodeCardsMap[nodeId]) nodeCardsMap[nodeId] = [];
+    const maxOrder = nodeCardsMap[nodeId].length > 0
+      ? Math.max(...nodeCardsMap[nodeId].map((c: Card) => c.order || 0))
+      : 0;
+    const newChanges = new Map<string, PendingChange>();
+    let order = maxOrder;
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i];
+      const firstLineMatch = block.match(/^(#{1,6})\s+(.*?)(?:\n|$)/);
+      let title: string;
+      let content: string;
+      if (firstLineMatch) {
+        title = firstLineMatch[2].trim() || '未命名';
+        const firstLine = block.split('\n')[0] || '';
+        content = block.slice(firstLine.length).replace(/^\n+/, '').trim();
+      } else {
+        const firstLine = block.split('\n')[0] || '';
+        title = firstLine.trim() || '未命名';
+        content = block.includes('\n') ? block.slice(firstLine.length).replace(/^\n+/, '').trim() : '';
+      }
+      order += 1;
+      const tempId = `temp-card-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
+      const newCard: PendingCreate = { type: 'card', nodeId, title, tempId };
+      pendingCreatesRef.current.set(tempId, newCard);
+      const tempCard: Card = {
+        docId: tempId,
+        cid: 0,
+        nodeId,
+        title,
+        content,
+        order,
+        updateAt: new Date().toISOString(),
+      } as Card;
+      nodeCardsMap[nodeId].push(tempCard);
+      const fileItem: FileItem = {
+        type: 'card',
+        id: `card-${tempId}`,
+        name: title,
+        nodeId,
+        cardId: tempId,
+        parentId: nodeId,
+        level: 0,
+      };
+      newChanges.set(`card-${tempId}`, { file: fileItem, content, originalContent: '' });
+    }
+    setPendingCreatesCount(pendingCreatesRef.current.size);
+    nodeCardsMap[nodeId].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+    (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+    setNodeCardsMapVersion(prev => prev + 1);
+    setPendingChanges(prev => {
+      const next = new Map(prev);
+      newChanges.forEach((v, k) => next.set(k, v));
+      return next;
+    });
+    Notification.success(`已导入 ${blocks.length} 个卡片，请保存以生效`);
+  }, [pendingDeletes, base.nodes]);
+
+  // 打开导入窗口（点击「导入」时调用）
+  const handleOpenImportWindow = useCallback((nodeId: string) => {
+    if (pendingDeletes.has(nodeId)) {
+      Notification.error('无法导入：该节点已在待删除列表中');
+      setContextMenu(null);
+      return;
+    }
+    const nodeExists = base.nodes.some(n => n.id === nodeId);
+    if (!nodeExists && !nodeId.startsWith('temp-node-')) {
+      Notification.error('无法导入：节点不存在');
+      setContextMenu(null);
+      return;
+    }
+    setImportWindow({ nodeId });
     setContextMenu(null);
   }, [pendingDeletes, base.nodes]);
 
@@ -7518,6 +7617,24 @@ ${currentCardContext}
                   <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
                 </>
               )}
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => handleOpenImportWindow(contextMenu.file.nodeId || '')}
+              >
+                导入
+              </div>
+              <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
               {/* 多选模式的复制、剪切和删除 */}
               {isMultiSelectMode && selectedItems.size > 0 && (
                 <>
@@ -8045,6 +8162,119 @@ ${currentCardContext}
             }
           }}
         />
+      )}
+
+      {/* 导入窗口 */}
+      {importWindow && (
+        <>
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.3)',
+              zIndex: 1100,
+            }}
+            onClick={() => setImportWindow(null)}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '90%',
+              maxWidth: '560px',
+              maxHeight: '80vh',
+              backgroundColor: themeStyles.bgPrimary,
+              border: `1px solid ${themeStyles.borderSecondary}`,
+              borderRadius: '8px',
+              boxShadow: theme === 'dark' ? '0 4px 24px rgba(0,0,0,0.5)' : '0 4px 24px rgba(0,0,0,0.15)',
+              zIndex: 1101,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{
+              padding: '16px',
+              borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+              fontSize: '15px',
+              fontWeight: 500,
+              color: themeStyles.textPrimary,
+            }}>
+              导入
+            </div>
+            <div style={{ padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+              <p style={{ margin: '0 0 10px', fontSize: '13px', color: themeStyles.textSecondary }}>
+                粘贴内容到下方，使用 <code style={{ padding: '0 4px', background: themeStyles.bgSecondary, borderRadius: '3px' }}>## 标题</code> 与 <code style={{ padding: '0 4px', background: themeStyles.bgSecondary, borderRadius: '3px' }}>---</code> 分隔多个卡片
+              </p>
+              <textarea
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                placeholder={'## 1\n\n内容……\n\n---\n\n## 2\n\n内容……'}
+                style={{
+                  width: '100%',
+                  flex: 1,
+                  minHeight: '200px',
+                  padding: '12px',
+                  fontSize: '13px',
+                  fontFamily: 'monospace',
+                  color: themeStyles.textPrimary,
+                  backgroundColor: themeStyles.bgSecondary,
+                  border: `1px solid ${themeStyles.borderPrimary}`,
+                  borderRadius: '4px',
+                  resize: 'vertical',
+                }}
+              />
+            </div>
+            <div style={{
+              padding: '12px 16px',
+              borderTop: `1px solid ${themeStyles.borderPrimary}`,
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '8px',
+            }}>
+              <button
+                type="button"
+                onClick={() => setImportWindow(null)}
+                style={{
+                  padding: '6px 14px',
+                  fontSize: '13px',
+                  color: themeStyles.textSecondary,
+                  backgroundColor: themeStyles.bgSecondary,
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  doImportFromText(importWindow.nodeId, importText);
+                  setImportWindow(null);
+                  setImportText('');
+                }}
+                style={{
+                  padding: '6px 14px',
+                  fontSize: '13px',
+                  color: '#fff',
+                  backgroundColor: themeStyles.accent,
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                确定
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       <div style={{
