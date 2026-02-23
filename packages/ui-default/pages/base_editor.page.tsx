@@ -2959,6 +2959,46 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setContextMenu(null);
   }, [isMultiSelectMode, selectedItems, fileTree]);
 
+  // 复制内容：card 复制该卡片 md 内容，node 复制该节点下所有 card 的 md 内容（不含子节点）
+  const handleCopyContent = useCallback((file: FileItem) => {
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    let text = '';
+    if (file.type === 'card' && file.cardId != null && file.nodeId != null) {
+      const pendingChange = pendingChanges.get(file.id);
+      if (pendingChange) {
+        text = pendingChange.content;
+      } else {
+        const nodeCards = nodeCardsMap[file.nodeId] || [];
+        const card = nodeCards.find((c: Card) => c.docId === file.cardId);
+        text = card?.content || '';
+      }
+    } else if (file.type === 'node' && file.nodeId != null) {
+      const nodeCards = (nodeCardsMap[file.nodeId] || [])
+        .filter((c: Card) => !c.nodeId || c.nodeId === file.nodeId)
+        .sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+      const parts: string[] = [];
+      for (const card of nodeCards) {
+        const cardFileId = `card-${card.docId}`;
+        const pendingChange = pendingChanges.get(cardFileId);
+        const content = pendingChange ? pendingChange.content : (card.content || '');
+        if (content.trim()) parts.push(content.trim());
+      }
+      text = parts.join('\n\n---\n\n');
+    }
+    if (text !== '' && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        Notification.success('内容已复制到剪贴板');
+      }).catch(() => {
+        Notification.error('复制失败');
+      });
+    } else if (text === '') {
+      Notification.info('无内容可复制');
+    } else {
+      Notification.error('剪贴板不可用');
+    }
+    setContextMenu(null);
+  }, [pendingChanges]);
+
   // 剪切节点或卡片（支持多选）
   const handleCut = useCallback((file?: FileItem) => {
     let itemsToCut: FileItem[] = [];
@@ -7619,6 +7659,23 @@ ${currentCardContext}
                   padding: '6px 16px',
                   cursor: 'pointer',
                   fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => handleCopyContent(contextMenu.file)}
+              >
+                复制内容
+              </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
                   color: '#24292e',
                 }}
                 onMouseEnter={(e) => {
@@ -7749,6 +7806,23 @@ ${currentCardContext}
                 onClick={() => handleCopy(contextMenu.file)}
               >
                 复制
+              </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => handleCopyContent(contextMenu.file)}
+              >
+                复制内容
               </div>
               <div
                 style={{
