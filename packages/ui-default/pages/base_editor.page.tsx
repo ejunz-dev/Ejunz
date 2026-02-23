@@ -2959,7 +2959,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setContextMenu(null);
   }, [isMultiSelectMode, selectedItems, fileTree]);
 
-  // 复制内容：card 复制该卡片 md 内容，node 复制该节点下所有 card 的 md 内容（不含子节点）
+  // 复制内容：card 复制该卡片 md 内容，node 递归复制该节点及子节点下所有 card，按层级区分
   const handleCopyContent = useCallback((file: FileItem) => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     let text = '';
@@ -2973,16 +2973,53 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         text = card?.content || '';
       }
     } else if (file.type === 'node' && file.nodeId != null) {
-      const nodeCards = (nodeCardsMap[file.nodeId] || [])
-        .filter((c: Card) => !c.nodeId || c.nodeId === file.nodeId)
-        .sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
-      const parts: string[] = [];
-      for (const card of nodeCards) {
-        const cardFileId = `card-${card.docId}`;
-        const pendingChange = pendingChanges.get(cardFileId);
-        const content = pendingChange ? pendingChange.content : (card.content || '');
-        if (content.trim()) parts.push(content.trim());
-      }
+      const deletedNodeIds = new Set(
+        Array.from(pendingDeletes.values()).filter(d => d.type === 'node').map(d => d.id)
+      );
+      const deletedCardIds = new Set(
+        Array.from(pendingDeletes.values()).filter(d => d.type === 'card').map(d => d.id)
+      );
+      const getChildNodeIds = (nodeId: string): string[] => {
+        return base.edges
+          .filter(e => e.source === nodeId)
+          .map(e => base.nodes.find(n => n.id === e.target))
+          .filter((n): n is BaseNode => n != null)
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          .map(n => n.id);
+      };
+      const getNodeName = (nodeId: string): string => {
+        const node = base.nodes.find(n => n.id === nodeId);
+        return pendingRenames.get(nodeId)?.newName ?? node?.text ?? '';
+      };
+      const buildNodeContent = (nodeId: string, depth: number): string[] => {
+        if (deletedNodeIds.has(nodeId)) return [];
+        const parts: string[] = [];
+        const cardHeading = '#'.repeat(Math.min(2 + depth, 6));
+        const nodeCards = (nodeCardsMap[nodeId] || [])
+          .filter((c: Card) => (!c.nodeId || c.nodeId === nodeId) && !deletedCardIds.has(c.docId))
+          .sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+        for (const card of nodeCards) {
+          const cardFileId = `card-${card.docId}`;
+          const pendingChange = pendingChanges.get(cardFileId);
+          const content = pendingChange ? pendingChange.content : (card.content || '');
+          const title = pendingRenames.get(cardFileId)?.newName ?? card.title ?? '';
+          const titleLine = title.trim() ? `${cardHeading} ${title.trim()}\n\n` : '';
+          const block = titleLine + (content.trim() || '');
+          if (block.trim()) parts.push(block.trim());
+        }
+        const childIds = getChildNodeIds(nodeId);
+        for (const childId of childIds) {
+          const childName = getNodeName(childId).trim();
+          const nodeHeading = '#'.repeat(Math.min(2 + depth, 6));
+          const childParts = buildNodeContent(childId, depth + 1);
+          if (childParts.length > 0) {
+            const nodeTitleLine = childName ? `${nodeHeading} ${childName}\n\n` : '';
+            parts.push((nodeTitleLine + childParts.join('\n\n---\n\n')).trim());
+          }
+        }
+        return parts;
+      };
+      const parts = buildNodeContent(file.nodeId, 0);
       text = parts.join('\n\n---\n\n');
     }
     if (text !== '' && navigator.clipboard?.writeText) {
@@ -2997,7 +3034,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       Notification.error('剪贴板不可用');
     }
     setContextMenu(null);
-  }, [pendingChanges]);
+  }, [pendingChanges, pendingRenames, base, pendingDeletes]);
 
   // 剪切节点或卡片（支持多选）
   const handleCut = useCallback((file?: FileItem) => {
