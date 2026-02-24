@@ -21,6 +21,7 @@ interface Card {
   docId: string;
   title: string;
   content: string;
+  cardFace?: string;
   problems?: Problem[];
   updateAt?: string;
 }
@@ -67,6 +68,7 @@ function LessonPage() {
   }, [flatCards]);
 
   const [renderedContent, setRenderedContent] = useState<string>('');
+  const [renderedCardFace, setRenderedCardFace] = useState<string>('');
   const imageCacheRef = useRef<Cache | null>(null);
 
   // 与 base outline 共用图片 Cache API
@@ -208,6 +210,22 @@ function LessonPage() {
       })
       .catch(() => setRenderedContent(card.content));
   }, [card?.docId, card?.content, (card as Card).updateAt, replaceImagesWithCache, preloadAndCacheImages]);
+
+  // 卡面 markdown 渲染（与 Know it / No impression 一起展示）
+  useEffect(() => {
+    if (!card?.cardFace) {
+      setRenderedCardFace('');
+      return;
+    }
+    fetch('/markdown', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: card.cardFace, inline: false }),
+    })
+      .then((res) => (res.ok ? res.text() : Promise.reject(new Error('Failed to render'))))
+      .then((html) => replaceImagesWithCache(html).then(setRenderedCardFace).catch(() => setRenderedCardFace(html)))
+      .catch(() => setRenderedCardFace(card.cardFace || ''));
+  }, [card?.docId, card?.cardFace, replaceImagesWithCache]);
 
   const allProblems = useMemo(() => {
     return (card.problems || []).map(p => ({ ...p, cardId: card.docId }));
@@ -942,50 +960,67 @@ function LessonPage() {
         </div>
 
         {!browseFlipped ? (
-          <div style={{
-            marginBottom: '30px',
-            padding: '30px',
-            backgroundColor: '#fff',
-            borderRadius: '8px',
-            border: '1px solid #e0e0e0',
-            display: 'flex',
-            gap: '16px',
-            justifyContent: 'center',
-            flexWrap: 'wrap',
-          }}>
-            <button
-              type="button"
-              onClick={() => { setBrowseFlipped(true); setBrowseNoImpression(false); }}
-              style={{
-                padding: '12px 28px',
-                border: 'none',
+          <>
+            {card.cardFace && (renderedCardFace || card.cardFace) && (
+              <div style={{
+                marginBottom: '24px',
+                padding: '20px',
+                backgroundColor: '#fff',
                 borderRadius: '8px',
-                backgroundColor: '#4caf50',
-                color: '#fff',
-                cursor: 'pointer',
-                fontSize: '16px',
-                fontWeight: 'bold',
-              }}
-            >
-              {i18n('Know it')}
-            </button>
-            <button
-              type="button"
-              onClick={() => { setBrowseFlipped(true); setBrowseNoImpression(true); }}
-              style={{
-                padding: '12px 28px',
-                border: 'none',
-                borderRadius: '8px',
-                backgroundColor: '#ff9800',
-                color: '#fff',
-                cursor: 'pointer',
-                fontSize: '16px',
-                fontWeight: 'bold',
-              }}
-            >
-              {i18n('No impression')}
-            </button>
-          </div>
+                border: '1px solid #e0e0e0',
+              }}>
+                <div
+                  className="lesson-markdown-body"
+                  style={{ fontSize: '16px', lineHeight: '1.6', color: '#555' }}
+                  dangerouslySetInnerHTML={{ __html: renderedCardFace || card.cardFace }}
+                />
+              </div>
+            )}
+            <div style={{
+              marginBottom: '30px',
+              padding: '30px',
+              backgroundColor: '#fff',
+              borderRadius: '8px',
+              border: '1px solid #e0e0e0',
+              display: 'flex',
+              gap: '16px',
+              justifyContent: 'center',
+              flexWrap: 'wrap',
+            }}>
+              <button
+                type="button"
+                onClick={() => { setBrowseFlipped(true); setBrowseNoImpression(false); }}
+                style={{
+                  padding: '12px 28px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  backgroundColor: '#4caf50',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                }}
+              >
+                {i18n('Know it')}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setBrowseFlipped(true); setBrowseNoImpression(true); }}
+                style={{
+                  padding: '12px 28px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  backgroundColor: '#ff9800',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                }}
+              >
+                {i18n('No impression')}
+              </button>
+            </div>
+          </>
         ) : (
           <>
             {card.content && (

@@ -3233,9 +3233,10 @@ export class BaseBatchSaveHandler extends Handler {
         // 7. 更新卡片（只传有值的字段，避免 undefined 覆盖库中已有值）
         for (const cardUpdate of cardUpdates) {
             try {
-                const updates: Partial<Pick<CardDoc, 'title' | 'content' | 'order' | 'nodeId' | 'problems'>> = {};
+                const updates: Partial<Pick<CardDoc, 'title' | 'content' | 'cardFace' | 'order' | 'nodeId' | 'problems'>> = {};
                 if (cardUpdate.title !== undefined) updates.title = cardUpdate.title;
                 if (cardUpdate.content !== undefined) updates.content = cardUpdate.content;
+                if (cardUpdate.cardFace !== undefined) updates.cardFace = cardUpdate.cardFace;
                 if (cardUpdate.nodeId !== undefined) updates.nodeId = cardUpdate.nodeId;
                 if (cardUpdate.order !== undefined) updates.order = cardUpdate.order;
                 if (cardUpdate.problems !== undefined) updates.problems = cardUpdate.problems;

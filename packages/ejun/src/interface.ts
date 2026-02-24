@@ -392,6 +392,8 @@ export interface CardDoc {
     owner: number;
     title: string;
     content: string;
+    /** 卡面：在 lesson 中与 Know it / No impression 一起展示的 markdown 内容 */
+    cardFace?: string;
     ip?: string;
     updateAt: Date;
     views: number;
