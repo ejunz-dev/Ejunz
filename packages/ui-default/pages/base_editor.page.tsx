@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
-import { request } from 'vj/utils';
+import { request, i18n } from 'vj/utils';
 import Editor from 'vj/components/editor';
 import { Dialog } from 'vj/components/dialog/index';
 import uploadFiles from 'vj/components/upload';
@@ -21,7 +21,7 @@ interface BaseNode {
   parentId?: string;
   children?: string[];
   expanded?: boolean;
-  order?: number; // 节点顺序
+  order?: number;
 }
 
 interface BaseEdge {
@@ -46,10 +46,10 @@ interface CardProblem {
   type: 'single';
   stem: string;
   options: string[];
-  answer: number; // 正确选项在 options 中的下标
+  answer: number; 
   analysis?: string;
-  imageUrl?: string; // 题目图片URL
-  imageNote?: string; // 图片备注
+  imageUrl?: string; 
+  imageNote?: string; 
 }
 
 interface Card {
@@ -57,13 +57,13 @@ interface Card {
   cid: number;
   title: string;
   content: string;
-  /** 卡面：在 lesson 中与 Know it / No impression 一起展示 */
+  /** Shown in lesson with Know it / No impression */
   cardFace?: string;
   updateAt: string;
   createdAt?: string;
   order?: number;
-  nodeId?: string; // 卡片所属的节点ID（可能被拖动修改）
-  problems?: CardProblem[]; // 本卡片关联的练习题
+  nodeId?: string;
+  problems?: CardProblem[];
 }
 
 type FileItem = {
@@ -74,8 +74,8 @@ type FileItem = {
   cardId?: string;
   parentId?: string;
   level: number;
-  hasPendingChanges?: boolean; // 是否有未保存的更改
-  clipboardType?: 'copy' | 'cut'; // 是否被复制/剪切
+  hasPendingChanges?: boolean; 
+  clipboardType?: 'copy' | 'cut'; 
 };
 
 interface PendingChange {
@@ -92,19 +92,19 @@ interface PendingRename {
 
 interface PendingCreate {
   type: 'card' | 'node';
-  nodeId: string; // 对于 card，是所属节点；对于 node，是父节点
-  title?: string; // card 的标题
-  text?: string; // node 的文本
-  tempId: string; // 临时 ID，用于前端显示
+  nodeId: string;
+  title?: string;
+  text?: string;
+  tempId: string;
 }
 
 interface PendingDelete {
   type: 'card' | 'node';
-  id: string; // cardId 或 nodeId
-  nodeId?: string; // 对于 card，记录所属节点
+  id: string;
+  nodeId?: string;
 }
 
-// 可编辑的题目组件
+// Editable problem item
 const EditableProblem = React.memo(({ 
   problem, 
   index, 
@@ -145,7 +145,7 @@ const EditableProblem = React.memo(({
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // 当problem数据变化时同步状态（例如从外部更新）
+  // Sync state when problem props change
   useEffect(() => {
     setProblemStem(problem.stem);
     setProblemOptions([...problem.options]);
@@ -155,7 +155,7 @@ const EditableProblem = React.memo(({
     setProblemImageNote(problem.imageNote || '');
   }, [problem.pid, problem.stem, problem.answer, problem.analysis, problem.imageUrl, problem.imageNote, JSON.stringify(problem.options)]);
   
-  // 检测变更并更新
+  // Detect changes and call onUpdate
   useEffect(() => {
     const hasChanged = (
       problemStem !== problem.stem ||
@@ -180,18 +180,16 @@ const EditableProblem = React.memo(({
     }
   }, [problemStem, problemOptions, problemAnswer, problemAnalysis, problemImageUrl, problemImageNote, problem, onUpdate]);
   
-  // 处理图片上传（使用和 Markdown 编辑器一样的上传逻辑）
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     
-    // 检查文件类型（和 Markdown 编辑器一样）
     let ext: string;
     const matches = file.type.match(/^image\/(png|jpg|jpeg|gif)$/i);
     if (matches) {
       [, ext] = matches;
     } else {
-      Notification.error('不支持的文件类型，请上传图片文件（png、jpg、jpeg、gif）');
+      Notification.error(i18n('Unsupported file type. Please upload an image (png, jpg, jpeg, gif).'));
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -200,20 +198,16 @@ const EditableProblem = React.memo(({
     
     setIsUploading(true);
     try {
-      // 使用 nanoid 生成文件名（和 Markdown 编辑器一样）
       const filename = `${nanoid()}.${ext}`;
       
-      // 使用 uploadFiles 函数上传（和 Markdown 编辑器一样）
-      // 注意：base 文件上传端点是 /files，不是 /file
       await uploadFiles(getBaseUrl('/files', docId), [file], {
         filenameCallback: () => filename,
       });
       
-      // 构建图片 URL（下载/预览端点是 /file）
       const imageUrl = getBaseUrl(`/${docId}/file/${encodeURIComponent(filename)}`, docId);
       setProblemImageUrl(imageUrl);
     } catch (error: any) {
-      Notification.error(`图片上传失败: ${error.message || '未知错误'}`);
+      Notification.error(`${i18n('Image upload failed')}: ${error.message || i18n('Unknown error')}`);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
@@ -222,11 +216,10 @@ const EditableProblem = React.memo(({
     }
   };
   
-  // 预览图片
+  
   const handlePreviewImage = async () => {
     if (!problemImageUrl) return;
     try {
-      // 使用InfoDialog显示图片（和file预览一样）
       const { InfoDialog } = await import('vj/components/dialog/index');
       const $ = (await import('jquery')).default;
       const { nanoid } = await import('nanoid');
@@ -236,16 +229,15 @@ const EditableProblem = React.memo(({
       const dialog = new InfoDialog({
         $body: tpl`<div class="typo"><img src="${problemImageUrl}" style="max-height: calc(80vh - 45px);"></img></div>`,
         $action: [
-          tpl`<button class="rounded button" data-action="copy" id="copy-${id}">复制链接</button>`,
-          tpl`<button class="rounded button" data-action="cancel">取消</button>`,
-          tpl`<button class="primary rounded button" data-action="download">下载</button>`,
+          tpl`<button class="rounded button" data-action="copy" id="copy-${id}">${i18n('Copy link')}</button>`,
+          tpl`<button class="rounded button" data-action="cancel">${i18n('Cancel')}</button>`,
+          tpl`<button class="primary rounded button" data-action="download">${i18n('Download')}</button>`,
         ],
       });
       
-      // 绑定复制链接功能
       $(`#copy-${id}`).on('click', () => {
         navigator.clipboard.writeText(problemImageUrl).then(() => {
-          Notification.success('链接已复制到剪贴板');
+          Notification.success(i18n('Link copied to clipboard'));
         });
       });
       
@@ -255,7 +247,7 @@ const EditableProblem = React.memo(({
       }
     } catch (error) {
       console.error('预览图片失败:', error);
-      Notification.error('预览图片失败');
+      Notification.error(i18n('Image preview failed'));
     }
   };
   
@@ -271,7 +263,7 @@ const EditableProblem = React.memo(({
         opacity: isPendingDelete ? 0.5 : 1,
       }}
     >
-      {/* 删除按钮 */}
+      {/* Delete button */}
       <div
         onClick={(e) => {
           e.stopPropagation();
@@ -305,16 +297,16 @@ const EditableProblem = React.memo(({
         ×
       </div>
       <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '4px', paddingRight: '24px' }}>
-        Q{index + 1}（单选）
-        {isNew && <span style={{ marginLeft: '8px', fontSize: '10px', color: themeStyles.success }}>新建</span>}
-        {isEdited && !isNew && <span style={{ marginLeft: '8px', fontSize: '10px', color: themeStyles.warning }}>已编辑</span>}
-        {isPendingDelete && <span style={{ marginLeft: '8px', fontSize: '10px', color: themeStyles.error }}>待删除</span>}
+        Q{index + 1}{i18n(' (single choice)')}
+        {isNew && <span style={{ marginLeft: '8px', fontSize: '10px', color: themeStyles.success }}>{i18n('New')}</span>}
+        {isEdited && !isNew && <span style={{ marginLeft: '8px', fontSize: '10px', color: themeStyles.warning }}>{i18n('Edited')}</span>}
+        {isPendingDelete && <span style={{ marginLeft: '8px', fontSize: '10px', color: themeStyles.error }}>{i18n('Pending delete')}</span>}
       </div>
       <div style={{ marginBottom: '4px' }}>
         <textarea
           value={problemStem}
           onChange={e => setProblemStem(e.target.value)}
-          placeholder="题干"
+          placeholder={i18n('Stem')}
           style={{
             width: '100%',
             minHeight: '40px',
@@ -329,7 +321,7 @@ const EditableProblem = React.memo(({
           }}
         />
       </div>
-      {/* 图片上传和预览区域 */}
+      {/* Image upload & preview */}
       <div style={{ marginBottom: '4px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: problemImageUrl ? '4px' : '0' }}>
           <input
@@ -352,7 +344,7 @@ const EditableProblem = React.memo(({
               cursor: isUploading ? 'not-allowed' : 'pointer',
             }}
           >
-            {isUploading ? '上传中...' : '上传图片'}
+            {isUploading ? i18n('Uploading...') : i18n('Upload image')}
           </button>
           {problemImageUrl && (
             <button
@@ -367,18 +359,18 @@ const EditableProblem = React.memo(({
                 cursor: 'pointer',
               }}
             >
-              预览图片
+              {i18n('Preview image')}
             </button>
           )}
         </div>
-        {/* 图片备注输入框（仅在已上传图片时显示） */}
+        {/* Image note (when image present) */}
         {problemImageUrl && (
           <div style={{ marginTop: '4px' }}>
             <input
               type="text"
               value={problemImageNote}
               onChange={e => setProblemImageNote(e.target.value)}
-              placeholder="图片备注（可选）"
+              placeholder={i18n('Image note (optional)')}
               style={{
                 width: '100%',
                 fontSize: '11px',
@@ -403,7 +395,7 @@ const EditableProblem = React.memo(({
               next[oi] = e.target.value;
               setProblemOptions(next);
             }}
-            placeholder={`选项 ${String.fromCharCode(65 + oi)}`}
+            placeholder={`${i18n('Option')} ${String.fromCharCode(65 + oi)}`}
             style={{
               fontSize: '12px',
               padding: '3px 6px',
@@ -417,7 +409,7 @@ const EditableProblem = React.memo(({
         ))}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px', fontSize: '12px', color: themeStyles.textPrimary }}>
-        <span style={{ marginRight: 4 }}>正确答案：</span>
+        <span style={{ marginRight: 4 }}>{i18n('Correct answer')}:</span>
         {problemOptions.map((_, oi) => (
           <label key={oi} style={{ marginRight: 6, cursor: 'pointer', color: themeStyles.textPrimary }}>
             <input
@@ -435,7 +427,7 @@ const EditableProblem = React.memo(({
         <textarea
           value={problemAnalysis}
           onChange={e => setProblemAnalysis(e.target.value)}
-          placeholder="解析（可选）"
+          placeholder={i18n('Analysis (optional)')}
           style={{
             width: '100%',
             minHeight: '32px',
@@ -454,7 +446,7 @@ const EditableProblem = React.memo(({
   );
 });
 
-// 排序窗口组件
+// Sort window
 function SortWindow({ 
   nodeId, 
   base, 
@@ -472,14 +464,14 @@ function SortWindow({
   getBaseUrl: (path: string, docId: string) => string;
   onClose: () => void; 
   onSave: (sortedItems: Array<{ type: 'node' | 'card'; id: string; order: number }>) => Promise<void>;
-  nodeCardsMapVersion?: number; // 用于触发重新计算cards
+  nodeCardsMapVersion?: number;
   themeStyles: any;
   theme: 'light' | 'dark';
 }) {
   const [draggedItem, setDraggedItem] = useState<{ type: 'node' | 'card'; id: string; index: number } | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   
-  // 获取子节点（按order排序，包含临时节点）
+  
   const childNodes = useMemo(() => {
     return base.edges
       .filter(e => e.source === nodeId)
@@ -487,7 +479,7 @@ function SortWindow({
         const node = base.nodes.find(n => n.id === e.target);
         return node ? { 
           id: node.id, 
-          name: node.text || '未命名节点',
+          name: node.text || i18n('Unnamed Node'),
           order: node.order || 0,
         } : null;
       })
@@ -495,7 +487,6 @@ function SortWindow({
       .sort((a, b) => (a!.order || 0) - (b!.order || 0)) as Array<{ id: string; name: string; order: number }>;
   }, [base.edges, base.nodes, nodeId]);
   
-  // 获取卡片（按order排序，包含临时卡片）
   const cards = useMemo(() => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const nodeCards = (nodeCardsMap[nodeId] || [])
@@ -503,28 +494,26 @@ function SortWindow({
       .sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
     return nodeCards.map((card: Card) => ({
       id: card.docId,
-      name: card.title || '未命名卡片',
+      name: card.title || i18n('Unnamed Card'),
       order: card.order || 0,
     }));
-  }, [nodeId, nodeCardsMapVersion]); // 添加nodeCardsMapVersion依赖，确保能响应nodeCardsMap的变化
+  }, [nodeId, nodeCardsMapVersion]); 
   
-  // 合并的列表，按照order混合排序（node和card混合在一起）
+  
   const [items, setItems] = useState<Array<{ type: 'node' | 'card'; id: string; name: string; order: number }>>(() => {
     const allItems: Array<{ type: 'node' | 'card'; id: string; name: string; order: number }> = [
       ...childNodes.map(n => ({ type: 'node' as const, id: n.id, name: n.name, order: n.order })),
       ...cards.map(c => ({ type: 'card' as const, id: c.id, name: c.name, order: c.order })),
     ];
-    // 按order排序
     return allItems.sort((a, b) => (a.order || 0) - (b.order || 0));
   });
   
-  // 当childNodes或cards变化时更新items
   useEffect(() => {
     const allItems: Array<{ type: 'node' | 'card'; id: string; name: string; order: number }> = [
       ...childNodes.map(n => ({ type: 'node' as const, id: n.id, name: n.name, order: n.order })),
       ...cards.map(c => ({ type: 'card' as const, id: c.id, name: c.name, order: c.order })),
     ];
-    // 按order排序
+    
     setItems(allItems.sort((a, b) => (a.order || 0) - (b.order || 0)));
   }, [childNodes, cards]);
   
@@ -569,7 +558,6 @@ function SortWindow({
   };
   
   const handleSave = async () => {
-    // 按照当前items的顺序，为每个item分配order（从1开始）
     const sortedItems: Array<{ type: 'node' | 'card'; id: string; order: number }> = [];
     
     for (let i = 0; i < items.length; i++) {
@@ -617,7 +605,7 @@ function SortWindow({
         >
           <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: themeStyles.textPrimary }}>
-              排序: {currentNode?.text || '未命名节点'}
+              {i18n('Sort')}: {currentNode?.text || i18n('Unnamed Node')}
             </h3>
             <button
               onClick={onClose}
@@ -640,13 +628,13 @@ function SortWindow({
           </div>
           
           <div style={{ marginBottom: '16px', fontSize: '13px', color: themeStyles.textTertiary }}>
-            拖拽项目以改变顺序
+            {i18n('Drag items to reorder')}
           </div>
           
           <div style={{ marginBottom: '16px' }}>
             {items.length === 0 ? (
               <div style={{ padding: '20px', textAlign: 'center', color: themeStyles.textTertiary }}>
-                暂无子节点和卡片
+                {i18n('No child nodes or cards')}
               </div>
             ) : (
               items.map((item, index) => (
@@ -704,7 +692,7 @@ function SortWindow({
                 fontSize: '13px',
               }}
             >
-              取消
+              {i18n('Cancel')}
             </button>
             <button
               onClick={handleSave}
@@ -719,7 +707,7 @@ function SortWindow({
                 fontWeight: '500',
               }}
             >
-              保存
+              {i18n('Save')}
             </button>
           </div>
         </div>
@@ -728,17 +716,14 @@ function SortWindow({
   );
 }
 
-// 迁移函数：为没有order字段的node和card分配order
-// 返回迁移后的base和是否需要保存的标志
+// Assign order to nodes/cards that lack it; returns migrated base and needsSave
 function migrateOrderFields(base: BaseDoc): { base: BaseDoc; needsSave: boolean; cardUpdates: Array<{ cardId: string; nodeId: string; order: number }> } {
   const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
   let needsSave = false;
   const cardUpdates: Array<{ cardId: string; nodeId: string; order: number }> = [];
   
-  // 检查nodes是否需要迁移
   const nodesNeedMigration = base.nodes.some(node => node.order === undefined);
   
-  // 检查cards是否需要迁移
   let cardsNeedMigration = false;
   for (const nodeId in nodeCardsMap) {
     const cards = nodeCardsMap[nodeId] || [];
@@ -754,20 +739,20 @@ function migrateOrderFields(base: BaseDoc): { base: BaseDoc; needsSave: boolean;
   
   needsSave = true;
   
-  // 创建节点映射
+  
   const nodeMap = new Map<string, BaseNode>();
   base.nodes.forEach(node => {
     nodeMap.set(node.id, { ...node });
   });
   
-  // 为每个节点的子节点分配order
+  
   const processedNodes = new Set<string>();
   
   const assignOrderToChildren = (parentId: string) => {
     if (processedNodes.has(parentId)) return;
     processedNodes.add(parentId);
     
-    // 获取该节点的所有子节点（按edges的顺序）
+    
     const childEdges = base.edges
       .filter(e => e.source === parentId)
       .map(e => {
@@ -776,7 +761,6 @@ function migrateOrderFields(base: BaseDoc): { base: BaseDoc; needsSave: boolean;
       })
       .filter(Boolean) as Array<{ node: BaseNode; edge: BaseEdge }>;
     
-    // 如果子节点需要迁移，按edges的顺序分配order
     if (childEdges.some(item => item.node.order === undefined)) {
       childEdges.forEach((item, index) => {
         if (item.node.order === undefined) {
@@ -785,13 +769,11 @@ function migrateOrderFields(base: BaseDoc): { base: BaseDoc; needsSave: boolean;
       });
     }
     
-    // 递归处理子节点
     childEdges.forEach(item => {
       assignOrderToChildren(item.node.id);
     });
   };
   
-  // 找到根节点并开始迁移
   const rootNodes = base.nodes.filter(node => 
     !base.edges.some(edge => edge.target === node.id)
   );
@@ -800,18 +782,17 @@ function migrateOrderFields(base: BaseDoc): { base: BaseDoc; needsSave: boolean;
     assignOrderToChildren(rootNode.id);
   });
   
-  // 迁移cards的order
+  
   for (const nodeId in nodeCardsMap) {
     const cards = nodeCardsMap[nodeId] || [];
     const cardsNeedOrder = cards.filter((card: Card) => card.order === undefined);
     
     if (cardsNeedOrder.length > 0) {
-      // 获取已有order的最大值
       const maxOrder = cards
         .filter((card: Card) => card.order !== undefined)
         .reduce((max: number, card: Card) => Math.max(max, card.order || 0), 0);
       
-      // 为没有order的card分配order
+      
       cardsNeedOrder.forEach((card: Card, index: number) => {
         const newOrder = maxOrder + index + 1;
         card.order = newOrder;
@@ -824,12 +805,10 @@ function migrateOrderFields(base: BaseDoc): { base: BaseDoc; needsSave: boolean;
     }
   }
   
-  // 更新nodeCardsMap
   if (cardsNeedMigration) {
     (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
   }
   
-  // 返回更新后的base
   return {
     base: {
       ...base,
@@ -841,7 +820,7 @@ function migrateOrderFields(base: BaseDoc): { base: BaseDoc; needsSave: boolean;
 }
 
 export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docId: string | undefined; initialData: BaseDoc; basePath?: string }) {
-  // 主题检测
+  
   const getTheme = useCallback(() => {
     try {
       if ((window as any).Ejunz?.utils?.getTheme) {
@@ -858,7 +837,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   const [theme, setTheme] = useState<'light' | 'dark'>(() => getTheme());
 
-  // 监听主题变化
   useEffect(() => {
     const checkTheme = () => {
       const newTheme = getTheme();
@@ -867,19 +845,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
     };
 
-    // 初始检查
     checkTheme();
-
-    // 定期检查主题变化（因为主题切换可能通过页面刷新实现）
     const interval = setInterval(checkTheme, 500);
     return () => clearInterval(interval);
   }, [theme, getTheme]);
 
-  // 主题样式对象
   const themeStyles = useMemo(() => {
     const isDark = theme === 'dark';
     return {
-      // 背景色
       bgPrimary: isDark ? '#121212' : '#fff',
       bgSecondary: isDark ? '#323334' : '#f6f8fa',
       bgTertiary: isDark ? '#424242' : '#fafbfc',
@@ -891,18 +864,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       bgButtonActive: isDark ? '#0366d6' : '#0366d6',
       bgButtonHover: isDark ? '#424242' : '#f3f4f6',
       
-      // 文字颜色
+      
       textPrimary: isDark ? '#eee' : '#24292e',
       textSecondary: isDark ? '#bdbdbd' : '#586069',
       textTertiary: isDark ? '#999' : '#6a737d',
       textOnPrimary: isDark ? '#fff' : '#fff',
       
-      // 边框颜色
       borderPrimary: isDark ? '#424242' : '#e1e4e8',
       borderSecondary: isDark ? '#555' : '#d1d5da',
       borderFocus: isDark ? '#0366d6' : '#0366d6',
       
-      // 其他颜色
       accent: isDark ? '#55b6e2' : '#0366d6',
       success: isDark ? '#4caf50' : '#28a745',
       warning: isDark ? '#ff9800' : '#ff9800',
@@ -910,17 +881,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     };
   }, [theme]);
 
-  // 在初始化时迁移order字段
   const migrationResult = useMemo(() => migrateOrderFields(initialData), [initialData]);
   const [base, setBase] = useState<BaseDoc>(() => migrationResult.base);
   
-  // 如果需要进行迁移，自动保存
   useEffect(() => {
     if (migrationResult.needsSave) {
       const saveMigration = async () => {
         try {
-          // 保存nodes的order
-          // 过滤掉临时节点和边，确保不会保存临时数据
           const migrationNodes = migrationResult.base.nodes.filter(n => !n.id.startsWith('temp-node-'));
           const migrationEdges = migrationResult.base.edges.filter(e => 
             !e.source.startsWith('temp-node-') && 
@@ -934,7 +901,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             operationDescription: '自动迁移：为节点和卡片添加order字段',
           });
           
-          // 批量更新cards的order
           if (migrationResult.cardUpdates.length > 0) {
             const domainId = (window as any).UiContext?.domainId || 'system';
             const updatePromises = migrationResult.cardUpdates.map(update =>
@@ -947,10 +913,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             await Promise.all(updatePromises);
           }
           
-          console.log('Order字段迁移完成');
+          console.log('Order migration done');
         } catch (error: any) {
-          console.error('迁移order字段失败:', error);
-          // 不显示错误提示，因为这是后台自动迁移
+          console.error('Order migration failed:', error);
         }
       };
       
@@ -958,7 +923,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
   }, [migrationResult.needsSave, migrationResult.base.nodes, migrationResult.base.edges, migrationResult.cardUpdates, docId]);
   
-  // 页面刷新时清空所有pending状态，确保不会有残留的临时数据
   useEffect(() => {
     pendingCreatesRef.current.clear();
     setPendingCreatesCount(0);
@@ -966,34 +930,33 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setPendingRenames(new Map());
     setPendingDeletes(new Map());
     setPendingDragChanges(new Set());
-  }, [docId]); // 当docId变化时（即切换到不同的base时）清空
+  }, [docId]);
   
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [fileContent, setFileContent] = useState<string>('');
   const [isCommitting, setIsCommitting] = useState(false);
-  // 多选模式相关状态
   const [isMultiSelectMode, setIsMultiSelectMode] = useState<boolean>(false);
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set()); // 选中的文件ID集合
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const getNodeChildrenRef = useRef<((nodeId: string, visited?: Set<string>) => { nodes: string[]; cards: string[] }) | null>(null);
   const [editorInstance, setEditorInstance] = useState<any>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const [pendingChanges, setPendingChanges] = useState<Map<string, PendingChange>>(new Map());
   const [pendingRenames, setPendingRenames] = useState<Map<string, PendingRename>>(new Map());
-  const pendingCreatesRef = useRef<Map<string, PendingCreate>>(new Map()); // 待创建的项目（使用 useRef，避免重新渲染导致状态不一致）
-  const [pendingCreatesCount, setPendingCreatesCount] = useState<number>(0); // 用于触发重新渲染，跟踪pendingCreates的数量
-  const [pendingDeletes, setPendingDeletes] = useState<Map<string, PendingDelete>>(new Map()); // 待删除的项目
+  const pendingCreatesRef = useRef<Map<string, PendingCreate>>(new Map());
+  const [pendingCreatesCount, setPendingCreatesCount] = useState<number>(0);
+  const [pendingDeletes, setPendingDeletes] = useState<Map<string, PendingDelete>>(new Map());
   const originalContentsRef = useRef<Map<string, string>>(new Map());
   const [draggedFile, setDraggedFile] = useState<FileItem | null>(null);
   const [dragOverFile, setDragOverFile] = useState<FileItem | null>(null);
   const [dropPosition, setDropPosition] = useState<'before' | 'after' | 'into'>('after');
   const [editingFile, setEditingFile] = useState<FileItem | null>(null);
   const [editingName, setEditingName] = useState<string>('');
-  const [pendingDragChanges, setPendingDragChanges] = useState<Set<string>>(new Set()); // 记录哪些卡片/节点被拖动过
-  const [nodeCardsMapVersion, setNodeCardsMapVersion] = useState(0); // 用于触发 fileTree 重新计算
-  const dragLeaveTimeoutRef = useRef<NodeJS.Timeout | null>(null); // 用于延迟清除 dragOverFile
-  const dragOverTimeoutRef = useRef<NodeJS.Timeout | null>(null); // 用于节流 dragOver 更新
-  const lastDragOverFileRef = useRef<FileItem | null>(null); // 上次悬停的文件
-  const lastDropPositionRef = useRef<'before' | 'after' | 'into'>('after'); // 上次的放置位置
+  const [pendingDragChanges, setPendingDragChanges] = useState<Set<string>>(new Set());
+  const [nodeCardsMapVersion, setNodeCardsMapVersion] = useState(0);
+  const dragLeaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const dragOverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastDragOverFileRef = useRef<FileItem | null>(null);
+  const lastDropPositionRef = useRef<'before' | 'after' | 'into'>('after');
   const longPressTimerRef = useRef<number | null>(null);
   const longPressFileRef = useRef<FileItem | null>(null);
   const longPressPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -1009,18 +972,17 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   } | null>(null);
   const fileTreeRef = useRef<FileItem[]>([]);
   const baseEdgesRef = useRef(base.edges);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null); // 右键菜单
-  const [emptyAreaContextMenu, setEmptyAreaContextMenu] = useState<{ x: number; y: number } | null>(null); // 空白区域右键菜单
-  const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; items: FileItem[] } | null>(null); // 剪贴板（支持多个项目）
-  const [sortWindow, setSortWindow] = useState<{ nodeId: string } | null>(null); // 排序窗口
-  const [importWindow, setImportWindow] = useState<{ nodeId: string } | null>(null); // 导入窗口
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null);
+  const [emptyAreaContextMenu, setEmptyAreaContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; items: FileItem[] } | null>(null);
+  const [sortWindow, setSortWindow] = useState<{ nodeId: string } | null>(null);
+  const [importWindow, setImportWindow] = useState<{ nodeId: string } | null>(null);
   const [cardFaceWindow, setCardFaceWindow] = useState<{ file: FileItem } | null>(null);
   const [cardFaceEditContent, setCardFaceEditContent] = useState('');
   const [pendingCardFaceChanges, setPendingCardFaceChanges] = useState<Record<string, string>>({});
   const cardFaceEditorRef = useRef<HTMLTextAreaElement | null>(null);
   const cardFaceEditorInstanceRef = useRef<any>(null);
-  const [importText, setImportText] = useState(''); // 导入窗口内粘贴的内容
-  // AI 聊天相关状态
+  const [importText, setImportText] = useState('');
   const [showAIChat, setShowAIChat] = useState<boolean>(false);
   const [showProblemPanel, setShowProblemPanel] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<Array<{ 
@@ -1036,7 +998,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const chatMessagesContainerRef = useRef<HTMLDivElement>(null);
   
-  // 智能滚动：只在用户位于容器底部附近时才自动滚动
   const scrollToBottomIfNeeded = useCallback(() => {
     if (!chatMessagesContainerRef.current || !chatMessagesEndRef.current) {
       return;
@@ -1047,11 +1008,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const scrollHeight = container.scrollHeight;
     const clientHeight = container.clientHeight;
     
-    // 如果用户距离底部小于 100px，认为是"在底部附近"，才自动滚动
     const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
     
     if (isNearBottom) {
-      // 使用 requestAnimationFrame 确保 DOM 更新后再滚动
       requestAnimationFrame(() => {
         if (chatMessagesContainerRef.current) {
           chatMessagesContainerRef.current.scrollTop = chatMessagesContainerRef.current.scrollHeight;
@@ -1060,42 +1019,33 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
   }, []);
   
-  const [chatPanelWidth, setChatPanelWidth] = useState<number>(300); // 像素
+  const [chatPanelWidth, setChatPanelWidth] = useState<number>(300);
   const PROBLEM_PANEL_WIDTH = 360;
   const [isResizing, setIsResizing] = useState<boolean>(false);
   const resizeStartXRef = useRef<number>(0);
   const resizeStartWidthRef = useRef<number>(300);
   const executeAIOperationsRef = useRef<((operations: any[]) => Promise<{ success: boolean; errors: string[] }>) | null>(null);
-  const chatWebSocketRef = useRef<any>(null); // WebSocket 连接
-  const [explorerMode, setExplorerMode] = useState<'tree' | 'files' | 'pending'>('tree'); // 文件树模式、文件模式或待提交模式
+  const chatWebSocketRef = useRef<any>(null);
+  const [explorerMode, setExplorerMode] = useState<'tree' | 'files' | 'pending'>('tree');
   const [domainTools, setDomainTools] = useState<any[]>([]);
   const [domainToolsLoading, setDomainToolsLoading] = useState<boolean>(false);
   const [files, setFiles] = useState<Array<{ _id: string; name: string; size: number; etag?: string; lastModified?: Date | string }>>(initialData.files || []);
   const [selectedFileForPreview, setSelectedFileForPreview] = useState<string | null>(null);
-  // 单选题编辑状态（针对当前选中的卡片）
   const [problemStem, setProblemStem] = useState<string>('');
   const [problemOptions, setProblemOptions] = useState<string[]>(['', '', '', '']);
   const [problemAnswer, setProblemAnswer] = useState<number>(0);
   const [problemAnalysis, setProblemAnalysis] = useState<string>('');
   const [isSavingProblem, setIsSavingProblem] = useState<boolean>(false);
-  const [showProblemForm, setShowProblemForm] = useState<boolean>(false); // 是否展开新建题目表单
-  // 有题目变更但尚未提交的卡片（使用后端真实 cardId）
+  const [showProblemForm, setShowProblemForm] = useState<boolean>(false);
   const [pendingProblemCardIds, setPendingProblemCardIds] = useState<Set<string>>(new Set());
-  // 区分新建和编辑：新建的problem cardId集合
   const [pendingNewProblemCardIds, setPendingNewProblemCardIds] = useState<Set<string>>(new Set());
-  // 编辑的problem cardId集合（cardId -> Set<problemId>）
   const [pendingEditedProblemIds, setPendingEditedProblemIds] = useState<Map<string, Set<string>>>(new Map());
-  // 跟踪待删除的problem ID（problemId -> cardId）
   const [pendingDeleteProblemIds, setPendingDeleteProblemIds] = useState<Map<string, string>>(new Map());
-  // 跟踪新建的problem ID（用于颜色标记）
   const [newProblemIds, setNewProblemIds] = useState<Set<string>>(new Set());
-  // 跟踪已编辑的problem ID（用于颜色标记）
   const [editedProblemIds, setEditedProblemIds] = useState<Set<string>>(new Set());
-  // 保存原始problem数据用于比较（cardId -> Map<problemId, originalProblem>）
   const originalProblemsRef = useRef<Map<string, Map<string, CardProblem>>>(new Map());
-  // 用于触发题目列表重新渲染的版本号
   const [originalProblemsVersion, setOriginalProblemsVersion] = useState(0);
-  const [isGeneratingProblemWithAgent, setIsGeneratingProblemWithAgent] = useState<boolean>(false); // 是否正在通过agent生成题目
+  const [isGeneratingProblemWithAgent, setIsGeneratingProblemWithAgent] = useState<boolean>(false);
 
   const MOBILE_BREAKPOINT = 768;
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT);
@@ -1139,9 +1089,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             type="button"
             className={showProblemPanel ? 'header-mobile-extra-btn is-active' : 'header-mobile-extra-btn'}
             onClick={() => setShowProblemPanel((prev) => !prev)}
-            aria-label="题目"
+            aria-label={i18n('Question')}
           >
-            题目
+            {i18n('Question')}
           </button>
         )}
         <button
@@ -1161,7 +1111,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     };
   }, [isMobile, showAIChat, showProblemPanel, selectedFile?.type]);
 
-  // 获取当前选中卡片的完整信息（包括 problems）
+  
   const getSelectedCard = useCallback((): Card | null => {
     if (!selectedFile || selectedFile.type !== 'card') return null;
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
@@ -1170,7 +1120,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     return card || null;
   }, [selectedFile]);
 
-  // 当选中的卡片变化时，重置题目编辑表单并保存原始problem数据
+  
   useEffect(() => {
     setProblemStem('');
     setProblemOptions(['', '', '', '']);
@@ -1178,7 +1128,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setProblemAnalysis('');
     setShowProblemForm(false);
     
-    // 保存当前卡片的原始problem数据用于比较
+    
     if (selectedFile && selectedFile.type === 'card') {
       const card = getSelectedCard();
       if (card && card.problems) {
@@ -1192,18 +1142,18 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
   }, [selectedFile?.id]);
   
-  // 当 base.files 变化时更新 files 状态
+  
   useEffect(() => {
     if (base.files) {
       setFiles(base.files);
     }
   }, [base.files]);
   
-  // 从节点的 expanded 字段读取展开状态
+  
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
     const initialExpanded = new Set<string>();
-    // 在组件初始化时，根据节点的 expanded 字段决定是否展开
-    // expanded 为 undefined 或 true 时展开，为 false 时折叠
+    
+    
     if (initialData?.nodes) {
       initialData.nodes.forEach(node => {
         if (node.expanded !== false) {
@@ -1212,16 +1162,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       });
     }
     return initialExpanded;
-  }); // 记录展开的节点
+  });
   
-  // 自动保存定时器 ref
+  
   const expandSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
-  // 保存最新的展开状态 ref，用于自动保存时获取最新值
+  
   const expandedNodesRef = useRef<Set<string>>(expandedNodes);
-  // 保存最新的 base ref，用于自动保存时获取最新值
+  
   const baseRef = useRef<BaseDoc>(base);
   
-  // 同步 refs
+  
   useEffect(() => {
     expandedNodesRef.current = expandedNodes;
   }, [expandedNodes]);
@@ -1230,7 +1180,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     baseRef.current = base;
   }, [base]);
   
-  // 组件卸载时清理定时器
+  
   useEffect(() => {
     return () => {
       if (expandSaveTimerRef.current) {
@@ -1240,25 +1190,25 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     };
   }, []);
 
-  // 获取带 domainId 的 base URL（使用 useCallback 以便在依赖中使用）
+  
   const getBaseUrl = useCallback((path: string, docId?: string): string => {
     const domainId = (window as any).UiContext?.domainId || 'system';
-    // 使用 basePath 参数
+    
     return `/d/${domainId}/${basePath}${path}`;
   }, [basePath]);
 
-  // 构建文件树（支持折叠）
+  
   const fileTree = useMemo(() => {
     const items: FileItem[] = [];
     const nodeMap = new Map<string, { node: BaseNode; children: string[] }>();
     const rootNodes: string[] = [];
 
-    // 初始化节点映射
+    
     base.nodes.forEach((node) => {
       nodeMap.set(node.id, { node, children: [] });
     });
 
-    // 构建父子关系
+    
     base.edges.forEach((edge) => {
       const parent = nodeMap.get(edge.source);
       if (parent) {
@@ -1266,7 +1216,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
     });
     
-    // 为每个节点的子节点按照order排序
+    
     nodeMap.forEach((nodeData) => {
       nodeData.children.sort((a, b) => {
         const nodeA = base.nodes.find(n => n.id === a);
@@ -1277,7 +1227,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       });
     });
 
-    // 找到根节点
+    
     base.nodes.forEach((node) => {
       const hasParent = base.edges.some((edge) => edge.target === node.id);
       if (!hasParent) {
@@ -1285,10 +1235,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
     });
 
-    // 获取最新的 nodeCardsMap（从 UiContext 或本地状态）
+    
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     
-    // 获取待删除的项目 ID 集合
+    
     const deletedNodeIds = new Set(
       Array.from(pendingDeletes.values())
         .filter(d => d.type === 'node')
@@ -1300,22 +1250,22 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         .map(d => d.id)
     );
 
-    // 检查节点及其所有祖先节点是否被移动
+    
     const checkAncestorMoved = (nodeId: string): boolean => {
-      // 检查当前节点是否被移动
+      
       if (pendingDragChanges.has(`node-${nodeId}`)) return true;
       
-      // 找到当前节点的父节点
+      
       const parentEdge = base.edges.find(e => e.target === nodeId);
       if (parentEdge) {
-        // 递归检查父节点
+        
         return checkAncestorMoved(parentEdge.source);
       }
       
       return false;
     };
 
-    // 检查项目是否在剪贴板中
+    
     const checkClipboard = (file: { type: 'node' | 'card'; id: string; nodeId?: string; cardId?: string }): 'copy' | 'cut' | undefined => {
       if (!clipboard) return undefined;
       
@@ -1331,50 +1281,50 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       return found ? clipboard.type : undefined;
     };
 
-    // 检查项目是否有未保存的更改
+    
     const checkPendingChanges = (file: { type: 'node' | 'card'; id: string; nodeId?: string; cardId?: string; parentId?: string }): boolean => {
-      // 检查内容修改
+      
       if (pendingChanges.has(file.id)) return true;
       
-      // 检查重命名
+      
       if (pendingRenames.has(file.id)) return true;
       
-      // 检查problem修改（仅针对card）
+      
       if (file.type === 'card' && file.cardId && pendingProblemCardIds.has(String(file.cardId))) return true;
       
-      // 检查新建（临时 ID）
-      // 对于 node，id 直接是 temp-node-...
-      // 对于 card，id 是 card-temp-card-...，需要检查 cardId 或 id
+      
+      
+      
       if (file.id.startsWith('temp-') || 
           (file.type === 'card' && file.cardId && file.cardId.startsWith('temp-')) ||
           (file.type === 'card' && file.id.startsWith('card-temp-')) ||
           Array.from(pendingCreatesRef.current.values()).some(c => {
-            // 对于 node，只有当 file.id 是 tempId 时才匹配（真实节点ID不会匹配临时ID）
+            
             if (file.type === 'node' && c.type === 'node' && c.tempId === file.id) return true;
-            // 对于 card，file.id 是 card-${cardId}，需要匹配
+            
             if (file.type === 'card' && c.type === 'card' && file.id === `card-${c.tempId}`) return true;
             return false;
           })) return true;
       
-      // 检查移动
+      
       if (file.type === 'node' && file.nodeId) {
-        // 检查节点本身是否被移动
+        
         if (pendingDragChanges.has(`node-${file.nodeId}`)) return true;
-        // 检查节点的任何祖先节点是否被移动
+        
         if (checkAncestorMoved(file.nodeId)) return true;
       } else if (file.type === 'card') {
-        // 检查卡片本身是否被移动
+        
         if (file.cardId && pendingDragChanges.has(file.cardId)) return true;
-        // 检查卡片所属节点及其祖先节点是否被移动
+        
         if (file.nodeId && checkAncestorMoved(file.nodeId)) return true;
       }
       
       return false;
     };
 
-    // 递归构建文件树（只显示展开的节点）
+    
     const buildTree = (nodeId: string, level: number, parentId?: string) => {
-      // 如果节点被删除，跳过
+      
       if (deletedNodeIds.has(nodeId)) return;
       
       const nodeData = nodeMap.get(nodeId);
@@ -1383,11 +1333,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       const { node } = nodeData;
       const isExpanded = expandedNodes.has(nodeId);
       
-      // 创建节点 FileItem
+      
       const nodeFileItem: FileItem = {
         type: 'node',
         id: nodeId,
-        name: node.text || '未命名节点',
+        name: node.text || i18n('Unnamed Node'),
         nodeId: nodeId,
         parentId,
         level,
@@ -1396,17 +1346,17 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       nodeFileItem.clipboardType = checkClipboard(nodeFileItem);
       items.push(nodeFileItem);
 
-      // 如果节点展开，显示其卡片和子节点（按order混合排序）
+      
       if (isExpanded) {
-        // 获取该节点的卡片（按 order 排序）
+        
         const nodeCards = (nodeCardsMap[nodeId] || [])
           .filter((card: Card) => {
-            // 检查卡片是否属于当前节点（如果 card.nodeId 存在，使用它；否则假设属于当前节点）
+            
             return !card.nodeId || card.nodeId === nodeId;
           })
           .sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
         
-        // 获取子节点（按 order 排序）
+        
         const childNodes = nodeData.children
           .map(childId => {
             const childNode = base.nodes.find(n => n.id === childId);
@@ -1415,15 +1365,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           .filter(Boolean)
           .sort((a, b) => (a!.order || 0) - (b!.order || 0)) as Array<{ id: string; node: BaseNode; order: number }>;
         
-        // 添加待创建的卡片和节点到排序列表
+        
         const existingCardIds = new Set((nodeCardsMap[nodeId] || []).map((c: Card) => c.docId));
         const existingNodeIds = new Set(base.nodes.map(n => n.id));
         
-        // 获取待创建的卡片
+        
         const pendingCards = Array.from(pendingCreatesRef.current.values())
           .filter(c => c.type === 'card' && c.nodeId === nodeId && !existingCardIds.has(c.tempId))
           .map(create => {
-            // 从nodeCardsMap中查找对应的临时卡片，获取其order
+            
             const tempCard = (nodeCardsMap[nodeId] || []).find((c: Card) => c.docId === create.tempId);
             const maxCardOrder = nodeCards.length > 0 ? Math.max(...nodeCards.map((c: Card) => c.order || 0)) : 0;
             const maxNodeOrder = childNodes.length > 0 ? Math.max(...childNodes.map(n => n.order || 0)) : 0;
@@ -1432,16 +1382,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               type: 'card' as const,
               id: create.tempId,
               order: tempCard?.order || maxOrder + 1,
-              data: tempCard || { docId: create.tempId, title: create.title || '新卡片', nodeId, order: maxOrder + 1 },
+              data: tempCard || { docId: create.tempId, title: create.title || i18n('New card'), nodeId, order: maxOrder + 1 },
               isPending: true,
             };
           });
         
-        // 获取待创建的节点
+        
         const pendingNodes = Array.from(pendingCreatesRef.current.values())
           .filter(c => c.type === 'node' && c.nodeId === nodeId && !existingNodeIds.has(c.tempId))
           .map(create => {
-            // 从base.nodes中查找对应的临时节点，获取其order
+            
             const tempNode = base.nodes.find(n => n.id === create.tempId);
             const maxCardOrder = nodeCards.length > 0 ? Math.max(...nodeCards.map((c: Card) => c.order || 0)) : 0;
             const maxNodeOrder = childNodes.length > 0 ? Math.max(...childNodes.map(n => n.order || 0)) : 0;
@@ -1450,12 +1400,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               type: 'node' as const,
               id: create.tempId,
               order: tempNode?.order || maxOrder + 1,
-              data: tempNode || { id: create.tempId, text: create.text || '新节点', order: maxOrder + 1 },
+              data: tempNode || { id: create.tempId, text: create.text || i18n('New node'), order: maxOrder + 1 },
               isPending: true,
             };
           });
         
-        // 合并node和card，按照order混合排序（包括待创建的）
+        
         const allChildren: Array<{ type: 'node' | 'card'; id: string; order: number; data: any; isPending?: boolean }> = [
           ...childNodes.map(n => ({ type: 'node' as const, id: n.id, order: n.order, data: n.node, isPending: false })),
           ...nodeCards.map(c => ({ type: 'card' as const, id: c.docId, order: c.order || 0, data: c, isPending: false })),
@@ -1463,20 +1413,20 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           ...pendingCards,
         ];
         
-        // 按order排序
+        
         allChildren.sort((a, b) => (a.order || 0) - (b.order || 0));
         
-        // 按照排序后的顺序添加
+        
         allChildren.forEach(item => {
           if (item.type === 'card') {
             const card = item.data as Card;
-            // 跳过待删除的卡片
+            
             if (deletedCardIds.has(card.docId)) return;
             
             const cardFileItem: FileItem = {
               type: 'card',
               id: item.isPending ? card.docId : `card-${card.docId}`,
-              name: card.title || '未命名卡片',
+              name: card.title || i18n('Unnamed Card'),
               nodeId: card.nodeId || nodeId,
               cardId: card.docId,
               parentId: card.nodeId || nodeId,
@@ -1486,7 +1436,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             cardFileItem.clipboardType = checkClipboard(cardFileItem);
             items.push(cardFileItem);
           } else {
-            // 递归处理子节点（包括待创建的节点）
             buildTree(item.id, level + 1, nodeId);
           }
         });
@@ -1497,8 +1446,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       buildTree(rootId, 0);
     });
     
-    // 添加待创建的根节点（临时显示，放在最后）
-    // 只显示那些不在 base.nodes 中的节点（避免重复）
+    
+    
     const existingNodeIds = new Set(base.nodes.map(n => n.id));
     Array.from(pendingCreatesRef.current.values())
       .filter(c => c.type === 'node' && !c.nodeId && !existingNodeIds.has(c.tempId))
@@ -1506,11 +1455,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         const createFileItem: FileItem = {
           type: 'node',
           id: create.tempId,
-          name: create.text || '新节点',
+          name: create.text || i18n('New node'),
           nodeId: create.tempId,
           level: 0,
         };
-        createFileItem.hasPendingChanges = true; // 新建的项目肯定有未保存的更改
+        createFileItem.hasPendingChanges = true;
         items.push(createFileItem);
       });
 
@@ -1522,9 +1471,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     baseEdgesRef.current = base.edges;
   }, [fileTree, base.edges]);
 
-  // 触发自动保存展开状态（带防抖）- 复用 base_outline 的方式
+  
   const triggerExpandAutoSave = useCallback(() => {
-    // 清除之前的定时器（如果有）
+    
     if (expandSaveTimerRef.current) {
       clearTimeout(expandSaveTimerRef.current);
       expandSaveTimerRef.current = null;
@@ -1532,11 +1481,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
     expandSaveTimerRef.current = setTimeout(async () => {
       try {
-        // 使用 ref 获取最新的展开状态和节点数据
+        
         const currentExpandedNodes = expandedNodesRef.current;
         const currentBase = baseRef.current;
         
-        // 更新所有节点的 expanded 字段，匹配当前的展开状态
+        
         const updatedNodes = currentBase.nodes.map((node) => {
           const isExpanded = currentExpandedNodes.has(node.id);
           return {
@@ -1545,8 +1494,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           };
         });
 
-        // 调用 /save 接口保存整个 base（包含 expanded 状态）
-        // 过滤掉临时节点和边，确保不会保存临时数据
+        
+        
         const filteredNodes = updatedNodes.filter(n => !n.id.startsWith('temp-node-'));
         const filteredEdges = currentBase.edges.filter(e => 
           !e.source.startsWith('temp-node-') && 
@@ -1560,7 +1509,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           operationDescription: '自动保存展开状态',
         });
         
-        // 更新本地 base 状态（确保与后端同步）
+        
         setBase(prev => ({
           ...prev,
           nodes: updatedNodes,
@@ -1574,7 +1523,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }, 1500);
   }, [docId]);
 
-  // 切换节点展开/折叠
+  
   const toggleNodeExpanded = useCallback((nodeId: string) => {
     let newExpandedState: boolean;
     
@@ -1589,10 +1538,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         newSet.add(nodeId);
       }
       
-      // 立即更新 ref，确保自动保存时能获取最新值
+      
       expandedNodesRef.current = newSet;
       
-      // 立即更新本地 base 状态，实现即时 UI 响应
+      
       setBase(prev => {
         const updated = {
           ...prev,
@@ -1602,7 +1551,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               : n
           ),
         };
-        // 立即更新 ref，确保自动保存时能获取最新值
+        
         baseRef.current = updated;
         return updated;
       });
@@ -1610,24 +1559,24 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       return newSet;
     });
     
-    // 触发自动保存（1.5秒后保存到后端）
+    
     triggerExpandAutoSave();
   }, [triggerExpandAutoSave]);
 
-  // 选择文件
+  
   const handleSelectFile = useCallback(async (file: FileItem, skipUrlUpdate = false) => {
-    // 如果是多选模式，切换选择状态
+    
     if (isMultiSelectMode) {
-      // 使用内联逻辑，避免循环依赖
+      
       setSelectedItems(prev => {
         const next = new Set(prev);
         const isSelected = next.has(file.id);
         
         if (isSelected) {
-          // 取消选择：移除当前项
+          
           next.delete(file.id);
           
-          // 如果是节点，同时取消选择所有子节点和卡片
+          
           if (file.type === 'node' && getNodeChildrenRef.current) {
             const children = getNodeChildrenRef.current(file.nodeId || '');
             children.nodes.forEach(nodeId => {
@@ -1640,10 +1589,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             });
           }
         } else {
-          // 选择：添加当前项
+          
           next.add(file.id);
           
-          // 如果是节点，同时选择所有子节点和卡片
+          
           if (file.type === 'node' && getNodeChildrenRef.current) {
             const children = getNodeChildrenRef.current(file.nodeId || '');
             children.nodes.forEach(nodeId => {
@@ -1662,18 +1611,18 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       return;
     }
     
-    // 节点类型不显示编辑器，只支持重命名
+    
     if (file.type === 'node') {
       return;
     }
     
-    // 如果之前有选中的文件，保存其修改到待提交列表
+    
     if (selectedFile && editorInstance) {
       try {
         const currentContent = editorInstance.value() || fileContent;
         const originalContent = originalContentsRef.current.get(selectedFile.id) || '';
         
-        // 如果内容有变化，添加到待提交列表
+        
         if (currentContent !== originalContent) {
           setPendingChanges(prev => {
             const newMap = new Map(prev);
@@ -1690,9 +1639,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
     
     setSelectedFile(file);
-    selectedFileRef.current = file; // 更新ref，确保onChange回调能访问到最新的值
+    selectedFileRef.current = file;
     
-    // 如果是card类型，更新URL参数（除非skipUrlUpdate为true）
+    
     if (!skipUrlUpdate && file.type === 'card' && file.cardId) {
       const urlParams = new URLSearchParams(window.location.search);
       urlParams.set('cardId', String(file.cardId));
@@ -1700,23 +1649,23 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       window.history.pushState({ cardId: file.cardId }, '', newUrl);
     }
     
-    // 先检查是否有待提交的修改
+    
     const pendingChange = pendingChanges.get(file.id);
     let content = '';
     
     if (pendingChange) {
-      // 如果有待提交的修改，使用修改后的内容
+      
       content = pendingChange.content;
     } else {
-      // 否则从原始数据加载（只处理 card 类型）
+      
       if (file.type === 'card') {
-        // 加载卡片内容
+        
         const nodeCards = (window as any).UiContext?.nodeCardsMap?.[file.nodeId || ''] || [];
         const card = nodeCards.find((c: Card) => c.docId === file.cardId);
         content = card?.content || '';
       }
       
-      // 保存原始内容（只在第一次加载时保存）
+      
       if (!originalContentsRef.current.has(file.id)) {
         originalContentsRef.current.set(file.id, content);
       }
@@ -1725,33 +1674,33 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setFileContent(content);
   }, [base.nodes, selectedFile, editorInstance, fileContent, pendingChanges, isMultiSelectMode, fileTree]);
 
-  // 根据URL参数加载对应的card
+  
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const cardId = urlParams.get('cardId');
     
     if (cardId && fileTree.length > 0) {
-      // 在fileTree中查找对应的card
+      
       const cardFile = fileTree.find(f => f.type === 'card' && f.cardId === cardId);
       if (cardFile && (!selectedFile || selectedFile.id !== cardFile.id)) {
-        // 如果找到了card且当前没有选中或选中的不是这个card，则选中它
-        // 跳过URL更新，避免循环
+        
+        
         handleSelectFile(cardFile, true);
       }
     }
-  }, [fileTree, selectedFile, handleSelectFile]); // 当fileTree变化时检查URL参数
+  }, [fileTree, selectedFile, handleSelectFile]);
 
-  // 监听浏览器前进/后退事件
+  
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
       const urlParams = new URLSearchParams(window.location.search);
       const cardId = urlParams.get('cardId');
       
       if (cardId && fileTree.length > 0) {
-        // 在fileTree中查找对应的card
+        
         const cardFile = fileTree.find(f => f.type === 'card' && f.cardId === cardId);
         if (cardFile && (!selectedFile || selectedFile.id !== cardFile.id)) {
-          // 跳过URL更新，避免循环
+          
           handleSelectFile(cardFile, true);
         }
       }
@@ -1763,10 +1712,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     };
   }, [fileTree, selectedFile, handleSelectFile]);
 
-  // 生成单选题
+  
   const handleCreateSingleProblem = useCallback(async () => {
     if (!selectedFile || selectedFile.type !== 'card') {
-      Notification.error('请先在左侧选择一个卡片');
+      Notification.error(i18n('Please select a card on the left first'));
       return;
     }
 
@@ -1775,7 +1724,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const analysis = problemAnalysis.trim();
 
     if (!stem) {
-      Notification.error('题干不能为空');
+      Notification.error(i18n('Stem cannot be empty'));
       return;
     }
     if (options.length < 2) {
@@ -1783,7 +1732,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       return;
     }
     if (problemAnswer < 0 || problemAnswer >= options.length) {
-      Notification.error('请选择正确的答案选项');
+      Notification.error(i18n('Please select the correct answer'));
       return;
     }
 
@@ -1812,7 +1761,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
       const updatedProblems = [...existingProblems, newProblem];
 
-      // 只更新前端缓存，真正的保存由「保存更改」统一提交
+      
       if (nodeCardsMap[nodeId]) {
         const cardIndex = nodeCards.findIndex((c: Card) => c.docId === selectedFile.cardId);
         if (cardIndex >= 0) {
@@ -1823,7 +1772,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
           setNodeCardsMapVersion(prev => prev + 1);
 
-          // 标记该卡片的题目有待提交（仅针对已有 cardId，临时卡片由创建时一起提交）
+          
           if (!String(selectedFile.cardId || '').startsWith('temp-card-')) {
             const cardIdStr = String(selectedFile.cardId || '');
             setPendingProblemCardIds(prev => {
@@ -1831,7 +1780,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               next.add(cardIdStr);
               return next;
             });
-            // 同时添加到 pendingNewProblemCardIds，使待保存列表能正确显示
+            
             setPendingNewProblemCardIds(prev => {
               const next = new Set(prev);
               next.add(cardIdStr);
@@ -1841,13 +1790,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       }
 
-      // 重置表单
+      
       setProblemStem('');
       setProblemOptions(['', '', '', '']);
       setProblemAnswer(0);
       setProblemAnalysis('');
 
-      Notification.success('单选题已生成并保存');
+      Notification.success(i18n('Single choice generated and saved'));
     } catch (error: any) {
       Notification.error('生成单选题失败: ' + (error.message || '未知错误'));
     } finally {
@@ -1863,7 +1812,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     
     setIsCommitting(true);
 
-    // 如果当前有选中的文件，先保存其修改
+    
     let allChanges = new Map(pendingChanges);
     if (selectedFile && editorInstance) {
       try {
@@ -1888,7 +1837,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const hasDeleteChanges = pendingDeletes.size > 0;
     const hasProblemChanges = pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0;
     
-    // 计算总任务数
+    
     const totalTasks =
       (hasContentChanges ? allChanges.size : 0) +
       (hasDragChanges ? pendingDragChanges.size : 0) +
@@ -1898,10 +1847,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       (hasProblemChanges ? (pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size) : 0);
     
     try {
-      Notification.info('正在保存...');
+      Notification.info(i18n('Saving...'));
       const domainId = (window as any).UiContext?.domainId || 'system';
       
-      // 收集所有更改到批量保存请求
+      
       const batchSaveData: any = {
         nodeCreates: [],
         nodeUpdates: [],
@@ -1917,16 +1866,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       const cardIdMap = new Map<string, string>();
       let createCountBeforeSave = 0;
       
-      // 收集所有创建操作到批量保存数据
+      
       if (hasCreateChanges) {
         const creates = Array.from(pendingCreatesRef.current.entries()).map(([tempId, create]) => ({ tempId, ...create })).filter(c => 
           c.tempId && (c.tempId.startsWith('temp-node-') || c.tempId.startsWith('temp-card-'))
         );
         createCountBeforeSave = creates.length;
         
-        // 收集节点创建
+        
         const nodeCreates = creates.filter(c => c.type === 'node');
-        const nodeIdSet = new Set<string>(); // 去重
+        const nodeIdSet = new Set<string>();
         
         for (const create of nodeCreates) {
           if (nodeIdSet.has(create.tempId)) {
@@ -1935,21 +1884,21 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           nodeIdSet.add(create.tempId);
           
           const renameRecord = pendingRenames.get(create.tempId);
-          const nodeText = renameRecord ? renameRecord.newName : (create.text || '新节点');
+          const nodeText = renameRecord ? renameRecord.newName : (create.text || i18n('New node'));
           
-          // 收集到批量保存数据中，批量保存接口会处理依赖关系
+          
           batchSaveData.nodeCreates.push({
             tempId: create.tempId,
             text: nodeText,
-            parentId: create.nodeId, // 保留原始 parentId，批量保存接口会处理临时节点映射
+            parentId: create.nodeId,
             x: create.x,
             y: create.y,
           });
         }
         
-        // 收集卡片创建
+        
         const cardCreates = creates.filter(c => c.type === 'card');
-        const cardIdSet = new Set<string>(); // 去重
+        const cardIdSet = new Set<string>();
         
         for (const create of cardCreates) {
           if (cardIdSet.has(create.tempId)) {
@@ -1964,27 +1913,27 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             continue;
           }
           
-          // 注意：如果节点ID是临时节点ID，保留它，批量保存接口会处理映射
-          // 查找卡片数据
+          
+          
           let createNodeCards: Card[] = createNodeCardsMap[createNodeId] || [];
           if (createNodeCards.length === 0 && create.nodeId && create.nodeId.startsWith('temp-node-')) {
             createNodeCards = createNodeCardsMap[create.nodeId] || [];
           }
           const tempCard = createNodeCards.find((c: Card) => c.docId === create.tempId);
 
-          // 检查 allChanges 中是否有对应的 content 更改（优先使用）
+          
           const contentChange = allChanges.get(`card-${create.tempId}`);
           const finalContent = contentChange?.content ?? tempCard?.content ?? '';
           
           const cardRenameKey = `card-${create.tempId}`;
           const renameRecord = pendingRenames.get(cardRenameKey);
-          const finalTitle = renameRecord ? renameRecord.newName : (create.title || tempCard?.title || '新卡片');
+          const finalTitle = renameRecord ? renameRecord.newName : (create.title || tempCard?.title || i18n('New card'));
           const finalProblems = tempCard?.problems;
 
-          // 收集到批量保存数据中，批量保存接口会处理节点ID映射
+          
           batchSaveData.cardCreates.push({
             tempId: create.tempId,
-            nodeId: createNodeId, // 保留原始 nodeId（可能是临时ID），批量保存接口会处理映射
+            nodeId: createNodeId,
             title: finalTitle,
             content: finalContent,
             problems: finalProblems,
@@ -1992,10 +1941,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       }
       
-      // 收集所有更改到批量保存请求
+      
       if (hasContentChanges) {
         
-        // 先收集所有需要移除的临时节点 key
+        
         const tempNodeKeysToRemove: string[] = [];
         for (const [key, change] of allChanges.entries()) {
           if (change.file.type === 'node') {
@@ -2034,15 +1983,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             const cardNodeCards: Card[] = cardNodeCardsMap[cardNodeId] || [];
             const cardIndex = cardNodeCards.findIndex((c: Card) => c.docId === change.file.cardId);
             const card = cardIndex >= 0 ? cardNodeCards[cardIndex] : null;
-            // 过滤掉待删除的problem
+            
             const problems = card?.problems?.filter(p => !pendingDeleteProblemIds.has(p.pid));
 
-            // 对于临时卡片：跳过，等待创建时处理
+            
             if (!change.file.cardId || String(change.file.cardId).startsWith('temp-card-')) {
               continue;
             }
 
-            // 对于已存在的卡片：收集到批量更新列表（带上当前 title，避免只保存 content 时后端/前端把 title 丢成空）
+            
             batchSaveData.cardUpdates.push({
               cardId: change.file.cardId,
               nodeId: change.file.nodeId || '',
@@ -2054,11 +2003,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       }
 
-      // 仅题目发生变更但内容未变更的卡片：单独提交一次（不处理临时卡片）
+      
       if (hasProblemChanges) {
         
         const nodeCardsMapForProblems = (window as any).UiContext?.nodeCardsMap || {};
-        // 已经通过内容变更提交过的 cardId 集合
+        
         const contentChangedCardIds = new Set<string>();
         for (const change of allChanges.values()) {
           if (change.file.type === 'card' && change.file.cardId) {
@@ -2066,16 +2015,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           }
         }
 
-        // 收集所有需要更新的题目
+        
         const problemUpdates: Array<{ cardId: string; nodeId: string; problems: CardProblem[] }> = [];
         
         for (const problemCardId of Array.from(pendingProblemCardIds)) {
-          // 新建临时卡片的题目会在创建时一起提交，这里跳过 temp-card
+          
           if (String(problemCardId).startsWith('temp-card-')) continue;
-          // 如果已经在内容更新里提交过，就不用再提交一次
+          
           if (contentChangedCardIds.has(String(problemCardId))) continue;
 
-          // 在 nodeCardsMap 里找到这张卡片及其 nodeId 和 problems
+          
           let foundNodeId: string | null = null;
           let foundCard: Card | null = null;
           for (const nodeId in nodeCardsMapForProblems) {
@@ -2092,7 +2041,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             continue;
           }
 
-          // 过滤掉待删除的problem
+          
           const problemsToSave = (foundCard.problems || []).filter(p => !pendingDeleteProblemIds.has(p.pid));
           
           problemUpdates.push({
@@ -2102,7 +2051,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           });
         }
         
-        // 收集题目更新到批量保存数据
+        
         for (const { cardId, nodeId, problems } of problemUpdates) {
           const existingUpdate = batchSaveData.cardUpdates.find((u: any) => u.cardId === cardId);
           if (existingUpdate) {
@@ -2118,39 +2067,39 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         
       }
       
-      // 保存拖动更改（卡片的 nodeId 和 order，节点的 edges）
+      
       if (hasDragChanges) {
         const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
         
-        // 收集所有需要更新的 nodes 和 cards
+        
         const nodeOrderUpdates = new Set<string>();
         const cardIdsToUpdateOrder = new Set<string>();
         const nodeEdgeUpdates = new Map<string, { newEdge: BaseEdge | null; oldEdges: BaseEdge[] }>();
         
-        // 先收集所有需要更新的node信息（不立即调用API）
+        
         for (const cardId of pendingDragChanges) {
           if (cardId.startsWith('node-')) {
-            // 节点拖动，保存 edges 和 order
+            
             const nodeId = cardId.replace('node-', '');
             nodeOrderUpdates.add(nodeId);
             
-            // 从本地 base.edges 中获取新的父节点连接
+            
             const newEdges = base.edges.filter(e => e.target === nodeId);
             const newEdge = newEdges.length > 0 ? newEdges[0] : null;
             
-            // 从本地 base.edges 中获取旧的父节点连接（作为target的边）
+            
             const oldEdges = base.edges.filter(
               (e: BaseEdge) => e.target === nodeId
             );
             
             nodeEdgeUpdates.set(nodeId, { newEdge, oldEdges });
           } else {
-            // 卡片拖动，收集需要更新的卡片
+            
             cardIdsToUpdateOrder.add(cardId);
           }
         }
         
-        // 只获取一次最新的base数据（用于验证edges）
+        
         let currentBase: BaseDoc | null = null;
         if (nodeEdgeUpdates.size > 0) {
           try {
@@ -2159,40 +2108,40 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           }
         }
         
-        // 批量处理所有node的edges更新
+        
         for (const [nodeId, { newEdge, oldEdges: localOldEdges }] of nodeEdgeUpdates) {
           if (!newEdge) continue;
           
           try {
-            // 使用获取到的最新数据，如果没有则使用本地数据
+            
             const edgesToCheck = currentBase?.edges || localOldEdges;
             const oldEdges = edgesToCheck.filter(
               (e: BaseEdge) => e.target === nodeId
             );
             
-            // 检查新边是否已存在（通过 source 和 target 匹配）
+            
             const edgeExists = oldEdges.some(
               (e: BaseEdge) => e.source === newEdge.source && e.target === newEdge.target
             );
             
-            // 收集需要删除的旧边到批量保存数据
+            
             for (const oldEdge of oldEdges) {
-              // 检查是否是我们要保留的新边（通过 source 和 target 匹配）
+              
               const isNewEdge = oldEdge.source === newEdge.source && oldEdge.target === newEdge.target;
               if (!isNewEdge && oldEdge.id) {
-                // 跳过临时 edge（前端生成的临时 ID）
+                
                 if (oldEdge.id.startsWith('temp-') || oldEdge.id.startsWith('edge-')) {
                   continue;
                 }
                 
-                // 收集到批量保存数据
+                
                 if (!batchSaveData.edgeDeletes.includes(oldEdge.id)) {
                   batchSaveData.edgeDeletes.push(oldEdge.id);
                 }
               }
             }
             
-            // 如果新边不存在，收集到创建队列
+            
             if (!edgeExists) {
               batchSaveData.edgeCreates.push({
                 source: newEdge.source,
@@ -2210,7 +2159,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           }
         }
         
-        // 收集节点order更新
+        
         for (const nodeId of nodeOrderUpdates) {
           const node = base.nodes.find(n => n.id === nodeId);
           if (node && !node.id.startsWith('temp-node-')) {
@@ -2226,13 +2175,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           }
         }
         
-        // 收集所有需要更新order的卡片
+        
         for (const nodeId in nodeCardsMap) {
           const cards = nodeCardsMap[nodeId] || [];
           for (const card of cards) {
-            // 跳过临时卡片
+            
             if (String(card.docId).startsWith('temp-card-')) continue;
-            // 只更新被拖动过的卡片
+            
             if (cardIdsToUpdateOrder.has(card.docId) && card.order !== undefined && card.order !== null) {
               const existingUpdate = batchSaveData.cardUpdates.find((u: any) => u.cardId === card.docId);
               if (existingUpdate) {
@@ -2250,18 +2199,18 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         
       }
       
-      // 保存重命名更改
+      
       if (hasRenameChanges) {
         
-        // 使用更新后的 pendingRenames（如果节点创建后已更新）
-        // 先获取最新的 pendingRenames 状态
+        
+        
         const renames = Array.from(pendingRenames.values());
         
-        // 如果有 nodeIdMap，更新重命名记录中的临时ID为真实ID
+        
         const updatedRenames = renames.map(rename => {
           if (rename.file.type === 'node') {
             const nodeId = rename.file.nodeId || rename.file.id;
-            // 如果是临时节点，尝试从 nodeIdMap 中获取真实ID
+            
             if (nodeId && nodeId.startsWith('temp-node-') && nodeIdMap.has(nodeId)) {
               const realNodeId = nodeIdMap.get(nodeId)!;
               return {
@@ -2277,16 +2226,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           return rename;
         });
         
-        // 收集所有需要更新的重命名到批量保存数据
+        
         for (const rename of updatedRenames) {
           if (rename.file.type === 'node') {
-            // 检查是否是临时节点
+            
             const nodeId = rename.file.nodeId || rename.file.id;
             if (!nodeId || nodeId.startsWith('temp-node-')) {
               continue;
             }
             
-            // 检查是否已经在 nodeUpdates 中（避免重复）
+            
             const existingUpdate = batchSaveData.nodeUpdates.find((u: any) => u.nodeId === nodeId);
             if (existingUpdate) {
               existingUpdate.text = rename.newName;
@@ -2294,12 +2243,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               batchSaveData.nodeUpdates.push({ nodeId, text: rename.newName });
             }
           } else if (rename.file.type === 'card') {
-            // 临时卡片的重命名只在前端保存，不调用后端
+            
             if (!rename.file.cardId || String(rename.file.cardId).startsWith('temp-card-')) {
               continue;
             }
             
-            // 检查是否已经在 cardUpdates 中（避免重复）
+            
             const existingUpdate = batchSaveData.cardUpdates.find((u: any) => u.cardId === rename.file.cardId);
             if (existingUpdate) {
               existingUpdate.title = rename.newName;
@@ -2317,54 +2266,54 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
       const hasDeleteChanges = pendingDeletes.size > 0;
       
-      // 收集删除操作到批量保存数据
+      
       if (hasDeleteChanges) {
         
         const deletes = Array.from(pendingDeletes.values());
         
-        // 收集需要删除的card和node
+        
         const cardDeletes = deletes.filter(d => d.type === 'card');
         const nodeDeletes = deletes.filter(d => d.type === 'node');
         
-        // 过滤出需要删除的真实卡片（排除临时卡片）
+        
         const realCardDeletes = cardDeletes.filter(del => 
           del.id && !String(del.id).startsWith('temp-card-')
         );
         
-        // 收集到批量保存数据
+        
         realCardDeletes.forEach(del => {
           batchSaveData.cardDeletes.push(del.id);
         });
         
-        // 收集需要删除的node
+        
         const realNodeDeletes = nodeDeletes.filter(del => 
           del.id && !String(del.id).startsWith('temp-node-')
         );
         
         if (realNodeDeletes.length > 0) {
-          // 批量获取所有要删除的node IDs
+          
           const nodeIdsToDelete = new Set(realNodeDeletes.map(del => del.id));
           
-          // 收集需要删除的 edges（与要删除的node相关的edges）
+          
           const edgesToDelete = base.edges.filter(
             (e: BaseEdge) => nodeIdsToDelete.has(e.source) || nodeIdsToDelete.has(e.target)
           );
           
-          // 收集到批量保存数据
+          
           edgesToDelete.forEach(edge => {
             if (edge.id && !edge.id.startsWith('temp-edge-')) {
               batchSaveData.edgeDeletes.push(edge.id);
             }
           });
           
-          // 收集节点删除
+          
           realNodeDeletes.forEach(del => {
             batchSaveData.nodeDeletes.push(del.id);
           });
         }
       }
 
-      // 合并卡面修改到 cardUpdates
+      
       for (const [cardId, cardFace] of Object.entries(pendingCardFaceChanges)) {
         if (String(cardId).startsWith('temp-card-')) continue;
         const existing = batchSaveData.cardUpdates.find((u: any) => u.cardId === cardId);
@@ -2382,7 +2331,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       }
 
-      // 一次性发送批量保存请求
+      
       const hasAnyChanges = 
         batchSaveData.nodeCreates.length > 0 ||
         batchSaveData.nodeUpdates.length > 0 ||
@@ -2399,7 +2348,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           const response = await request.post(getBaseUrl('/batch-save'), batchSaveData);
           
           if (response.success) {
-            // 更新 nodeIdMap 和 cardIdMap（从响应中获取）
+            
             if (response.nodeIdMap) {
               Object.entries(response.nodeIdMap).forEach(([tempId, realId]) => {
                 nodeIdMap.set(tempId, realId as string);
@@ -2412,14 +2361,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               });
             }
             
-            // 更新本地状态：将临时节点ID替换为真实ID
+            
             if (response.nodeIdMap && Object.keys(response.nodeIdMap).length > 0) {
               setBase(prev => ({
                 ...prev,
                 nodes: prev.nodes.map(n => {
                   const realId = nodeIdMap.get(n.id);
                   return realId ? { ...n, id: realId } : n;
-                }).filter(n => !n.id.startsWith('temp-node-')), // 移除临时节点
+                }).filter(n => !n.id.startsWith('temp-node-')),
                 edges: prev.edges.map(e => {
                   const realSource = nodeIdMap.get(e.source) || e.source;
                   const realTarget = nodeIdMap.get(e.target) || e.target;
@@ -2428,11 +2377,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                   !e.source.startsWith('temp-node-') && 
                   !e.target.startsWith('temp-node-') &&
                   !e.id.startsWith('temp-edge-')
-                ), // 移除临时边
+                ),
               }));
             }
             
-            // 更新 nodeCardsMap 中的临时ID
+            
             if (cardIdMap.size > 0 || nodeIdMap.size > 0) {
               const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
               const updatedNodeCardsMap: any = {};
@@ -2456,7 +2405,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               (window as any).UiContext.nodeCardsMap = updatedNodeCardsMap;
             }
             
-            // 更新 cardUpdates 中的内容（只覆盖有值的字段，避免 undefined 把已有 title 等冲掉）
+            
             for (const cardUpdate of batchSaveData.cardUpdates) {
               const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
               const cards = nodeCardsMap[cardUpdate.nodeId] || [];
@@ -2471,7 +2420,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               }
             }
             
-            // 更新 cardCreates 中的内容（新创建的卡片）
+            
             for (const cardCreate of batchSaveData.cardCreates) {
               const realCardId = cardIdMap.get(cardCreate.tempId);
               const realNodeId = nodeIdMap.get(cardCreate.nodeId) || cardCreate.nodeId;
@@ -2482,7 +2431,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                   nodeCardsMap[realNodeId] = [];
                 }
                 
-                // 检查是否已存在
+                
                 const existingIndex = nodeCardsMap[realNodeId].findIndex((c: Card) => c.docId === realCardId);
                 if (existingIndex >= 0) {
                   nodeCardsMap[realNodeId][existingIndex] = {
@@ -2508,7 +2457,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             (window as any).UiContext.nodeCardsMap = { ...(window as any).UiContext?.nodeCardsMap };
             setNodeCardsMapVersion(prev => prev + 1);
             
-            // 清空待创建列表（因为已经批量创建了）
+            
             for (const nodeCreate of batchSaveData.nodeCreates) {
               pendingCreatesRef.current.delete(nodeCreate.tempId);
             }
@@ -2521,32 +2470,35 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               Notification.warning(`保存完成，但有 ${response.errors.length} 个错误`);
             }
           } else {
-            throw new Error(response.errors?.join(', ') || '批量保存失败');
+            throw new Error(response.errors?.join(', ') || i18n('Batch save failed'));
           }
         } catch (error: any) {
           throw error;
         }
       }
 
-      // 计算总更改数（使用保存前的值，因为创建过程中pendingCreates已经被清空）
-      // 注意：如果节点创建时使用了重命名后的文本，不应该重复计算重命名
-      // 检查是否有重命名记录对应已创建的节点，如果有，不应该重复计算
+      
+      
+      
       let actualRenameCount = 0;
       if (hasRenameChanges && nodeIdMap.size > 0) {
-        // 对于已创建的节点，如果重命名记录中的节点ID是临时ID，说明重命名已经在创建时处理了，不应该重复计算
+        
         const renames = Array.from(pendingRenames.values());
         actualRenameCount = renames.filter(rename => {
           if (rename.file.type === 'node') {
             const nodeId = rename.file.nodeId || rename.file.id;
-            // 如果节点ID是临时ID且在nodeIdMap中，说明重命名已经在创建时处理了
+            
             if (nodeId && nodeId.startsWith('temp-node-') && nodeIdMap.has(nodeId)) {
-              return false; // 不计算这个重命名
+              return false;
             }
           }
-        }
+          return true;
+        }).length;
+      } else {
+        actualRenameCount = hasRenameChanges ? pendingRenames.size : 0;
       }
       
-      // 清空待提交列表
+      
       setPendingChanges(new Map());
       setPendingDragChanges(new Set());
       setPendingRenames(new Map());
@@ -2558,7 +2510,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         batchSaveData.cardUpdates.forEach((u: any) => delete next[u.cardId]);
         return next;
       });
-      // 在清空之前，先保存需要更新UI状态的cardId列表
       const savedProblemCardIds = new Set<string>(pendingProblemCardIds);
       
       setPendingProblemCardIds(new Set());
@@ -2566,28 +2517,21 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       setPendingEditedProblemIds(new Map());
       setPendingDeleteProblemIds(new Map());
       
-      // 更新题目的UI状态：清空新建/编辑标记，并更新原始数据
       if (hasProblemChanges) {
-        // 清空新建和编辑的problem ID标记
         setNewProblemIds(new Set());
         setEditedProblemIds(new Set());
         
-        // 更新原始problem数据（保存后，当前状态就是新的原始状态）
         const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
         const savedCardIds = new Set<string>();
         
-        // 收集所有已保存的cardId（包括通过内容更新和题目更新保存的）
         for (const change of allChanges.values()) {
           if (change.file.type === 'card' && change.file.cardId) {
             savedCardIds.add(String(change.file.cardId));
           }
-          return true; // 计算其他重命名
-        }).length;
-      } else {
-        actualRenameCount = hasRenameChanges ? pendingRenames.size : 0;
+        }
       }
       
-      // 计算题目更改数（包括新建、编辑和删除）
+      
       const problemChangesCount = pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size;
       
       const totalChanges = (hasContentChanges ? allChanges.size : 0) 
@@ -2599,23 +2543,20 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       
       Notification.success(`保存成功，共 ${totalChanges} 项更改`);
       
-      // 如果有创建更改，重新加载数据以确保同步
       if (hasCreateChanges || hasAnyChanges) {
         try {
           const response = await request.get(getBaseUrl('/data', docId));
           setBase(response);
         } catch (error) {
         }
-        // 添加题目更新的cardId
+        
         for (const cardId of Array.from(savedProblemCardIds)) {
           if (!String(cardId).startsWith('temp-card-')) {
             savedCardIds.add(String(cardId));
           }
         }
         
-        // 更新每个已保存card的原始problem数据
         for (const cardId of savedCardIds) {
-          // 找到对应的card
           let foundCard: Card | null = null;
           for (const nodeId in nodeCardsMap) {
             const cards: Card[] = nodeCardsMap[nodeId] || [];
@@ -2627,7 +2568,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           }
           
           if (foundCard && foundCard.problems) {
-            // 更新原始problem数据
             const originalProblems = new Map<string, CardProblem>();
             foundCard.problems.forEach(p => {
               originalProblems.set(p.pid, { ...p });
@@ -2636,12 +2576,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           }
         }
         
-        // 触发UI更新（包括题目列表的重新渲染）
+        
         setNodeCardsMapVersion(prev => prev + 1);
         setOriginalProblemsVersion(prev => prev + 1);
       }
       
-      // 更新原始内容引用
       if (hasContentChanges) {
         const changes = Array.from(allChanges.values());
         changes.forEach(change => {
@@ -2649,22 +2588,21 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         });
       }
     } catch (error: any) {
-      Notification.error('保存失败: ' + (error.message || '未知错误'));
+      Notification.error(i18n('Save failed') + ': ' + (error.message || i18n('Unknown error')));
     } finally {
       setIsCommitting(false);
     }
   }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion]);
 
-  // 重命名文件（仅前端修改，保存时才提交到后端）
+  
   const handleRename = useCallback((file: FileItem, newName: string) => {
     if (!newName.trim()) {
-      Notification.error('名称不能为空');
+      Notification.error(i18n('Name cannot be empty'));
       return;
     }
 
     const trimmedName = newName.trim();
     
-    // 如果名称没有变化，移除待重命名记录
     if (trimmedName === file.name) {
       setPendingRenames(prev => {
         const next = new Map(prev);
@@ -2675,9 +2613,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       return;
     }
     
-    // 更新本地数据（立即显示）
+    
     if (file.type === 'node') {
-      // 更新节点名称
       setBase(prev => ({
         ...prev,
         nodes: prev.nodes.map(n => 
@@ -2687,7 +2624,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         ),
       }));
     } else if (file.type === 'card') {
-      // 更新卡片名称
       const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
       if (nodeCardsMap[file.nodeId || '']) {
         const cards = nodeCardsMap[file.nodeId || ''];
@@ -2695,13 +2631,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         if (cardIndex >= 0) {
           cards[cardIndex] = { ...cards[cardIndex], title: trimmedName };
           (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
-          // 触发 fileTree 重新计算
           setNodeCardsMapVersion(prev => prev + 1);
         }
       }
     }
     
-    // 添加到待重命名列表
     setPendingRenames(prev => {
       const next = new Map(prev);
       next.set(file.id, {
@@ -2715,39 +2649,38 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setEditingFile(null);
   }, []);
 
-  // 开始重命名
   const handleStartRename = useCallback((file: FileItem, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditingFile(file);
     setEditingName(file.name);
   }, []);
 
-  // 取消重命名
+  
   const handleCancelRename = useCallback(() => {
     setEditingFile(null);
     setEditingName('');
   }, []);
 
-  // 确认重命名
+  
   const handleConfirmRename = useCallback(async () => {
     if (editingFile) {
       await handleRename(editingFile, editingName);
     }
   }, [editingFile, editingName, handleRename]);
 
-  // 新建卡片（前端操作）
+  
   const handleNewCard = useCallback((nodeId: string) => {
-    // 检查节点是否在待删除列表中
+    
     if (pendingDeletes.has(nodeId)) {
-      Notification.error('无法创建：该节点已在待删除列表中');
+      Notification.error(i18n('Cannot create: node is in delete list'));
       setContextMenu(null);
       return;
     }
     
-    // 检查节点是否存在
+    
     const nodeExists = base.nodes.some(n => n.id === nodeId);
     if (!nodeExists && !nodeId.startsWith('temp-node-')) {
-      Notification.error('无法创建：节点不存在');
+      Notification.error(i18n('Cannot create: node does not exist'));
       setContextMenu(null);
       return;
     }
@@ -2756,14 +2689,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const newCard: PendingCreate = {
       type: 'card',
       nodeId,
-      title: '新卡片',
+      title: i18n('New card'),
       tempId,
     };
     
     pendingCreatesRef.current.set(tempId, newCard);
     setPendingCreatesCount(pendingCreatesRef.current.size);
     
-    // 更新 nodeCardsMap（前端显示）
+    
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     if (!nodeCardsMap[nodeId]) {
       nodeCardsMap[nodeId] = [];
@@ -2776,7 +2709,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       docId: tempId,
       cid: 0,
       nodeId,
-      title: '新卡片',
+      title: i18n('New card'),
       content: '',
       order: maxOrder + 1,
       updateAt: new Date().toISOString(),
@@ -2790,10 +2723,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setContextMenu(null);
   }, [pendingDeletes, base.nodes]);
 
-  // 从剪贴板导入：解析 ## 标题 + 内容（--- 分隔），按块新建 card 并填充。text 由导入窗口传入。
+  
   const doImportFromText = useCallback((nodeId: string, text: string) => {
     if (pendingDeletes.has(nodeId)) {
-      Notification.error('无法导入：该节点已在待删除列表中');
+      Notification.error(i18n('Cannot import: node is in delete list'));
       return;
     }
     const nodeExists = base.nodes.some(n => n.id === nodeId);
@@ -2803,13 +2736,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
     const trimmed = text.trim();
     if (!trimmed) {
-      Notification.info('请输入或粘贴要导入的内容');
+      Notification.info(i18n('Please paste or enter content to import'));
       return;
     }
-    // 按 --- 分隔块（兼容 \n\n---\n\n 或 \n---\n）
+    
     const blocks = trimmed.split(/\n\s*\n\s*---\s*\n\s*\n/).map(s => s.trim()).filter(Boolean);
     if (blocks.length === 0) {
-      Notification.info('未识别到有效内容（请使用 ## 标题 与 --- 分隔）');
+      Notification.info(i18n('No valid content (use ## Title and --- to separate cards)'));
       return;
     }
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
@@ -2830,7 +2763,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         content = block.slice(firstLine.length).replace(/^\n+/, '').trim();
       } else {
         const firstLine = block.split('\n')[0] || '';
-        title = firstLine.trim() || '未命名';
+        title = firstLine.trim() || i18n('Unnamed');
         content = block.includes('\n') ? block.slice(firstLine.length).replace(/^\n+/, '').trim() : '';
       }
       order += 1;
@@ -2870,10 +2803,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     Notification.success(`已导入 ${blocks.length} 个卡片，请保存以生效`);
   }, [pendingDeletes, base.nodes]);
 
-  // 打开导入窗口（点击「导入」时调用）
+  
   const handleOpenImportWindow = useCallback((nodeId: string) => {
     if (pendingDeletes.has(nodeId)) {
-      Notification.error('无法导入：该节点已在待删除列表中');
+      Notification.error(i18n('Cannot import: node is in delete list'));
       setContextMenu(null);
       return;
     }
@@ -2887,7 +2820,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setContextMenu(null);
   }, [pendingDeletes, base.nodes]);
 
-  // 卡面弹窗：打开时初始化与主编辑器相同的 Markdown Editor，关闭时销毁
+  
   useEffect(() => {
     if (!cardFaceWindow) return;
     const timer = setTimeout(() => {
@@ -2917,13 +2850,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         cardFaceEditorInstanceRef.current = null;
       }
     };
-  }, [cardFaceWindow?.file?.id]); // 打开时用当前 cardFaceEditContent 初始化
+  }, [cardFaceWindow?.file?.id]);
 
-  // 新建子节点（前端操作）
+  
   const handleNewChildNode = useCallback((parentNodeId: string) => {
     const tempId = `temp-node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // 计算父节点下所有子节点和卡片的maxOrder
+    
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const childNodes = base.edges
       .filter(e => e.source === parentNodeId)
@@ -2943,28 +2876,28 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const newChildNode: PendingCreate = {
       type: 'node',
       nodeId: parentNodeId,
-      text: '新节点',
+      text: i18n('New node'),
       tempId,
     };
     
     pendingCreatesRef.current.set(tempId, newChildNode);
     setPendingCreatesCount(pendingCreatesRef.current.size);
     
-    // 更新 base（前端显示）
+    
     const tempNode: BaseNode = {
       id: tempId,
-      text: '新节点',
+      text: i18n('New node'),
       order: maxOrder + 1,
     };
     
-    // 创建新的edge
+    
     const newEdge: BaseEdge = {
       id: `temp-edge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       source: parentNodeId,
       target: tempId,
     };
     
-    // 更新 base（前端显示）- 一次性更新nodes和edges，避免状态冲突
+    
     setBase(prev => {
       const updated = {
         ...prev,
@@ -2975,19 +2908,19 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         ),
         edges: [...prev.edges, newEdge],
       };
-      // 立即更新 ref，确保自动保存时能获取最新值
+      
       baseRef.current = updated;
       return updated;
     });
     
-    // 展开父节点以便看到新节点
+    
     setExpandedNodes(prev => {
       const newSet = new Set(prev);
       if (!newSet.has(parentNodeId)) {
         newSet.add(parentNodeId);
-        // 立即更新 ref，确保自动保存时能获取最新值
+        
         expandedNodesRef.current = newSet;
-        // 触发自动保存
+        
         triggerExpandAutoSave();
       }
       return newSet;
@@ -2996,11 +2929,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setContextMenu(null);
   }, [triggerExpandAutoSave]);
 
-  // 创建根节点（没有父节点的节点）
+  
   const handleNewRootNode = useCallback(() => {
     const tempId = `temp-node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // 计算所有根节点的maxOrder
+    
     const rootNodes = base.nodes.filter(node => 
       !base.edges.some(edge => edge.target === node.id)
     );
@@ -3010,22 +2943,22 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     
     const newRootNode: PendingCreate = {
       type: 'node',
-      nodeId: '', // 根节点没有父节点
-      text: '新节点',
+      nodeId: '', // root has no parent
+      text: i18n('New node'),
       tempId,
     };
     
     pendingCreatesRef.current.set(tempId, newRootNode);
     setPendingCreatesCount(pendingCreatesRef.current.size);
     
-    // 更新 base（前端显示）
+    
     const tempNode: BaseNode = {
       id: tempId,
-      text: '新节点',
+      text: i18n('New node'),
       order: maxOrder + 1,
     };
     
-    // 更新 base（前端显示）
+    
     setBase(prev => {
       const updated = {
         ...prev,
@@ -3038,9 +2971,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setEmptyAreaContextMenu(null);
   }, [base.nodes, base.edges]);
 
-  // 创建根卡片（需要先找到或创建一个根节点）
+  
   const handleNewRootCard = useCallback(() => {
-    // 找到第一个根节点
+    
     const rootNodes = base.nodes.filter(node => 
       !base.edges.some(edge => edge.target === node.id)
     );
@@ -3048,22 +2981,22 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     let targetNodeId: string;
     
     if (rootNodes.length === 0) {
-      // 如果没有根节点，先创建一个
+      
       const tempNodeId = `temp-node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const newRootNode: PendingCreate = {
         type: 'node',
-        nodeId: '', // 根节点没有父节点
-        text: '新节点',
+        nodeId: '', // root has no parent
+        text: i18n('New node'),
         tempId: tempNodeId,
       };
       
       pendingCreatesRef.current.set(tempNodeId, newRootNode);
       setPendingCreatesCount(pendingCreatesRef.current.size);
       
-      // 更新 base（前端显示）
+      
       const tempNode: BaseNode = {
         id: tempNodeId,
-        text: '新节点',
+        text: i18n('New node'),
         order: 0,
       };
       
@@ -3078,25 +3011,25 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       
       targetNodeId = tempNodeId;
     } else {
-      // 使用第一个根节点
+      
       targetNodeId = rootNodes[0].id;
     }
     
-    // 在目标节点下创建卡片
+    
     handleNewCard(targetNodeId);
     setEmptyAreaContextMenu(null);
   }, [base.nodes, base.edges, handleNewCard]);
 
-  // 复制节点或卡片（支持多选）
+  
   const handleCopy = useCallback((file?: FileItem) => {
     let itemsToCopy: FileItem[] = [];
     
-    // 如果有多选且传入了file，使用多选；否则使用单个file
+    
     if (isMultiSelectMode && selectedItems.size > 0 && !file) {
-      // 多选模式：复制所有选中的项目
+      
       itemsToCopy = fileTree.filter(f => selectedItems.has(f.id));
     } else if (file) {
-      // 单个文件模式
+      
       itemsToCopy = [file];
     } else {
       return;
@@ -3106,21 +3039,21 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     
     setClipboard({ type: 'copy', items: itemsToCopy });
     
-    // 同时将信息存储到系统剪贴板，以便在 AI 对话框中粘贴时识别
+    
     if (navigator.clipboard && navigator.clipboard.writeText && itemsToCopy.length === 1) {
       const firstItem = itemsToCopy[0];
       const reference = firstItem.type === 'node' 
         ? `ejunz://node/${firstItem.nodeId}`
         : `ejunz://card/${firstItem.cardId}`;
       navigator.clipboard.writeText(reference).catch(() => {
-        // 如果写入失败，忽略错误（可能是权限问题）
+        
       });
     }
     
     setContextMenu(null);
   }, [isMultiSelectMode, selectedItems, fileTree]);
 
-  // 复制内容：card 复制该卡片 md 内容，node 递归复制该节点及子节点下所有 card，按层级区分
+  
   const handleCopyContent = useCallback((file: FileItem) => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     let text = '';
@@ -3185,28 +3118,28 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
     if (text !== '' && navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text).then(() => {
-        Notification.success('内容已复制到剪贴板');
+        Notification.success(i18n('Content copied to clipboard'));
       }).catch(() => {
-        Notification.error('复制失败');
+        Notification.error(i18n('Copy failed'));
       });
     } else if (text === '') {
-      Notification.info('无内容可复制');
+      Notification.info(i18n('No content to copy'));
     } else {
       Notification.error('剪贴板不可用');
     }
     setContextMenu(null);
   }, [pendingChanges, pendingRenames, base, pendingDeletes]);
 
-  // 剪切节点或卡片（支持多选）
+  
   const handleCut = useCallback((file?: FileItem) => {
     let itemsToCut: FileItem[] = [];
     
-    // 如果有多选且传入了file，使用多选；否则使用单个file
+    
     if (isMultiSelectMode && selectedItems.size > 0 && !file) {
-      // 多选模式：剪切所有选中的项目
+      
       itemsToCut = fileTree.filter(f => selectedItems.has(f.id));
     } else if (file) {
-      // 单个文件模式
+      
       itemsToCut = [file];
     } else {
       return;
@@ -3216,75 +3149,75 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     
     setClipboard({ type: 'cut', items: itemsToCut });
     
-    // 同时将信息存储到系统剪贴板，以便在 AI 对话框中粘贴时识别
+    
     if (navigator.clipboard && navigator.clipboard.writeText && itemsToCut.length === 1) {
       const firstItem = itemsToCut[0];
       const reference = firstItem.type === 'node' 
         ? `ejunz://node/${firstItem.nodeId}`
         : `ejunz://card/${firstItem.cardId}`;
       navigator.clipboard.writeText(reference).catch(() => {
-        // 如果写入失败，忽略错误（可能是权限问题）
+        
       });
     }
     
     setContextMenu(null);
   }, [isMultiSelectMode, selectedItems, fileTree]);
 
-  // 清理临时card/node的所有pending操作
+  
   const cleanupPendingForTempItem = useCallback((file: FileItem) => {
     if (file.type === 'node') {
       const nodeId = file.nodeId || '';
       if (nodeId.startsWith('temp-node-')) {
-        // 从 pendingCreatesRef 中移除
+        
         pendingCreatesRef.current.delete(nodeId);
         setPendingCreatesCount(pendingCreatesRef.current.size);
         
-        // 从 pendingChanges 中移除
+        
         setPendingChanges(prev => {
           const next = new Map(prev);
           next.delete(nodeId);
           return next;
         });
         
-        // 从 pendingRenames 中移除
+        
         setPendingRenames(prev => {
           const next = new Map(prev);
           next.delete(nodeId);
           return next;
         });
         
-        // 从 pendingDragChanges 中移除
+        
         setPendingDragChanges(prev => {
           const next = new Set(prev);
           next.delete(`node-${nodeId}`);
           return next;
         });
         
-        // 清理该node下的所有临时card的pending操作
+        
         const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
         const nodeCards = nodeCardsMap[nodeId] || [];
         for (const card of nodeCards) {
           const cardId = card.docId;
           if (cardId && cardId.startsWith('temp-card-')) {
-            // 从 pendingCreatesRef 中移除
+            
             pendingCreatesRef.current.delete(cardId);
             setPendingCreatesCount(pendingCreatesRef.current.size);
             
-            // 从 pendingChanges 中移除（card的id是 card-${cardId}）
+            
             setPendingChanges(prev => {
               const next = new Map(prev);
               next.delete(`card-${cardId}`);
               return next;
             });
             
-            // 从 pendingRenames 中移除
+            
             setPendingRenames(prev => {
               const next = new Map(prev);
               next.delete(`card-${cardId}`);
               return next;
             });
             
-            // 从 pendingDragChanges 中移除
+            
             setPendingDragChanges(prev => {
               const next = new Set(prev);
               next.delete(cardId);
@@ -3296,25 +3229,25 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } else if (file.type === 'card') {
       const cardId = file.cardId || '';
       if (cardId.startsWith('temp-card-')) {
-        // 从 pendingCreatesRef 中移除
+        
         pendingCreatesRef.current.delete(cardId);
         setPendingCreatesCount(pendingCreatesRef.current.size);
         
-        // 从 pendingChanges 中移除（card的id是 card-${cardId}）
+        
         setPendingChanges(prev => {
           const next = new Map(prev);
           next.delete(`card-${cardId}`);
           return next;
         });
         
-        // 从 pendingRenames 中移除
+        
         setPendingRenames(prev => {
           const next = new Map(prev);
           next.delete(`card-${cardId}`);
           return next;
         });
         
-        // 从 pendingDragChanges 中移除
+        
         setPendingDragChanges(prev => {
           const next = new Set(prev);
           next.delete(cardId);
@@ -3324,44 +3257,44 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
   }, []);
 
-  // 粘贴节点或卡片（支持多个项目）
+  
   const handlePaste = useCallback((targetNodeId: string) => {
     if (!clipboard || clipboard.items.length === 0) return;
 
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
 
-    // 遍历所有要粘贴的项目
+    
     for (const item of clipboard.items) {
       if (item.type === 'node') {
         const sourceNodeId = item.nodeId || '';
         const sourceNode = base.nodes.find(n => n.id === sourceNodeId);
         
-        // 如果源节点不存在，可能是已经被删除或移动了
+        
         if (!sourceNode) {
-          // 如果是剪切操作，清空剪贴板
+          
           if (clipboard.type === 'cut') {
             setClipboard(null);
           }
-          continue; // 跳过这个项目，继续处理下一个
+          continue;
         }
       
-      // 如果剪切的是临时节点（已经粘贴过的），需要先清理所有相关的pending操作
+      
       if (clipboard.type === 'cut' && sourceNodeId.startsWith('temp-node-')) {
-        // 使用cleanupPendingForTempItem清理所有pending操作
+        
         cleanupPendingForTempItem({ type: 'node', id: sourceNodeId, nodeId: sourceNodeId, name: sourceNode.text || '', level: 0 });
       }
 
-      // 收集所有需要复制的节点（包括子节点）
+      
       const nodesToCopy: BaseNode[] = [];
-      const nodeIdMap = new Map<string, string>(); // 旧ID -> 新ID映射
+      const nodeIdMap = new Map<string, string>();
       let nodeCounter = 0;
 
-      // 递归收集节点
+      
       const collectNodes = (nodeId: string) => {
         const node = base.nodes.find(n => n.id === nodeId);
         if (!node) return;
 
-        // 如果已经收集过，跳过
+        
         if (nodeIdMap.has(nodeId)) return;
 
         nodeCounter++;
@@ -3372,11 +3305,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           ...node,
           id: newId,
           text: node.text,
-          order: node.order, // 保持原有的order
+          order: node.order,
         };
         nodesToCopy.push(newNode);
 
-        // 递归收集子节点
+        
         const childEdges = base.edges.filter(e => e.source === nodeId);
         childEdges.forEach(edge => {
           collectNodes(edge.target);
@@ -3385,16 +3318,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
       collectNodes(sourceNodeId);
 
-      // 构建新的 edges（在收集完所有节点后）
+      
       const updatedEdges: BaseEdge[] = [];
       
-      // 复制所有相关的 edges（只复制那些source和target都在要复制的节点集合中的edges）
-      // 这样可以保持节点之间的嵌套关系
+      
+      
       base.edges.forEach(edge => {
         const newSource = nodeIdMap.get(edge.source);
         const newTarget = nodeIdMap.get(edge.target);
-        // 只有当source和target都在nodeIdMap中时，才复制这个edge
-        // 这样可以确保只复制节点内部的edges，不包括节点与外部节点的edges
+        
+        
         if (newSource && newTarget) {
           updatedEdges.push({
             id: `temp-edge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -3404,10 +3337,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       });
 
-      // 添加根节点到目标节点的边（将复制的节点树连接到目标节点）
+      
       const rootNewId = nodeIdMap.get(sourceNodeId);
       if (rootNewId) {
-        // 检查是否已经存在这个edge（避免重复）
+        
         const edgeExists = updatedEdges.some(e => e.source === targetNodeId && e.target === rootNewId);
         if (!edgeExists) {
           updatedEdges.push({
@@ -3418,8 +3351,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       }
 
-      // 更新 base
-      // 检查是否已存在（避免重复）
+      
+      
       setBase(prev => {
         const existingNodeIds = new Set(prev.nodes.map(n => n.id));
         const newNodes = nodesToCopy.filter(n => !existingNodeIds.has(n.id));
@@ -3432,7 +3365,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         };
       });
 
-      // 复制卡片
+      
       nodesToCopy.forEach(newNode => {
         const oldNodeId = Array.from(nodeIdMap.entries()).find(([_, newId]) => newId === newNode.id)?.[0];
         if (oldNodeId && nodeCardsMap[oldNodeId]) {
@@ -3451,13 +3384,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           }
           nodeCardsMap[newNode.id].push(...newCards);
           
-          // 将复制的卡片添加到待创建列表
+          
           newCards.forEach(newCard => {
             if (!pendingCreatesRef.current.has(newCard.docId)) {
               pendingCreatesRef.current.set(newCard.docId, {
                 type: 'card',
                 nodeId: newNode.id,
-                title: newCard.title || '新卡片',
+                title: newCard.title || i18n('New card'),
                 tempId: newCard.docId,
               });
               setPendingCreatesCount(pendingCreatesRef.current.size);
@@ -3467,15 +3400,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       });
       (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
 
-      // 如果是剪切，删除原节点
+      
       if (clipboard.type === 'cut') {
-        // 如果源节点是临时节点（已经粘贴过的），不需要添加到 pendingDeletes
-        // 只需要从 base 中删除即可
+        
+        
         if (sourceNodeId.startsWith('temp-node-')) {
-          // 临时节点，直接删除，不需要标记为待删除
-          // 清理所有相关的卡片（包括它们的pending操作）
+          
+          
           nodeIdMap.forEach((newId, oldId) => {
-            // 清理该节点下所有临时card的pending操作
+            
             const oldCards = nodeCardsMap[oldId] || [];
             oldCards.forEach((card: Card) => {
               if (card.docId && card.docId.startsWith('temp-card-')) {
@@ -3489,7 +3422,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                 });
               }
             });
-            // 删除节点下的卡片
+            
             if (nodeCardsMap[oldId]) {
               delete nodeCardsMap[oldId];
             }
@@ -3504,7 +3437,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
           setNodeCardsMapVersion(prev => prev + 1);
         } else {
-          // 真实节点，需要标记为待删除
+          
           setPendingDeletes(prev => {
             const next = new Map(prev);
             next.set(sourceNodeId, {
@@ -3522,37 +3455,37 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       }
 
-      // 添加到待创建列表
-      // 需要根据edges确定每个节点的正确父节点
-      // 只有根节点（sourceNodeId）应该连接到targetNodeId，其他节点应该连接到它们的新父节点
+      
+      
+      
       nodesToCopy.forEach(newNode => {
         const oldNodeId = Array.from(nodeIdMap.entries()).find(([_, newId]) => newId === newNode.id)?.[0];
         if (oldNodeId) {
-          // 检查是否已存在（避免重复）
+          
           if (!pendingCreatesRef.current.has(newNode.id)) {
-            // 找到原始节点的父节点
+            
             const originalParentEdge = base.edges.find(e => e.target === oldNodeId);
             let parentNodeId: string;
             
             if (originalParentEdge) {
-              // 如果原始节点有父节点，找到父节点的新ID
+              
               const newParentId = nodeIdMap.get(originalParentEdge.source);
               if (newParentId) {
-                // 父节点也在复制的节点集合中，使用新父节点ID
+                
                 parentNodeId = newParentId;
               } else {
-                // 父节点不在复制的节点集合中，说明这是根节点，连接到targetNodeId
+                
                 parentNodeId = targetNodeId;
               }
             } else {
-              // 原始节点没有父节点，说明这是根节点，连接到targetNodeId
+              
               parentNodeId = targetNodeId;
             }
             
             pendingCreatesRef.current.set(newNode.id, {
               type: 'node',
               nodeId: parentNodeId,
-              text: newNode.text || '新节点',
+              text: newNode.text || i18n('New node'),
               tempId: newNode.id,
             });
             setPendingCreatesCount(pendingCreatesRef.current.size);
@@ -3565,9 +3498,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         const newSet = new Set(prev);
         if (!newSet.has(targetNodeId)) {
           newSet.add(targetNodeId);
-          // 立即更新 ref，确保自动保存时能获取最新值
+          
           expandedNodesRef.current = newSet;
-          // 立即更新本地 base 状态
+          
           setBase(prev => {
             const updated = {
               ...prev,
@@ -3577,11 +3510,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                   : n
               ),
             };
-            // 立即更新 ref，确保自动保存时能获取最新值
+            
             baseRef.current = updated;
             return updated;
           });
-          // 触发自动保存
+          
           triggerExpandAutoSave();
         }
         return newSet;
@@ -3591,22 +3524,22 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         const sourceCardId = item.cardId || '';
         const sourceNodeId = item.nodeId || '';
 
-        // 找到源卡片
+        
         const sourceCards = nodeCardsMap[sourceNodeId] || [];
         const sourceCard = sourceCards.find((c: Card) => c.docId === sourceCardId);
         
-        // 如果源卡片不存在，可能是已经被删除或移动了
+        
         if (!sourceCard) {
-          // 如果是剪切操作，清空剪贴板
+          
           if (clipboard.type === 'cut') {
             setClipboard(null);
           }
-          continue; // 跳过这个项目，继续处理下一个
+          continue;
         }
       
-      // 如果剪切的是临时卡片（已经粘贴过的），需要先清理所有相关的pending操作
+      
       if (clipboard.type === 'cut' && sourceCardId.startsWith('temp-card-')) {
-        // 使用cleanupPendingForTempItem清理所有pending操作
+        
         cleanupPendingForTempItem({ 
           type: 'card', 
           id: `card-${sourceCardId}`, 
@@ -3629,11 +3562,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         order: maxOrder + 1,
       };
 
-      // 更新 nodeCardsMap
+      
       if (!nodeCardsMap[targetNodeId]) {
         nodeCardsMap[targetNodeId] = [];
       }
-      // 检查是否已存在（避免重复）
+      
       const existingIndex = nodeCardsMap[targetNodeId].findIndex((c: Card) => c.docId === newCardId);
       if (existingIndex === -1) {
         nodeCardsMap[targetNodeId].push(newCard);
@@ -3641,7 +3574,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
       }
 
-      // 如果是剪切，从原节点移除
+      
       if (clipboard.type === 'cut') {
         const sourceCards = nodeCardsMap[sourceNodeId] || [];
         const cardIndex = sourceCards.findIndex((c: Card) => c.docId === sourceCardId);
@@ -3651,10 +3584,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
           setNodeCardsMapVersion(prev => prev + 1);
 
-          // 如果源卡片是临时卡片（已经粘贴过的），不需要添加到 pendingDeletes
-          // 已经在前面清理过了
+          
+          
           if (!sourceCardId.startsWith('temp-card-')) {
-            // 真实卡片，需要标记为待删除
+            
             setPendingDeletes(prev => {
               const next = new Map(prev);
               next.set(sourceCardId, {
@@ -3668,13 +3601,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       }
 
-      // 添加到待创建列表（用于保存时创建）
-      // 检查是否已存在（避免重复）
+      
+      
       if (!pendingCreatesRef.current.has(newCardId)) {
         pendingCreatesRef.current.set(newCardId, {
           type: 'card',
           nodeId: targetNodeId,
-          title: newCard.title || '新卡片',
+          title: newCard.title || i18n('New card'),
           tempId: newCardId,
         });
         setPendingCreatesCount(pendingCreatesRef.current.size);
@@ -3684,7 +3617,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
     }
 
-    // 如果是剪切，清空剪贴板；如果是复制，保留
+    
     if (clipboard.type === 'cut') {
       setClipboard(null);
     }
@@ -3692,12 +3625,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setContextMenu(null);
   }, [clipboard, base, setBase, cleanupPendingForTempItem, triggerExpandAutoSave]);
 
-  // 处理拖拽调整大小
+  
   useEffect(() => {
     const handleResizeMove = (e: MouseEvent) => {
       if (!isResizing) return;
       
-      const deltaX = resizeStartXRef.current - e.clientX; // 向左拖拽时 deltaX 为正
+      const deltaX = resizeStartXRef.current - e.clientX;
       const newWidth = Math.max(200, Math.min(800, resizeStartWidthRef.current + deltaX));
       setChatPanelWidth(newWidth);
     };
@@ -3721,27 +3654,27 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     };
   }, [isResizing]);
 
-  // 自动滚动聊天消息到底部（只在用户位于底部附近时）
+  
   useEffect(() => {
     scrollToBottomIfNeeded();
   }, [chatMessages, scrollToBottomIfNeeded]);
 
-  // 获取节点的完整路径（从根节点到当前节点）
+  
   const getNodePath = useCallback((nodeId: string): string[] => {
     const path: string[] = [];
     const nodeMap = new Map<string, string>(); // parentId -> nodeId
     
-    // 构建父子关系映射
+    
     base.edges.forEach((edge) => {
       nodeMap.set(edge.target, edge.source);
     });
     
-    // 从当前节点向上追溯到根节点
+    
     let currentNodeId: string | undefined = nodeId;
     while (currentNodeId) {
       const node = base.nodes.find(n => n.id === currentNodeId);
       if (node) {
-        path.unshift(node.text || '未命名节点');
+        path.unshift(node.text || i18n('Unnamed Node'));
       }
       currentNodeId = nodeMap.get(currentNodeId);
     }
@@ -3749,10 +3682,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     return path;
   }, [base]);
 
-  // 通过Agent生成题目
+  
   const handleGenerateProblemWithAgent = useCallback(async (userPrompt?: string) => {
     if (!selectedFile || selectedFile.type !== 'card') {
-      Notification.error('请先在左侧选择一个卡片');
+      Notification.error(i18n('Please select a card on the left first'));
       return;
     }
 
@@ -3769,22 +3702,22 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         return;
       }
 
-      // 获取当前card的路径信息
+      
       const nodePath = getNodePath(nodeId);
-      const cardPath = [...nodePath, card.title || '未命名卡片'].join(' > ');
+      const cardPath = [...nodePath, card.title || i18n('Unnamed Card')].join(' > ');
 
-      // 构建当前card的上下文信息
+      
       const cardContext = `当前卡片信息：
-- 卡片标题：${card.title || '未命名卡片'}
+- 卡片标题：${card.title || i18n('Unnamed Card')}
 - 卡片ID：${card.docId}
 - 卡片路径：${cardPath}
-- 卡片内容：${card.content || '(无内容)'}
+- 卡片内容：${card.content || i18n('(No content)')}
 - 已有题目数量：${(card.problems || []).length}`;
 
       const domainId = (window as any).UiContext?.domainId || 'system';
       const prompt = userPrompt || problemStem.trim() || '请根据当前卡片的内容生成一道单选题';
 
-      // 构建系统提示
+      
       const systemPrompt = `你是一个题目生成助手，专门帮助用户根据卡片内容生成单选题。
 
 【当前卡片上下文】
@@ -3804,7 +3737,7 @@ ${cardContext}
 {
   "stem": "题干内容",
   "options": ["选项A", "选项B", "选项C", "选项D"],
-  "answer": 0,  // 正确答案的索引（0表示A，1表示B，2表示C，3表示D）
+  "answer": 0,
   "analysis": "解析说明（可选）"
 }
 \`\`\`
@@ -3817,7 +3750,7 @@ ${cardContext}
 
 用户要求：${prompt}`;
 
-      // 调用AI接口生成题目
+      
       const response = await fetch(`/d/${domainId}/ai/chat?stream=false`, {
         method: 'POST',
         headers: {
@@ -3837,14 +3770,14 @@ ${cardContext}
       const data = await response.json();
       let aiResponse = data.content || data.message || '';
 
-      // 解析JSON响应
+      
       const jsonMatch = aiResponse.match(/```(?:json)?\n([\s\S]*?)\n```/);
       if (!jsonMatch) {
-        // 尝试直接解析整个响应
+        
         try {
           const parsed = JSON.parse(aiResponse);
           if (parsed.stem && parsed.options && parsed.answer !== undefined) {
-            // 直接生成并保存problem
+            
             const existingProblems: CardProblem[] = card.problems || [];
             const newProblem: CardProblem = {
               pid: `p_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
@@ -3857,7 +3790,7 @@ ${cardContext}
 
             const updatedProblems = [...existingProblems, newProblem];
 
-            // 更新前端缓存
+            
             if (nodeCardsMap[nodeId]) {
               const cardIndex = nodeCards.findIndex((c: Card) => c.docId === selectedFile.cardId);
               if (cardIndex >= 0) {
@@ -3868,7 +3801,7 @@ ${cardContext}
                 (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
                 setNodeCardsMapVersion(prev => prev + 1);
 
-                // 标记该卡片的题目有待提交
+                
                 const cardIdStr = String(selectedFile.cardId || '');
                 if (cardIdStr && !cardIdStr.startsWith('temp-card-')) {
                   setPendingProblemCardIds(prev => {
@@ -3876,7 +3809,7 @@ ${cardContext}
                     next.add(cardIdStr);
                     return next;
                   });
-                  // 标记为新建的problem（Agent生成的）
+                  
                   setPendingNewProblemCardIds(prev => {
                     const next = new Set(prev);
                     next.add(cardIdStr);
@@ -3890,7 +3823,7 @@ ${cardContext}
             return;
           }
         } catch (e) {
-          // 忽略解析错误
+          
         }
         throw new Error('AI返回的格式不正确，请重试');
       }
@@ -3902,7 +3835,7 @@ ${cardContext}
         throw new Error('AI返回的题目数据不完整');
       }
 
-      // 填充表单
+      
       setProblemStem(problemData.stem);
       setProblemOptions(problemData.options);
       setProblemAnswer(problemData.answer);
@@ -3916,7 +3849,7 @@ ${cardContext}
     }
   }, [selectedFile, problemStem, getNodePath, setNodeCardsMapVersion, setPendingProblemCardIds, setPendingNewProblemCardIds]);
 
-  // 处理 AI 对话框中的粘贴事件，自动识别复制的 node/card
+  
   const handleAIChatPaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const textarea = e.currentTarget;
@@ -3927,9 +3860,9 @@ ${cardContext}
     let reference: { type: 'node' | 'card'; id: string; name: string; path: string[] } | null = null;
     let shouldPreventDefault = false;
 
-    // 首先检查内部 clipboard state
+    
     if (clipboard && clipboard.type === 'copy' && clipboard.items.length > 0) {
-      // 只使用第一个项目来生成引用（用于AI对话框）
+      
       const firstItem = clipboard.items[0];
       if (firstItem.type === 'node') {
         const nodeId = firstItem.nodeId || '';
@@ -3939,7 +3872,7 @@ ${cardContext}
           reference = {
             type: 'node',
             id: nodeId,
-            name: node.text || '未命名节点',
+            name: node.text || i18n('Unnamed Node'),
             path,
           };
           shouldPreventDefault = true;
@@ -3951,11 +3884,11 @@ ${cardContext}
         const card = cards.find((c: Card) => c.docId === cardId);
         if (card) {
           const nodePath = getNodePath(nodeId);
-          const cardPath = [...nodePath, card.title || '未命名卡片'];
+          const cardPath = [...nodePath, card.title || i18n('Unnamed Card')];
           reference = {
             type: 'card',
             id: cardId,
-            name: card.title || '未命名卡片',
+            name: card.title || i18n('Unnamed Card'),
             path: cardPath,
           };
           shouldPreventDefault = true;
@@ -3963,12 +3896,12 @@ ${cardContext}
       }
     }
 
-    // 如果没有从内部 clipboard 找到，尝试从系统剪贴板读取
+    
     if (!reference) {
       try {
         const clipboardText = e.clipboardData.getData('text');
         if (clipboardText) {
-          // 检查是否是我们的自定义格式
+          
           const nodeMatch = clipboardText.match(/^ejunz:\/\/node\/(.+)$/);
           const cardMatch = clipboardText.match(/^ejunz:\/\/card\/(.+)$/);
           
@@ -3980,24 +3913,24 @@ ${cardContext}
               reference = {
                 type: 'node',
                 id: nodeId,
-                name: node.text || '未命名节点',
+                name: node.text || i18n('Unnamed Node'),
                 path,
               };
               shouldPreventDefault = true;
             }
           } else if (cardMatch) {
             const cardId = cardMatch[1];
-            // 需要遍历所有节点找到对应的卡片
+            
             for (const nodeId in nodeCardsMap) {
               const cards = nodeCardsMap[nodeId] || [];
               const card = cards.find((c: Card) => c.docId === cardId);
               if (card) {
                 const nodePath = getNodePath(nodeId);
-                const cardPath = [...nodePath, card.title || '未命名卡片'];
+                const cardPath = [...nodePath, card.title || i18n('Unnamed Card')];
                 reference = {
                   type: 'card',
                   id: cardId,
-                  name: card.title || '未命名卡片',
+                  name: card.title || i18n('Unnamed Card'),
                   path: cardPath,
                 };
                 shouldPreventDefault = true;
@@ -4007,24 +3940,24 @@ ${cardContext}
           }
         }
       } catch (err) {
-        // 如果读取剪贴板失败，忽略错误
+        
         console.warn('Failed to read clipboard:', err);
       }
     }
 
     if (reference && shouldPreventDefault) {
       e.preventDefault();
-      // 在光标位置插入占位符文本（用于计算位置）
+      
       const placeholder = `@${reference.name}`;
       const newText = 
         currentText.slice(0, selectionStart) + 
         placeholder + 
         currentText.slice(selectionEnd);
       
-      // 更新引用列表
+      
       setChatInputReferences(prev => {
         const newRefs = prev.map(ref => {
-          // 调整后续引用的位置
+          
           if (ref.startIndex >= selectionStart) {
             return {
               ...ref,
@@ -4035,7 +3968,7 @@ ${cardContext}
           return ref;
         });
         
-        // 添加新引用
+        
         newRefs.push({
           type: reference!.type,
           id: reference!.id,
@@ -4045,18 +3978,18 @@ ${cardContext}
           endIndex: selectionStart + placeholder.length,
         });
         
-        // 按位置排序
+        
         return newRefs.sort((a, b) => a.startIndex - b.startIndex);
       });
       
       setChatInput(newText);
       
-      // 如果是 copy 操作，粘贴到聊天框后清除 clipboard 状态
+      
       if (clipboard && clipboard.type === 'copy') {
         setClipboard(null);
       }
       
-      // 设置光标位置到引用文本之后
+      
       setTimeout(() => {
         const newCursorPos = selectionStart + placeholder.length;
         textarea.setSelectionRange(newCursorPos, newCursorPos);
@@ -4065,18 +3998,18 @@ ${cardContext}
     }
   }, [clipboard, chatInput, base, getNodePath, setClipboard]);
 
-  // 将 base 结构转换为文本描述（供 AI 理解）
+  
   const convertBaseToText = useCallback((): string => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const nodeMap = new Map<string, { node: BaseNode; children: string[] }>();
     const rootNodes: string[] = [];
 
-    // 构建节点映射
+    
     base.nodes.forEach((node) => {
       nodeMap.set(node.id, { node, children: [] });
     });
 
-    // 构建父子关系
+    
     base.edges.forEach((edge) => {
       const parent = nodeMap.get(edge.source);
       if (parent) {
@@ -4084,7 +4017,7 @@ ${cardContext}
       }
     });
 
-    // 找到根节点
+    
     base.nodes.forEach((node) => {
       const hasParent = base.edges.some((edge) => edge.target === node.id);
       if (!hasParent) {
@@ -4092,7 +4025,7 @@ ${cardContext}
       }
     });
 
-    // 递归构建文本描述
+    
     const buildNodeText = (nodeId: string, indent: number = 0): string => {
       const nodeData = nodeMap.get(nodeId);
       if (!nodeData) return '';
@@ -4101,14 +4034,14 @@ ${cardContext}
       const indentStr = '  '.repeat(indent);
       const path = getNodePath(nodeId);
       const pathStr = path.join(' > ');
-      let result = `${indentStr}- ${node.text || '未命名节点'} (ID: ${node.id}, 路径: ${pathStr})\n`;
+      let result = `${indentStr}- ${node.text || i18n('Unnamed Node')} (ID: ${node.id}, 路径: ${pathStr})\n`;
 
-      // 添加卡片信息
+      
       const cards = nodeCardsMap[nodeId] || [];
       if (cards.length > 0) {
         cards.forEach((card: Card) => {
-          const cardPath = [...path, card.title || '未命名卡片'].join(' > ');
-          result += `${indentStr}  📄 ${card.title || '未命名卡片'} (ID: ${card.docId}, 路径: ${cardPath})\n`;
+          const cardPath = [...path, card.title || i18n('Unnamed Card')].join(' > ');
+          result += `${indentStr}  📄 ${card.title || i18n('Unnamed Card')} (ID: ${card.docId}, 路径: ${cardPath})\n`;
           if (card.content) {
             const contentPreview = card.content.length > 100 
               ? card.content.substring(0, 100) + '...' 
@@ -4118,7 +4051,7 @@ ${cardContext}
         });
       }
 
-      // 添加子节点
+      
       children.forEach((childId) => {
         result += buildNodeText(childId, indent + 1);
       });
@@ -4134,23 +4067,23 @@ ${cardContext}
     return text;
   }, [base, getNodePath]);
 
-  // 展开用户消息中的引用（@节点名 或 @卡片名）为详细信息
+  
   const expandReferences = useCallback((message: string): string => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     let expandedMessage = message;
     
-    // 匹配所有 @引用
+    
     const referencePattern = /@([^\s@]+)/g;
     const matches = Array.from(message.matchAll(referencePattern));
     
-    // 从后往前替换，避免索引变化问题
+    
     for (let i = matches.length - 1; i >= 0; i--) {
       const match = matches[i];
       const refName = match[1];
       const startIndex = match.index!;
       const endIndex = startIndex + match[0].length;
       
-      // 查找匹配的节点
+      
       const matchedNode = base.nodes.find(n => n.text === refName);
       if (matchedNode) {
         const path = getNodePath(matchedNode.id);
@@ -4160,15 +4093,15 @@ ${cardContext}
         continue;
       }
       
-      // 查找匹配的卡片
+      
       for (const nodeId in nodeCardsMap) {
         const cards = nodeCardsMap[nodeId] || [];
         const matchedCard = cards.find((c: Card) => c.title === refName);
         if (matchedCard) {
           const nodePath = getNodePath(nodeId);
-          const cardPath = [...nodePath, matchedCard.title || '未命名卡片'].join(' > ');
-          // 包含完整内容，以便AI能够修改
-          const fullContent = matchedCard.content || '(无内容)';
+          const cardPath = [...nodePath, matchedCard.title || i18n('Unnamed Card')].join(' > ');
+          
+          const fullContent = matchedCard.content || i18n('(No content)');
           const expandedRef = `@${refName} (卡片ID: ${matchedCard.docId}, 完整路径: ${cardPath}, 完整内容: ${fullContent})`;
           expandedMessage = expandedMessage.slice(0, startIndex) + expandedRef + expandedMessage.slice(endIndex);
           break;
@@ -4179,12 +4112,12 @@ ${cardContext}
     return expandedMessage;
   }, [base, getNodePath]);
 
-  // 处理 AI 聊天发送
+  
   const handleAIChatSend = useCallback(async () => {
     if (!chatInput.trim() || isChatLoading) return;
 
     const userMessage = chatInput.trim();
-    // 从引用列表中提取引用对象
+    
     const references = chatInputReferences.map(ref => ({
       type: ref.type,
       id: ref.id,
@@ -4192,19 +4125,19 @@ ${cardContext}
       path: ref.path,
     }));
     
-    // 展开引用为详细信息（用于发送给 AI）
+    
     const expandedMessage = expandReferences(userMessage);
     setChatInput('');
     setChatInputReferences([]);
     setIsChatLoading(true);
 
-    // 先构建历史记录（在添加新消息之前，这样历史记录包含所有之前的对话）
+    
     const historyBeforeNewMessage = chatMessages
-      .filter(msg => msg.role === 'user' || msg.role === 'assistant') // 只包含用户和助手消息，不包括操作气泡
+      .filter(msg => msg.role === 'user' || msg.role === 'assistant')
       .map(msg => {
-        // 如果是助手消息且包含错误信息，确保错误信息被包含
+        
         let content = msg.content;
-        // 如果消息内容为空但应该显示，使用默认文本
+        
         if (!content && msg.role === 'assistant') {
           content = '已完成';
         }
@@ -4216,7 +4149,7 @@ ${cardContext}
     
     console.log('发送给AI的历史记录（之前）:', historyBeforeNewMessage);
     
-    // 先添加用户消息和临时的assistant消息
+    
     let assistantMessageIndex: number;
     setChatMessages(prev => {
       const newMessages: Array<{ 
@@ -4238,29 +4171,29 @@ ${cardContext}
       return newMessages;
     });
 
-    // 智能滚动：只在用户位于底部附近时才自动滚动
+    
     scrollToBottomIfNeeded();
 
     try {
       const domainId = (window as any).UiContext?.domainId || 'system';
-      // 使用之前构建的历史记录（包含所有之前的对话）
+      
       const history = historyBeforeNewMessage;
 
-      // 获取当前 base 结构描述
+      
       const baseText = convertBaseToText();
       
-      // 使用展开后的消息发送给 AI
+      
       const finalUserMessage = expandedMessage;
 
-      // 获取当前显示的card信息（如果有）
+      
       let currentCardContext = '';
       const currentCard = getSelectedCard();
       if (currentCard && selectedFile && selectedFile.type === 'card') {
         const nodePath = getNodePath(selectedFile.nodeId || '');
-        const cardPath = [...nodePath, currentCard.title || '未命名卡片'].join(' > ');
+        const cardPath = [...nodePath, currentCard.title || i18n('Unnamed Card')].join(' > ');
         const problems = currentCard.problems || [];
         
-        // 构建题目列表的文本描述
+        
         let problemsText = '';
         if (problems.length > 0) {
           problemsText = '\n- 已有题目列表：\n';
@@ -4281,16 +4214,16 @@ ${cardContext}
         
         currentCardContext = `
 【当前显示的卡片信息】
-- 卡片标题：${currentCard.title || '未命名卡片'}
+- 卡片标题：${currentCard.title || i18n('Unnamed Card')}
 - 卡片ID：${currentCard.docId}
 - 卡片路径：${cardPath}
-- 卡片内容：${currentCard.content || '(无内容)'}
+- 卡片内容：${currentCard.content || i18n('(No content)')}
 - 已有题目数量：${problems.length}${problemsText}
 
 **重要**：用户当前正在查看这个卡片，如果用户询问关于题目生成、编辑题目等问题，都是针对这个卡片的。生成新题目时，请避免与已有题目重复。`;
       }
 
-      // 构建系统提示
+      
       const systemPrompt = `你是一个知识库操作助手，专门帮助用户操作知识库。
 
 【你的核心职责】
@@ -4313,7 +4246,7 @@ ${currentCardContext}
   "operations": [
     {
       "type": "create_node",
-      "parentId": "node_xxx",  // 父节点ID，如果是根节点则为null
+      "parentId": "node_xxx",
       "text": "新节点名称"
     },
     {
@@ -4324,13 +4257,13 @@ ${currentCardContext}
     },
     {
       "type": "move_node",
-      "nodeId": "node_xxx",  // 要移动的节点ID
-      "targetParentId": "node_yyy"  // 目标父节点ID（如果移动到根节点则为null）。**重要**：必须根据知识库结构说明中的节点名称和路径，找到对应的节点ID
+      "nodeId": "node_xxx",
+      "targetParentId": "node_yyy"
     },
     {
       "type": "move_card",
-      "cardId": "card_xxx",  // 要移动的卡片ID
-      "targetNodeId": "node_yyy"  // 目标节点ID（卡片将移动到该节点下）。**重要**：必须根据知识库结构说明中的节点名称和路径，找到对应的节点ID
+      "cardId": "card_xxx",
+      "targetNodeId": "node_yyy"
     },
     {
       "type": "rename_node",
@@ -4357,10 +4290,10 @@ ${currentCardContext}
     },
     {
       "type": "create_problem",
-      "cardId": "card_xxx",  // 卡片ID（必须根据当前显示的卡片信息中的cardId）
+      "cardId": "card_xxx",
       "stem": "题干内容",
       "options": ["选项A", "选项B", "选项C", "选项D"],
-      "answer": 0,  // 正确答案的索引（0表示A，1表示B，2表示C，3表示D）
+      "answer": 0,
       "analysis": "解析说明（可选）"
     }
   ]
@@ -4383,13 +4316,13 @@ ${currentCardContext}
 
 用户指令：`;
 
-      // 关闭之前的 WebSocket 连接
+      
       if (chatWebSocketRef.current) {
         chatWebSocketRef.current.close();
         chatWebSocketRef.current = null;
       }
 
-      // 创建 WebSocket 连接
+      
       const { default: WebSocket } = await import('../components/socket');
       const wsPrefix = (window as any).UiContext?.wsPrefix || '';
       const wsUrl = `/d/${domainId}/ai/chat-ws`;
@@ -4399,7 +4332,7 @@ ${currentCardContext}
       let accumulatedContent = '';
       let streamFinished = false;
 
-      // WebSocket 消息处理
+      
       sock.onmessage = (_, data: string) => {
         try {
           const msg = JSON.parse(data);
@@ -4407,15 +4340,15 @@ ${currentCardContext}
           if (msg.type === 'content') {
             accumulatedContent += msg.content;
             
-            // 过滤掉 JSON 代码块，只显示文字内容（流式显示）
+            
             let displayContent = accumulatedContent;
             const jsonMatch = displayContent.match(/```(?:json)?\n([\s\S]*?)\n```/);
             if (jsonMatch) {
-              // 移除 JSON 代码块，只保留文字部分
+              
               displayContent = displayContent.replace(/```(?:json)?\n[\s\S]*?\n```/g, '').trim();
             }
             
-            // 实时更新显示内容（流式显示）
+            
             setChatMessages(prev => {
               const newMessages = [...prev];
               if (newMessages[assistantMessageIndex]) {
@@ -4427,17 +4360,17 @@ ${currentCardContext}
               return newMessages;
             });
             
-            // 智能滚动：只在用户位于底部附近时才自动滚动
+            
             scrollToBottomIfNeeded();
           } else if (msg.type === 'done') {
             streamFinished = true;
             const finalContent = msg.content || accumulatedContent;
             
-            // 提取 JSON 代码块
+            
             const jsonMatch = finalContent.match(/```(?:json)?\n([\s\S]*?)\n```/);
             let textContent = finalContent.replace(/```(?:json)?\n[\s\S]*?\n```/g, '').trim();
             
-            // 更新文字消息（最终内容）
+            
             setChatMessages(prev => {
               const newMessages = [...prev];
               if (newMessages[assistantMessageIndex]) {
@@ -4449,18 +4382,18 @@ ${currentCardContext}
               return newMessages;
             });
             
-            // 智能滚动：只在用户位于底部附近时才自动滚动
+            
             scrollToBottomIfNeeded();
             
-              // 如果有 JSON 操作，创建操作气泡
+              
               if (jsonMatch) {
                 try {
                   const operations = JSON.parse(jsonMatch[1]);
                   if (operations.operations && Array.isArray(operations.operations)) {
-                    // 调试：打印操作信息
+                    
                     console.log('AI 返回的操作:', operations.operations);
                     
-                    // 添加操作气泡
+                    
                     setChatMessages(prev => {
                       const newMessages = [...prev];
                       newMessages.push({
@@ -4472,17 +4405,17 @@ ${currentCardContext}
                       return newMessages;
                     });
                     
-                    // 自动执行操作
+                    
                     if (executeAIOperationsRef.current) {
                       executeAIOperationsRef.current(operations.operations).then((result) => {
                         if (result.success) {
                           Notification.success('AI 已执行操作');
                         } else {
-                          // 如果有错误，将错误信息添加到聊天消息中，让AI能够看到并纠正
+                          
                           const errorText = result.errors.join('\n');
                           setChatMessages(prev => {
                             const newMessages = [...prev];
-                            // 添加错误信息作为助手消息，这样AI在下次对话时能看到
+                            
                             newMessages.push({
                               role: 'assistant',
                               content: `操作执行失败，错误信息如下：\n${errorText}\n\n请根据错误信息重新执行操作，确保使用正确的节点ID。`,
@@ -4490,7 +4423,7 @@ ${currentCardContext}
                             return newMessages;
                           });
                           
-                          // 智能滚动：只在用户位于底部附近时才自动滚动
+                          
                           scrollToBottomIfNeeded();
                         }
                       }).catch((err) => {
@@ -4533,7 +4466,7 @@ ${currentCardContext}
                 }
               }
             
-            // 关闭 WebSocket 连接
+            
             if (chatWebSocketRef.current) {
               chatWebSocketRef.current.close();
               chatWebSocketRef.current = null;
@@ -4554,7 +4487,7 @@ ${currentCardContext}
             Notification.error('AI 聊天失败: ' + (msg.error || '未知错误'));
             setIsChatLoading(false);
             
-            // 关闭 WebSocket 连接
+            
             if (chatWebSocketRef.current) {
               chatWebSocketRef.current.close();
               chatWebSocketRef.current = null;
@@ -4573,7 +4506,7 @@ ${currentCardContext}
       };
 
       sock.onopen = () => {
-        // 连接成功后发送消息
+        
         sock.send(JSON.stringify({
           message: `${systemPrompt}\n\n用户指令：${finalUserMessage}`,
           history,
@@ -4596,7 +4529,7 @@ ${currentCardContext}
     }
   }, [chatInput, isChatLoading, chatMessages, convertBaseToText, expandReferences]);
 
-  // 执行 AI 操作
+  
   const executeAIOperations = useCallback(async (operations: any[]): Promise<{ success: boolean; errors: string[] }> => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const errors: string[] = [];
@@ -4608,7 +4541,7 @@ ${currentCardContext}
           const newChildNode: PendingCreate = {
             type: 'node',
             nodeId: op.parentId || '',
-            text: op.text || '新节点',
+            text: op.text || i18n('New node'),
             tempId,
           };
           
@@ -4617,7 +4550,7 @@ ${currentCardContext}
           
           const tempNode: BaseNode = {
             id: tempId,
-            text: op.text || '新节点',
+            text: op.text || i18n('New node'),
           };
           
           setBase(prev => ({
@@ -4635,9 +4568,9 @@ ${currentCardContext}
               const newSet = new Set(prev);
               if (!newSet.has(op.parentId)) {
                 newSet.add(op.parentId);
-                // 立即更新 ref，确保自动保存时能获取最新值
+                
                 expandedNodesRef.current = newSet;
-                // 立即更新本地 base 状态
+                
                 setBase(prev => {
                   const updated = {
                     ...prev,
@@ -4647,11 +4580,11 @@ ${currentCardContext}
                         : n
                     ),
                   };
-                  // 立即更新 ref，确保自动保存时能获取最新值
+                  
                   baseRef.current = updated;
                   return updated;
                 });
-                // 触发自动保存
+                
                 triggerExpandAutoSave();
               }
               return newSet;
@@ -4662,7 +4595,7 @@ ${currentCardContext}
           const newCard: PendingCreate = {
             type: 'card',
             nodeId: op.nodeId,
-            title: op.title || '新卡片',
+            title: op.title || i18n('New card'),
             tempId,
           };
           
@@ -4680,7 +4613,7 @@ ${currentCardContext}
             docId: tempId,
             cid: 0,
             nodeId: op.nodeId,
-            title: op.title || '新卡片',
+            title: op.title || i18n('New card'),
             content: op.content || '',
             order: maxOrder + 1,
             updateAt: new Date().toISOString(),
@@ -4698,10 +4631,10 @@ ${currentCardContext}
           console.log('执行 move_node 操作:', { nodeId, targetParentId });
           console.log('所有可用节点:', base.nodes.map(n => ({ id: n.id, text: n.text })));
           
-          // 验证节点是否存在
+          
           let node = base.nodes.find(n => n.id === nodeId);
           
-          // 如果找不到，尝试通过节点名称查找（用于调试）
+          
           if (!node) {
             const nodeByName = base.nodes.find(n => n.text === nodeId);
             if (nodeByName) {
@@ -4713,10 +4646,10 @@ ${currentCardContext}
             }
           }
           
-          // 如果 nodeId 不是节点ID，可能是卡片ID，提示用户使用 move_card
+          
           if (!node) {
             console.log('nodeId 不是节点ID，可能是卡片ID:', nodeId);
-            // 在所有节点中查找包含该卡片ID的卡片
+            
             for (const nId in nodeCardsMap) {
               const cards = nodeCardsMap[nId] || [];
               const card = cards.find((c: Card) => c.docId === nodeId);
@@ -4736,11 +4669,11 @@ ${currentCardContext}
             continue;
           }
           
-          // 如果 targetParentId 存在，验证目标节点是否存在
+          
           if (targetParentId) {
             const targetNode = base.nodes.find(n => n.id === targetParentId);
             
-            // 如果找不到，尝试通过节点名称查找（用于调试）
+            
             if (!targetNode) {
               const targetNodeByName = base.nodes.find(n => n.text === targetParentId);
               if (targetNodeByName) {
@@ -4763,7 +4696,7 @@ ${currentCardContext}
             console.log('移动到根节点');
           }
           
-          // 检查是否会造成循环
+          
           const isDescendant = (ancestorId: string, nodeId: string): boolean => {
             const children = base.edges
               .filter(e => e.source === ancestorId)
@@ -4779,13 +4712,13 @@ ${currentCardContext}
             continue;
           }
           
-          // 移除旧的父节点连接
+          
           const oldEdges = base.edges.filter(e => e.target === nodeId);
           const newEdges = base.edges.filter(e => !oldEdges.includes(e));
           
-          // 创建新边
+          
           if (targetParentId) {
-            // 检查是否已经存在相同的边
+            
             const existingEdge = newEdges.find(e => e.source === targetParentId && e.target === nodeId);
             if (!existingEdge) {
               newEdges.push({
@@ -4803,15 +4736,15 @@ ${currentCardContext}
           
           setPendingDragChanges(prev => new Set(prev).add(`node-${nodeId}`));
           
-          // 如果目标节点存在，展开它以便看到移动后的节点
+          
           if (targetParentId) {
             setExpandedNodes(prev => {
               const newSet = new Set(prev);
               if (!newSet.has(targetParentId)) {
                 newSet.add(targetParentId);
-                // 立即更新 ref，确保自动保存时能获取最新值
+                
                 expandedNodesRef.current = newSet;
-                // 立即更新本地 base 状态
+                
                 setBase(prev => {
                   const updated = {
                     ...prev,
@@ -4821,11 +4754,11 @@ ${currentCardContext}
                         : n
                     ),
                   };
-                  // 立即更新 ref，确保自动保存时能获取最新值
+                  
                   baseRef.current = updated;
                   return updated;
                 });
-                // 触发自动保存
+                
                 triggerExpandAutoSave();
               }
               return newSet;
@@ -4839,7 +4772,7 @@ ${currentCardContext}
           
           console.log('执行 move_card 操作:', { cardId, targetNodeId });
           
-          // 验证目标节点是否存在
+          
           const targetNode = base.nodes.find(n => n.id === targetNodeId);
           if (!targetNode) {
             console.error('目标节点不存在:', targetNodeId);
@@ -4848,7 +4781,7 @@ ${currentCardContext}
             continue;
           }
           
-          // 查找卡片
+          
           let foundCard: Card | null = null;
           let sourceNodeId: string | null = null;
           
@@ -4867,13 +4800,13 @@ ${currentCardContext}
             continue;
           }
           
-          // 如果卡片已经在目标节点下，不需要移动
+          
           if (sourceNodeId === targetNodeId) {
             Notification.error('卡片已经在目标节点下');
             continue;
           }
           
-          // 从原节点移除卡片
+          
           const sourceCards = nodeCardsMap[sourceNodeId] || [];
           const cardIndex = sourceCards.findIndex((c: Card) => c.docId === cardId);
           if (cardIndex >= 0) {
@@ -4881,17 +4814,17 @@ ${currentCardContext}
             nodeCardsMap[sourceNodeId] = sourceCards;
           }
           
-          // 添加到目标节点
+          
           if (!nodeCardsMap[targetNodeId]) {
             nodeCardsMap[targetNodeId] = [];
           }
           
-          // 计算新的 order（放在最后）
+          
           const maxOrder = nodeCardsMap[targetNodeId].length > 0
             ? Math.max(...nodeCardsMap[targetNodeId].map((c: Card) => c.order || 0))
             : 0;
           
-          // 更新卡片的 nodeId 和 order
+          
           const updatedCard: Card = {
             ...foundCard,
             nodeId: targetNodeId,
@@ -4904,17 +4837,17 @@ ${currentCardContext}
           (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
           setNodeCardsMapVersion(prev => prev + 1);
           
-          // 记录拖动操作
+          
           setPendingDragChanges(prev => new Set(prev).add(cardId));
           
-          // 展开目标节点以便看到移动后的卡片
+          
           setExpandedNodes(prev => {
             const newSet = new Set(prev);
             if (!newSet.has(targetNodeId)) {
               newSet.add(targetNodeId);
-              // 立即更新 ref，确保自动保存时能获取最新值
+              
               expandedNodesRef.current = newSet;
-              // 立即更新本地 base 状态
+              
               setBase(prev => {
                 const updated = {
                   ...prev,
@@ -4924,11 +4857,11 @@ ${currentCardContext}
                       : n
                   ),
                 };
-                // 立即更新 ref，确保自动保存时能获取最新值
+                
                 baseRef.current = updated;
                 return updated;
               });
-              // 触发自动保存
+              
               triggerExpandAutoSave();
             }
             return newSet;
@@ -4945,7 +4878,7 @@ ${currentCardContext}
             continue;
           }
           
-          // 更新本地数据
+          
           setBase(prev => ({
             ...prev,
             nodes: prev.nodes.map(n => 
@@ -4953,11 +4886,11 @@ ${currentCardContext}
             ),
           }));
           
-          // 添加到待重命名列表
+          
           const fileItem: FileItem = {
             type: 'node',
             id: nodeId,
-            name: node.text || '未命名节点',
+            name: node.text || i18n('Unnamed Node'),
             nodeId: nodeId,
             level: 0,
           };
@@ -4967,7 +4900,7 @@ ${currentCardContext}
             next.set(nodeId, {
               file: fileItem,
               newName: newText,
-              originalName: node.text || '未命名节点',
+              originalName: node.text || i18n('Unnamed Node'),
             });
             return next;
           });
@@ -4975,7 +4908,7 @@ ${currentCardContext}
           const cardId = op.cardId;
           const newTitle = op.newTitle;
           
-          // 查找卡片
+          
           let foundCard: Card | null = null;
           let foundNodeId: string | null = null;
           
@@ -4994,7 +4927,7 @@ ${currentCardContext}
             continue;
           }
           
-          // 更新本地数据
+          
           const cards = nodeCardsMap[foundNodeId];
           const cardIndex = cards.findIndex((c: Card) => c.docId === cardId);
           if (cardIndex >= 0) {
@@ -5003,11 +4936,11 @@ ${currentCardContext}
             setNodeCardsMapVersion(prev => prev + 1);
           }
           
-          // 添加到待重命名列表
+          
           const fileItem: FileItem = {
             type: 'card',
             id: `card-${cardId}`,
-            name: foundCard.title || '未命名卡片',
+            name: foundCard.title || i18n('Unnamed Card'),
             nodeId: foundNodeId,
             cardId: cardId,
             level: 0,
@@ -5018,7 +4951,7 @@ ${currentCardContext}
             next.set(`card-${cardId}`, {
               file: fileItem,
               newName: newTitle,
-              originalName: foundCard!.title || '未命名卡片',
+              originalName: foundCard!.title || i18n('Unnamed Card'),
             });
             return next;
           });
@@ -5026,7 +4959,7 @@ ${currentCardContext}
           const cardId = op.cardId;
           const newContent = op.newContent;
           
-          // 查找卡片
+          
           let foundCard: Card | null = null;
           let foundNodeId: string | null = null;
           
@@ -5045,7 +4978,7 @@ ${currentCardContext}
             continue;
           }
           
-          // 更新本地数据
+          
           const cards = nodeCardsMap[foundNodeId];
           const cardIndex = cards.findIndex((c: Card) => c.docId === cardId);
           if (cardIndex >= 0) {
@@ -5054,17 +4987,17 @@ ${currentCardContext}
             setNodeCardsMapVersion(prev => prev + 1);
           }
           
-          // 添加到待修改列表（使用 pendingChanges）
+          
           const fileItem: FileItem = {
             type: 'card',
             id: `card-${cardId}`,
-            name: foundCard.title || '未命名卡片',
+            name: foundCard.title || i18n('Unnamed Card'),
             nodeId: foundNodeId,
             cardId: cardId,
             level: 0,
           };
           
-          // 更新 pendingChanges，确保 fileTree 能检测到变化
+          
           setPendingChanges(prev => {
             const next = new Map(prev);
             next.set(`card-${cardId}`, {
@@ -5072,37 +5005,37 @@ ${currentCardContext}
               content: newContent,
               originalContent: foundCard!.content || '',
             });
-            // 返回新的 Map 实例，确保 React 能检测到变化
+            
             return new Map(next);
           });
           
-          // 如果当前选中的卡片就是被修改的卡片，更新编辑器内容
+          
           if (selectedFile && selectedFile.type === 'card' && selectedFile.cardId === cardId) {
             setFileContent(newContent);
-            // 延迟更新编辑器，确保 DOM 已更新
+            
             setTimeout(() => {
-              // 如果编辑器已经初始化，也更新编辑器的值
+              
               if (editorRef.current) {
                 editorRef.current.value = newContent;
-                // 触发 input 事件，确保编辑器知道内容已更改
+                
                 const event = new Event('input', { bubbles: true });
                 editorRef.current.dispatchEvent(event);
               }
-              // 如果使用了 markdown 编辑器，也需要更新
+              
               if (editorInstance) {
                 try {
                   editorInstance.value(newContent);
                 } catch (e) {
-                  // 忽略错误
+                  
                 }
               }
-              // 尝试通过 jQuery 更新 textarea（如果存在）
+              
               const $textarea = $(`#editor-wrapper-${selectedFile.id} textarea`);
               if ($textarea.length > 0) {
                 $textarea.val(newContent);
-                // 如果 textarea 有 data-markdown 属性，可能需要重新初始化编辑器
+                
                 if ($textarea.attr('data-markdown') === 'true') {
-                  // 触发 change 事件
+                  
                   $textarea.trigger('change');
                 }
               }
@@ -5116,12 +5049,12 @@ ${currentCardContext}
             continue;
           }
           
-          // 检查是否有子节点或卡片
+          
           const hasCards = nodeCardsMap[nodeId]?.length > 0;
           const hasChildren = base.edges.some(e => e.source === nodeId);
           
           if (hasCards || hasChildren) {
-            Notification.error('无法删除：该节点包含子节点或卡片');
+            Notification.error(i18n('Cannot delete: node has children or cards'));
             continue;
           }
           
@@ -5142,7 +5075,7 @@ ${currentCardContext}
         } else if (op.type === 'delete_card') {
           const cardId = op.cardId;
           
-          // 查找卡片
+          
           let foundNodeId: string | null = null;
           for (const nodeId in nodeCardsMap) {
             const cards = nodeCardsMap[nodeId] || [];
@@ -5183,7 +5116,7 @@ ${currentCardContext}
           const analysis = op.analysis;
 
           if (!cardId) {
-            Notification.error('cardId 是必需的');
+            Notification.error(i18n('cardId is required'));
             errors.push('create_problem 操作缺少 cardId');
             continue;
           }
@@ -5201,12 +5134,12 @@ ${currentCardContext}
           }
 
           if (answer === undefined || answer < 0 || answer >= options.length) {
-            Notification.error('答案索引无效');
+            Notification.error(i18n('Answer index invalid'));
             errors.push('create_problem 操作的答案索引无效');
             continue;
           }
 
-          // 查找卡片
+          
           let foundCard: Card | null = null;
           let foundNodeId: string | null = null;
 
@@ -5226,7 +5159,7 @@ ${currentCardContext}
             continue;
           }
 
-          // 创建新的problem
+          
           const existingProblems: CardProblem[] = foundCard.problems || [];
           const newProblem: CardProblem = {
             pid: `p_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
@@ -5239,7 +5172,7 @@ ${currentCardContext}
 
           const updatedProblems = [...existingProblems, newProblem];
 
-          // 更新前端缓存
+          
           const cards = nodeCardsMap[foundNodeId];
           const cardIndex = cards.findIndex((c: Card) => c.docId === cardId);
           if (cardIndex >= 0) {
@@ -5250,8 +5183,8 @@ ${currentCardContext}
             (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
             setNodeCardsMapVersion(prev => prev + 1);
 
-            // 对于临时卡片，problems会在创建card时一起提交
-            // 对于已有卡片，需要标记为待提交
+            
+            
             const cardIdStr = String(cardId);
             if (cardIdStr && !cardIdStr.startsWith('temp-card-')) {
               setPendingProblemCardIds(prev => {
@@ -5259,7 +5192,7 @@ ${currentCardContext}
                 next.add(cardIdStr);
                 return next;
               });
-              // 标记为新建的problem（Agent通过create_problem操作生成的）
+              
               setPendingNewProblemCardIds(prev => {
                 const next = new Set(prev);
                 next.add(cardIdStr);
@@ -5281,15 +5214,15 @@ ${currentCardContext}
     return { success: errors.length === 0, errors };
   }, [base, setBase, selectedFile, editorInstance, setFileContent, triggerExpandAutoSave, setNodeCardsMapVersion, setPendingProblemCardIds]);
 
-  // 将 executeAIOperations 赋值给 ref
+  
   useEffect(() => {
     executeAIOperationsRef.current = executeAIOperations;
   }, [executeAIOperations]);
 
-  // 获取节点的所有子节点和卡片（递归）
+  
   const getNodeChildren = useCallback((nodeId: string, visited: Set<string> = new Set()): { nodes: string[]; cards: string[] } => {
     if (visited.has(nodeId)) {
-      return { nodes: [], cards: [] }; // 避免循环引用
+      return { nodes: [], cards: [] };
     }
     visited.add(nodeId);
     
@@ -5300,7 +5233,7 @@ ${currentCardContext}
       .map(e => e.target)
       .filter(Boolean);
     
-    // 递归获取所有子节点的子节点和卡片
+    
     const allNodes: string[] = [...childNodes];
     const allCards: string[] = [...cards];
     
@@ -5313,21 +5246,21 @@ ${currentCardContext}
     return { nodes: allNodes, cards: allCards };
   }, [base.edges]);
   
-  // 设置getNodeChildrenRef，供其他函数使用
+  
   useEffect(() => {
     getNodeChildrenRef.current = getNodeChildren;
   }, [getNodeChildren]);
 
-  // 导出节点为PDF
+  
   const handleExportToPDF = useCallback(async (nodeId: string) => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const node = base.nodes.find(n => n.id === nodeId);
     if (!node) {
-      Notification.error('节点不存在');
+      Notification.error(i18n('Node does not exist'));
       return;
     }
 
-    // 创建进度对话框
+    
     const dialog = new Dialog({
       $body: `
         <div style="padding: 20px;">
@@ -5354,8 +5287,8 @@ ${currentCardContext}
       dialog.open();
       setContextMenu(null);
 
-      // 动态导入jsPDF和html2canvas（使用ES模块）
-      $status.text('正在加载PDF库...');
+      
+      $status.text(i18n('Loading PDF library...'));
       $progress.css('width', '10%');
       
       const [{ jsPDF }, html2canvasModule] = await Promise.all([
@@ -5363,10 +5296,10 @@ ${currentCardContext}
         import('html2canvas'),
       ]);
       
-      $status.text('正在收集数据...');
+      $status.text(i18n('Collecting data...'));
       $progress.css('width', '20%');
       
-      // 递归收集所有节点和卡片数据（按order排序）
+      
       interface ExportItem {
         type: 'node' | 'card';
         id: string;
@@ -5374,13 +5307,13 @@ ${currentCardContext}
         content: string;
         level: number;
         order: number;
-        parentOrder?: string; // 父级序号，用于生成完整序号
+        parentOrder?: string;
       }
 
       const collectItems = (parentNodeId: string, level: number = 0, parentOrder: string = ''): ExportItem[] => {
         const items: ExportItem[] = [];
         
-        // 获取子节点（按order排序）
+        
         const childNodes = base.edges
           .filter(e => e.source === parentNodeId)
           .map(e => {
@@ -5390,12 +5323,12 @@ ${currentCardContext}
           .filter(Boolean)
           .sort((a, b) => (a!.order || 0) - (b!.order || 0)) as Array<{ id: string; node: BaseNode; order: number }>;
         
-        // 获取卡片（按order排序）
+        
         const cards = (nodeCardsMap[parentNodeId] || [])
           .filter((card: Card) => !card.nodeId || card.nodeId === parentNodeId)
           .sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
         
-        // 合并node和card，按照order混合排序
+        
         const allChildren: Array<{ type: 'node' | 'card'; id: string; order: number; data: any }> = [
           ...childNodes.map(n => ({ type: 'node' as const, id: n.id, order: n.order, data: n.node })),
           ...cards.map(c => ({ type: 'card' as const, id: c.docId, order: c.order || 0, data: c })),
@@ -5403,7 +5336,7 @@ ${currentCardContext}
         
         allChildren.sort((a, b) => (a.order || 0) - (b.order || 0));
         
-        // 生成序号并添加到items
+        
         let itemIndex = 1;
         for (const child of allChildren) {
           const currentOrder = parentOrder ? `${parentOrder}.${itemIndex}` : `${itemIndex}`;
@@ -5412,18 +5345,18 @@ ${currentCardContext}
             items.push({
               type: 'node',
               id: child.id,
-              title: child.data.text || '未命名节点',
+              title: child.data.text || i18n('Unnamed Node'),
               content: '',
               level,
               order: child.order,
               parentOrder: currentOrder,
             });
             
-            // 递归收集子节点
+            
             const childItems = collectItems(child.id, level + 1, currentOrder);
             items.push(...childItems);
           } else {
-            // 获取卡片内容（优先从pendingChanges获取最新内容）
+            
             let cardContent = child.data.content || '';
             const cardFileId = `card-${child.id}`;
             const pendingChange = pendingChanges.get(cardFileId);
@@ -5434,7 +5367,7 @@ ${currentCardContext}
             items.push({
               type: 'card',
               id: child.id,
-              title: child.data.title || '未命名卡片',
+              title: child.data.title || i18n('Unnamed Card'),
               content: cardContent,
               level,
               order: child.order,
@@ -5454,7 +5387,7 @@ ${currentCardContext}
       $status.text(`共找到 ${totalItems} 个项目，开始生成PDF...`);
       $progress.css('width', '30%');
       
-      // 创建PDF
+      
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
@@ -5470,20 +5403,20 @@ ${currentCardContext}
       const titleHeight = 10;
       const sectionSpacing = 5;
 
-      // 添加标题
+      
       pdf.setFontSize(18);
       pdf.setFont('helvetica', 'bold');
-      const rootTitle = String(node.text || '未命名节点').trim();
+      const rootTitle = String(node.text || i18n('Unnamed Node')).trim();
       if (rootTitle && !isNaN(margin) && !isNaN(yPos)) {
         pdf.text(rootTitle, margin, yPos);
         yPos += titleHeight + sectionSpacing;
       }
 
-      // 先渲染内容并记录每个项目的页码
+      
       const tocItems: Array<{ order: string; title: string; page: number }> = [];
       let contentYPos = margin;
 
-      // 添加内容页面（目录后从第2页开始）
+      
       pdf.addPage();
 
       let processedCount = 0;
@@ -5493,7 +5426,7 @@ ${currentCardContext}
         $progress.css('width', `${progressPercent}%`);
         $status.text(`正在处理: ${item.parentOrder} ${item.title}`);
         $current.text(`${processedCount} / ${totalItems}`);
-        // 记录当前页码作为目录项（目录占第1页，内容从第2页开始）
+        
         const currentPageNumber = pdf.internal.getNumberOfPages();
         tocItems.push({
           order: item.parentOrder || '',
@@ -5501,23 +5434,23 @@ ${currentCardContext}
           page: currentPageNumber,
         });
 
-        // 检查是否需要新页面
+        
         if (contentYPos > pageHeight - margin - 20) {
           pdf.addPage();
           contentYPos = margin;
         }
 
-        // 添加标题
+        
         pdf.setFontSize(12 + (3 - item.level) * 2);
         pdf.setFont('helvetica', 'bold');
         const titleText = `${item.parentOrder || ''} ${item.title || '未命名'}`.trim();
         if (titleText) {
           const titleLines = pdf.splitTextToSize(titleText, contentWidth);
-          // 确保 contentYPos 是有效数字
+          
           if (isNaN(contentYPos) || contentYPos < margin) {
             contentYPos = margin;
           }
-          // pdf.text 可以接受字符串数组
+          
           if (Array.isArray(titleLines)) {
             titleLines.forEach((line: string) => {
               if (contentYPos + lineHeight > pageHeight - margin) {
@@ -5539,11 +5472,11 @@ ${currentCardContext}
           }
         }
 
-        // 添加内容（仅对card）
+        
         if (item.type === 'card' && item.content) {
           try {
             $status.text(`正在渲染: ${item.title}`);
-            // 渲染Markdown为HTML
+            
             const htmlContent = await fetch('/markdown', {
               method: 'POST',
               headers: {
@@ -5556,8 +5489,8 @@ ${currentCardContext}
             }).then(res => res.text());
             
             if (htmlContent) {
-              // 使用html2pdf.js将HTML转换为PDF图片，然后插入到当前PDF
-              // 创建临时div来渲染HTML
+              
+              
               const tempDiv = document.createElement('div');
               tempDiv.style.width = `${contentWidth}mm`;
               tempDiv.style.padding = '10px';
@@ -5572,7 +5505,7 @@ ${currentCardContext}
               tempDiv.innerHTML = htmlContent;
               document.body.appendChild(tempDiv);
               
-              // 等待图片加载完成
+              
               await new Promise<void>((resolve) => {
                 const images = tempDiv.querySelectorAll('img');
                 if (images.length === 0) {
@@ -5599,37 +5532,37 @@ ${currentCardContext}
                 setTimeout(() => resolve(), 5000);
               });
               
-              // 使用html2canvas将HTML转换为canvas
+              
               const canvas = await html2canvasModule.default(tempDiv, {
                 scale: 2,
                 backgroundColor: '#ffffff',
                 useCORS: true,
                 logging: false,
-                width: contentWidth * 3.779527559, // mm转px
+                width: contentWidth * 3.779527559,
               });
               
-              // 清理临时div
+              
               document.body.removeChild(tempDiv);
               
-              // 计算图片尺寸（转换为mm）
+              
               const imgWidth = contentWidth;
               const imgHeight = (canvas.height / canvas.width) * imgWidth;
               
-              // 如果图片太高，需要分页
+              
               const maxHeightPerPage = pageHeight - 2 * margin;
               if (imgHeight > maxHeightPerPage) {
-                // 分页处理：将图片分成多个部分
+                
                 const parts = Math.ceil(imgHeight / maxHeightPerPage);
                 const partHeight = imgHeight / parts;
                 
                 for (let i = 0; i < parts; i++) {
-                  // 检查是否需要新页面
+                  
                   if (contentYPos > pageHeight - margin - 10) {
                     pdf.addPage();
                     contentYPos = margin;
                   }
                   
-                  // 创建部分图片的canvas
+                  
                   const partCanvas = document.createElement('canvas');
                   partCanvas.width = canvas.width;
                   partCanvas.height = Math.ceil(canvas.height / parts);
@@ -5656,13 +5589,13 @@ ${currentCardContext}
                   }
                 }
               } else {
-                // 检查是否需要新页面
+                
                 if (contentYPos + imgHeight > pageHeight - margin) {
                   pdf.addPage();
                   contentYPos = margin;
                 }
                 
-                // 将图片添加到PDF
+                
                 const imgData = canvas.toDataURL('image/png');
                 pdf.addImage(imgData, 'PNG', margin, contentYPos, imgWidth, imgHeight);
                 contentYPos += imgHeight;
@@ -5672,11 +5605,11 @@ ${currentCardContext}
             }
           } catch (error) {
             console.error('渲染Markdown失败:', error);
-            // 如果渲染失败，使用纯文本作为后备
+            
             pdf.setFontSize(10);
             pdf.setFont('helvetica', 'normal');
             
-            // 提取HTML中的纯文本
+            
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = item.content;
             const textContent = tempDiv.textContent || tempDiv.innerText || item.content;
@@ -5704,20 +5637,20 @@ ${currentCardContext}
       $status.text('正在生成目录...');
       $progress.css('width', '85%');
       
-      // 现在在开头插入目录页
+      
       pdf.insertPage(1);
       let tocYPos = margin;
 
-      // 添加标题
+      
       pdf.setFontSize(18);
       pdf.setFont('helvetica', 'bold');
-      const tocRootTitle = String(node.text || '未命名节点').trim();
+      const tocRootTitle = String(node.text || i18n('Unnamed Node')).trim();
       if (tocRootTitle && !isNaN(margin) && !isNaN(tocYPos)) {
         pdf.text(tocRootTitle, margin, tocYPos);
         tocYPos += titleHeight + sectionSpacing;
       }
 
-      // 添加目录标题
+      
       pdf.setFontSize(14);
       pdf.setFont('helvetica', 'bold');
       if (!isNaN(margin) && !isNaN(tocYPos)) {
@@ -5725,7 +5658,7 @@ ${currentCardContext}
         tocYPos += lineHeight + 2;
       }
 
-      // 绘制目录
+      
       pdf.setFontSize(10);
       pdf.setFont('helvetica', 'normal');
       for (const tocItem of tocItems) {
@@ -5742,38 +5675,38 @@ ${currentCardContext}
         }
       }
 
-      $status.text('正在保存PDF...');
+      $status.text(i18n('Saving PDF...'));
       $progress.css('width', '95%');
       
-      // 保存PDF
-      const fileName = `${node.text || '未命名节点'}_${new Date().toISOString().split('T')[0]}.pdf`;
+      
+      const fileName = `${node.text || i18n('Unnamed Node')}_${new Date().toISOString().split('T')[0]}.pdf`;
       pdf.save(fileName);
       
-      $status.text('导出完成！');
+      $status.text(i18n('Export complete'));
       $progress.css('width', '100%');
       $current.text('');
       
-      Notification.success('PDF导出成功');
+      Notification.success(i18n('PDF export successful'));
       
-      // 延迟关闭对话框
+      
       setTimeout(() => {
         dialog.close();
       }, 1000);
     } catch (error: any) {
       console.error('导出PDF失败:', error);
-      $status.text(`导出失败: ${error?.message || '未知错误'}`);
+      $status.text(`${i18n('Export failed')}: ${error?.message || i18n('Unknown error')}`);
       $progress.css('width', '100%');
       $progress.css('background-color', '#dc3545');
       Notification.error(`导出PDF失败: ${error?.message || '未知错误'}`);
       
-      // 延迟关闭对话框
+      
       setTimeout(() => {
         dialog.close();
       }, 3000);
     }
   }, [base.nodes, base.edges, pendingChanges]);
 
-  // 多选模式：切换选择状态
+  
   const handleToggleSelect = useCallback((file: FileItem) => {
     if (!isMultiSelectMode) return;
     
@@ -5782,28 +5715,28 @@ ${currentCardContext}
       const isSelected = next.has(file.id);
       
       if (isSelected) {
-        // 取消选择：移除当前项
+        
         next.delete(file.id);
         
-        // 如果是节点，同时取消选择所有子节点和卡片
+        
         if (file.type === 'node' && getNodeChildrenRef.current) {
           const children = getNodeChildrenRef.current(file.nodeId || '');
           children.nodes.forEach(nodeId => {
-            // 找到对应的file.id
+            
             const nodeFile = fileTree.find(f => f.type === 'node' && f.nodeId === nodeId);
             if (nodeFile) next.delete(nodeFile.id);
           });
           children.cards.forEach(cardId => {
-            // 找到对应的file.id
+            
             const cardFile = fileTree.find(f => f.type === 'card' && f.cardId === cardId);
             if (cardFile) next.delete(cardFile.id);
           });
         }
       } else {
-        // 选择：添加当前项
+        
         next.add(file.id);
         
-        // 如果是节点，同时选择所有子节点和卡片
+        
         if (file.type === 'node' && getNodeChildrenRef.current) {
           const children = getNodeChildrenRef.current(file.nodeId || '');
           children.nodes.forEach(nodeId => {
@@ -5821,10 +5754,10 @@ ${currentCardContext}
     });
   }, [isMultiSelectMode, fileTree]);
 
-  // 批量删除选中的项目
+  
   const handleBatchDelete = useCallback(() => {
     if (selectedItems.size === 0) {
-      Notification.info('请先选择要删除的项目');
+      Notification.info(i18n('Please select items to delete first'));
       return;
     }
     
@@ -5833,19 +5766,19 @@ ${currentCardContext}
     const allNodeIdsToDelete = new Set<string>();
     const allCardIdsToDelete = new Set<string>();
     
-    // 收集所有要删除的项目（包括递归的子节点和card）
+    
     for (const fileId of selectedItems) {
       const file = fileTree.find(f => f.id === fileId);
       if (file) {
         itemsToDelete.push(file);
         
-        // 如果是node，递归收集所有子节点和card
+        
         if (file.type === 'node' && getNodeChildrenRef.current) {
           const nodeId = file.nodeId || '';
           const children = getNodeChildrenRef.current(nodeId);
           children.nodes.forEach(childNodeId => {
             allNodeIdsToDelete.add(childNodeId);
-            // 找到对应的FileItem并添加到itemsToDelete
+            
             const childFile = fileTree.find(f => f.type === 'node' && f.nodeId === childNodeId);
             if (childFile && !itemsToDelete.find(f => f.id === childFile.id)) {
               itemsToDelete.push(childFile);
@@ -5853,7 +5786,7 @@ ${currentCardContext}
           });
           children.cards.forEach(cardId => {
             allCardIdsToDelete.add(cardId);
-            // 找到对应的FileItem并添加到itemsToDelete
+            
             const cardFile = fileTree.find(f => f.type === 'card' && f.cardId === cardId);
             if (cardFile && !itemsToDelete.find(f => f.id === cardFile.id)) {
               itemsToDelete.push(cardFile);
@@ -5861,7 +5794,7 @@ ${currentCardContext}
           });
         }
         
-        // 记录要删除的节点和card ID
+        
         if (file.type === 'node') {
           allNodeIdsToDelete.add(file.nodeId || '');
         } else if (file.type === 'card') {
@@ -5870,7 +5803,7 @@ ${currentCardContext}
       }
     }
     
-    // 清理待新建状态：如果是临时节点或卡片，清理所有相关的pending操作
+    
     const tempNodeIds: string[] = [];
     const tempCardIds: string[] = [];
     
@@ -5890,11 +5823,11 @@ ${currentCardContext}
       }
     }
     
-    // 添加到待删除列表（只添加已存在的项目，临时项目不需要）
+    
     setPendingDeletes(prev => {
       const next = new Map(prev);
       
-      // 添加所有节点（包括递归的子节点）
+      
       for (const nodeId of allNodeIdsToDelete) {
         if (!tempNodeIds.includes(nodeId)) {
           next.set(nodeId, {
@@ -5904,10 +5837,10 @@ ${currentCardContext}
         }
       }
       
-      // 添加所有card（包括递归的子card）
+      
       for (const cardId of allCardIdsToDelete) {
         if (!tempCardIds.includes(cardId)) {
-          // 找到card所属的nodeId
+          
           const cardFile = itemsToDelete.find(f => f.type === 'card' && f.cardId === cardId);
           const cardNodeId = cardFile?.nodeId || 
             base.nodes.find(n => {
@@ -5926,7 +5859,7 @@ ${currentCardContext}
       return next;
     });
     
-    // 从 base 中移除节点（前端显示）：递归移除所有子节点
+    
     const nodeIdsArray = Array.from(allNodeIdsToDelete);
     if (nodeIdsArray.length > 0) {
       setBase(prev => ({
@@ -5938,10 +5871,10 @@ ${currentCardContext}
       }));
     }
     
-    // 从 nodeCardsMap 中移除卡片（前端显示）：递归移除所有card
+    
     const cardIdsArray = Array.from(allCardIdsToDelete);
     for (const cardId of cardIdsArray) {
-      // 找到card所属的nodeId
+      
       for (const nodeIdKey in nodeCardsMap) {
         const cards = nodeCardsMap[nodeIdKey];
         const cardIndex = cards.findIndex((c: Card) => c.docId === cardId);
@@ -5954,46 +5887,46 @@ ${currentCardContext}
       }
     }
     
-    // 清空选择
+    
     setSelectedItems(new Set());
     const totalItemsToDelete = allNodeIdsToDelete.size + allCardIdsToDelete.size;
     Notification.success(`已标记 ${totalItemsToDelete} 个项目待删除（包括 ${allNodeIdsToDelete.size} 个节点和 ${allCardIdsToDelete.size} 个卡片），请保存以确认删除`);
   }, [selectedItems, fileTree, cleanupPendingForTempItem]);
 
-  // 删除节点或卡片（前端操作）
+  
   const handleDelete = useCallback((file: FileItem) => {
     if (file.type === 'node') {
-      // 对于节点，id就是nodeId
+      
       const nodeId = file.nodeId || file.id || '';
       
       if (!nodeId) {
-        Notification.error('无法删除：节点ID无效');
+        Notification.error(i18n('Cannot delete: invalid node ID'));
         setContextMenu(null);
         return;
       }
       
-      // 检查节点是否已经在待删除列表中
+      
       if (pendingDeletes.has(nodeId)) {
-        Notification.info('该节点已经在待删除列表中');
+        Notification.info(i18n('Node already in delete list'));
         setContextMenu(null);
         return;
       }
       
-      // 如果是临时节点（待新建的），清理所有相关的pending操作（包括其下的临时card）
+      
       const isTempNode = nodeId.startsWith('temp-node-');
       
       if (isTempNode) {
         cleanupPendingForTempItem(file);
-        // 临时节点不需要添加到pendingDeletes，因为它还没有真正创建
+        
       } else {
-        // 递归获取所有子节点和card
+        
         const children = getNodeChildrenRef.current ? getNodeChildrenRef.current(nodeId) : { nodes: [], cards: [] };
         
-        // 添加到待删除列表：先添加子节点和card，再添加当前节点
+        
         setPendingDeletes(prev => {
           const next = new Map(prev);
           
-          // 先添加所有子节点
+          
           for (const childNodeId of children.nodes) {
             if (!next.has(childNodeId)) {
               next.set(childNodeId, {
@@ -6003,10 +5936,10 @@ ${currentCardContext}
             }
           }
           
-          // 再添加所有card
+          
           for (const cardId of children.cards) {
             if (!next.has(cardId)) {
-              // 找到card所属的nodeId
+              
               const cardNodeId = base.nodes.find(n => {
                 const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
                 const cards = nodeCardsMap[n.id] || [];
@@ -6021,7 +5954,7 @@ ${currentCardContext}
             }
           }
           
-          // 最后添加当前节点
+          
           next.set(nodeId, {
             type: 'node',
             id: nodeId,
@@ -6030,7 +5963,7 @@ ${currentCardContext}
           return next;
         });
         
-        // 从 base 中移除（前端显示）：递归移除所有子节点和card
+        
         const allNodeIdsToDelete = [nodeId, ...children.nodes];
         setBase(prev => ({
           ...prev,
@@ -6040,10 +5973,10 @@ ${currentCardContext}
           ),
         }));
         
-        // 从 nodeCardsMap 中移除所有card（前端显示）
+        
         const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
         for (const cardId of children.cards) {
-          // 找到card所属的nodeId
+          
           for (const nodeIdKey in nodeCardsMap) {
             const cards = nodeCardsMap[nodeIdKey];
             const cardIndex = cards.findIndex((c: Card) => c.docId === cardId);
@@ -6059,12 +5992,12 @@ ${currentCardContext}
     } else if (file.type === 'card') {
       const cardId = file.cardId || '';
       
-      // 如果是临时卡片（待新建的），清理所有相关的pending操作
+      
       if (cardId.startsWith('temp-card-')) {
         cleanupPendingForTempItem(file);
-        // 临时卡片不需要添加到pendingDeletes，因为它还没有真正创建
+        
       } else {
-        // 只有已存在的卡片才添加到待删除列表
+        
       setPendingDeletes(prev => {
         const next = new Map(prev);
           next.set(cardId, {
@@ -6076,7 +6009,7 @@ ${currentCardContext}
       });
       }
       
-      // 从 nodeCardsMap 中移除（前端显示）
+      
       const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
       if (nodeCardsMap[file.nodeId || '']) {
         const cards = nodeCardsMap[file.nodeId || ''];
@@ -6119,16 +6052,16 @@ ${currentCardContext}
     return 'after';
   }, []);
 
-  // 拖拽开始
+  
   const handleDragStart = useCallback((e: React.DragEvent, file: FileItem) => {
     setDraggedFile(file);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', file.id);
   }, []);
 
-  // 拖拽结束
+  
   const handleDragEnd = useCallback(() => {
-    // 清除所有延迟清除定时器
+    
     if (dragLeaveTimeoutRef.current) {
       clearTimeout(dragLeaveTimeoutRef.current);
       dragLeaveTimeoutRef.current = null;
@@ -6145,23 +6078,23 @@ ${currentCardContext}
     lastDropPositionRef.current = 'after';
   }, []);
 
-  // 拖拽悬停（使用节流优化性能）
+  
   const handleDragOver = useCallback((e: React.DragEvent, file: FileItem) => {
     e.preventDefault();
     e.stopPropagation();
     
-    // 取消 dragLeave 的延迟清除
+    
     if (dragLeaveTimeoutRef.current) {
       clearTimeout(dragLeaveTimeoutRef.current);
       dragLeaveTimeoutRef.current = null;
     }
     
     if (!draggedFile || draggedFile.id === file.id) {
-      // 如果当前悬停的文件和上次一样，不需要更新
+      
       if (lastDragOverFileRef.current?.id === file.id) {
         return;
       }
-      // 延迟清除，避免频繁更新
+      
       if (dragOverTimeoutRef.current) {
         clearTimeout(dragOverTimeoutRef.current);
       }
@@ -6174,7 +6107,7 @@ ${currentCardContext}
       return;
     }
     
-    // 如果悬停的文件和上次一样，只检查位置是否需要更新
+    
     const rect = e.currentTarget.getBoundingClientRect();
     const mouseY = e.clientY;
     const newDropPosition = getDropPositionForTouch(draggedFile, file, mouseY, rect, base.edges);
@@ -6186,37 +6119,37 @@ ${currentCardContext}
       return;
     }
     
-    // 清除之前的延迟更新
+    
     if (dragOverTimeoutRef.current) {
       clearTimeout(dragOverTimeoutRef.current);
       dragOverTimeoutRef.current = null;
     }
     
-    // 更新状态
+    
     setDragOverFile(file);
     setDropPosition(newDropPosition);
     lastDragOverFileRef.current = file;
     lastDropPositionRef.current = newDropPosition;
   }, [draggedFile, base.edges, getDropPositionForTouch]);
 
-  // 拖拽离开
+  
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     
-    // 清除之前的延迟清除定时器
+    
     if (dragLeaveTimeoutRef.current) {
       clearTimeout(dragLeaveTimeoutRef.current);
     }
     
-    // 延迟清除，如果很快又有 dragOver 事件，会被取消
+    
     dragLeaveTimeoutRef.current = setTimeout(() => {
       setDragOverFile(null);
       dragLeaveTimeoutRef.current = null;
     }, 50);
   }, []);
 
-  // 放置（纯前端操作，不调用后端）；positionOverride 用于触屏拖动时传入最新位置（避免 state 未更新）
+  
   const handleDrop = useCallback((e: React.DragEvent, targetFile: FileItem, positionOverride?: 'before' | 'after' | 'into') => {
     e.preventDefault();
     e.stopPropagation();
@@ -6229,9 +6162,9 @@ ${currentCardContext}
     const effectivePosition = positionOverride ?? dropPosition;
 
     try {
-      // 如果拖动的是卡片，可以移动到其他节点下
+      
       if (draggedFile.type === 'card' && targetFile.type === 'node') {
-        // 拖动到节点，放在最后
+        
         const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
         const targetNodeCards = nodeCardsMap[targetFile.nodeId] || [];
         const maxOrder = targetNodeCards.length > 0 
@@ -6239,48 +6172,48 @@ ${currentCardContext}
           : 0;
         const newOrder = maxOrder + 1;
         
-        // 从原节点移除
+        
         if (nodeCardsMap[draggedFile.nodeId || '']) {
           const cards = nodeCardsMap[draggedFile.nodeId || ''];
           const cardIndex = cards.findIndex((c: Card) => c.docId === draggedFile.cardId);
           if (cardIndex >= 0) {
             const [card] = cards.splice(cardIndex, 1);
-            // 更新卡片的 nodeId 和 order
+            
             card.nodeId = targetFile.nodeId || '';
             card.order = newOrder;
             
-            // 添加到目标节点
+            
             if (!nodeCardsMap[targetFile.nodeId]) {
               nodeCardsMap[targetFile.nodeId] = [];
             }
             nodeCardsMap[targetFile.nodeId].push(card);
-            // 按 order 排序
+            
             nodeCardsMap[targetFile.nodeId].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
             (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
             
-            // 记录拖动操作，待保存
+            
             setPendingDragChanges(prev => new Set(prev).add(draggedFile.cardId || ''));
           }
         }
       } else if (draggedFile.type === 'card' && targetFile.type === 'card') {
-        // 如果拖动卡片到另一个卡片上，移动到该卡片所在的节点，并根据位置设置顺序
+        
         const targetNodeId = targetFile.nodeId;
         const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
         const targetNodeCards = nodeCardsMap[targetNodeId] || [];
         const targetCard = targetNodeCards.find((c: Card) => c.docId === targetFile.cardId);
         const targetOrder = targetCard?.order || 0;
         
-        // 如果拖动到同一个节点，需要调整顺序
+        
         if (draggedFile.nodeId === targetNodeId) {
-          // 获取所有卡片并重新排序
+          
           const allCards = [...targetNodeCards].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
           const draggedCardIndex = allCards.findIndex((c: Card) => c.docId === draggedFile.cardId);
           const targetCardIndex = allCards.findIndex((c: Card) => c.docId === targetFile.cardId);
           
           if (draggedCardIndex >= 0 && targetCardIndex >= 0 && draggedCardIndex !== targetCardIndex) {
-            // 移除被拖动的卡片
+            
             const [draggedCard] = allCards.splice(draggedCardIndex, 1);
-            // 根据 effectivePosition 插入到目标位置
+            
             let newIndex: number;
             if (effectivePosition === 'before') {
               newIndex = targetCardIndex;
@@ -6290,23 +6223,23 @@ ${currentCardContext}
             }
             allCards.splice(newIndex, 0, draggedCard);
             
-            // 更新所有卡片的 order
+            
             allCards.forEach((card, index) => {
               card.order = index + 1;
             });
             
-            // 更新 nodeCardsMap
+            
             nodeCardsMap[targetNodeId] = allCards;
             (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
             
-            // 记录拖动操作，待保存（只记录被拖动的卡片，不记录所有受影响的卡片）
+            
             setPendingDragChanges(prev => new Set(prev).add(draggedFile.cardId || ''));
             
-            // 触发 fileTree 重新计算
+            
             setNodeCardsMapVersion(prev => prev + 1);
           }
         } else {
-          // 移动到不同节点，根据 effectivePosition 设置顺序
+          
           const draggedCard = nodeCardsMap[draggedFile.nodeId || '']?.find((c: Card) => c.docId === draggedFile.cardId);
           if (!draggedCard) {
             setDragOverFile(null);
@@ -6315,18 +6248,18 @@ ${currentCardContext}
           
           let newOrder: number;
           if (effectivePosition === 'before') {
-            // 放在目标卡片之前
+            
             newOrder = targetOrder;
-            // 目标卡片及其后的卡片需要 order +1
+            
             targetNodeCards.forEach((card: Card) => {
               if (card.order && card.order >= targetOrder) {
                 card.order = (card.order || 0) + 1;
               }
             });
           } else {
-            // after - 放在目标卡片之后
+            
             newOrder = targetOrder + 1;
-            // 目标卡片之后的卡片需要 order +1
+            
             targetNodeCards.forEach((card: Card) => {
               if (card.order && card.order > targetOrder) {
                 card.order = (card.order || 0) + 1;
@@ -6334,7 +6267,7 @@ ${currentCardContext}
             });
           }
           
-          // 从原节点移除
+          
           if (nodeCardsMap[draggedFile.nodeId || '']) {
             const cards = nodeCardsMap[draggedFile.nodeId || ''];
             const cardIndex = cards.findIndex((c: Card) => c.docId === draggedFile.cardId);
@@ -6343,39 +6276,39 @@ ${currentCardContext}
             }
           }
           
-          // 添加到目标节点
+          
           if (!nodeCardsMap[targetNodeId]) {
             nodeCardsMap[targetNodeId] = [];
           }
           draggedCard.nodeId = targetNodeId;
           draggedCard.order = newOrder;
           nodeCardsMap[targetNodeId].push(draggedCard);
-          // 按 order 排序
+          
           nodeCardsMap[targetNodeId].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
           (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
           
-          // 记录拖动操作，待保存（只记录被拖动的卡片，不记录所有受影响的卡片）
+          
           setPendingDragChanges(prev => new Set(prev).add(draggedFile.cardId || ''));
           
-          // 触发 fileTree 重新计算
+          
           setNodeCardsMapVersion(prev => prev + 1);
         }
       } else if (draggedFile.type === 'node' && targetFile.type === 'node') {
         const draggedNodeId = draggedFile.nodeId || '';
         const targetNodeId = targetFile.nodeId || '';
         
-        // 找到拖动节点和目标节点的父节点
+        
         const draggedParentEdge = base.edges.find(e => e.target === draggedNodeId);
         const targetParentEdge = base.edges.find(e => e.target === targetNodeId);
         const draggedParentId = draggedParentEdge?.source;
         const targetParentId = targetParentEdge?.source;
         
-        // 检查是否在同一父节点下（排序模式）
+        
         const isSameParent = draggedParentId && targetParentId && draggedParentId === targetParentId;
         
         if (isSameParent && effectivePosition !== 'into') {
-          // 排序模式：在同一父节点下改变顺序
-          // 获取同一父节点下的所有子节点（按order排序）
+          
+          
           const siblingNodes = base.edges
             .filter(e => e.source === draggedParentId)
             .map(e => {
@@ -6389,10 +6322,10 @@ ${currentCardContext}
           const targetNodeIndex = siblingNodes.findIndex(n => n.id === targetNodeId);
           
           if (draggedNodeIndex >= 0 && targetNodeIndex >= 0 && draggedNodeIndex !== targetNodeIndex) {
-            // 移除被拖动的节点
+            
             const [draggedNodeData] = siblingNodes.splice(draggedNodeIndex, 1);
             
-            // 根据 effectivePosition 插入到目标位置
+            
             let newIndex: number;
             if (effectivePosition === 'before') {
               newIndex = targetNodeIndex;
@@ -6402,12 +6335,12 @@ ${currentCardContext}
             }
             siblingNodes.splice(newIndex, 0, draggedNodeData);
             
-            // 更新所有节点的 order
+            
             siblingNodes.forEach((nodeData, index) => {
               nodeData.node.order = index + 1;
             });
             
-            // 更新 base
+            
             setBase(prev => ({
               ...prev,
               nodes: prev.nodes.map(n => {
@@ -6416,48 +6349,48 @@ ${currentCardContext}
               }),
             }));
             
-            // 记录拖动操作，待保存
+            
             setPendingDragChanges(prev => {
               const newSet = new Set(prev);
               newSet.add(`node-${draggedNodeId}`);
               return newSet;
             });
             
-            // 触发 fileTree 重新计算
+            
             setNodeCardsMapVersion(prev => prev + 1);
           }
         } else {
-          // 移动模式：改变父节点（包括所有嵌套结构）
-          // 需要检查是否会造成循环（不能将节点拖到自己或自己的子节点下）
+          
+          
           const isDescendant = (ancestorId: string, nodeId: string): boolean => {
-            // 找到所有以 ancestorId 为 source 的边
+            
             const children = base.edges
               .filter(e => e.source === ancestorId)
               .map(e => e.target);
             
-            // 如果 nodeId 是直接子节点，返回 true
+            
             if (children.includes(nodeId)) {
               return true;
             }
             
-            // 递归检查所有子节点
+            
             return children.some(childId => isDescendant(childId, nodeId));
           };
           
-          // 如果目标节点是拖动节点的子节点，不允许移动
+          
           if (isDescendant(draggedNodeId, targetNodeId)) {
-            Notification.error('不能将节点移动到自己的子节点下');
+            Notification.error(i18n('Cannot move node into its own descendant'));
             setDragOverFile(null);
             return;
           }
           
-          // 检查是否已经是目标节点的子节点
+          
           const existingEdge = base.edges.find(
             e => e.source === targetNodeId && e.target === draggedNodeId
           );
           
           if (!existingEdge) {
-            // 获取拖动节点的所有子节点（递归，用于记录拖动操作）
+            
             const getAllDescendants = (nodeId: string): string[] => {
               const directChildren = base.edges
                 .filter(e => e.source === nodeId)
@@ -6472,7 +6405,7 @@ ${currentCardContext}
             
             const draggedNodeDescendants = getAllDescendants(draggedNodeId);
             
-            // 获取目标节点的子节点数量（用于设置order）
+            
             const targetChildren = base.edges.filter(e => e.source === targetNodeId);
             const targetChildNodes = targetChildren.map(e => {
               const node = base.nodes.find(n => n.id === e.target);
@@ -6483,17 +6416,17 @@ ${currentCardContext}
               : 0;
             const newOrder = maxOrder + 1;
             
-            // 移除旧的父节点连接（只移除拖动节点本身的父连接）
+            
             const oldEdges = base.edges.filter(
               e => e.target === draggedNodeId
             );
             
-            // 删除旧边
+            
             const newEdges = base.edges.filter(
               e => !oldEdges.includes(e)
             );
             
-            // 创建新边（拖动节点到目标节点）
+            
             const newEdge: BaseEdge = {
               id: `edge-${targetNodeId}-${draggedNodeId}-${Date.now()}`,
               source: targetNodeId,
@@ -6502,10 +6435,10 @@ ${currentCardContext}
             
             newEdges.push(newEdge);
             
-            // 更新拖动节点的order
+            
             const draggedNode = base.nodes.find(n => n.id === draggedNodeId);
             
-            // 更新本地数据
+            
             setBase(prev => ({
               ...prev,
               edges: newEdges,
@@ -6514,29 +6447,29 @@ ${currentCardContext}
               ),
             }));
             
-            // 记录拖动操作，待保存（记录拖动节点，所有子节点会自动迁移）
+            
             setPendingDragChanges(prev => {
               const newSet = new Set(prev);
               newSet.add(`node-${draggedNodeId}`);
-              // 所有子节点的 edges 也会被影响，但只需要记录拖动节点即可
-              // 因为保存时会处理所有相关的 edges
+              
+              
               return newSet;
             });
             
-            // 触发 fileTree 重新计算
+            
             setNodeCardsMapVersion(prev => prev + 1);
           }
         }
       }
       
-      // 强制重新渲染文件树（通过更新 base 触发 fileTree 重新计算）
+      
       setBase(prev => ({ ...prev }));
       
-      // 强制触发 fileTree 重新计算（通过更新一个状态）
-      // 由于 fileTree 依赖于 base，上面的 setBase 应该已经足够
-      // 但为了确保 nodeCardsMap 的更新也被检测到，我们需要触发一次重新渲染
-      // 实际上，由于我们直接修改了 (window as any).UiContext.nodeCardsMap
-      // 我们需要强制 React 重新渲染
+      
+      
+      
+      
+      
       const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
       (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
       
@@ -6549,18 +6482,18 @@ ${currentCardContext}
     }
   }, [draggedFile, dropPosition, base.edges, base.nodes]);
 
-  // 使用 ref 跟踪当前选中的文件ID，避免在fileContent变化时重新初始化
+  
   const selectedFileIdRef = useRef<string | null>(null);
-  const selectedFileRef = useRef<FileItem | null>(null); // 用于在onChange回调中访问最新的selectedFile
+  const selectedFileRef = useRef<FileItem | null>(null);
   const isInitializingRef = useRef(false);
   
-  // 初始化编辑器（只在选择文件变化时）
+  
   useEffect(() => {
     if (!editorRef.current || !selectedFile) {
       return;
     }
 
-    // 如果文件ID没有变化，不重新初始化
+    
     if (selectedFileIdRef.current === selectedFile.id && editorInstance) {
       return;
     }
@@ -6568,7 +6501,7 @@ ${currentCardContext}
     selectedFileIdRef.current = selectedFile.id;
     isInitializingRef.current = true;
 
-    // 先销毁旧的编辑器
+    
     if (editorInstance) {
       try {
         editorInstance.destroy();
@@ -6580,12 +6513,12 @@ ${currentCardContext}
 
     let currentEditor: any = null;
 
-    // 使用 requestAnimationFrame 确保 DOM 完全准备好
+    
     let retryCount = 0;
     const maxRetries = 10;
     
     const initEditor = () => {
-      // 再次检查元素是否还在DOM中，并且有父元素
+      
       if (!editorRef.current) {
         if (retryCount < maxRetries) {
           retryCount++;
@@ -6611,7 +6544,7 @@ ${currentCardContext}
         return;
       }
 
-      // 确保元素在文档中
+      
       if (!document.body.contains(textareaElement)) {
         if (retryCount < maxRetries) {
           retryCount++;
@@ -6625,17 +6558,17 @@ ${currentCardContext}
 
       const $textarea = $(textareaElement);
       
-      // 如果是卡片，使用markdown编辑器；如果是节点，使用普通文本编辑器
+      
       if (selectedFile.type === 'card') {
         $textarea.attr('data-markdown', 'true');
       } else {
         $textarea.removeAttr('data-markdown');
       }
 
-      // 确保使用最新的fileContent
+      
       $textarea.val(fileContent);
       
-      // 再次确认父元素存在（因为 initMarkdownEditor 是异步的）
+      
       if (!textareaElement.parentElement) {
         if (retryCount < maxRetries) {
           retryCount++;
@@ -6652,18 +6585,18 @@ ${currentCardContext}
           value: fileContent,
           language: selectedFile.type === 'card' ? undefined : 'plain',
           onChange: (value: string) => {
-            // 如果正在初始化，忽略onChange（避免在初始化时触发）
+            
             if (isInitializingRef.current) {
               return;
             }
             setFileContent(value);
             
-            // 立即将修改添加到pendingChanges
+            
             const currentSelectedFile = selectedFileRef.current;
             if (currentSelectedFile) {
               const originalContent = originalContentsRef.current.get(currentSelectedFile.id) || '';
               
-              // 如果内容有变化，立即添加到待提交列表
+              
               if (value !== originalContent) {
                 setPendingChanges(prev => {
                   const newMap = new Map(prev);
@@ -6675,7 +6608,7 @@ ${currentCardContext}
                   return newMap;
                 });
               } else {
-                // 如果内容恢复原样，从pendingChanges中移除
+                
                 setPendingChanges(prev => {
                   const newMap = new Map(prev);
                   if (newMap.has(currentSelectedFile.id)) {
@@ -6688,8 +6621,8 @@ ${currentCardContext}
           },
         });
 
-        // 等待一小段时间，确保 Editor 的异步初始化开始
-        // 如果初始化失败，会在控制台显示错误，但不会崩溃
+        
+        
         setTimeout(() => {
           setEditorInstance(currentEditor);
           isInitializingRef.current = false;
@@ -6700,7 +6633,7 @@ ${currentCardContext}
       }
     };
 
-    // 延迟初始化，确保DOM已更新，并且fileContent已经设置
+    
     const timer = setTimeout(() => {
       requestAnimationFrame(initEditor);
     }, 200);
@@ -6718,13 +6651,13 @@ ${currentCardContext}
     };
   }, [selectedFile?.id]);
   
-  // 监听 fileContent 变化，更新编辑器内容（当编辑器已初始化且文件未变化时）
+  
   useEffect(() => {
     if (!editorInstance || !selectedFile || isInitializingRef.current) {
       return;
     }
     
-    // 只有当文件ID没有变化时，才更新编辑器内容
+    
     if (selectedFileIdRef.current === selectedFile.id) {
       try {
         const currentValue = editorInstance.value();
@@ -6732,7 +6665,7 @@ ${currentCardContext}
           editorInstance.value(fileContent);
         }
       } catch (e) {
-        // 如果编辑器还没有完全初始化，忽略错误
+        
         console.warn('Failed to update editor content:', e);
       }
     }
@@ -6755,10 +6688,10 @@ ${currentCardContext}
       });
   }, [basePath]);
 
-  // 组件卸载时清理
+  
   useEffect(() => {
     return () => {
-      // 清理工作
+      
     };
   }, []);
 
@@ -6851,7 +6784,7 @@ ${currentCardContext}
                     color: isMultiSelectMode ? themeStyles.textOnPrimary : themeStyles.textSecondary,
                     cursor: 'pointer',
                   }}
-                  title={isMultiSelectMode ? '退出多选模式' : '多选模式'}
+                  title={isMultiSelectMode ? i18n('Exit multi-select') : i18n('Multi-select')}
                 >
                   {isMultiSelectMode ? '✓' : '☐'}
                 </button>
@@ -6885,7 +6818,7 @@ ${currentCardContext}
                 color: explorerMode === 'files' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
                 cursor: 'pointer',
               }}
-              title="文件视图"
+              title={i18n('File view')}
             >
               文件
             </button>
@@ -6928,7 +6861,7 @@ ${currentCardContext}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => {
                   handleDrop(e, file);
-                  // 确保清除拖动状态
+                  
                   if (dragLeaveTimeoutRef.current) {
                     clearTimeout(dragLeaveTimeoutRef.current);
                     dragLeaveTimeoutRef.current = null;
@@ -6968,7 +6901,7 @@ ${currentCardContext}
                       clearTimeout(mobileExplorerCloseTimeoutRef.current);
                       mobileExplorerCloseTimeoutRef.current = null;
                     }
-                    return; // 手机模式不启用双击重命名，改用菜单中的重命名
+                    return;
                   }
                   handleStartRename(file, e);
                 }}
@@ -7006,7 +6939,7 @@ ${currentCardContext}
                       longPressTimerRef.current = null;
                     }
                   }
-                  // 手机模式不启用长按拖动，仅保留长按打开菜单
+                  
                   if (isMobile) return;
                   if (touchDragFileRef.current) return;
                   const touch = e.touches[0];
@@ -7095,11 +7028,11 @@ ${currentCardContext}
                       ? `2px dashed ${themeStyles.accent}` 
                       : `2px solid ${themeStyles.accent}`
                     : file.clipboardType === 'cut'
-                      ? `2px dashed ${themeStyles.error}` // 被剪切的用红色虚线
+                      ? `2px dashed ${themeStyles.error}`
                       : file.clipboardType === 'copy'
-                        ? `2px dashed ${themeStyles.success}` // 被复制的用绿色虚线
+                        ? `2px dashed ${themeStyles.success}`
                         : file.hasPendingChanges
-                          ? `1px dashed ${themeStyles.warning}` // 未保存的更改用橙色虚线
+                          ? `1px dashed ${themeStyles.warning}`
                           : '2px solid transparent',
                   borderTop: isDragOver && dropPosition === 'before' 
                     ? `3px solid ${themeStyles.accent}` 
@@ -7152,7 +7085,7 @@ ${currentCardContext}
                       userSelect: 'none',
                       marginRight: '2px',
                     }}
-                    title={isExpanded ? '折叠' : '展开'}
+                    title={isExpanded ? i18n('Collapse') : i18n('Expand')}
                   >
                     {isExpanded ? '▼' : '▶'}
                   </span>
@@ -7177,7 +7110,7 @@ ${currentCardContext}
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  marginLeft: '18px', // 对齐文件夹图标（16px 展开按钮 + 2px margin）
+                  marginLeft: '18px',
                 }}>
                   📄
                 </span>
@@ -7188,7 +7121,7 @@ ${currentCardContext}
                   value={editingName}
                   onChange={(e) => setEditingName(e.target.value)}
                   onBlur={async () => {
-                    // 失去焦点时保存更改
+                    
                     if (editingFile && editingName.trim() && editingName !== editingFile.name) {
                       await handleConfirmRename();
                     } else {
@@ -7197,7 +7130,7 @@ ${currentCardContext}
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      e.currentTarget.blur(); // 触发 onBlur，从而保存
+                      e.currentTarget.blur();
                     } else if (e.key === 'Escape') {
                       handleCancelRename();
                     }
@@ -7240,7 +7173,7 @@ ${currentCardContext}
                       fontSize: '10px', 
                       color: '#4caf50',
                       fontWeight: 'bold',
-                    }} title="已复制">
+                    }} title={i18n('Copied')}>
                       📋
                     </span>
                   )}
@@ -7278,9 +7211,9 @@ ${currentCardContext}
             );
           })
           ) : explorerMode === 'files' ? (
-            // 文件模式
+            
             <div style={{ padding: '8px' }}>
-              {/* 跳转到文件管理页面的按钮 */}
+              {/* Button to file management */}
               <div style={{ marginBottom: '8px' }}>
                 <button
                   onClick={() => {
@@ -7317,7 +7250,7 @@ ${currentCardContext}
                 </button>
               </div>
               
-              {/* 文件列表 */}
+              {/* File list */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                 {files.length === 0 ? (
                   <div style={{
@@ -7337,7 +7270,7 @@ ${currentCardContext}
                         let url = docId 
                           ? getBaseUrl(`/${docId}/file/${encodeURIComponent(file.name)}`)
                           : getBaseUrl(`/bid/${base.bid}/file/${encodeURIComponent(file.name)}`);
-                        // 添加 noDisposition=1 参数以启用预览
+                        
                         url = url.includes('?') ? `${url}&noDisposition=1` : `${url}?noDisposition=1`;
                         window.open(url, '_blank');
                         setSelectedFileForPreview(file.name);
@@ -7385,7 +7318,7 @@ ${currentCardContext}
               </div>
             </div>
           ) : (
-            // 待提交模式
+            
             <div style={{ padding: '8px' }}>
               <div style={{
                 fontSize: '12px',
@@ -7404,7 +7337,7 @@ ${currentCardContext}
                 gap: '8px',
                 padding: '0 8px',
               }}>
-                {/* 内容更改 */}
+                {/* Content changes */}
                 {pendingChanges.size > 0 && (
                   <div>
                     <div style={{ fontWeight: '500', marginBottom: '4px' }}>内容更改 ({pendingChanges.size})</div>
@@ -7421,7 +7354,7 @@ ${currentCardContext}
       </div>
                 )}
                 
-                {/* 拖动更改 */}
+                {/* Drag changes */}
                 {pendingDragChanges.size > 0 && (
                   <div>
                     <div style={{ fontWeight: '500', marginBottom: '4px' }}>拖动更改 ({pendingDragChanges.size})</div>
@@ -7461,7 +7394,7 @@ ${currentCardContext}
                   </div>
                 )}
                 
-                {/* 卡面更改 */}
+                {/* Card face changes */}
                 {Object.keys(pendingCardFaceChanges).length > 0 && (
                   <div>
                     <div style={{ fontWeight: '500', marginBottom: '4px' }}>卡面更改 ({Object.keys(pendingCardFaceChanges).length})</div>
@@ -7481,14 +7414,14 @@ ${currentCardContext}
                   </div>
                 )}
                 
-                {/* 新建项目 */}
+                {/* New items */}
                 {pendingCreatesCount > 0 && (
                   <div>
                     <div style={{ fontWeight: '500', marginBottom: '4px' }}>新建 ({pendingCreatesCount})</div>
                     <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
                       {Array.from(pendingCreatesRef.current.values()).slice(0, 5).map((create, idx) => (
                         <div key={idx} style={{ marginBottom: '2px' }}>
-                          • {create.type === 'card' ? '卡片' : '节点'}: {create.title || create.text || '未命名'}
+                          • {create.type === 'card' ? i18n('Card') : i18n('Node')}: {create.title || create.text || i18n('Unnamed')}
                         </div>
                       ))}
                       {pendingCreatesCount > 5 && (
@@ -7498,7 +7431,7 @@ ${currentCardContext}
                   </div>
                 )}
                 
-                {/* 删除项目 */}
+                {/* Deletions */}
                 {pendingDeletes.size > 0 && (
                   <div>
                     <div style={{ fontWeight: '500', marginBottom: '4px' }}>删除 ({pendingDeletes.size})</div>
@@ -7510,7 +7443,7 @@ ${currentCardContext}
                         );
                         return (
                           <div key={idx} style={{ marginBottom: '2px' }}>
-                            • {file ? file.name : `${del.type === 'card' ? '卡片' : '节点'} (${del.id.substring(0, 8)}...)`}
+                            • {file ? file.name : `${del.type === 'card' ? i18n('Card') : i18n('Node')} (${del.id.substring(0, 8)}...)`}
                           </div>
                         );
                       })}
@@ -7521,17 +7454,17 @@ ${currentCardContext}
                   </div>
                 )}
                 
-                {/* 题目新建 */}
+                {/* Problem creates */}
                 {pendingNewProblemCardIds.size > 0 && (
                   <div>
                     <div style={{ fontWeight: '500', marginBottom: '4px' }}>题目新建 ({pendingNewProblemCardIds.size})</div>
                     <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
                       {Array.from(pendingNewProblemCardIds).slice(0, 5).map((cardId, idx) => {
-                        // 在fileTree中查找对应的card
+                        
                         const file = fileTree.find(f => 
                           f.type === 'card' && f.cardId === cardId
                         );
-                        // 如果找不到，尝试从nodeCardsMap中查找
+                        
                         let cardName = file ? file.name : '';
                         if (!cardName) {
                           const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
@@ -7539,7 +7472,7 @@ ${currentCardContext}
                             const cards = nodeCardsMap[nodeId] || [];
                             const card = cards.find((c: Card) => c.docId === cardId);
                             if (card) {
-                              cardName = card.title || '未命名卡片';
+                              cardName = card.title || i18n('Unnamed Card');
                               break;
                             }
                           }
@@ -7557,17 +7490,17 @@ ${currentCardContext}
                   </div>
                 )}
                 
-                {/* 题目更改 */}
+                {/* Problem edits */}
                 {pendingEditedProblemIds.size > 0 && (
                   <div>
                     <div style={{ fontWeight: '500', marginBottom: '4px' }}>题目更改 ({pendingEditedProblemIds.size})</div>
                     <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
                       {Array.from(pendingEditedProblemIds.entries()).slice(0, 5).map(([cardId, problemIds], idx) => {
-                        // 在fileTree中查找对应的card
+                        
                         const file = fileTree.find(f => 
                           f.type === 'card' && f.cardId === cardId
                         );
-                        // 如果找不到，尝试从nodeCardsMap中查找
+                        
                         let cardName = file ? file.name : '';
                         if (!cardName) {
                           const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
@@ -7575,7 +7508,7 @@ ${currentCardContext}
                             const cards = nodeCardsMap[nodeId] || [];
                             const card = cards.find((c: Card) => c.docId === cardId);
                             if (card) {
-                              cardName = card.title || '未命名卡片';
+                              cardName = card.title || i18n('Unnamed Card');
                               break;
                             }
                           }
@@ -7594,17 +7527,17 @@ ${currentCardContext}
                   </div>
                 )}
                 
-                {/* 题目删除 */}
+                {/* Problem deletes */}
                 {pendingDeleteProblemIds.size > 0 && (
                   <div>
                     <div style={{ fontWeight: '500', marginBottom: '4px' }}>题目删除 ({pendingDeleteProblemIds.size})</div>
                     <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
                       {Array.from(pendingDeleteProblemIds.entries()).slice(0, 5).map(([problemId, cardId], idx) => {
-                        // 在fileTree中查找对应的card
+                        
                         const file = fileTree.find(f => 
                           f.type === 'card' && f.cardId === cardId
                         );
-                        // 如果找不到，尝试从nodeCardsMap中查找
+                        
                         let cardName = file ? file.name : '';
                         if (!cardName) {
                           const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
@@ -7612,7 +7545,7 @@ ${currentCardContext}
                             const cards = nodeCardsMap[nodeId] || [];
                             const card = cards.find((c: Card) => c.docId === cardId);
                             if (card) {
-                              cardName = card.title || '未命名卡片';
+                              cardName = card.title || i18n('Unnamed Card');
                               break;
                             }
                           }
@@ -7630,7 +7563,7 @@ ${currentCardContext}
                   </div>
                 )}
                 
-                {/* 如果没有待提交内容 */}
+                {/* No pending changes */}
                 {pendingChanges.size === 0 && 
                  pendingDragChanges.size === 0 && 
                  pendingRenames.size === 0 && 
@@ -7657,7 +7590,7 @@ ${currentCardContext}
       </div>
 
 
-      {/* 右键菜单 */}
+      {/* Context menu */}
       {contextMenu && (
         <div
           style={{
@@ -7677,7 +7610,7 @@ ${currentCardContext}
         >
           {contextMenu.file.type === 'node' ? (
             <>
-              {/* 粘贴选项（仅在剪贴板有内容时显示） */}
+              {/* Paste (when clipboard has content) */}
               {clipboard && (
                 <>
                   <div
@@ -7718,7 +7651,7 @@ ${currentCardContext}
                 导入
               </div>
               <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
-              {/* 多选模式的复制、剪切和删除 */}
+              {/* Multi-select: copy, cut, delete */}
               {isMultiSelectMode && selectedItems.size > 0 && (
                 <>
                   <div
@@ -7946,7 +7879,7 @@ ${currentCardContext}
             </>
           ) : (
             <>
-              {/* 多选模式的复制、剪切和删除 */}
+              {/* Multi-select: copy, cut, delete */}
               {isMultiSelectMode && selectedItems.size > 0 && (
                 <>
                   <div
@@ -8125,7 +8058,7 @@ ${currentCardContext}
         </div>
       )}
 
-      {/* 空白区域右键菜单 */}
+      {/* Empty area context menu */}
       {emptyAreaContextMenu && (
         <div
           style={{
@@ -8180,7 +8113,7 @@ ${currentCardContext}
         </div>
       )}
 
-      {/* 点击外部关闭右键菜单 */}
+      {/* Click outside to close menu */}
       {(contextMenu || emptyAreaContextMenu) && (
         <div
           style={{
@@ -8198,7 +8131,7 @@ ${currentCardContext}
         />
       )}
 
-      {/* 排序窗口 */}
+      {/* Sort window */}
       {sortWindow && (
         <SortWindow
           nodeId={sortWindow.nodeId}
@@ -8214,7 +8147,7 @@ ${currentCardContext}
               const domainId = (window as any).UiContext?.domainId || 'system';
               const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
               
-              // 更新base中的nodes的order（包括临时节点）
+              
               const updatedNodes = base.nodes.map(node => {
                 const sortedItem = sortedItems.find(item => item.type === 'node' && item.id === node.id);
                 if (sortedItem && node.order !== sortedItem.order) {
@@ -8223,13 +8156,13 @@ ${currentCardContext}
                 return node;
               });
               
-              // 更新base状态（包含更新后的nodes）
+              
               setBase(prev => ({
                 ...prev,
                 nodes: updatedNodes,
               }));
               
-              // 更新card的order（只更新前端状态，不调用后端API）
+              
               for (const sortedItem of sortedItems) {
                 if (sortedItem.type === 'card') {
                   const card = (nodeCardsMap[sortWindow.nodeId] || []).find((c: Card) => c.docId === sortedItem.id);
@@ -8239,16 +8172,16 @@ ${currentCardContext}
                 }
               }
               
-              // 更新nodeCardsMap并排序
+              并排序
               if (nodeCardsMap[sortWindow.nodeId]) {
                 nodeCardsMap[sortWindow.nodeId].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
                 (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
               }
               
-              // 触发重新渲染
+              
               setNodeCardsMapVersion(prev => prev + 1);
               
-              // 记录更改，以便在点击"保存更改"时一起保存
+              
               setPendingDragChanges(prev => {
                 const newSet = new Set(prev);
                 sortedItems.forEach(item => {
@@ -8261,7 +8194,7 @@ ${currentCardContext}
                 return newSet;
               });
               
-              Notification.success('排序已更新，请点击"保存更改"按钮保存');
+              Notification.success(i18n('Sort order updated, click Save to persist'));
               setSortWindow(null);
             } catch (error: any) {
               console.error('Failed to save sort order:', error);
@@ -8271,7 +8204,7 @@ ${currentCardContext}
         />
       )}
 
-      {/* 导入窗口 */}
+      {/* Import window */}
       {importWindow && (
         <>
           <div
@@ -8317,7 +8250,7 @@ ${currentCardContext}
             </div>
             <div style={{ padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <p style={{ margin: '0 0 10px', fontSize: '13px', color: themeStyles.textSecondary }}>
-                粘贴内容到下方，使用 <code style={{ padding: '0 4px', background: themeStyles.bgSecondary, borderRadius: '3px' }}>## 标题</code> 与 <code style={{ padding: '0 4px', background: themeStyles.bgSecondary, borderRadius: '3px' }}>---</code> 分隔多个卡片
+                {i18n('Import hint')}
               </p>
               <textarea
                 value={importText}
@@ -8358,7 +8291,7 @@ ${currentCardContext}
                   cursor: 'pointer',
                 }}
               >
-                取消
+                {i18n('Cancel')}
               </button>
               <button
                 type="button"
@@ -8384,7 +8317,7 @@ ${currentCardContext}
         </>
       )}
 
-      {/* 编辑卡面窗口 */}
+      {/* Card face editor */}
       {cardFaceWindow && (
         <>
           <div
@@ -8472,7 +8405,7 @@ ${currentCardContext}
                   cursor: 'pointer',
                 }}
               >
-                取消
+                {i18n('Cancel')}
               </button>
               <button
                 type="button"
@@ -8621,19 +8554,19 @@ ${currentCardContext}
                 fontWeight: '500',
                 opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0)) ? 0.6 : 1,
               }}
-              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0) ? '没有待保存的更改' : '保存所有更改'}
+              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0) ? i18n('No pending changes') : i18n('Save all changes')}
             >
-              {isCommitting ? '保存中...' : `保存更改 (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size})`}
+              {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size})`}
             </button>
           </div>
         </div>
 
-        {/* 编辑器内容 + 题目区域 */}
+        {/* Editor + problems */}
         <div 
           id="editor-container"
           style={{ flex: 1, padding: '0', overflow: 'hidden', position: 'relative', backgroundColor: themeStyles.bgPrimary, display: 'flex', flexDirection: 'column' }}
         >
-          {/* Markdown 编辑器 */}
+          {/* Markdown editor */}
           <div style={{ flex: 1, minHeight: 0 }}>
             {selectedFile && selectedFile.type === 'card' ? (
               <div 
@@ -8875,7 +8808,7 @@ ${currentCardContext}
                   ))}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px', fontSize: '12px' }}>
-                  <span style={{ marginRight: 4 }}>正确答案：</span>
+                  <span style={{ marginRight: 4 }}>{i18n('Correct answer')}:</span>
                   {problemOptions.map((_, index) => (
                     <label key={index} style={{ marginRight: 6, cursor: 'pointer' }}>
                       <input type="radio" name="problem-answer" checked={problemAnswer === index} onChange={() => setProblemAnswer(index)} style={{ marginRight: 2 }} />
@@ -8887,7 +8820,7 @@ ${currentCardContext}
                   <textarea
                     value={problemAnalysis}
                     onChange={e => setProblemAnalysis(e.target.value)}
-                    placeholder="解析（可选）"
+                    placeholder={i18n('Analysis (optional)')}
                     style={{ width: '100%', minHeight: '32px', resize: 'vertical', fontSize: '12px', padding: '4px 6px', boxSizing: 'border-box' }}
                   />
                 </div>
@@ -8898,7 +8831,7 @@ ${currentCardContext}
                     disabled={isSavingProblem}
                     style={{ padding: '4px 8px', borderRadius: '4px', border: `1px solid ${themeStyles.borderSecondary}`, background: themeStyles.bgButton, color: themeStyles.textPrimary, fontSize: '12px', cursor: isSavingProblem ? 'not-allowed' : 'pointer' }}
                   >
-                    取消
+                    {i18n('Cancel')}
                   </button>
                   <button
                     type="button"
@@ -8915,7 +8848,7 @@ ${currentCardContext}
         </div>
       )}
 
-      {/* Skill 模式：右侧工具侧边栏，点击工具可复制工具参数（tool + arguments 模板） */}
+      {/* Skill mode: right sidebar, click tool to copy params */}
       {basePath === 'base/skill' && (
         <div style={{
           width: '280px',
@@ -8978,7 +8911,7 @@ ${currentCardContext}
                         navigator.clipboard.writeText(copyPayload).then(() => {
                           Notification.success('已复制到剪贴板');
                         }).catch(() => {
-                          Notification.error('复制失败');
+                          Notification.error(i18n('Copy failed'));
                         });
                       } else {
                         Notification.error('剪贴板不可用');
@@ -9139,8 +9072,8 @@ ${currentCardContext}
                 <p>你好！我是 AI 助手，可以帮助你操作知识库。</p>
                 <p style={{ marginTop: '8px', fontSize: '12px' }}>例如：</p>
                 <ul style={{ textAlign: 'left', marginTop: '8px', fontSize: '12px', color: themeStyles.textSecondary }}>
-                  <li>"在根节点下创建一个名为 '新节点' 的节点"</li>
-                  <li>"在 '节点名' 下创建一个卡片，标题为 '新卡片'"</li>
+                  <li>"在根节点下创建一个名为 i18n('New node') 的节点"</li>
+                  <li>"在 '节点名' 下创建一个卡片，标题为 i18n('New card')"</li>
                   <li>"将 '节点A' 移动到 '节点B' 下"</li>
                   <li>"将 '节点A' 重命名为 '新名称'"</li>
                   <li>"删除 '节点A'"</li>
@@ -9149,7 +9082,7 @@ ${currentCardContext}
             )}
             {chatMessages.map((msg, index) => {
               if (msg.role === 'operation') {
-                // 操作气泡
+                
                 return (
                   <div
                     key={index}
@@ -9211,7 +9144,7 @@ ${currentCardContext}
                 );
               }
               
-              // 普通消息
+              
               return (
                 <div
                   key={index}
@@ -9281,7 +9214,7 @@ ${currentCardContext}
             borderTop: `1px solid ${themeStyles.borderPrimary}`,
             background: themeStyles.bgSecondary,
           }}>
-            {/* 显示引用标签 */}
+            {/* Reference tags */}
             {chatInputReferences.length > 0 && (
               <div style={{
                 display: 'flex',
@@ -9317,20 +9250,20 @@ ${currentCardContext}
                     </span>
                     <button
                       onClick={() => {
-                        // 移除引用
+                        
                         const placeholder = `@${ref.name}`;
                         const startIndex = ref.startIndex;
                         const endIndex = ref.endIndex;
                         
-                        // 从文本中移除占位符
+                        
                         const newText = chatInput.slice(0, startIndex) + chatInput.slice(endIndex);
                         
-                        // 更新引用列表
+                        
                         setChatInputReferences(prev => {
                           const newRefs = prev
                             .filter((_, i) => i !== index)
                             .map(r => {
-                              // 调整后续引用的位置
+                              
                               if (r.startIndex > startIndex) {
                                 return {
                                   ...r,
@@ -9369,14 +9302,14 @@ ${currentCardContext}
                 const newText = e.target.value;
                 const oldText = chatInput;
                 
-                // 更新引用位置
+                
                 if (newText.length !== oldText.length) {
                   const diff = newText.length - oldText.length;
                   const selectionStart = e.currentTarget.selectionStart;
                   
                   setChatInputReferences(prev => {
                     return prev.map(ref => {
-                      // 如果插入/删除在引用之前，调整引用位置
+                      
                       if (selectionStart <= ref.startIndex) {
                         return {
                           ...ref,
@@ -9384,9 +9317,9 @@ ${currentCardContext}
                           endIndex: ref.endIndex + diff,
                         };
                       }
-                      // 如果插入/删除在引用内部，可能需要移除引用
+                      
                       else if (selectionStart > ref.startIndex && selectionStart < ref.endIndex) {
-                        // 如果引用被删除，返回 null，稍后过滤
+                        
                         return null as any;
                       }
                       return ref;
@@ -9478,7 +9411,7 @@ ${currentCardContext}
   );
 }
 
-// 辅助函数：获取带 domainId 的 base URL
+
 const getBaseUrl = (path: string, docId: string): string => {
   const domainId = (window as any).UiContext?.domainId || 'system';
   return `/d/${domainId}/base/${docId}${path}`;
@@ -9486,7 +9419,7 @@ const getBaseUrl = (path: string, docId: string): string => {
 
 const page = new NamedPage(['base_editor', 'base_skill_editor', 'base_skill_editor_branch'], async (pageName) => {
   try {
-    // 根据页面名称判断是 base 还是 skill
+    
     const isSkill = pageName === 'base_skill_editor' || pageName === 'base_skill_editor_branch';
     const containerId = isSkill ? '#skill-editor-mode' : '#base-editor-mode';
     const $container = $(containerId);
@@ -9497,14 +9430,14 @@ const page = new NamedPage(['base_editor', 'base_skill_editor', 'base_skill_edit
     const domainId = (window as any).UiContext?.domainId || 'system';
     const docId = $container.data('doc-id') || $container.attr('data-doc-id') || '';
 
-    // 加载知识库数据
+    
     let initialData: BaseDoc;
     try {
-      // 根据页面类型选择不同的 API 路径
+      
       const apiPath = isSkill ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
       const response = await request.get(apiPath);
       initialData = response;
-      // 如果响应中没有 docId，使用空字符串
+      
       if (!initialData.docId) {
         initialData.docId = docId || '';
       }
