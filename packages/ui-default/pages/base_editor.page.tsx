@@ -57,6 +57,8 @@ interface Card {
   cid: number;
   title: string;
   content: string;
+  /** 卡面：在 lesson 中与 Know it / No impression 一起展示 */
+  cardFace?: string;
   updateAt: string;
   createdAt?: string;
   order?: number;
@@ -1012,6 +1014,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; items: FileItem[] } | null>(null); // 剪贴板（支持多个项目）
   const [sortWindow, setSortWindow] = useState<{ nodeId: string } | null>(null); // 排序窗口
   const [importWindow, setImportWindow] = useState<{ nodeId: string } | null>(null); // 导入窗口
+  const [cardFaceWindow, setCardFaceWindow] = useState<{ file: FileItem } | null>(null);
+  const [cardFaceEditContent, setCardFaceEditContent] = useState('');
+  const [pendingCardFaceChanges, setPendingCardFaceChanges] = useState<Record<string, string>>({});
+  const cardFaceEditorRef = useRef<HTMLTextAreaElement | null>(null);
+  const cardFaceEditorInstanceRef = useRef<any>(null);
   const [importText, setImportText] = useState(''); // 导入窗口内粘贴的内容
   // AI 聊天相关状态
   const [showAIChat, setShowAIChat] = useState<boolean>(false);
@@ -2357,6 +2364,24 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       }
 
+      // 合并卡面修改到 cardUpdates
+      for (const [cardId, cardFace] of Object.entries(pendingCardFaceChanges)) {
+        if (String(cardId).startsWith('temp-card-')) continue;
+        const existing = batchSaveData.cardUpdates.find((u: any) => u.cardId === cardId);
+        if (existing) {
+          existing.cardFace = cardFace;
+        } else {
+          const nodeCardsMapForFace = (window as any).UiContext?.nodeCardsMap || {};
+          let nodeId = '';
+          let title = '';
+          for (const nid of Object.keys(nodeCardsMapForFace)) {
+            const card = (nodeCardsMapForFace[nid] || []).find((c: Card) => c.docId === cardId);
+            if (card) { nodeId = nid; title = card.title; break; }
+          }
+          if (nodeId) batchSaveData.cardUpdates.push({ cardId, nodeId, title, cardFace });
+        }
+      }
+
       // 一次性发送批量保存请求
       const hasAnyChanges = 
         batchSaveData.nodeCreates.length > 0 ||
@@ -2518,6 +2543,44 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               return false; // 不计算这个重命名
             }
           }
+        }
+      }
+      
+      // 清空待提交列表
+      setPendingChanges(new Map());
+      setPendingDragChanges(new Set());
+      setPendingRenames(new Map());
+      pendingCreatesRef.current.clear();
+      setPendingCreatesCount(0);
+      setPendingDeletes(new Map());
+      setPendingCardFaceChanges(prev => {
+        const next = { ...prev };
+        batchSaveData.cardUpdates.forEach((u: any) => delete next[u.cardId]);
+        return next;
+      });
+      // 在清空之前，先保存需要更新UI状态的cardId列表
+      const savedProblemCardIds = new Set<string>(pendingProblemCardIds);
+      
+      setPendingProblemCardIds(new Set());
+      setPendingNewProblemCardIds(new Set());
+      setPendingEditedProblemIds(new Map());
+      setPendingDeleteProblemIds(new Map());
+      
+      // 更新题目的UI状态：清空新建/编辑标记，并更新原始数据
+      if (hasProblemChanges) {
+        // 清空新建和编辑的problem ID标记
+        setNewProblemIds(new Set());
+        setEditedProblemIds(new Set());
+        
+        // 更新原始problem数据（保存后，当前状态就是新的原始状态）
+        const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+        const savedCardIds = new Set<string>();
+        
+        // 收集所有已保存的cardId（包括通过内容更新和题目更新保存的）
+        for (const change of allChanges.values()) {
+          if (change.file.type === 'card' && change.file.cardId) {
+            savedCardIds.add(String(change.file.cardId));
+          }
           return true; // 计算其他重命名
         }).length;
       } else {
@@ -2542,39 +2605,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           const response = await request.get(getBaseUrl('/data', docId));
           setBase(response);
         } catch (error) {
-        }
-      }
-      
-      // 清空待提交列表
-      setPendingChanges(new Map());
-      setPendingDragChanges(new Set());
-      setPendingRenames(new Map());
-      pendingCreatesRef.current.clear();
-      setPendingCreatesCount(0);
-      setPendingDeletes(new Map());
-      // 在清空之前，先保存需要更新UI状态的cardId列表
-      const savedProblemCardIds = new Set<string>(pendingProblemCardIds);
-      
-      setPendingProblemCardIds(new Set());
-      setPendingNewProblemCardIds(new Set());
-      setPendingEditedProblemIds(new Map());
-      setPendingDeleteProblemIds(new Map());
-      
-      // 更新题目的UI状态：清空新建/编辑标记，并更新原始数据
-      if (hasProblemChanges) {
-        // 清空新建和编辑的problem ID标记
-        setNewProblemIds(new Set());
-        setEditedProblemIds(new Set());
-        
-        // 更新原始problem数据（保存后，当前状态就是新的原始状态）
-        const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-        const savedCardIds = new Set<string>();
-        
-        // 收集所有已保存的cardId（包括通过内容更新和题目更新保存的）
-        for (const change of allChanges.values()) {
-          if (change.file.type === 'card' && change.file.cardId) {
-            savedCardIds.add(String(change.file.cardId));
-          }
         }
         // 添加题目更新的cardId
         for (const cardId of Array.from(savedProblemCardIds)) {
@@ -2623,7 +2653,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } finally {
       setIsCommitting(false);
     }
-  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion]);
+  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion]);
 
   // 重命名文件（仅前端修改，保存时才提交到后端）
   const handleRename = useCallback((file: FileItem, newName: string) => {
@@ -2856,6 +2886,38 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setImportWindow({ nodeId });
     setContextMenu(null);
   }, [pendingDeletes, base.nodes]);
+
+  // 卡面弹窗：打开时初始化与主编辑器相同的 Markdown Editor，关闭时销毁
+  useEffect(() => {
+    if (!cardFaceWindow) return;
+    const timer = setTimeout(() => {
+      const textarea = cardFaceEditorRef.current;
+      if (!textarea) return;
+      const $textarea = $(textarea);
+      $textarea.val(cardFaceEditContent);
+      $textarea.attr('data-markdown', 'true');
+      try {
+        const editor = new Editor($textarea, {
+          value: cardFaceEditContent,
+          onChange: (value: string) => setCardFaceEditContent(value),
+        });
+        cardFaceEditorInstanceRef.current = editor;
+      } catch (e) {
+        console.error('Failed to init card face editor:', e);
+      }
+    }, 150);
+    return () => {
+      clearTimeout(timer);
+      if (cardFaceEditorInstanceRef.current) {
+        try {
+          cardFaceEditorInstanceRef.current.destroy();
+        } catch (e) {
+          console.warn('Error destroying card face editor:', e);
+        }
+        cardFaceEditorInstanceRef.current = null;
+      }
+    };
+  }, [cardFaceWindow?.file?.id]); // 打开时用当前 cardFaceEditContent 初始化
 
   // 新建子节点（前端操作）
   const handleNewChildNode = useCallback((parentNodeId: string) => {
@@ -7399,6 +7461,26 @@ ${currentCardContext}
                   </div>
                 )}
                 
+                {/* 卡面更改 */}
+                {Object.keys(pendingCardFaceChanges).length > 0 && (
+                  <div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>卡面更改 ({Object.keys(pendingCardFaceChanges).length})</div>
+                    <div style={{ paddingLeft: '12px', fontSize: '10px', color: '#6a737d' }}>
+                      {Object.keys(pendingCardFaceChanges).slice(0, 5).map((cardId) => {
+                        const file = fileTree.find(f => f.type === 'card' && f.cardId === cardId);
+                        return (
+                          <div key={cardId} style={{ marginBottom: '2px' }}>
+                            • {file ? file.name : cardId}
+                          </div>
+                        );
+                      })}
+                      {Object.keys(pendingCardFaceChanges).length > 5 && (
+                        <div style={{ color: '#999', fontStyle: 'italic' }}>... 还有 {Object.keys(pendingCardFaceChanges).length - 5} 个</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
                 {/* 新建项目 */}
                 {pendingCreatesCount > 0 && (
                   <div>
@@ -7552,6 +7634,7 @@ ${currentCardContext}
                 {pendingChanges.size === 0 && 
                  pendingDragChanges.size === 0 && 
                  pendingRenames.size === 0 && 
+                 Object.keys(pendingCardFaceChanges).length === 0 &&
                  pendingCreatesCount === 0 && 
                  pendingDeletes.size === 0 &&
                  pendingProblemCardIds.size === 0 &&
@@ -7983,6 +8066,30 @@ ${currentCardContext}
                   padding: '6px 16px',
                   cursor: 'pointer',
                   fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => {
+                  const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                  const card = (nodeCardsMap[contextMenu.file.nodeId || ''] || []).find((c: Card) => c.docId === contextMenu.file.cardId);
+                  const initial = pendingCardFaceChanges[contextMenu.file.cardId || ''] ?? card?.cardFace ?? '';
+                  setCardFaceEditContent(initial);
+                  setCardFaceWindow({ file: contextMenu.file });
+                  setContextMenu(null);
+                }}
+              >
+                编辑卡面
+              </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
                   color: '#24292e',
                 }}
                 onMouseEnter={(e) => {
@@ -8277,6 +8384,140 @@ ${currentCardContext}
         </>
       )}
 
+      {/* 编辑卡面窗口 */}
+      {cardFaceWindow && (
+        <>
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.3)',
+              zIndex: 1100,
+            }}
+            onClick={() => setCardFaceWindow(null)}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '90%',
+              maxWidth: '640px',
+              maxHeight: '80vh',
+              backgroundColor: themeStyles.bgPrimary,
+              border: `1px solid ${themeStyles.borderSecondary}`,
+              borderRadius: '8px',
+              boxShadow: theme === 'dark' ? '0 4px 24px rgba(0,0,0,0.5)' : '0 4px 24px rgba(0,0,0,0.15)',
+              zIndex: 1101,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{
+              padding: '16px',
+              borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+              fontSize: '15px',
+              fontWeight: 500,
+              color: themeStyles.textPrimary,
+            }}>
+              编辑卡面
+            </div>
+            <div style={{ padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+              <p style={{ margin: '0 0 10px', fontSize: '13px', color: themeStyles.textSecondary }}>
+                卡面会在 lesson 中与 Know it / No impression 一起展示，支持 Markdown
+              </p>
+              <textarea
+                ref={cardFaceEditorRef}
+                key={cardFaceWindow?.file?.cardId ?? 'card-face-editor'}
+                defaultValue={cardFaceEditContent}
+                data-markdown="true"
+                style={{
+                  width: '100%',
+                  flex: 1,
+                  minHeight: '240px',
+                  padding: '12px',
+                  fontSize: '13px',
+                  fontFamily: 'monospace',
+                  color: themeStyles.textPrimary,
+                  backgroundColor: themeStyles.bgSecondary,
+                  border: `1px solid ${themeStyles.borderPrimary}`,
+                  borderRadius: '4px',
+                  resize: 'vertical',
+                }}
+              />
+            </div>
+            <div style={{
+              padding: '12px 16px',
+              borderTop: `1px solid ${themeStyles.borderPrimary}`,
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '8px',
+            }}>
+              <button
+                type="button"
+                onClick={() => setCardFaceWindow(null)}
+                style={{
+                  padding: '6px 14px',
+                  fontSize: '13px',
+                  color: themeStyles.textSecondary,
+                  backgroundColor: themeStyles.bgSecondary,
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const { file } = cardFaceWindow;
+                  const cardId = file.cardId || '';
+                  setPendingCardFaceChanges(prev => ({ ...prev, [cardId]: (cardFaceEditorInstanceRef.current && typeof cardFaceEditorInstanceRef.current.value === 'function' ? cardFaceEditorInstanceRef.current.value() : cardFaceEditContent) }));
+                  const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                  const nodeId = file.nodeId || '';
+                  if (nodeCardsMap[nodeId]) {
+                    const cards = nodeCardsMap[nodeId];
+                    const idx = cards.findIndex((c: Card) => c.docId === cardId);
+                    if (idx >= 0) {
+                      cards[idx] = { ...cards[idx], cardFace: (cardFaceEditorInstanceRef.current && typeof cardFaceEditorInstanceRef.current.value === 'function' ? cardFaceEditorInstanceRef.current.value() : cardFaceEditContent) };
+                      (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+                      setNodeCardsMapVersion(prev => prev + 1);
+                    }
+                  }
+                  if (cardFaceEditorInstanceRef.current) {
+                    try { cardFaceEditorInstanceRef.current.destroy(); } catch (_) {}
+                    cardFaceEditorInstanceRef.current = null;
+                  }
+                  if (cardFaceEditorInstanceRef.current) {
+                    try { cardFaceEditorInstanceRef.current.destroy(); } catch (e) {}
+                    cardFaceEditorInstanceRef.current = null;
+                  }
+                  setCardFaceWindow(null);
+                }}
+                style={{
+                  padding: '6px 14px',
+                  fontSize: '13px',
+                  color: '#fff',
+                  backgroundColor: themeStyles.accent,
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                确定
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
       <div style={{
         flex: 1,
         minWidth: 0,
@@ -8345,10 +8586,12 @@ ${currentCardContext}
                 题目
               </button>
             )}
-            {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) && (
+            {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) && (
               <span style={{ fontSize: '12px', color: themeStyles.textSecondary }}>
                 {pendingChanges.size > 0 && `${pendingChanges.size} 个文件已修改`}
-                {pendingChanges.size > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) && '，'}
+                {pendingChanges.size > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) && '，'}
+                {Object.keys(pendingCardFaceChanges).length > 0 && `${Object.keys(pendingCardFaceChanges).length} 个卡面已修改`}
+                {Object.keys(pendingCardFaceChanges).length > 0 && (pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) && '，'}
                 {pendingDragChanges.size > 0 && `${pendingDragChanges.size} 个拖动操作`}
                 {pendingDragChanges.size > 0 && (pendingRenames.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) && '，'}
                 {pendingRenames.size > 0 && `${pendingRenames.size} 个重命名`}
@@ -8365,22 +8608,22 @@ ${currentCardContext}
                 console.log('[保存按钮] 点击保存，pendingProblemCardIds:', Array.from(pendingProblemCardIds));
                 handleSaveAll();
               }}
-              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0)}
+              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0)}
               style={{
                 padding: isMobile ? '10px 12px' : '4px 12px',
                 minHeight: isMobile ? '44px' : undefined,
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
-                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
+                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
                 color: themeStyles.textOnPrimary,
-                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0)) ? 'not-allowed' : 'pointer',
+                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0)) ? 'not-allowed' : 'pointer',
                 fontSize: '12px',
                 fontWeight: '500',
-                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0)) ? 0.6 : 1,
+                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0)) ? 0.6 : 1,
               }}
-              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0) ? '没有待保存的更改' : '保存所有更改'}
+              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0) ? '没有待保存的更改' : '保存所有更改'}
             >
-              {isCommitting ? '保存中...' : `保存更改 (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size})`}
+              {isCommitting ? '保存中...' : `保存更改 (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size})`}
             </button>
           </div>
         </div>
