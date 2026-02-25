@@ -838,6 +838,24 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   const [theme, setTheme] = useState<'light' | 'dark'>(() => getTheme());
   const [contributionViewMode, setContributionViewMode] = useState<'today' | 'wall'>('today');
+  const [contributionData, setContributionData] = useState<{
+    todayContribution: { nodes: number; cards: number; problems: number };
+    contributions: Array<{ date: string; type: 'node' | 'card' | 'problem'; count: number }>;
+    contributionDetails: Record<string, Array<{
+      domainId: string; domainName: string; nodes: number; cards: number; problems: number;
+      nodeStats: { created: number; modified: number; deleted: number };
+      cardStats: { created: number; modified: number; deleted: number };
+      problemStats: { created: number; modified: number; deleted: number };
+    }>>;
+  }>(() => {
+    const ctx = (window as any).UiContext;
+    return {
+      todayContribution: ctx?.todayContribution || { nodes: 0, cards: 0, problems: 0 },
+      contributions: ctx?.contributions || [],
+      contributionDetails: ctx?.contributionDetails || {},
+    };
+  });
+  const contributionWsRef = useRef<any>(null);
 
   useEffect(() => {
     const checkTheme = () => {
@@ -851,6 +869,57 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const interval = setInterval(checkTheme, 500);
     return () => clearInterval(interval);
   }, [theme, getTheme]);
+
+  // WebSocket：连接 base/ws（ConnectionHandler），收到 init/update 时更新贡献数据（保存后实时刷新贡献墙）
+  useEffect(() => {
+    const socketUrl = (window as any).UiContext?.socketUrl;
+    const wsPrefix = (window as any).UiContext?.ws_prefix || '';
+    if (!socketUrl) return;
+
+    let closed = false;
+    const connect = async () => {
+      try {
+        const { default: WebSocket } = await import('../components/socket');
+        const wsUrl = wsPrefix + socketUrl;
+        const sock = new WebSocket(wsUrl, false, true);
+        contributionWsRef.current = sock;
+
+        sock.onmessage = (_: any, data: string) => {
+          if (closed) return;
+          try {
+            const msg = JSON.parse(data);
+            if ((msg.type === 'init' || msg.type === 'update') && msg.todayContribution != null) {
+              setContributionData(prev => ({
+                ...prev,
+                todayContribution: msg.todayContribution || prev.todayContribution,
+                contributions: Array.isArray(msg.contributions) ? msg.contributions : prev.contributions,
+                contributionDetails: msg.contributionDetails && typeof msg.contributionDetails === 'object'
+                  ? msg.contributionDetails
+                  : prev.contributionDetails,
+              }));
+            }
+          } catch (e) {
+            // ignore parse error
+          }
+        };
+
+        sock.onclose = () => {
+          contributionWsRef.current = null;
+        };
+      } catch (e) {
+        console.warn('Contribution WS connect failed:', e);
+      }
+    };
+
+    connect();
+    return () => {
+      closed = true;
+      if (contributionWsRef.current) {
+        contributionWsRef.current.close();
+        contributionWsRef.current = null;
+      }
+    };
+  }, []);
 
   const themeStyles = useMemo(() => {
     const isDark = theme === 'dark';
@@ -8581,7 +8650,7 @@ ${currentCardContext}
 
         {/* 用户贡献统计（编辑器上方，可切换今日/贡献墙，上下留白 + 左右箭头） */}
         {(() => {
-          const todayContribution = (window as any).UiContext?.todayContribution || { nodes: 0, cards: 0, problems: 0 };
+          const todayContribution = contributionData.todayContribution;
           const domainId = (window as any).UiContext?.domainId || (window as any).UiContext?.base?.domainId;
           const uid = (window as any).UserContext?._id;
           const contributionLink = typeof uid === 'number' && domainId
@@ -8675,8 +8744,8 @@ ${currentCardContext}
               ) : (
                 <div style={{ width: '100%', overflowX: 'auto', overflowY: 'hidden', minWidth: 0 }}>
                 <ContributionWall
-                  contributions={(window as any).UiContext?.contributions || []}
-                  contributionDetails={(window as any).UiContext?.contributionDetails || {}}
+                  contributions={contributionData.contributions}
+                  contributionDetails={contributionData.contributionDetails}
                   theme={theme}
                   compact
                 />

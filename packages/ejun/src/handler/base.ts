@@ -23,6 +23,169 @@ import moment from 'moment-timezone';
 const exec = promisify(execCb);
 const logger = new Logger('base');
 
+/** 构建当前用户在某域内的贡献数据（今日 + 贡献墙），供 GET 与 WS 复用 */
+async function buildContributionDataForDomain(
+    domainId: string,
+    uid: number,
+    domainName: string,
+    base?: BaseDoc & { nodes?: BaseNode[] },
+): Promise<{
+    todayContribution: { nodes: number; cards: number; problems: number };
+    contributions: Array<{ date: string; type: 'node' | 'card' | 'problem'; count: number }>;
+    contributionDetails: Record<string, Array<{
+        domainId: string; domainName: string; nodes: number; cards: number; problems: number;
+        nodeStats: { created: number; modified: number; deleted: number };
+        cardStats: { created: number; modified: number; deleted: number };
+        problemStats: { created: number; modified: number; deleted: number };
+    }>>;
+}> {
+    const todayStart = moment.utc().startOf('day').toDate();
+    const todayEnd = moment.utc().endOf('day').toDate();
+    let todayNodes = 0;
+    let todayCards = 0;
+    let todayProblems = 0;
+    if (base?.updateAt && base.updateAt >= todayStart && base.updateAt <= todayEnd && base.nodes) {
+        todayNodes = base.nodes.length;
+    }
+    if (base?.docId) {
+        const cardsUpdatedToday = await document.getMulti(domainId, TYPE_CARD, {
+            baseDocId: base.docId,
+            owner: uid,
+            $or: [
+                { createdAt: { $gte: todayStart, $lte: todayEnd } },
+                { updateAt: { $gte: todayStart, $lte: todayEnd } },
+            ],
+        })
+            .project({ docId: 1, problems: 1 })
+            .toArray();
+        todayCards = cardsUpdatedToday.length;
+        for (const c of cardsUpdatedToday) {
+            if (Array.isArray((c as any).problems)) todayProblems += (c as any).problems.length;
+        }
+    }
+    const todayContribution = { nodes: todayNodes, cards: todayCards, problems: todayProblems };
+
+    const contributions: Array<{ date: string; type: 'node' | 'card' | 'problem'; count: number }> = [];
+    const nodeCounts: Record<string, number> = {};
+    const cardCounts: Record<string, number> = {};
+    const problemCounts: Record<string, number> = {};
+    const contributionDetails: Record<string, Array<{
+        domainId: string; domainName: string; nodes: number; cards: number; problems: number;
+        nodeStats: { created: number; modified: number; deleted: number };
+        cardStats: { created: number; modified: number; deleted: number };
+        problemStats: { created: number; modified: number; deleted: number };
+    }>> = {};
+
+    const independentNodes = await document.getMulti(domainId, document.TYPE_NODE, { owner: uid })
+        .project({ createdAt: 1, updateAt: 1 })
+        .toArray();
+    for (const nodeDoc of independentNodes) {
+        if ((nodeDoc as any).createdAt) {
+            const createDate = moment.utc((nodeDoc as any).createdAt).format('YYYY-MM-DD');
+            const updateDate = (nodeDoc as any).updateAt ? moment.utc((nodeDoc as any).updateAt).format('YYYY-MM-DD') : createDate;
+            const date = createDate === updateDate && (nodeDoc as any).updateAt
+                && Math.abs(moment.utc((nodeDoc as any).updateAt).diff(moment.utc((nodeDoc as any).createdAt), 'minutes')) < 5
+                ? createDate : updateDate;
+            nodeCounts[date] = (nodeCounts[date] || 0) + 1;
+            if (!contributionDetails[date]) contributionDetails[date] = [];
+            let detail = contributionDetails[date].find(d => d.domainId === domainId);
+            if (!detail) {
+                detail = { domainId, domainName, nodes: 0, cards: 0, problems: 0, nodeStats: { created: 0, modified: 0, deleted: 0 }, cardStats: { created: 0, modified: 0, deleted: 0 }, problemStats: { created: 0, modified: 0, deleted: 0 } };
+                contributionDetails[date].push(detail);
+            }
+            detail.nodes += 1;
+            if (date === createDate) detail.nodeStats.created += 1;
+            else if (updateDate !== createDate) detail.nodeStats.modified += 1;
+        }
+    }
+
+    const basesForWall = await document.getMulti(domainId, document.TYPE_BASE, { owner: uid })
+        .project({ nodes: 1, branchData: 1, updateAt: 1, createdAt: 1 })
+        .toArray();
+    for (const baseDoc of basesForWall) {
+        const nodeIds = new Set<string>();
+        if (baseDoc.nodes && Array.isArray(baseDoc.nodes)) {
+            for (const node of baseDoc.nodes) {
+                if (node && (node as any).id) nodeIds.add((node as any).id);
+            }
+        }
+        if ((baseDoc as any).branchData && typeof (baseDoc as any).branchData === 'object') {
+            for (const branch in (baseDoc as any).branchData) {
+                const branchNodes = (baseDoc as any).branchData[branch]?.nodes;
+                if (branchNodes && Array.isArray(branchNodes)) {
+                    for (const node of branchNodes) {
+                        if (node && (node as any).id) nodeIds.add((node as any).id);
+                    }
+                }
+            }
+        }
+        const totalNodesInBase = nodeIds.size;
+        if (totalNodesInBase > 0) {
+            const date = (baseDoc as any).updateAt ? moment.utc((baseDoc as any).updateAt).format('YYYY-MM-DD') : ((baseDoc as any).createdAt ? moment.utc((baseDoc as any).createdAt).format('YYYY-MM-DD') : null);
+            if (date) {
+                nodeCounts[date] = (nodeCounts[date] || 0) + totalNodesInBase;
+                if (!contributionDetails[date]) contributionDetails[date] = [];
+                let detail = contributionDetails[date].find(d => d.domainId === domainId);
+                if (!detail) {
+                    detail = { domainId, domainName, nodes: 0, cards: 0, problems: 0, nodeStats: { created: 0, modified: 0, deleted: 0 }, cardStats: { created: 0, modified: 0, deleted: 0 }, problemStats: { created: 0, modified: 0, deleted: 0 } };
+                    contributionDetails[date].push(detail);
+                }
+                detail.nodes += totalNodesInBase;
+                const createDate = (baseDoc as any).createdAt ? moment.utc((baseDoc as any).createdAt).format('YYYY-MM-DD') : null;
+                const isCreated = createDate === date && (baseDoc as any).updateAt && Math.abs(moment.utc((baseDoc as any).updateAt).diff(moment.utc((baseDoc as any).createdAt), 'minutes')) < 5;
+                if (isCreated) detail.nodeStats.created += totalNodesInBase;
+                else if (createDate && createDate !== date) detail.nodeStats.modified += totalNodesInBase;
+            }
+        }
+    }
+
+    const allCardsForWall = await document.getMulti(domainId, TYPE_CARD, { owner: uid })
+        .project({ createdAt: 1, updateAt: 1, problems: 1 })
+        .toArray();
+    for (const cardDoc of allCardsForWall) {
+        if ((cardDoc as any).createdAt) {
+            const createDate = moment.utc((cardDoc as any).createdAt).format('YYYY-MM-DD');
+            const updateDate = (cardDoc as any).updateAt ? moment.utc((cardDoc as any).updateAt).format('YYYY-MM-DD') : createDate;
+            const date = createDate === updateDate && (cardDoc as any).updateAt && Math.abs(moment.utc((cardDoc as any).updateAt).diff(moment.utc((cardDoc as any).createdAt), 'minutes')) < 5 ? createDate : updateDate;
+            cardCounts[date] = (cardCounts[date] || 0) + 1;
+            if (!contributionDetails[date]) contributionDetails[date] = [];
+            let detail = contributionDetails[date].find(d => d.domainId === domainId);
+            if (!detail) {
+                detail = { domainId, domainName, nodes: 0, cards: 0, problems: 0, nodeStats: { created: 0, modified: 0, deleted: 0 }, cardStats: { created: 0, modified: 0, deleted: 0 }, problemStats: { created: 0, modified: 0, deleted: 0 } };
+                contributionDetails[date].push(detail);
+            }
+            detail.cards += 1;
+            if (date === createDate) detail.cardStats.created += 1;
+            else if (updateDate !== createDate) detail.cardStats.modified += 1;
+            if ((cardDoc as any).problems && Array.isArray((cardDoc as any).problems)) {
+                const problemCount = (cardDoc as any).problems.length;
+                problemCounts[date] = (problemCounts[date] || 0) + problemCount;
+                detail.problems += problemCount;
+                detail.problemStats.created += problemCount;
+            }
+        }
+    }
+
+    const allDates = new Set([...Object.keys(nodeCounts), ...Object.keys(cardCounts), ...Object.keys(problemCounts), ...Object.keys(contributionDetails)]);
+    for (const date of allDates) {
+        const nodeCount = nodeCounts[date] || 0;
+        const cardCount = cardCounts[date] || 0;
+        const problemCount = problemCounts[date] || 0;
+        let finalNode = nodeCount;
+        let finalCard = cardCount;
+        let finalProblem = problemCount;
+        if (contributionDetails[date] && nodeCount === 0 && cardCount === 0 && problemCount === 0) {
+            for (const d of contributionDetails[date]) {
+                finalNode += d.nodes; finalCard += d.cards; finalProblem += d.problems;
+            }
+        }
+        if (finalNode > 0) contributions.push({ date, type: 'node', count: finalNode });
+        if (finalCard > 0) contributions.push({ date, type: 'card', count: finalCard });
+        if (finalProblem > 0) contributions.push({ date, type: 'problem', count: finalProblem });
+    }
+    return { todayContribution, contributions, contributionDetails };
+}
+
 /**
  * Base Detail Handler
  */
@@ -698,150 +861,10 @@ export class BaseEditorHandler extends Handler {
         const branches = Array.isArray((base as any)?.branches) ? (base as any).branches : ['main'];
         if (!branches.includes('main')) branches.unshift('main');
 
-        const todayStart = moment.utc().startOf('day').toDate();
-        const todayEnd = moment.utc().endOf('day').toDate();
-        let todayNodes = 0;
-        let todayCards = 0;
-        let todayProblems = 0;
         const uid = this.user._id;
-        if (base.updateAt && base.updateAt >= todayStart && base.updateAt <= todayEnd) {
-            todayNodes = nodes.length;
-        }
-        const cardsUpdatedToday = await document.getMulti(domainId, TYPE_CARD, {
-            baseDocId: base.docId,
-            owner: uid,
-            $or: [
-                { createdAt: { $gte: todayStart, $lte: todayEnd } },
-                { updateAt: { $gte: todayStart, $lte: todayEnd } },
-            ],
-        })
-            .project({ docId: 1, problems: 1 })
-            .toArray();
-        todayCards = cardsUpdatedToday.length;
-        for (const c of cardsUpdatedToday) {
-            if (Array.isArray((c as any).problems)) todayProblems += (c as any).problems.length;
-        }
-        const todayContribution = { nodes: todayNodes, cards: todayCards, problems: todayProblems };
-
         const domainName = (this as any).domain?.name || domainId;
-        const contributions: Array<{ date: string; type: 'node' | 'card' | 'problem'; count: number }> = [];
-        const nodeCounts: Record<string, number> = {};
-        const cardCounts: Record<string, number> = {};
-        const problemCounts: Record<string, number> = {};
-        const contributionDetails: Record<string, Array<{
-            domainId: string; domainName: string; nodes: number; cards: number; problems: number;
-            nodeStats: { created: number; modified: number; deleted: number };
-            cardStats: { created: number; modified: number; deleted: number };
-            problemStats: { created: number; modified: number; deleted: number };
-        }>> = {};
-
-        const independentNodes = await document.getMulti(domainId, document.TYPE_NODE, { owner: uid })
-            .project({ createdAt: 1, updateAt: 1 })
-            .toArray();
-        for (const nodeDoc of independentNodes) {
-            if ((nodeDoc as any).createdAt) {
-                const createDate = moment.utc((nodeDoc as any).createdAt).format('YYYY-MM-DD');
-                const updateDate = (nodeDoc as any).updateAt ? moment.utc((nodeDoc as any).updateAt).format('YYYY-MM-DD') : createDate;
-                const date = createDate === updateDate && (nodeDoc as any).updateAt
-                    && Math.abs(moment.utc((nodeDoc as any).updateAt).diff(moment.utc((nodeDoc as any).createdAt), 'minutes')) < 5
-                    ? createDate : updateDate;
-                nodeCounts[date] = (nodeCounts[date] || 0) + 1;
-                if (!contributionDetails[date]) contributionDetails[date] = [];
-                let detail = contributionDetails[date].find(d => d.domainId === domainId);
-                if (!detail) {
-                    detail = { domainId, domainName, nodes: 0, cards: 0, problems: 0, nodeStats: { created: 0, modified: 0, deleted: 0 }, cardStats: { created: 0, modified: 0, deleted: 0 }, problemStats: { created: 0, modified: 0, deleted: 0 } };
-                    contributionDetails[date].push(detail);
-                }
-                detail.nodes += 1;
-                if (date === createDate) detail.nodeStats.created += 1;
-                else if (updateDate !== createDate) detail.nodeStats.modified += 1;
-            }
-        }
-
-        const basesForWall = await document.getMulti(domainId, document.TYPE_BASE, { owner: uid })
-            .project({ nodes: 1, branchData: 1, updateAt: 1, createdAt: 1 })
-            .toArray();
-        for (const baseDoc of basesForWall) {
-            const nodeIds = new Set<string>();
-            if (baseDoc.nodes && Array.isArray(baseDoc.nodes)) {
-                for (const node of baseDoc.nodes) {
-                    if (node && (node as any).id) nodeIds.add((node as any).id);
-                }
-            }
-            if ((baseDoc as any).branchData && typeof (baseDoc as any).branchData === 'object') {
-                for (const branch in (baseDoc as any).branchData) {
-                    const branchNodes = (baseDoc as any).branchData[branch]?.nodes;
-                    if (branchNodes && Array.isArray(branchNodes)) {
-                        for (const node of branchNodes) {
-                            if (node && (node as any).id) nodeIds.add((node as any).id);
-                        }
-                    }
-                }
-            }
-            const totalNodesInBase = nodeIds.size;
-            if (totalNodesInBase > 0) {
-                const date = (baseDoc as any).updateAt ? moment.utc((baseDoc as any).updateAt).format('YYYY-MM-DD') : ((baseDoc as any).createdAt ? moment.utc((baseDoc as any).createdAt).format('YYYY-MM-DD') : null);
-                if (date) {
-                    nodeCounts[date] = (nodeCounts[date] || 0) + totalNodesInBase;
-                    if (!contributionDetails[date]) contributionDetails[date] = [];
-                    let detail = contributionDetails[date].find(d => d.domainId === domainId);
-                    if (!detail) {
-                        detail = { domainId, domainName, nodes: 0, cards: 0, problems: 0, nodeStats: { created: 0, modified: 0, deleted: 0 }, cardStats: { created: 0, modified: 0, deleted: 0 }, problemStats: { created: 0, modified: 0, deleted: 0 } };
-                        contributionDetails[date].push(detail);
-                    }
-                    detail.nodes += totalNodesInBase;
-                    const createDate = (baseDoc as any).createdAt ? moment.utc((baseDoc as any).createdAt).format('YYYY-MM-DD') : null;
-                    const isCreated = createDate === date && (baseDoc as any).updateAt && Math.abs(moment.utc((baseDoc as any).updateAt).diff(moment.utc((baseDoc as any).createdAt), 'minutes')) < 5;
-                    if (isCreated) detail.nodeStats.created += totalNodesInBase;
-                    else if (createDate && createDate !== date) detail.nodeStats.modified += totalNodesInBase;
-                }
-            }
-        }
-
-        const allCardsForWall = await document.getMulti(domainId, TYPE_CARD, { owner: uid })
-            .project({ createdAt: 1, updateAt: 1, problems: 1 })
-            .toArray();
-        for (const cardDoc of allCardsForWall) {
-            if ((cardDoc as any).createdAt) {
-                const createDate = moment.utc((cardDoc as any).createdAt).format('YYYY-MM-DD');
-                const updateDate = (cardDoc as any).updateAt ? moment.utc((cardDoc as any).updateAt).format('YYYY-MM-DD') : createDate;
-                const date = createDate === updateDate && (cardDoc as any).updateAt && Math.abs(moment.utc((cardDoc as any).updateAt).diff(moment.utc((cardDoc as any).createdAt), 'minutes')) < 5 ? createDate : updateDate;
-                cardCounts[date] = (cardCounts[date] || 0) + 1;
-                if (!contributionDetails[date]) contributionDetails[date] = [];
-                let detail = contributionDetails[date].find(d => d.domainId === domainId);
-                if (!detail) {
-                    detail = { domainId, domainName, nodes: 0, cards: 0, problems: 0, nodeStats: { created: 0, modified: 0, deleted: 0 }, cardStats: { created: 0, modified: 0, deleted: 0 }, problemStats: { created: 0, modified: 0, deleted: 0 } };
-                    contributionDetails[date].push(detail);
-                }
-                detail.cards += 1;
-                if (date === createDate) detail.cardStats.created += 1;
-                else if (updateDate !== createDate) detail.cardStats.modified += 1;
-                if ((cardDoc as any).problems && Array.isArray((cardDoc as any).problems)) {
-                    const problemCount = (cardDoc as any).problems.length;
-                    problemCounts[date] = (problemCounts[date] || 0) + problemCount;
-                    detail.problems += problemCount;
-                    detail.problemStats.created += problemCount;
-                }
-            }
-        }
-
-        const allDates = new Set([...Object.keys(nodeCounts), ...Object.keys(cardCounts), ...Object.keys(problemCounts), ...Object.keys(contributionDetails)]);
-        for (const date of allDates) {
-            const nodeCount = nodeCounts[date] || 0;
-            const cardCount = cardCounts[date] || 0;
-            const problemCount = problemCounts[date] || 0;
-            let finalNode = nodeCount;
-            let finalCard = cardCount;
-            let finalProblem = problemCount;
-            if (contributionDetails[date] && nodeCount === 0 && cardCount === 0 && problemCount === 0) {
-                for (const d of contributionDetails[date]) {
-                    finalNode += d.nodes; finalCard += d.cards; finalProblem += d.problems;
-                }
-            }
-            if (finalNode > 0) contributions.push({ date, type: 'node', count: finalNode });
-            if (finalCard > 0) contributions.push({ date, type: 'card', count: finalCard });
-            if (finalProblem > 0) contributions.push({ date, type: 'problem', count: finalProblem });
-        }
+        const baseForContrib = { ...base, nodes };
+        const { todayContribution, contributions, contributionDetails } = await buildContributionDataForDomain(domainId, uid, domainName, baseForContrib);
 
         this.response.body = {
             base: { ...base, nodes, edges },
@@ -4429,15 +4452,29 @@ class BaseConnectionHandler extends ConnectionHandler {
     @param('docId', Types.ObjectId, true)
     @param('bid', Types.PositiveInt, true)
     async prepare(domainId: string, docId?: ObjectId, bid?: number) {
-        if (!docId && !bid) {
+        // WebSocket 请求的 domainId/docId 可能在 path 或 query 中，与 record 一致从 query 回退读取
+        const finalDomainId = domainId || (this.request.query?.domainId as string) || (this.args as any).domainId;
+        let finalDocId = docId;
+        let finalBid = bid;
+        if (!finalDocId && !finalBid) {
+            const qDocId = this.request.query?.docId as string;
+            const qBid = this.request.query?.bid as string;
+            if (qDocId && ObjectId.isValid(qDocId)) finalDocId = new ObjectId(qDocId);
+            else if (qBid) finalBid = parseInt(qBid, 10);
+        }
+        if (!finalDocId && !finalBid) {
             this.close(1000, 'docId or bid is required');
             return;
         }
+        if (!finalDomainId) {
+            this.close(1000, 'domainId is required');
+            return;
+        }
 
-        const base = docId 
-            ? await BaseModel.get(domainId, docId)
-            : await BaseModel.getBybid(domainId, bid!);
-        
+        const base = finalDocId
+            ? await BaseModel.get(finalDomainId, finalDocId)
+            : await BaseModel.getBybid(finalDomainId, finalBid!);
+
         if (!base) {
             this.close(1000, 'Base not found');
             return;
@@ -4453,13 +4490,13 @@ class BaseConnectionHandler extends ConnectionHandler {
         logger.info('Base WebSocket connected: docId=%s', this.docId);
 
         // 发送初始数据
-        await this.sendInitialData(domainId, base);
+        await this.sendInitialData(finalDomainId, base);
 
         // 订阅 base 更新事件
         const dispose1 = (this.ctx.on as any)('base/update', async (...args: any[]) => {
             const [updateDocId, updatebid] = args;
             if (updateDocId && updateDocId.toString() === this.docId!.toString()) {
-                await this.sendUpdate(domainId);
+                await this.sendUpdate(finalDomainId);
             }
         });
         this.subscriptions.push({ dispose: dispose1 });
@@ -4468,7 +4505,7 @@ class BaseConnectionHandler extends ConnectionHandler {
         const dispose2 = (this.ctx.on as any)('base/git/status/update', async (...args: any[]) => {
             const [updateDocId, updatebid] = args;
             if (updateDocId && updateDocId.toString() === this.docId!.toString()) {
-                await this.sendGitStatus(domainId);
+                await this.sendGitStatus(finalDomainId);
             }
         });
         this.subscriptions.push({ dispose: dispose2 });
@@ -4591,11 +4628,18 @@ class BaseConnectionHandler extends ConnectionHandler {
         try {
             const branch = (base as any).currentBranch || 'main';
             const gitStatus = await getBaseGitStatus(domainId, base.docId, branch).catch(() => null);
+            const branchData = getBranchData(base, branch);
+            const baseWithNodes = { ...base, nodes: branchData.nodes };
+            const domainName = (this as any).domain?.name || domainId;
+            const contrib = await buildContributionDataForDomain(domainId, this.user._id, domainName, baseWithNodes);
 
             this.send({
                 type: 'init',
                 gitStatus,
                 branch,
+                todayContribution: contrib.todayContribution,
+                contributions: contrib.contributions,
+                contributionDetails: contrib.contributionDetails,
             });
         } catch (err) {
             logger.error('Failed to send initial data:', err);
@@ -4609,11 +4653,18 @@ class BaseConnectionHandler extends ConnectionHandler {
 
             const branch = (base as any).currentBranch || 'main';
             const gitStatus = await getBaseGitStatus(domainId, base.docId, branch).catch(() => null);
+            const branchData = getBranchData(base, branch);
+            const baseWithNodes = { ...base, nodes: branchData.nodes };
+            const domainName = (this as any).domain?.name || domainId;
+            const contrib = await buildContributionDataForDomain(domainId, this.user._id, domainName, baseWithNodes);
 
             this.send({
                 type: 'update',
                 gitStatus,
                 branch,
+                todayContribution: contrib.todayContribution,
+                contributions: contrib.contributions,
+                contributionDetails: contrib.contributionDetails,
             });
         } catch (err) {
             logger.error('Failed to send update:', err);
