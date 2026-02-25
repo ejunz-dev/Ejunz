@@ -18,6 +18,7 @@ import { Logger } from '../utils';
 import { pick, omit } from 'lodash';
 import storage from '../model/storage';
 import { sortFiles } from '@ejunz/utils/lib/common';
+import moment from 'moment-timezone';
 
 const exec = promisify(execCb);
 const logger = new Logger('base');
@@ -697,6 +698,151 @@ export class BaseEditorHandler extends Handler {
         const branches = Array.isArray((base as any)?.branches) ? (base as any).branches : ['main'];
         if (!branches.includes('main')) branches.unshift('main');
 
+        const todayStart = moment.utc().startOf('day').toDate();
+        const todayEnd = moment.utc().endOf('day').toDate();
+        let todayNodes = 0;
+        let todayCards = 0;
+        let todayProblems = 0;
+        const uid = this.user._id;
+        if (base.updateAt && base.updateAt >= todayStart && base.updateAt <= todayEnd) {
+            todayNodes = nodes.length;
+        }
+        const cardsUpdatedToday = await document.getMulti(domainId, TYPE_CARD, {
+            baseDocId: base.docId,
+            owner: uid,
+            $or: [
+                { createdAt: { $gte: todayStart, $lte: todayEnd } },
+                { updateAt: { $gte: todayStart, $lte: todayEnd } },
+            ],
+        })
+            .project({ docId: 1, problems: 1 })
+            .toArray();
+        todayCards = cardsUpdatedToday.length;
+        for (const c of cardsUpdatedToday) {
+            if (Array.isArray((c as any).problems)) todayProblems += (c as any).problems.length;
+        }
+        const todayContribution = { nodes: todayNodes, cards: todayCards, problems: todayProblems };
+
+        const domainName = (this as any).domain?.name || domainId;
+        const contributions: Array<{ date: string; type: 'node' | 'card' | 'problem'; count: number }> = [];
+        const nodeCounts: Record<string, number> = {};
+        const cardCounts: Record<string, number> = {};
+        const problemCounts: Record<string, number> = {};
+        const contributionDetails: Record<string, Array<{
+            domainId: string; domainName: string; nodes: number; cards: number; problems: number;
+            nodeStats: { created: number; modified: number; deleted: number };
+            cardStats: { created: number; modified: number; deleted: number };
+            problemStats: { created: number; modified: number; deleted: number };
+        }>> = {};
+
+        const independentNodes = await document.getMulti(domainId, document.TYPE_NODE, { owner: uid })
+            .project({ createdAt: 1, updateAt: 1 })
+            .toArray();
+        for (const nodeDoc of independentNodes) {
+            if ((nodeDoc as any).createdAt) {
+                const createDate = moment.utc((nodeDoc as any).createdAt).format('YYYY-MM-DD');
+                const updateDate = (nodeDoc as any).updateAt ? moment.utc((nodeDoc as any).updateAt).format('YYYY-MM-DD') : createDate;
+                const date = createDate === updateDate && (nodeDoc as any).updateAt
+                    && Math.abs(moment.utc((nodeDoc as any).updateAt).diff(moment.utc((nodeDoc as any).createdAt), 'minutes')) < 5
+                    ? createDate : updateDate;
+                nodeCounts[date] = (nodeCounts[date] || 0) + 1;
+                if (!contributionDetails[date]) contributionDetails[date] = [];
+                let detail = contributionDetails[date].find(d => d.domainId === domainId);
+                if (!detail) {
+                    detail = { domainId, domainName, nodes: 0, cards: 0, problems: 0, nodeStats: { created: 0, modified: 0, deleted: 0 }, cardStats: { created: 0, modified: 0, deleted: 0 }, problemStats: { created: 0, modified: 0, deleted: 0 } };
+                    contributionDetails[date].push(detail);
+                }
+                detail.nodes += 1;
+                if (date === createDate) detail.nodeStats.created += 1;
+                else if (updateDate !== createDate) detail.nodeStats.modified += 1;
+            }
+        }
+
+        const basesForWall = await document.getMulti(domainId, document.TYPE_BASE, { owner: uid })
+            .project({ nodes: 1, branchData: 1, updateAt: 1, createdAt: 1 })
+            .toArray();
+        for (const baseDoc of basesForWall) {
+            const nodeIds = new Set<string>();
+            if (baseDoc.nodes && Array.isArray(baseDoc.nodes)) {
+                for (const node of baseDoc.nodes) {
+                    if (node && (node as any).id) nodeIds.add((node as any).id);
+                }
+            }
+            if ((baseDoc as any).branchData && typeof (baseDoc as any).branchData === 'object') {
+                for (const branch in (baseDoc as any).branchData) {
+                    const branchNodes = (baseDoc as any).branchData[branch]?.nodes;
+                    if (branchNodes && Array.isArray(branchNodes)) {
+                        for (const node of branchNodes) {
+                            if (node && (node as any).id) nodeIds.add((node as any).id);
+                        }
+                    }
+                }
+            }
+            const totalNodesInBase = nodeIds.size;
+            if (totalNodesInBase > 0) {
+                const date = (baseDoc as any).updateAt ? moment.utc((baseDoc as any).updateAt).format('YYYY-MM-DD') : ((baseDoc as any).createdAt ? moment.utc((baseDoc as any).createdAt).format('YYYY-MM-DD') : null);
+                if (date) {
+                    nodeCounts[date] = (nodeCounts[date] || 0) + totalNodesInBase;
+                    if (!contributionDetails[date]) contributionDetails[date] = [];
+                    let detail = contributionDetails[date].find(d => d.domainId === domainId);
+                    if (!detail) {
+                        detail = { domainId, domainName, nodes: 0, cards: 0, problems: 0, nodeStats: { created: 0, modified: 0, deleted: 0 }, cardStats: { created: 0, modified: 0, deleted: 0 }, problemStats: { created: 0, modified: 0, deleted: 0 } };
+                        contributionDetails[date].push(detail);
+                    }
+                    detail.nodes += totalNodesInBase;
+                    const createDate = (baseDoc as any).createdAt ? moment.utc((baseDoc as any).createdAt).format('YYYY-MM-DD') : null;
+                    const isCreated = createDate === date && (baseDoc as any).updateAt && Math.abs(moment.utc((baseDoc as any).updateAt).diff(moment.utc((baseDoc as any).createdAt), 'minutes')) < 5;
+                    if (isCreated) detail.nodeStats.created += totalNodesInBase;
+                    else if (createDate && createDate !== date) detail.nodeStats.modified += totalNodesInBase;
+                }
+            }
+        }
+
+        const allCardsForWall = await document.getMulti(domainId, TYPE_CARD, { owner: uid })
+            .project({ createdAt: 1, updateAt: 1, problems: 1 })
+            .toArray();
+        for (const cardDoc of allCardsForWall) {
+            if ((cardDoc as any).createdAt) {
+                const createDate = moment.utc((cardDoc as any).createdAt).format('YYYY-MM-DD');
+                const updateDate = (cardDoc as any).updateAt ? moment.utc((cardDoc as any).updateAt).format('YYYY-MM-DD') : createDate;
+                const date = createDate === updateDate && (cardDoc as any).updateAt && Math.abs(moment.utc((cardDoc as any).updateAt).diff(moment.utc((cardDoc as any).createdAt), 'minutes')) < 5 ? createDate : updateDate;
+                cardCounts[date] = (cardCounts[date] || 0) + 1;
+                if (!contributionDetails[date]) contributionDetails[date] = [];
+                let detail = contributionDetails[date].find(d => d.domainId === domainId);
+                if (!detail) {
+                    detail = { domainId, domainName, nodes: 0, cards: 0, problems: 0, nodeStats: { created: 0, modified: 0, deleted: 0 }, cardStats: { created: 0, modified: 0, deleted: 0 }, problemStats: { created: 0, modified: 0, deleted: 0 } };
+                    contributionDetails[date].push(detail);
+                }
+                detail.cards += 1;
+                if (date === createDate) detail.cardStats.created += 1;
+                else if (updateDate !== createDate) detail.cardStats.modified += 1;
+                if ((cardDoc as any).problems && Array.isArray((cardDoc as any).problems)) {
+                    const problemCount = (cardDoc as any).problems.length;
+                    problemCounts[date] = (problemCounts[date] || 0) + problemCount;
+                    detail.problems += problemCount;
+                    detail.problemStats.created += problemCount;
+                }
+            }
+        }
+
+        const allDates = new Set([...Object.keys(nodeCounts), ...Object.keys(cardCounts), ...Object.keys(problemCounts), ...Object.keys(contributionDetails)]);
+        for (const date of allDates) {
+            const nodeCount = nodeCounts[date] || 0;
+            const cardCount = cardCounts[date] || 0;
+            const problemCount = problemCounts[date] || 0;
+            let finalNode = nodeCount;
+            let finalCard = cardCount;
+            let finalProblem = problemCount;
+            if (contributionDetails[date] && nodeCount === 0 && cardCount === 0 && problemCount === 0) {
+                for (const d of contributionDetails[date]) {
+                    finalNode += d.nodes; finalCard += d.cards; finalProblem += d.problems;
+                }
+            }
+            if (finalNode > 0) contributions.push({ date, type: 'node', count: finalNode });
+            if (finalCard > 0) contributions.push({ date, type: 'card', count: finalCard });
+            if (finalProblem > 0) contributions.push({ date, type: 'problem', count: finalProblem });
+        }
+
         this.response.body = {
             base: { ...base, nodes, edges },
             currentBranch: requestedBranch,
@@ -705,6 +851,9 @@ export class BaseEditorHandler extends Handler {
             files: base.files || [],
             domainId,
             editorMode: opts.editorMode,
+            todayContribution,
+            contributions,
+            contributionDetails,
             // 仅 skill 时传入 page_name，供前端 NamedPage 识别以显示右侧工具侧边栏；base 不传，用模板默认 base_editor
             ...(opts.editorMode === 'skill' ? { page_name: 'base_skill_editor_branch' } : {}),
         };

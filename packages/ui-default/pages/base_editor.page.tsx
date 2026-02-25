@@ -8,6 +8,7 @@ import Editor from 'vj/components/editor';
 import { Dialog } from 'vj/components/dialog/index';
 import uploadFiles from 'vj/components/upload';
 import { nanoid } from 'nanoid';
+import { ContributionWall } from 'vj/components/ContributionWall';
 
 interface BaseNode {
   id: string;
@@ -836,6 +837,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   }, []);
 
   const [theme, setTheme] = useState<'light' | 'dark'>(() => getTheme());
+  const [contributionViewMode, setContributionViewMode] = useState<'today' | 'wall'>('today');
 
   useEffect(() => {
     const checkTheme = () => {
@@ -878,6 +880,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       success: isDark ? '#4caf50' : '#28a745',
       warning: isDark ? '#ff9800' : '#ff9800',
       error: isDark ? '#f44336' : '#f44336',
+      statNode: isDark ? '#64b5f6' : '#2196F3',
+      statCard: isDark ? '#81c784' : '#4CAF50',
+      statProblem: isDark ? '#ffb74d' : '#FF9800',
     };
   }, [theme]);
 
@@ -8465,6 +8470,7 @@ ${currentCardContext}
       <div style={{
         flex: 1,
         minWidth: 0,
+        minHeight: 0,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -8487,6 +8493,7 @@ ${currentCardContext}
           justifyContent: 'space-between',
           flexWrap: 'wrap',
           gap: isMobile ? '8px' : 0,
+          flexShrink: 0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: isMobile ? '1 1 100%' : undefined }}>
             <a
@@ -8572,10 +8579,118 @@ ${currentCardContext}
           </div>
         </div>
 
+        {/* 用户贡献统计（编辑器上方，可切换今日/贡献墙，上下留白 + 左右箭头） */}
+        {(() => {
+          const todayContribution = (window as any).UiContext?.todayContribution || { nodes: 0, cards: 0, problems: 0 };
+          const domainId = (window as any).UiContext?.domainId || (window as any).UiContext?.base?.domainId;
+          const uid = (window as any).UserContext?._id;
+          const contributionLink = typeof uid === 'number' && domainId
+            ? `/d/${domainId}/user/${uid}?tab=contributions`
+            : null;
+          const modes: Array<'today' | 'wall'> = ['today', 'wall'];
+          const currentIndex = modes.indexOf(contributionViewMode);
+          const goPrev = () => setContributionViewMode(modes[(currentIndex - 1 + modes.length) % modes.length]);
+          const goNext = () => setContributionViewMode(modes[(currentIndex + 1) % modes.length]);
+          return (
+            <div
+              style={{
+                flexShrink: 0,
+                flexGrow: 0,
+                flexBasis: '220px',
+                width: '100%',
+                maxWidth: '100%',
+                minWidth: 0,
+                height: '220px',
+                minHeight: '220px',
+                overflow: 'hidden',
+                padding: '20px 16px',
+                borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+                backgroundColor: themeStyles.bgSecondary,
+                fontSize: '13px',
+                boxSizing: 'border-box',
+                display: 'flex',
+                flexDirection: 'column',
+                maxHeight: '220px',
+                position: 'relative',
+              }}
+            >
+              <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '12px' }}>
+                <button
+                  type="button"
+                  onClick={goPrev}
+                  aria-label={i18n('Previous') || '上一个'}
+                  style={{
+                    padding: '6px 10px',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
+                    borderRadius: '6px',
+                    background: themeStyles.bgButton,
+                    color: themeStyles.textSecondary,
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                  }}
+                >
+                  ←
+                </button>
+                <span style={{ fontWeight: 600, color: themeStyles.textPrimary }}>
+                  {contributionViewMode === 'today'
+                    ? (i18n('Today\'s contribution in this domain') || '今日本域贡献')
+                    : (i18n('Contribution Wall') || '全部贡献墙')}
+                </span>
+                <button
+                  type="button"
+                  onClick={goNext}
+                  aria-label={i18n('Next') || '下一个'}
+                  style={{
+                    padding: '6px 10px',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
+                    borderRadius: '6px',
+                    background: themeStyles.bgButton,
+                    color: themeStyles.textSecondary,
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                  }}
+                >
+                  →
+                </button>
+              </div>
+              <div style={{ position: 'absolute', left: 0, right: 0, top: '52px', bottom: 0, overflow: 'auto', width: '100%', paddingRight: '8px', boxSizing: 'border-box' }}>
+              {contributionViewMode === 'today' ? (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                      <span style={{ color: themeStyles.statNode, fontWeight: 600 }}>{i18n('Nodes') || '节点'}: {todayContribution.nodes}</span>
+                      <span style={{ color: themeStyles.statCard, fontWeight: 600 }}>{i18n('Cards') || '卡片'}: {todayContribution.cards}</span>
+                      <span style={{ color: themeStyles.statProblem, fontWeight: 600 }}>{i18n('Problems') || '题目'}: {todayContribution.problems}</span>
+                    </div>
+                    {contributionLink && (
+                      <a
+                        href={contributionLink}
+                        style={{ color: themeStyles.accent, textDecoration: 'none', fontSize: '12px' }}
+                      >
+                        {i18n('View all') || '查看全部'} →
+                      </a>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div style={{ width: '100%', overflowX: 'auto', overflowY: 'hidden', minWidth: 0 }}>
+                <ContributionWall
+                  contributions={(window as any).UiContext?.contributions || []}
+                  contributionDetails={(window as any).UiContext?.contributionDetails || {}}
+                  theme={theme}
+                  compact
+                />
+                </div>
+              )}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Editor + problems */}
         <div 
           id="editor-container"
-          style={{ flex: 1, padding: '0', overflow: 'hidden', position: 'relative', backgroundColor: themeStyles.bgPrimary, display: 'flex', flexDirection: 'column' }}
+          style={{ flex: 1, minHeight: 0, padding: '0', overflow: 'hidden', position: 'relative', backgroundColor: themeStyles.bgPrimary, display: 'flex', flexDirection: 'column' }}
         >
           {/* Markdown editor */}
           <div style={{ flex: 1, minHeight: 0 }}>
