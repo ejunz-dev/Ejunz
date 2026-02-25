@@ -8,8 +8,6 @@ import Editor from 'vj/components/editor';
 import { Dialog } from 'vj/components/dialog/index';
 import uploadFiles from 'vj/components/upload';
 import { nanoid } from 'nanoid';
-import { ContributionWall } from 'vj/components/ContributionWall';
-
 interface BaseNode {
   id: string;
   text: string;
@@ -837,9 +835,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   }, []);
 
   const [theme, setTheme] = useState<'light' | 'dark'>(() => getTheme());
-  const [contributionViewMode, setContributionViewMode] = useState<'today' | 'wall'>('today');
   const [contributionData, setContributionData] = useState<{
-    todayContribution: { nodes: number; cards: number; problems: number };
+    todayContribution: { nodes: number; cards: number; problems: number; nodeChars?: number; cardChars?: number; problemChars?: number };
+    todayContributionAllDomains: { nodes: number; cards: number; problems: number; nodeChars?: number; cardChars?: number; problemChars?: number };
     contributions: Array<{ date: string; type: 'node' | 'card' | 'problem'; count: number }>;
     contributionDetails: Record<string, Array<{
       domainId: string; domainName: string; nodes: number; cards: number; problems: number;
@@ -849,13 +847,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }>>;
   }>(() => {
     const ctx = (window as any).UiContext;
+    const defaultChars = { nodeChars: 0, cardChars: 0, problemChars: 0 };
     return {
-      todayContribution: ctx?.todayContribution || { nodes: 0, cards: 0, problems: 0 },
+      todayContribution: { ...defaultChars, ...ctx?.todayContribution, nodes: ctx?.todayContribution?.nodes ?? 0, cards: ctx?.todayContribution?.cards ?? 0, problems: ctx?.todayContribution?.problems ?? 0 },
+      todayContributionAllDomains: { ...defaultChars, ...ctx?.todayContributionAllDomains, nodes: ctx?.todayContributionAllDomains?.nodes ?? 0, cards: ctx?.todayContributionAllDomains?.cards ?? 0, problems: ctx?.todayContributionAllDomains?.problems ?? 0 },
       contributions: ctx?.contributions || [],
       contributionDetails: ctx?.contributionDetails || {},
     };
   });
   const contributionWsRef = useRef<any>(null);
+  const saveHandlerRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     const checkTheme = () => {
@@ -892,6 +893,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               setContributionData(prev => ({
                 ...prev,
                 todayContribution: msg.todayContribution || prev.todayContribution,
+                todayContributionAllDomains: msg.todayContributionAllDomains || prev.todayContributionAllDomains,
                 contributions: Array.isArray(msg.contributions) ? msg.contributions : prev.contributions,
                 contributionDetails: msg.contributionDetails && typeof msg.contributionDetails === 'object'
                   ? msg.contributionDetails
@@ -1134,30 +1136,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const leftEl = document.getElementById('header-mobile-extra-left');
     if (!leftEl) return;
     const wrapper = document.createElement('div');
-    leftEl.appendChild(wrapper);
-    ReactDOM.render(
-      <button type="button" onClick={() => setMobileExplorerOpen(true)} aria-label="Explorer">
-        ☰ Explorer
-      </button>,
-      wrapper,
-    );
-    return () => {
-      ReactDOM.unmountComponentAtNode(wrapper);
-      wrapper.remove();
-    };
-  }, [isMobile]);
-
-  useEffect(() => {
-    if (!isMobile) return;
-    const rightEl = document.getElementById('header-mobile-extra');
-    if (!rightEl) return;
-    const wrapper = document.createElement('div');
     wrapper.style.display = 'flex';
     wrapper.style.alignItems = 'center';
     wrapper.style.gap = '8px';
-    rightEl.appendChild(wrapper);
+    leftEl.appendChild(wrapper);
     ReactDOM.render(
       <>
+        <button type="button" onClick={() => setMobileExplorerOpen(true)} aria-label="Explorer">
+          ☰ Explorer
+        </button>
         {selectedFile?.type === 'card' && (
           <button
             type="button"
@@ -1168,6 +1155,43 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             {i18n('Question')}
           </button>
         )}
+      </>,
+      wrapper,
+    );
+    return () => {
+      ReactDOM.unmountComponentAtNode(wrapper);
+      wrapper.remove();
+    };
+  }, [isMobile, showProblemPanel, selectedFile?.type]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    const rightEl = document.getElementById('header-mobile-extra');
+    if (!rightEl) return;
+    const wrapper = document.createElement('div');
+    wrapper.style.display = 'flex';
+    wrapper.style.alignItems = 'center';
+    wrapper.style.gap = '8px';
+    rightEl.appendChild(wrapper);
+    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size;
+    const hasPending = pendingCount > 0;
+    ReactDOM.render(
+      <>
+        <button
+          type="button"
+          className="header-mobile-extra-btn"
+          onClick={() => saveHandlerRef.current?.()}
+          disabled={isCommitting || !hasPending}
+          style={{
+            opacity: isCommitting || !hasPending ? 0.6 : 1,
+            cursor: isCommitting || !hasPending ? 'not-allowed' : 'pointer',
+            background: hasPending ? 'var(--color-success, #28a745)' : undefined,
+            color: hasPending ? '#fff' : undefined,
+          }}
+          aria-label={i18n('Save changes')}
+        >
+          {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingCount})`}
+        </button>
         <button
           type="button"
           className={showAIChat ? 'header-mobile-extra-btn is-active' : 'header-mobile-extra-btn'}
@@ -1183,7 +1207,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       ReactDOM.unmountComponentAtNode(wrapper);
       wrapper.remove();
     };
-  }, [isMobile, showAIChat, showProblemPanel, selectedFile?.type]);
+  }, [isMobile, showAIChat, showProblemPanel, selectedFile?.type, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingCardFaceChanges, pendingNewProblemCardIds.size, pendingEditedProblemIds.size, pendingDeleteProblemIds.size]);
 
   
   const getSelectedCard = useCallback((): Card | null => {
@@ -2673,6 +2697,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       setIsCommitting(false);
     }
   }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion]);
+
+  useEffect(() => {
+    saveHandlerRef.current = handleSaveAll;
+  }, [handleSaveAll]);
 
   
   const handleRename = useCallback((file: FileItem, newName: string) => {
@@ -8586,6 +8614,7 @@ ${currentCardContext}
               </div>
             )}
           </div>
+          {!isMobile && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
             {selectedFile?.type === 'card' && (
               <button
@@ -8646,111 +8675,79 @@ ${currentCardContext}
               {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size})`}
             </button>
           </div>
+          )}
         </div>
 
-        {/* 用户贡献统计（编辑器上方，可切换今日/贡献墙，上下留白 + 左右箭头） */}
+        {/* 今日贡献：紧凑卡片条 */}
         {(() => {
           const todayContribution = contributionData.todayContribution;
+          const todayAll = contributionData.todayContributionAllDomains;
           const domainId = (window as any).UiContext?.domainId || (window as any).UiContext?.base?.domainId;
           const uid = (window as any).UserContext?._id;
           const contributionLink = typeof uid === 'number' && domainId
             ? `/d/${domainId}/user/${uid}?tab=contributions`
             : null;
-          const modes: Array<'today' | 'wall'> = ['today', 'wall'];
-          const currentIndex = modes.indexOf(contributionViewMode);
-          const goPrev = () => setContributionViewMode(modes[(currentIndex - 1 + modes.length) % modes.length]);
-          const goNext = () => setContributionViewMode(modes[(currentIndex + 1) % modes.length]);
+          const chars = (t: typeof todayContribution) => (t.nodeChars ?? 0) + (t.cardChars ?? 0) + (t.problemChars ?? 0);
+          const formatNum = (n: number) => n.toLocaleString('en-US');
+          const cardStyle: React.CSSProperties = {
+            padding: isMobile ? '8px 10px' : '12px 16px',
+            borderRadius: isMobile ? '6px' : '10px',
+            border: `1px solid ${themeStyles.borderSecondary}`,
+            backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+            flex: 1,
+            minWidth: 0,
+          };
+          const Stat = ({ label, value, color }: { label: string; value: string; color: string }) => (
+            <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: isMobile ? '2px' : '4px' }}>
+              <span style={{ fontSize: isMobile ? '10px' : '11px', color: themeStyles.textSecondary, fontWeight: 500 }}>{label}</span>
+              <span style={{ color, fontWeight: 600, fontSize: isMobile ? '12px' : '14px' }}>{value}</span>
+            </span>
+          );
           return (
             <div
               style={{
                 flexShrink: 0,
-                flexGrow: 0,
-                flexBasis: '220px',
-                width: '100%',
-                maxWidth: '100%',
-                minWidth: 0,
-                height: '220px',
-                minHeight: '220px',
-                overflow: 'hidden',
-                padding: '20px 16px',
+                padding: isMobile ? '6px 10px 8px' : '12px 16px',
                 borderBottom: `1px solid ${themeStyles.borderPrimary}`,
                 backgroundColor: themeStyles.bgSecondary,
-                fontSize: '13px',
-                boxSizing: 'border-box',
                 display: 'flex',
                 flexDirection: 'column',
-                maxHeight: '220px',
-                position: 'relative',
+                gap: isMobile ? '6px' : '10px',
               }}
             >
-              <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '12px' }}>
-                <button
-                  type="button"
-                  onClick={goPrev}
-                  aria-label={i18n('Previous') || '上一个'}
-                  style={{
-                    padding: '6px 10px',
-                    border: `1px solid ${themeStyles.borderSecondary}`,
-                    borderRadius: '6px',
-                    background: themeStyles.bgButton,
-                    color: themeStyles.textSecondary,
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                  }}
-                >
-                  ←
-                </button>
-                <span style={{ fontWeight: 600, color: themeStyles.textPrimary }}>
-                  {contributionViewMode === 'today'
-                    ? (i18n('Today\'s contribution in this domain') || '今日本域贡献')
-                    : (i18n('Contribution Wall') || '全部贡献墙')}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
+                <span style={{ fontSize: isMobile ? '12px' : '13px', fontWeight: 600, color: themeStyles.textPrimary }}>
+                  {i18n('Today\'s contribution')}
                 </span>
-                <button
-                  type="button"
-                  onClick={goNext}
-                  aria-label={i18n('Next') || '下一个'}
-                  style={{
-                    padding: '6px 10px',
-                    border: `1px solid ${themeStyles.borderSecondary}`,
-                    borderRadius: '6px',
-                    background: themeStyles.bgButton,
-                    color: themeStyles.textSecondary,
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                  }}
-                >
-                  →
-                </button>
+                {contributionLink && (
+                  <a href={contributionLink} style={{ fontSize: isMobile ? '11px' : '12px', color: themeStyles.accent, textDecoration: 'none' }}>
+                    {i18n('View all')} →
+                  </a>
+                )}
               </div>
-              <div style={{ position: 'absolute', left: 0, right: 0, top: '52px', bottom: 0, overflow: 'auto', width: '100%', paddingRight: '8px', boxSizing: 'border-box' }}>
-              {contributionViewMode === 'today' ? (
-                <>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                      <span style={{ color: themeStyles.statNode, fontWeight: 600 }}>{i18n('Nodes') || '节点'}: {todayContribution.nodes}</span>
-                      <span style={{ color: themeStyles.statCard, fontWeight: 600 }}>{i18n('Cards') || '卡片'}: {todayContribution.cards}</span>
-                      <span style={{ color: themeStyles.statProblem, fontWeight: 600 }}>{i18n('Problems') || '题目'}: {todayContribution.problems}</span>
-                    </div>
-                    {contributionLink && (
-                      <a
-                        href={contributionLink}
-                        style={{ color: themeStyles.accent, textDecoration: 'none', fontSize: '12px' }}
-                      >
-                        {i18n('View all') || '查看全部'} →
-                      </a>
-                    )}
+              <div style={{ display: 'flex', gap: isMobile ? '8px' : '12px', flexWrap: 'wrap' }}>
+                <div style={cardStyle}>
+                  <div style={{ fontSize: isMobile ? '10px' : '11px', color: themeStyles.textSecondary, marginBottom: isMobile ? '4px' : '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {i18n('Total today (all domains)')}
                   </div>
-                </>
-              ) : (
-                <div style={{ width: '100%', overflowX: 'auto', overflowY: 'hidden', minWidth: 0 }}>
-                <ContributionWall
-                  contributions={contributionData.contributions}
-                  contributionDetails={contributionData.contributionDetails}
-                  theme={theme}
-                  compact
-                />
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? '8px 12px' : '12px 16px', alignItems: 'center' }}>
+                    <Stat label={i18n('Nodes')} value={formatNum(todayAll.nodes)} color={themeStyles.statNode} />
+                    <Stat label={i18n('Cards')} value={formatNum(todayAll.cards)} color={themeStyles.statCard} />
+                    <Stat label={i18n('Problems')} value={formatNum(todayAll.problems)} color={themeStyles.statProblem} />
+                    <Stat label={i18n('Chars')} value={formatNum(chars(todayAll))} color={themeStyles.textSecondary} />
+                  </div>
                 </div>
-              )}
+                <div style={cardStyle}>
+                  <div style={{ fontSize: isMobile ? '10px' : '11px', color: themeStyles.textSecondary, marginBottom: isMobile ? '4px' : '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {i18n('This domain today')}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? '8px 12px' : '12px 16px', alignItems: 'center' }}>
+                    <Stat label={i18n('Nodes')} value={formatNum(todayContribution.nodes)} color={themeStyles.statNode} />
+                    <Stat label={i18n('Cards')} value={formatNum(todayContribution.cards)} color={themeStyles.statCard} />
+                    <Stat label={i18n('Problems')} value={formatNum(todayContribution.problems)} color={themeStyles.statProblem} />
+                    <Stat label={i18n('Chars')} value={formatNum(chars(todayContribution))} color={themeStyles.textSecondary} />
+                  </div>
+                </div>
               </div>
             </div>
           );

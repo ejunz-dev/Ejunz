@@ -132,6 +132,14 @@ Discussion category {1} not found.: 討論分類 {1} 不存在。
 Discussion node {1} already exists.: 討論節點 {1} 已經存在。
 Discussion node {1} not found.: 討論節點 {1} 不存在。
 Discussion Nodes: 討論節點
+"Today's contribution": 今日貢獻
+"Total today (all domains)": 本日所有域
+"This domain today": 本日本域
+Chars: 字數
+View all: 查看全部
+Nodes: 節點
+Cards: 卡片
+Problems: 題目
 discussion_create: 創建討論
 discussion_edit: 編輯討論
 discussion_main: 討論

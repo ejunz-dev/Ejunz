@@ -167,6 +167,14 @@ Discussion category {1} not found.: 토론 분류 {1}을(를) 찾을 수 없습�
 Discussion node {1} already exists.: 토론 노드 {1}이(가)
 Discussion node {1} not found.: 토론 노드 {1}을(를) 찾을 수 없습니다.
 Discussion Nodes: 토론 노드
+"Today's contribution": 오늘의 기여
+"Total today (all domains)": 오늘 전체 (모든 도메인)
+"This domain today": 오늘 이 도메인
+Chars: 글자 수
+View all: 모두 보기
+Nodes: 노드
+Cards: 카드
+Problems: 문제
 discussion_create: 토론 생성
 discussion_edit: 토론 수정
 discussion_main: 토론

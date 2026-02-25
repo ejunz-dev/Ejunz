@@ -30,7 +30,7 @@ async function buildContributionDataForDomain(
     domainName: string,
     base?: BaseDoc & { nodes?: BaseNode[] },
 ): Promise<{
-    todayContribution: { nodes: number; cards: number; problems: number };
+    todayContribution: { nodes: number; cards: number; problems: number; nodeChars: number; cardChars: number; problemChars: number };
     contributions: Array<{ date: string; type: 'node' | 'card' | 'problem'; count: number }>;
     contributionDetails: Record<string, Array<{
         domainId: string; domainName: string; nodes: number; cards: number; problems: number;
@@ -44,8 +44,14 @@ async function buildContributionDataForDomain(
     let todayNodes = 0;
     let todayCards = 0;
     let todayProblems = 0;
+    let todayNodeChars = 0;
+    let todayCardChars = 0;
+    let todayProblemChars = 0;
     if (base?.updateAt && base.updateAt >= todayStart && base.updateAt <= todayEnd && base.nodes) {
         todayNodes = base.nodes.length;
+        for (const n of base.nodes) {
+            todayNodeChars += typeof (n as any).text === 'string' ? (n as any).text.length : 0;
+        }
     }
     if (base?.docId) {
         const cardsUpdatedToday = await document.getMulti(domainId, TYPE_CARD, {
@@ -56,14 +62,30 @@ async function buildContributionDataForDomain(
                 { updateAt: { $gte: todayStart, $lte: todayEnd } },
             ],
         })
-            .project({ docId: 1, problems: 1 })
+            .project({ docId: 1, title: 1, content: 1, problems: 1 })
             .toArray();
         todayCards = cardsUpdatedToday.length;
         for (const c of cardsUpdatedToday) {
-            if (Array.isArray((c as any).problems)) todayProblems += (c as any).problems.length;
+            todayCardChars += (typeof (c as any).title === 'string' ? (c as any).title.length : 0)
+                + (typeof (c as any).content === 'string' ? (c as any).content.length : 0);
+            if (Array.isArray((c as any).problems)) {
+                for (const p of (c as any).problems) {
+                    todayProblems += 1;
+                    todayProblemChars += typeof p.stem === 'string' ? p.stem.length : 0;
+                    if (Array.isArray(p.options)) todayProblemChars += p.options.join('').length;
+                    if (typeof p.analysis === 'string') todayProblemChars += p.analysis.length;
+                }
+            }
         }
     }
-    const todayContribution = { nodes: todayNodes, cards: todayCards, problems: todayProblems };
+    const todayContribution = {
+        nodes: todayNodes,
+        cards: todayCards,
+        problems: todayProblems,
+        nodeChars: todayNodeChars,
+        cardChars: todayCardChars,
+        problemChars: todayProblemChars,
+    };
 
     const contributions: Array<{ date: string; type: 'node' | 'card' | 'problem'; count: number }> = [];
     const nodeCounts: Record<string, number> = {};
@@ -184,6 +206,65 @@ async function buildContributionDataForDomain(
         if (finalProblem > 0) contributions.push({ date, type: 'problem', count: finalProblem });
     }
     return { todayContribution, contributions, contributionDetails };
+}
+
+/** 本日所有域总贡献（节点/卡片/题目数 + 贡献字数），用于编辑器上方「本日所有域」展示 */
+async function buildTodayContributionAllDomains(uid: number): Promise<{
+    nodes: number;
+    cards: number;
+    problems: number;
+    nodeChars: number;
+    cardChars: number;
+    problemChars: number;
+}> {
+    const todayStart = moment.utc().startOf('day').toDate();
+    const todayEnd = moment.utc().endOf('day').toDate();
+    let nodes = 0;
+    let cards = 0;
+    let problems = 0;
+    let nodeChars = 0;
+    let cardChars = 0;
+    let problemChars = 0;
+
+    const basesToday = await document.coll.find({
+        docType: TYPE_MM,
+        owner: uid,
+        updateAt: { $gte: todayStart, $lte: todayEnd },
+    }).project({ nodes: 1 }).toArray();
+    for (const b of basesToday) {
+        const arr = (b as any).nodes;
+        if (Array.isArray(arr)) {
+            nodes += arr.length;
+            for (const n of arr) {
+                nodeChars += typeof (n as any).text === 'string' ? (n as any).text.length : 0;
+            }
+        }
+    }
+
+    const cardsToday = await document.coll.find({
+        docType: TYPE_CARD,
+        owner: uid,
+        $or: [
+            { createdAt: { $gte: todayStart, $lte: todayEnd } },
+            { updateAt: { $gte: todayStart, $lte: todayEnd } },
+        ],
+    }).project({ title: 1, content: 1, problems: 1 }).toArray();
+    for (const c of cardsToday) {
+        cards += 1;
+        cardChars += (typeof (c as any).title === 'string' ? (c as any).title.length : 0)
+            + (typeof (c as any).content === 'string' ? (c as any).content.length : 0);
+        const probs = (c as any).problems;
+        if (Array.isArray(probs)) {
+            for (const p of probs) {
+                problems += 1;
+                problemChars += typeof p.stem === 'string' ? p.stem.length : 0;
+                if (Array.isArray(p.options)) problemChars += p.options.join('').length;
+                if (typeof p.analysis === 'string') problemChars += p.analysis.length;
+            }
+        }
+    }
+
+    return { nodes, cards, problems, nodeChars, cardChars, problemChars };
 }
 
 /**
@@ -864,7 +945,11 @@ export class BaseEditorHandler extends Handler {
         const uid = this.user._id;
         const domainName = (this as any).domain?.name || domainId;
         const baseForContrib = { ...base, nodes };
-        const { todayContribution, contributions, contributionDetails } = await buildContributionDataForDomain(domainId, uid, domainName, baseForContrib);
+        const [contrib, todayAllDomains] = await Promise.all([
+            buildContributionDataForDomain(domainId, uid, domainName, baseForContrib),
+            buildTodayContributionAllDomains(uid),
+        ]);
+        const { todayContribution, contributions, contributionDetails } = contrib;
 
         this.response.body = {
             base: { ...base, nodes, edges },
@@ -875,6 +960,7 @@ export class BaseEditorHandler extends Handler {
             domainId,
             editorMode: opts.editorMode,
             todayContribution,
+            todayContributionAllDomains: todayAllDomains,
             contributions,
             contributionDetails,
             // 仅 skill 时传入 page_name，供前端 NamedPage 识别以显示右侧工具侧边栏；base 不传，用模板默认 base_editor
@@ -4632,12 +4718,14 @@ class BaseConnectionHandler extends ConnectionHandler {
             const baseWithNodes = { ...base, nodes: branchData.nodes };
             const domainName = (this as any).domain?.name || domainId;
             const contrib = await buildContributionDataForDomain(domainId, this.user._id, domainName, baseWithNodes);
+            const todayAllDomains = await buildTodayContributionAllDomains(this.user._id);
 
             this.send({
                 type: 'init',
                 gitStatus,
                 branch,
                 todayContribution: contrib.todayContribution,
+                todayContributionAllDomains: todayAllDomains,
                 contributions: contrib.contributions,
                 contributionDetails: contrib.contributionDetails,
             });
@@ -4657,12 +4745,14 @@ class BaseConnectionHandler extends ConnectionHandler {
             const baseWithNodes = { ...base, nodes: branchData.nodes };
             const domainName = (this as any).domain?.name || domainId;
             const contrib = await buildContributionDataForDomain(domainId, this.user._id, domainName, baseWithNodes);
+            const todayAllDomains = await buildTodayContributionAllDomains(this.user._id);
 
             this.send({
                 type: 'update',
                 gitStatus,
                 branch,
                 todayContribution: contrib.todayContribution,
+                todayContributionAllDomains: todayAllDomains,
                 contributions: contrib.contributions,
                 contributionDetails: contrib.contributionDetails,
             });
