@@ -463,6 +463,10 @@ Continue: Continue
 Contribution Wall: Contribution Wall
 Contributions in the past year: Contributions in the past year
 Contributions: Contributions
+"Today's contribution": Today's contribution
+"Total today (all domains)": Total today (all domains)
+"This domain today": This domain today
+Chars: Chars
 Created at: Created at
 discussion_create: Create Discussion
 discussion_detail: Discussion Detail
@@ -592,6 +596,7 @@ user_logout: Logout
 user_lostpass: Lost Password
 user_register: Register
 user_sudo: Entering Sudo Mode
+View all: View all
 View Card: View Card
 wiki_about: About
 wiki_help: Helpz

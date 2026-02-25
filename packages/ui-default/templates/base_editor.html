@@ -11,7 +11,8 @@
   }) }}
   {{ set(UiContext, 'nodeCardsMap', nodeCardsMap or {}) }}
   {{ set(UiContext, 'files', files or []) }}
-  {{ set(UiContext, 'todayContribution', todayContribution or { nodes: 0, cards: 0, problems: 0 }) }}
+  {{ set(UiContext, 'todayContribution', todayContribution or { nodes: 0, cards: 0, problems: 0, nodeChars: 0, cardChars: 0, problemChars: 0 }) }}
+  {{ set(UiContext, 'todayContributionAllDomains', todayContributionAllDomains or { nodes: 0, cards: 0, problems: 0, nodeChars: 0, cardChars: 0, problemChars: 0 }) }}
   {{ set(UiContext, 'contributions', contributions or []) }}
   {{ set(UiContext, 'contributionDetails', contributionDetails or {}) }}
   {{ set(UiContext, 'socketUrl', 'base/ws?domainId=' + (domainId or (base and base.domainId) or '') + '&docId=' + (base.docId.toString() if base and base.docId else '')) }}
