@@ -2524,12 +2524,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       setPendingEditedProblemIds(new Map());
       setPendingDeleteProblemIds(new Map());
       
+      const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+      const savedCardIds = new Set<string>();
       if (hasProblemChanges) {
         setNewProblemIds(new Set());
         setEditedProblemIds(new Set());
-        
-        const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-        const savedCardIds = new Set<string>();
         
         for (const change of allChanges.values()) {
           if (change.file.type === 'card' && change.file.cardId) {
