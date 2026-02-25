@@ -1,5 +1,5 @@
 import $ from 'jquery';
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, startTransition } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
@@ -1611,28 +1611,22 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       return;
     }
     
+    // 单选模式：仅当多选集合非空时清空，避免多余 setState；并先更新选中状态，再延后内容相关更新，保证高亮及时
+    if (selectedItems.size > 0) setSelectedItems(new Set());
+    
     
     if (file.type === 'node') {
       return;
     }
     
     
+    let pendingChangeToSave: { file: FileItem; content: string; originalContent: string } | null = null;
     if (selectedFile && editorInstance) {
       try {
         const currentContent = editorInstance.value() || fileContent;
         const originalContent = originalContentsRef.current.get(selectedFile.id) || '';
-        
-        
         if (currentContent !== originalContent) {
-          setPendingChanges(prev => {
-            const newMap = new Map(prev);
-            newMap.set(selectedFile.id, {
-              file: selectedFile,
-              content: currentContent,
-              originalContent: originalContent,
-            });
-            return newMap;
-          });
+          pendingChangeToSave = { file: selectedFile, content: currentContent, originalContent };
         }
       } catch (error) {
       }
@@ -1671,8 +1665,21 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
     }
     
-    setFileContent(content);
-  }, [base.nodes, selectedFile, editorInstance, fileContent, pendingChanges, isMultiSelectMode, fileTree]);
+    startTransition(() => {
+      if (pendingChangeToSave) {
+        setPendingChanges(prev => {
+          const newMap = new Map(prev);
+          newMap.set(pendingChangeToSave!.file.id, {
+            file: pendingChangeToSave!.file,
+            content: pendingChangeToSave!.content,
+            originalContent: pendingChangeToSave!.originalContent,
+          });
+          return newMap;
+        });
+      }
+      setFileContent(content);
+    });
+  }, [base.nodes, selectedFile, editorInstance, fileContent, pendingChanges, isMultiSelectMode, fileTree, selectedItems]);
 
   
   useEffect(() => {
@@ -6843,7 +6850,12 @@ ${currentCardContext}
         <div style={{ padding: '8px 0' }}>
           {explorerMode === 'tree' ? (
             fileTree.map((file) => {
-            const isSelected = isMultiSelectMode ? selectedItems.has(file.id) : (selectedFile?.id === file.id);
+            // 单选模式只认 selectedFile，多选模式只认 selectedItems；单选时 selectedItems 已在 handleSelectFile 中清空，保证最多一个高亮
+            const isSelected = isMultiSelectMode
+              ? selectedItems.has(file.id)
+              : (selectedFile?.id === file.id);
+            // 多选不需要高亮，仅单选时对当前选中项显示蓝色高亮
+            const isHighlighted = !isMultiSelectMode && (selectedFile?.id === file.id);
             const isDragOver = dragOverFile?.id === file.id;
             const isDragged = draggedFile?.id === file.id;
             const isEditing = editingFile?.id === file.id;
@@ -7011,10 +7023,10 @@ ${currentCardContext}
                   padding: `4px ${8 + file.level * 16}px`,
                   cursor: isEditing ? 'text' : 'pointer',
                   fontSize: '13px',
-                  color: isSelected ? themeStyles.textOnPrimary : themeStyles.textPrimary,
-                  backgroundColor: isSelected 
+                  color: isHighlighted ? themeStyles.textOnPrimary : themeStyles.textPrimary,
+                  backgroundColor: isHighlighted
                     ? themeStyles.bgSelected
-                    : isDragOver 
+                    : isDragOver
                       ? themeStyles.bgDragOver
                       : isDragged
                         ? themeStyles.bgDragged
@@ -7042,12 +7054,12 @@ ${currentCardContext}
                     : undefined,
                 }}
                 onMouseEnter={(e) => {
-                  if (!isSelected && !isDragOver && !isDragged) {
+                  if (!isHighlighted && !isDragOver && !isDragged) {
                     e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (!isSelected && !isDragOver && !isDragged) {
+                  if (!isHighlighted && !isDragOver && !isDragged) {
                     e.currentTarget.style.backgroundColor = 'transparent';
                   }
                 }}
