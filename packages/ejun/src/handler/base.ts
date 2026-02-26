@@ -230,11 +230,14 @@ async function buildTodayContributionAllDomains(uid: number): Promise<{
         docType: TYPE_MM,
         owner: uid,
         updateAt: { $gte: todayStart, $lte: todayEnd },
-    }).project({ nodes: 1 }).toArray();
+    }).project({ nodes: 1, edges: 1 }).toArray();
     for (const b of basesToday) {
         const arr = (b as any).nodes;
+        const edges = (b as any).edges || [];
         if (Array.isArray(arr)) {
-            nodes += arr.length;
+            const targetIds = new Set(edges.map((e: { target: string }) => e.target));
+            const rootCount = arr.filter((n: { id: string }) => !targetIds.has(n.id)).length;
+            nodes += rootCount;
             for (const n of arr) {
                 nodeChars += typeof (n as any).text === 'string' ? (n as any).text.length : 0;
             }
