@@ -6950,13 +6950,14 @@ ${currentCardContext}
         </div>
         <div style={{ padding: '8px 0' }}>
           {explorerMode === 'tree' ? (
-            fileTree.map((file) => {
+            fileTree.map((file, index) => {
             // 单选模式只认 selectedFile，多选模式只认 selectedItems；单选时 selectedItems 已在 handleSelectFile 中清空，保证最多一个高亮
             const isSelected = isMultiSelectMode
               ? selectedItems.has(file.id)
               : (selectedFile?.id === file.id);
-            // 多选不需要高亮，仅单选时对当前选中项显示蓝色高亮
-            const isHighlighted = !isMultiSelectMode && (selectedFile?.id === file.id);
+            // 仅当该行是树中第一个 id 与 selectedFile 匹配的项时才高亮，保证最多一个蓝色高亮（避免 id 重复时多行同时高亮）
+            const selectedIndex = selectedFile != null ? fileTree.findIndex(f => f.id === selectedFile.id) : -1;
+            const isHighlighted = !isMultiSelectMode && selectedFile != null && selectedFile.id === file.id && selectedIndex === index;
             const isDragOver = dragOverFile?.id === file.id;
             const isDragged = draggedFile?.id === file.id;
             const isEditing = editingFile?.id === file.id;
@@ -6964,7 +6965,7 @@ ${currentCardContext}
             
             return (
               <div
-                key={file.id}
+                key={`${file.parentId ?? 'root'}-${file.level}-${file.id}-${index}`}
                 data-file-item
                 data-file-id={file.id}
                 draggable={true}
@@ -7144,7 +7145,7 @@ ${currentCardContext}
                       ? `2px dashed ${themeStyles.error}`
                       : file.clipboardType === 'copy'
                         ? `2px dashed ${themeStyles.success}`
-                        : file.hasPendingChanges
+                        : (file.hasPendingChanges && selectedFile?.id === file.id)
                           ? `1px dashed ${themeStyles.warning}`
                           : '2px solid transparent',
                   borderTop: isDragOver && dropPosition === 'before' 
