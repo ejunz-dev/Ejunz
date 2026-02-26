@@ -7145,7 +7145,7 @@ ${currentCardContext}
                       ? `2px dashed ${themeStyles.error}`
                       : file.clipboardType === 'copy'
                         ? `2px dashed ${themeStyles.success}`
-                        : (file.hasPendingChanges && selectedFile?.id === file.id)
+                        : file.hasPendingChanges
                           ? `1px dashed ${themeStyles.warning}`
                           : '2px solid transparent',
                   borderTop: isDragOver && dropPosition === 'before' 
