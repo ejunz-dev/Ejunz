@@ -1269,6 +1269,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   
   const baseRef = useRef<BaseDoc>(base);
   
+  const explorerScrollRef = useRef<HTMLDivElement>(null);
+  const hasExpandedForCardIdRef = useRef<string | null>(null);
+  
   
   useEffect(() => {
     expandedNodesRef.current = expandedNodes;
@@ -1816,6 +1819,51 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       window.removeEventListener('popstate', handlePopState);
     };
   }, [fileTree, selectedFile, handleSelectFile]);
+
+  
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const cardId = urlParams.get('cardId');
+    if (!cardId || base.nodes.length === 0) return;
+    if (hasExpandedForCardIdRef.current === cardId) return;
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    let nodeId: string | null = null;
+    for (const nid of Object.keys(nodeCardsMap)) {
+      const cards = (nodeCardsMap[nid] || []) as Array<{ docId?: string }>;
+      if (cards.some((c) => c.docId === cardId)) {
+        nodeId = nid;
+        break;
+      }
+    }
+    if (!nodeId) return;
+    const collectAncestors = (id: string): string[] => {
+      const edge = base.edges.find((e) => e.target === id);
+      if (!edge) return [];
+      return [edge.source, ...collectAncestors(edge.source)];
+    };
+    const toExpand = [nodeId, ...collectAncestors(nodeId)];
+    setExpandedNodes((prev) => {
+      const next = new Set(prev);
+      toExpand.forEach((id) => next.add(id));
+      return next;
+    });
+    hasExpandedForCardIdRef.current = cardId;
+  }, [base.nodes.length, base.edges]);
+
+  
+  useEffect(() => {
+    if (!selectedFile || explorerMode !== 'tree') return;
+    const id = selectedFile.id;
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const container = explorerScrollRef.current;
+        if (!container) return;
+        const el = container.querySelector(`[data-file-id="${id}"]`);
+        if (el) (el as HTMLElement).scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [selectedFile?.id, explorerMode]);
 
   
   const handleCreateSingleProblem = useCallback(async () => {
@@ -6841,7 +6889,9 @@ ${currentCardContext}
         backgroundColor: themeStyles.bgSecondary,
         overflow: 'auto',
         WebkitOverflowScrolling: 'touch',
-      } as React.CSSProperties}>
+      } as React.CSSProperties}
+        ref={explorerScrollRef}
+      >
         <div style={{
           padding: isMobile ? '12px 16px' : '12px 16px',
           borderBottom: `1px solid ${themeStyles.borderPrimary}`,
