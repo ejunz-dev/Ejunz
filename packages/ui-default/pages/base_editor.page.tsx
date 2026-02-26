@@ -2751,6 +2751,18 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   }, [handleSaveAll]);
 
   
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        saveHandlerRef.current?.();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  
   const handleRename = useCallback((file: FileItem, newName: string) => {
     if (!newName.trim()) {
       Notification.error(i18n('Name cannot be empty'));
