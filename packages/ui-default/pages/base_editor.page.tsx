@@ -1250,8 +1250,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
     const initialExpanded = new Set<string>();
-    
-    
+    const fromContext = (window as any).UiContext?.baseExpandState;
+    if (Array.isArray(fromContext) && fromContext.length > 0 && initialData?.nodes?.length) {
+      fromContext.forEach((id: string) => {
+        if (initialData!.nodes!.some((n: BaseNode) => n.id === id)) initialExpanded.add(id);
+      });
+      return initialExpanded;
+    }
     if (initialData?.nodes) {
       initialData.nodes.forEach(node => {
         if (node.expanded !== false) {
@@ -1582,47 +1587,24 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
     expandSaveTimerRef.current = setTimeout(async () => {
       try {
-        
         const currentExpandedNodes = expandedNodesRef.current;
         const currentBase = baseRef.current;
-        
-        
-        const updatedNodes = currentBase.nodes.map((node) => {
-          const isExpanded = currentExpandedNodes.has(node.id);
-          return {
-            ...node,
-            expanded: isExpanded,
-          };
+        const baseDocId = docId || (currentBase as any)?.docId;
+        if (!baseDocId) {
+          expandSaveTimerRef.current = null;
+          return;
+        }
+        await request.post(getBaseUrl('/expand-state'), {
+          docId: baseDocId,
+          expandedNodeIds: Array.from(currentExpandedNodes),
         });
-
-        
-        
-        const filteredNodes = updatedNodes.filter(n => !n.id.startsWith('temp-node-'));
-        const filteredEdges = currentBase.edges.filter(e => 
-          !e.source.startsWith('temp-node-') && 
-          !e.target.startsWith('temp-node-') &&
-          !e.id.startsWith('temp-edge-')
-        );
-        
-        await request.post(getBaseUrl('/save'), {
-          nodes: filteredNodes,
-          edges: filteredEdges,
-          operationDescription: '自动保存展开状态',
-        });
-        
-        
-        setBase(prev => ({
-          ...prev,
-          nodes: updatedNodes,
-        }));
-        
         expandSaveTimerRef.current = null;
       } catch (error: any) {
         console.error('保存展开状态失败:', error);
         expandSaveTimerRef.current = null;
       }
     }, 1500);
-  }, [docId]);
+  }, [docId, getBaseUrl]);
 
   
   const toggleNodeExpanded = useCallback((nodeId: string) => {
