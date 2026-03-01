@@ -954,6 +954,15 @@ export class BaseEditorHandler extends Handler {
         ]);
         const { todayContribution, contributions, contributionDetails } = contrib;
 
+        let baseExpandState: string[] = [];
+        try {
+            const coll = this.ctx.db.db.collection('base.userExpand');
+            const doc = await coll.findOne({ domainId, baseDocId: base.docId, uid });
+            baseExpandState = Array.isArray(doc?.expandedNodeIds) ? doc.expandedNodeIds : [];
+        } catch {
+            // ignore
+        }
+
         this.response.body = {
             base: { ...base, nodes, edges },
             currentBranch: requestedBranch,
@@ -966,6 +975,7 @@ export class BaseEditorHandler extends Handler {
             todayContributionAllDomains: todayAllDomains,
             contributions,
             contributionDetails,
+            baseExpandState,
             // 仅 skill 时传入 page_name，供前端 NamedPage 识别以显示右侧工具侧边栏；base 不传，用模板默认 base_editor
             ...(opts.editorMode === 'skill' ? { page_name: 'base_skill_editor_branch' } : {}),
         };
@@ -4870,6 +4880,34 @@ class BaseDomainEditHandler extends Handler {
     }
 }
 
+/**
+ * Base Expand State Handler — per-user node expand/collapse state for base editor (POST only, load via UiContext)
+ */
+export class BaseExpandStateHandler extends Handler {
+    protected async getBase(domainId: string, docId: ObjectId): Promise<BaseDoc | null> {
+        return BaseModel.get(domainId, docId);
+    }
+
+    @post('docId', Types.ObjectId)
+    @post('expandedNodeIds', Types.ArrayOf(Types.String), true)
+    async post(domainId: string, docId: ObjectId, expandedNodeIds?: string[]) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const baseDocId = typeof docId === 'string' ? new ObjectId(docId) : docId;
+        const base = await this.getBase(domainId, baseDocId);
+        if (!base) throw new NotFoundError('Base not found');
+        if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+
+        const coll = this.ctx.db.db.collection('base.userExpand');
+        const list = Array.isArray(expandedNodeIds) ? expandedNodeIds : [];
+        await coll.updateOne(
+            { domainId, baseDocId, uid: this.user._id },
+            { $set: { domainId, baseDocId, uid: this.user._id, expandedNodeIds: list, updateAt: new Date() } },
+            { upsert: true }
+        );
+        this.response.body = { success: true };
+    }
+}
+
 export async function apply(ctx: Context) {
     ctx.Route('base_outline', '/base', BaseOutlineHandler);
     ctx.Route('base_outline_branch', '/base/branch/:branch', BaseOutlineHandler);
@@ -4880,6 +4918,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_edge', '/base/edge', BaseEdgeHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_save', '/base/save', BaseSaveHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_batch_save', '/base/batch-save', BaseBatchSaveHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_expand_state', '/base/expand-state', BaseExpandStateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card', '/base/card', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card_update', '/base/card/:cardId', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_branch_create', '/base/branch', BaseBranchCreateHandler, PRIV.PRIV_USER_PROFILE);
