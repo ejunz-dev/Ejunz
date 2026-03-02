@@ -963,6 +963,10 @@ export class BaseEditorHandler extends Handler {
             // ignore
         }
 
+        const workspaceFromQuery = (this.request.query?.workspace as string) || '';
+        const nodeIds = new Set(nodes.map((n: BaseNode) => n.id));
+        const workspaceNodeId = workspaceFromQuery && nodeIds.has(workspaceFromQuery) ? workspaceFromQuery : '';
+
         this.response.body = {
             base: { ...base, nodes, edges },
             currentBranch: requestedBranch,
@@ -976,6 +980,7 @@ export class BaseEditorHandler extends Handler {
             contributions,
             contributionDetails,
             baseExpandState,
+            workspaceNodeId,
             // 仅 skill 时传入 page_name，供前端 NamedPage 识别以显示右侧工具侧边栏；base 不传，用模板默认 base_editor
             ...(opts.editorMode === 'skill' ? { page_name: 'base_skill_editor_branch' } : {}),
         };

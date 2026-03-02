@@ -1255,14 +1255,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       fromContext.forEach((id: string) => {
         if (initialData!.nodes!.some((n: BaseNode) => n.id === id)) initialExpanded.add(id);
       });
-      return initialExpanded;
-    }
-    if (initialData?.nodes) {
+    } else if (initialData?.nodes) {
       initialData.nodes.forEach(node => {
         if (node.expanded !== false) {
           initialExpanded.add(node.id);
         }
       });
+    }
+    const workspaceRoot = (window as any).UiContext?.workspaceNodeId;
+    if (workspaceRoot && initialData?.nodes?.some((n: BaseNode) => n.id === workspaceRoot)) {
+      initialExpanded.add(workspaceRoot);
     }
     return initialExpanded;
   });
@@ -1303,6 +1305,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     return `/d/${domainId}/${basePath}${path}`;
   }, [basePath]);
 
+  const workspaceNodeId = (window as any).UiContext?.workspaceNodeId || '';
+  const currentBranch = (window as any).UiContext?.currentBranch || 'main';
   
   const fileTree = useMemo(() => {
     const items: FileItem[] = [];
@@ -1340,6 +1344,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         rootNodes.push(node.id);
       }
     });
+
+    if (workspaceNodeId && nodeMap.has(workspaceNodeId)) {
+      rootNodes.length = 0;
+      rootNodes.push(workspaceNodeId);
+    }
 
     
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
@@ -1570,7 +1579,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       });
 
     return items;
-  }, [base.nodes, base.edges, nodeCardsMapVersion, expandedNodes, pendingChanges, pendingRenames, pendingDragChanges, pendingDeletes, clipboard]);
+  }, [base.nodes, base.edges, nodeCardsMapVersion, expandedNodes, pendingChanges, pendingRenames, pendingDragChanges, pendingDeletes, clipboard, workspaceNodeId]);
 
   useEffect(() => {
     fileTreeRef.current = fileTree;
@@ -6898,6 +6907,18 @@ ${currentCardContext}
           justifyContent: 'space-between',
         }}>
           <span>EXPLORER</span>
+          {workspaceNodeId ? (
+            <a
+              href={basePath === 'base/skill' ? getBaseUrl('/editor/branch/' + currentBranch) : getBaseUrl('/branch/' + currentBranch + '/editor')}
+              style={{ fontSize: '11px', color: '#0366d6', textDecoration: 'none' }}
+              onClick={(e) => {
+                e.preventDefault();
+                window.location.href = (basePath === 'base/skill' ? getBaseUrl('/editor/branch/' + currentBranch) : getBaseUrl('/branch/' + currentBranch + '/editor'));
+              }}
+            >
+              退出工作区
+            </a>
+          ) : (
           <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
             {isMobile && (
               <button
@@ -6991,6 +7012,7 @@ ${currentCardContext}
               修改
             </button>
           </div>
+          )}
         </div>
         <div style={{ padding: '8px 0' }}>
           {explorerMode === 'tree' ? (
@@ -7902,6 +7924,29 @@ ${currentCardContext}
                 onClick={() => handleNewChildNode(contextMenu.file.nodeId || '')}
               >
                 新建子 Node
+              </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => {
+                  const path = basePath === 'base/skill'
+                    ? getBaseUrl('/editor/branch/' + currentBranch)
+                    : getBaseUrl('/branch/' + currentBranch + '/editor');
+                  window.location.href = path + '?workspace=' + encodeURIComponent(contextMenu.file.nodeId || '');
+                  setContextMenu(null);
+                }}
+              >
+                打开工作区
               </div>
               <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
               <div
