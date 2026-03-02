@@ -4909,6 +4909,9 @@ export class BaseExpandStateHandler extends Handler {
             { $set: { domainId, baseDocId, uid: this.user._id, expandedNodeIds: list, updateAt: new Date() } },
             { upsert: true }
         );
+
+        (this.ctx.emit as any)('base/update', baseDocId);
+
         this.response.body = { success: true };
     }
 }
