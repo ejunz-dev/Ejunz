@@ -719,6 +719,9 @@ const OutlineView = ({
 
 export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { docId: string | undefined; initialData: BaseDoc; basePath?: string }) {
   const [base, setBase] = useState<BaseDoc>(initialData);
+  const [nodeCardsMap, setNodeCardsMap] = useState<Record<string, Card[]>>(
+    () => (initialData as any).nodeCardsMap || (window as any).UiContext?.nodeCardsMap || {}
+  );
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   // 标记是否正在手动设置选择（避免useEffect干扰）
@@ -758,6 +761,68 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
   useEffect(() => {
     baseRef.current = base;
   }, [base]);
+
+  // 同步 nodeCardsMap 到 UiContext，供其他逻辑（如 checkNodeCached）读取
+  useEffect(() => {
+    if ((window as any).UiContext) {
+      (window as any).UiContext.nodeCardsMap = nodeCardsMap;
+    }
+  }, [nodeCardsMap]);
+
+  // WebSocket：连接 base/ws，收到 init/update 时重新拉取 base 数据并刷新界面（工作区保存后 outline 实时更新）
+  const outlineWsRef = useRef<{ close: () => void } | null>(null);
+  useEffect(() => {
+    const socketUrl = (window as any).UiContext?.socketUrl;
+    const wsPrefix = (window as any).UiContext?.ws_prefix || '';
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    if (!socketUrl) return;
+
+    let closed = false;
+    const apiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+
+    const connect = async () => {
+      try {
+        const { default: WebSocket } = await import('../components/socket');
+        const wsUrl = wsPrefix + socketUrl;
+        const sock = new WebSocket(wsUrl, false, true);
+        outlineWsRef.current = sock;
+
+        sock.onmessage = (_: any, data: string) => {
+          if (closed) return;
+          try {
+            const msg = JSON.parse(data);
+            if (msg.type === 'init' || msg.type === 'update') {
+              request.get(apiPath).then((newData: any) => {
+                if (!closed && newData && (newData.nodes || newData.edges)) {
+                  const nextBase: BaseDoc = { ...baseRef.current, ...newData, nodes: newData.nodes ?? baseRef.current.nodes, edges: newData.edges ?? baseRef.current.edges };
+                  setBase(nextBase);
+                  const nextMap = newData.nodeCardsMap != null ? newData.nodeCardsMap : {};
+                  setNodeCardsMap(nextMap);
+                }
+              }).catch(() => {});
+            }
+          } catch (e) {
+            // ignore parse error
+          }
+        };
+
+        sock.onclose = () => {
+          outlineWsRef.current = null;
+        };
+      } catch (e) {
+        console.warn('[BaseOutline] WebSocket connect failed:', e);
+      }
+    };
+
+    connect();
+    return () => {
+      closed = true;
+      if (outlineWsRef.current) {
+        outlineWsRef.current.close();
+        outlineWsRef.current = null;
+      }
+    };
+  }, [basePath]);
 
   // 自动保存展开状态到数据库（带防抖，参考 editor 的实现）
   const expandSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -1227,8 +1292,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       }
     });
 
-    // 获取最新的 nodeCardsMap
-    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    // 获取最新的 nodeCardsMap（使用 state，WS 更新时会一起刷新）
+    const nodeCardsMapCurrent = nodeCardsMap;
     const expandedSet = new Set(expandedNodesArray);
 
     // 递归构建文件树
@@ -1253,7 +1318,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       // 如果节点展开，显示其卡片和子节点（按order混合排序）
       if (isExpanded) {
         // 获取该节点的卡片（按 order 排序）
-        const nodeCards = (nodeCardsMap[nodeId] || [])
+        const nodeCards = (nodeCardsMapCurrent[nodeId] || [])
           .filter((card: Card) => {
             return !card.nodeId || card.nodeId === nodeId;
           })
@@ -1306,7 +1371,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     });
 
     return items;
-  }, [base.nodes, base.edges, expandedNodesArray]);
+  }, [base.nodes, base.edges, expandedNodesArray, nodeCardsMap]);
 
   // 切换节点展开/折叠（保存到数据库的 expandedOutline 字段）
   const toggleNodeExpanded = useCallback((nodeId: string) => {
@@ -2658,6 +2723,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                     || responseData?.base?.nodeCardsMap
                     || {};
                   (window as any).UiContext.nodeCardsMap = updatedMap;
+                  setNodeCardsMap(updatedMap);
                   
                   // 如果当前有选中的 card，更新其数据（异步清除缓存）
                   const currentSelectedCard = selectedCard;

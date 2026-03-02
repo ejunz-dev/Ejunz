@@ -50,6 +50,7 @@
     docId: base.docId.toString(),
     currentBranch: currentBranch
   }) }}
+  {{ set(UiContext, 'socketUrl', 'base/ws?domainId=' + (domainId or (base and base.domainId) or '') + '&docId=' + base.docId.toString()) }}
   {% else %}
   {{ set(UiContext, 'base', {
     domainId: domainId,
