@@ -580,7 +580,8 @@ export default class Editor extends DOMAttachedObject {
           )}
           <MdEditor
             key={editorKey}
-            className='textbox'
+            className={'textbox' + (getTheme() === 'dark' ? ' md-editor-dark-softer' : '')}
+            style={getTheme() === 'dark' ? { backgroundColor: '#323334' } : undefined}
             autoFocus={hasFocus}
             codeTheme='github'
             codeStyleReverse={false}
