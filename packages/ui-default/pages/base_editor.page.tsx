@@ -871,13 +871,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     return () => clearInterval(interval);
   }, [theme, getTheme]);
 
-  // WebSocket：连接 base/ws（ConnectionHandler），收到 init/update 时更新贡献数据（保存后实时刷新贡献墙）
   useEffect(() => {
     const socketUrl = (window as any).UiContext?.socketUrl;
     const wsPrefix = (window as any).UiContext?.ws_prefix || '';
+    const domainId = (window as any).UiContext?.domainId || 'system';
     if (!socketUrl) return;
 
     let closed = false;
+    const apiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+
     const connect = async () => {
       try {
         const { default: WebSocket } = await import('../components/socket');
@@ -889,16 +891,35 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           if (closed) return;
           try {
             const msg = JSON.parse(data);
-            if ((msg.type === 'init' || msg.type === 'update') && msg.todayContribution != null) {
-              setContributionData(prev => ({
-                ...prev,
-                todayContribution: msg.todayContribution || prev.todayContribution,
-                todayContributionAllDomains: msg.todayContributionAllDomains || prev.todayContributionAllDomains,
-                contributions: Array.isArray(msg.contributions) ? msg.contributions : prev.contributions,
-                contributionDetails: msg.contributionDetails && typeof msg.contributionDetails === 'object'
-                  ? msg.contributionDetails
-                  : prev.contributionDetails,
-              }));
+            if (msg.type === 'init' || msg.type === 'update') {
+              if (msg.todayContribution != null) {
+                setContributionData(prev => ({
+                  ...prev,
+                  todayContribution: msg.todayContribution || prev.todayContribution,
+                  todayContributionAllDomains: msg.todayContributionAllDomains || prev.todayContributionAllDomains,
+                  contributions: Array.isArray(msg.contributions) ? msg.contributions : prev.contributions,
+                  contributionDetails: msg.contributionDetails && typeof msg.contributionDetails === 'object'
+                    ? msg.contributionDetails
+                    : prev.contributionDetails,
+                }));
+              }
+              // 同步 base 与 nodeCardsMap（其他 tab/outline 保存后 editor 实时刷新树和卡片）
+              request.get(apiPath).then((newData: any) => {
+                if (closed || !newData || (!newData.nodes && !newData.edges)) return;
+                const nextNodes = newData.nodes ?? [];
+                const nextEdges = newData.edges ?? [];
+                const nextNodeCardsMap = newData.nodeCardsMap ?? {};
+                setBase(prev => ({
+                  ...prev,
+                  ...newData,
+                  nodes: nextNodes,
+                  edges: nextEdges,
+                }));
+                if ((window as any).UiContext) {
+                  (window as any).UiContext.nodeCardsMap = nextNodeCardsMap;
+                }
+                setNodeCardsMapVersion(v => v + 1);
+              }).catch(() => {});
             }
           } catch (e) {
             // ignore parse error
@@ -921,7 +942,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         contributionWsRef.current = null;
       }
     };
-  }, []);
+  }, [basePath]);
 
   const themeStyles = useMemo(() => {
     const isDark = theme === 'dark';
@@ -7826,9 +7847,16 @@ ${currentCardContext}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
                 }}
-                onClick={() => handleOpenImportWindow(contextMenu.file.nodeId || '')}
+                onClick={() => {
+                  const path = basePath === 'base/skill'
+                    ? getBaseUrl('/editor/branch/' + currentBranch)
+                    : getBaseUrl('/branch/' + currentBranch + '/editor');
+                  const url = path + '?workspace=' + encodeURIComponent(contextMenu.file.nodeId || '');
+                  window.open(url, '_blank');
+                  setContextMenu(null);
+                }}
               >
-                导入
+                打开工作区
               </div>
               <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
               {/* Multi-select: copy, cut, delete */}
@@ -7938,15 +7966,9 @@ ${currentCardContext}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
                 }}
-                onClick={() => {
-                  const path = basePath === 'base/skill'
-                    ? getBaseUrl('/editor/branch/' + currentBranch)
-                    : getBaseUrl('/branch/' + currentBranch + '/editor');
-                  window.location.href = path + '?workspace=' + encodeURIComponent(contextMenu.file.nodeId || '');
-                  setContextMenu(null);
-                }}
+                onClick={() => handleOpenImportWindow(contextMenu.file.nodeId || '')}
               >
-                打开工作区
+                导入
               </div>
               <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
               <div
