@@ -7831,7 +7831,7 @@ ${currentCardContext}
                   >
                     粘贴{clipboard.items.length > 1 ? ` (${clipboard.items.length})` : ''}
                   </div>
-                  <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+                  <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
                 </>
               )}
               <div
@@ -7858,7 +7858,7 @@ ${currentCardContext}
               >
                 打开工作区
               </div>
-              <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+              <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               {/* Multi-select: copy, cut, delete */}
               {isMultiSelectMode && selectedItems.size > 0 && (
                 <>
@@ -7901,10 +7901,10 @@ ${currentCardContext}
                       padding: '6px 16px',
                       cursor: 'pointer',
                       fontSize: '13px',
-                      color: '#d73a49',
+                      color: themeStyles.error,
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                      e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor = 'transparent';
@@ -7916,7 +7916,7 @@ ${currentCardContext}
                   >
                     删除选中项 ({selectedItems.size})
                   </div>
-                  <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+                  <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
                 </>
               )}
               <div
@@ -7924,10 +7924,10 @@ ${currentCardContext}
                   padding: '6px 16px',
                   cursor: 'pointer',
                   fontSize: '13px',
-                  color: '#24292e',
+                  color: themeStyles.textPrimary,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
@@ -7941,10 +7941,10 @@ ${currentCardContext}
                   padding: '6px 16px',
                   cursor: 'pointer',
                   fontSize: '13px',
-                  color: '#24292e',
+                  color: themeStyles.textPrimary,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
@@ -7970,16 +7970,16 @@ ${currentCardContext}
               >
                 导入
               </div>
-              <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+              <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
                 style={{
                   padding: '6px 16px',
                   cursor: 'pointer',
                   fontSize: '13px',
-                  color: '#24292e',
+                  color: themeStyles.textPrimary,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
@@ -7996,10 +7996,10 @@ ${currentCardContext}
                   padding: '6px 16px',
                   cursor: 'pointer',
                   fontSize: '13px',
-                  color: '#24292e',
+                  color: themeStyles.textPrimary,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
@@ -8010,7 +8010,7 @@ ${currentCardContext}
               >
                 导出为PDF
               </div>
-              <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+              <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
                 style={{
                   padding: '6px 16px',
@@ -8031,16 +8031,16 @@ ${currentCardContext}
               >
                 重命名
               </div>
-              <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+              <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
                 style={{
                   padding: '6px 16px',
                   cursor: 'pointer',
                   fontSize: '13px',
-                  color: '#24292e',
+                  color: themeStyles.textPrimary,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
@@ -8071,10 +8071,10 @@ ${currentCardContext}
                   padding: '6px 16px',
                   cursor: 'pointer',
                   fontSize: '13px',
-                  color: '#24292e',
+                  color: themeStyles.textPrimary,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
@@ -8083,16 +8083,16 @@ ${currentCardContext}
               >
                 剪切
               </div>
-              <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+              <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
                 style={{
                   padding: '6px 16px',
                   cursor: 'pointer',
                   fontSize: '13px',
-                  color: '#d73a49',
+                  color: themeStyles.error,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
@@ -8146,10 +8146,10 @@ ${currentCardContext}
                       padding: '6px 16px',
                       cursor: 'pointer',
                       fontSize: '13px',
-                      color: '#d73a49',
+                      color: themeStyles.error,
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                      e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor = 'transparent';
@@ -8161,7 +8161,7 @@ ${currentCardContext}
                   >
                     删除选中项 ({selectedItems.size})
                   </div>
-                  <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+                  <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
                 </>
               )}
               <div
@@ -8184,16 +8184,16 @@ ${currentCardContext}
               >
                 重命名
               </div>
-              <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+              <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
                 style={{
                   padding: '6px 16px',
                   cursor: 'pointer',
                   fontSize: '13px',
-                  color: '#24292e',
+                  color: themeStyles.textPrimary,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
@@ -8248,10 +8248,10 @@ ${currentCardContext}
                   padding: '6px 16px',
                   cursor: 'pointer',
                   fontSize: '13px',
-                  color: '#24292e',
+                  color: themeStyles.textPrimary,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
@@ -8260,16 +8260,16 @@ ${currentCardContext}
               >
                 剪切
               </div>
-              <div style={{ height: '1px', backgroundColor: '#e1e4e8', margin: '4px 0' }} />
+              <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
                 style={{
                   padding: '6px 16px',
                   cursor: 'pointer',
                   fontSize: '13px',
-                  color: '#d73a49',
+                  color: themeStyles.error,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
@@ -8711,7 +8711,7 @@ ${currentCardContext}
                 padding: isMobile ? '10px 12px' : '4px 8px',
                 minHeight: isMobile ? '44px' : undefined,
                 fontSize: '12px',
-                color: themeStyles.textSecondary,
+                color: themeStyles.textPrimary,
                 textDecoration: 'none',
                 cursor: 'pointer',
                 display: 'inline-flex',
@@ -8721,7 +8721,7 @@ ${currentCardContext}
               ← 返回
             </a>
             {selectedFile && (
-              <div style={{ fontSize: '13px', color: themeStyles.textSecondary }}>
+              <div style={{ fontSize: '13px', color: themeStyles.textPrimary }}>
                 {selectedFile.name}
               </div>
             )}
