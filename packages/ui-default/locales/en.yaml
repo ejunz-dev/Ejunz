@@ -219,6 +219,7 @@ __langname: English
 'Local Repository': Local Repository
 'Lock Scroll': Lock Scroll
 'Locked': Locked
+'Login expired, please log in again.': Login expired, please log in again.
 'Manage Skills': Manage Skills
 'Manuscript Mode': Manuscript Mode
 'Max consecutive': Max consecutive
@@ -330,6 +331,7 @@ __langname: English
 'Save changes': Save changes
 'Save failed': Save failed
 'Save sort failed': Save sort failed
+'Save completed, but {0} error(s) occurred': Save completed, but {0} error(s) occurred
 'Save successful, {0} changes': 'Save successful, {0} changes'
 'Save TTS Configuration': Save TTS Configuration
 'Save': Save
@@ -424,6 +426,9 @@ __langname: English
 'Working': Working
 'Your Answer': Your Answer
 'your custom message': your custom message
+"This domain today": This domain today
+"Today's contribution": Today's contribution
+"Total today (all domains)": Total today (all domains)
 # Base editor
 # Client chat translations
 # Client management translations
@@ -453,6 +458,7 @@ block_edit: Edit Block
 Can be Extended For: Extension
 cards: cards
 Cards: Cards
+Chars: Chars
 client_create: Create Client
 client_detail: Client Detail
 client_domain: Client
@@ -463,10 +469,6 @@ Continue: Continue
 Contribution Wall: Contribution Wall
 Contributions in the past year: Contributions in the past year
 Contributions: Contributions
-"Today's contribution": Today's contribution
-"Total today (all domains)": Total today (all domains)
-"This domain today": This domain today
-Chars: Chars
 Created at: Created at
 discussion_create: Create Discussion
 discussion_detail: Discussion Detail
