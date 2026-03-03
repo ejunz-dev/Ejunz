@@ -2632,7 +2632,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             setPendingCreatesCount(pendingCreatesRef.current.size);
             
             if (response.errors && response.errors.length > 0) {
-              Notification.warning(`保存完成，但有 ${response.errors.length} 个错误`);
+              Notification.warn(i18n('Save completed, but {0} error(s) occurred', response.errors.length));
             }
           } else {
             throw new Error(response.errors?.join(', ') || i18n('Batch save failed'));
@@ -2752,7 +2752,18 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         });
       }
     } catch (error: any) {
-      Notification.error(i18n('Save failed') + ': ' + (error.message || i18n('Unknown error')));
+      const msg = (error?.message || '').toLowerCase();
+      const rawMsg = (error?.rawMessage || '').toLowerCase();
+      const isNotLoggedIn = msg.includes('not logged in') || rawMsg.includes("you're not logged in");
+      if (isNotLoggedIn) {
+        Notification.warn(i18n('Login expired, please log in again.'));
+        const redirect = encodeURIComponent(window.location.pathname + window.location.search);
+        const domainId = (window as any).UiContext?.domainId;
+        const loginPath = domainId ? `/d/${domainId}/login` : '/login';
+        window.location.href = `${loginPath}?redirect=${redirect}`;
+        return;
+      }
+      Notification.error(i18n('Save failed') + ': ' + (error?.message || i18n('Unknown error')));
     } finally {
       setIsCommitting(false);
     }

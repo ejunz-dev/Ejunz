@@ -236,6 +236,7 @@ __langname: 简体中文
 'Local Repository': 本地仓库
 'Lock Scroll': 锁定滚动
 'Locked': 已锁定
+'Login expired, please log in again.': 登录已过期，请重新登录。
 'Manage Skills': 管理 Skills
 'Manuscript Mode': 文稿模式
 'Max consecutive': 最长连续
@@ -351,6 +352,7 @@ __langname: 简体中文
 'Save changes': 保存更改
 'Save failed': 保存失败
 'Save sort failed': 保存排序失败
+'Save completed, but {0} error(s) occurred': 保存完成，但有 {0} 个错误
 'Save successful, {0} changes': 保存成功，共 {0} 项更改
 'Save TTS Configuration': 保存 TTS 配置
 'Save': 保存
@@ -447,6 +449,9 @@ __langname: 简体中文
 'Yes': 是
 'Your Answer': 您的答案
 'your custom message': 您的自定义消息
+"This domain today": 本日本域
+"Today's contribution": 今日贡献
+"Total today (all domains)": 本日所有域
 (None): (无)
 (Not changed): 未更改
 # Base editor
@@ -536,6 +541,7 @@ Category: 分类
 CDN Prefix: CDN 路径前缀
 Change Email: 修改电子邮件
 Change Password: 修改密码
+Chars: 字数
 Chinese: 中文
 Choose the background image in your profile page.: 选择您资料页面的背景图片。
 Clear Marks: 清除标记
@@ -567,10 +573,6 @@ Continue: 继续
 Contribution Wall: 贡献墙
 Contributions in the past year: 过去一年的贡献
 Contributions: 贡献
-"Today's contribution": 今日贡献
-"Total today (all domains)": 本日所有域
-"This domain today": 本日本域
-Chars: 字数
 Copy Email: 复制电子邮件
 Copy from: 复制自
 Copy QQ Number: 复制QQ号
