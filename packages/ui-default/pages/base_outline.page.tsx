@@ -70,6 +70,14 @@ interface BaseDoc {
   currentBranch?: string;
 }
 
+// Card-mounted file info (from backend)
+interface CardFileInfo {
+  _id: string;
+  name: string;
+  size: number;
+  lastModified?: Date | string;
+}
+
 // Card 接口
 interface Card {
   docId: string;
@@ -80,6 +88,7 @@ interface Card {
   createdAt?: string;
   order?: number;
   nodeId?: string;
+  files?: CardFileInfo[];
 }
 
 // FileItem 接口（用于文件树）
@@ -730,7 +739,6 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
   const selectedFileIdRef = useRef<string | null>(null);
   // 用于强制重新渲染的状态（当选中项改变时更新）
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
-  
   // 从数据库加载 outline 的展开状态（使用 expandedOutline 字段，独立于 editor）
   const loadOutlineExpandedState = useCallback((): Set<string> => {
     const expanded = new Set<string>();
@@ -768,6 +776,20 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       (window as any).UiContext.nodeCardsMap = nodeCardsMap;
     }
   }, [nodeCardsMap]);
+
+  const refetchOutlineData = useCallback(async () => {
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    const apiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+    try {
+      const newData: any = await request.get(apiPath);
+      if (newData?.nodes != null || newData?.edges != null) {
+        setBase(prev => ({ ...prev, ...newData, nodes: newData.nodes ?? prev.nodes, edges: newData.edges ?? prev.edges }));
+      }
+      if (newData?.nodeCardsMap != null) setNodeCardsMap(newData.nodeCardsMap);
+    } catch (e) {
+      console.error('[BaseOutline] refetchOutlineData failed:', e);
+    }
+  }, [basePath]);
 
   // WebSocket：连接 base/ws，收到 init/update 时重新拉取 base 数据并刷新界面（工作区保存后 outline 实时更新）
   const outlineWsRef = useRef<{ close: () => void } | null>(null);
@@ -861,6 +883,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       textTertiary: isDark ? '#999' : '#666',
       textOnPrimary: '#fff',
       borderPrimary: isDark ? '#424242' : '#e1e4e8',
+      borderSecondary: isDark ? '#333' : '#eee',
       accent: isDark ? '#55b6e2' : '#1976d2',
     };
   }, [theme]);
@@ -3724,7 +3747,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           </div>
         )}
       </div>
-      
+
       {/* 右键菜单 */}
       {contextMenu && (
         <>

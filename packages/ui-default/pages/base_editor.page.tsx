@@ -21,12 +21,22 @@ interface BaseNode {
   children?: string[];
   expanded?: boolean;
   order?: number;
+  files?: CardFileInfo[];
 }
 
 interface BaseEdge {
   id: string;
   source: string;
   target: string;
+}
+
+/** Aggregated file item for inheritance: file + source (self / descendant node / card) */
+interface AggregatedFileItem extends CardFileInfo {
+  sourceType: 'self' | 'node' | 'card';
+  sourceNodeId: string;
+  sourceNodeText?: string;
+  sourceCardId?: string;
+  sourceCardTitle?: string;
 }
 
 interface BaseDoc {
@@ -51,6 +61,13 @@ interface CardProblem {
   imageNote?: string; 
 }
 
+interface CardFileInfo {
+  _id: string;
+  name: string;
+  size: number;
+  lastModified?: Date | string;
+}
+
 interface Card {
   docId: string;
   cid: number;
@@ -63,6 +80,7 @@ interface Card {
   order?: number;
   nodeId?: string;
   problems?: CardProblem[];
+  files?: CardFileInfo[];
 }
 
 type FileItem = {
@@ -818,6 +836,62 @@ function migrateOrderFields(base: BaseDoc): { base: BaseDoc; needsSave: boolean;
   };
 }
 
+function getDescendantNodeIds(nodeId: string, edges: BaseEdge[]): string[] {
+  const children = edges.filter((e) => e.source === nodeId).map((e) => e.target);
+  let desc: string[] = [];
+  for (const c of children) {
+    desc.push(c);
+    desc = desc.concat(getDescendantNodeIds(c, edges));
+  }
+  return desc;
+}
+
+function getAggregatedFilesForNode(
+  nodeId: string,
+  base: BaseDoc,
+  nodeCardsMap: Record<string, Card[]>,
+): AggregatedFileItem[] {
+  const node = base.nodes.find((n) => n.id === nodeId);
+  const descendants = getDescendantNodeIds(nodeId, base.edges);
+  const result: AggregatedFileItem[] = [];
+  (node?.files || []).forEach((f) => {
+    result.push({
+      ...f,
+      sourceType: 'self',
+      sourceNodeId: nodeId,
+      sourceNodeText: node?.text,
+    });
+  });
+  descendants.forEach((nid) => {
+    const n = base.nodes.find((nn) => nn.id === nid);
+    (n?.files || []).forEach((f) => {
+      result.push({
+        ...f,
+        sourceType: 'node',
+        sourceNodeId: nid,
+        sourceNodeText: n?.text,
+      });
+    });
+  });
+  const nodeIdsToConsider = [nodeId, ...descendants];
+  nodeIdsToConsider.forEach((nid) => {
+    const cards = nodeCardsMap[nid] || [];
+    cards.forEach((card: Card) => {
+      (card.files || []).forEach((f) => {
+        result.push({
+          ...f,
+          sourceType: 'card',
+          sourceNodeId: nid,
+          sourceNodeText: base.nodes.find((nn) => nn.id === nid)?.text,
+          sourceCardId: card.docId,
+          sourceCardTitle: card.title,
+        });
+      });
+    });
+  });
+  return result;
+}
+
 export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docId: string | undefined; initialData: BaseDoc; basePath?: string }) {
   
   const getTheme = useCallback(() => {
@@ -1050,6 +1124,62 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [editingName, setEditingName] = useState<string>('');
   const [pendingDragChanges, setPendingDragChanges] = useState<Set<string>>(new Set());
   const [nodeCardsMapVersion, setNodeCardsMapVersion] = useState(0);
+
+  const refetchEditorData = useCallback(async () => {
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    const apiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+    try {
+      const newData: any = await request.get(apiPath);
+      if (newData?.nodes != null || newData?.edges != null) {
+        setBase(prev => ({ ...prev, ...newData, nodes: newData.nodes ?? prev.nodes, edges: newData.edges ?? prev.edges }));
+      }
+      if ((window as any).UiContext && newData?.nodeCardsMap != null) {
+        (window as any).UiContext.nodeCardsMap = newData.nodeCardsMap;
+      }
+      setNodeCardsMapVersion(v => v + 1);
+    } catch (e) {
+      console.error('[BaseEditor] refetchEditorData failed:', e);
+    }
+  }, [basePath]);
+
+  const handleCardFileInputChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !docId) return;
+    const domainId = (window as any).UiContext?.domainId || 'system';
+    const branch = (window as any).UiContext?.currentBranch || 'main';
+
+    if (pendingNodeUploadRef.current) {
+      const { nodeId } = pendingNodeUploadRef.current;
+      const url = `/d/${domainId}/base/${docId}/node/${nodeId}/files?branch=${encodeURIComponent(branch)}`;
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('filename', file.name);
+      try {
+        await request.postFile(url, formData);
+        Notification.success(i18n('File uploaded.'));
+        await refetchEditorData();
+      } catch (err: any) {
+        Notification.error(err?.message || i18n('Upload failed.'));
+      }
+      pendingNodeUploadRef.current = null;
+    } else if (pendingCardUploadRef.current) {
+      const pending = pendingCardUploadRef.current;
+      const url = `/d/${domainId}/base/${docId}/card/${pending.cardId}/files`;
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('filename', file.name);
+      try {
+        await request.postFile(url, formData);
+        Notification.success(i18n('File uploaded.'));
+        await refetchEditorData();
+      } catch (err: any) {
+        Notification.error(err?.message || i18n('Upload failed.'));
+      }
+      pendingCardUploadRef.current = null;
+    }
+    e.target.value = '';
+  }, [docId, refetchEditorData]);
+
   const dragLeaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dragOverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastDragOverFileRef = useRef<FileItem | null>(null);
@@ -1075,6 +1205,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [sortWindow, setSortWindow] = useState<{ nodeId: string } | null>(null);
   const [importWindow, setImportWindow] = useState<{ nodeId: string } | null>(null);
   const [cardFaceWindow, setCardFaceWindow] = useState<{ file: FileItem } | null>(null);
+  const [cardFileListModal, setCardFileListModal] = useState<{ cardId: string; nodeId: string; cardTitle: string } | null>(null);
+  const [nodeFileListModal, setNodeFileListModal] = useState<{ nodeId: string; nodeTitle: string } | null>(null);
+  const [nodeFileListSortBy, setNodeFileListSortBy] = useState<'name' | 'size' | 'time' | 'source'>('name');
+  const [nodeFileListSortOrder, setNodeFileListSortOrder] = useState<'asc' | 'desc'>('asc');
+  const cardFileInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingCardUploadRef = useRef<{ cardId: string; nodeId: string } | null>(null);
+  const pendingNodeUploadRef = useRef<{ nodeId: string } | null>(null);
   const [cardFaceEditContent, setCardFaceEditContent] = useState('');
   const [pendingCardFaceChanges, setPendingCardFaceChanges] = useState<Record<string, string>>({});
   const cardFaceEditorRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1729,6 +1866,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     
     
     if (file.type === 'node') {
+      setSelectedFile(file);
+      selectedFileRef.current = file;
+      if (!skipUrlUpdate && file.nodeId) {
+        const urlParams = new URLSearchParams(window.location.search);
+        urlParams.set('nodeId', file.nodeId);
+        urlParams.delete('cardId');
+        const newUrl = window.location.pathname + '?' + urlParams.toString();
+        window.history.pushState({ nodeId: file.nodeId }, '', newUrl);
+      }
       return;
     }
     
@@ -1752,6 +1898,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (!skipUrlUpdate && file.type === 'card' && file.cardId) {
       const urlParams = new URLSearchParams(window.location.search);
       urlParams.set('cardId', String(file.cardId));
+      urlParams.delete('nodeId'); // 明确为卡片视图，避免被 nodeId 覆盖
       const newUrl = window.location.pathname + '?' + urlParams.toString();
       window.history.pushState({ cardId: file.cardId }, '', newUrl);
     }
@@ -1798,14 +1945,24 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const cardId = urlParams.get('cardId');
-    
-    if (cardId && fileTree.length > 0) {
-      
-      const cardFile = fileTree.find(f => f.type === 'card' && f.cardId === cardId);
-      if (cardFile && (!selectedFile || selectedFile.id !== cardFile.id)) {
-        
-        
-        handleSelectFile(cardFile, true);
+    const nodeId = urlParams.get('nodeId');
+    const cardIdStr = cardId ? String(cardId) : '';
+    const nodeIdStr = nodeId ? String(nodeId) : '';
+    if (cardIdStr && fileTree.length > 0) {
+      const cardFile = fileTree.find(f => f.type === 'card' && String(f.cardId) === cardIdStr);
+      if (cardFile) {
+        const needSelect = !selectedFile || selectedFile.type !== 'card' || String(selectedFile.cardId) !== cardIdStr;
+        if (needSelect) {
+          handleSelectFile(cardFile, true);
+          return;
+        }
+        return;
+      }
+    }
+    if (nodeIdStr && fileTree.length > 0) {
+      const nodeFile = fileTree.find(f => f.type === 'node' && f.nodeId === nodeIdStr);
+      if (nodeFile && (!selectedFile || selectedFile.type !== 'node' || selectedFile.nodeId !== nodeIdStr)) {
+        handleSelectFile(nodeFile, true);
       }
     }
   }, [fileTree, selectedFile, handleSelectFile]);
@@ -1815,17 +1972,23 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const handlePopState = (event: PopStateEvent) => {
       const urlParams = new URLSearchParams(window.location.search);
       const cardId = urlParams.get('cardId');
-      
-      if (cardId && fileTree.length > 0) {
-        
-        const cardFile = fileTree.find(f => f.type === 'card' && f.cardId === cardId);
-        if (cardFile && (!selectedFile || selectedFile.id !== cardFile.id)) {
-          
+      const nodeId = urlParams.get('nodeId');
+      const cardIdStr = cardId ? String(cardId) : '';
+      const nodeIdStr = nodeId ? String(nodeId) : '';
+      if (cardIdStr && fileTree.length > 0) {
+        const cardFile = fileTree.find(f => f.type === 'card' && String(f.cardId) === cardIdStr);
+        if (cardFile && (!selectedFile || selectedFile.type !== 'card' || String(selectedFile.cardId) !== cardIdStr)) {
           handleSelectFile(cardFile, true);
+        }
+        return;
+      }
+      if (nodeIdStr && fileTree.length > 0) {
+        const nodeFile = fileTree.find(f => f.type === 'node' && f.nodeId === nodeIdStr);
+        if (nodeFile && (!selectedFile || selectedFile.type !== 'node' || selectedFile.nodeId !== nodeIdStr)) {
+          handleSelectFile(nodeFile, true);
         }
       }
     };
-    
     window.addEventListener('popstate', handlePopState);
     return () => {
       window.removeEventListener('popstate', handlePopState);
@@ -6893,6 +7056,12 @@ ${currentCardContext}
       width: '100%',
       backgroundColor: themeStyles.bgPrimary,
     }}>
+      <input
+        ref={cardFileInputRef}
+        type="file"
+        style={{ display: 'none' }}
+        onChange={handleCardFileInputChange}
+      />
       {isMobile && mobileExplorerOpen && (
         <div
           role="presentation"
@@ -7802,6 +7971,284 @@ ${currentCardContext}
       </div>
 
 
+      {/* Card file list modal */}
+      {cardFileListModal && docId && (() => {
+        const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+        const cards = nodeCardsMap[cardFileListModal.nodeId] || [];
+        const card = cards.find((c: Card) => String(c.docId) === cardFileListModal!.cardId);
+        const files = card?.files || [];
+        const downloadUrl = (filename: string) => getBaseUrl(`/${docId}/card/${cardFileListModal.cardId}/file/${encodeURIComponent(filename)}`, docId);
+        const previewUrl = (filename: string) => {
+          const u = downloadUrl(filename);
+          return u + (u.includes('?') ? '&noDisposition=1' : '?noDisposition=1');
+        };
+        const filesListUrl = getBaseUrl(`/${docId}/card/${cardFileListModal.cardId}/files`, docId);
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 1001,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: 'rgba(0,0,0,0.4)',
+            }}
+            onClick={() => setCardFileListModal(null)}
+          >
+            <div
+              style={{
+                backgroundColor: themeStyles.bgPrimary,
+                border: `1px solid ${themeStyles.borderSecondary}`,
+                borderRadius: '8px',
+                boxShadow: theme === 'dark' ? '0 4px 20px rgba(0,0,0,0.5)' : '0 4px 20px rgba(0,0,0,0.2)',
+                minWidth: 320,
+                maxWidth: 480,
+                maxHeight: '70vh',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ padding: '12px 16px', borderBottom: `1px solid ${themeStyles.borderSecondary}`, fontWeight: 600, color: themeStyles.textPrimary }}>
+                {cardFileListModal.cardTitle || 'Card'} — {i18n('Files')}
+              </div>
+              <div style={{ padding: '12px', overflow: 'auto', flex: 1 }}>
+                {files.length === 0 ? (
+                  <div style={{ color: themeStyles.textSecondary, fontSize: 13 }}>{i18n('No files. Use right-click → Upload file.')}</div>
+                ) : (
+                  <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                    {files.map((f) => (
+                      <li
+                        key={f.name}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 0',
+                          borderBottom: `1px solid ${themeStyles.borderSecondary}`,
+                          gap: 8,
+                        }}
+                      >
+                        <a
+                          href={previewUrl(f.name)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: themeStyles.textPrimary, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        >
+                          {f.name}
+                        </a>
+                        <a href={downloadUrl(f.name)} target="_blank" rel="noopener noreferrer" style={{ marginRight: '8px', color: themeStyles.textSecondary }} title={i18n('Download')}>↓</a>
+                        <button
+                          type="button"
+                          style={{
+                            padding: '2px 8px',
+                            fontSize: 12,
+                            border: `1px solid ${themeStyles.borderPrimary}`,
+                            borderRadius: 4,
+                            background: themeStyles.bgButton,
+                            color: themeStyles.textPrimary,
+                            cursor: 'pointer',
+                          }}
+                          onClick={async () => {
+                            try {
+                              await request.post(filesListUrl, { files: [f.name] });
+                              Notification.success(i18n('Deleted.'));
+                              await refetchEditorData();
+                            } catch (err: any) {
+                              Notification.error(err?.message || i18n('Delete failed.'));
+                            }
+                          }}
+                        >
+                          {i18n('Delete')}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div style={{ padding: '8px 16px', borderTop: `1px solid ${themeStyles.borderSecondary}`, textAlign: 'right' }}>
+                <button
+                  type="button"
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: 13,
+                    border: `1px solid ${themeStyles.borderPrimary}`,
+                    borderRadius: 4,
+                    background: themeStyles.bgButton,
+                    color: themeStyles.textPrimary,
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => setCardFileListModal(null)}
+                >
+                  {i18n('Close')}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Node file list modal */}
+      {nodeFileListModal && docId && (() => {
+        const branch = (window as any).UiContext?.currentBranch || 'main';
+        const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+        const aggregatedFiles = getAggregatedFilesForNode(nodeFileListModal.nodeId, base, nodeCardsMap);
+        const sourceSortKey = (row: AggregatedFileItem) =>
+          row.sourceType === 'self' ? '0' : row.sourceType === 'node' ? `1${row.sourceNodeText || row.sourceNodeId}` : `2${row.sourceCardTitle || row.sourceCardId || ''}`;
+        const timeMs = (row: AggregatedFileItem) => {
+          const v = row.lastModified;
+          if (!v) return 0;
+          return (typeof v === 'string' ? new Date(v) : v).getTime();
+        };
+        const sortedFiles = [...aggregatedFiles].sort((a, b) => {
+          const ord = nodeFileListSortOrder === 'asc' ? 1 : -1;
+          if (nodeFileListSortBy === 'name') return ord * (a.name.localeCompare(b.name, undefined, { numeric: true }));
+          if (nodeFileListSortBy === 'size') return ord * (a.size - b.size);
+          if (nodeFileListSortBy === 'time') return ord * (timeMs(a) - timeMs(b));
+          return ord * sourceSortKey(a).localeCompare(sourceSortKey(b));
+        });
+        const nodeFileDownloadUrl = (nid: string, filename: string) => getBaseUrl(`/${docId}/node/${nid}/file/${encodeURIComponent(filename)}?branch=${encodeURIComponent(branch)}`, docId);
+        const cardFileDownloadUrl = (cardId: string, filename: string) => getBaseUrl(`/${docId}/card/${cardId}/file/${encodeURIComponent(filename)}`, docId);
+        const downloadUrlFor = (row: AggregatedFileItem) => row.sourceType === 'card' && row.sourceCardId ? cardFileDownloadUrl(row.sourceCardId, row.name) : nodeFileDownloadUrl(row.sourceNodeId, row.name);
+        const previewUrlFor = (row: AggregatedFileItem) => {
+          const u = downloadUrlFor(row);
+          return u + (u.includes('?') ? '&noDisposition=1' : '?noDisposition=1');
+        };
+        const filesListUrl = getBaseUrl(`/${docId}/node/${nodeFileListModal.nodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 1001,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: 'rgba(0,0,0,0.4)',
+            }}
+            onClick={() => setNodeFileListModal(null)}
+          >
+            <div
+              style={{
+                backgroundColor: themeStyles.bgPrimary,
+                border: `1px solid ${themeStyles.borderSecondary}`,
+                borderRadius: '8px',
+                boxShadow: theme === 'dark' ? '0 4px 20px rgba(0,0,0,0.5)' : '0 4px 20px rgba(0,0,0,0.2)',
+                minWidth: 320,
+                maxWidth: 520,
+                maxHeight: '70vh',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ padding: '12px 16px', borderBottom: `1px solid ${themeStyles.borderSecondary}`, fontWeight: 600, color: themeStyles.textPrimary }}>
+                {nodeFileListModal.nodeTitle || 'Node'} — {i18n('Files')}
+              </div>
+              <div style={{ padding: '12px', overflow: 'auto', flex: 1 }}>
+                {sortedFiles.length === 0 ? (
+                  <div style={{ color: themeStyles.textSecondary, fontSize: 13 }}>{i18n('No files. Use right-click → Upload file.')}</div>
+                ) : (
+                  <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                    {sortedFiles.map((row, idx) => (
+                      <li
+                        key={`${row.sourceType}-${row.sourceNodeId}-${row.sourceCardId || ''}-${row.name}-${idx}`}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 0',
+                          borderBottom: `1px solid ${themeStyles.borderSecondary}`,
+                          gap: 8,
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <a
+                          href={previewUrlFor(row)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: themeStyles.textPrimary, fontSize: 13, flex: '1 1 120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}
+                        >
+                          {row.name}
+                        </a>
+                        <span style={{ fontSize: 12, color: themeStyles.textSecondary, flex: '0 0 auto' }}>
+                          {row.sourceType === 'self' ? i18n('This node') : row.sourceType === 'node' ? (
+                            <button type="button" style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', textDecoration: 'underline' }} onClick={() => { const t = fileTree.find((f) => f.type === 'node' && f.nodeId === row.sourceNodeId); if (t) { setNodeFileListModal(null); handleSelectFile(t); } }}>{i18n('Node')}: {row.sourceNodeText || row.sourceNodeId}</button>
+                          ) : (
+                            <button type="button" style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', textDecoration: 'underline' }} onClick={() => { const t = fileTree.find((f) => f.type === 'card' && f.cardId === row.sourceCardId); if (t) { setNodeFileListModal(null); handleSelectFile(t); } }}>{i18n('Card')}: {row.sourceCardTitle || row.sourceCardId}</button>
+                          )}
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, flex: '0 0 auto' }}>
+                          <a href={downloadUrlFor(row)} target="_blank" rel="noopener noreferrer" style={{ color: themeStyles.textSecondary }} title={i18n('Download')}>↓</a>
+                          {(() => {
+                            const deleteUrl = row.sourceType === 'self'
+                              ? filesListUrl
+                              : row.sourceType === 'card' && row.sourceCardId
+                                ? getBaseUrl(`/${docId}/card/${row.sourceCardId}/files`, docId)
+                                : getBaseUrl(`/${docId}/node/${row.sourceNodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
+                            return (
+                              <button
+                                type="button"
+                                style={{
+                                  padding: '2px 8px',
+                                  fontSize: 12,
+                                  border: `1px solid ${themeStyles.borderPrimary}`,
+                                  borderRadius: 4,
+                                  background: themeStyles.bgButton,
+                                  color: themeStyles.textPrimary,
+                                  cursor: 'pointer',
+                                }}
+                                onClick={async () => {
+                                  try {
+                                    await request.post(deleteUrl, { files: [row.name] });
+                                    Notification.success(i18n('Deleted.'));
+                                    await refetchEditorData();
+                                  } catch (err: any) {
+                                    Notification.error(err?.message || i18n('Delete failed.'));
+                                  }
+                                }}
+                              >
+                                {i18n('Delete')}
+                              </button>
+                            );
+                          })()}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div style={{ padding: '8px 16px', borderTop: `1px solid ${themeStyles.borderSecondary}`, textAlign: 'right' }}>
+                <button
+                  type="button"
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: 13,
+                    border: `1px solid ${themeStyles.borderPrimary}`,
+                    borderRadius: 4,
+                    background: themeStyles.bgButton,
+                    color: themeStyles.textPrimary,
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => setNodeFileListModal(null)}
+                >
+                  {i18n('Close')}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Context menu */}
       {contextMenu && (
         <div
@@ -8021,6 +8468,54 @@ ${currentCardContext}
               >
                 导出为PDF
               </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => {
+                  if (!docId || !contextMenu.file.nodeId) return;
+                  pendingNodeUploadRef.current = { nodeId: contextMenu.file.nodeId };
+                  setContextMenu(null);
+                  cardFileInputRef.current?.click();
+                }}
+              >
+                {i18n('Upload file')}
+              </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => {
+                  const nodeId = contextMenu.file.nodeId || '';
+                  const node = base.nodes.find((n: BaseNode) => n.id === nodeId);
+                  setNodeFileListModal({ nodeId, nodeTitle: node?.text || '' });
+                  setContextMenu(null);
+                }}
+              >
+                {(() => {
+                  const node = base.nodes.find((n: BaseNode) => n.id === contextMenu.file.nodeId);
+                  const n = node?.files?.length ?? 0;
+                  return n > 0 ? i18n('{0} file(s) — Open list', n) : i18n('Open file list');
+                })()}
+              </div>
               <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
                 style={{
@@ -8229,6 +8724,59 @@ ${currentCardContext}
                 onClick={() => handleCopyContent(contextMenu.file)}
               >
                 复制内容
+              </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => {
+                  if (!docId || !contextMenu.file.cardId) return;
+                  pendingCardUploadRef.current = { cardId: String(contextMenu.file.cardId), nodeId: contextMenu.file.nodeId || '' };
+                  setContextMenu(null);
+                  cardFileInputRef.current?.click();
+                }}
+              >
+                {i18n('Upload file')}
+              </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => {
+                  const cardId = contextMenu.file.cardId ? String(contextMenu.file.cardId) : '';
+                  const nodeId = contextMenu.file.nodeId || '';
+                  const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                  const cards = nodeCardsMap[nodeId] || [];
+                  const card = cards.find((c: Card) => String(c.docId) === cardId);
+                  setCardFileListModal({ cardId, nodeId, cardTitle: card?.title || '' });
+                  setContextMenu(null);
+                }}
+              >
+                {(() => {
+                  const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                  const cards = nodeCardsMap[contextMenu.file.nodeId || ''] || [];
+                  const card = cards.find((c: Card) => String(c.docId) === contextMenu.file.cardId);
+                  const n = card?.files?.length ?? 0;
+                  return n > 0 ? i18n('{0} file(s) — Open list', n) : i18n('Open file list');
+                })()}
               </div>
               <div
                 style={{
@@ -8908,6 +9456,190 @@ ${currentCardContext}
                   }}
                 />
               </div>
+            ) : selectedFile?.type === 'node' && selectedFile.nodeId && docId ? (
+              (() => {
+                const branch = (window as any).UiContext?.currentBranch || 'main';
+                const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+                const node = base.nodes.find((n: BaseNode) => n.id === selectedFile!.nodeId);
+                const nodeId = selectedFile!.nodeId!;
+                const aggregatedFiles = getAggregatedFilesForNode(nodeId, base, nodeCardsMap);
+                const nodeFileDownloadUrl = (nid: string, filename: string) => getBaseUrl(`/${docId}/node/${nid}/file/${encodeURIComponent(filename)}?branch=${encodeURIComponent(branch)}`, docId);
+                const cardFileDownloadUrl = (cardId: string, filename: string) => getBaseUrl(`/${docId}/card/${cardId}/file/${encodeURIComponent(filename)}`, docId);
+                const downloadUrlFor = (row: AggregatedFileItem) => row.sourceType === 'card' && row.sourceCardId ? cardFileDownloadUrl(row.sourceCardId, row.name) : nodeFileDownloadUrl(row.sourceNodeId, row.name);
+                const previewUrlFor = (row: AggregatedFileItem) => {
+                  const u = downloadUrlFor(row);
+                  return u + (u.includes('?') ? '&noDisposition=1' : '?noDisposition=1');
+                };
+                const filesListUrl = getBaseUrl(`/${docId}/node/${nodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
+                const formatSize = (bytes: number) => {
+                  if (bytes < 1024) return `${bytes} B`;
+                  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+                  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+                };
+                const formatTime = (v?: Date | string) => {
+                  if (!v) return '—';
+                  const d = typeof v === 'string' ? new Date(v) : v;
+                  return d.toLocaleString();
+                };
+                const toggleSort = (col: 'name' | 'size' | 'time' | 'source') => {
+                  if (nodeFileListSortBy === col) setNodeFileListSortOrder(o => o === 'asc' ? 'desc' : 'asc');
+                  else { setNodeFileListSortBy(col); setNodeFileListSortOrder('asc'); }
+                };
+                const sourceSortKey = (row: AggregatedFileItem) =>
+                  row.sourceType === 'self' ? '0' : row.sourceType === 'node' ? `1${row.sourceNodeText || row.sourceNodeId}` : `2${row.sourceCardTitle || row.sourceCardId || ''}`;
+                const timeMs = (row: AggregatedFileItem) => {
+                  const v = row.lastModified;
+                  if (!v) return 0;
+                  return (typeof v === 'string' ? new Date(v) : v).getTime();
+                };
+                const sortedFiles = [...aggregatedFiles].sort((a, b) => {
+                  const ord = nodeFileListSortOrder === 'asc' ? 1 : -1;
+                  if (nodeFileListSortBy === 'name') return ord * (a.name.localeCompare(b.name, undefined, { numeric: true }));
+                  if (nodeFileListSortBy === 'size') return ord * (a.size - b.size);
+                  if (nodeFileListSortBy === 'time') return ord * (timeMs(a) - timeMs(b));
+                  return ord * sourceSortKey(a).localeCompare(sourceSortKey(b));
+                });
+                const thStyle = () => ({
+                  textAlign: 'left' as const,
+                  padding: '8px 12px',
+                  color: themeStyles.textSecondary,
+                  fontWeight: 600,
+                  cursor: 'pointer' as const,
+                  userSelect: 'none' as const,
+                  whiteSpace: 'nowrap' as const,
+                });
+                const sortIndicator = (col: 'name' | 'size' | 'time' | 'source') =>
+                  nodeFileListSortBy === col ? (nodeFileListSortOrder === 'asc' ? ' ↑' : ' ↓') : '';
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                    <div style={{
+                      padding: '12px 16px',
+                      borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexShrink: 0,
+                      backgroundColor: themeStyles.bgSecondary,
+                    }}>
+                      <span style={{ fontWeight: 600, color: themeStyles.textPrimary, fontSize: '14px' }}>
+                        {node?.text || selectedFile.nodeId} — {i18n('Files')}
+                      </span>
+                      <button
+                        type="button"
+                        style={{
+                          padding: '6px 12px',
+                          fontSize: '13px',
+                          border: `1px solid ${themeStyles.borderPrimary}`,
+                          borderRadius: '4px',
+                          background: themeStyles.bgButton,
+                          color: themeStyles.textPrimary,
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => {
+                          pendingNodeUploadRef.current = { nodeId };
+                          cardFileInputRef.current?.click();
+                        }}
+                      >
+                        {i18n('Upload')}
+                      </button>
+                    </div>
+                    <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
+                      {aggregatedFiles.length === 0 ? (
+                        <div style={{ color: themeStyles.textSecondary, fontSize: '14px', textAlign: 'center', padding: '24px' }}>
+                          {i18n('There are no files currently.')}
+                        </div>
+                      ) : (
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                          <thead>
+                            <tr style={{ borderBottom: `2px solid ${themeStyles.borderPrimary}` }}>
+                              <th style={thStyle()} onClick={() => toggleSort('name')} title={i18n('Sort')}>{i18n('Filename')}{sortIndicator('name')}</th>
+                              <th style={thStyle()} onClick={() => toggleSort('size')} title={i18n('Sort')}>{i18n('Size')}{sortIndicator('size')}</th>
+                              <th style={thStyle()} onClick={() => toggleSort('time')} title={i18n('Sort')}>{i18n('Time')}{sortIndicator('time')}</th>
+                              <th style={thStyle()} onClick={() => toggleSort('source')} title={i18n('Sort')}>{i18n('Source')}{sortIndicator('source')}</th>
+                              <th style={{ textAlign: 'right', padding: '8px 12px', color: themeStyles.textSecondary, fontWeight: 600 }}></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sortedFiles.map((row, idx) => (
+                              <tr key={`${row.sourceType}-${row.sourceNodeId}-${row.sourceCardId || ''}-${row.name}-${idx}`} style={{ borderBottom: `1px solid ${themeStyles.borderSecondary}` }}>
+                                <td style={{ padding: '8px 12px' }}>
+                                  <a href={previewUrlFor(row)} target="_blank" rel="noopener noreferrer" style={{ color: themeStyles.accent, textDecoration: 'none' }}>
+                                    {row.name}
+                                  </a>
+                                </td>
+                                <td style={{ padding: '8px 12px', color: themeStyles.textSecondary }}>{formatSize(row.size)}</td>
+                                <td style={{ padding: '8px 12px', color: themeStyles.textSecondary }}>{formatTime(row.lastModified)}</td>
+                                <td style={{ padding: '8px 12px', color: themeStyles.textSecondary, fontSize: '12px' }}>
+                                  {row.sourceType === 'self' ? (
+                                    i18n('This node')
+                                  ) : row.sourceType === 'node' ? (
+                                    <button
+                                      type="button"
+                                      style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', textDecoration: 'underline', fontSize: '12px' }}
+                                      onClick={() => {
+                                        const target = fileTree.find((f) => f.type === 'node' && f.nodeId === row.sourceNodeId);
+                                        if (target) handleSelectFile(target);
+                                      }}
+                                    >
+                                      {i18n('Node')}: {row.sourceNodeText || row.sourceNodeId}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', textDecoration: 'underline', fontSize: '12px' }}
+                                      onClick={() => {
+                                        const target = fileTree.find((f) => f.type === 'card' && f.cardId === row.sourceCardId);
+                                        if (target) handleSelectFile(target);
+                                      }}
+                                    >
+                                      {i18n('Card')}: {row.sourceCardTitle || row.sourceCardId}
+                                    </button>
+                                  )}
+                                </td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                                  <a href={downloadUrlFor(row)} target="_blank" rel="noopener noreferrer" style={{ marginRight: '8px', color: themeStyles.textSecondary }} title={i18n('Download')}>↓</a>
+                                  {(() => {
+                                    const deleteUrl = row.sourceType === 'self'
+                                      ? filesListUrl
+                                      : row.sourceType === 'card' && row.sourceCardId
+                                        ? getBaseUrl(`/${docId}/card/${row.sourceCardId}/files`, docId)
+                                        : getBaseUrl(`/${docId}/node/${row.sourceNodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
+                                    return (
+                                      <button
+                                        type="button"
+                                        style={{
+                                          padding: '2px 6px',
+                                          fontSize: '12px',
+                                          border: `1px solid ${themeStyles.borderPrimary}`,
+                                          borderRadius: '4px',
+                                          background: 'transparent',
+                                          color: themeStyles.textSecondary,
+                                          cursor: 'pointer',
+                                        }}
+                                        onClick={async () => {
+                                          try {
+                                            await request.post(deleteUrl, { files: [row.name] });
+                                            Notification.success(i18n('Deleted.'));
+                                            await refetchEditorData();
+                                          } catch (err: any) {
+                                            Notification.error(err?.message || i18n('Delete failed.'));
+                                          }
+                                        }}
+                                      >
+                                        {i18n('Delete')}
+                                      </button>
+                                    );
+                                  })()}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()
             ) : (
               <div style={{
                 display: 'flex',
@@ -8917,7 +9649,7 @@ ${currentCardContext}
                 color: themeStyles.textSecondary,
                 fontSize: '14px',
               }}>
-                {selectedFile?.type === 'node' ? '节点不支持编辑，请在 EXPLORER 中重命名' : '请从左侧选择一个卡片'}
+                请从左侧选择一个卡片
               </div>
             )}
           </div>
