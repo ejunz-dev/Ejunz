@@ -3,24 +3,9 @@
 {% set _editor_mode = editorMode or 'base' %}
 {% set _outline_branch_route = 'base_skill_outline_branch' if editorMode == 'skill' else 'base_outline_branch' %}
 <style>
-  body {
-    background: #fff !important;
-  }
-  #panel {
-    background: #fff !important;
-  }
   .outline-editor-root {
-    background: #fff !important;
     min-height: 100vh !important;
     width: 100% !important;
-  }
-  .outline-editor-root ~ *,
-  .outline-editor-root .row,
-  .outline-editor-root .large-9.columns,
-  .outline-editor-root .large-3.columns,
-  .outline-editor-root .section,
-  .outline-editor-root .section__body {
-    background: #fff !important;
   }
   .outline-editor-root .section {
     border: none !important;
