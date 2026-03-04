@@ -824,6 +824,47 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     };
   }, [basePath]);
 
+  const getTheme = useCallback((): 'light' | 'dark' => {
+    try {
+      if ((window as any).Ejunz?.utils?.getTheme) {
+        return (window as any).Ejunz.utils.getTheme();
+      }
+      if ((window as any).UserContext?.theme) {
+        return (window as any).UserContext.theme === 'dark' ? 'dark' : 'light';
+      }
+    } catch (e) {
+      console.warn('Failed to get theme:', e);
+    }
+    return 'light';
+  }, []);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => getTheme());
+  useEffect(() => {
+    const checkTheme = () => {
+      const newTheme = getTheme();
+      if (newTheme !== theme) setTheme(newTheme);
+    };
+    checkTheme();
+    const interval = setInterval(checkTheme, 500);
+    return () => clearInterval(interval);
+  }, [theme, getTheme]);
+  const themeStyles = useMemo(() => {
+    const isDark = theme === 'dark';
+    return {
+      bgPrimary: isDark ? '#121212' : '#fff',
+      bgSecondary: isDark ? '#323334' : '#f6f8fa',
+      bgHover: isDark ? '#424242' : '#f3f4f6',
+      bgSelected: isDark ? '#1e3a5f' : '#e3f2fd',
+      bgButton: isDark ? '#323334' : '#fff',
+      bgButtonActive: isDark ? '#0366d6' : '#1976d6',
+      textPrimary: isDark ? '#eee' : '#24292e',
+      textSecondary: isDark ? '#bdbdbd' : '#586069',
+      textTertiary: isDark ? '#999' : '#666',
+      textOnPrimary: '#fff',
+      borderPrimary: isDark ? '#424242' : '#e1e4e8',
+      accent: isDark ? '#55b6e2' : '#1976d2',
+    };
+  }, [theme]);
+
   // 自动保存展开状态到数据库（带防抖，参考 editor 的实现）
   const expandSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const triggerExpandAutoSave = useCallback(() => {
@@ -1013,12 +1054,13 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     }
   }, []);
 
-  // 设置页面背景色
+  // 设置页面背景色（跟随主题）
   useEffect(() => {
-    document.body.style.backgroundColor = '#fff';
+    const bg = theme === 'dark' ? '#121212' : '#fff';
+    document.body.style.backgroundColor = bg;
     const panel = document.getElementById('panel');
     if (panel) {
-      (panel as HTMLElement).style.backgroundColor = '#fff';
+      (panel as HTMLElement).style.backgroundColor = bg;
     }
     return () => {
       document.body.style.backgroundColor = '';
@@ -1026,7 +1068,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         (panel as HTMLElement).style.backgroundColor = '';
       }
     };
-  }, []);
+  }, [theme]);
 
   // 检查缓存状态（类似 git status）- 优化为异步，避免阻塞
   const checkCacheStatus = useCallback(async () => {
@@ -2804,12 +2846,12 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
   }, [docId, basePath]); // 依赖 docId 和 basePath，当它们变化时重建连接
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', backgroundColor: '#fff', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', backgroundColor: themeStyles.bgPrimary, overflow: 'hidden' }}>
       {/* 工具栏 */}
       <div style={{
         padding: '10px 20px',
-        background: '#f5f5f5',
-        borderBottom: '1px solid #ddd',
+        background: themeStyles.bgSecondary,
+        borderBottom: `1px solid ${themeStyles.borderPrimary}`,
         display: 'flex',
         alignItems: 'center',
         gap: '10px',
@@ -2823,10 +2865,10 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           })()}
           style={{
             padding: '6px 12px',
-            border: '1px solid #ddd',
+            border: `1px solid ${themeStyles.borderPrimary}`,
             borderRadius: '4px',
-            background: '#fff',
-            color: '#333',
+            background: themeStyles.bgButton,
+            color: themeStyles.textPrimary,
             textDecoration: 'none',
             cursor: 'pointer',
             fontWeight: 'bold',
@@ -2847,10 +2889,10 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           })()}
           style={{
             padding: '6px 12px',
-            border: '1px solid #ddd',
+            border: `1px solid ${themeStyles.borderPrimary}`,
             borderRadius: '4px',
-            background: '#fff',
-            color: '#333',
+            background: themeStyles.bgButton,
+            color: themeStyles.textPrimary,
             textDecoration: 'none',
             cursor: 'pointer',
             fontWeight: 'bold',
@@ -2886,10 +2928,10 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             onClick={() => setIsExplorerOpen(true)}
             style={{
               padding: '6px 12px',
-              border: '1px solid #ddd',
+              border: `1px solid ${themeStyles.borderPrimary}`,
               borderRadius: '4px',
-              background: '#fff',
-              color: '#333',
+              background: themeStyles.bgButton,
+              color: themeStyles.textPrimary,
               cursor: 'pointer',
               fontWeight: 'bold',
               display: 'flex',
@@ -2902,13 +2944,13 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             <span>EXPLORER</span>
           </button>
         )}
-        <div style={{ marginLeft: 'auto', fontSize: '14px', color: '#666' }}>
+        <div style={{ marginLeft: 'auto', fontSize: '14px', color: themeStyles.textSecondary }}>
           {base.title} - 文件模式
         </div>
       </div>
 
       {/* 主内容区域 */}
-      <div style={{ display: 'flex', flex: 1, width: '100%', position: 'relative', backgroundColor: '#fff', minHeight: 0, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flex: 1, width: '100%', position: 'relative', backgroundColor: themeStyles.bgPrimary, minHeight: 0, overflow: 'hidden' }}>
         {/* 缓存管理侧边栏 - 暂时注释掉 */}
         {/* {showCachePanel && (
           <div style={{
@@ -3061,8 +3103,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         {/* 左侧文件树侧边栏 */}
         <div style={{
           width: isMobile ? '280px' : '300px',
-          borderRight: '1px solid #e0e0e0',
-          backgroundColor: '#f6f8fa',
+          borderRight: `1px solid ${themeStyles.borderPrimary}`,
+          backgroundColor: themeStyles.bgSecondary,
           overflowY: 'auto',
           overflowX: 'hidden',
           flexShrink: 0,
@@ -3081,7 +3123,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         }}>
           <div style={{ padding: '8px' }} data-file-tree-container>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', padding: '0 8px' }}>
-              <div style={{ fontSize: '12px', fontWeight: '600', color: '#666', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ fontSize: '12px', fontWeight: '600', color: themeStyles.textSecondary, display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span>EXPLORER</span>
                 {isMobile && (
                   <button
@@ -3090,8 +3132,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                       padding: '2px 6px',
                       border: 'none',
                       borderRadius: '3px',
-                      background: '#ddd',
-                      color: '#333',
+                      background: themeStyles.borderPrimary,
+                      color: themeStyles.textPrimary,
                       cursor: 'pointer',
                       fontSize: '12px',
                       fontWeight: 'bold',
@@ -3108,10 +3150,10 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                   style={{
                     padding: '2px 8px',
                     fontSize: '11px',
-                    border: '1px solid #ddd',
+                    border: `1px solid ${themeStyles.borderPrimary}`,
                     borderRadius: '3px',
-                    backgroundColor: explorerMode === 'tree' ? '#1976d2' : '#fff',
-                    color: explorerMode === 'tree' ? '#fff' : '#333',
+                    backgroundColor: explorerMode === 'tree' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                    color: explorerMode === 'tree' ? themeStyles.textOnPrimary : themeStyles.textPrimary,
                     cursor: 'pointer',
                   }}
                   title="文件结构"
@@ -3131,10 +3173,10 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                   style={{
                     padding: '2px 8px',
                     fontSize: '11px',
-                    border: '1px solid #ddd',
+                    border: `1px solid ${themeStyles.borderPrimary}`,
                     borderRadius: '3px',
-                    backgroundColor: explorerMode === 'cache' ? '#1976d2' : '#fff',
-                    color: explorerMode === 'cache' ? '#fff' : '#333',
+                    backgroundColor: explorerMode === 'cache' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                    color: explorerMode === 'cache' ? themeStyles.textOnPrimary : themeStyles.textPrimary,
                     cursor: 'pointer',
                     position: 'relative',
                   }}
@@ -3447,10 +3489,10 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                     padding: `4px ${8 + file.level * 16}px`,
                     cursor: 'pointer',
                     fontSize: '13px',
-                    color: isSelected ? '#1976d2' : (isCached ? '#333' : '#999'),
+                    color: isSelected ? themeStyles.accent : (isCached ? themeStyles.textPrimary : themeStyles.textTertiary),
                     fontWeight: isSelected ? '600' : (isCached ? '600' : 'normal'),
-                    backgroundColor: isSelected ? '#e3f2fd' : 'transparent',
-                    borderLeft: isSelected ? '3px solid #1976d2' : '3px solid transparent',
+                    backgroundColor: isSelected ? themeStyles.bgSelected : 'transparent',
+                    borderLeft: isSelected ? `3px solid ${themeStyles.accent}` : '3px solid transparent',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
@@ -3458,12 +3500,11 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                   }}
                   onMouseEnter={(e) => {
                     if (!isSelected) {
-                      e.currentTarget.style.backgroundColor = '#f5f5f5';
+                      e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                     }
                   }}
                   onMouseLeave={(e) => {
-                    // 总是重置到正确的背景色（根据isSelected状态）
-                    e.currentTarget.style.backgroundColor = isSelected ? '#e3f2fd' : 'transparent';
+                    e.currentTarget.style.backgroundColor = isSelected ? themeStyles.bgSelected : 'transparent';
                   }}
                 >
                   {file.type === 'node' ? (
@@ -3482,7 +3523,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                           cursor: 'pointer',
                           flexShrink: 0,
                           fontSize: '10px',
-                          color: '#666',
+                          color: themeStyles.textTertiary,
                         }}
                       >
                         {expandedNodes.has(file.nodeId || '') ? '▼' : '▶'}
@@ -3505,19 +3546,19 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         {selectedCard ? (
           <div style={{
             flex: 1,
-            borderLeft: '1px solid #e0e0e0',
-            backgroundColor: '#fff',
+            borderLeft: `1px solid ${themeStyles.borderPrimary}`,
+            backgroundColor: themeStyles.bgPrimary,
             overflow: 'auto',
             display: 'flex',
             flexDirection: 'column',
           }}>
             <div style={{
               padding: '16px',
-              borderBottom: '1px solid #e0e0e0',
-              backgroundColor: '#f6f8fa',
+              borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+              backgroundColor: themeStyles.bgSecondary,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: '#333' }}>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: themeStyles.textPrimary }}>
                   {selectedCard.title || '未命名卡片'}
                 </h3>
                 <a
@@ -3538,8 +3579,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                   })()}
                   style={{
                     padding: '6px 12px',
-                    backgroundColor: '#1976d2',
-                    color: '#fff',
+                    backgroundColor: themeStyles.accent,
+                    color: themeStyles.textOnPrimary,
                     textDecoration: 'none',
                     borderRadius: '4px',
                     fontSize: '13px',
@@ -3550,10 +3591,10 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                     transition: 'background-color 0.2s',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#1565c0';
+                    e.currentTarget.style.backgroundColor = theme === 'dark' ? '#4a9fd4' : '#1565c0';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = '#1976d2';
+                    e.currentTarget.style.backgroundColor = themeStyles.accent;
                   }}
                 >
                   <span>✎</span>
@@ -3564,17 +3605,17 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                 <div style={{
                   marginTop: '12px',
                   padding: '8px 12px',
-                  backgroundColor: '#fff',
+                  backgroundColor: themeStyles.bgPrimary,
                   borderRadius: '4px',
-                  border: '1px solid #e0e0e0',
+                  border: `1px solid ${themeStyles.borderPrimary}`,
                 }}>
-                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '6px' }}>
+                  <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '6px' }}>
                     正在缓存同节点下的其他卡片...
                   </div>
                   <div style={{ 
                     width: '100%', 
                     height: '6px', 
-                    backgroundColor: '#e0e0e0', 
+                    backgroundColor: themeStyles.borderPrimary, 
                     borderRadius: '3px',
                     overflow: 'hidden',
                     marginBottom: '4px',
@@ -3586,7 +3627,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                       transition: 'width 0.3s ease',
                     }} />
                   </div>
-                  <div style={{ fontSize: '11px', color: '#999', textAlign: 'center' }}>
+                  <div style={{ fontSize: '11px', color: themeStyles.textTertiary, textAlign: 'center' }}>
                     {cachingProgress.current} / {cachingProgress.total}
                     {cachingProgress.currentCard && ` - ${cachingProgress.currentCard}`}
                   </div>
@@ -3631,19 +3672,19 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         ) : selectedNodeId ? (
           <div style={{
             flex: 1,
-            borderLeft: '1px solid #e0e0e0',
-            backgroundColor: '#fff',
+            borderLeft: `1px solid ${themeStyles.borderPrimary}`,
+            backgroundColor: themeStyles.bgPrimary,
             overflow: 'auto',
             display: 'flex',
             flexDirection: 'column',
           }}>
             <div style={{
               padding: '16px',
-              borderBottom: '1px solid #e0e0e0',
-              backgroundColor: '#f6f8fa',
+              borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+              backgroundColor: themeStyles.bgSecondary,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: '#333' }}>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: themeStyles.textPrimary }}>
                   {base.nodes.find(n => n.id === selectedNodeId)?.text || '未命名节点'}
                 </h3>
               </div>
@@ -3671,10 +3712,12 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         ) : (
           <div style={{
             flex: 1,
+            minHeight: 0,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#999',
+            backgroundColor: themeStyles.bgPrimary,
+            color: themeStyles.textTertiary,
             fontSize: '14px',
           }}>
             请从左侧选择一个节点或卡片
@@ -3708,10 +3751,10 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
               position: 'fixed',
               left: isMobile ? Math.max(10, Math.min(contextMenu.x, window.innerWidth - 190)) : contextMenu.x,
               top: isMobile ? Math.max(10, Math.min(contextMenu.y, window.innerHeight - 100)) : contextMenu.y,
-              backgroundColor: '#fff',
-              border: '1px solid #ddd',
+              backgroundColor: themeStyles.bgPrimary,
+              border: `1px solid ${themeStyles.borderPrimary}`,
               borderRadius: '8px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+              boxShadow: theme === 'dark' ? '0 4px 12px rgba(0,0,0,0.5)' : '0 4px 12px rgba(0,0,0,0.2)',
               zIndex: 1000,
               minWidth: isMobile ? '160px' : '180px',
               padding: '8px 0',
@@ -3727,13 +3770,13 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                     padding: isMobile ? '12px 16px' : '6px 16px',
                     cursor: 'pointer',
                     fontSize: isMobile ? '15px' : '13px',
-                    color: '#24292e',
+                    color: themeStyles.textPrimary,
                     userSelect: 'none',
                     WebkitUserSelect: 'none',
                   }}
                   onMouseEnter={(e) => {
                     if (!isMobile) {
-                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                      e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                     }
                   }}
                   onMouseLeave={(e) => {
@@ -3742,7 +3785,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                     }
                   }}
                   onTouchStart={(e) => {
-                    e.currentTarget.style.backgroundColor = '#f3f4f6';
+                    e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                   }}
                   onTouchEnd={(e) => {
                     e.currentTarget.style.backgroundColor = 'transparent';
@@ -3764,13 +3807,13 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                     padding: isMobile ? '12px 16px' : '6px 16px',
                     cursor: 'pointer',
                     fontSize: isMobile ? '15px' : '13px',
-                    color: '#24292e',
+                    color: themeStyles.textPrimary,
                     userSelect: 'none',
                     WebkitUserSelect: 'none',
                   }}
                   onMouseEnter={(e) => {
                     if (!isMobile) {
-                      e.currentTarget.style.backgroundColor = '#f3f4f6';
+                      e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                     }
                   }}
                   onMouseLeave={(e) => {
@@ -3779,7 +3822,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                     }
                   }}
                   onTouchStart={(e) => {
-                    e.currentTarget.style.backgroundColor = '#f3f4f6';
+                    e.currentTarget.style.backgroundColor = themeStyles.bgHover;
                   }}
                   onTouchEnd={(e) => {
                     e.currentTarget.style.backgroundColor = 'transparent';
