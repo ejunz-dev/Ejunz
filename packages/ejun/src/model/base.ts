@@ -866,7 +866,7 @@ export class CardModel {
     static async update(
         domainId: string,
         docId: ObjectId,
-        updates: Partial<Pick<CardDoc, 'title' | 'content' | 'cardFace' | 'order' | 'nodeId' | 'problems'>>
+        updates: Partial<Pick<CardDoc, 'title' | 'content' | 'cardFace' | 'order' | 'nodeId' | 'problems' | 'files'>>
     ): Promise<void> {
         await document.set(domainId, TYPE_CARD, docId, {
             ...updates,

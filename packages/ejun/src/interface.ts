@@ -308,6 +308,8 @@ export interface BaseNode {
     order?: number; // 节点在同级中的排序顺序
     style?: Record<string, any>; // 自定义样式
     data?: Record<string, any>; // 自定义数据
+    /** Mounted files (uploaded to this node) */
+    files?: FileInfo[];
 }
 
 export interface BaseEdge {
@@ -408,6 +410,8 @@ export interface CardDoc {
         answer: number;       // 正确答案在 options 中的下标
         analysis?: string;    // 解析（可选）
     }[];
+    /** Mounted files (uploaded to this card) */
+    files?: FileInfo[];
 }
 
 // Node document
