@@ -4,7 +4,7 @@ import { Handler, param, route, post, Types, ConnectionHandler } from '../servic
 import { NotFoundError, ForbiddenError, BadRequestError, ValidationError, FileLimitExceededError, FileUploadError, FileExistsError } from '../error';
 import { PRIV, PERM } from '../model/builtin';
 import { BaseModel, CardModel, TYPE_CARD, TYPE_MM } from '../model/base';
-import type { BaseDoc, BaseNode, BaseEdge, CardDoc } from '../interface';
+import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo } from '../interface';
 import * as document from '../model/document';
 import { exec as execCb } from 'child_process';
 import fs from 'fs';
@@ -2979,6 +2979,268 @@ class BaseFileDownloadHandler extends Handler {
 }
 
 /**
+ * Card-mounted files: list, upload, delete
+ */
+class BaseCardFilesHandler extends Handler {
+    base?: BaseDoc;
+    card?: CardDoc | null;
+
+    @param('docId', Types.ObjectId, true)
+    @param('cardId', Types.ObjectId, true)
+    async _prepare(domainId: string, docId: ObjectId, cardId: ObjectId) {
+        this.base = await BaseModel.get(domainId, docId);
+        if (!this.base) throw new NotFoundError('Base not found');
+        if (!this.user.own(this.base)) {
+            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        }
+        this.card = await CardModel.get(domainId, cardId);
+        if (!this.card || this.card.baseDocId.toString() !== docId.toString()) {
+            throw new NotFoundError('Card not found');
+        }
+    }
+
+    @param('docId', Types.ObjectId, true)
+    @param('cardId', Types.ObjectId, true)
+    async get(domainId: string, docId: ObjectId, cardId: ObjectId) {
+        const files = sortFiles(this.card!.files || []).map((file) => {
+            let lastModified: Date | null = null;
+            if (file.lastModified) {
+                lastModified = file.lastModified instanceof Date ? file.lastModified : new Date(file.lastModified);
+            }
+            return { ...file, lastModified };
+        });
+        this.response.body = { files };
+    }
+
+    @param('docId', Types.ObjectId, true)
+    @param('cardId', Types.ObjectId, true)
+    async post(domainId: string, docId: ObjectId, cardId: ObjectId) {
+        if (this.request.files?.file) {
+            const filename = (this.request.body as any)?.filename || this.request.files.file.originalFilename || 'untitled';
+            return this.postUploadFile(domainId, docId, cardId, filename);
+        }
+        if (Array.isArray((this.request.body as any)?.files) && (this.request.body as any).files.length > 0) {
+            return this.postDeleteFiles(domainId, docId, cardId, (this.request.body as any).files);
+        }
+        throw new ValidationError('file or files');
+    }
+
+    @param('docId', Types.ObjectId, true)
+    @param('cardId', Types.ObjectId, true)
+    @post('filename', Types.Filename, true)
+    async postUploadFile(domainId: string, docId: ObjectId, cardId: ObjectId, filename?: string) {
+        if ((this.card!.files?.length || 0) >= system.get('limit.user_files')) {
+            if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('count');
+        }
+        const file = this.request.files?.file;
+        if (!file) throw new ValidationError('file');
+        const size = Math.sum((this.card!.files || []).map((i) => i.size)) + file.size;
+        if (size >= system.get('limit.user_files_size')) {
+            if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('size');
+        }
+        const finalFilename = filename || file.originalFilename || 'untitled';
+        if ((this.card!.files || []).find((i) => i.name === finalFilename)) throw new FileExistsError(finalFilename);
+        const storagePath = `base/${domainId}/${docId.toString()}/card/${cardId.toString()}/${finalFilename}`;
+        await storage.put(storagePath, file.filepath, this.user._id);
+        const meta = await storage.getMeta(storagePath);
+        const payload = { _id: finalFilename, name: finalFilename, ...pick(meta, ['size', 'lastModified', 'etag']) };
+        if (!meta) throw new FileUploadError();
+        const updatedFiles = [...(this.card!.files || []), payload];
+        await CardModel.update(domainId, cardId, { files: updatedFiles });
+        this.response.body = { ok: true, files: updatedFiles };
+    }
+
+    @param('docId', Types.ObjectId, true)
+    @param('cardId', Types.ObjectId, true)
+    @post('files', Types.ArrayOf(Types.Filename))
+    async postDeleteFiles(domainId: string, docId: ObjectId, cardId: ObjectId, files: string[]) {
+        const storagePaths = files.map((name) => `base/${domainId}/${docId.toString()}/card/${cardId.toString()}/${name}`);
+        await Promise.all([
+            storage.del(storagePaths, this.user._id),
+            CardModel.update(domainId, cardId, {
+                files: (this.card!.files || []).filter((i) => !files.includes(i.name)),
+            }),
+        ]);
+        this.response.body = { ok: true };
+    }
+}
+
+/**
+ * Card file download
+ */
+class BaseCardFileDownloadHandler extends Handler {
+    noCheckPermView = true;
+
+    @param('docId', Types.ObjectId, true)
+    @param('cardId', Types.ObjectId, true)
+    @param('filename', Types.Filename)
+    @param('noDisposition', Types.Boolean)
+    async get(domainId: string, docId: ObjectId, cardId: ObjectId, filename: string, noDisposition = false) {
+        const base = await BaseModel.get(domainId, docId);
+        if (!base) throw new NotFoundError('Base not found');
+        const card = await CardModel.get(domainId, cardId);
+        if (!card || card.baseDocId.toString() !== docId.toString()) throw new NotFoundError('Card not found');
+        const target = `base/${domainId}/${docId.toString()}/card/${cardId.toString()}/${filename}`;
+        const file = await storage.getMeta(target);
+        if (!file) throw new NotFoundError(filename);
+        try {
+            this.response.redirect = await storage.signDownloadLink(
+                target, noDisposition ? undefined : filename, false, 'user',
+            );
+            this.response.addHeader('Cache-Control', 'public');
+        } catch (e) {
+            if (e.message.includes('Invalid path')) throw new NotFoundError(filename);
+            throw e;
+        }
+    }
+}
+
+/**
+ * Node-mounted files: list, upload, delete (branch-aware)
+ */
+class BaseNodeFilesHandler extends Handler {
+    base?: BaseDoc;
+    node?: BaseNode;
+    branch?: string;
+
+    @param('docId', Types.ObjectId, true)
+    @param('nodeId', Types.String, true)
+    @param('branch', Types.String, true)
+    async _prepare(domainId: string, docId: ObjectId, nodeId: string, branch?: string) {
+        this.base = await BaseModel.get(domainId, docId);
+        if (!this.base) throw new NotFoundError('Base not found');
+        if (!this.user.own(this.base)) {
+            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        }
+        this.branch = branch || (this.base as any).currentBranch || 'main';
+        const { nodes } = getBranchData(this.base, this.branch);
+        this.node = nodes.find((n) => n.id === nodeId) || null;
+        if (!this.node) throw new NotFoundError('Node not found');
+    }
+
+    @param('docId', Types.ObjectId, true)
+    @param('nodeId', Types.String, true)
+    @param('branch', Types.String, true)
+    async get(domainId: string, docId: ObjectId, nodeId: string, branch?: string) {
+        const files = sortFiles(this.node!.files || []).map((file) => {
+            let lastModified: Date | null = null;
+            if (file.lastModified) {
+                lastModified = file.lastModified instanceof Date ? file.lastModified : new Date(file.lastModified);
+            }
+            return { ...file, lastModified };
+        });
+        this.response.body = { files };
+    }
+
+    @param('docId', Types.ObjectId, true)
+    @param('nodeId', Types.String, true)
+    @param('branch', Types.String, true)
+    async post(domainId: string, docId: ObjectId, nodeId: string, branch?: string) {
+        if (this.request.files?.file) {
+            const filename = (this.request.body as any)?.filename || this.request.files.file.originalFilename || 'untitled';
+            return this.postUploadFile(domainId, docId, nodeId, branch, filename);
+        }
+        if (Array.isArray((this.request.body as any)?.files) && (this.request.body as any).files.length > 0) {
+            return this.postDeleteFiles(domainId, docId, nodeId, branch, (this.request.body as any).files);
+        }
+        throw new ValidationError('file or files');
+    }
+
+    @param('docId', Types.ObjectId, true)
+    @param('nodeId', Types.String, true)
+    @param('branch', Types.String, true)
+    @post('filename', Types.Filename, true)
+    async postUploadFile(domainId: string, docId: ObjectId, nodeId: string, branch?: string, filename?: string) {
+        if ((this.node!.files?.length || 0) >= system.get('limit.user_files')) {
+            if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('count');
+        }
+        const file = this.request.files?.file;
+        if (!file) throw new ValidationError('file');
+        const size = Math.sum((this.node!.files || []).map((i) => i.size)) + file.size;
+        if (size >= system.get('limit.user_files_size')) {
+            if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('size');
+        }
+        const finalFilename = filename || file.originalFilename || 'untitled';
+        if ((this.node!.files || []).find((i) => i.name === finalFilename)) throw new FileExistsError(finalFilename);
+        const storagePath = `base/${domainId}/${docId.toString()}/node/${nodeId}/${finalFilename}`;
+        await storage.put(storagePath, file.filepath, this.user._id);
+        const meta = await storage.getMeta(storagePath);
+        const payload = { _id: finalFilename, name: finalFilename, ...pick(meta, ['size', 'lastModified', 'etag']) };
+        if (!meta) throw new FileUploadError();
+        const updatedFiles = [...(this.node!.files || []), payload];
+        await this.updateNodeFiles(domainId, docId, updatedFiles);
+        this.response.body = { ok: true, files: updatedFiles };
+    }
+
+    @param('docId', Types.ObjectId, true)
+    @param('nodeId', Types.String, true)
+    @param('branch', Types.String, true)
+    @post('files', Types.ArrayOf(Types.Filename))
+    async postDeleteFiles(domainId: string, docId: ObjectId, nodeId: string, branch?: string, files: string[] = []) {
+        const storagePaths = files.map((name) => `base/${domainId}/${docId.toString()}/node/${nodeId}/${name}`);
+        await Promise.all([
+            storage.del(storagePaths, this.user._id),
+            this.updateNodeFiles(domainId, docId, (this.node!.files || []).filter((i) => !files.includes(i.name))),
+        ]);
+        this.response.body = { ok: true };
+    }
+
+    private async updateNodeFiles(domainId: string, docId: ObjectId, files: FileInfo[]) {
+        const base = await BaseModel.get(domainId, docId);
+        if (!base) throw new NotFoundError('Base not found');
+        const branchName = this.branch!;
+        const branchData = { ...(base.branchData || {}) };
+        if (!branchData[branchName]) {
+            branchData[branchName] = { nodes: base.nodes || [], edges: base.edges || [] };
+        }
+        const nodes = [...branchData[branchName].nodes];
+        const idx = nodes.findIndex((n) => n.id === this.node!.id);
+        if (idx < 0) throw new NotFoundError('Node not found');
+        nodes[idx] = { ...nodes[idx], files };
+        branchData[branchName] = { ...branchData[branchName], nodes };
+        const updates: any = { branchData };
+        if (branchName === 'main') {
+            updates.nodes = nodes;
+            updates.edges = branchData[branchName].edges;
+        }
+        await BaseModel.updateFull(domainId, docId, updates);
+    }
+}
+
+/**
+ * Node file download
+ */
+class BaseNodeFileDownloadHandler extends Handler {
+    noCheckPermView = true;
+
+    @param('docId', Types.ObjectId, true)
+    @param('nodeId', Types.String, true)
+    @param('filename', Types.Filename)
+    @param('noDisposition', Types.Boolean)
+    @param('branch', Types.String, true)
+    async get(domainId: string, docId: ObjectId, nodeId: string, filename: string, noDisposition = false, branch?: string) {
+        const base = await BaseModel.get(domainId, docId);
+        if (!base) throw new NotFoundError('Base not found');
+        const branchName = branch || (base as any).currentBranch || 'main';
+        const { nodes } = getBranchData(base, branchName);
+        const node = nodes.find((n) => n.id === nodeId);
+        if (!node) throw new NotFoundError('Node not found');
+        const target = `base/${domainId}/${docId.toString()}/node/${nodeId}/${filename}`;
+        const file = await storage.getMeta(target);
+        if (!file) throw new NotFoundError(filename);
+        try {
+            this.response.redirect = await storage.signDownloadLink(
+                target, noDisposition ? undefined : filename, false, 'user',
+            );
+            this.response.addHeader('Cache-Control', 'public');
+        } catch (e) {
+            if (e.message.includes('Invalid path')) throw new NotFoundError(filename);
+            throw e;
+        }
+    }
+}
+
+/**
  * Base Card Edit Handler
  * 卡片编辑页面
  */
@@ -4954,6 +5216,10 @@ export async function apply(ctx: Context) {
     ctx.Route('base_files', '/base/files', BaseFilesHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_files_branch', '/base/branch/:branch/files', BaseFilesHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_file_download', '/base/file/:filename', BaseFileDownloadHandler);
+    ctx.Route('base_card_files', '/base/:docId/card/:cardId/files', BaseCardFilesHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_card_file_download', '/base/:docId/card/:cardId/file/:filename', BaseCardFileDownloadHandler);
+    ctx.Route('base_node_files', '/base/:docId/node/:nodeId/files', BaseNodeFilesHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_node_file_download', '/base/:docId/node/:nodeId/file/:filename', BaseNodeFileDownloadHandler);
     ctx.Route('base_editor', '/base/editor', BaseEditorHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_editor_branch', '/base/branch/:branch/editor', BaseEditorHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Connection('base_connection', '/base/ws', BaseConnectionHandler);
