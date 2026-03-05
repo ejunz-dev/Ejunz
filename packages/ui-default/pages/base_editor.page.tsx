@@ -1216,6 +1216,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [nodeFileListSortBy, setNodeFileListSortBy] = useState<'name' | 'size' | 'time' | 'source'>('name');
   const [nodeFileListSortOrder, setNodeFileListSortOrder] = useState<'asc' | 'desc'>('asc');
   const [fileListRowMenu, setFileListRowMenu] = useState<{ x: number; y: number; downloadUrl: string; deleteUrl: string; filename: string } | null>(null);
+  const [nodeFileListEditMode, setNodeFileListEditMode] = useState(false);
+  const [selectedFileListRowKeys, setSelectedFileListRowKeys] = useState<Set<string>>(new Set());
   const cardFileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingCardUploadRef = useRef<{ cardId: string; nodeId: string } | null>(null);
   const pendingNodeUploadRef = useRef<{ nodeId: string } | null>(null);
@@ -9586,6 +9588,60 @@ ${currentCardContext}
                 });
                 const sortIndicator = (col: 'name' | 'size' | 'time' | 'source') =>
                   nodeFileListSortBy === col ? (nodeFileListSortOrder === 'asc' ? ' ↑' : ' ↓') : '';
+                const rowKey = (row: AggregatedFileItem, idx: number) => `${row.sourceType}-${row.sourceNodeId}-${row.sourceCardId || ''}-${row.name}-${idx}`;
+                const selectedRows = sortedFiles.filter((row, idx) => selectedFileListRowKeys.has(rowKey(row, idx)));
+                const toggleEditMode = () => {
+                  setNodeFileListEditMode((v) => !v);
+                  setSelectedFileListRowKeys(new Set());
+                };
+                const toggleRow = (key: string) => {
+                  setSelectedFileListRowKeys((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(key)) next.delete(key);
+                    else next.add(key);
+                    return next;
+                  });
+                };
+                const toggleSelectAll = () => {
+                  if (selectedFileListRowKeys.size >= sortedFiles.length) setSelectedFileListRowKeys(new Set());
+                  else setSelectedFileListRowKeys(new Set(sortedFiles.map((row, idx) => rowKey(row, idx))));
+                };
+                const handleBatchDelete = async () => {
+                  try {
+                    for (const row of selectedRows) {
+                      const deleteUrl = row.sourceType === 'self' ? filesListUrl : row.sourceType === 'card' && row.sourceCardId ? getBaseUrl(`/${docId}/card/${row.sourceCardId}/files`, docId) : getBaseUrl(`/${docId}/node/${row.sourceNodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
+                      await request.post(deleteUrl, { files: [row.name] });
+                    }
+                    Notification.success(i18n('Deleted.'));
+                    await refetchEditorData();
+                    setSelectedFileListRowKeys(new Set());
+                  } catch (err: any) {
+                    Notification.error(err?.message || i18n('Delete failed.'));
+                  }
+                };
+                const handleBatchDownload = () => {
+                  selectedRows.forEach((row) => window.open(downloadUrlFor(row), '_blank'));
+                  setSelectedFileListRowKeys(new Set());
+                };
+                const handleBatchCopyMdLinks = async () => {
+                  const text = selectedRows.map((row) => `[](${previewUrlFor(row)})`).join('\n');
+                  try {
+                    await navigator.clipboard.writeText(text);
+                    Notification.success(i18n('Link copied.'));
+                  } catch (e: any) {
+                    Notification.error(e?.message || i18n('Copy failed.'));
+                  }
+                };
+                const toFullUrl = (url: string) => (url.startsWith('http') ? url : `${window.location.origin}${url}`);
+                const handleBatchCopyDownloadLinks = async () => {
+                  const text = selectedRows.map((row) => toFullUrl(downloadUrlFor(row))).join('\n');
+                  try {
+                    await navigator.clipboard.writeText(text);
+                    Notification.success(i18n('Link copied.'));
+                  } catch (e: any) {
+                    Notification.error(e?.message || i18n('Copy failed.'));
+                  }
+                };
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
                     <div style={{
@@ -9596,28 +9652,55 @@ ${currentCardContext}
                       justifyContent: 'space-between',
                       flexShrink: 0,
                       backgroundColor: themeStyles.bgSecondary,
+                      flexWrap: 'wrap',
+                      gap: 8,
                     }}>
                       <span style={{ fontWeight: 600, color: themeStyles.textPrimary, fontSize: '14px' }}>
                         {node?.text || selectedFile.nodeId} — {i18n('Files')}
                       </span>
-                      <button
-                        type="button"
-                        style={{
-                          padding: '6px 12px',
-                          fontSize: '13px',
-                          border: `1px solid ${themeStyles.borderPrimary}`,
-                          borderRadius: '4px',
-                          background: themeStyles.bgButton,
-                          color: themeStyles.textPrimary,
-                          cursor: 'pointer',
-                        }}
-                        onClick={() => {
-                          pendingNodeUploadRef.current = { nodeId };
-                          cardFileInputRef.current?.click();
-                        }}
-                      >
-                        {i18n('Upload')}
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        {nodeFileListEditMode && selectedRows.length > 0 && (
+                          <>
+                            <button type="button" style={{ padding: '6px 10px', fontSize: '12px', border: `1px solid ${themeStyles.borderPrimary}`, borderRadius: '4px', background: themeStyles.bgButton, color: themeStyles.textPrimary, cursor: 'pointer' }} onClick={handleBatchDelete}>{i18n('Delete selected')}</button>
+                            <button type="button" style={{ padding: '6px 10px', fontSize: '12px', border: `1px solid ${themeStyles.borderPrimary}`, borderRadius: '4px', background: themeStyles.bgButton, color: themeStyles.textPrimary, cursor: 'pointer' }} onClick={handleBatchDownload}>{i18n('Download selected')}</button>
+                            <button type="button" style={{ padding: '6px 10px', fontSize: '12px', border: `1px solid ${themeStyles.borderPrimary}`, borderRadius: '4px', background: themeStyles.bgButton, color: themeStyles.textPrimary, cursor: 'pointer' }} onClick={handleBatchCopyMdLinks}>{i18n('Copy md links')}</button>
+                            <button type="button" style={{ padding: '6px 10px', fontSize: '12px', border: `1px solid ${themeStyles.borderPrimary}`, borderRadius: '4px', background: themeStyles.bgButton, color: themeStyles.textPrimary, cursor: 'pointer' }} onClick={handleBatchCopyDownloadLinks}>{i18n('Copy download links')}</button>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '13px',
+                            border: `1px solid ${themeStyles.borderPrimary}`,
+                            borderRadius: '4px',
+                            background: themeStyles.bgButton,
+                            color: themeStyles.textPrimary,
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => {
+                            pendingNodeUploadRef.current = { nodeId };
+                            cardFileInputRef.current?.click();
+                          }}
+                        >
+                          {i18n('Upload')}
+                        </button>
+                        <button
+                          type="button"
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '13px',
+                            border: `1px solid ${themeStyles.borderPrimary}`,
+                            borderRadius: '4px',
+                            background: nodeFileListEditMode ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                            color: themeStyles.textPrimary,
+                            cursor: 'pointer',
+                          }}
+                          onClick={toggleEditMode}
+                        >
+                          {nodeFileListEditMode ? i18n('Done') : i18n('Edit')}
+                        </button>
+                      </div>
                     </div>
                     <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
                       {aggregatedFiles.length === 0 ? (
@@ -9628,7 +9711,12 @@ ${currentCardContext}
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', tableLayout: 'fixed' }}>
                           <thead>
                             <tr style={{ borderBottom: `2px solid ${themeStyles.borderPrimary}` }}>
-                              <th style={{ ...thStyle(), width: '44%', minWidth: 0 }} onClick={() => toggleSort('name')} title={i18n('Sort')}>{i18n('Filename')}{sortIndicator('name')}</th>
+                              {nodeFileListEditMode && (
+                                <th style={{ width: 36, minWidth: 36, padding: '8px 4px', textAlign: 'center', color: themeStyles.textSecondary }}>
+                                  <input type="checkbox" checked={sortedFiles.length > 0 && selectedFileListRowKeys.size >= sortedFiles.length} onChange={toggleSelectAll} title={i18n('Select all')} />
+                                </th>
+                              )}
+                              <th style={{ ...thStyle(), width: nodeFileListEditMode ? '40%' : '44%', minWidth: 0 }} onClick={() => toggleSort('name')} title={i18n('Sort')}>{i18n('Filename')}{sortIndicator('name')}</th>
                               <th style={{ ...thStyle(), width: '12%', minWidth: 0 }} onClick={() => toggleSort('size')} title={i18n('Sort')}>{i18n('Size')}{sortIndicator('size')}</th>
                               <th style={{ ...thStyle(), width: '22%', minWidth: 0 }} onClick={() => toggleSort('time')} title={i18n('Sort')}>{i18n('Time')}{sortIndicator('time')}</th>
                               <th style={{ ...thStyle(), width: '22%', minWidth: 0 }} onClick={() => toggleSort('source')} title={i18n('Sort')}>{i18n('Source')}{sortIndicator('source')}</th>
@@ -9641,9 +9729,10 @@ ${currentCardContext}
                                 : row.sourceType === 'card' && row.sourceCardId
                                   ? getBaseUrl(`/${docId}/card/${row.sourceCardId}/files`, docId)
                                   : getBaseUrl(`/${docId}/node/${row.sourceNodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
+                              const key = rowKey(row, idx);
                               return (
                               <tr
-                                key={`${row.sourceType}-${row.sourceNodeId}-${row.sourceCardId || ''}-${row.name}-${idx}`}
+                                key={key}
                                 style={{ borderBottom: `1px solid ${themeStyles.borderSecondary}` }}
                                 onContextMenu={(e) => {
                                   e.preventDefault();
@@ -9656,6 +9745,11 @@ ${currentCardContext}
                                   });
                                 }}
                               >
+                                {nodeFileListEditMode && (
+                                  <td style={{ width: 36, minWidth: 36, padding: '8px 4px', textAlign: 'center', verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
+                                    <input type="checkbox" checked={selectedFileListRowKeys.has(key)} onChange={() => toggleRow(key)} />
+                                  </td>
+                                )}
                                 <td style={{ padding: '8px 12px', overflow: 'hidden', minWidth: 0 }}>
                                   <a
                                     href={previewUrlFor(row)}
