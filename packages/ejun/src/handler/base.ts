@@ -3015,12 +3015,16 @@ class BaseCardFilesHandler extends Handler {
     @param('docId', Types.ObjectId, true)
     @param('cardId', Types.ObjectId, true)
     async post(domainId: string, docId: ObjectId, cardId: ObjectId) {
+        const body = (this.request.body as any) || {};
         if (this.request.files?.file) {
-            const filename = (this.request.body as any)?.filename || this.request.files.file.originalFilename || 'untitled';
+            const filename = body.filename || this.request.files.file.originalFilename || 'untitled';
             return this.postUploadFile(domainId, docId, cardId, filename);
         }
-        if (Array.isArray((this.request.body as any)?.files) && (this.request.body as any).files.length > 0) {
-            return this.postDeleteFiles(domainId, docId, cardId, (this.request.body as any).files);
+        if (body.fileAction === 'rename' && typeof body.oldName === 'string' && typeof body.newName === 'string') {
+            return this.postRenameFile(domainId, docId, cardId, 'rename', body.oldName, body.newName);
+        }
+        if (Array.isArray(body.files) && body.files.length > 0) {
+            return this.postDeleteFiles(domainId, docId, cardId, body.files);
         }
         throw new ValidationError('file or files');
     }
@@ -3062,6 +3066,27 @@ class BaseCardFilesHandler extends Handler {
             }),
         ]);
         this.response.body = { ok: true };
+    }
+
+    @param('docId', Types.ObjectId, true)
+    @param('cardId', Types.ObjectId, true)
+    @post('operation', Types.String, true)
+    @post('oldName', Types.Filename, true)
+    @post('newName', Types.Filename, true)
+    async postRenameFile(domainId: string, docId: ObjectId, cardId: ObjectId, operation?: string, oldName?: string, newName?: string) {
+        if (operation !== 'rename' || !oldName || !newName) throw new ValidationError('operation, oldName, newName');
+        const prefix = `base/${domainId}/${docId.toString()}/card/${cardId.toString()}`;
+        const oldPath = `${prefix}/${oldName}`;
+        const newPath = `${prefix}/${newName}`;
+        if (!(this.card!.files || []).find((i) => i.name === oldName)) throw new NotFoundError(oldName);
+        if ((this.card!.files || []).find((i) => i.name === newName)) throw new FileExistsError(newName);
+        await storage.rename(oldPath, newPath, this.user._id);
+        const meta = await storage.getMeta(newPath);
+        const updatedFiles = (this.card!.files || []).map((i) =>
+            i.name === oldName ? { _id: newName, name: newName, ...pick(meta || i, ['size', 'lastModified', 'etag']) } : i,
+        );
+        await CardModel.update(domainId, cardId, { files: updatedFiles });
+        this.response.body = { ok: true, files: updatedFiles };
     }
 }
 
@@ -3136,12 +3161,16 @@ class BaseNodeFilesHandler extends Handler {
     @param('nodeId', Types.String, true)
     @param('branch', Types.String, true)
     async post(domainId: string, docId: ObjectId, nodeId: string, branch?: string) {
+        const body = (this.request.body as any) || {};
         if (this.request.files?.file) {
-            const filename = (this.request.body as any)?.filename || this.request.files.file.originalFilename || 'untitled';
+            const filename = body.filename || this.request.files.file.originalFilename || 'untitled';
             return this.postUploadFile(domainId, docId, nodeId, branch, filename);
         }
-        if (Array.isArray((this.request.body as any)?.files) && (this.request.body as any).files.length > 0) {
-            return this.postDeleteFiles(domainId, docId, nodeId, branch, (this.request.body as any).files);
+        if (body.fileAction === 'rename' && typeof body.oldName === 'string' && typeof body.newName === 'string') {
+            return this.postRenameFile(domainId, docId, nodeId, branch, 'rename', body.oldName, body.newName);
+        }
+        if (Array.isArray(body.files) && body.files.length > 0) {
+            return this.postDeleteFiles(domainId, docId, nodeId, branch, body.files);
         }
         throw new ValidationError('file or files');
     }
@@ -3183,6 +3212,28 @@ class BaseNodeFilesHandler extends Handler {
             this.updateNodeFiles(domainId, docId, (this.node!.files || []).filter((i) => !files.includes(i.name))),
         ]);
         this.response.body = { ok: true };
+    }
+
+    @param('docId', Types.ObjectId, true)
+    @param('nodeId', Types.String, true)
+    @param('branch', Types.String, true)
+    @post('operation', Types.String, true)
+    @post('oldName', Types.Filename, true)
+    @post('newName', Types.Filename, true)
+    async postRenameFile(domainId: string, docId: ObjectId, nodeId: string, branch?: string, operation?: string, oldName?: string, newName?: string) {
+        if (operation !== 'rename' || !oldName || !newName) throw new ValidationError('operation, oldName, newName');
+        const prefix = `base/${domainId}/${docId.toString()}/node/${nodeId}`;
+        const oldPath = `${prefix}/${oldName}`;
+        const newPath = `${prefix}/${newName}`;
+        if (!(this.node!.files || []).find((i) => i.name === oldName)) throw new NotFoundError(oldName);
+        if ((this.node!.files || []).find((i) => i.name === newName)) throw new FileExistsError(newName);
+        await storage.rename(oldPath, newPath, this.user._id);
+        const meta = await storage.getMeta(newPath);
+        const updatedFiles = (this.node!.files || []).map((i) =>
+            i.name === oldName ? { _id: newName, name: newName, ...pick(meta || i, ['size', 'lastModified', 'etag']) } : i,
+        );
+        await this.updateNodeFiles(domainId, docId, updatedFiles);
+        this.response.body = { ok: true, files: updatedFiles };
     }
 
     private async updateNodeFiles(domainId: string, docId: ObjectId, files: FileInfo[]) {

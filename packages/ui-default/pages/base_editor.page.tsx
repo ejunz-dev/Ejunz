@@ -3,9 +3,9 @@ import React, { useState, useEffect, useCallback, useMemo, useRef, startTransiti
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
-import { request, i18n } from 'vj/utils';
+import { request, i18n, tpl } from 'vj/utils';
 import Editor from 'vj/components/editor';
-import { Dialog } from 'vj/components/dialog/index';
+import { Dialog, ActionDialog } from 'vj/components/dialog/index';
 import uploadFiles from 'vj/components/upload';
 import { nanoid } from 'nanoid';
 interface BaseNode {
@@ -8944,6 +8944,53 @@ ${currentCardContext}
             }}
           >
             {i18n('Download')}
+          </div>
+          <div
+            style={{
+              padding: '6px 16px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              color: themeStyles.textPrimary,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+            onClick={async () => {
+              const filename = fileListRowMenu!.filename;
+              const $body = $(tpl`
+                <div class="typo" style="min-width: 280px;">
+                  <label>
+                    ${i18n('Rename file')}
+                    <input type="text" name="newName" class="textbox" style="width: 100%; margin-top: 8px;" />
+                  </label>
+                </div>
+              `);
+              $body.find('input[name="newName"]').val(filename);
+              const dialog = new ActionDialog({ $body, width: '360px' } as any);
+              const action = await dialog.open();
+              if (action !== 'ok') {
+                setFileListRowMenu(null);
+                return;
+              }
+              const trimmed = ($body.find('input[name="newName"]').val() as string || '').trim();
+              if (!trimmed || trimmed === filename) {
+                setFileListRowMenu(null);
+                return;
+              }
+              try {
+                await request.post(fileListRowMenu!.deleteUrl, { fileAction: 'rename', oldName: filename, newName: trimmed });
+                Notification.success(i18n('Renamed.'));
+                await refetchEditorData();
+              } catch (err: any) {
+                Notification.error(err?.message || i18n('Rename failed.'));
+              }
+              setFileListRowMenu(null);
+            }}
+          >
+            {i18n('Rename')}
           </div>
           <div
             style={{
