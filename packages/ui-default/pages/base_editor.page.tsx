@@ -9767,6 +9767,7 @@ ${currentCardContext}
                               <th style={{ ...thStyle(), width: '12%', minWidth: 0 }} onClick={() => toggleSort('size')} title={i18n('Sort')}>{i18n('Size')}{sortIndicator('size')}</th>
                               <th style={{ ...thStyle(), width: '22%', minWidth: 0 }} onClick={() => toggleSort('time')} title={i18n('Sort')}>{i18n('Time')}{sortIndicator('time')}</th>
                               <th style={{ ...thStyle(), width: '22%', minWidth: 0 }} onClick={() => toggleSort('source')} title={i18n('Sort')}>{i18n('Source')}{sortIndicator('source')}</th>
+                              {isMobile && <th style={{ width: 44, minWidth: 44, padding: '8px 4px', color: themeStyles.textSecondary }} aria-label={i18n('Actions')} />}
                             </tr>
                           </thead>
                           <tbody>
@@ -9809,6 +9810,40 @@ ${currentCardContext}
                                     {row.name}
                                   </a>
                                 </td>
+                                {isMobile && (
+                                  <td style={{ width: 44, minWidth: 44, padding: '8px 4px', verticalAlign: 'middle', textAlign: 'center' }}>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                        setFileListRowMenu({
+                                          x: Math.min(rect.left, window.innerWidth - 160),
+                                          y: rect.bottom + 4,
+                                          downloadUrl: downloadUrlFor(row),
+                                          deleteUrl,
+                                          filename: row.name,
+                                        });
+                                      }}
+                                      style={{
+                                        width: 36,
+                                        height: 36,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        border: 'none',
+                                        background: 'transparent',
+                                        color: themeStyles.textSecondary,
+                                        cursor: 'pointer',
+                                        fontSize: '18px',
+                                        borderRadius: '4px',
+                                      }}
+                                      aria-label={i18n('Actions')}
+                                    >
+                                      ⋯
+                                    </button>
+                                  </td>
+                                )}
                                 <td style={{ padding: '8px 12px', color: themeStyles.textSecondary, overflow: 'hidden', minWidth: 0 }}>{formatSize(row.size)}</td>
                                 <td style={{ padding: '8px 12px', color: themeStyles.textSecondary, overflow: 'hidden', minWidth: 0 }}>{formatTime(row.lastModified)}</td>
                                 <td style={{ padding: '8px 12px', color: themeStyles.textSecondary, fontSize: '12px', overflow: 'hidden', minWidth: 0 }}>
