@@ -193,6 +193,51 @@ async function previewOffice(link, src) {
   if (action === 'download') window.open(link);
 }
 
+/** Preview by link/filename/filesize (e.g. from React / base_editor). Same preview behavior as /file page (video, image, pdf, office); no edit/save. */
+export async function previewFileByUrl(link: string, filename: string, filesize = 0) {
+  if (!link || !filename) return null;
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  if (['zip', 'rar', '7z'].includes(ext) || filesize > 8 * 1024 * 1024) {
+    const id = nanoid();
+    const dialog = new ActionDialog({
+      $body: tpl.typoMsg(i18n('Cannot preview this file. Download now?')),
+      $action: [
+        tpl`<button class="rounded button" data-action="copy" id="copy-${id}">${i18n('Copy Link')}</button>`,
+        tpl`<button class="rounded button" data-action="cancel">${i18n('Cancel')}</button>`,
+        tpl`<button class="primary rounded button" data-action="ok">${i18n('Ok')}</button>`,
+      ],
+    });
+    bindCopyLink(id, link);
+    const action = await dialog.open();
+    if (action === 'ok') window.open(link);
+    return null;
+  }
+  if (['mp4', 'webm', 'ogg'].includes(ext)) return previewVideo(link);
+  if (['png', 'jpeg', 'jpg', 'gif', 'webp', 'bmp'].includes(ext)) return previewImage(link);
+  if (ext === 'pdf') return previewPDF(`${link}${link.includes('?') ? '&' : '?'}noDisposition=1`);
+  Notification.info(i18n('Loading file...'));
+  try {
+    const { url } = await request.get(link, {}, { headers: { Pragma: 'no-cache' } });
+    if (/^(doc|xls|ppt)x?$/.test(ext)) return previewOffice(link, url);
+  } catch (e) {
+    Notification.error(i18n('Failed to load file: {0}', e.message));
+    throw e;
+  }
+  const id = nanoid();
+  const dialog = new ActionDialog({
+    $body: tpl.typoMsg(i18n('Cannot preview this file. Download now?')),
+    $action: [
+      tpl`<button class="rounded button" data-action="copy" id="copy-${id}">${i18n('Copy Link')}</button>`,
+      tpl`<button class="rounded button" data-action="cancel">${i18n('Cancel')}</button>`,
+      tpl`<button class="primary rounded button" data-action="ok">${i18n('Ok')}</button>`,
+    ],
+  });
+  bindCopyLink(id, link);
+  const action = await dialog.open();
+  if (action === 'ok') window.open(link);
+  return null;
+}
+
 export async function previewFile(ev?, type = '') {
   if (ev?.metaKey || ev?.ctrlKey || ev?.shiftKey) return null;
   if (ev) ev.preventDefault();
@@ -257,5 +302,5 @@ const dataPreviewPage = new AutoloadPage('dataPreview', () => {
   $(document).on('click', '[data-preview]', previewFile);
 });
 
-window.Ejunz.components.preview = { startEdit, previewFile, previewImage };
+window.Ejunz.components.preview = { startEdit, previewFile, previewFileByUrl, previewImage };
 export default dataPreviewPage;
