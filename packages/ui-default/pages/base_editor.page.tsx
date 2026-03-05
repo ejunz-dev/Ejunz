@@ -1143,37 +1143,36 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   }, [basePath]);
 
   const handleCardFileInputChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !docId) return;
+    const fileList = e.target.files;
+    if (!fileList?.length || !docId) {
+      if (fileList && fileList.length === 0) {
+        Notification.warn(i18n('No file selected.'));
+      }
+      e.target.value = '';
+      return;
+    }
+    const files = Array.from(fileList);
     const domainId = (window as any).UiContext?.domainId || 'system';
     const branch = (window as any).UiContext?.currentBranch || 'main';
 
     if (pendingNodeUploadRef.current) {
       const { nodeId } = pendingNodeUploadRef.current;
       const url = `/d/${domainId}/base/${docId}/node/${nodeId}/files?branch=${encodeURIComponent(branch)}`;
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('filename', file.name);
       try {
-        await request.postFile(url, formData);
-        Notification.success(i18n('File uploaded.'));
+        await uploadFiles(url, files, {});
         await refetchEditorData();
-      } catch (err: any) {
-        Notification.error(err?.message || i18n('Upload failed.'));
+      } catch (_err) {
+        // Notification already shown by uploadFiles
       }
       pendingNodeUploadRef.current = null;
     } else if (pendingCardUploadRef.current) {
       const pending = pendingCardUploadRef.current;
       const url = `/d/${domainId}/base/${docId}/card/${pending.cardId}/files`;
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('filename', file.name);
       try {
-        await request.postFile(url, formData);
-        Notification.success(i18n('File uploaded.'));
+        await uploadFiles(url, files, {});
         await refetchEditorData();
-      } catch (err: any) {
-        Notification.error(err?.message || i18n('Upload failed.'));
+      } catch (_err) {
+        // Notification already shown by uploadFiles
       }
       pendingCardUploadRef.current = null;
     }
@@ -7059,6 +7058,7 @@ ${currentCardContext}
       <input
         ref={cardFileInputRef}
         type="file"
+        multiple
         style={{ display: 'none' }}
         onChange={handleCardFileInputChange}
       />
