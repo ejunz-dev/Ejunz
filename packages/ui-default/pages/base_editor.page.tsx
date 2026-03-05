@@ -1179,6 +1179,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     e.target.value = '';
   }, [docId, refetchEditorData]);
 
+  const handleFilePreviewClick = useCallback(async (e: React.MouseEvent<HTMLAnchorElement>, link: string, filename: string, size: number) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    const { previewFileByUrl } = await import('vj/components/preview/preview.page');
+    await previewFileByUrl(link, filename, size);
+  }, []);
+
   const dragLeaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dragOverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastDragOverFileRef = useRef<FileItem | null>(null);
@@ -8032,13 +8039,16 @@ ${currentCardContext}
                           padding: '8px 0',
                           borderBottom: `1px solid ${themeStyles.borderSecondary}`,
                           gap: 8,
+                          minWidth: 0,
                         }}
                       >
                         <a
                           href={previewUrl(f.name)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          style={{ color: themeStyles.textPrimary, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          title={f.name}
+                          style={{ color: themeStyles.textPrimary, fontSize: 13, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
+                          onClick={(ev) => handleFilePreviewClick(ev, previewUrl(f.name), f.name, f.size || 0)}
                         >
                           {f.name}
                         </a>
@@ -8169,22 +8179,25 @@ ${currentCardContext}
                           padding: '8px 0',
                           borderBottom: `1px solid ${themeStyles.borderSecondary}`,
                           gap: 8,
-                          flexWrap: 'wrap',
+                          flexWrap: 'nowrap',
+                          minWidth: 0,
                         }}
                       >
                         <a
                           href={previewUrlFor(row)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          style={{ color: themeStyles.textPrimary, fontSize: 13, flex: '1 1 120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}
+                          title={row.name}
+                          style={{ color: themeStyles.textPrimary, fontSize: 13, flex: '1 1 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, cursor: 'pointer' }}
+                          onClick={(ev) => handleFilePreviewClick(ev, previewUrlFor(row), row.name, row.size)}
                         >
                           {row.name}
                         </a>
-                        <span style={{ fontSize: 12, color: themeStyles.textSecondary, flex: '0 0 auto' }}>
+                        <span style={{ fontSize: 12, color: themeStyles.textSecondary, flex: '0 1 45%', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {row.sourceType === 'self' ? i18n('This node') : row.sourceType === 'node' ? (
-                            <button type="button" style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', textDecoration: 'underline' }} onClick={() => { const t = fileTree.find((f) => f.type === 'node' && f.nodeId === row.sourceNodeId); if (t) { setNodeFileListModal(null); handleSelectFile(t); } }}>{i18n('Node')}: {row.sourceNodeText || row.sourceNodeId}</button>
+                            <button type="button" title={`${i18n('Node')}: ${row.sourceNodeText || row.sourceNodeId}`} style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', textDecoration: 'underline', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => { const t = fileTree.find((f) => f.type === 'node' && f.nodeId === row.sourceNodeId); if (t) { setNodeFileListModal(null); handleSelectFile(t); } }}>{i18n('Node')}: {row.sourceNodeText || row.sourceNodeId}</button>
                           ) : (
-                            <button type="button" style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', textDecoration: 'underline' }} onClick={() => { const t = fileTree.find((f) => f.type === 'card' && f.cardId === row.sourceCardId); if (t) { setNodeFileListModal(null); handleSelectFile(t); } }}>{i18n('Card')}: {row.sourceCardTitle || row.sourceCardId}</button>
+                            <button type="button" title={`${i18n('Card')}: ${row.sourceCardTitle || row.sourceCardId}`} style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', textDecoration: 'underline', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => { const t = fileTree.find((f) => f.type === 'card' && f.cardId === row.sourceCardId); if (t) { setNodeFileListModal(null); handleSelectFile(t); } }}>{i18n('Card')}: {row.sourceCardTitle || row.sourceCardId}</button>
                           )}
                         </span>
                         <span style={{ display: 'flex', alignItems: 'center', gap: 4, flex: '0 0 auto' }}>
@@ -9549,33 +9562,41 @@ ${currentCardContext}
                           {i18n('There are no files currently.')}
                         </div>
                       ) : (
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', tableLayout: 'fixed' }}>
                           <thead>
                             <tr style={{ borderBottom: `2px solid ${themeStyles.borderPrimary}` }}>
-                              <th style={thStyle()} onClick={() => toggleSort('name')} title={i18n('Sort')}>{i18n('Filename')}{sortIndicator('name')}</th>
-                              <th style={thStyle()} onClick={() => toggleSort('size')} title={i18n('Sort')}>{i18n('Size')}{sortIndicator('size')}</th>
-                              <th style={thStyle()} onClick={() => toggleSort('time')} title={i18n('Sort')}>{i18n('Time')}{sortIndicator('time')}</th>
-                              <th style={thStyle()} onClick={() => toggleSort('source')} title={i18n('Sort')}>{i18n('Source')}{sortIndicator('source')}</th>
-                              <th style={{ textAlign: 'right', padding: '8px 12px', color: themeStyles.textSecondary, fontWeight: 600 }}></th>
+                              <th style={{ ...thStyle(), width: '44%', minWidth: 0 }} onClick={() => toggleSort('name')} title={i18n('Sort')}>{i18n('Filename')}{sortIndicator('name')}</th>
+                              <th style={{ ...thStyle(), width: '10%', minWidth: 0 }} onClick={() => toggleSort('size')} title={i18n('Sort')}>{i18n('Size')}{sortIndicator('size')}</th>
+                              <th style={{ ...thStyle(), width: '20%', minWidth: 0 }} onClick={() => toggleSort('time')} title={i18n('Sort')}>{i18n('Time')}{sortIndicator('time')}</th>
+                              <th style={{ ...thStyle(), width: '14%', minWidth: 0 }} onClick={() => toggleSort('source')} title={i18n('Sort')}>{i18n('Source')}{sortIndicator('source')}</th>
+                              <th style={{ textAlign: 'right', padding: '8px 12px', color: themeStyles.textSecondary, fontWeight: 600, width: '12%' }}></th>
                             </tr>
                           </thead>
                           <tbody>
                             {sortedFiles.map((row, idx) => (
                               <tr key={`${row.sourceType}-${row.sourceNodeId}-${row.sourceCardId || ''}-${row.name}-${idx}`} style={{ borderBottom: `1px solid ${themeStyles.borderSecondary}` }}>
-                                <td style={{ padding: '8px 12px' }}>
-                                  <a href={previewUrlFor(row)} target="_blank" rel="noopener noreferrer" style={{ color: themeStyles.accent, textDecoration: 'none' }}>
+                                <td style={{ padding: '8px 12px', overflow: 'hidden', minWidth: 0 }}>
+                                  <a
+                                    href={previewUrlFor(row)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title={row.name}
+                                    style={{ color: themeStyles.accent, textDecoration: 'none', cursor: 'pointer', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                    onClick={(ev) => handleFilePreviewClick(ev, previewUrlFor(row), row.name, row.size)}
+                                  >
                                     {row.name}
                                   </a>
                                 </td>
-                                <td style={{ padding: '8px 12px', color: themeStyles.textSecondary }}>{formatSize(row.size)}</td>
-                                <td style={{ padding: '8px 12px', color: themeStyles.textSecondary }}>{formatTime(row.lastModified)}</td>
-                                <td style={{ padding: '8px 12px', color: themeStyles.textSecondary, fontSize: '12px' }}>
+                                <td style={{ padding: '8px 12px', color: themeStyles.textSecondary, overflow: 'hidden', minWidth: 0 }}>{formatSize(row.size)}</td>
+                                <td style={{ padding: '8px 12px', color: themeStyles.textSecondary, overflow: 'hidden', minWidth: 0 }}>{formatTime(row.lastModified)}</td>
+                                <td style={{ padding: '8px 12px', color: themeStyles.textSecondary, fontSize: '12px', overflow: 'hidden', minWidth: 0 }}>
                                   {row.sourceType === 'self' ? (
-                                    i18n('This node')
+                                    <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i18n('This node')}</span>
                                   ) : row.sourceType === 'node' ? (
                                     <button
                                       type="button"
-                                      style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', textDecoration: 'underline', fontSize: '12px' }}
+                                      title={`${i18n('Node')}: ${row.sourceNodeText || row.sourceNodeId}`}
+                                      style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', textDecoration: 'underline', fontSize: '12px', display: 'block', width: '100%', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}
                                       onClick={() => {
                                         const target = fileTree.find((f) => f.type === 'node' && f.nodeId === row.sourceNodeId);
                                         if (target) handleSelectFile(target);
@@ -9586,7 +9607,8 @@ ${currentCardContext}
                                   ) : (
                                     <button
                                       type="button"
-                                      style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', textDecoration: 'underline', fontSize: '12px' }}
+                                      title={`${i18n('Card')}: ${row.sourceCardTitle || row.sourceCardId}`}
+                                      style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', textDecoration: 'underline', fontSize: '12px', display: 'block', width: '100%', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}
                                       onClick={() => {
                                         const target = fileTree.find((f) => f.type === 'card' && f.cardId === row.sourceCardId);
                                         if (target) handleSelectFile(target);
