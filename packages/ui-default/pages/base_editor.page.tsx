@@ -1215,6 +1215,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [nodeFileListModal, setNodeFileListModal] = useState<{ nodeId: string; nodeTitle: string } | null>(null);
   const [nodeFileListSortBy, setNodeFileListSortBy] = useState<'name' | 'size' | 'time' | 'source'>('name');
   const [nodeFileListSortOrder, setNodeFileListSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [fileListRowMenu, setFileListRowMenu] = useState<{ x: number; y: number; downloadUrl: string; deleteUrl: string; filename: string } | null>(null);
   const cardFileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingCardUploadRef = useRef<{ cardId: string; nodeId: string } | null>(null);
   const pendingNodeUploadRef = useRef<{ nodeId: string } | null>(null);
@@ -8041,6 +8042,16 @@ ${currentCardContext}
                           gap: 8,
                           minWidth: 0,
                         }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setFileListRowMenu({
+                            x: e.clientX,
+                            y: e.clientY,
+                            downloadUrl: downloadUrl(f.name),
+                            deleteUrl: filesListUrl,
+                            filename: f.name,
+                          });
+                        }}
                       >
                         <a
                           href={previewUrl(f.name)}
@@ -8052,30 +8063,6 @@ ${currentCardContext}
                         >
                           {f.name}
                         </a>
-                        <a href={downloadUrl(f.name)} target="_blank" rel="noopener noreferrer" style={{ marginRight: '8px', color: themeStyles.textSecondary }} title={i18n('Download')}>↓</a>
-                        <button
-                          type="button"
-                          style={{
-                            padding: '2px 8px',
-                            fontSize: 12,
-                            border: `1px solid ${themeStyles.borderPrimary}`,
-                            borderRadius: 4,
-                            background: themeStyles.bgButton,
-                            color: themeStyles.textPrimary,
-                            cursor: 'pointer',
-                          }}
-                          onClick={async () => {
-                            try {
-                              await request.post(filesListUrl, { files: [f.name] });
-                              Notification.success(i18n('Deleted.'));
-                              await refetchEditorData();
-                            } catch (err: any) {
-                              Notification.error(err?.message || i18n('Delete failed.'));
-                            }
-                          }}
-                        >
-                          {i18n('Delete')}
-                        </button>
                       </li>
                     ))}
                   </ul>
@@ -8182,6 +8169,21 @@ ${currentCardContext}
                           flexWrap: 'nowrap',
                           minWidth: 0,
                         }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          const deleteUrl = row.sourceType === 'self'
+                            ? filesListUrl
+                            : row.sourceType === 'card' && row.sourceCardId
+                              ? getBaseUrl(`/${docId}/card/${row.sourceCardId}/files`, docId)
+                              : getBaseUrl(`/${docId}/node/${row.sourceNodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
+                          setFileListRowMenu({
+                            x: e.clientX,
+                            y: e.clientY,
+                            downloadUrl: downloadUrlFor(row),
+                            deleteUrl,
+                            filename: row.name,
+                          });
+                        }}
                       >
                         <a
                           href={previewUrlFor(row)}
@@ -8199,41 +8201,6 @@ ${currentCardContext}
                           ) : (
                             <button type="button" title={`${i18n('Card')}: ${row.sourceCardTitle || row.sourceCardId}`} style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', textDecoration: 'underline', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={() => { const t = fileTree.find((f) => f.type === 'card' && f.cardId === row.sourceCardId); if (t) { setNodeFileListModal(null); handleSelectFile(t); } }}>{i18n('Card')}: {row.sourceCardTitle || row.sourceCardId}</button>
                           )}
-                        </span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, flex: '0 0 auto' }}>
-                          <a href={downloadUrlFor(row)} target="_blank" rel="noopener noreferrer" style={{ color: themeStyles.textSecondary }} title={i18n('Download')}>↓</a>
-                          {(() => {
-                            const deleteUrl = row.sourceType === 'self'
-                              ? filesListUrl
-                              : row.sourceType === 'card' && row.sourceCardId
-                                ? getBaseUrl(`/${docId}/card/${row.sourceCardId}/files`, docId)
-                                : getBaseUrl(`/${docId}/node/${row.sourceNodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
-                            return (
-                              <button
-                                type="button"
-                                style={{
-                                  padding: '2px 8px',
-                                  fontSize: 12,
-                                  border: `1px solid ${themeStyles.borderPrimary}`,
-                                  borderRadius: 4,
-                                  background: themeStyles.bgButton,
-                                  color: themeStyles.textPrimary,
-                                  cursor: 'pointer',
-                                }}
-                                onClick={async () => {
-                                  try {
-                                    await request.post(deleteUrl, { files: [row.name] });
-                                    Notification.success(i18n('Deleted.'));
-                                    await refetchEditorData();
-                                  } catch (err: any) {
-                                    Notification.error(err?.message || i18n('Delete failed.'));
-                                  }
-                                }}
-                              >
-                                {i18n('Delete')}
-                              </button>
-                            );
-                          })()}
                         </span>
                       </li>
                     ))}
@@ -8910,8 +8877,103 @@ ${currentCardContext}
         </div>
       )}
 
+      {/* File list row context menu (Copy link / Download / Delete) */}
+      {fileListRowMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            left: fileListRowMenu.x,
+            top: fileListRowMenu.y,
+            backgroundColor: themeStyles.bgPrimary,
+            border: `1px solid ${themeStyles.borderSecondary}`,
+            borderRadius: '4px',
+            boxShadow: theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.15)',
+            zIndex: 1100,
+            minWidth: '140px',
+            padding: '4px 0',
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <div
+            style={{
+              padding: '6px 16px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              color: themeStyles.textPrimary,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+            onClick={async () => {
+              const path = fileListRowMenu!.downloadUrl.startsWith('http') ? fileListRowMenu!.downloadUrl : fileListRowMenu!.downloadUrl;
+              const previewPath = path + (path.includes('?') ? '&noDisposition=1' : '?noDisposition=1');
+              const md = `[](${previewPath})`;
+              try {
+                await navigator.clipboard.writeText(md);
+                Notification.success(i18n('Link copied.'));
+              } catch (err: any) {
+                Notification.error(err?.message || i18n('Copy failed.'));
+              }
+              setFileListRowMenu(null);
+            }}
+          >
+            {i18n('Copy link')}
+          </div>
+          <div
+            style={{
+              padding: '6px 16px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              color: themeStyles.textPrimary,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+            onClick={() => {
+              window.open(fileListRowMenu!.downloadUrl, '_blank');
+              setFileListRowMenu(null);
+            }}
+          >
+            {i18n('Download')}
+          </div>
+          <div
+            style={{
+              padding: '6px 16px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              color: themeStyles.textPrimary,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+            onClick={async () => {
+              try {
+                await request.post(fileListRowMenu!.deleteUrl, { files: [fileListRowMenu!.filename] });
+                Notification.success(i18n('Deleted.'));
+                await refetchEditorData();
+              } catch (err: any) {
+                Notification.error(err?.message || i18n('Delete failed.'));
+              }
+              setFileListRowMenu(null);
+            }}
+          >
+            {i18n('Delete')}
+          </div>
+        </div>
+      )}
+
       {/* Click outside to close menu */}
-      {(contextMenu || emptyAreaContextMenu) && (
+      {(contextMenu || emptyAreaContextMenu || fileListRowMenu) && (
         <div
           style={{
             position: 'fixed',
@@ -8924,6 +8986,7 @@ ${currentCardContext}
           onClick={() => {
             setContextMenu(null);
             setEmptyAreaContextMenu(null);
+            setFileListRowMenu(null);
           }}
         />
       )}
@@ -9566,15 +9629,33 @@ ${currentCardContext}
                           <thead>
                             <tr style={{ borderBottom: `2px solid ${themeStyles.borderPrimary}` }}>
                               <th style={{ ...thStyle(), width: '44%', minWidth: 0 }} onClick={() => toggleSort('name')} title={i18n('Sort')}>{i18n('Filename')}{sortIndicator('name')}</th>
-                              <th style={{ ...thStyle(), width: '10%', minWidth: 0 }} onClick={() => toggleSort('size')} title={i18n('Sort')}>{i18n('Size')}{sortIndicator('size')}</th>
-                              <th style={{ ...thStyle(), width: '20%', minWidth: 0 }} onClick={() => toggleSort('time')} title={i18n('Sort')}>{i18n('Time')}{sortIndicator('time')}</th>
-                              <th style={{ ...thStyle(), width: '14%', minWidth: 0 }} onClick={() => toggleSort('source')} title={i18n('Sort')}>{i18n('Source')}{sortIndicator('source')}</th>
-                              <th style={{ textAlign: 'right', padding: '8px 12px', color: themeStyles.textSecondary, fontWeight: 600, width: '12%' }}></th>
+                              <th style={{ ...thStyle(), width: '12%', minWidth: 0 }} onClick={() => toggleSort('size')} title={i18n('Sort')}>{i18n('Size')}{sortIndicator('size')}</th>
+                              <th style={{ ...thStyle(), width: '22%', minWidth: 0 }} onClick={() => toggleSort('time')} title={i18n('Sort')}>{i18n('Time')}{sortIndicator('time')}</th>
+                              <th style={{ ...thStyle(), width: '22%', minWidth: 0 }} onClick={() => toggleSort('source')} title={i18n('Sort')}>{i18n('Source')}{sortIndicator('source')}</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {sortedFiles.map((row, idx) => (
-                              <tr key={`${row.sourceType}-${row.sourceNodeId}-${row.sourceCardId || ''}-${row.name}-${idx}`} style={{ borderBottom: `1px solid ${themeStyles.borderSecondary}` }}>
+                            {sortedFiles.map((row, idx) => {
+                              const deleteUrl = row.sourceType === 'self'
+                                ? filesListUrl
+                                : row.sourceType === 'card' && row.sourceCardId
+                                  ? getBaseUrl(`/${docId}/card/${row.sourceCardId}/files`, docId)
+                                  : getBaseUrl(`/${docId}/node/${row.sourceNodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
+                              return (
+                              <tr
+                                key={`${row.sourceType}-${row.sourceNodeId}-${row.sourceCardId || ''}-${row.name}-${idx}`}
+                                style={{ borderBottom: `1px solid ${themeStyles.borderSecondary}` }}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  setFileListRowMenu({
+                                    x: e.clientX,
+                                    y: e.clientY,
+                                    downloadUrl: downloadUrlFor(row),
+                                    deleteUrl,
+                                    filename: row.name,
+                                  });
+                                }}
+                              >
                                 <td style={{ padding: '8px 12px', overflow: 'hidden', minWidth: 0 }}>
                                   <a
                                     href={previewUrlFor(row)}
@@ -9618,43 +9699,8 @@ ${currentCardContext}
                                     </button>
                                   )}
                                 </td>
-                                <td style={{ padding: '8px 12px', textAlign: 'right' }}>
-                                  <a href={downloadUrlFor(row)} target="_blank" rel="noopener noreferrer" style={{ marginRight: '8px', color: themeStyles.textSecondary }} title={i18n('Download')}>↓</a>
-                                  {(() => {
-                                    const deleteUrl = row.sourceType === 'self'
-                                      ? filesListUrl
-                                      : row.sourceType === 'card' && row.sourceCardId
-                                        ? getBaseUrl(`/${docId}/card/${row.sourceCardId}/files`, docId)
-                                        : getBaseUrl(`/${docId}/node/${row.sourceNodeId}/files?branch=${encodeURIComponent(branch)}`, docId);
-                                    return (
-                                      <button
-                                        type="button"
-                                        style={{
-                                          padding: '2px 6px',
-                                          fontSize: '12px',
-                                          border: `1px solid ${themeStyles.borderPrimary}`,
-                                          borderRadius: '4px',
-                                          background: 'transparent',
-                                          color: themeStyles.textSecondary,
-                                          cursor: 'pointer',
-                                        }}
-                                        onClick={async () => {
-                                          try {
-                                            await request.post(deleteUrl, { files: [row.name] });
-                                            Notification.success(i18n('Deleted.'));
-                                            await refetchEditorData();
-                                          } catch (err: any) {
-                                            Notification.error(err?.message || i18n('Delete failed.'));
-                                          }
-                                        }}
-                                      >
-                                        {i18n('Delete')}
-                                      </button>
-                                    );
-                                  })()}
-                                </td>
                               </tr>
-                            ))}
+                            ); })}
                           </tbody>
                         </table>
                       )}
