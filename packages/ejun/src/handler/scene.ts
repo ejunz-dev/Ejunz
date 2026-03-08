@@ -618,7 +618,7 @@ export class SceneEventEditHandler extends Handler<Context> {
                         updatedAt: event.updatedAt instanceof Date ? event.updatedAt.toISOString() : event.updatedAt,
                     };
                     
-                    // 确保 targets 数组存在且格式正确
+                    // Ensure targets array exists and has correct shape
                     if (cleanedEvent.targets && Array.isArray(cleanedEvent.targets)) {
                         cleanedEvent.targets = cleanedEvent.targets.map((target: any) => ({
                             targetNodeId: target.targetNodeId,
@@ -628,9 +628,12 @@ export class SceneEventEditHandler extends Handler<Context> {
                             targetAction: target.targetAction,
                             targetValue: target.targetValue !== undefined ? target.targetValue : null,
                             order: target.order !== undefined ? target.order : 0,
+                            triggerType: target.triggerType === 'echo' ? 'echo' : 'single',
+                            echoDelayMs: target.echoDelayMs,
+                            initialState: target.initialState,
                         }));
                     } else {
-                        // 如果没有 targets，设置为空数组（不应该发生，但为了安全）
+                        // Fallback to empty array if no targets
                         cleanedEvent.targets = [];
                     }
                     
@@ -710,6 +713,8 @@ export class SceneEventEditHandler extends Handler<Context> {
             targetValue,
             targets,
             enabled,
+            triggerLimit,
+            triggerDelay,
         } = this.request.body;
         
         const sidNum = parseInt(sid, 10);
@@ -830,11 +835,19 @@ export class SceneEventEditHandler extends Handler<Context> {
                     throw new ValidationError('target.targetClientId');
                 }
 
+                const triggerType = target.triggerType === 'echo' ? 'echo' : 'single';
+                const echoDelayMs = triggerType === 'echo' && target.echoDelayMs != null && target.echoDelayMs !== ''
+                    ? (typeof target.echoDelayMs === 'number' ? target.echoDelayMs : parseInt(target.echoDelayMs, 10))
+                    : undefined;
+                const initialState = target.initialState === 'on' || target.initialState === 'off' ? target.initialState : undefined;
                 processedTargets.push({
                     targetClientId: targetClientIdNum,
                     targetWidgetName: target.targetWidgetName,
                     targetAction: target.targetAction,
                     order: target.order !== undefined ? target.order : processedTargets.length,
+                    triggerType,
+                    echoDelayMs,
+                    initialState,
                 });
             } else {
                 // Node设备触发效果
@@ -856,12 +869,20 @@ export class SceneEventEditHandler extends Handler<Context> {
                     throw new ValidationError('target.targetDeviceId');
                 }
 
+                const triggerType = target.triggerType === 'echo' ? 'echo' : 'single';
+                const echoDelayMs = triggerType === 'echo' && target.echoDelayMs != null && target.echoDelayMs !== ''
+                    ? (typeof target.echoDelayMs === 'number' ? target.echoDelayMs : parseInt(target.echoDelayMs, 10))
+                    : undefined;
+                const initialState = target.initialState === 'on' || target.initialState === 'off' ? target.initialState : undefined;
                 processedTargets.push({
                     targetNodeId: targetNodeIdNum,
                     targetDeviceId: target.targetDeviceId,
                     targetAction: target.targetAction,
                     targetValue: target.targetValue,
                     order: target.order !== undefined ? target.order : processedTargets.length,
+                    triggerType,
+                    echoDelayMs,
+                    initialState,
                 });
             }
         }
@@ -941,6 +962,8 @@ export class SceneEventEditHandler extends Handler<Context> {
             enabled: enabled !== undefined ? (enabled === true || enabled === 'true' || enabled === '1') : true,
             owner: this.user._id,
         };
+        if (triggerLimit !== undefined) eventData.triggerLimit = typeof triggerLimit === 'string' ? parseInt(triggerLimit, 10) : triggerLimit;
+        if (triggerDelay !== undefined) eventData.triggerDelay = typeof triggerDelay === 'string' ? parseInt(triggerDelay, 10) : triggerDelay;
 
         if (sourceGsiPathStr !== undefined) {
             // GSI数据监听源
@@ -1006,6 +1029,8 @@ export class SceneEventEditHandler extends Handler<Context> {
             sourceAction,
             targets,
             enabled,
+            triggerLimit,
+            triggerDelay,
         } = this.request.body;
         
         const sidNum = parseInt(sid, 10);
@@ -1037,6 +1062,8 @@ export class SceneEventEditHandler extends Handler<Context> {
         if (description !== undefined) update.description = description;
         if (sourceAction !== undefined) update.sourceAction = sourceAction;
         if (enabled !== undefined) update.enabled = enabled === true || enabled === 'true' || enabled === '1';
+        if (triggerLimit !== undefined) update.triggerLimit = triggerLimit === '' || triggerLimit === null ? undefined : (typeof triggerLimit === 'string' ? parseInt(triggerLimit, 10) : triggerLimit);
+        if (triggerDelay !== undefined) update.triggerDelay = triggerDelay === '' || triggerDelay === null ? undefined : (typeof triggerDelay === 'string' ? parseInt(triggerDelay, 10) : triggerDelay);
 
         // 处理监听源更新：支持GSI、Client组件或Node设备
         // 优先判断GSI数据：如果request.body中存在sourceGsiPath字段，就认为是GSI类型
@@ -1147,12 +1174,20 @@ export class SceneEventEditHandler extends Handler<Context> {
                         throw new ValidationError('target.targetClientId');
                     }
 
+                    const triggerType = target.triggerType === 'echo' ? 'echo' : 'single';
+                    const echoDelayMs = triggerType === 'echo' && target.echoDelayMs != null && target.echoDelayMs !== ''
+                        ? (typeof target.echoDelayMs === 'number' ? target.echoDelayMs : parseInt(target.echoDelayMs, 10))
+                        : undefined;
+                    const initialState = target.initialState === 'on' || target.initialState === 'off' ? target.initialState : undefined;
                     processedTargets.push({
                         targetClientId: targetClientIdNum,
                         targetWidgetName: target.targetWidgetName,
                         targetAction: target.targetAction,
                         targetValue: target.targetValue,
                         order: target.order !== undefined ? target.order : processedTargets.length,
+                        triggerType,
+                        echoDelayMs,
+                        initialState,
                     });
                 } else {
                     // Node设备触发效果
@@ -1174,12 +1209,20 @@ export class SceneEventEditHandler extends Handler<Context> {
                         throw new ValidationError('target.targetDeviceId');
                     }
 
+                    const triggerType = target.triggerType === 'echo' ? 'echo' : 'single';
+                    const echoDelayMs = triggerType === 'echo' && target.echoDelayMs != null && target.echoDelayMs !== ''
+                        ? (typeof target.echoDelayMs === 'number' ? target.echoDelayMs : parseInt(target.echoDelayMs, 10))
+                        : undefined;
+                    const initialState = target.initialState === 'on' || target.initialState === 'off' ? target.initialState : undefined;
                     processedTargets.push({
                         targetNodeId: targetNodeIdNum,
                         targetDeviceId: target.targetDeviceId,
                         targetAction: target.targetAction,
                         targetValue: target.targetValue,
                         order: target.order !== undefined ? target.order : processedTargets.length,
+                        triggerType,
+                        echoDelayMs,
+                        initialState,
                     });
                 }
             }
@@ -1738,7 +1781,7 @@ export class SceneLogsConnectionHandler extends ConnectionHandler<Context> {
     }
 }
 
-// 执行单个触发效果
+// Execute a single trigger effect
 async function executeTargetAction(
     sceneId: number,
     eventId: number,
@@ -1965,10 +2008,10 @@ async function executeTargetAction(
     }
 }
 
-// 执行场景事件（支持多个触发效果）
+// Execute scene event (multiple trigger effects)
 async function executeSceneEvent(event: any, domainId: string, ctx: Context) {
     try {
-        // 验证 targets 数组
+        // Validate targets array
         if (!event.targets || !Array.isArray(event.targets) || event.targets.length === 0) {
             logger.warn('No targets found for event: sceneId=%d, eventId=%d', event.sceneId, event.eid);
             addSceneLog(event.sceneId, 'error', 
@@ -1977,13 +2020,27 @@ async function executeSceneEvent(event: any, domainId: string, ctx: Context) {
             return;
         }
 
-        // 按顺序执行所有触发效果
+        // Execute all trigger effects in order; echo type runs again after echoDelayMs
         const targetsToExecute = event.targets.sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
 
-        // 按顺序执行所有触发效果
+        // First set all effects with initialState to that state (on/off)
+        for (const target of targetsToExecute) {
+            if (target.initialState === 'on' || target.initialState === 'off') {
+                const initialTarget = { ...target, targetAction: target.initialState };
+                await executeTargetAction(event.sceneId, event.eid, event.name, initialTarget, domainId, ctx);
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
+
+        // Then execute each effect's action (and echo if configured)
         for (const target of targetsToExecute) {
             await executeTargetAction(event.sceneId, event.eid, event.name, target, domainId, ctx);
-            // 添加小延迟，避免同时执行多个命令导致的问题
+            const echoMs = target.triggerType === 'echo' ? (target.echoDelayMs || 0) : 0;
+            if (echoMs > 0) {
+                logger.debug('Target (order %d) will echo after %d ms', target.order, echoMs);
+                setTimeout(() => executeTargetAction(event.sceneId, event.eid, event.name, target, domainId, ctx), echoMs);
+            }
+            // Small delay between effects to avoid command overlap
             await new Promise(resolve => setTimeout(resolve, 100));
         }
     } catch (error: any) {
