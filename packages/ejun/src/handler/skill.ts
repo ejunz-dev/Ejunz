@@ -122,6 +122,10 @@ class SkillDataHandler extends BaseDataHandler {
                 nodeCardsMap[card.nodeId].push(card);
             }
         }
+        for (const nodeId of Object.keys(nodeCardsMap)) {
+            nodeCardsMap[nodeId].sort((a, b) =>
+                (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
+        }
         this.response.body = {
             ...skillsBase,
             nodes,

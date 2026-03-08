@@ -766,7 +766,8 @@ export class CardModel {
     }
 
     /**
-     * 创建 Card
+     * Create a card.
+     * @param order Optional; if omitted, uses max(order)+1 for the node so new cards sort last when order is missing.
      */
     static async create(
         domainId: string,
@@ -777,8 +778,19 @@ export class CardModel {
         content: string = '',
         ip?: string,
         problems?: CardDoc['problems'],
+        order?: number,
     ): Promise<ObjectId> {
         const newCid = await this.generateNextCid(domainId, baseDocId, nodeId);
+
+        let orderValue = order;
+        if (orderValue === undefined) {
+            const lastByOrder = await document.getMulti(domainId, TYPE_CARD, { baseDocId, nodeId })
+                .sort({ order: -1 })
+                .limit(1)
+                .project({ order: 1 })
+                .toArray() as { order?: number }[];
+            orderValue = (lastByOrder[0]?.order ?? -1) + 1;
+        }
 
         const payload: Partial<CardDoc> = {
             docType: TYPE_CARD,
@@ -793,6 +805,7 @@ export class CardModel {
             updateAt: new Date(),
             views: 0,
             createdAt: new Date(),
+            order: orderValue,
         };
         if (problems && problems.length > 0) {
             (payload as any).problems = problems;
