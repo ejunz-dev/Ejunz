@@ -484,11 +484,14 @@ declare module './model/scene' {
             targetWidgetName?: string; // Client组件控制
             targetAction: string;
             targetValue?: any;
-            order?: number; // 执行顺序
+            order?: number; // Execution order
+            triggerType?: 'single' | 'echo'; // Trigger effect type: single or echo (default single)
+            echoDelayMs?: number; // For echo: delay in ms before executing again
+            initialState?: 'on' | 'off'; // Initial state (on/off), applied to all effects before actions when event triggers
         }>;
-        enabled: boolean; // 是否启用此事件
-        triggerLimit?: number; // 触发次数限制（0表示不限制，-1表示只触发一次）
-        triggerDelay?: number; // 延时触发时间（毫秒）
+        enabled: boolean; // Whether this event is enabled
+        triggerLimit?: number; // Max trigger count (0 = unlimited, -1 = once)
+        triggerDelay?: number; // Delay before trigger (ms)
         createdAt: Date;
         updatedAt: Date;
         owner: number; // 用户 ID
