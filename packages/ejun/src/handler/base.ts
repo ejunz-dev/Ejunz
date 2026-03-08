@@ -3738,10 +3738,11 @@ export class BaseBatchSaveHandler extends Handler {
         
         for (const nodeUpdate of nodeUpdates) {
             try {
-                await BaseModel.updateNode(actualDomainId, docId, nodeUpdate.nodeId, {
-                    text: nodeUpdate.text,
-                    order: nodeUpdate.order,
-                });
+                const updates: Partial<BaseNode> = {};
+                if (nodeUpdate.text != null) updates.text = nodeUpdate.text;
+                if (nodeUpdate.order != null) updates.order = nodeUpdate.order;
+                if (Object.keys(updates).length === 0) continue;
+                await BaseModel.updateNode(actualDomainId, docId, nodeUpdate.nodeId, updates);
             } catch (error: any) {
                 errors.push(`更新节点失败: ${error.message || '未知错误'}`);
             }
