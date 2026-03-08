@@ -143,6 +143,8 @@ class SceneEventModel {
             sourceAction: event.sourceAction,
             targets: event.targets,
             enabled: event.enabled !== undefined ? event.enabled : true,
+            triggerLimit: event.triggerLimit,
+            triggerDelay: event.triggerDelay,
             createdAt: now,
             updatedAt: now,
             owner: event.owner,

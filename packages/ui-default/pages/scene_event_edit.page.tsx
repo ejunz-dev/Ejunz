@@ -23,13 +23,16 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 interface TargetAction {
-  targetNodeId?: number; // Node设备控制
-  targetDeviceId?: string; // Node设备控制
-  targetClientId?: number; // Client组件控制
-  targetWidgetName?: string; // Client组件控制
+  targetNodeId?: number; // Node device control
+  targetDeviceId?: string; // Node device control
+  targetClientId?: number; // Client component control
+  targetWidgetName?: string; // Client component control
   targetAction: string;
   targetValue?: any;
   order?: number;
+  triggerType?: 'single' | 'echo'; // Trigger effect type: single or echo
+  echoDelayMs?: number; // For echo: delay in ms before executing again
+  initialState?: 'on' | 'off'; // Initial state (on/off), applied before actions when event triggers
 }
 
 interface SceneEventData {
@@ -49,8 +52,8 @@ interface SceneEventData {
   targetAction?: string; // 向后兼容
   targetValue?: any; // 向后兼容
   enabled: boolean;
-  triggerLimit?: number; // 触发次数限制（0表示不限制，-1表示只触发一次）
-  triggerDelay?: number; // 延时触发时间（毫秒）
+  triggerLimit?: number; // Max trigger count (0 = unlimited, -1 = once)
+  triggerDelay?: number; // Delay before trigger (ms)
 }
 
 declare global {
@@ -65,22 +68,21 @@ declare global {
   }
 }
 
-// 自定义触发效果节点
+// Trigger effect node (target action)
 const TargetActionNode = ({ data, selected }: { data: any; selected: boolean }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [config, setConfig] = useState(data.config || {});
 
-  // 当data.config更新时，同步更新本地state（如果不在编辑状态）
+  // Sync local state when data.config updates (when not editing)
   useEffect(() => {
     if (!isEditing && data.config) {
       setConfig(data.config);
     }
   }, [data.config, isEditing]);
 
-  // 当config变化且不在编辑状态时，立即更新父组件（确保保存后的状态同步）
+  // When config changes and not editing, update parent (keep saved state in sync)
   useEffect(() => {
     if (data.onUpdate && !isEditing && config) {
-      // 使用setTimeout确保状态更新完成后再调用onUpdate
       const timer = setTimeout(() => {
         data.onUpdate(config);
       }, 0);
@@ -93,30 +95,25 @@ const TargetActionNode = ({ data, selected }: { data: any; selected: boolean }) 
   }, []);
 
   const handleSave = useCallback(() => {
-    // 使用函数式更新确保获取最新的config值
+    // Use functional update to get latest config
     setConfig((currentConfig) => {
-      // 确保config中有targetAction（如果选择了的话）
       const finalConfig = { ...currentConfig };
       if (!finalConfig.targetAction) {
         if (finalConfig.targetType === 'client') {
-          // Client组件类型，如果没有选择动作，默认使用'on'
           finalConfig.targetAction = 'on';
         } else if (finalConfig.targetType === 'node') {
-          // Node设备类型，如果没有选择动作，默认使用'on'
           finalConfig.targetAction = 'on';
         }
       }
-      
-      // 立即更新父组件状态
       if (data.onUpdate) {
         data.onUpdate(finalConfig);
       }
-      
       return finalConfig;
     });
-    
-    // 然后退出编辑状态
-    setIsEditing(false);
+    // Defer closing edit to next task to avoid ResizeObserver loop when node size changes
+    setTimeout(() => {
+      setIsEditing(false);
+    }, 0);
   }, [data]);
 
   const handleDelete = useCallback(() => {
@@ -189,6 +186,8 @@ const TargetActionNode = ({ data, selected }: { data: any; selected: boolean }) 
                 <div>Client: {config.targetClientName || config.targetClientId}</div>
                 <div>组件: {config.targetWidgetName || '-'}</div>
                 <div>动作: {config.targetAction === 'on' ? '显示' : config.targetAction === 'off' ? '隐藏' : '切换'}</div>
+                {config.initialState != null && <div>初始: {config.initialState === 'on' ? '开' : '关'}</div>}
+                <div>触发: {config.triggerType === 'echo' ? `回声 ${((config.echoDelayMs ?? 0) / 1000)}秒` : '单次'}</div>
               </>
             ) : (
               <>
@@ -197,6 +196,8 @@ const TargetActionNode = ({ data, selected }: { data: any; selected: boolean }) 
             <div>设备: {config.targetDeviceName || config.targetDeviceId}</div>
             <div>动作: {config.targetAction === 'on' ? '开启' : config.targetAction === 'off' ? '关闭' : '切换'}</div>
             {config.targetValue && <div>值: {String(config.targetValue)}</div>}
+                {config.initialState != null && <div>初始: {config.initialState === 'on' ? '开' : '关'}</div>}
+                <div>触发: {config.triggerType === 'echo' ? `回声 ${((config.echoDelayMs ?? 0) / 1000)}秒` : '单次'}</div>
               </>
             )}
           </div>
@@ -283,6 +284,18 @@ const TargetActionNode = ({ data, selected }: { data: any; selected: boolean }) 
             </select>
           </div>
           <div style={{ marginBottom: '8px' }}>
+            <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>初始状态</label>
+            <select
+              value={config.initialState ?? ''}
+              onChange={(e) => setConfig({ ...config, initialState: e.target.value === '' ? undefined : e.target.value as 'on' | 'off' })}
+              style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+            >
+              <option value="">不设置</option>
+              <option value="on">开</option>
+              <option value="off">关</option>
+            </select>
+          </div>
+          <div style={{ marginBottom: '8px' }}>
             <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>值（可选）</label>
             <input
               type="text"
@@ -340,6 +353,72 @@ const TargetActionNode = ({ data, selected }: { data: any; selected: boolean }) 
                   <option value="toggle">切换</option>
                 </select>
               </div>
+              <div style={{ marginBottom: '8px' }}>
+                <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>初始状态</label>
+                <select
+                  value={config.initialState ?? ''}
+                  onChange={(e) => setConfig({ ...config, initialState: e.target.value === '' ? undefined : e.target.value as 'on' | 'off' })}
+                  style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                >
+                  <option value="">不设置</option>
+                  <option value="on">开</option>
+                  <option value="off">关</option>
+                </select>
+              </div>
+              <div style={{ marginBottom: '8px' }}>
+                <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>触发类型</label>
+                <select
+                  value={config.triggerType === 'echo' ? 'echo' : 'single'}
+                  onChange={(e) => setConfig({ ...config, triggerType: e.target.value as 'single' | 'echo', ...(e.target.value !== 'echo' ? { echoDelayMs: undefined } : {}) })}
+                  style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                >
+                  <option value="single">单次触发</option>
+                  <option value="echo">回声触发</option>
+                </select>
+              </div>
+              {(config.triggerType === 'echo') && (
+                <div style={{ marginBottom: '8px' }}>
+                  <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>回声时间(秒)</label>
+                  <input
+                    type="number"
+                    value={config.echoDelayMs != null ? config.echoDelayMs / 1000 : ''}
+                    onChange={(e) => setConfig({ ...config, echoDelayMs: e.target.value === '' ? undefined : Math.round(Number(e.target.value) * 1000) })}
+                    placeholder="间隔秒数"
+                    min="0"
+                    step="0.1"
+                    style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                  />
+                </div>
+              )}
+            </>
+          )}
+          {(!config.targetType || config.targetType === 'node') && (
+            <>
+              <div style={{ marginBottom: '8px' }}>
+                <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>触发类型</label>
+                <select
+                  value={config.triggerType === 'echo' ? 'echo' : 'single'}
+                  onChange={(e) => setConfig({ ...config, triggerType: e.target.value as 'single' | 'echo', ...(e.target.value !== 'echo' ? { echoDelayMs: undefined } : {}) })}
+                  style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                >
+                  <option value="single">单次触发</option>
+                  <option value="echo">回声触发</option>
+                </select>
+              </div>
+              {(config.triggerType === 'echo') && (
+                <div style={{ marginBottom: '8px' }}>
+                  <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px' }}>回声时间(秒)</label>
+                  <input
+                    type="number"
+                    value={config.echoDelayMs != null ? config.echoDelayMs / 1000 : ''}
+                    onChange={(e) => setConfig({ ...config, echoDelayMs: e.target.value === '' ? undefined : Math.round(Number(e.target.value) * 1000) })}
+                    placeholder="间隔秒数"
+                    min="0"
+                    step="0.1"
+                    style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+                  />
+                </div>
+              )}
             </>
           )}
           <button
@@ -932,6 +1011,9 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
               targetWidgetName: target.targetWidgetName,
               targetAction: target.targetAction,
               targetValue: target.targetValue,
+              triggerType: target.triggerType === 'echo' ? 'echo' : 'single',
+              echoDelayMs: target.echoDelayMs,
+              initialState: target.initialState,
               targetNodeName: window.nodes?.find((n: any) => n.nid === target.targetNodeId)?.name,
               targetDeviceName: window.nodeDevicesMap?.[target.targetNodeId]?.find((d: any) => d.deviceId === target.targetDeviceId)?.name,
               targetClientName: window.clients?.find((c: any) => c.clientId === target.targetClientId)?.name,
@@ -1151,6 +1233,13 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
         Notification.error(`请配置第 ${i + 1} 个触发效果的动作，并点击"保存"按钮`);
         return;
       }
+      if (targetConfig.triggerType === 'echo') {
+        const echoVal = targetConfig.echoDelayMs;
+        if (echoVal === undefined || echoVal === null || echoVal === '' || Number(echoVal) < 0) {
+          Notification.error(`第 ${i + 1} 个触发效果选择了回声触发，请设置回声时间(秒)`);
+          return;
+        }
+      }
     }
 
     const targets: TargetAction[] = targetNodes.map((node, index) => {
@@ -1164,6 +1253,11 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
         fullConfig: targetConfig,
       });
       
+      const triggerType = targetConfig.triggerType === 'echo' ? 'echo' : 'single';
+      const echoDelayMs = triggerType === 'echo' && targetConfig.echoDelayMs != null && targetConfig.echoDelayMs !== ''
+        ? (typeof targetConfig.echoDelayMs === 'number' ? targetConfig.echoDelayMs : parseInt(String(targetConfig.echoDelayMs), 10))
+        : undefined;
+      const initialState = targetConfig.initialState === 'on' || targetConfig.initialState === 'off' ? targetConfig.initialState : undefined;
       if (targetType === 'client') {
         // Client组件类型：只发送Client相关字段，明确排除Node相关字段
         return {
@@ -1171,7 +1265,9 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
           targetWidgetName: targetConfig.targetWidgetName,
           targetAction: targetConfig.targetAction || 'on',
           order: index,
-          // 明确排除Node相关字段
+          triggerType,
+          echoDelayMs,
+          initialState,
           targetNodeId: undefined,
           targetDeviceId: undefined,
         };
@@ -1183,7 +1279,9 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
           targetAction: targetConfig.targetAction || 'on',
           targetValue: targetConfig.targetValue,
           order: index,
-          // 明确排除Client相关字段
+          triggerType,
+          echoDelayMs,
+          initialState,
           targetClientId: undefined,
           targetWidgetName: undefined,
         };
@@ -1299,7 +1397,7 @@ function SceneEventEditor({ eventId, initialData }: { eventId?: number; initialD
             />
             <span>启用此事件</span>
           </label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: '20px', flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
               <span style={{ whiteSpace: 'nowrap' }}>触发次数限制:</span>
               <input
@@ -1482,7 +1580,7 @@ const page = new NamedPage('scene_event_edit', async () => {
         }
       }
       
-      // 验证 targets 数组中的每个元素，保留 client 相关字段
+      // Normalize each target and preserve all fields (triggerType, echoDelayMs, initialState)
       parsed.targets = parsed.targets.map((target: any, index: number) => ({
         targetNodeId: target.targetNodeId,
         targetDeviceId: target.targetDeviceId,
@@ -1491,6 +1589,9 @@ const page = new NamedPage('scene_event_edit', async () => {
         targetAction: target.targetAction || '',
         targetValue: target.targetValue !== undefined ? target.targetValue : null,
         order: target.order !== undefined ? target.order : index,
+        triggerType: target.triggerType === 'echo' ? 'echo' : 'single',
+        echoDelayMs: target.echoDelayMs,
+        initialState: target.initialState === 'on' || target.initialState === 'off' ? target.initialState : undefined,
       }));
       
       initialData = parsed;
