@@ -2226,14 +2226,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           
           const renameRecord = pendingRenames.get(create.tempId);
           const nodeText = renameRecord ? renameRecord.newName : (create.text || i18n('New node'));
-          
-          
+          const existingNode = base.nodes.find(n => n.id === create.tempId);
+          const nodeOrder = existingNode?.order;
           batchSaveData.nodeCreates.push({
             tempId: create.tempId,
             text: nodeText,
             parentId: create.nodeId,
             x: create.x,
             y: create.y,
+            ...(nodeOrder !== undefined && nodeOrder !== null && { order: nodeOrder }),
           });
         }
         
@@ -2771,27 +2772,24 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                 if (!nodeCardsMap[realNodeId]) {
                   nodeCardsMap[realNodeId] = [];
                 }
-                
-                
                 const existingIndex = nodeCardsMap[realNodeId].findIndex((c: Card) => c.docId === realCardId);
+                const existingCard = existingIndex >= 0 ? nodeCardsMap[realNodeId][existingIndex] : null;
+                const maxOrder = nodeCardsMap[realNodeId].length > 0 ? Math.max(...nodeCardsMap[realNodeId].map((c: Card) => c.order ?? 0)) : 0;
+                const cardOrder = existingCard?.order != null ? existingCard.order : maxOrder + 1;
+                const newCard: Card = {
+                  docId: realCardId,
+                  nodeId: realNodeId,
+                  title: cardCreate.title,
+                  content: cardCreate.content,
+                  problems: cardCreate.problems,
+                  order: cardOrder,
+                } as Card;
                 if (existingIndex >= 0) {
-                  nodeCardsMap[realNodeId][existingIndex] = {
-                    ...nodeCardsMap[realNodeId][existingIndex],
-                    docId: realCardId,
-                    nodeId: realNodeId,
-                    title: cardCreate.title,
-                    content: cardCreate.content,
-                    problems: cardCreate.problems,
-                  };
+                  nodeCardsMap[realNodeId][existingIndex] = { ...existingCard, ...newCard, order: cardOrder };
                 } else {
-                  nodeCardsMap[realNodeId].push({
-                    docId: realCardId,
-                    nodeId: realNodeId,
-                    title: cardCreate.title,
-                    content: cardCreate.content,
-                    problems: cardCreate.problems,
-                  } as Card);
+                  nodeCardsMap[realNodeId].push(newCard);
                 }
+                nodeCardsMap[realNodeId].sort((a: Card, b: Card) => (a.order ?? 0) - (b.order ?? 0));
               }
             }
             

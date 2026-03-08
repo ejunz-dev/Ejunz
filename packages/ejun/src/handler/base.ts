@@ -426,14 +426,15 @@ class BaseDetailHandler extends Handler {
                 try {
                     const cards = await CardModel.getByNodeId(domainId, this.base!.docId, node.id);
                     if (cards && cards.length > 0) {
-                        nodeCardsMap[node.id] = cards;
+                        nodeCardsMap[node.id] = cards.sort((a, b) =>
+                            (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
                     }
                 } catch (err) {
                     console.error(`Failed to get cards for node ${node.id}:`, err);
                 }
             }
         }
-        
+
         this.response.body = {
             base: {
                 ...this.base,
@@ -731,7 +732,11 @@ export class BaseOutlineHandler extends Handler {
                 nodeCardsMap[card.nodeId].push(card);
             }
         }
-        
+        for (const nodeId of Object.keys(nodeCardsMap)) {
+            nodeCardsMap[nodeId].sort((a, b) =>
+                (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
+        }
+
         const cardId = this.request.query.cardId as string | undefined;
         if (cardId && nodes.length > 0 && edges.length > 0) {
             let targetNodeId: string | null = null;
@@ -940,6 +945,10 @@ export class BaseEditorHandler extends Handler {
                 if (!nodeCardsMap[card.nodeId]) nodeCardsMap[card.nodeId] = [];
                 nodeCardsMap[card.nodeId].push(card);
             }
+        }
+        for (const nodeId of Object.keys(nodeCardsMap)) {
+            nodeCardsMap[nodeId].sort((a, b) =>
+                (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
         }
 
         const branches = Array.isArray((base as any)?.branches) ? (base as any).branches : ['main'];
@@ -1990,7 +1999,11 @@ export class BaseDataHandler extends Handler {
                 nodeCardsMap[card.nodeId].push(card);
             }
         }
-        
+        for (const nodeId of Object.keys(nodeCardsMap)) {
+            nodeCardsMap[nodeId].sort((a, b) =>
+                (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
+        }
+
         this.response.body = base ? {
             ...base,
             nodes,
@@ -3706,15 +3719,17 @@ export class BaseBatchSaveHandler extends Handler {
                         }
                     }
                     
+                    const nodePayload: Partial<BaseNode> = {
+                        text: nodeCreate.text,
+                        x: nodeCreate.x,
+                        y: nodeCreate.y,
+                        parentId: realParentId,
+                    };
+                    if (nodeCreate.order != null) nodePayload.order = nodeCreate.order;
                     const result = await BaseModel.addNode(
                         actualDomainId,
                         docId,
-                        {
-                            text: nodeCreate.text,
-                            x: nodeCreate.x,
-                            y: nodeCreate.y,
-                            parentId: realParentId,
-                        },
+                        nodePayload as Omit<BaseNode, 'id'>,
                         realParentId,
                         branch,
                         realParentId // edgeSourceId
@@ -3804,15 +3819,12 @@ export class BaseBatchSaveHandler extends Handler {
                         cardCreate.title || '新卡片',
                         cardCreate.content || '',
                         this.request.ip,
-                        cardCreate.problems
+                        cardCreate.problems,
+                        cardCreate.order
                     );
                     
                     if (cardCreate.tempId) {
                         cardIdMap.set(cardCreate.tempId, response.toString());
-                    }
-                    
-                    if (cardCreate.order !== undefined) {
-                        await CardModel.update(actualDomainId, response, { order: cardCreate.order });
                     }
                 }
             } catch (error: any) {
