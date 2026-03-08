@@ -3383,6 +3383,63 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setEmptyAreaContextMenu(null);
   }, [base.nodes, base.edges, handleNewCard]);
 
+  const openCountDialog = useCallback(async (title: string): Promise<number | null> => {
+    const $body = $(tpl`
+      <div class="typo" style="min-width: 260px;">
+        <label>
+          ${title}
+          <input type="number" name="count" class="textbox" style="width: 100%; margin-top: 8px;" min="1" max="100" value="2" />
+        </label>
+      </div>
+    `);
+    const dialog = new ActionDialog({ $body, width: '320px' } as any);
+    const action = await dialog.open();
+    if (action !== 'ok') return null;
+    const raw = parseInt($body.find('input[name="count"]').val() as string, 10);
+    const n = isNaN(raw) || raw < 1 ? 1 : Math.min(100, raw);
+    return n;
+  }, []);
+
+  const handleNewMultipleCards = useCallback((nodeId: string) => {
+    setContextMenu(null);
+    (async () => {
+      const n = await openCountDialog(i18n('Number of cards to create'));
+      if (n == null) return;
+      for (let i = 0; i < n; i++) handleNewCard(nodeId);
+      if (n > 1) Notification.success(i18n('Created {0} cards', n));
+    })();
+  }, [handleNewCard, openCountDialog]);
+
+  const handleNewMultipleChildNodes = useCallback((parentNodeId: string) => {
+    setContextMenu(null);
+    (async () => {
+      const n = await openCountDialog(i18n('Number of child nodes to create'));
+      if (n == null) return;
+      for (let i = 0; i < n; i++) handleNewChildNode(parentNodeId);
+      if (n > 1) Notification.success(i18n('Created {0} child nodes', n));
+    })();
+  }, [handleNewChildNode, openCountDialog]);
+
+  const handleNewMultipleRootNodes = useCallback(() => {
+    setEmptyAreaContextMenu(null);
+    (async () => {
+      const n = await openCountDialog(i18n('Number of root nodes to create'));
+      if (n == null) return;
+      for (let i = 0; i < n; i++) handleNewRootNode();
+      if (n > 1) Notification.success(i18n('Created {0} root nodes', n));
+    })();
+  }, [handleNewRootNode, openCountDialog]);
+
+  const handleNewMultipleRootCards = useCallback(() => {
+    setEmptyAreaContextMenu(null);
+    (async () => {
+      const n = await openCountDialog(i18n('Number of cards to create'));
+      if (n == null) return;
+      for (let i = 0; i < n; i++) handleNewRootCard();
+      if (n > 1) Notification.success(i18n('Created {0} cards', n));
+    })();
+  }, [handleNewRootCard, openCountDialog]);
+
   
   const handleCopy = useCallback((file?: FileItem) => {
     let itemsToCopy: FileItem[] = [];
@@ -8406,6 +8463,40 @@ ${currentCardContext}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
                 }}
+                onClick={() => handleNewMultipleCards(contextMenu.file.nodeId || '')}
+              >
+                新建多个 Card
+              </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => handleNewMultipleChildNodes(contextMenu.file.nodeId || '')}
+              >
+                新建多个子 Node
+              </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
                 onClick={() => handleOpenImportWindow(contextMenu.file.nodeId || '')}
               >
                 导入
@@ -8665,6 +8756,23 @@ ${currentCardContext}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
                 }}
+                onClick={() => handleNewMultipleCards(contextMenu.file.nodeId || '')}
+              >
+                新建多个 Card
+              </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
                 onClick={() => {
                   handleStartRename(contextMenu.file, { stopPropagation: () => {} } as React.MouseEvent);
                   setContextMenu(null);
@@ -8875,6 +8983,40 @@ ${currentCardContext}
             onClick={() => handleNewRootCard()}
           >
             新建 Card
+          </div>
+          <div
+            style={{
+              padding: '6px 16px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              color: themeStyles.textPrimary,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+            onClick={() => handleNewMultipleRootNodes()}
+          >
+            新建多个 Node
+          </div>
+          <div
+            style={{
+              padding: '6px 16px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              color: themeStyles.textPrimary,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+            onClick={() => handleNewMultipleRootCards()}
+          >
+            新建多个 Card
           </div>
         </div>
       )}
