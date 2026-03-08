@@ -489,6 +489,10 @@ function SortWindow({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   
   
+  const getNodeDisplayName = useCallback((node: BaseNode) => {
+    const raw = node.text ?? (node as any).label ?? (node as any).name;
+    return (raw != null && String(raw).trim() !== '') ? String(raw).trim() : i18n('Unnamed Node');
+  }, []);
   const childNodes = useMemo(() => {
     return base.edges
       .filter(e => e.source === nodeId)
@@ -496,13 +500,13 @@ function SortWindow({
         const node = base.nodes.find(n => n.id === e.target);
         return node ? { 
           id: node.id, 
-          name: node.text || i18n('Unnamed Node'),
+          name: getNodeDisplayName(node),
           order: node.order || 0,
         } : null;
       })
       .filter(Boolean)
       .sort((a, b) => (a!.order || 0) - (b!.order || 0)) as Array<{ id: string; name: string; order: number }>;
-  }, [base.edges, base.nodes, nodeId]);
+  }, [base.edges, base.nodes, nodeId, getNodeDisplayName]);
   
   const cards = useMemo(() => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
@@ -9223,7 +9227,6 @@ ${currentCardContext}
                 }
               }
               
-              并排序
               if (nodeCardsMap[sortWindow.nodeId]) {
                 nodeCardsMap[sortWindow.nodeId].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
                 (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
@@ -9239,7 +9242,7 @@ ${currentCardContext}
                   if (item.type === 'node') {
                     newSet.add(`node-${item.id}`);
                   } else {
-                    newSet.add(`card-${item.id}`);
+                    newSet.add(item.id);
                   }
                 });
                 return newSet;
