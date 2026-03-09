@@ -1709,10 +1709,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             
             if (deletedCardIds.has(card.docId)) return;
             
+            const cardIdForRename = item.isPending ? card.docId : `card-${card.docId}`;
+            const renameRecord = pendingRenames.get(cardIdForRename);
+            const displayName = renameRecord ? renameRecord.newName : (card.title || i18n('Unnamed Card'));
             const cardFileItem: FileItem = {
               type: 'card',
               id: item.isPending ? card.docId : `card-${card.docId}`,
-              name: card.title || i18n('Unnamed Card'),
+              name: displayName,
               nodeId: card.nodeId || nodeId,
               cardId: card.docId,
               parentId: card.nodeId || nodeId,
