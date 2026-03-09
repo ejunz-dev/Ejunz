@@ -1,5 +1,5 @@
 import $ from 'jquery';
-import React, { useState, useEffect, useCallback, useMemo, useRef, startTransition } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, startTransition } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
 import Notification from 'vj/components/notification';
@@ -1210,6 +1210,25 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const fileTreeRef = useRef<FileItem[]>([]);
   const baseEdgesRef = useRef(base.edges);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) return;
+    const el = contextMenuRef.current;
+    const rect = el.getBoundingClientRect();
+    const padding = 8;
+    let { x, y } = contextMenu;
+    if (rect.bottom > window.innerHeight - padding) {
+      y = window.innerHeight - rect.height - padding;
+    }
+    if (rect.right > window.innerWidth - padding) {
+      x = window.innerWidth - rect.width - padding;
+    }
+    if (y < padding) y = padding;
+    if (x < padding) x = padding;
+    if (x !== contextMenu.x || y !== contextMenu.y) {
+      setContextMenu(prev => prev ? { ...prev, x, y } : null);
+    }
+  }, [contextMenu?.x, contextMenu?.y, contextMenu?.file?.id]);
   const [emptyAreaContextMenu, setEmptyAreaContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; items: FileItem[] } | null>(null);
   const [sortWindow, setSortWindow] = useState<{ nodeId: string } | null>(null);
@@ -1709,8 +1728,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             
             if (deletedCardIds.has(card.docId)) return;
             
-            const cardIdForRename = item.isPending ? card.docId : `card-${card.docId}`;
-            const renameRecord = pendingRenames.get(cardIdForRename);
+            // Look up rename by both possible keys (card from nodeCards uses id `card-${docId}`, from pending may use docId)
+            const renameRecord = pendingRenames.get(`card-${card.docId}`) ?? pendingRenames.get(card.docId);
             const displayName = renameRecord ? renameRecord.newName : (card.title || i18n('Unnamed Card'));
             const cardFileItem: FileItem = {
               type: 'card',
@@ -2975,6 +2994,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       setPendingRenames(prev => {
         const next = new Map(prev);
         next.delete(file.id);
+        if (file.type === 'card' && file.cardId) {
+          const altKey = file.id.startsWith('card-') ? file.cardId : `card-${file.cardId}`;
+          if (altKey !== file.id) next.delete(altKey);
+        }
         return next;
       });
       setEditingFile(null);
@@ -3006,11 +3029,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     
     setPendingRenames(prev => {
       const next = new Map(prev);
-      next.set(file.id, {
-        file,
-        newName: trimmedName,
-        originalName: file.name,
-      });
+      const record = { file, newName: trimmedName, originalName: file.name };
+      next.set(file.id, record);
+      if (file.type === 'card' && file.cardId) {
+        const altKey = file.id.startsWith('card-') ? file.cardId : `card-${file.cardId}`;
+        if (altKey !== file.id) next.set(altKey, record);
+      }
       return next;
     });
     
@@ -8289,6 +8313,7 @@ ${currentCardContext}
       {/* Context menu */}
       {contextMenu && (
         <div
+          ref={contextMenuRef}
           style={{
             position: 'fixed',
             left: contextMenu.x,
