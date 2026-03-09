@@ -7178,19 +7178,7 @@ ${currentCardContext}
           justifyContent: 'space-between',
         }}>
           <span>EXPLORER</span>
-          {workspaceNodeId ? (
-            <a
-              href={basePath === 'base/skill' ? getBaseUrl('/editor/branch/' + currentBranch) : getBaseUrl('/branch/' + currentBranch + '/editor')}
-              style={{ fontSize: '11px', color: '#0366d6', textDecoration: 'none' }}
-              onClick={(e) => {
-                e.preventDefault();
-                window.location.href = (basePath === 'base/skill' ? getBaseUrl('/editor/branch/' + currentBranch) : getBaseUrl('/branch/' + currentBranch + '/editor'));
-              }}
-            >
-              退出工作区
-            </a>
-          ) : (
-          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             {isMobile && (
               <button
                 type="button"
@@ -7283,7 +7271,6 @@ ${currentCardContext}
               修改
             </button>
           </div>
-          )}
         </div>
         <div style={{ padding: '8px 0' }}>
           {explorerMode === 'tree' ? (
