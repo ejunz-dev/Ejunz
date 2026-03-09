@@ -2743,6 +2743,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                   !e.id.startsWith('temp-edge-')
                 ),
               }));
+              setExpandedNodes(prev => {
+                const next = new Set(prev);
+                nodeIdMap.forEach((realId, tempId) => {
+                  next.delete(tempId);
+                  next.add(realId);
+                });
+                expandedNodesRef.current = next;
+                return next;
+              });
             }
             
             
@@ -3308,11 +3317,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     
     setExpandedNodes(prev => {
       const newSet = new Set(prev);
+      newSet.add(tempId);
       if (!newSet.has(parentNodeId)) {
         newSet.add(parentNodeId);
-        
         expandedNodesRef.current = newSet;
-        
         triggerExpandAutoSave();
       }
       return newSet;
@@ -3359,6 +3367,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       return updated;
     });
     
+    setExpandedNodes(prev => {
+      const newSet = new Set(prev);
+      newSet.add(tempId);
+      expandedNodesRef.current = newSet;
+      return newSet;
+    });
+    
     setEmptyAreaContextMenu(null);
   }, [base.nodes, base.edges]);
 
@@ -3398,6 +3413,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         };
         baseRef.current = updated;
         return updated;
+      });
+      
+      setExpandedNodes(prev => {
+        const newSet = new Set(prev);
+        newSet.add(tempNodeId);
+        expandedNodesRef.current = newSet;
+        return newSet;
       });
       
       targetNodeId = tempNodeId;
@@ -3705,7 +3727,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
   }, []);
 
-  const handleConvertCardToNode = useCallback((file: FileItem) => { if (file.type !== "card" || !file.nodeId || !file.cardId) return; const parentNodeId = file.nodeId; const cardId = file.cardId; const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {}; const cards = nodeCardsMap[parentNodeId] || []; const card = cards.find((c: Card) => String(c.docId) === String(cardId)); if (!card) { Notification.error(i18n("Card not found")); setContextMenu(null); return; } const title = (pendingRenames.get("card-" + cardId)?.newName ?? card.title ?? "").trim() || i18n("Unnamed"); const content = pendingChanges.get("card-" + cardId)?.content ?? card.content ?? ""; const cardOrder = card.order ?? 0; const tempNodeId = "temp-node-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9); const newChildNode: PendingCreate = { type: "node", nodeId: parentNodeId, text: title, tempId: tempNodeId }; pendingCreatesRef.current.set(tempNodeId, newChildNode); setPendingCreatesCount(pendingCreatesRef.current.size); const tempNode: BaseNode = { id: tempNodeId, text: title, order: cardOrder }; const newEdge: BaseEdge = { id: "temp-edge-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9), source: parentNodeId, target: tempNodeId }; setBase(prev => ({ ...prev, nodes: [...prev.nodes, tempNode].map(n => (n.id === parentNodeId ? { ...n, expanded: true } : n)), edges: [...prev.edges, newEdge] })); setExpandedNodes(prev => { const newSet = new Set(prev); if (!newSet.has(parentNodeId)) { newSet.add(parentNodeId); expandedNodesRef.current = newSet; triggerExpandAutoSave(); } return newSet; }); const tempCardId = "temp-card-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9); const newCardCreate: PendingCreate = { type: "card", nodeId: tempNodeId, title: i18n("Content"), tempId: tempCardId }; pendingCreatesRef.current.set(tempCardId, newCardCreate); setPendingCreatesCount(pendingCreatesRef.current.size); if (!nodeCardsMap[tempNodeId]) nodeCardsMap[tempNodeId] = []; const tempCard: Card = { docId: tempCardId, cid: 0, nodeId: tempNodeId, title: i18n("Content"), content, order: 1, updateAt: new Date().toISOString() } as Card; nodeCardsMap[tempNodeId].push(tempCard); (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap }; setNodeCardsMapVersion(prev => prev + 1); const fileItem: FileItem = { type: "card", id: "card-" + tempCardId, name: tempCard.title, nodeId: tempNodeId, cardId: tempCardId, parentId: tempNodeId, level: 0 }; setPendingChanges(prev => new Map(prev).set("card-" + tempCardId, { file: fileItem, content, originalContent: "" })); if (cardId.startsWith("temp-card-")) cleanupPendingForTempItem(file); else setPendingDeletes(prev => { const next = new Map(prev); next.set(cardId, { type: "card", id: cardId, nodeId: parentNodeId }); return next; }); const cardsArr = nodeCardsMap[parentNodeId] || []; const idx = cardsArr.findIndex((c: Card) => String(c.docId) === String(cardId)); if (idx >= 0) { cardsArr.splice(idx, 1); (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap }; setNodeCardsMapVersion(prev => prev + 1); } setContextMenu(null); }, [base.nodes, base.edges, pendingChanges, pendingRenames, cleanupPendingForTempItem, triggerExpandAutoSave]);
+  const handleConvertCardToNode = useCallback((file: FileItem) => { if (file.type !== "card" || !file.nodeId || !file.cardId) return; const parentNodeId = file.nodeId; const cardId = file.cardId; const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {}; const cards = nodeCardsMap[parentNodeId] || []; const card = cards.find((c: Card) => String(c.docId) === String(cardId)); if (!card) { Notification.error(i18n("Card not found")); setContextMenu(null); return; } const title = (pendingRenames.get("card-" + cardId)?.newName ?? card.title ?? "").trim() || i18n("Unnamed"); const content = pendingChanges.get("card-" + cardId)?.content ?? card.content ?? ""; const cardOrder = card.order ?? 0; const tempNodeId = "temp-node-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9); const newChildNode: PendingCreate = { type: "node", nodeId: parentNodeId, text: title, tempId: tempNodeId }; pendingCreatesRef.current.set(tempNodeId, newChildNode); setPendingCreatesCount(pendingCreatesRef.current.size); const tempNode: BaseNode = { id: tempNodeId, text: title, order: cardOrder }; const newEdge: BaseEdge = { id: "temp-edge-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9), source: parentNodeId, target: tempNodeId }; setBase(prev => ({ ...prev, nodes: [...prev.nodes, tempNode].map(n => (n.id === parentNodeId ? { ...n, expanded: true } : n)), edges: [...prev.edges, newEdge] })); setExpandedNodes(prev => { const newSet = new Set(prev); newSet.add(tempNodeId); if (!newSet.has(parentNodeId)) { newSet.add(parentNodeId); expandedNodesRef.current = newSet; triggerExpandAutoSave(); } return newSet; }); const tempCardId = "temp-card-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9); const newCardCreate: PendingCreate = { type: "card", nodeId: tempNodeId, title: i18n("Content"), tempId: tempCardId }; pendingCreatesRef.current.set(tempCardId, newCardCreate); setPendingCreatesCount(pendingCreatesRef.current.size); if (!nodeCardsMap[tempNodeId]) nodeCardsMap[tempNodeId] = []; const tempCard: Card = { docId: tempCardId, cid: 0, nodeId: tempNodeId, title: i18n("Content"), content, order: 1, updateAt: new Date().toISOString() } as Card; nodeCardsMap[tempNodeId].push(tempCard); (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap }; setNodeCardsMapVersion(prev => prev + 1); const fileItem: FileItem = { type: "card", id: "card-" + tempCardId, name: tempCard.title, nodeId: tempNodeId, cardId: tempCardId, parentId: tempNodeId, level: 0 }; setPendingChanges(prev => new Map(prev).set("card-" + tempCardId, { file: fileItem, content, originalContent: "" })); if (cardId.startsWith("temp-card-")) cleanupPendingForTempItem(file); else setPendingDeletes(prev => { const next = new Map(prev); next.set(cardId, { type: "card", id: cardId, nodeId: parentNodeId }); return next; }); const cardsArr = nodeCardsMap[parentNodeId] || []; const idx = cardsArr.findIndex((c: Card) => String(c.docId) === String(cardId)); if (idx >= 0) { cardsArr.splice(idx, 1); (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap }; setNodeCardsMapVersion(prev => prev + 1); } setContextMenu(null); }, [base.nodes, base.edges, pendingChanges, pendingRenames, cleanupPendingForTempItem, triggerExpandAutoSave]);
 
   
   const handlePaste = useCallback((targetNodeId: string) => {
@@ -5016,11 +5038,10 @@ ${currentCardContext}
           if (op.parentId) {
             setExpandedNodes(prev => {
               const newSet = new Set(prev);
+              newSet.add(tempId);
               if (!newSet.has(op.parentId)) {
                 newSet.add(op.parentId);
-                
                 expandedNodesRef.current = newSet;
-                
                 setBase(prev => {
                   const updated = {
                     ...prev,
@@ -5034,9 +5055,15 @@ ${currentCardContext}
                   baseRef.current = updated;
                   return updated;
                 });
-                
                 triggerExpandAutoSave();
               }
+              return newSet;
+            });
+          } else {
+            setExpandedNodes(prev => {
+              const newSet = new Set(prev);
+              newSet.add(tempId);
+              expandedNodesRef.current = newSet;
               return newSet;
             });
           }
