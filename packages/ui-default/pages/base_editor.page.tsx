@@ -7178,7 +7178,7 @@ ${currentCardContext}
           justifyContent: 'space-between',
         }}>
           <span>EXPLORER</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'nowrap' }}>
             {isMobile && (
               <button
                 type="button"
@@ -7192,6 +7192,7 @@ ${currentCardContext}
                   background: themeStyles.bgButton,
                   color: themeStyles.textSecondary,
                   cursor: 'pointer',
+                  flexShrink: 0,
                 }}
               >
                 Close
@@ -7215,6 +7216,7 @@ ${currentCardContext}
                     backgroundColor: isMultiSelectMode ? themeStyles.bgButtonActive : themeStyles.bgButton,
                     color: isMultiSelectMode ? themeStyles.textOnPrimary : themeStyles.textSecondary,
                     cursor: 'pointer',
+                    flexShrink: 0,
                   }}
                   title={isMultiSelectMode ? i18n('Exit multi-select') : i18n('Multi-select')}
                 >
@@ -7233,6 +7235,7 @@ ${currentCardContext}
                 backgroundColor: explorerMode === 'tree' ? themeStyles.bgButtonActive : themeStyles.bgButton,
                 color: explorerMode === 'tree' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
                 cursor: 'pointer',
+                flexShrink: 0,
               }}
               title="树形视图"
             >
@@ -7249,6 +7252,7 @@ ${currentCardContext}
                 backgroundColor: explorerMode === 'files' ? themeStyles.bgButtonActive : themeStyles.bgButton,
                 color: explorerMode === 'files' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
                 cursor: 'pointer',
+                flexShrink: 0,
               }}
               title={i18n('File view')}
             >
@@ -7265,6 +7269,7 @@ ${currentCardContext}
                 backgroundColor: explorerMode === 'pending' ? themeStyles.bgButtonActive : themeStyles.bgButton,
                 color: explorerMode === 'pending' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
                 cursor: 'pointer',
+                flexShrink: 0,
               }}
               title="查看待提交的更改"
             >
