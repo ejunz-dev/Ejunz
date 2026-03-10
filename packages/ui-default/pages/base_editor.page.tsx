@@ -4064,9 +4064,18 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
 
       const newCardId = `temp-card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const maxOrder = nodeCardsMap[targetNodeId]?.length > 0
+      const targetNodeEdges = base.edges.filter((e: BaseEdge) => e.source === targetNodeId);
+      const targetChildNodeIds = targetNodeEdges.map((e: BaseEdge) => e.target);
+      const targetChildNodes = targetChildNodeIds
+        .map((id: string) => base.nodes.find((n: BaseNode) => n.id === id))
+        .filter(Boolean) as BaseNode[];
+      const maxCardOrder = nodeCardsMap[targetNodeId]?.length > 0
         ? Math.max(...nodeCardsMap[targetNodeId].map((c: Card) => c.order || 0))
         : 0;
+      const maxNodeOrder = targetChildNodes.length > 0
+        ? Math.max(...targetChildNodes.map((n: BaseNode) => n.order || 0))
+        : 0;
+      const maxOrder = Math.max(maxCardOrder, maxNodeOrder);
 
       const newCard: Card = {
         ...sourceCard,
