@@ -2323,13 +2323,19 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           const finalTitle = renameRecord ? renameRecord.newName : (create.title || tempCard?.title || i18n('New card'));
           const finalProblems = tempCard?.problems;
 
-          
+          const childNodeIds = base.edges.filter((e: BaseEdge) => e.source === createNodeId).map((e: BaseEdge) => e.target);
+          const childNodesForOrder = childNodeIds.map((id: string) => base.nodes.find((n: BaseNode) => n.id === id)).filter(Boolean) as BaseNode[];
+          const maxCardOrder = createNodeCards.length > 0 ? Math.max(...createNodeCards.map((c: Card) => c.order || 0)) : 0;
+          const maxNodeOrder = childNodesForOrder.length > 0 ? Math.max(...childNodesForOrder.map((n: BaseNode) => n.order || 0)) : 0;
+          const finalOrder = tempCard?.order ?? Math.max(maxCardOrder, maxNodeOrder) + 1;
+
           batchSaveData.cardCreates.push({
             tempId: create.tempId,
             nodeId: createNodeId,
             title: finalTitle,
             content: finalContent,
             problems: finalProblems,
+            order: finalOrder,
           });
         }
       }
@@ -3131,9 +3137,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (!nodeCardsMap[nodeId]) {
       nodeCardsMap[nodeId] = [];
     }
-    const maxOrder = nodeCardsMap[nodeId].length > 0 
+    const childNodeIds = base.edges.filter(e => e.source === nodeId).map(e => e.target);
+    const childNodes = childNodeIds.map(id => base.nodes.find(n => n.id === id)).filter(Boolean) as BaseNode[];
+    const maxCardOrder = nodeCardsMap[nodeId].length > 0 
       ? Math.max(...nodeCardsMap[nodeId].map((c: Card) => c.order || 0))
       : 0;
+    const maxNodeOrder = childNodes.length > 0 
+      ? Math.max(...childNodes.map(n => n.order || 0))
+      : 0;
+    const maxOrder = Math.max(maxCardOrder, maxNodeOrder);
     
     const tempCard: Card = {
       docId: tempId,
