@@ -8513,6 +8513,28 @@ ${currentCardContext}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
                 }}
+                onClick={() => {
+                  const nodeId = contextMenu.file.nodeId || '';
+                  const parentId = base.edges.find((e) => e.target === nodeId)?.source;
+                  if (parentId) handleNewChildNode(parentId);
+                  else handleNewRootNode();
+                }}
+              >
+                新建兄弟 Node
+              </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
                 onClick={() => handleNewMultipleCards(contextMenu.file.nodeId || '')}
               >
                 新建多个 Card
