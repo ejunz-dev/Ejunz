@@ -8807,6 +8807,23 @@ ${currentCardContext}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
                 }}
+                onClick={() => handleNewCard(contextMenu.file.nodeId || '')}
+              >
+                新建兄弟 Card
+              </div>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
                 onClick={() => handleConvertCardToNode(contextMenu.file)}
               >
                 转换为 node
