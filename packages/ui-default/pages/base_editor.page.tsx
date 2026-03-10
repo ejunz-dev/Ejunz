@@ -987,12 +987,23 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                 const nextNodes = newData.nodes ?? [];
                 const nextEdges = newData.edges ?? [];
                 const nextNodeCardsMap = newData.nodeCardsMap ?? {};
-                setBase(prev => ({
-                  ...prev,
-                  ...newData,
-                  nodes: nextNodes,
-                  edges: nextEdges,
-                }));
+                setBase(prev => {
+                  const prevNodes = prev?.nodes || [];
+                  const prevEdges = prev?.edges || [];
+                  const tempNodes = prevNodes.filter(n => n.id && String(n.id).startsWith('temp-node-'));
+                  const tempNodeIdSet = new Set(tempNodes.map(n => String(n.id)));
+                  const tempEdges = prevEdges.filter(e =>
+                    (e.id && String(e.id).startsWith('temp-edge-')) ||
+                    (e.source && tempNodeIdSet.has(String(e.source))) ||
+                    (e.target && tempNodeIdSet.has(String(e.target)))
+                  );
+                  return {
+                    ...prev,
+                    ...newData,
+                    nodes: [...nextNodes, ...tempNodes],
+                    edges: [...nextEdges, ...tempEdges],
+                  };
+                });
                 if ((window as any).UiContext) {
                   (window as any).UiContext.nodeCardsMap = nextNodeCardsMap;
                 }
@@ -1135,7 +1146,25 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     try {
       const newData: any = await request.get(apiPath);
       if (newData?.nodes != null || newData?.edges != null) {
-        setBase(prev => ({ ...prev, ...newData, nodes: newData.nodes ?? prev.nodes, edges: newData.edges ?? prev.edges }));
+        setBase(prev => {
+          const prevNodes = prev?.nodes || [];
+          const prevEdges = prev?.edges || [];
+          const serverNodes = newData.nodes ?? prevNodes;
+          const serverEdges = newData.edges ?? prevEdges;
+          const tempNodes = prevNodes.filter(n => n.id && String(n.id).startsWith('temp-node-'));
+          const tempNodeIdSet = new Set(tempNodes.map(n => String(n.id)));
+          const tempEdges = prevEdges.filter(e =>
+            (e.id && String(e.id).startsWith('temp-edge-')) ||
+            (e.source && tempNodeIdSet.has(String(e.source))) ||
+            (e.target && tempNodeIdSet.has(String(e.target)))
+          );
+          return {
+            ...prev,
+            ...newData,
+            nodes: [...serverNodes, ...tempNodes],
+            edges: [...serverEdges, ...tempEdges],
+          };
+        });
       }
       if ((window as any).UiContext && newData?.nodeCardsMap != null) {
         (window as any).UiContext.nodeCardsMap = newData.nodeCardsMap;
@@ -6394,6 +6423,18 @@ ${currentCardContext}
       
       if (isTempNode) {
         cleanupPendingForTempItem(file);
+        
+        const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+        if (nodeCardsMap[nodeId]) {
+          delete nodeCardsMap[nodeId];
+          (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+          setNodeCardsMapVersion(v => v + 1);
+        }
+        setBase(prev => ({
+          ...prev,
+          nodes: prev.nodes.filter(n => n.id !== nodeId),
+          edges: prev.edges.filter(e => e.source !== nodeId && e.target !== nodeId),
+        }));
         
       } else {
         
