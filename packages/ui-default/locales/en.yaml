@@ -329,9 +329,9 @@ __langname: English
 'Save all changes': Save all changes
 'Save ASR Configuration': Save ASR Configuration
 'Save changes': Save changes
+'Save completed, but {0} error(s) occurred': Save completed, but {0} error(s) occurred
 'Save failed': Save failed
 'Save sort failed': Save sort failed
-'Save completed, but {0} error(s) occurred': Save completed, but {0} error(s) occurred
 'Save successful, {0} changes': 'Save successful, {0} changes'
 'Save TTS Configuration': Save TTS Configuration
 'Save': Save
@@ -568,6 +568,9 @@ repo_detail: Repo Detail
 repo_doc: Repo Doc
 repo_edit: Edit Repo
 Role: Role
+scene_create: Create Scene
+scene_detail: Scene Detail
+scene_domain: Scene
 session_domain: Session
 session_main: Session
 setting_customize: Customize
@@ -601,5 +604,5 @@ user_sudo: Entering Sudo Mode
 View all: View all
 View Card: View Card
 wiki_about: About
-wiki_help: Helpz
+wiki_help: Help
 workflow_domain: Workflow
