@@ -1943,8 +1943,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
     
     
+    // Only persist editor content to pendingChanges when the previous selection was a card. When a node was selected we return early without loading node text, so the editor still shows a card's content; saving that as the node's change would incorrectly mark the parent node as modified.
     let pendingChangeToSave: { file: FileItem; content: string; originalContent: string } | null = null;
-    if (selectedFile && editorInstance) {
+    if (selectedFile && selectedFile.type === 'card' && editorInstance) {
       try {
         const currentContent = editorInstance.value() || fileContent;
         const originalContent = originalContentsRef.current.get(selectedFile.id) || '';
@@ -2206,7 +2207,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
     
     let allChanges = new Map(pendingChanges);
-    if (selectedFile && editorInstance) {
+    // Only merge current editor content into allChanges when the selected item is a card. When a node is selected the editor is never loaded with node text (still shows card content); merging that would send card content as node.text and overwrite the parent node title on save.
+    if (selectedFile && selectedFile.type === 'card' && editorInstance) {
       try {
         const currentContent = editorInstance.value() || fileContent;
         const originalContent = originalContentsRef.current.get(selectedFile.id) || '';
@@ -2283,8 +2285,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             tempId: create.tempId,
             text: nodeText,
             parentId: create.nodeId,
-            x: create.x,
-            y: create.y,
+            x: (create as any).x,
+            y: (create as any).y,
             ...(nodeOrder !== undefined && nodeOrder !== null && { order: nodeOrder }),
           });
         }
@@ -2545,7 +2547,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
               batchSaveData.edgeCreates.push({
                 source: newEdge.source,
                 target: newEdge.target,
-                label: newEdge.label,
+                label: (newEdge as any).label,
               });
             }
           } catch (error: any) {
@@ -2553,7 +2555,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             batchSaveData.edgeCreates.push({
               source: newEdge.source,
               target: newEdge.target,
-              label: newEdge.label,
+              label: (newEdge as any).label,
             });
           }
         }
@@ -3137,15 +3139,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (!nodeCardsMap[nodeId]) {
       nodeCardsMap[nodeId] = [];
     }
+    // Compute children from base.edges/base.nodes (same as buildTree) so the new card's order is max(orders)+1 across all siblings (nodes + cards), ensuring it appears at the bottom.
     const childNodeIds = base.edges.filter(e => e.source === nodeId).map(e => e.target);
     const childNodes = childNodeIds.map(id => base.nodes.find(n => n.id === id)).filter(Boolean) as BaseNode[];
-    const maxCardOrder = nodeCardsMap[nodeId].length > 0 
-      ? Math.max(...nodeCardsMap[nodeId].map((c: Card) => c.order || 0))
-      : 0;
-    const maxNodeOrder = childNodes.length > 0 
-      ? Math.max(...childNodes.map(n => n.order || 0))
-      : 0;
-    const maxOrder = Math.max(maxCardOrder, maxNodeOrder);
+    const cardsForNode = (nodeCardsMap[nodeId] || []).filter((c: Card) => !c.nodeId || c.nodeId === nodeId);
+    const allOrders: number[] = [
+      ...cardsForNode.map((c: Card) => c.order ?? 0),
+      ...childNodes.map(n => n.order ?? 0),
+    ];
+    const maxOrder = allOrders.length > 0 ? Math.max(...allOrders) : 0;
+    const newOrder = maxOrder + 1;
     
     const tempCard: Card = {
       docId: tempId,
@@ -3153,7 +3156,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       nodeId,
       title: i18n('New card'),
       content: '',
-      order: maxOrder + 1,
+      order: newOrder,
       updateAt: new Date().toISOString(),
     } as Card;
     
@@ -3163,7 +3166,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setNodeCardsMapVersion(prev => prev + 1);
     
     setContextMenu(null);
-  }, [pendingDeletes, base.nodes]);
+  }, [pendingDeletes, base.nodes, base.edges]);
 
   
   const doImportFromText = useCallback((nodeId: string, text: string) => {
@@ -5537,10 +5540,15 @@ ${currentCardContext}
           });
           
           
-          if (selectedFile && selectedFile.type === 'card' && selectedFile.cardId === cardId) {
-            setFileContent(newContent);
-            
+          const currentSelected = selectedFileRef.current;
+          if (currentSelected && currentSelected.type === 'card' && currentSelected.cardId === cardId) {
+            // Guard: do not write to editor if selection changed during the delay (e.g. user switched to a node or another card), otherwise card content could be saved as node text.
             setTimeout(() => {
+              const latestSelected = selectedFileRef.current;
+              if (!latestSelected || latestSelected.type !== 'card' || latestSelected.cardId !== cardId) return;
+              
+              // Only update fileContent when still editing the same card.
+              setFileContent(newContent);
               
               if (editorRef.current) {
                 editorRef.current.value = newContent;
@@ -5553,16 +5561,15 @@ ${currentCardContext}
                 try {
                   editorInstance.value(newContent);
                 } catch (e) {
-                  
+                  // ignore
                 }
               }
               
-              const $textarea = $(`#editor-wrapper-${selectedFile.id} textarea`);
+              const $textarea = $(`#editor-wrapper-${latestSelected.id} textarea`);
               if ($textarea.length > 0) {
                 $textarea.val(newContent);
                 
                 if ($textarea.attr('data-markdown') === 'true') {
-                  
                   $textarea.trigger('change');
                 }
               }
@@ -5954,7 +5961,7 @@ ${currentCardContext}
         $status.text(`正在处理: ${item.parentOrder} ${item.title}`);
         $current.text(`${processedCount} / ${totalItems}`);
         
-        const currentPageNumber = pdf.internal.getNumberOfPages();
+        const currentPageNumber = (pdf.internal as any).getNumberOfPages();
         tocItems.push({
           order: item.parentOrder || '',
           title: item.title,
