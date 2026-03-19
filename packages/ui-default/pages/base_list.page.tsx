@@ -32,11 +32,11 @@ function BaseList() {
     try {
       setLoading(true);
       const domainId = (window as any).UiContext?.domainId || 'system';
-      const params: any = {};
+      const params: Record<string, unknown> = { format: 'json' };
       if (rpid) params.rpid = rpid;
       if (branch) params.branch = branch;
 
-      const response = await request.get(`/d/${domainId}/base`, { params });
+      const response = await request.get(`/d/${domainId}/base/list`, { params });
       setBases(response.bases || []);
     } catch (error: any) {
       Notification.error('加载知识库列表失败: ' + (error.message || '未知错误'));
@@ -51,7 +51,7 @@ function BaseList() {
     }
 
     try {
-      // 删除操作
+      // Comment translated to English.
       const domainId = (window as any).UiContext?.domainId || 'system';
       await request.post(`/d/${domainId}/base/${docId}/edit`, {
         operation: 'delete',
@@ -79,7 +79,7 @@ function BaseList() {
           <a
             href={(() => {
               const domainId = (window as any).UiContext?.domainId || 'system';
-              return `/d/${domainId}/base/create`;
+              return `/d/${domainId}/base`;
             })()}
             style={{
               padding: '8px 16px',
@@ -118,7 +118,7 @@ function BaseList() {
               }}
               onClick={() => {
                 const domainId = (window as any).UiContext?.domainId || '';
-                window.location.href = `/d/${domainId}/base/${base.docId}`;
+                window.location.href = `/d/${domainId}/base/${base.docId}/outline/branch/main`;
               }}
             >
               <h3 style={{ margin: '0 0 10px 0', fontSize: '18px', color: '#333' }}>
@@ -137,7 +137,7 @@ function BaseList() {
                 <a
                   href={(() => {
                     const domainId = (window as any).UiContext?.domainId || 'system';
-                    return `/d/${domainId}/base/${base.docId}`;
+                    return `/d/${domainId}/base/${base.docId}/outline/branch/main`;
                   })()}
                   onClick={(e) => e.stopPropagation()}
                   style={{

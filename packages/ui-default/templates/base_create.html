@@ -1,0 +1,40 @@
+{% extends "layout/basic.html" %}
+{% set page_name = "base_create" %}
+{% block content %}
+{% set _domain_id = UiContext.domainId or domainId or 'system' %}
+<div class="row">
+  <div class="medium-8 large-6 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Create Base') }}</h1>
+      </div>
+      <div class="section__body">
+        <form method="post" action="{{ url('base_create', domainId=_domain_id) }}">
+          <div class="row">
+            <div class="columns">
+              <label for="title">{{ _('Title') }}</label>
+              <input id="title" name="title" type="text" required placeholder="{{ _('Input base title') }}">
+            </div>
+          </div>
+          <div class="row">
+            <div class="columns">
+              <label for="bid">{{ _('BID') }}</label>
+              <input id="bid" name="bid" type="text" placeholder="P1001">
+              <p class="typo supplementary">
+                {{ _('Optional human-readable identifier, for example: P1001') }}
+              </p>
+            </div>
+          </div>
+          <div class="row">
+            <div class="columns">
+              <button type="submit" class="button expanded primary">
+                {{ _('Create Base') }}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

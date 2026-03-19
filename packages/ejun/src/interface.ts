@@ -210,10 +210,10 @@ declare module './model/agent'{
         owner: number;
         apiKey?: string;
         memory?: string;
-        mcpToolIds?: ObjectId[]; // 分配的MCP工具ID列表
-        repoIds?: number[]; // 生效的repo ID列表（rpid数组）
+        mcpToolIds?: ObjectId[]; // Comment translated to English.
+        repoIds?: number[]; // Comment translated to English.
         skillIds?: string[]; // Assigned skill names; domain market tools only when referenced in these skills
-        skillBranch?: string; // 挂载的 Skill 分支（如 main）；未设则不能使用 Skill
+        skillBranch?: string; // Comment translated to English.
     }
 }
 export type { AgentDoc } from './model/agent';
@@ -221,9 +221,9 @@ export type { AgentDoc } from './model/agent';
 // Repo/Base/Doc/Block documents
 export interface BaseDoc {
     docType: document['TYPE_BASE']; // Base 
-    docId: ObjectId;
+    docId: number;
     domainId: string;
-    rpids: number[]; // 存储所有 Repo ID
+    rpids: number[]; // Comment translated to English.
     title: string;
     content: string;
     owner: number;
@@ -232,7 +232,7 @@ export interface BaseDoc {
 }
 
 export interface RepoDoc {
-    docType: document['TYPE_REPO'];  // 标识它是一个 Repo
+    docType: document['TYPE_REPO'];  // Comment translated to English.
     docId: ObjectId;
     domainId: string;
     rpid: number;
@@ -241,13 +241,13 @@ export interface RepoDoc {
     owner: number;
     createdAt: Date;
     updateAt: Date;
-    currentBranch?: string; // 当前编辑分支
-    branches?: string[];    // 已存在的本地分支列表
-    githubRepo?: string;    // GitHub 仓库地址，如 git@github.com:user/repo.git
-    mode?: 'file' | 'manuscript'; // 显示模式：文件模式或文稿模式
-    config?: Record<string, any>; // Repo 配置
-    mcpServerId?: number; // 关联的MCP服务器ID（内部调用，已废弃）
-    edgeId?: number; // 关联的Edge ID（当MCP激活时）
+    currentBranch?: string; // Comment translated to English.
+    branches?: string[];    // Comment translated to English.
+    githubRepo?: string;    // Comment translated to English.
+    mode?: 'file' | 'manuscript'; // Comment translated to English.
+    config?: Record<string, any>; // Comment translated to English.
+    mcpServerId?: number; // Comment translated to English.
+    edgeId?: number; // Comment translated to English.
 }
 
 export interface DocDoc {
@@ -255,7 +255,7 @@ export interface DocDoc {
     docId: ObjectId;
     domainId: string;
     rpid: number;
-    did: number;  // Doc ID，从1开始
+    did: number;  // Comment translated to English.
     owner: number;
     title: string;
     content: string;
@@ -267,7 +267,7 @@ export interface DocDoc {
     doc: boolean;
     childrenCount?: number;
     createdAt?: Date;
-    branch?: string; // 所属分支，默认为 main
+    branch?: string; // Comment translated to English.
     order?: number;
 }
 
@@ -276,8 +276,8 @@ export interface BlockDoc {
     docId: ObjectId;
     domainId: string;
     rpid: number;
-    did: number;  // 关联的 doc ID
-    bid: number;  // Block ID，从1开始
+    did: number;  // Comment translated to English.
+    bid: number;  // Comment translated to English.
     owner: number;
     title: string;
     content: string;
@@ -285,65 +285,65 @@ export interface BlockDoc {
     updateAt: Date;
     views: number;
     createdAt?: Date;
-    branch?: string; // 所属分支，默认为 main
+    branch?: string; // Comment translated to English.
     order?: number;
 }
 
 // Base document
 export interface BaseNode {
-    id: string; // 节点唯一标识
-    text: string; // 节点文本内容
-    x?: number; // X坐标（可选，用于布局）
-    y?: number; // Y坐标（可选，用于布局）
-    width?: number; // 节点宽度
-    height?: number; // 节点高度
-    color?: string; // 节点颜色
-    backgroundColor?: string; // 节点背景色
-    fontSize?: number; // 字体大小
-    shape?: 'rectangle' | 'circle' | 'ellipse' | 'diamond'; // 节点形状
-    parentId?: string; // 父节点ID（用于树形结构）
-    children?: string[]; // 子节点ID列表
-    expanded?: boolean; // 是否展开（用于折叠/展开功能）
-    level?: number; // 节点层级（从根节点开始，0为根节点）
-    order?: number; // 节点在同级中的排序顺序
-    style?: Record<string, any>; // 自定义样式
-    data?: Record<string, any>; // 自定义数据
+    id: string; // Comment translated to English.
+    text: string; // Comment translated to English.
+    x?: number; // Comment translated to English.
+    y?: number; // Comment translated to English.
+    width?: number; // Comment translated to English.
+    height?: number; // Comment translated to English.
+    color?: string; // Comment translated to English.
+    backgroundColor?: string; // Comment translated to English.
+    fontSize?: number; // Comment translated to English.
+    shape?: 'rectangle' | 'circle' | 'ellipse' | 'diamond'; // Comment translated to English.
+    parentId?: string; // Comment translated to English.
+    children?: string[]; // Comment translated to English.
+    expanded?: boolean; // Comment translated to English.
+    level?: number; // Comment translated to English.
+    order?: number; // Comment translated to English.
+    style?: Record<string, any>; // Comment translated to English.
+    data?: Record<string, any>; // Comment translated to English.
     /** Mounted files (uploaded to this node) */
     files?: FileInfo[];
 }
 
 export interface BaseEdge {
-    id: string; // 连接唯一标识
-    source: string; // 源节点ID
-    target: string; // 目标节点ID
-    label?: string; // 连接标签
-    style?: Record<string, any>; // 连接样式
-    type?: 'straight' | 'curved' | 'bezier'; // 连接类型
-    color?: string; // 连接颜色
-    width?: number; // 连接宽度
+    id: string; // Comment translated to English.
+    source: string; // Comment translated to English.
+    target: string; // Comment translated to English.
+    label?: string; // Comment translated to English.
+    style?: Record<string, any>; // Comment translated to English.
+    type?: 'straight' | 'curved' | 'bezier'; // Comment translated to English.
+    color?: string; // Comment translated to English.
+    width?: number; // Comment translated to English.
 }
 
 export interface BaseDoc {
     docType: document['TYPE_BASE'];
-    docId: ObjectId;
+    docId: number;
     domainId: string;
     owner: number;
     title: string;
-    content: string; // 描述性内容（可选）
+    content: string; // Comment translated to English.
     type?: 'base' | 'skill';
-    nodes: BaseNode[]; // 节点列表（向后兼容，新数据存储在 branchData 中）
-    edges: BaseEdge[]; // 连接列表（向后兼容，新数据存储在 branchData 中）
-    branchData?: { [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] } }; // 按分支存储的数据
+    nodes: BaseNode[]; // Comment translated to English.
+    edges: BaseEdge[]; // Comment translated to English.
+    branchData?: { [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] } }; // Comment translated to English.
     layout?: {
-        type: 'hierarchical' | 'force' | 'manual'; // 布局类型
-        direction?: 'LR' | 'RL' | 'TB' | 'BT'; // 布局方向（用于层级布局）
-        spacing?: { x: number; y: number }; // 节点间距
-        config?: Record<string, any>; // 布局配置
+        type: 'hierarchical' | 'force' | 'manual'; // Comment translated to English.
+        direction?: 'LR' | 'RL' | 'TB' | 'BT'; // Comment translated to English.
+        spacing?: { x: number; y: number }; // Comment translated to English.
+        config?: Record<string, any>; // Comment translated to English.
     };
     viewport?: {
-        x: number; // 视口X坐标
-        y: number; // 视口Y坐标
-        zoom: number; // 缩放级别
+        x: number; // Comment translated to English.
+        y: number; // Comment translated to English.
+        zoom: number; // Comment translated to English.
     };
     theme?: {
         primaryColor?: string;
@@ -355,25 +355,26 @@ export interface BaseDoc {
     updateAt: Date;
     views: number;
     ip?: string;
-    rpid?: number; // 可选的关联仓库ID
-    branch?: string; // 可选的关联分支
-    githubRepo?: string; // GitHub 仓库地址，如 git@github.com:user/repo.git
-    branches?: string[]; // 分支列表
-    currentBranch?: string; // 当前分支
-    parentId?: ObjectId; // 父思维导图ID（用于建立思维导图之间的层级关系）
-    domainPosition?: { x: number; y: number }; // 在导图域中的位置（用于 base_domain 页面）
-    history?: BaseHistoryEntry[]; // 操作历史记录（最多50条）
-    files?: FileInfo[]; // 文件列表
+    rpid?: number; // Comment translated to English.
+    bid?: string | number; // Comment translated to English.
+    branch?: string; // Comment translated to English.
+    githubRepo?: string; // Comment translated to English.
+    branches?: string[]; // Comment translated to English.
+    currentBranch?: string; // Comment translated to English.
+    parentId?: ObjectId; // Comment translated to English.
+    domainPosition?: { x: number; y: number }; // Comment translated to English.
+    history?: BaseHistoryEntry[]; // Comment translated to English.
+    files?: FileInfo[]; // Comment translated to English.
 }
 
 export interface BaseHistoryEntry {
-    id: string; // 历史记录ID
-    type: 'save' | 'commit'; // 操作类型
-    timestamp: Date; // 操作时间
-    userId: number; // 操作用户ID
-    username: string; // 操作用户名
-    description: string; // 操作描述
-    snapshot: { // 数据快照
+    id: string; // Comment translated to English.
+    type: 'save' | 'commit'; // Comment translated to English.
+    timestamp: Date; // Comment translated to English.
+    userId: number; // Comment translated to English.
+    username: string; // Comment translated to English.
+    description: string; // Comment translated to English.
+    snapshot: { // Comment translated to English.
         nodes: BaseNode[];
         edges: BaseEdge[];
         viewport?: {
@@ -388,27 +389,27 @@ export interface CardDoc {
     docType: document['TYPE_CARD'];
     docId: ObjectId;
     domainId: string;
-    baseDocId: ObjectId; // 关联的 base docId
-    nodeId: string; // 关联的 node ID
-    cid: number; // Card ID，从1开始（在 node 内唯一）
+    baseDocId: number | ObjectId; // Comment translated to English.
+    nodeId: string; // Comment translated to English.
+    cid: number; // Comment translated to English.
     owner: number;
     title: string;
     content: string;
-    /** 卡面：在 lesson 中与 Know it / No impression 一起展示的 markdown 内容 */
+    /* Comment translated to English. */
     cardFace?: string;
     ip?: string;
     updateAt: Date;
     views: number;
     createdAt?: Date;
     order?: number;
-    // 关联的练习题（本地小题，不依赖 OJ）
+    // Comment translated to English.
     problems?: {
-        pid: string;          // 本地题目ID
-        type: 'single';       // 题目类型，目前仅支持单选题
-        stem: string;         // 题干
-        options: string[];    // 选项列表（至少2个，通常4个）
-        answer: number;       // 正确答案在 options 中的下标
-        analysis?: string;    // 解析（可选）
+        pid: string;          // Comment translated to English.
+        type: 'single';       // Comment translated to English.
+        stem: string;         // Comment translated to English.
+        options: string[];    // Comment translated to English.
+        answer: number;       // Comment translated to English.
+        analysis?: string;    // Comment translated to English.
     }[];
     /** Mounted files (uploaded to this card) */
     files?: FileInfo[];
@@ -417,23 +418,23 @@ export interface CardDoc {
 // Node document
 declare module './model/node' {
     interface NodeDoc {
-        _id: ObjectId; // document 系统自动添加
+        _id: ObjectId; // Comment translated to English.
         docType: document['TYPE_NODE'];
-        docId: ObjectId; // 由 mongo 自动生成
+        docId: ObjectId; // Comment translated to English.
         domainId: string;
-        nid: number; // Node ID，从 1 开始（业务 ID，用于路由显示）
+        nid: number; // Comment translated to English.
         name: string;
         description?: string;
-        wsEndpoint?: string; // WebSocket 接入点路径（可选，生成接入点时设置）
-        mqttClientId?: string; // MQTT 客户端 ID
+        wsEndpoint?: string; // Comment translated to English.
+        mqttClientId?: string; // Comment translated to English.
         status: 'active' | 'inactive' | 'disconnected';
-        host?: string; // Node 主机地址
-        port?: number; // Node 端口
-        edgeId?: number; // 关联的 Edge ID（当通过 edge 接入时）
+        host?: string; // Comment translated to English.
+        port?: number; // Comment translated to English.
+        edgeId?: number; // Comment translated to English.
         createdAt: Date;
         updatedAt: Date;
-        owner: number; // 用户 ID
-        content?: string; // document 系统要求
+        owner: number; // Comment translated to English.
+        content?: string; // Comment translated to English.
     }
 }
 export type { NodeDoc } from './model/node';
@@ -441,47 +442,47 @@ export type { NodeDoc } from './model/node';
 // Scene document
 declare module './model/scene' {
     interface SceneDoc {
-        _id: ObjectId; // document 系统自动添加
+        _id: ObjectId; // Comment translated to English.
         docType: document['TYPE_SCENE'];
-        docId: ObjectId; // 由 mongo 自动生成
+        docId: ObjectId; // Comment translated to English.
         domainId: string;
-        sid: number; // Scene ID，从 1 开始（业务 ID，用于路由显示）
+        sid: number; // Comment translated to English.
         name: string;
         description?: string;
-        enabled: boolean; // 是否启用（每个域只能有一个启用的场景）
+        enabled: boolean; // Comment translated to English.
         createdAt: Date;
         updatedAt: Date;
-        owner: number; // 用户 ID
-        content?: string; // document 系统要求
+        owner: number; // Comment translated to English.
+        content?: string; // Comment translated to English.
     }
 
     interface SceneEventDoc {
-        _id: ObjectId; // document 系统自动添加
+        _id: ObjectId; // Comment translated to English.
         docType: document['TYPE_EVENT'];
-        docId: ObjectId; // 由 mongo 自动生成
+        docId: ObjectId; // Comment translated to English.
         domainId: string;
-        sceneId: number; // 所属场景 ID
-        sceneDocId: ObjectId; // 所属场景的 docId
-        parentType: document['TYPE_SCENE']; // 父类型
-        parentId: ObjectId; // 父 ID（sceneDocId）
-        eid: number; // Event ID，在场景内从 1 开始
+        sceneId: number; // Comment translated to English.
+        sceneDocId: ObjectId; // Comment translated to English.
+        parentType: document['TYPE_SCENE']; // Comment translated to English.
+        parentId: ObjectId; // Comment translated to English.
+        eid: number; // Comment translated to English.
         name: string;
         description?: string;
-        // 监听源：node 下的开关设备 或 client 组件 或 GSI 数据
-        sourceNodeId?: number; // 监听源节点 ID（Node设备）
-        sourceDeviceId?: string; // 监听源设备 ID（Node设备）
-        sourceClientId?: number; // 监听源Client ID（Client组件 或 GSI数据）
-        sourceWidgetName?: string; // 监听源组件名称（Client组件）
-        sourceGsiPath?: string; // GSI数据路径，如 "player.state.health", "round.phase", "bomb.state" 等
-        sourceGsiOperator?: string; // 比较操作符: "eq"(等于), "ne"(不等于), "gt"(大于), "gte"(大于等于), "lt"(小于), "lte"(小于等于), "in"(包含), "contains"(字符串包含)
-        sourceGsiValue?: any; // 比较值（阈值或具体值）
-        sourceAction?: string; // 监听的动作，如 'on', 'off', 'toggle', 'show', 'hide'
-        // 触发效果：node 下的开关设备 或 client 组件（支持多个）
-        targets: Array<{ // 多个触发效果
-            targetNodeId?: number; // Node设备控制
-            targetDeviceId?: string; // Node设备控制
-            targetClientId?: number; // Client组件控制
-            targetWidgetName?: string; // Client组件控制
+        // Comment translated to English.
+        sourceNodeId?: number; // Comment translated to English.
+        sourceDeviceId?: string; // Comment translated to English.
+        sourceClientId?: number; // Comment translated to English.
+        sourceWidgetName?: string; // Comment translated to English.
+        sourceGsiPath?: string; // Comment translated to English.
+        sourceGsiOperator?: string; // Comment translated to English.
+        sourceGsiValue?: any; // Comment translated to English.
+        sourceAction?: string; // Comment translated to English.
+        // Comment translated to English.
+        targets: Array<{ // Comment translated to English.
+            targetNodeId?: number; // Comment translated to English.
+            targetDeviceId?: string; // Comment translated to English.
+            targetClientId?: number; // Comment translated to English.
+            targetWidgetName?: string; // Comment translated to English.
             targetAction: string;
             targetValue?: any;
             order?: number; // Execution order
@@ -494,8 +495,8 @@ declare module './model/scene' {
         triggerDelay?: number; // Delay before trigger (ms)
         createdAt: Date;
         updatedAt: Date;
-        owner: number; // 用户 ID
-        content?: string; // document 系统要求
+        owner: number; // Comment translated to English.
+        content?: string; // Comment translated to English.
     }
 }
 export type { SceneDoc, SceneEventDoc } from './model/scene';
@@ -503,45 +504,45 @@ export type { SceneDoc, SceneEventDoc } from './model/scene';
 // MCP Server document
 declare module './model/mcp' {
     interface McpServerDoc {
-        _id: ObjectId; // document 系统自动添加
+        _id: ObjectId; // Comment translated to English.
         docType: document['TYPE_EDGE'];
-        docId: ObjectId; // 由 mongo 自动生成
+        docId: ObjectId; // Comment translated to English.
         domainId: string;
-        serverId: number; // MCP 服务器 ID，从 1 开始（业务 ID）
+        serverId: number; // Comment translated to English.
         name: string;
         description?: string;
-        wsEndpoint: string; // WebSocket 接入点路径
-        wsToken?: string; // WebSocket 连接令牌（用于验证）
-        status?: 'connected' | 'disconnected' | 'error'; // 服务器连接状态（可选，由实时连接管理，不存储到数据库）
-        lastConnectedAt?: Date; // 最后连接时间
-        lastDisconnectedAt?: Date; // 最后断开时间
-        errorMessage?: string; // 错误信息
-        toolsCount?: number; // 工具数量
-        type?: 'provider' | 'repo' | 'node'; // MCP 服务器类型：provider（外部）、repo（repo内部）、node（node提供）
+        wsEndpoint: string; // Comment translated to English.
+        wsToken?: string; // Comment translated to English.
+        status?: 'connected' | 'disconnected' | 'error'; // Comment translated to English.
+        lastConnectedAt?: Date; // Comment translated to English.
+        lastDisconnectedAt?: Date; // Comment translated to English.
+        errorMessage?: string; // Comment translated to English.
+        toolsCount?: number; // Comment translated to English.
+        type?: 'provider' | 'repo' | 'node'; // Comment translated to English.
         createdAt: Date;
         updatedAt: Date;
-        owner: number; // 用户 ID
-        content?: string; // document 系统要求
+        owner: number; // Comment translated to English.
+        content?: string; // Comment translated to English.
     }
 
     interface McpToolDoc {
-        _id: ObjectId; // document 系统自动添加
+        _id: ObjectId; // Comment translated to English.
         docType: document['TYPE_TOOL'];
-        docId: ObjectId; // 由 mongo 自动生成
+        docId: ObjectId; // Comment translated to English.
         domainId: string;
-        serverId: number; // 所属 MCP 服务器 ID
-        serverDocId: ObjectId; // 所属 MCP 服务器的 docId
-        toolId: number; // 工具 ID，从 1 开始（业务 ID）
-        name: string; // 工具名称
-        description: string; // 工具描述
+        serverId: number; // Comment translated to English.
+        serverDocId: ObjectId; // Comment translated to English.
+        toolId: number; // Comment translated to English.
+        name: string; // Comment translated to English.
+        description: string; // Comment translated to English.
         inputSchema: {
             type: string;
             properties?: Record<string, any>;
-        }; // 工具输入模式
+        }; // Comment translated to English.
         createdAt: Date;
         updatedAt: Date;
-        owner: number; // 用户 ID
-        content?: string; // document 系统要求
+        owner: number; // Comment translated to English.
+        content?: string; // Comment translated to English.
     }
 }
 
@@ -589,7 +590,7 @@ declare module './model/client' {
         lastConnectedAt?: Date;
         lastDisconnectedAt?: Date;
         errorMessage?: string;
-        edgeId?: number; // 关联的 Edge ID（当通过 edge 接入时）
+        edgeId?: number; // Comment translated to English.
         settings: {
             asr?: {
                 provider: string;
@@ -636,7 +637,7 @@ declare module './model/edge' {
         docType: document['TYPE_EDGE'];
         docId: ObjectId;
         domainId: string;
-        eid: number; // Edge ID，从 1 开始（业务 ID，用于路由显示）
+        eid: number; // Comment translated to English.
         token: string;
         type: 'provider' | 'client' | 'node' | 'repo';
         status: 'online' | 'offline' | 'working';
@@ -649,8 +650,8 @@ declare module './model/edge' {
         lastDisconnectedAt?: Date;
         errorMessage?: string;
         toolsCount?: number;
-        nodeId?: number; // 关联的 Node ID（当 type='node' 时）
-        clientId?: number; // 关联的 Client ID（当 type='client' 时）
+        nodeId?: number; // Comment translated to English.
+        clientId?: number; // Comment translated to English.
         createdAt: Date;
         updatedAt: Date;
         owner: number;
@@ -666,7 +667,7 @@ declare module './model/workflow' {
         docType: document['TYPE_WORKFLOW'];
         docId: ObjectId;
         domainId: string;
-        wid: number; // Workflow ID，从 1 开始（业务 ID）
+        wid: number; // Comment translated to English.
         name: string;
         description?: string;
         status: 'active' | 'inactive' | 'paused';
@@ -674,7 +675,7 @@ declare module './model/workflow' {
         createdAt: Date;
         updatedAt: Date;
         owner: number;
-        content?: string; // document 系统要求
+        content?: string; // Comment translated to English.
     }
 }
 
@@ -685,22 +686,22 @@ declare module './model/workflow_node' {
         docType: document['TYPE_WORKFLOW_NODE'];
         docId: ObjectId;
         domainId: string;
-        workflowId: number; // 所属工作流 ID
-        workflowDocId: ObjectId; // 所属工作流的 docId
-        nid: number; // Node ID，在工作流内从 1 开始
+        workflowId: number; // Comment translated to English.
+        workflowDocId: ObjectId; // Comment translated to English.
+        nid: number; // Comment translated to English.
         type: 'trigger' | 'action' | 'condition' | 'delay';
         nodeType: 'timer' | 'button' | 'device_control' | 'agent_message' | 'object_action' | 'agent_action' | 'condition' | 'delay' | 'start' | 'end' | 'receiver';
         name: string;
-        position: { x: number; y: number }; // UI 位置
-        config: Record<string, any>; // 节点配置，根据 nodeType 不同而不同
+        position: { x: number; y: number }; // Comment translated to English.
+        config: Record<string, any>; // Comment translated to English.
         connections: Array<{
-            targetNodeId: number; // 目标节点 ID
-            condition?: string; // 条件（用于 condition 节点）
+            targetNodeId: number; // Comment translated to English.
+            condition?: string; // Comment translated to English.
         }>;
         createdAt: Date;
         updatedAt: Date;
         owner: number;
-        content?: string; // document 系统要求
+        content?: string; // Comment translated to English.
     }
 }
 export type { WorkflowDoc } from './model/workflow';
@@ -714,7 +715,7 @@ declare module './model/tool' {
         domainId: string;
         token: string;
         edgeDocId: ObjectId;
-        tid: number; // Tool ID，从 1 开始（业务 ID，用于路由显示）
+        tid: number; // Comment translated to English.
         name: string;
         description: string;
         inputSchema: {
@@ -729,7 +730,7 @@ declare module './model/tool' {
 }
 export type { ToolDoc } from './model/tool';
 
-/** Agent 可复制的工具参数（context.tools 中传给 worker）；带 system 则识别为系统工具并直接调用。 */
+/* Comment translated to English. */
 export interface AssignedToolEntry {
     name: string;
     description: string;
@@ -737,7 +738,7 @@ export interface AssignedToolEntry {
     token?: string;
     edgeId?: ObjectId;
     type?: 'system';
-    /** 有 system 则识别为系统工具并直接调用 */
+    /* Comment translated to English. */
     system?: boolean;
 }
 export type { DomainMarketToolDoc } from './model/domain_market_tool';
@@ -1048,9 +1049,9 @@ export interface SessionDoc {
     agentId: string;
     uid: number;
     recordIds: ObjectId[];
-    type: 'client' | 'chat'; // session 类型：client（客户端会话）、chat（聊天会话）
+    type: 'client' | 'chat'; // Comment translated to English.
     title?: string;
-    context?: any; // 共享的上下文信息，用于 session 内的所有 task
+    context?: any; // Comment translated to English.
     createdAt: Date;
     updatedAt: Date;
     lastActivityAt?: Date;
@@ -1062,7 +1063,7 @@ declare module '@ejunz/common/types' {
     export interface RecordDoc {
         // Task fields (when lang === 'task')
         agentId?: string;
-        sessionId?: ObjectId; // 关联的 session ID
+        sessionId?: ObjectId; // Comment translated to English.
         agentMessages?: Array<{
             role: 'user' | 'assistant' | 'tool';
             content: string;
