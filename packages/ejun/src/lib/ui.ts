@@ -70,8 +70,7 @@ export const BaseAdd = (name, args, icon = 'add', text = 'Create Base') => {
 inject('Nav', 'homepage', { prefix: 'homepage' });
 inject('Nav', 'learn', { prefix: 'learn' });
 inject('Nav', 'scene_domain', { prefix: 'scene' });
-inject('Nav', 'base_outline', { prefix: 'base' });
-// inject('Nav', 'base_domain', { prefix: 'base' });
+inject('Nav', 'base_domain', { prefix: 'base' });
 inject('Nav', 'agent_domain', { prefix: 'agent' });
 inject('Nav', 'edge_domain', { prefix: 'edge' });
 inject('Nav', 'tool_domain', { prefix: 'tool' });

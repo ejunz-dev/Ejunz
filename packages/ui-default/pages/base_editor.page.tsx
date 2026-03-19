@@ -957,6 +957,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
     let closed = false;
     const apiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+    const apiQs = docId && basePath === 'base' ? { docId } : {};
 
     const connect = async () => {
       try {
@@ -981,8 +982,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                     : prev.contributionDetails,
                 }));
               }
-              // 同步 base 与 nodeCardsMap（其他 tab/outline 保存后 editor 实时刷新树和卡片）
-              request.get(apiPath).then((newData: any) => {
+              // Comment translated to English.
+              request.get(apiPath, apiQs).then((newData: any) => {
                 if (closed || !newData || (!newData.nodes && !newData.edges)) return;
                 const nextNodes = newData.nodes ?? [];
                 const nextEdges = newData.edges ?? [];
@@ -1031,7 +1032,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         contributionWsRef.current = null;
       }
     };
-  }, [basePath]);
+  }, [basePath, docId]);
 
   const themeStyles = useMemo(() => {
     const isDark = theme === 'dark';
@@ -1082,6 +1083,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           );
           
           await request.post(getBaseUrl('/save'), {
+            ...(docId ? { docId } : {}),
             nodes: migrationNodes,
             edges: migrationEdges,
             operationDescription: '自动迁移：为节点和卡片添加order字段',
@@ -1091,6 +1093,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             const domainId = (window as any).UiContext?.domainId || 'system';
             const updatePromises = migrationResult.cardUpdates.map(update =>
               request.post(getBaseUrl(`/card/${update.cardId}`), {
+                ...(docId ? { docId } : {}),
                 operation: 'update',
                 nodeId: update.nodeId,
                 order: update.order,
@@ -1144,7 +1147,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const domainId = (window as any).UiContext?.domainId || 'system';
     const apiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
     try {
-      const newData: any = await request.get(apiPath);
+      const qs = docId && basePath === 'base' ? { docId } : {};
+      const newData: any = await request.get(apiPath, qs);
       if (newData?.nodes != null || newData?.edges != null) {
         setBase(prev => {
           const prevNodes = prev?.nodes || [];
@@ -1173,7 +1177,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } catch (e) {
       console.error('[BaseEditor] refetchEditorData failed:', e);
     }
-  }, [basePath]);
+  }, [basePath, docId]);
 
   const handleCardFileInputChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
@@ -1925,7 +1929,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       return;
     }
     
-    // 单选模式：仅当多选集合非空时清空，避免多余 setState；并先更新选中状态，再延后内容相关更新，保证高亮及时
+    // Comment translated to English.
     if (selectedItems.size > 0) setSelectedItems(new Set());
     
     
@@ -1963,7 +1967,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (!skipUrlUpdate && file.type === 'card' && file.cardId) {
       const urlParams = new URLSearchParams(window.location.search);
       urlParams.set('cardId', String(file.cardId));
-      urlParams.delete('nodeId'); // 明确为卡片视图，避免被 nodeId 覆盖
+      urlParams.delete('nodeId'); // Comment translated to English.
       const newUrl = window.location.pathname + '?' + urlParams.toString();
       window.history.pushState({ cardId: file.cardId }, '', newUrl);
     }
@@ -2246,6 +2250,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       
       
       const batchSaveData: any = {
+        ...(docId ? { docId } : {}),
         nodeCreates: [],
         nodeUpdates: [],
         nodeDeletes: [],
@@ -2504,7 +2509,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         let currentBase: BaseDoc | null = null;
         if (nodeEdgeUpdates.size > 0) {
           try {
-            currentBase = await request.get(getBaseUrl('/data', docId));
+            currentBase = await request.get(`/d/${domainId}/base/data`, docId ? { docId } : {});
           } catch (error: any) {
           }
         }
@@ -2951,7 +2956,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       
       if (hasCreateChanges || hasAnyChanges) {
         try {
-          const response = await request.get(getBaseUrl('/data', docId));
+          const response = await request.get(`/d/${domainId}/base/data`, docId ? { docId } : {});
           setBase(response);
         } catch (error) {
         }
@@ -4745,7 +4750,7 @@ ${cardContext}
 - 卡片内容：${currentCard.content || i18n('(No content)')}
 - 已有题目数量：${problems.length}${problemsText}
 
-**重要**：用户当前正在查看这个卡片，如果用户询问关于题目生成、编辑题目等问题，都是针对这个卡片的。生成新题目时，请避免与已有题目重复。`;
+`;
       }
 
       
@@ -7403,11 +7408,11 @@ ${currentCardContext}
         <div style={{ padding: '8px 0' }}>
           {explorerMode === 'tree' ? (
             fileTree.map((file, index) => {
-            // 单选模式只认 selectedFile，多选模式只认 selectedItems；单选时 selectedItems 已在 handleSelectFile 中清空，保证最多一个高亮
+            // Comment translated to English.
             const isSelected = isMultiSelectMode
               ? selectedItems.has(file.id)
               : (selectedFile?.id === file.id);
-            // 仅当该行是树中第一个 id 与 selectedFile 匹配的项时才高亮，保证最多一个蓝色高亮（避免 id 重复时多行同时高亮）
+            // Comment translated to English.
             const selectedIndex = selectedFile != null ? fileTree.findIndex(f => f.id === selectedFile.id) : -1;
             const isHighlighted = !isMultiSelectMode && selectedFile != null && selectedFile.id === file.id && selectedIndex === index;
             const isDragOver = dragOverFile?.id === file.id;
@@ -7943,7 +7948,7 @@ ${currentCardContext}
                   </div>
                 )}
                 
-                {/* 重命名更改 */}
+                {/* Comment translated to English. */}
                 {pendingRenames.size > 0 && (
                   <div>
                     <div style={{ fontWeight: '500', marginBottom: '4px' }}>重命名 ({pendingRenames.size})</div>
@@ -9774,7 +9779,7 @@ ${currentCardContext}
           )}
         </div>
 
-        {/* 今日贡献：紧凑卡片条 */}
+        {/* Comment translated to English. */}
         {(() => {
           const todayContribution = contributionData.todayContribution;
           const todayAll = contributionData.todayContributionAllDomains;
@@ -11008,7 +11013,7 @@ const getBaseUrl = (path: string, docId: string): string => {
   return `/d/${domainId}/base/${docId}${path}`;
 };
 
-const page = new NamedPage(['base_editor', 'base_skill_editor', 'base_skill_editor_branch'], async (pageName) => {
+const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_editor', 'base_skill_editor_branch'], async (pageName) => {
   try {
     
     const isSkill = pageName === 'base_skill_editor' || pageName === 'base_skill_editor_branch';
@@ -11026,7 +11031,8 @@ const page = new NamedPage(['base_editor', 'base_skill_editor', 'base_skill_edit
     try {
       
       const apiPath = isSkill ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
-      const response = await request.get(apiPath);
+      // Comment translated to English.
+      const response = await request.get(apiPath, docId ? { docId } : {});
       initialData = response;
       
       if (!initialData.docId) {

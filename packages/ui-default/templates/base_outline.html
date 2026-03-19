@@ -2,6 +2,7 @@
 {% block content %}
 {% set _editor_mode = editorMode or 'base' %}
 {% set _outline_branch_route = 'base_skill_outline_branch' if editorMode == 'skill' else 'base_outline_branch' %}
+{% set _base_doc_id = ('' ~ ((base.bid if base and base.bid else base.docId) if base and base.docId is not none else '')) %}
 <style>
   .outline-editor-root {
     min-height: 100vh !important;
@@ -29,20 +30,12 @@
 </style>
 <script>
   {{ set(UiContext, 'currentBranch', currentBranch) }}
-  {% if base and base.docId %}
   {{ set(UiContext, 'base', {
     domainId: domainId,
-    docId: base.docId.toString(),
+    docId: _base_doc_id,
     currentBranch: currentBranch
   }) }}
-  {{ set(UiContext, 'socketUrl', 'base/ws?domainId=' + (domainId or (base and base.domainId) or '') + '&docId=' + base.docId.toString()) }}
-  {% else %}
-  {{ set(UiContext, 'base', {
-    domainId: domainId,
-    docId: '',
-    currentBranch: currentBranch
-  }) }}
-  {% endif %}
+  {{ set(UiContext, 'socketUrl', 'base/ws?domainId=' + (domainId or (base and base.domainId) or '') + '&docId=' + _base_doc_id) }}
   {{ set(UiContext, 'nodeCardsMap', nodeCardsMap or {}) }}
   {{ set(UiContext, 'files', files or []) }}
   // Helper function to get Notification
@@ -67,12 +60,12 @@
   <div class="large-12 columns">
     <div class="section">
       <div class="section__body no-padding">
-        <div id="base-outline-editor" data-doc-id="{% if base and base.docId %}{{ base.docId.toString() }}{% endif %}" style="height: 100vh; width: 100%;"></div>
+        <div id="base-outline-editor" data-doc-id="{{ _base_doc_id }}" style="height: 100vh; width: 100%;"></div>
       </div>
     </div>
   </div>
   
-  <!-- Info和History侧边栏已移除 -->
+  <!-- Comment translated to English. -->
   <div class="large-3 columns" style="display: none;">
     <div class="section">
       <div class="section__header">
@@ -350,7 +343,7 @@
 </div>
 
 <script>
-  // 加载历史记录
+  // Comment translated to English.
   async function loadHistory() {
     const historyListEl = document.getElementById('history-list');
     if (!historyListEl) return;
@@ -398,12 +391,12 @@
     }
   }
   
-  // 恢复到历史节点
+  // Comment translated to English.
   async function restoreHistory(historyId) {
     if (!confirm('确定要恢复到该历史节点吗？当前未保存的更改将丢失。')) return;
     
     try {
-      // 构建正确的URL，将historyId作为路径参数
+      // Comment translated to English.
       const baseUrl = '{{ url('base_history_restore_branch', domainId=domainId, branch=currentBranch, historyId='__HISTORY_ID__') }}';
       const url = baseUrl.replace('__HISTORY_ID__', encodeURIComponent(historyId));
       const response = await fetch(url, {
@@ -428,11 +421,11 @@
     }
   }
   
-  // 初始化时加载历史记录（仅当 base 存在时）
+  // Comment translated to English.
   {% if base %}
   loadHistory();
   
-  // 定期刷新历史记录（每10秒）
+  // Comment translated to English.
   setInterval(loadHistory, 10000);
   {% endif %}
 </script>

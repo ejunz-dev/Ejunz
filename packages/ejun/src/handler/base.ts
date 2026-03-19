@@ -23,7 +23,34 @@ import moment from 'moment-timezone';
 const exec = promisify(execCb);
 const logger = new Logger('base');
 
-/** 构建当前用户在某域内的贡献数据（今日 + 贡献墙），供 GET 与 WS 复用 */
+/* Comment translated to English. */
+export function readOptionalRequestBaseDocId(req: { body?: any; query?: any } | undefined): number | undefined {
+    if (!req) return undefined;
+    const body = req.body || {};
+    const q = req.query || {};
+    const raw = body.docId ?? body.baseDocId ?? q.docId;
+    if (raw === undefined || raw === null || raw === '') return undefined;
+    try {
+        const n = Number(raw);
+        if (!Number.isSafeInteger(n) || n <= 0) return undefined;
+        return n;
+    } catch {
+        return undefined;
+    }
+}
+
+/* Comment translated to English. */
+async function resolveBaseByDocIdOrBid(domainId: string, docIdOrBid: string): Promise<BaseDoc | null> {
+    const key = String(docIdOrBid || '').trim();
+    if (!key) return null;
+    if (/^\d+$/.test(key)) {
+        const byDocId = await BaseModel.get(domainId, Number(key));
+        if (byDocId) return byDocId;
+    }
+    return BaseModel.getBybid(domainId, key);
+}
+
+/* Comment translated to English. */
 async function buildContributionDataForDomain(
     domainId: string,
     uid: number,
@@ -208,7 +235,7 @@ async function buildContributionDataForDomain(
     return { todayContribution, contributions, contributionDetails };
 }
 
-/** 本日所有域总贡献（节点/卡片/题目数 + 贡献字数），用于编辑器上方「本日所有域」展示 */
+/* Comment translated to English. */
 async function buildTodayContributionAllDomains(uid: number): Promise<{
     nodes: number;
     cards: number;
@@ -276,8 +303,8 @@ async function buildTodayContributionAllDomains(uid: number): Promise<{
 class BaseDetailHandler extends Handler {
     base?: BaseDoc;
 
-    @param('docId', Types.ObjectId, true)
-    async _prepare(domainId: string, docId: ObjectId) {
+    @param('docId', Types.PositiveInt, true)
+    async _prepare(domainId: string, docId: number) {
         const path = this.request.path || '';
         if (path.endsWith('.css.map') || path.endsWith('.js.map') || path.endsWith('.map')) {
             throw new NotFoundError('Static resource');
@@ -286,7 +313,7 @@ class BaseDetailHandler extends Handler {
         if (docId) {
             this.base = await BaseModel.get(domainId, docId);
         } else {
-            // 如果没有 docId，通过 domainId 获取（一个 domain 一个 base）
+            // Comment translated to English.
             this.base = await BaseModel.getByDomain(domainId);
         }
         
@@ -297,9 +324,9 @@ class BaseDetailHandler extends Handler {
         await BaseModel.incrementViews(domainId, this.base.docId);
     }
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('branch', Types.String, true)
-    async get(domainId: string, docId: ObjectId, branch?: string) {
+    async get(domainId: string, docId: number, branch?: string) {
         // If no branch parameter, redirect to branch URL
         if (!branch || !String(branch).trim()) {
             const target = this.url('base_detail_branch', { 
@@ -416,10 +443,10 @@ class BaseDetailHandler extends Handler {
             }
         }
         
-        // 获取当前分支的数据
+        // Comment translated to English.
         const branchData = getBranchData(this.base!, requestedBranch);
         
-        // 获取所有节点的卡片数据（按节点ID分组）
+        // Comment translated to English.
         const nodeCardsMap: Record<string, CardDoc[]> = {};
         if (branchData.nodes && branchData.nodes.length > 0) {
             for (const node of branchData.nodes) {
@@ -444,8 +471,8 @@ class BaseDetailHandler extends Handler {
             gitStatus,
             currentBranch: requestedBranch,
             branches,
-            nodeCardsMap, // 添加节点卡片映射
-            files: this.base.files || [], // 添加文件列表
+            nodeCardsMap, // Comment translated to English.
+            files: this.base.files || [], // Comment translated to English.
         };
     }
 
@@ -457,7 +484,7 @@ class BaseDetailHandler extends Handler {
 export function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edges: BaseEdge[] } {
     const branchName = branch || 'main';
     
-    // 如果存在 branchData，优先使用
+    // Comment translated to English.
     if (base.branchData && base.branchData[branchName]) {
         return {
             nodes: base.branchData[branchName].nodes || [],
@@ -465,7 +492,7 @@ export function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[
         };
     }
     
-    // 向后兼容：如果 branchData 不存在，使用根节点的 nodes/edges（仅对 main 分支）
+    // Comment translated to English.
     if (branchName === 'main') {
         return {
             nodes: base.nodes || [],
@@ -473,7 +500,7 @@ export function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[
         };
     }
     
-    // 其他分支如果没有数据，返回空数组
+    // Comment translated to English.
     return { nodes: [], edges: [] };
 }
 
@@ -486,7 +513,7 @@ export function setBranchData(base: BaseDoc, branch: string, nodes: BaseNode[], 
     
     base.branchData[branchName] = { nodes, edges };
     
-    // 向后兼容：main 分支的数据也保存到根节点
+    // Comment translated to English.
     if (branchName === 'main') {
         base.nodes = nodes;
         base.edges = edges;
@@ -499,9 +526,9 @@ export function setBranchData(base: BaseDoc, branch: string, nodes: BaseNode[], 
 class BaseStudyHandler extends Handler {
     base?: BaseDoc;
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
-    async _prepare(domainId: string, docId: ObjectId, bid: number) {
+    async _prepare(domainId: string, docId: number, bid: number) {
         if (docId) {
             this.base = await BaseModel.get(domainId, docId);
         } else if (bid) {
@@ -510,13 +537,13 @@ class BaseStudyHandler extends Handler {
         if (!this.base) throw new NotFoundError('Base not found');
     }
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('branch', Types.String, true)
-    async get(domainId: string, docId: ObjectId, branch?: string) {
+    async get(domainId: string, docId: number, branch?: string) {
         const currentBranch = branch || (this.base as any)?.currentBranch || 'main';
         const branchData = getBranchData(this.base!, currentBranch);
         
-        // 找到根节点（没有父边的节点）
+        // Comment translated to English.
         const rootNodes = branchData.nodes.filter(node => 
             !branchData.edges.some(edge => edge.target === node.id)
         );
@@ -537,7 +564,7 @@ class BaseStudyHandler extends Handler {
             }>;
         }> = [];
 
-        // 辅助函数：收集节点的所有 problems
+        // Comment translated to English.
         const collectNodeProblems = async (node: BaseNode): Promise<Array<{
             pid: string;
             type: 'single';
@@ -569,7 +596,7 @@ class BaseStudyHandler extends Handler {
                     
                     for (const card of cards) {
                         if (card.problems && card.problems.length > 0) {
-                            // 构建卡片 URL
+                            // Comment translated to English.
                             const cardUrl = `/d/${domainId}/base/${docId}/branch/${currentBranch}/node/${node.id}/cards?cardId=${card.docId}`;
                             
                             for (const problem of card.problems) {
@@ -593,7 +620,7 @@ class BaseStudyHandler extends Handler {
         if (rootNodes.length > 0) {
             const rootNode = rootNodes[0];
             
-            // 先处理根节点本身
+            // Comment translated to English.
             const rootProblems = await collectNodeProblems(rootNode);
             units.push({
                 node: rootNode,
@@ -601,7 +628,7 @@ class BaseStudyHandler extends Handler {
                 problems: rootProblems,
             });
             
-            // 然后处理根节点的所有子节点
+            // Comment translated to English.
             const childEdges = branchData.edges.filter(e => e.source === rootNode.id);
             
             for (const edge of childEdges) {
@@ -630,7 +657,7 @@ class BaseStudyHandler extends Handler {
     }
 }
 
-/** Outline 子类可覆盖的选项（base / skill 等，仅通过 type 区分） */
+/* Comment translated to English. */
 export interface BaseOutlineOptions {
     template: string;
     editorMode: 'base' | 'skill';
@@ -649,7 +676,7 @@ export interface BaseOutlineOptions {
 }
 
 /**
- * Base Outline Handler（文件模式），子类通过 getOutlineOptions() 复用逻辑
+ * Comment translated to English.
  */
 export class BaseOutlineHandler extends Handler {
     protected getOutlineOptions(domainId: string, branch?: string): BaseOutlineOptions {
@@ -722,7 +749,7 @@ export class BaseOutlineHandler extends Handler {
             .sort({ order: 1, cid: 1 })
             .toArray() as CardDoc[];
         
-        // 按节点ID分组 cards
+        // Comment translated to English.
         const nodeCardsMap: Record<string, CardDoc[]> = {};
         for (const card of allCards) {
             if (card.nodeId) {
@@ -772,7 +799,7 @@ export class BaseOutlineHandler extends Handler {
             }
         }
         
-        // 获取分支列表（如果 base 存在）
+        // Comment translated to English.
         const branches = base && Array.isArray((base as any)?.branches) 
             ? (base as any).branches 
             : ['main'];
@@ -780,7 +807,7 @@ export class BaseOutlineHandler extends Handler {
             branches.unshift('main');
         }
         
-        // Get git status（如果 base 存在）
+        // Comment translated to English.
         let gitStatus: any = null;
         if (base) {
             const githubRepo = (base.githubRepo || '') as string;
@@ -841,7 +868,7 @@ export class BaseOutlineHandler extends Handler {
     }
 }
 
-/** Editor 子类可覆盖的选项（base / skill 等） */
+/* Comment translated to English. */
 export interface BaseEditorOptions {
     template: string;
     editorMode: 'base' | 'skill';
@@ -860,7 +887,7 @@ export interface BaseEditorOptions {
 }
 
 /**
- * Base Editor Handler，子类通过 getEditorOptions() 复用逻辑
+ * Comment translated to English.
  */
 export class BaseEditorHandler extends Handler {
     protected getEditorOptions(domainId: string, branch?: string): BaseEditorOptions {
@@ -990,8 +1017,113 @@ export class BaseEditorHandler extends Handler {
             contributionDetails,
             baseExpandState,
             workspaceNodeId,
-            // 仅 skill 时传入 page_name，供前端 NamedPage 识别以显示右侧工具侧边栏；base 不传，用模板默认 base_editor
+            // Comment translated to English.
             ...(opts.editorMode === 'skill' ? { page_name: 'base_skill_editor_branch' } : {}),
+        };
+    }
+}
+
+/**
+ * Comment translated to English.
+ *
+ * Comment translated to English.
+ *   /d/:domainId/base/:docId/branch/:branch/editor
+ */
+export class BaseEditorDocHandler extends Handler {
+    base?: BaseDoc;
+
+    @param('docId', Types.String)
+    async _prepare(domainId: string, docId: string) {
+        this.base = await resolveBaseByDocIdOrBid(domainId, docId);
+        if (!this.base) throw new NotFoundError('Base not found');
+    }
+
+    @param('branch', Types.String, true)
+    async get(domainId: string, branch?: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+
+        const base = this.base!;
+        const requestedBranch = branch && String(branch).trim() ? branch : 'main';
+
+        this.response.template = 'base_editor.html';
+
+        let nodes: BaseNode[] = [];
+        let edges: BaseEdge[] = [];
+
+        const branchData = getBranchData(base, requestedBranch);
+        nodes = branchData.nodes || [];
+        edges = branchData.edges || [];
+
+        const currentBaseBranch = (base as any)?.currentBranch || 'main';
+        if (requestedBranch !== currentBaseBranch) {
+            await document.set(domainId, document.TYPE_BASE, base.docId, { currentBranch: requestedBranch });
+        }
+
+        if (nodes.length === 0) {
+            const rootNode: Omit<BaseNode, 'id'> = { text: (this as any).domain?.name || '知识库', level: 0 };
+            await BaseModel.addNode(domainId, base.docId, rootNode, undefined, requestedBranch);
+            const updated = await BaseModel.get(domainId, base.docId);
+            if (updated) {
+                const updatedBranchData = getBranchData(updated, requestedBranch);
+                nodes = updatedBranchData.nodes || [];
+                edges = updatedBranchData.edges || [];
+            }
+        }
+
+        const allCards = await document.getMulti(domainId, TYPE_CARD, { baseDocId: base.docId })
+            .sort({ order: 1, cid: 1 })
+            .toArray() as CardDoc[];
+        const nodeCardsMap: Record<string, CardDoc[]> = {};
+        for (const card of allCards) {
+            if (card.nodeId) {
+                if (!nodeCardsMap[card.nodeId]) nodeCardsMap[card.nodeId] = [];
+                nodeCardsMap[card.nodeId].push(card);
+            }
+        }
+        for (const nodeId of Object.keys(nodeCardsMap)) {
+            nodeCardsMap[nodeId].sort((a, b) =>
+                (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
+        }
+
+        const branches = Array.isArray((base as any)?.branches) ? (base as any).branches : ['main'];
+        if (!branches.includes('main')) branches.unshift('main');
+
+        const uid = this.user._id;
+        const domainName = (this as any).domain?.name || domainId;
+        const baseForContrib = { ...base, nodes };
+        const [contrib, todayAllDomains] = await Promise.all([
+            buildContributionDataForDomain(domainId, uid, domainName, baseForContrib),
+            buildTodayContributionAllDomains(uid),
+        ]);
+        const { todayContribution, contributions, contributionDetails } = contrib;
+
+        let baseExpandState: string[] = [];
+        try {
+            const coll = this.ctx.db.db.collection('base.userExpand');
+            const doc = await coll.findOne({ domainId, baseDocId: base.docId, uid });
+            baseExpandState = Array.isArray(doc?.expandedNodeIds) ? doc.expandedNodeIds : [];
+        } catch {
+            // ignore
+        }
+
+        const workspaceFromQuery = (this.request.query?.workspace as string) || '';
+        const nodeIds = new Set(nodes.map((n: BaseNode) => n.id));
+        const workspaceNodeId = workspaceFromQuery && nodeIds.has(workspaceFromQuery) ? workspaceFromQuery : '';
+
+        this.response.body = {
+            base: { ...base, nodes, edges },
+            currentBranch: requestedBranch,
+            branches,
+            nodeCardsMap,
+            files: base.files || [],
+            domainId,
+            editorMode: 'base',
+            todayContribution,
+            todayContributionAllDomains: todayAllDomains,
+            contributions,
+            contributionDetails,
+            baseExpandState,
+            workspaceNodeId,
         };
     }
 }
@@ -1006,32 +1138,36 @@ class BaseCreateHandler extends Handler {
     }
 
     @param('title', Types.String)
-    @param('content', Types.String, true)
-    @param('rpid', Types.PositiveInt, true)
-    @param('branch', Types.String, true)
-    @param('parentId', Types.ObjectId, true)
+    @param('bid', Types.String, true)
     async post(
         domainId: string,
         title: string,
-        content: string = '',
-        rpid?: number,
-        branch?: string,
-        parentId?: ObjectId
+        bid?: string
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
         const actualDomainId = this.args.domainId || domainId || 'system';
+        const finalBid = (bid || '').trim();
+        if (finalBid) {
+            const existed = await BaseModel.getBybid(actualDomainId, finalBid);
+            if (existed) {
+                throw new ValidationError(`Base bid already exists: ${finalBid}`);
+            }
+        }
         
         const { docId } = await BaseModel.create(
             actualDomainId,
             this.user._id,
             title,
-            content,
-            rpid,
-            branch,
+            '',
+            undefined,
+            'main',
             this.request.ip,
-            parentId,
-            this.domain.name
+            undefined,
+            this.domain.name,
+            'base',
+            true,
+            finalBid || undefined
         );
 
         let createdBase = await BaseModel.get(actualDomainId, docId);
@@ -1044,7 +1180,7 @@ class BaseCreateHandler extends Handler {
             throw new Error(`Failed to create base: record not found after creation (docId: ${docId.toString()}, domainId: ${actualDomainId})`);
         }
 
-        // 自动创建 GitHub 仓库（异步处理，不阻塞重定向）
+        // Comment translated to English.
         try {
             await ensureBaseGitRepo(actualDomainId, docId);
             
@@ -1052,22 +1188,22 @@ class BaseCreateHandler extends Handler {
                 await createAndPushToGitHubOrgForBase(this, actualDomainId, docId, title, this.user);
             } catch (err) {
                 console.error('Failed to create remote GitHub repo:', err);
-                // 即使 GitHub 仓库创建失败，也不影响 base 的使用
+                // Comment translated to English.
             }
         } catch (err) {
             console.error('Failed to create git repo:', err);
-            // 即使 git repo 创建失败，也不影响 base 的使用
+            // Comment translated to English.
         }
 
-        this.response.body = { docId };
-        this.response.redirect = this.url('base_detail', { domainId: actualDomainId, docId: docId.toString() });
+        this.response.body = { docId, bid: finalBid || undefined };
+        this.response.redirect = this.url('base_outline_doc_branch', { domainId: actualDomainId, docId: finalBid || docId.toString(), branch: 'main' });
     }
 }
 
-// 请求去重缓存：用于防止重复创建节点
+// Comment translated to English.
 // key: `${domainId}:${docId}:${text}:${parentId}`, value: timestamp
 const nodeCreationDedupCache = new Map<string, number>();
-const DEDUP_WINDOW_MS = 2000; // 2秒内的相同请求视为重复
+const DEDUP_WINDOW_MS = 2000; // Comment translated to English.
 
 /**
  * Base Edit Handler
@@ -1075,8 +1211,8 @@ const DEDUP_WINDOW_MS = 2000; // 2秒内的相同请求视为重复
 class BaseEditHandler extends Handler {
     base?: BaseDoc;
 
-    @param('docId', Types.ObjectId)
-    async _prepare(domainId: string, docId: ObjectId) {
+    @param('docId', Types.PositiveInt)
+    async _prepare(domainId: string, docId: number) {
         this.base = await BaseModel.get(domainId, docId);
         if (!this.base) throw new NotFoundError('Base not found');
         
@@ -1090,14 +1226,14 @@ class BaseEditHandler extends Handler {
         this.response.body = { base: this.base };
     }
 
-    @param('docId', Types.ObjectId)
+    @param('docId', Types.PositiveInt)
     @param('title', Types.String, true)
     @param('content', Types.String, true)
     @param('parentId', Types.ObjectId, true)
     @post('domainPosition', Types.Any, true)
     async postUpdate(
         domainId: string,
-        docId: ObjectId,
+        docId: number,
         title?: string,
         content?: string,
         parentId?: ObjectId,
@@ -1111,16 +1247,16 @@ class BaseEditHandler extends Handler {
 
         await BaseModel.update(domainId, docId, updates);
         this.response.body = { docId };
-        // 如果是通过 operation 参数调用的，不重定向
+        // Comment translated to English.
         const operation = this.request.body?.operation;
         if (operation !== 'update') {
             this.response.redirect = this.url('base_detail', { docId: docId.toString() });
         }
     }
 
-    @param('docId', Types.ObjectId)
-    async postDelete(domainId: string, docId: ObjectId) {
-        // 检查权限
+    @param('docId', Types.PositiveInt)
+    async postDelete(domainId: string, docId: number) {
+        // Comment translated to English.
         if (!this.user.own(this.base)) {
             this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
         }
@@ -1133,14 +1269,25 @@ class BaseEditHandler extends Handler {
 
 /**
  * Base Node Handler
- * 节点操作API
+ * Comment translated to English.
  */
 export class BaseNodeHandler extends Handler {
-    /** 子类可重写，用于按 domain 解析 base */
+    /* Comment translated to English. */
     protected async getBase(domainId: string): Promise<BaseDoc> {
         const base = await BaseModel.getByDomain(domainId);
         if (!base) throw new NotFoundError('Base not found');
         return base;
+    }
+
+    /* Comment translated to English. */
+    protected async resolveBase(domainId: string): Promise<BaseDoc> {
+        const specified = readOptionalRequestBaseDocId(this.request);
+        if (specified) {
+            const base = await BaseModel.get(domainId, specified);
+            if (!base) throw new NotFoundError('Base not found');
+            return base;
+        }
+        return this.getBase(domainId);
     }
 
     @post('text', Types.String, true)
@@ -1151,7 +1298,7 @@ export class BaseNodeHandler extends Handler {
     @post('operation', Types.String, true)
     @param('nodeId', Types.String, true)
     @post('branch', Types.String, true)
-    // 通过 domainId 获取 base，不再需要 docId
+    // Comment translated to English.
     async post(
         domainId: string,
         text?: string,
@@ -1163,7 +1310,7 @@ export class BaseNodeHandler extends Handler {
         nodeId?: string,
         branch?: string,
     ) {
-        const base = await this.getBase(domainId);
+        const base = await this.resolveBase(domainId);
         
         if (operation === 'delete' && nodeId) {
             return this.postDelete(domainId, nodeId, branch);
@@ -1203,12 +1350,9 @@ export class BaseNodeHandler extends Handler {
         
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        // 通过 domainId 获取 base
+        // Comment translated to English.
         const actualDomainId = this.args.domainId || domainId || 'system';
-        const base = await BaseModel.getByDomain(actualDomainId);
-        if (!base) {
-            throw new NotFoundError('Base not found');
-        }
+        const base = await this.resolveBase(actualDomainId);
         const docId = base.docId;
         
         if (!this.user.own(base)) {
@@ -1244,10 +1388,10 @@ export class BaseNodeHandler extends Handler {
                 }
             }
 
-            // 从请求参数或 body 中获取分支（如果未提供）
+            // Comment translated to English.
             const effectiveBranch = branch || body.branch || (base as any).currentBranch || (base as any).branch || 'main';
             
-            // 获取分支数据用于查找节点
+            // Comment translated to English.
             const branchData: {
                 [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] };
             } = (base as any).branchData || {};
@@ -1261,8 +1405,8 @@ export class BaseNodeHandler extends Handler {
                 nodes = [];
             }
             
-            // 数据库级别的去重检查：检查是否在去重窗口内已存在相同内容的节点
-            // 这样可以防止多进程/集群模式下的重复创建
+            // Comment translated to English.
+            // Comment translated to English.
             if (finalParentId) {
                 const recentDuplicateNode = nodes.find(n => 
                     n.text === text.trim() && 
@@ -1272,15 +1416,15 @@ export class BaseNodeHandler extends Handler {
                 );
                 
                 if (recentDuplicateNode) {
-                    // 检查节点ID中的时间戳，判断是否在去重窗口内
+                    // Comment translated to English.
                     const nodeIdMatch = recentDuplicateNode.id.match(/^node_(\d+)_/);
                     if (nodeIdMatch) {
                         const nodeCreatedTime = parseInt(nodeIdMatch[1], 10);
                         const timeSinceNodeCreation = startTime - nodeCreatedTime;
                         
                         if (timeSinceNodeCreation < DEDUP_WINDOW_MS && timeSinceNodeCreation >= 0) {
-                            // 返回已存在的节点ID，而不是创建新节点
-                            // 需要先获取 edges 用于查找对应的边
+                            // Comment translated to English.
+                            // Comment translated to English.
                             let edgesForDedup: BaseEdge[];
                             if (branchData[effectiveBranch] && branchData[effectiveBranch].edges) {
                                 edgesForDedup = branchData[effectiveBranch].edges;
@@ -1319,10 +1463,10 @@ export class BaseNodeHandler extends Handler {
                 parentId: effectiveParentId,
             };
 
-            // 确定边的源和目标
+            // Comment translated to English.
             if (finalSiblingId && !finalParentId) {
                 if (!effectiveParentId) {
-                    // 没有父节点，不需要创建边，只创建节点
+                    // Comment translated to English.
                     const result = await BaseModel.addNode(
                         actualDomainId,
                         docId,
@@ -1337,7 +1481,7 @@ export class BaseNodeHandler extends Handler {
             } else if (finalParentId) {
                 edgeSourceId = finalParentId;
             } else {
-                // 没有父节点，不需要创建边，只创建节点
+                // Comment translated to English.
                 const result = await BaseModel.addNode(
                     actualDomainId,
                     docId,
@@ -1355,7 +1499,7 @@ export class BaseNodeHandler extends Handler {
                 node,
                 effectiveParentId,
                 effectiveBranch,
-                edgeSourceId  // 传入 edgeSourceId，让 addNode 同时创建边
+                edgeSourceId  // Comment translated to English.
             );
             
             newNodeId = result.nodeId;
@@ -1410,7 +1554,7 @@ export class BaseNodeHandler extends Handler {
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        const base = await this.getBase(domainId);
+        const base = await this.resolveBase(domainId);
         const docId = base.docId;
         
         if (!this.user.own(base)) {
@@ -1428,7 +1572,7 @@ export class BaseNodeHandler extends Handler {
         if (y !== undefined) updates.y = y;
         if (expanded !== undefined) updates.expanded = expanded;
         
-        // 从请求体中读取 order（如果有）
+        // Comment translated to English.
         const body: any = this.request?.body || {};
         if (body.order !== undefined) {
             updates.order = body.order;
@@ -1448,18 +1592,14 @@ export class BaseNodeHandler extends Handler {
     async postDelete(domainId: string, nodeId: string, branch?: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        // 通过 domainId 获取 base
-        const base = await BaseModel.getByDomain(domainId);
-        if (!base) {
-            throw new NotFoundError('Base not found');
-        }
+        const base = await this.resolveBase(domainId);
         const docId = base.docId;
         
         if (!this.user.own(base)) {
             this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
         }
 
-        // 从请求参数或 body 中获取分支（如果未提供）
+        // Comment translated to English.
         const effectiveBranch = branch || (this.request.body as any)?.branch || (base as any).currentBranch || (base as any).branch || 'main';
         
         await BaseModel.deleteNode(domainId, docId, nodeId, effectiveBranch);
@@ -1471,11 +1611,21 @@ export class BaseNodeHandler extends Handler {
  * Base Edge Handler
  */
 export class BaseEdgeHandler extends Handler {
-    /** 子类可重写，用于按 domain 解析 base */
+    /* Comment translated to English. */
     protected async getBase(domainId: string): Promise<BaseDoc> {
         const base = await BaseModel.getByDomain(domainId);
         if (!base) throw new NotFoundError('Base not found');
         return base;
+    }
+
+    protected async resolveBase(domainId: string): Promise<BaseDoc> {
+        const specified = readOptionalRequestBaseDocId(this.request);
+        if (specified) {
+            const base = await BaseModel.get(domainId, specified);
+            if (!base) throw new NotFoundError('Base not found');
+            return base;
+        }
+        return this.getBase(domainId);
     }
 
     @param('source', Types.String)
@@ -1489,7 +1639,7 @@ export class BaseEdgeHandler extends Handler {
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        const base = await this.getBase(domainId);
+        const base = await this.resolveBase(domainId);
         const docId = base.docId;
         
         if (!this.user.own(base)) {
@@ -1515,7 +1665,7 @@ export class BaseEdgeHandler extends Handler {
     async postDelete(domainId: string, edgeId: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        const base = await this.getBase(domainId);
+        const base = await this.resolveBase(domainId);
         const docId = base.docId;
         
         if (!this.user.own(base)) {
@@ -1531,19 +1681,19 @@ export class BaseEdgeHandler extends Handler {
  * Base Save Handler
  */
 export class BaseSaveHandler extends Handler {
-    /** 子类可重写，用于按 domain 解析 base */
+    /* Comment translated to English. */
     protected async getBase(domainId: string): Promise<BaseDoc | null> {
         return BaseModel.getByDomain(domainId);
     }
-    /** 子类可重写，创建 base 时默认标题 */
+    /* Comment translated to English. */
     protected getDefaultTitle(): string {
         return this.domain.name || '知识库';
     }
-    /** 子类可重写，创建 base 时根节点文案 */
+    /* Comment translated to English. */
     protected getDefaultRootText(): string {
         return this.domain.name;
     }
-    /** 子类可重写，用于创建不存在的 base（默认用 document.add；Skill 可改为 BaseModel.create type: 'skill'） */
+    /* Comment translated to English. */
     protected async createBase(domainId: string): Promise<BaseDoc> {
         const data = this.request.body || {};
         const { nodes = [], edges = [] } = data;
@@ -1588,7 +1738,7 @@ export class BaseSaveHandler extends Handler {
         if (!base) throw new NotFoundError('Failed to create document');
         return base;
     }
-    /** 子类可重写，为 false 时跳过保存后 git 同步（如 Skill） */
+    /* Comment translated to English. */
     protected shouldSyncToGit(): boolean {
         return true;
     }
@@ -1596,16 +1746,27 @@ export class BaseSaveHandler extends Handler {
     async post(domainId: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        let base = await this.getBase(domainId);
-        let docId: ObjectId;
-        
-        if (!base) {
-            base = await this.createBase(domainId);
-            docId = base.docId;
-        } else {
+        const specifiedDocId = readOptionalRequestBaseDocId(this.request);
+        let base: BaseDoc | null = null;
+        let docId: number;
+
+        if (specifiedDocId) {
+            base = await BaseModel.get(domainId, specifiedDocId);
+            if (!base) throw new NotFoundError('Base not found');
             docId = base.docId;
             if (!this.user.own(base)) {
                 this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            }
+        } else {
+            base = await this.getBase(domainId);
+            if (!base) {
+                base = await this.createBase(domainId);
+                docId = base.docId;
+            } else {
+                docId = base.docId;
+                if (!this.user.own(base)) {
+                    this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+                }
             }
         }
 
@@ -1637,8 +1798,8 @@ export class BaseSaveHandler extends Handler {
             
             await BaseModel.updateFull(domainId, docId, {
                 branchData: base.branchData,
-                nodes: base.nodes, // 向后兼容
-                edges: base.edges, // 向后兼容
+                nodes: base.nodes, // Comment translated to English.
+                edges: base.edges, // Comment translated to English.
             });
             
             (this.ctx.emit as any)('base/update', docId);
@@ -1647,12 +1808,12 @@ export class BaseSaveHandler extends Handler {
             return;
         }
         
-        // 过滤掉临时节点和边，确保不会保存临时数据
-        // 临时节点ID格式：temp-node-xxx，临时边ID格式：temp-edge-xxx
+        // Comment translated to English.
+        // Comment translated to English.
         if (nodes && Array.isArray(nodes)) {
             nodes = nodes.filter((node: BaseNode) => {
                 if (!node.id) return false;
-                // 拒绝保存临时节点
+                // Comment translated to English.
                 if (node.id.startsWith('temp-node-')) {
                     console.warn(`Rejected temporary node from save: ${node.id}`);
                     return false;
@@ -1664,7 +1825,7 @@ export class BaseSaveHandler extends Handler {
         if (edges && Array.isArray(edges)) {
             edges = edges.filter((edge: BaseEdge) => {
                 if (!edge.id && !edge.source && !edge.target) return false;
-                // 拒绝保存临时边或包含临时节点的边
+                // Comment translated to English.
                 if (edge.id && edge.id.startsWith('temp-edge-')) {
                     console.warn(`Rejected temporary edge from save: ${edge.id}`);
                     return false;
@@ -1681,13 +1842,13 @@ export class BaseSaveHandler extends Handler {
             });
         }
         
-        // 获取当前分支
+        // Comment translated to English.
         const currentBranch = (base as any).currentBranch || 'main';
         
-        // 获取当前分支的数据用于比较
+        // Comment translated to English.
         const currentBranchData = getBranchData(base, currentBranch);
 
-        // 检测是否有非位置改变（用于commit检测）
+        // Comment translated to English.
         const hasNonPositionChanges = this.detectNonPositionChanges(
             { ...base, nodes: currentBranchData.nodes, edges: currentBranchData.edges },
             nodes,
@@ -1695,19 +1856,19 @@ export class BaseSaveHandler extends Handler {
         );
 
 
-        // 更新当前分支的数据（使用过滤后的nodes和edges）
+        // Comment translated to English.
         setBranchData(base, currentBranch, nodes || [], edges || []);
 
         await BaseModel.updateFull(domainId, docId, {
             branchData: base.branchData,
-            nodes: base.nodes, // 向后兼容
-            edges: base.edges, // 向后兼容
+            nodes: base.nodes, // Comment translated to English.
+            edges: base.edges, // Comment translated to English.
             layout,
             viewport,
             theme,
         });
         
-        // 如果有非位置改变且子类允许，立即同步到 git（Skill 覆写 shouldSyncToGit 为 false 不同步）
+        // Comment translated to English.
         if (hasNonPositionChanges && this.shouldSyncToGit()) {
             try {
                 const updatedBase = await BaseModel.get(domainId, docId);
@@ -1717,11 +1878,11 @@ export class BaseSaveHandler extends Handler {
                 }
             } catch (err) {
                 console.error('Failed to sync to git after save:', err);
-                // 不抛出错误，保存仍然成功
+                // Comment translated to English.
             }
         }
         
-        // 触发更新事件，通知所有连接的 WebSocket 客户端
+        // Comment translated to English.
         (this.ctx.emit as any)('base/update', docId);
         (this.ctx.emit as any)('base/git/status/update', docId);
         
@@ -1729,7 +1890,7 @@ export class BaseSaveHandler extends Handler {
     }
 
     /**
-     * 检测是否有非位置改变
+     * Comment translated to English.
      */
     private detectNonPositionChanges(
         oldBase: BaseDoc,
@@ -1738,23 +1899,23 @@ export class BaseSaveHandler extends Handler {
     ): boolean {
         if (!newNodes && !newEdges) return false;
 
-        // 检查节点数量变化
+        // Comment translated to English.
         if (newNodes && newNodes.length !== oldBase.nodes.length) {
             return true;
         }
 
-        // 检查边数量变化
+        // Comment translated to English.
         if (newEdges && newEdges.length !== oldBase.edges.length) {
             return true;
         }
 
-        // 检查节点内容变化（除了位置）
+        // Comment translated to English.
         if (newNodes) {
             for (const newNode of newNodes) {
                 const oldNode = oldBase.nodes.find(n => n.id === newNode.id);
-                if (!oldNode) return true; // 新节点
+                if (!oldNode) return true; // Comment translated to English.
 
-                // 比较非位置属性（包括 order）
+                // Comment translated to English.
                 if (
                     oldNode.text !== newNode.text ||
                     oldNode.color !== newNode.color ||
@@ -1769,7 +1930,7 @@ export class BaseSaveHandler extends Handler {
             }
         }
 
-        // 检查边的变化
+        // Comment translated to English.
         if (newEdges) {
             const oldEdgeSet = new Set(oldBase.edges.map(e => `${e.source}-${e.target}`));
             const newEdgeSet = new Set(newEdges.map(e => `${e.source}-${e.target}`));
@@ -1789,23 +1950,241 @@ export class BaseSaveHandler extends Handler {
 class BaseListHandler extends Handler {
     @param('rpid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
-    async get(domainId: string, rpid?: number, branch?: string) {
+    @param('format', Types.String, true)
+    async get(domainId: string, rpid?: number, branch?: string, format?: string) {
         let bases: BaseDoc[];
-        
+
         if (rpid) {
             bases = await BaseModel.getByRepo(domainId, rpid, branch);
         } else {
             bases = await BaseModel.getAll(domainId);
         }
 
+        const basesPayload = bases.map((b) => ({ ...b, docId: b.docId.toString() }));
+        if (format === 'json') {
+            this.response.body = { bases: basesPayload, rpid, branch };
+            return;
+        }
         this.response.template = 'base_list.html';
-        this.response.body = { bases, rpid, branch };
+        this.response.body = { bases: basesPayload, rpid, branch };
+    }
+}
+
+/**
+ * Comment translated to English.
+ */
+class BaseDomainListHandler extends Handler {
+    @param('page', Types.PositiveInt, true)
+    @param('q', Types.Content, true)
+    @param('pjax', Types.Boolean)
+    async get(domainId: string, page = 1, q = '', pjax = false) {
+        const did = typeof domainId === 'string' ? domainId : (this.args?.domainId ?? (domainId as any)?._id ?? 'system');
+        const limit = this.ctx.setting.get('pagination.problem') || 20;
+        let bases = await BaseModel.getAll(did);
+        const qs = (q || '').trim();
+        if (qs) {
+            const lower = qs.toLowerCase();
+            bases = bases.filter((b) => (b.title || '').toLowerCase().includes(lower) || (b.content || '').toLowerCase().includes(lower));
+        }
+        const total = bases.length;
+        const ppcount = Math.max(1, Math.ceil(total / limit));
+        const page1 = Math.max(1, Math.min(page, ppcount));
+        const basesPage = bases.slice((page1 - 1) * limit, page1 * limit).map((b) => ({
+            ...b,
+            docId: b.docId.toString(),
+            nodes: (b as any).nodes || [],
+        }));
+        this.response.template = 'base_domain.html';
+        if (pjax) {
+            const html = await this.renderHTML('partials/base_list.html', {
+                bases: basesPage,
+                domainId: String(did),
+                page: page1,
+                ppcount,
+                totalPages: ppcount,
+                qs,
+            });
+            this.response.body = {
+                title: this.renderTitle(this.translate('base_domain')),
+                fragments: [{ html: html || '' }],
+            };
+        } else {
+            this.response.body = {
+                bases: basesPage,
+                domainId: String(did),
+                page: page1,
+                ppcount,
+                totalPages: ppcount,
+                qs,
+            };
+        }
+    }
+}
+
+/**
+ * Comment translated to English.
+ */
+class BaseCreateNewHandler extends Handler {
+    async post(domainId: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const did = typeof domainId === 'string' ? domainId : (this.args?.domainId ?? (domainId as any)?._id ?? 'system');
+        const { docId } = await BaseModel.create(
+            did,
+            this.user._id,
+            this.domain.name || '知识库',
+            '',
+            undefined,
+            'main',
+            this.request.ip,
+            undefined,
+            this.domain.name,
+            'base',
+            true
+        );
+        const target = this.url('base_outline_doc_branch', { domainId: did, docId, branch: 'main' });
+        this.response.redirect = target;
+    }
+}
+
+/**
+ * Comment translated to English.
+ */
+class BaseOutlineDocHandler extends Handler {
+    @param('docId', Types.String)
+    @param('branch', Types.String, true)
+    async get(domainId: string, docId: string, branch?: string) {
+        const requestedBranch = branch && String(branch).trim() ? branch : 'main';
+        if (!branch || !String(branch).trim()) {
+            const target = this.url('base_outline_doc_branch', { domainId, docId, branch: 'main' });
+            this.response.redirect = target;
+            return;
+        }
+
+        const base = await resolveBaseByDocIdOrBid(domainId, docId);
+        if (!base) throw new NotFoundError('Base not found');
+
+        this.response.template = 'base_outline.html';
+
+        let nodes: BaseNode[] = [];
+        let edges: BaseEdge[] = [];
+        const branchData = getBranchData(base, requestedBranch);
+        nodes = branchData.nodes || [];
+        edges = branchData.edges || [];
+
+        if (nodes.length === 0) {
+            const rootNode: Omit<BaseNode, 'id'> = { text: this.domain.name || '根节点', level: 0 };
+            await BaseModel.addNode(domainId, base.docId, rootNode, undefined, requestedBranch);
+            const updated = await BaseModel.get(domainId, base.docId);
+            if (updated) {
+                const updatedBranchData = getBranchData(updated, requestedBranch);
+                nodes = updatedBranchData.nodes || [];
+                edges = updatedBranchData.edges || [];
+            }
+        }
+
+        const allCards = await document.getMulti(domainId, document.TYPE_CARD, { baseDocId: base.docId })
+            .sort({ order: 1, cid: 1 })
+            .toArray() as CardDoc[];
+        const nodeCardsMap: Record<string, CardDoc[]> = {};
+        for (const card of allCards) {
+            if (card.nodeId) {
+                if (!nodeCardsMap[card.nodeId]) nodeCardsMap[card.nodeId] = [];
+                nodeCardsMap[card.nodeId].push(card);
+            }
+        }
+        for (const nodeId of Object.keys(nodeCardsMap)) {
+            nodeCardsMap[nodeId].sort((a, b) =>
+                (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
+        }
+
+        const cardId = this.request.query.cardId as string | undefined;
+        if (cardId && nodes.length > 0 && edges.length > 0) {
+            let targetNodeId: string | null = null;
+            for (const [nodeId, cards] of Object.entries(nodeCardsMap)) {
+                if (cards.some(c => String(c.docId) === String(cardId))) {
+                    targetNodeId = nodeId;
+                    break;
+                }
+            }
+            if (targetNodeId) {
+                const parentMap = new Map<string, string>();
+                edges.forEach(edge => parentMap.set(edge.target, edge.source));
+                const nodesToExpand = new Set<string>();
+                let current: string | null = targetNodeId;
+                while (current) {
+                    nodesToExpand.add(current);
+                    current = parentMap.get(current) || null;
+                }
+                nodes = nodes.map(node => ({
+                    ...node,
+                    expandedOutline: nodesToExpand.has(node.id),
+                }));
+            }
+        }
+
+        const branches = base && Array.isArray((base as any)?.branches) ? (base as any).branches : ['main'];
+        if (!branches.includes('main')) branches.unshift('main');
+
+        let gitStatus: any = null;
+        if (base) {
+            const githubRepo = (base.githubRepo || '') as string;
+            try {
+                if (githubRepo && githubRepo.trim()) {
+                    const settingValue = this.ctx.setting.get('ejunzrepo.github_token');
+                    const systemValue = system.get('ejunzrepo.github_token');
+                    const GH_TOKEN = settingValue || systemValue || '';
+                    let REPO_URL = githubRepo;
+                    if (githubRepo.startsWith('https://github.com/') || githubRepo.startsWith('http://github.com/')) {
+                        if (!githubRepo.includes('@github.com')) {
+                            REPO_URL = githubRepo.replace('https://github.com/', `https://${GH_TOKEN}@github.com/`)
+                                .replace('http://github.com/', `https://${GH_TOKEN}@github.com/`);
+                        }
+                    } else if (!githubRepo.includes('://') && !githubRepo.includes('@')) {
+                        REPO_URL = `https://${GH_TOKEN}@github.com/${githubRepo.replace('.git', '')}.git`;
+                    }
+                    gitStatus = await getBaseGitStatus(domainId, base.docId, requestedBranch, REPO_URL);
+                } else {
+                    gitStatus = await getBaseGitStatus(domainId, base.docId, requestedBranch);
+                }
+            } catch (err) {
+                logger.error('Failed to get git status:', err);
+            }
+        }
+
+        this.response.body = {
+            base: { ...base, nodes, edges },
+            gitStatus,
+            currentBranch: requestedBranch,
+            branches,
+            nodeCardsMap,
+            files: base?.files || [],
+            domainId,
+            editorMode: 'base',
+        };
+    }
+}
+
+/**
+ * Comment translated to English.
+ */
+class BaseOutlineRedirectHandler extends Handler {
+    @param('branch', Types.String, true)
+    async get(domainId: string, branch?: string) {
+        const base = await BaseModel.getByDomain(domainId);
+        const b = branch && String(branch).trim() ? branch : 'main';
+        if (base) {
+            const target = this.url('base_outline_doc_branch', { domainId, docId: base.docId, branch: b });
+            this.response.redirect = target;
+        } else {
+            const target = this.url('base_domain', { domainId });
+            this.response.redirect = target;
+        }
     }
 }
 
 /**
  * Base Domain Handler
- * 显示当前 base 的第一层节点
+ * Comment translated to English.
  */
 class BaseDomainHandler extends Handler {
     @param('page', Types.PositiveInt, true)
@@ -1813,7 +2192,7 @@ class BaseDomainHandler extends Handler {
     @param('pjax', Types.Boolean)
     @param('all', Types.Boolean, true)
     async get(domainId: string, page = 1, q = '', pjax = false, all = false) {
-        // 获取当前 domain 的 base（一个 domain 一个 base）
+        // Comment translated to English.
         const base = await BaseModel.getByDomain(domainId);
         
         if (!base) {
@@ -1823,14 +2202,14 @@ class BaseDomainHandler extends Handler {
         const branch = (base as any)?.currentBranch || 'main';
         const branchData = getBranchData(base, branch);
         
-        // 找到根节点（没有父边的节点，或者 level=0 的节点）
+        // Comment translated to English.
         const rootNodes = branchData.nodes.filter(node => 
             node.level === 0 || !branchData.edges.some(edge => edge.target === node.id)
         );
         const rootNode = rootNodes[0] || branchData.nodes[0];
         
         if (!rootNode) {
-            // 如果没有节点，返回空数据
+            // Comment translated to English.
             this.response.template = 'base_domain.html';
             this.response.body = {
                 base: {
@@ -1850,7 +2229,7 @@ class BaseDomainHandler extends Handler {
             return;
         }
         
-        // 找到第一层节点（根节点的直接子节点）
+        // Comment translated to English.
         const firstLevelNodeIds = new Set(
             branchData.edges
                 .filter(edge => edge.source === rootNode.id)
@@ -1859,12 +2238,12 @@ class BaseDomainHandler extends Handler {
         
         const firstLevelNodes = branchData.nodes.filter(node => firstLevelNodeIds.has(node.id));
         
-        // 找到第一层节点之间的边
+        // Comment translated to English.
         const firstLevelEdges = branchData.edges.filter(edge => 
             firstLevelNodeIds.has(edge.source) && firstLevelNodeIds.has(edge.target)
         );
         
-        // 搜索过滤
+        // Comment translated to English.
         let filteredNodes = firstLevelNodes;
         if (q && q.trim()) {
             const searchTerm = q.toLowerCase().trim();
@@ -1874,14 +2253,14 @@ class BaseDomainHandler extends Handler {
             );
         }
         
-        // 分页
+        // Comment translated to English.
         const limit = 20;
         const skip = (page - 1) * limit;
         const total = filteredNodes.length;
         const totalPages = Math.ceil(total / limit);
         const nodesRaw = all ? filteredNodes : filteredNodes.slice(skip, skip + limit);
         
-        // 清理数据，转换为前端需要的格式
+        // Comment translated to English.
         const nodes = nodesRaw.map((node: any) => ({
             ...node,
             nodeId: node.id,
@@ -1921,11 +2300,11 @@ class BaseDomainHandler extends Handler {
 }
 
 export class BaseDataHandler extends Handler {
-    /** 子类可重写，用于按 domain 解析 base */
+    /* Comment translated to English. */
     protected async getBase(domainId: string): Promise<BaseDoc | null> {
         return BaseModel.getByDomain(domainId);
     }
-    /** 子类可重写，用于创建不存在的 base */
+    /* Comment translated to English. */
     protected async createBase(domainId: string, branch: string): Promise<BaseDoc> {
         const { docId } = await BaseModel.create(
             domainId,
@@ -1940,19 +2319,26 @@ export class BaseDataHandler extends Handler {
         if (!base) throw new Error('Failed to create base');
         return base;
     }
-    /** 子类可重写，根节点默认文案 */
+    /* Comment translated to English. */
     protected getDefaultRootText(): string {
         return this.domain.name;
     }
-    /** 子类可重写，获取卡片查询条件（如 Skill 按 baseDocId 过滤） */
+    /* Comment translated to English. */
     protected getCardFilter(_base: BaseDoc): Record<string, unknown> {
         return {};
     }
 
     @param('branch', Types.String, true)
-    async get(domainId: string, branch?: string) {
-        let base = await this.getBase(domainId);
-        if (!base) base = await this.createBase(domainId, branch || 'main');
+    @param('docId', Types.String, true)
+    async get(domainId: string, branch?: string, docId?: string) {
+        let base: BaseDoc | null = null;
+        if (docId) {
+            base = await resolveBaseByDocIdOrBid(domainId, docId);
+            if (!base) throw new NotFoundError('Base not found');
+        } else {
+            base = await this.getBase(domainId);
+            if (!base) base = await this.createBase(domainId, branch || 'main');
+        }
         
         const currentBranch = branch || (base as any)?.currentBranch || 'main';
         
@@ -2023,14 +2409,14 @@ export class BaseDataHandler extends Handler {
 /**
  * Get git repository path for base
  */
-function getBaseGitPath(domainId: string, docId: ObjectId): string {
+function getBaseGitPath(domainId: string, docId: number): string {
     return path.join('/data/git/ejunz', domainId, 'base', String(docId));
 }
 
 /**
  * Initialize or get git repository for base
  */
-async function ensureBaseGitRepo(domainId: string, docId: ObjectId, remoteUrl?: string): Promise<string> {
+async function ensureBaseGitRepo(domainId: string, docId: number, remoteUrl?: string): Promise<string> {
     const repoPath = getBaseGitPath(domainId, docId);
     
     await fs.promises.mkdir(repoPath, { recursive: true });
@@ -2231,7 +2617,7 @@ async function createGitHubRepoForBase(
 async function createAndPushToGitHubOrgForBase(
     handler: any,
     domainId: string,
-    docId: ObjectId,
+    docId: number,
     baseTitle: string,
     user: any
 ): Promise<void> {
@@ -2329,7 +2715,7 @@ async function createAndPushToGitHubOrgForBase(
  */
 async function gitInitAndPushBase(
     domainId: string,
-    docId: ObjectId,
+    docId: number,
     base: BaseDoc,
     remoteUrlWithAuth: string, 
     branch: string = 'main', 
@@ -2337,7 +2723,7 @@ async function gitInitAndPushBase(
 ) {
     const repoGitPath = await ensureBaseGitRepo(domainId, docId, remoteUrlWithAuth);
     
-    // 设置环境变量禁用终端提示，避免非交互式环境下的密码输入问题
+    // Comment translated to English.
     const gitEnv: Record<string, string> = {
         ...process.env,
         GIT_TERMINAL_PROMPT: '0',
@@ -2467,10 +2853,10 @@ async function gitInitAndPushBase(
  * Base GitHub Push Handler
  */
 class BaseGithubPushHandler extends Handler {
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
-    async post(domainId: string, docId: ObjectId, bid: number, branch?: string) {
+    async post(domainId: string, docId: number, bid: number, branch?: string) {
         const base = docId 
             ? await BaseModel.get(domainId, docId)
             : await BaseModel.getBybid(domainId, bid);
@@ -2509,8 +2895,8 @@ class BaseGithubPushHandler extends Handler {
                 if (repoPathMatch && repoPathMatch[1]) {
                     REPO_URL = `https://${GH_TOKEN}@github.com/${repoPathMatch[1]}`;
                 } else {
-                    // 如果匹配失败，使用简单的替换方式
-                    // 先去掉可能的旧 token，然后添加新 token
+                    // Comment translated to English.
+                    // Comment translated to English.
                     const urlWithoutToken = githubRepo.replace(/^https?:\/\/[^@]+@github\.com\//, 'https://github.com/');
                     REPO_URL = urlWithoutToken.replace(/^https:\/\/github\.com\//, `https://${GH_TOKEN}@github.com/`);
                 }
@@ -2522,7 +2908,7 @@ class BaseGithubPushHandler extends Handler {
         
         const effectiveBranch = (branch || base.branch || this.args?.branch || this.request.body?.branch || 'main').toString();
         
-        // 先 commit 本地更改
+        // Comment translated to English.
         try {
             const commitMessage = this.request.body?.commitMessage || `${domainId}/${this.user._id}/${this.user.uname || 'unknown'}: Update base`;
             await commitBaseChanges(domainId, base.docId, base, commitMessage, this.user._id, this.user.uname || 'unknown');
@@ -2530,7 +2916,7 @@ class BaseGithubPushHandler extends Handler {
             console.warn('Commit before push failed (may be no changes):', err?.message || err);
         }
         
-        // 然后 push
+        // Comment translated to English.
         const commitMessage = `${domainId}/${this.user._id}/${this.user.uname || 'unknown'}: Update base`;
         
         try {
@@ -2543,9 +2929,9 @@ class BaseGithubPushHandler extends Handler {
         }
     }
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('branch', Types.String, true)
-    async get(domainId: string, docId: ObjectId, branch?: string) {
+    async get(domainId: string, docId: number, branch?: string) {
         return this.post(domainId, docId, bid, branch);
     }
 }
@@ -2554,8 +2940,14 @@ class BaseGithubPushHandler extends Handler {
  * Base Card Handler
  */
 export class BaseCardHandler extends Handler {
-    /** 子类可重写，用于按 domain 解析 base（如 Skill 使用 type: 'skill' 的 base） */
+    /* Comment translated to English. */
     protected async getBase(domainId: string): Promise<BaseDoc> {
+        const specified = readOptionalRequestBaseDocId(this.request);
+        if (specified) {
+            const base = await BaseModel.get(domainId, specified);
+            if (!base) throw new NotFoundError('Base not found');
+            return base;
+        }
         const base = await BaseModel.getByDomain(domainId);
         if (!base) throw new NotFoundError('Base not found');
         return base;
@@ -2572,21 +2964,21 @@ export class BaseCardHandler extends Handler {
         content: string = '',
         operation?: string
     ) {
-        // 如果有 operation 参数，应该调用 postUpdate 方法，这里直接返回
-        // 参数验证已经通过（因为所有参数都是可选的），所以这里可以安全返回
+        // Comment translated to English.
+        // Comment translated to English.
         if (operation) {
             return;
         }
         
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        // 优先从 body 中读取字段，兼容 JSON 提交
+        // Comment translated to English.
         const body: any = this.request?.body || {};
         const finalNodeId: string | undefined = body.nodeId || nodeId;
         const finalTitle: string | undefined = body.title || title;
         const finalContent: string = body.content !== undefined ? body.content : content || '';
 
-        // 创建新卡片需要 nodeId 和 title
+        // Comment translated to English.
         if (!finalNodeId || !finalTitle) {
             throw new ValidationError('nodeId and title are required for creating a card');
         }
@@ -2611,10 +3003,10 @@ export class BaseCardHandler extends Handler {
         this.response.body = { cardId: cardDocId.toString() };
     }
     
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
-    async get(domainId: string, docId: ObjectId, bid: number, nodeId: string) {
+    async get(domainId: string, docId: number, bid: number, nodeId: string) {
         const base = (docId ? await BaseModel.get(domainId, docId) : null)
             ?? (bid ? await BaseModel.getBybid(domainId, bid) : null)
             ?? await this.getBase(domainId);
@@ -2632,7 +3024,7 @@ export class BaseCardHandler extends Handler {
     @param('operation', Types.String, true)
     @param('cid', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     async postUpdate(
         domainId: string,
         cardIdParam?: string,
@@ -2666,7 +3058,7 @@ export class BaseCardHandler extends Handler {
     @param('operation', Types.String, true)
     @param('cid', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     async postDelete(
         domainId: string,
         cardIdParam?: string,
@@ -2741,12 +3133,17 @@ export class BaseCardHandler extends Handler {
 
         if (!targetCard && resolvedCid !== undefined) {
             if (!nodeId) throw new ValidationError('nodeId is required when using cid to locate a card');
-            const baseForCid = await this.getBase(domainId);
+            const specified = readOptionalRequestBaseDocId((this as any).request);
+            const baseForCid = specified
+                ? await BaseModel.get(domainId, specified)
+                : await this.getBase(domainId);
+            if (!baseForCid) throw new NotFoundError('Base not found');
             targetCard = await CardModel.getByCid(domainId, nodeId, resolvedCid, baseForCid.docId);
         }
 
         if (!targetCard) throw new NotFoundError('Card not found');
-        const base = await this.getBase(domainId);
+        const base = await BaseModel.get(domainId, targetCard.baseDocId);
+        if (!base) throw new NotFoundError('Base not found');
         if (!this.user.own(base)) {
             const perm = action === 'delete' ? PERM.PERM_DELETE_DISCUSSION : PERM.PERM_EDIT_DISCUSSION;
             this.checkPerm(perm);
@@ -2762,8 +3159,8 @@ export class BaseCardHandler extends Handler {
         if (title !== undefined) updates.title = title;
         if (content !== undefined) updates.content = content;
         if (order !== undefined) updates.order = order;
-        if (nodeId !== undefined) updates.nodeId = nodeId; // 支持更新 nodeId
-        // 从请求体中读取 problems（如果有），用于更新卡片练习题
+        if (nodeId !== undefined) updates.nodeId = nodeId; // Comment translated to English.
+        // Comment translated to English.
         const body: any = (this as any).request?.body || {};
         if (body && body.problems !== undefined) {
             updates.problems = body.problems;
@@ -2776,15 +3173,15 @@ export class BaseCardHandler extends Handler {
 
 /**
  * Base Card List Handler
- * 卡片列表页面
+ * Comment translated to English.
  */
 class BaseCardListHandler extends Handler {
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
     @param('branch', Types.String, true)
     @param('cardId', Types.ObjectId, true)
-    async get(domainId: string, docId: ObjectId, bid: number, nodeId: string, branch?: string, cardId?: ObjectId) {
+    async get(domainId: string, docId: number, bid: number, nodeId: string, branch?: string, cardId?: ObjectId) {
         const base = docId
             ? await BaseModel.get(domainId, docId)
             : bid
@@ -2797,29 +3194,29 @@ class BaseCardListHandler extends Handler {
         const nodes = branchData.nodes || [];
         const edges = branchData.edges || [];
         
-        // 检查节点是否存在于当前分支中
+        // Comment translated to English.
         const node = nodes.find(n => n.id === nodeId);
         if (!node) {
             throw new NotFoundError('Node not found in this branch');
         }
         
-        // 获取节点的所有卡片
+        // Comment translated to English.
         const cards = await CardModel.getByNodeId(domainId, base.docId, nodeId);
         
-        // 构建从根节点到当前节点的完整路径
+        // Comment translated to English.
         const nodePath: Array<{ id: string; text: string }> = [];
         
-        // 构建节点映射
+        // Comment translated to English.
         const nodeMap = new Map<string, BaseNode>();
         nodes.forEach(n => nodeMap.set(n.id, n));
         
-        // 构建父节点映射
+        // Comment translated to English.
         const parentMap = new Map<string, string>();
         edges.forEach(edge => {
             parentMap.set(edge.target, edge.source);
         });
         
-        // 从当前节点向上遍历到根节点
+        // Comment translated to English.
         let currentNodeId: string | undefined = nodeId;
         const pathNodes: Array<{ id: string; text: string }> = [];
         while (currentNodeId) {
@@ -2830,10 +3227,10 @@ class BaseCardListHandler extends Handler {
             currentNodeId = parentMap.get(currentNodeId);
         }
         
-        // 反转路径数组（从当前节点到根节点）
+        // Comment translated to English.
         const reversedPathNodes = pathNodes.slice().reverse();
         
-        // 确定当前选中的卡片
+        // Comment translated to English.
         let selectedCard = null;
         if (cardId) {
             selectedCard = cards.find(c => c.docId.toString() === cardId.toString());
@@ -2850,7 +3247,7 @@ class BaseCardListHandler extends Handler {
             cards,
             nodeId,
             nodeText: node?.text || '节点',
-            nodePath: reversedPathNodes, // 使用反转后的路径
+            nodePath: reversedPathNodes, // Comment translated to English.
             branch: branch || 'main',
             selectedCard,
         };
@@ -2860,15 +3257,15 @@ class BaseCardListHandler extends Handler {
 
 /**
  * Base Files Handler
- * 思维导图文件管理
+ * Comment translated to English.
  */
 class BaseFilesHandler extends Handler {
     base?: BaseDoc;
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
-    async _prepare(domainId: string, docId: ObjectId, bid: number, branch?: string) {
+    async _prepare(domainId: string, docId: number, bid: number, branch?: string) {
         if (docId) {
             this.base = await BaseModel.get(domainId, docId);
         } else if (bid) {
@@ -2880,9 +3277,9 @@ class BaseFilesHandler extends Handler {
         }
     }
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('branch', Types.String, true)
-    async get(domainId: string, docId: ObjectId, branch?: string) {
+    async get(domainId: string, docId: number, branch?: string) {
         const files = sortFiles(this.base!.files || []).map((file) => {
             let lastModified: Date | null = null;
             if (file.lastModified) {
@@ -2916,11 +3313,11 @@ class BaseFilesHandler extends Handler {
         this.response.template = 'base_files.html';
     }
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
     @post('filename', Types.Filename, true)
-    async postUploadFile(domainId: string, docId: ObjectId, bid: number, branch?: string, filename?: string) {
+    async postUploadFile(domainId: string, docId: number, bid: number, branch?: string, filename?: string) {
         if ((this.base!.files?.length || 0) >= system.get('limit.user_files')) {
             if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('count');
         }
@@ -2942,11 +3339,11 @@ class BaseFilesHandler extends Handler {
         this.back();
     }
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
     @post('files', Types.ArrayOf(Types.Filename))
-    async postDeleteFiles(domainId: string, docId: ObjectId, bid: number, branch: string, files: string[]) {
+    async postDeleteFiles(domainId: string, docId: number, bid: number, branch: string, files: string[]) {
         const storagePaths = files.map((t) => `base/${domainId}/${this.base!.bid}/${t}`);
         await Promise.all([
             storage.del(storagePaths, this.user._id),
@@ -2960,16 +3357,16 @@ class BaseFilesHandler extends Handler {
 
 /**
  * Base File Download Handler
- * 思维导图文件下载
+ * Comment translated to English.
  */
 class BaseFileDownloadHandler extends Handler {
     noCheckPermView = true;
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('filename', Types.Filename)
     @param('noDisposition', Types.Boolean)
-    async get(domainId: string, docId: ObjectId, bid: number, filename: string, noDisposition = false) {
+    async get(domainId: string, docId: number, bid: number, filename: string, noDisposition = false) {
         const base = docId 
             ? await BaseModel.get(domainId, docId)
             : await BaseModel.getBybid(domainId, bid);
@@ -2998,9 +3395,9 @@ class BaseCardFilesHandler extends Handler {
     base?: BaseDoc;
     card?: CardDoc | null;
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('cardId', Types.ObjectId, true)
-    async _prepare(domainId: string, docId: ObjectId, cardId: ObjectId) {
+    async _prepare(domainId: string, docId: number, cardId: ObjectId) {
         this.base = await BaseModel.get(domainId, docId);
         if (!this.base) throw new NotFoundError('Base not found');
         if (!this.user.own(this.base)) {
@@ -3012,9 +3409,9 @@ class BaseCardFilesHandler extends Handler {
         }
     }
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('cardId', Types.ObjectId, true)
-    async get(domainId: string, docId: ObjectId, cardId: ObjectId) {
+    async get(domainId: string, docId: number, cardId: ObjectId) {
         const files = sortFiles(this.card!.files || []).map((file) => {
             let lastModified: Date | null = null;
             if (file.lastModified) {
@@ -3025,9 +3422,9 @@ class BaseCardFilesHandler extends Handler {
         this.response.body = { files };
     }
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('cardId', Types.ObjectId, true)
-    async post(domainId: string, docId: ObjectId, cardId: ObjectId) {
+    async post(domainId: string, docId: number, cardId: ObjectId) {
         const body = (this.request.body as any) || {};
         if (this.request.files?.file) {
             const filename = body.filename || this.request.files.file.originalFilename || 'untitled';
@@ -3042,10 +3439,10 @@ class BaseCardFilesHandler extends Handler {
         throw new ValidationError('file or files');
     }
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('cardId', Types.ObjectId, true)
     @post('filename', Types.Filename, true)
-    async postUploadFile(domainId: string, docId: ObjectId, cardId: ObjectId, filename?: string) {
+    async postUploadFile(domainId: string, docId: number, cardId: ObjectId, filename?: string) {
         if ((this.card!.files?.length || 0) >= system.get('limit.user_files')) {
             if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('count');
         }
@@ -3067,10 +3464,10 @@ class BaseCardFilesHandler extends Handler {
         this.response.body = { ok: true, files: updatedFiles };
     }
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('cardId', Types.ObjectId, true)
     @post('files', Types.ArrayOf(Types.Filename))
-    async postDeleteFiles(domainId: string, docId: ObjectId, cardId: ObjectId, files: string[]) {
+    async postDeleteFiles(domainId: string, docId: number, cardId: ObjectId, files: string[]) {
         const storagePaths = files.map((name) => `base/${domainId}/${docId.toString()}/card/${cardId.toString()}/${name}`);
         await Promise.all([
             storage.del(storagePaths, this.user._id),
@@ -3081,12 +3478,12 @@ class BaseCardFilesHandler extends Handler {
         this.response.body = { ok: true };
     }
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('cardId', Types.ObjectId, true)
     @post('operation', Types.String, true)
     @post('oldName', Types.Filename, true)
     @post('newName', Types.Filename, true)
-    async postRenameFile(domainId: string, docId: ObjectId, cardId: ObjectId, operation?: string, oldName?: string, newName?: string) {
+    async postRenameFile(domainId: string, docId: number, cardId: ObjectId, operation?: string, oldName?: string, newName?: string) {
         if (operation !== 'rename' || !oldName || !newName) throw new ValidationError('operation, oldName, newName');
         const prefix = `base/${domainId}/${docId.toString()}/card/${cardId.toString()}`;
         const oldPath = `${prefix}/${oldName}`;
@@ -3109,11 +3506,11 @@ class BaseCardFilesHandler extends Handler {
 class BaseCardFileDownloadHandler extends Handler {
     noCheckPermView = true;
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('cardId', Types.ObjectId, true)
     @param('filename', Types.Filename)
     @param('noDisposition', Types.Boolean)
-    async get(domainId: string, docId: ObjectId, cardId: ObjectId, filename: string, noDisposition = false) {
+    async get(domainId: string, docId: number, cardId: ObjectId, filename: string, noDisposition = false) {
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
         const card = await CardModel.get(domainId, cardId);
@@ -3141,10 +3538,10 @@ class BaseNodeFilesHandler extends Handler {
     node?: BaseNode;
     branch?: string;
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('nodeId', Types.String, true)
     @param('branch', Types.String, true)
-    async _prepare(domainId: string, docId: ObjectId, nodeId: string, branch?: string) {
+    async _prepare(domainId: string, docId: number, nodeId: string, branch?: string) {
         this.base = await BaseModel.get(domainId, docId);
         if (!this.base) throw new NotFoundError('Base not found');
         if (!this.user.own(this.base)) {
@@ -3156,10 +3553,10 @@ class BaseNodeFilesHandler extends Handler {
         if (!this.node) throw new NotFoundError('Node not found');
     }
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('nodeId', Types.String, true)
     @param('branch', Types.String, true)
-    async get(domainId: string, docId: ObjectId, nodeId: string, branch?: string) {
+    async get(domainId: string, docId: number, nodeId: string, branch?: string) {
         const files = sortFiles(this.node!.files || []).map((file) => {
             let lastModified: Date | null = null;
             if (file.lastModified) {
@@ -3170,10 +3567,10 @@ class BaseNodeFilesHandler extends Handler {
         this.response.body = { files };
     }
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('nodeId', Types.String, true)
     @param('branch', Types.String, true)
-    async post(domainId: string, docId: ObjectId, nodeId: string, branch?: string) {
+    async post(domainId: string, docId: number, nodeId: string, branch?: string) {
         const body = (this.request.body as any) || {};
         if (this.request.files?.file) {
             const filename = body.filename || this.request.files.file.originalFilename || 'untitled';
@@ -3188,11 +3585,11 @@ class BaseNodeFilesHandler extends Handler {
         throw new ValidationError('file or files');
     }
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('nodeId', Types.String, true)
     @param('branch', Types.String, true)
     @post('filename', Types.Filename, true)
-    async postUploadFile(domainId: string, docId: ObjectId, nodeId: string, branch?: string, filename?: string) {
+    async postUploadFile(domainId: string, docId: number, nodeId: string, branch?: string, filename?: string) {
         if ((this.node!.files?.length || 0) >= system.get('limit.user_files')) {
             if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('count');
         }
@@ -3214,11 +3611,11 @@ class BaseNodeFilesHandler extends Handler {
         this.response.body = { ok: true, files: updatedFiles };
     }
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('nodeId', Types.String, true)
     @param('branch', Types.String, true)
     @post('files', Types.ArrayOf(Types.Filename))
-    async postDeleteFiles(domainId: string, docId: ObjectId, nodeId: string, branch?: string, files: string[] = []) {
+    async postDeleteFiles(domainId: string, docId: number, nodeId: string, branch?: string, files: string[] = []) {
         const storagePaths = files.map((name) => `base/${domainId}/${docId.toString()}/node/${nodeId}/${name}`);
         await Promise.all([
             storage.del(storagePaths, this.user._id),
@@ -3227,13 +3624,13 @@ class BaseNodeFilesHandler extends Handler {
         this.response.body = { ok: true };
     }
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('nodeId', Types.String, true)
     @param('branch', Types.String, true)
     @post('operation', Types.String, true)
     @post('oldName', Types.Filename, true)
     @post('newName', Types.Filename, true)
-    async postRenameFile(domainId: string, docId: ObjectId, nodeId: string, branch?: string, operation?: string, oldName?: string, newName?: string) {
+    async postRenameFile(domainId: string, docId: number, nodeId: string, branch?: string, operation?: string, oldName?: string, newName?: string) {
         if (operation !== 'rename' || !oldName || !newName) throw new ValidationError('operation, oldName, newName');
         const prefix = `base/${domainId}/${docId.toString()}/node/${nodeId}`;
         const oldPath = `${prefix}/${oldName}`;
@@ -3249,7 +3646,7 @@ class BaseNodeFilesHandler extends Handler {
         this.response.body = { ok: true, files: updatedFiles };
     }
 
-    private async updateNodeFiles(domainId: string, docId: ObjectId, files: FileInfo[]) {
+    private async updateNodeFiles(domainId: string, docId: number, files: FileInfo[]) {
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
         const branchName = this.branch!;
@@ -3277,12 +3674,12 @@ class BaseNodeFilesHandler extends Handler {
 class BaseNodeFileDownloadHandler extends Handler {
     noCheckPermView = true;
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('nodeId', Types.String, true)
     @param('filename', Types.Filename)
     @param('noDisposition', Types.Boolean)
     @param('branch', Types.String, true)
-    async get(domainId: string, docId: ObjectId, nodeId: string, filename: string, noDisposition = false, branch?: string) {
+    async get(domainId: string, docId: number, nodeId: string, filename: string, noDisposition = false, branch?: string) {
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
         const branchName = branch || (base as any).currentBranch || 'main';
@@ -3306,15 +3703,15 @@ class BaseNodeFileDownloadHandler extends Handler {
 
 /**
  * Base Card Edit Handler
- * 卡片编辑页面
+ * Comment translated to English.
  */
 class BaseCardEditHandler extends Handler {
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
     @param('cardId', Types.ObjectId, true)
     @param('branch', Types.String, true)
-    async get(domainId: string, docId: ObjectId, bid: number, nodeId: string, cardId?: ObjectId, branch?: string) {
+    async get(domainId: string, docId: number, bid: number, nodeId: string, cardId?: ObjectId, branch?: string) {
         const base = docId 
             ? await BaseModel.get(domainId, docId)
             : await BaseModel.getBybid(domainId, bid);
@@ -3339,19 +3736,19 @@ class BaseCardEditHandler extends Handler {
         this.UiContext.extraTitleContent = `${card?.title || '卡片'} - ${base.title}`;
     }
     
-    // 处理创建新卡片（没有 cardId 的路由）
-    @param('docId', Types.ObjectId, true)
+    // Comment translated to English.
+    @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
     @param('branch', Types.String, true)
-    // 创建/更新时仅要求 title 存在，其它字段从表单 body 中按需读取
+    // Comment translated to English.
     @post('title', Types.String)
     @post('content', Types.String, true)
     @post('operation', Types.String, true)
     @post('cardId', Types.ObjectId, true)
     async post(
         domainId: string,
-        docId: ObjectId,
+        docId: number,
         bid: number,
         nodeId: string,
         branch?: string,
@@ -3373,13 +3770,13 @@ class BaseCardEditHandler extends Handler {
         
         const effectiveBranch = branch || 'main';
         
-        // 如果有 operation=update 和 cardId，执行更新操作
+        // Comment translated to English.
         if (operation === 'update' && cardId) {
             const updates: any = {};
             if (title !== undefined) updates.title = title;
             if (content !== undefined) updates.content = content;
             await CardModel.update(domainId, cardId, updates);
-            // 重定向到更新后的卡片URL
+            // Comment translated to English.
             if (docId) {
             this.response.redirect = this.url('base_card_list_branch', { 
                 docId: docId.toString(), 
@@ -3396,7 +3793,7 @@ class BaseCardEditHandler extends Handler {
             return;
         }
         
-            // 创建新卡片
+            // Comment translated to English.
             if (!title) {
                 throw new ValidationError('title is required');
             }
@@ -3409,7 +3806,7 @@ class BaseCardEditHandler extends Handler {
                 content || '',
                 this.request.ip
             );
-        // 重定向到新创建的卡片URL
+        // Comment translated to English.
         if (docId) {
             this.response.redirect = this.url('base_card_list_branch', { 
                 docId: docId.toString(), 
@@ -3425,18 +3822,18 @@ class BaseCardEditHandler extends Handler {
         }
     }
     
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
     @route('cardId', Types.ObjectId, true)
     @param('branch', Types.String, true)
-    // 更新时 title / content / operation 都是从表单 body 中按需读取，允许为空
+    // Comment translated to English.
     @post('title', Types.String, true)
     @post('content', Types.String, true)
     @post('operation', Types.String, true)
     async postUpdate(
         domainId: string,
-        docId: ObjectId,
+        docId: number,
         bid: number,
         nodeId: string,
         cardId?: ObjectId,
@@ -3459,7 +3856,7 @@ class BaseCardEditHandler extends Handler {
         const effectiveBranch = branch || 'main';
         
         if (cardId) {
-            // 更新现有卡片
+            // Comment translated to English.
             if (operation === 'delete') {
                 const card = await CardModel.get(domainId, cardId);
                 if (!card) throw new NotFoundError('Card not found');
@@ -3477,10 +3874,10 @@ class BaseCardEditHandler extends Handler {
             if (content !== undefined) updates.content = content;
             await CardModel.update(domainId, cardId, updates);
             
-            // 检查是否有 returnUrl 参数
+            // Comment translated to English.
             const returnUrl = this.request.body.returnUrl || this.request.query.returnUrl;
             if (returnUrl) {
-                // 如果有 returnUrl，重定向到该 URL，并添加 fromEdit=true 和 cardId 参数
+                // Comment translated to English.
                 const returnUrlObj = new URL(returnUrl, `http://${this.request.headers.host || 'localhost'}`);
                 returnUrlObj.searchParams.set('fromEdit', 'true');
                 returnUrlObj.searchParams.set('cardId', cardId.toString());
@@ -3508,15 +3905,15 @@ class BaseCardEditHandler extends Handler {
 
 /**
  * Base Card Detail Handler
- * 卡片详情页面
+ * Comment translated to English.
  */
 class BaseCardDetailHandler extends Handler {
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
     @param('cardId', Types.ObjectId)
     @param('branch', Types.String, true)
-    async get(domainId: string, docId: ObjectId, bid: number, nodeId: string, cardId: ObjectId, branch?: string) {
+    async get(domainId: string, docId: number, bid: number, nodeId: string, cardId: ObjectId, branch?: string) {
         const base = docId 
             ? await BaseModel.get(domainId, docId)
             : await BaseModel.getBybid(domainId, bid);
@@ -3526,7 +3923,7 @@ class BaseCardDetailHandler extends Handler {
         const branchData = getBranchData(base, effectiveBranch);
         const nodes = branchData.nodes || [];
         
-        // 检查节点是否存在于当前分支中
+        // Comment translated to English.
         const node = nodes.find(n => n.id === nodeId);
         if (!node) {
             throw new NotFoundError('Node not found in this branch');
@@ -3536,7 +3933,7 @@ class BaseCardDetailHandler extends Handler {
         if (!card) throw new NotFoundError('Card not found');
         if (card.nodeId !== nodeId) throw new NotFoundError('Card does not belong to this node');
         
-        // 获取同一节点的所有卡片
+        // Comment translated to English.
         const cards = await CardModel.getByNodeId(domainId, base.docId, nodeId);
         const currentIndex = cards.findIndex(c => c.docId.toString() === cardId.toString());
         
@@ -3568,7 +3965,7 @@ class BaseCardDetailHandler extends Handler {
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        // 如果 operation 是 'delete'，则执行删除操作
+        // Comment translated to English.
         if (operation === 'delete') {
             const card = await CardModel.get(domainId, cardId);
             if (!card) throw new NotFoundError('Card not found');
@@ -3584,7 +3981,7 @@ class BaseCardDetailHandler extends Handler {
             return;
         }
         
-        // 否则执行更新操作
+        // Comment translated to English.
         const card = await CardModel.get(domainId, cardId);
         if (!card) throw new NotFoundError('Card not found');
         
@@ -3598,14 +3995,14 @@ class BaseCardDetailHandler extends Handler {
         if (title !== undefined) updates.title = title;
         if (content !== undefined) updates.content = content;
         if (order !== undefined) updates.order = order;
-        if (nodeId !== undefined) updates.nodeId = nodeId; // 支持更新 nodeId
+        if (nodeId !== undefined) updates.nodeId = nodeId; // Comment translated to English.
         
         await CardModel.update(domainId, cardId, updates);
         this.response.body = { success: true };
     }
 }
 
-/** 批量保存子类可覆盖的选项（base / skill 等，仅通过 type 区分） */
+/* Comment translated to English. */
 export interface BatchSaveOptions {
     type: 'base' | 'skill';
     getBase: (actualDomainId: string) => Promise<BaseDoc | null>;
@@ -3615,7 +4012,7 @@ export interface BatchSaveOptions {
 
 /**
  * Base Batch Save Handler
- * 批量保存所有更改（节点、卡片、边等）。子类通过 getBatchSaveOptions() 区分 type（如 skill）
+ * Comment translated to English.
  */
 export class BaseBatchSaveHandler extends Handler {
     protected getBatchSaveOptions(): BatchSaveOptions {
@@ -3647,13 +4044,20 @@ export class BaseBatchSaveHandler extends Handler {
 
         const actualDomainId = this.args.domainId || domainId || 'system';
         const opts = this.getBatchSaveOptions();
-        let base = await opts.getBase(actualDomainId);
-        if (!base) base = await opts.createBase(actualDomainId);
+        const data = this.request.body || {};
+        const specifiedDocId = readOptionalRequestBaseDocId(this.request);
+        let base: BaseDoc | null = null;
+        if (specifiedDocId) {
+            base = await BaseModel.get(actualDomainId, specifiedDocId);
+            if (!base) throw new NotFoundError('Base not found');
+        } else {
+            base = await opts.getBase(actualDomainId);
+            if (!base) base = await opts.createBase(actualDomainId);
+        }
         if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         const docId = base.docId;
         const branch = opts.getBranch(base);
 
-        const data = this.request.body || {};
         const {
             nodeCreates = [],
             nodeUpdates = [],
@@ -3694,11 +4098,11 @@ export class BaseBatchSaveHandler extends Handler {
             }
             
             if (currentRound.length === 0) {
-                // 没有可以创建的节点，可能是有循环依赖或父节点不存在
+                // Comment translated to English.
                 break;
             }
             
-            // 顺序创建当前轮节点，避免 addNode 读-改-写 并行导致互相覆盖、节点丢失
+            // Comment translated to English.
             for (const nodeCreate of currentRound) {
                 try {
                     let realParentId = nodeCreate.parentId;
@@ -3763,16 +4167,16 @@ export class BaseBatchSaveHandler extends Handler {
             }
         }
         
-        // 3. 删除边（在删除节点之前）
+        // Comment translated to English.
         for (const edgeId of edgeDeletes) {
             try {
                 await BaseModel.deleteEdge(actualDomainId, docId, edgeId);
             } catch (error: any) {
-                // 忽略删除错误（可能已经不存在）
+                // Comment translated to English.
             }
         }
         
-        // 4. 删除节点
+        // Comment translated to English.
         for (const nodeId of nodeDeletes) {
             try {
                 await BaseModel.deleteNode(actualDomainId, docId, nodeId, branch);
@@ -3802,10 +4206,10 @@ export class BaseBatchSaveHandler extends Handler {
             }
         }
         
-        // 6. 创建卡片
+        // Comment translated to English.
         for (const cardCreate of cardCreates) {
             try {
-                // 如果 nodeId 是临时ID，需要映射为真实ID
+                // Comment translated to English.
                 const realNodeId = cardCreate.nodeId.startsWith('temp-node-')
                     ? nodeIdMap.get(cardCreate.nodeId) || cardCreate.nodeId
                     : cardCreate.nodeId;
@@ -3832,7 +4236,7 @@ export class BaseBatchSaveHandler extends Handler {
             }
         }
         
-        // 7. 更新卡片（只传有值的字段，避免 undefined 覆盖库中已有值）
+        // Comment translated to English.
         for (const cardUpdate of cardUpdates) {
             try {
                 const updates: Partial<Pick<CardDoc, 'title' | 'content' | 'cardFace' | 'order' | 'nodeId' | 'problems'>> = {};
@@ -3857,7 +4261,7 @@ export class BaseBatchSaveHandler extends Handler {
             }
         }
         
-        // 触发更新事件
+        // Comment translated to English.
         (this.ctx.emit as any)('base/update', docId);
         
         this.response.body = {
@@ -3872,7 +4276,7 @@ export class BaseBatchSaveHandler extends Handler {
 /**
  * Sync base data to git repository (without committing)
  */
-async function syncBaseToGit(domainId: string, docId: ObjectId, branch: string): Promise<void> {
+async function syncBaseToGit(domainId: string, docId: number, branch: string): Promise<void> {
     const base = await BaseModel.get(domainId, docId);
     if (!base) {
         return;
@@ -3961,7 +4365,7 @@ async function syncBaseToGit(domainId: string, docId: ObjectId, branch: string):
  */
 async function getBaseGitStatus(
     domainId: string,
-    docId: ObjectId,
+    docId: number,
     branch: string,
     remoteUrl?: string
 ): Promise<{
@@ -4093,13 +4497,13 @@ async function getBaseGitStatus(
             status.hasLocalBranch = false;
         }
         
-        // 检查未提交的更改
+        // Comment translated to English.
         try {
             const { stdout: statusOutput } = await exec('git status --porcelain', { cwd: repoGitPath });
             const changes = statusOutput.trim();
             status.uncommittedChanges = changes.length > 0;
             
-            // 解析变更详情
+            // Comment translated to English.
             if (changes) {
                 const lines = changes.split('\n').filter(l => l.trim());
                 for (const line of lines) {
@@ -4118,7 +4522,7 @@ async function getBaseGitStatus(
             status.uncommittedChanges = false;
         }
         
-        // 检查 remote
+        // Comment translated to English.
         try {
             const { stdout: existingRemote } = await exec('git remote get-url origin', { cwd: repoGitPath });
             if (existingRemote && existingRemote.trim()) {
@@ -4138,7 +4542,7 @@ async function getBaseGitStatus(
             }
         }
         
-        // 检查 remote branch
+        // Comment translated to English.
         if (status.hasRemote) {
             try {
                 try {
@@ -4184,7 +4588,7 @@ async function getBaseGitStatus(
  */
 async function commitBaseChanges(
     domainId: string,
-    docId: ObjectId,
+    docId: number,
     base: BaseDoc,
     commitMessage: string,
     userId: number,
@@ -4222,7 +4626,7 @@ async function commitBaseChanges(
         const branch = (base as any).currentBranch || 'main';
         await exportBaseToFile(base, tmpDir, branch);
         
-        // 复制文件到 git 仓库，并删除多余的文件
+        // Comment translated to English.
         const copyDirAndCleanup = async (src: string, dest: string) => {
             await fs.promises.mkdir(dest, { recursive: true });
             
@@ -4272,8 +4676,8 @@ async function commitBaseChanges(
         };
         await copyDirAndCleanup(tmpDir, repoGitPath);
         
-        // 只添加真正有内容变化的文件
-        // 先检查哪些文件有变化
+        // Comment translated to English.
+        // Comment translated to English.
         try {
             const { stdout: statusOutput } = await exec('git status --porcelain', { cwd: repoGitPath });
             if (statusOutput.trim()) {
@@ -4284,24 +4688,24 @@ async function commitBaseChanges(
                     const status = line.substring(0, 2).trim();
                     const filePath = line.substring(3).trim();
                     
-                    // 对于修改的文件，检查内容是否真的不同
+                    // Comment translated to English.
                     if (status === 'M' || status.startsWith('M')) {
                         try {
-                            // git diff --quiet 如果文件内容相同返回0，不同返回非0
+                            // Comment translated to English.
                             await exec(`git diff --quiet "${filePath}"`, { cwd: repoGitPath });
-                            // 如果执行成功（返回0），说明内容相同，跳过
+                            // Comment translated to English.
                             continue;
                         } catch {
-                            // diff --quiet 返回非零表示有变化，添加到列表
+                            // Comment translated to English.
                             changedFiles.push(filePath);
                         }
                     } else if (status === '??' || status.startsWith('A') || status.startsWith('D')) {
-                        // 新增或删除的文件直接添加
+                        // Comment translated to English.
                         changedFiles.push(filePath);
                     }
                 }
                 
-                // 只添加有变化的文件
+                // Comment translated to English.
                 if (changedFiles.length > 0) {
                     for (const file of changedFiles) {
                         try {
@@ -4313,7 +4717,7 @@ async function commitBaseChanges(
                 }
             }
         } catch (err: any) {
-            // 如果检查失败，回退到添加所有文件
+            // Comment translated to English.
             console.warn(`[commitBaseChanges] Failed to check file changes, using git add -A:`, err.message);
         await exec('git add -A', { cwd: repoGitPath });
         }
@@ -4343,10 +4747,10 @@ async function commitBaseChanges(
  * Base Branch Create Handler
  */
 class BaseBranchCreateHandler extends Handler {
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
-    async post(domainId: string, docId: ObjectId, bid: number, branch?: string) {
+    async post(domainId: string, docId: number, bid: number, branch?: string) {
         // Support both POST body and URL parameter
         const newBranch = branch || this.request.body?.branch || '';
         if (!newBranch || !newBranch.trim()) {
@@ -4379,7 +4783,7 @@ class BaseBranchCreateHandler extends Handler {
             branches.push(branchName);
         }
         
-        // 复制 main 分支的数据到新分支
+        // Comment translated to English.
         const mainBranchData = getBranchData(base, 'main');
         setBranchData(base, branchName, 
             JSON.parse(JSON.stringify(mainBranchData.nodes)), 
@@ -4431,9 +4835,9 @@ class BaseBranchCreateHandler extends Handler {
         });
     }
     
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('branch', Types.String, true)
-    async get(domainId: string, docId: ObjectId, branch?: string) {
+    async get(domainId: string, docId: number, branch?: string) {
         // Support GET request for URL-based branch creation
         return this.post(domainId, docId, bid, branch);
     }
@@ -4443,9 +4847,9 @@ class BaseBranchCreateHandler extends Handler {
  * Base Git Status Handler
  */
 class BaseGitStatusHandler extends Handler {
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('branch', Types.String, true)
-    async get(domainId: string, docId: ObjectId, branch?: string) {
+    async get(domainId: string, docId: number, branch?: string) {
         const base = docId 
             ? await BaseModel.get(domainId, docId)
             : await BaseModel.getByDomain(domainId);
@@ -4497,10 +4901,10 @@ class BaseGitStatusHandler extends Handler {
  * Base Commit Handler
  */
 class BaseCommitHandler extends Handler {
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('commitMessage', Types.String, true)
     @param('note', Types.String, true)
-    async post(domainId: string, docId: ObjectId, commitMessage?: string, note?: string) {
+    async post(domainId: string, docId: number, commitMessage?: string, note?: string) {
         // Get commit message from request body if not provided as parameter
         const body = this.request.body || {};
         const customMessage = commitMessage || note || body.commitMessage || body.note || '';
@@ -4532,7 +4936,7 @@ class BaseCommitHandler extends Handler {
                 this.user.uname || 'unknown'
             );
 
-            // 触发更新事件，通知所有连接的 WebSocket 客户端
+            // Comment translated to English.
             (this.ctx.emit as any)('base/update', base.docId, base.bid);
             (this.ctx.emit as any)('base/git/status/update', base.docId, base.bid);
 
@@ -4551,7 +4955,7 @@ class BaseCommitHandler extends Handler {
  */
 async function importBaseFromFileStructure(
     domainId: string,
-    baseDocId: ObjectId,
+    baseDocId: number,
     localDir: string,
     branch: string
 ): Promise<{ nodes: BaseNode[]; edges: BaseEdge[] }> {
@@ -4610,13 +5014,13 @@ async function importBaseFromFileStructure(
         // Read cards (Markdown files) in this directory
         try {
             const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-            // 先取出该节点下现有的所有卡片，用于后续精确对齐（新增、更新、删除）
+            // Comment translated to English.
             const existingCards = await CardModel.getByNodeId(domainId, bid, nodeId);
             const existingCardsByTitle = new Map<string, CardDoc>();
             const processedCardIds = new Set<string>();
 
             for (const card of existingCards) {
-                // 以标题作为同一目录下卡片的唯一标识
+                // Comment translated to English.
                 if (card.title) {
                     existingCardsByTitle.set(card.title, card);
                 }
@@ -4632,18 +5036,18 @@ async function importBaseFromFileStructure(
                     const cardContent = await fs.promises.readFile(cardPath, 'utf-8');
                     const cardTitle = sanitize(entry.name.replace(/\.md$/i, ''));
 
-                    // 根据文件名（标题）精确匹配已有卡片，做到“只更新有改动的 / 新增的文件”
+                    // Comment translated to English.
                     try {
                         const existingCard = existingCardsByTitle.get(cardTitle);
 
                         if (existingCard) {
-                            // 更新已有卡片
+                            // Comment translated to English.
                             await CardModel.update(domainId, existingCard.docId, {
                                 content: cardContent,
                             });
                             processedCardIds.add(existingCard.docId.toString());
                         } else {
-                            // 创建新卡片
+                            // Comment translated to English.
                             const newCardId = await CardModel.create(
                                 domainId,
                                 baseDocId,
@@ -4661,7 +5065,7 @@ async function importBaseFromFileStructure(
                 }
             }
 
-            // 删除目录下已经不存在对应 Markdown 文件的旧卡片（包括在 GitHub 上被删除或移动到其它目录的）
+            // Comment translated to English.
             for (const card of existingCards) {
                 const idStr = card.docId.toString();
                 if (!processedCardIds.has(idStr)) {
@@ -4703,15 +5107,15 @@ async function importBaseFromFileStructure(
 
 /**
  * Cleanup all cards of a base before re-importing from Git.
- * 拉取前删除该思维导图下的所有卡片，后续完全按照仓库结构重建。
+ * Comment translated to English.
  */
 async function cleanupBaseCards(
     domainId: string,
     bid: number,
-    _nodes: BaseNode[] // 兼容旧签名，暂不使用 nodes
+    _nodes: BaseNode[] // Comment translated to English.
 ): Promise<void> {
     try {
-        // 直接删除该思维导图下所有旧卡片，完全按照本次拉取结果重建
+        // Comment translated to English.
         await document.deleteMulti(domainId, TYPE_CARD as any, { bid } as any);
     } catch (err) {
         console.error(
@@ -4725,10 +5129,10 @@ async function cleanupBaseCards(
  * Base GitHub Pull Handler
  */
 class BaseGithubPullHandler extends Handler {
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
-    async post(domainId: string, docId: ObjectId, bid: number, branch?: string) {
+    async post(domainId: string, docId: number, bid: number, branch?: string) {
         const base = docId 
             ? await BaseModel.get(domainId, docId)
             : await BaseModel.getBybid(domainId, bid);
@@ -4757,14 +5161,14 @@ class BaseGithubPullHandler extends Handler {
             REPO_URL = githubRepo;
         } else {
             if (githubRepo.startsWith('https://github.com/') || githubRepo.startsWith('http://github.com/')) {
-                // 无论 URL 是否已包含 token，都强制使用最新的 token 重新构建 URL
-                // 这样可以确保使用最新的、有效的 token，避免使用已过期或无效的旧 token
-                // 提取仓库路径（去掉协议、域名和可能的旧 token）
+                // Comment translated to English.
+                // Comment translated to English.
+                // Comment translated to English.
                 const repoPathMatch = githubRepo.match(/^https?:\/\/[^@]*@?github\.com\/(.+)$/);
                 if (repoPathMatch && repoPathMatch[1]) {
                     REPO_URL = `https://${GH_TOKEN}@github.com/${repoPathMatch[1]}`;
                 } else {
-                    // 如果匹配失败，使用简单的替换方式
+                    // Comment translated to English.
                     REPO_URL = githubRepo.replace(/^https?:\/\/[^@]*@?github\.com\//, `https://${GH_TOKEN}@github.com/`);
                 }
             } else if (!githubRepo.includes('://') && !githubRepo.includes('@')) {
@@ -4795,10 +5199,10 @@ class BaseGithubPullHandler extends Handler {
             await exec('git fetch origin', { cwd: repoGitPath });
             await exec(`git reset --hard origin/${effectiveBranch}`, { cwd: repoGitPath });
             
-            // 在从 Git 导入结构前，先清空旧卡片，确保后续严格以仓库为准重建
+            // Comment translated to English.
             await cleanupBaseCards(domainId, base.docId, []);
 
-            // Import base structure from git file system（会根据目录和 .md 文件重新创建卡片）
+            // Comment translated to English.
             const { nodes, edges } = await importBaseFromFileStructure(
                 domainId,
                 base.docId,
@@ -4818,8 +5222,8 @@ class BaseGithubPullHandler extends Handler {
             
             await BaseModel.updateFull(domainId, base.docId, {
                 branchData: base.branchData,
-                nodes: base.nodes, // 向后兼容
-                edges: base.edges, // 向后兼容
+                nodes: base.nodes, // Comment translated to English.
+                edges: base.edges, // Comment translated to English.
                 content,
             });
             
@@ -4838,9 +5242,9 @@ class BaseGithubPullHandler extends Handler {
 class BaseGithubConfigHandler extends Handler {
     base?: BaseDoc;
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
-    async _prepare(domainId: string, docId: ObjectId, bid: number) {
+    async _prepare(domainId: string, docId: number, bid: number) {
         this.base = docId 
             ? await BaseModel.get(domainId, docId)
             : await BaseModel.getBybid(domainId, bid);
@@ -4851,10 +5255,10 @@ class BaseGithubConfigHandler extends Handler {
         }
     }
 
-    @param('docId', Types.ObjectId, true)
+    @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('githubRepo', Types.String, true)
-    async post(domainId: string, docId: ObjectId, bid: number, githubRepo?: string) {
+    async post(domainId: string, docId: number, bid: number, githubRepo?: string) {
         if (githubRepo !== undefined) {
             let repoUrlForStorage = githubRepo;
             if (repoUrlForStorage && repoUrlForStorage.startsWith('https://') && repoUrlForStorage.includes('@github.com')) {
@@ -4872,27 +5276,27 @@ class BaseGithubConfigHandler extends Handler {
 
 /**
  * Base WebSocket Connection Handler
- * 用于实时推送 base 的更新（git status 等）
+ * Comment translated to English.
  */
 class BaseConnectionHandler extends ConnectionHandler {
-    private docId?: ObjectId;
-    private bid?: number;
+    private docId?: number;
+    private bid?: string;
     private subscriptions: Array<{ dispose: () => void }> = [];
 
-    @param('docId', Types.ObjectId, true)
-    @param('bid', Types.PositiveInt, true)
-    async prepare(domainId: string, docId?: ObjectId, bid?: number) {
-        // WebSocket 请求的 domainId/docId 可能在 path 或 query 中，与 record 一致从 query 回退读取
+    @param('docId', Types.String, true)
+    @param('bid', Types.String, true)
+    async prepare(domainId: string, docId?: string, bid?: string) {
+        // Comment translated to English.
         const finalDomainId = domainId || (this.request.query?.domainId as string) || (this.args as any).domainId;
-        let finalDocId = docId;
-        let finalBid = bid;
-        if (!finalDocId && !finalBid) {
-            const qDocId = this.request.query?.docId as string;
-            const qBid = this.request.query?.bid as string;
-            if (qDocId && ObjectId.isValid(qDocId)) finalDocId = new ObjectId(qDocId);
-            else if (qBid) finalBid = parseInt(qBid, 10);
-        }
-        if (!finalDocId && !finalBid) {
+        const qDocId = this.request.query?.docId as string;
+        const qBid = this.request.query?.bid as string;
+        const finalDocToken = (docId && String(docId).trim())
+            || (qDocId && String(qDocId).trim())
+            || (bid && String(bid).trim())
+            || (qBid && String(qBid).trim())
+            || '';
+
+        if (!finalDocToken) {
             this.close(1000, 'docId or bid is required');
             return;
         }
@@ -4901,9 +5305,7 @@ class BaseConnectionHandler extends ConnectionHandler {
             return;
         }
 
-        const base = finalDocId
-            ? await BaseModel.get(finalDomainId, finalDocId)
-            : await BaseModel.getBybid(finalDomainId, finalBid!);
+        const base = await resolveBaseByDocIdOrBid(finalDomainId, finalDocToken);
 
         if (!base) {
             this.close(1000, 'Base not found');
@@ -4912,17 +5314,17 @@ class BaseConnectionHandler extends ConnectionHandler {
 
         this.docId = base.docId;
 
-        // 检查权限
+        // Comment translated to English.
         if (!this.user.own(base)) {
             this.checkPerm(PERM.PERM_VIEW_DISCUSSION);
         }
 
         logger.info('Base WebSocket connected: docId=%s', this.docId);
 
-        // 发送初始数据
+        // Comment translated to English.
         await this.sendInitialData(finalDomainId, base);
 
-        // 订阅 base 更新事件
+        // Comment translated to English.
         const dispose1 = (this.ctx.on as any)('base/update', async (...args: any[]) => {
             const [updateDocId, updatebid] = args;
             if (updateDocId && updateDocId.toString() === this.docId!.toString()) {
@@ -4931,7 +5333,7 @@ class BaseConnectionHandler extends ConnectionHandler {
         });
         this.subscriptions.push({ dispose: dispose1 });
 
-        // 订阅 git status 更新事件
+        // Comment translated to English.
         const dispose2 = (this.ctx.on as any)('base/git/status/update', async (...args: any[]) => {
             const [updateDocId, updatebid] = args;
             if (updateDocId && updateDocId.toString() === this.docId!.toString()) {
@@ -5127,14 +5529,14 @@ class BaseConnectionHandler extends ConnectionHandler {
 
 /**
  * Base Domain Edit Handler
- * 用于编辑导图结构（新建、删除、编辑节点，连线等）
+ * Comment translated to English.
  */
 class BaseDomainEditHandler extends Handler {
     @param('q', Types.Content, true)
     async get(domainId: string, q = '') {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        // 获取当前 domain 的 base（一个 domain 一个 base）
+        // Comment translated to English.
         const base = await BaseModel.getByDomain(domainId);
         
         if (!base) {
@@ -5144,14 +5546,14 @@ class BaseDomainEditHandler extends Handler {
         const branch = (base as any)?.currentBranch || 'main';
         const branchData = getBranchData(base, branch);
         
-        // 找到根节点
+        // Comment translated to English.
         const rootNodes = branchData.nodes.filter(node => 
             node.level === 0 || !branchData.edges.some(edge => edge.target === node.id)
         );
         const rootNode = rootNodes[0] || branchData.nodes[0];
         
         if (!rootNode) {
-            // 如果没有节点，返回空数据
+            // Comment translated to English.
             this.response.template = 'base_domain_edit.html';
             this.response.body = { 
                 base: {
@@ -5166,7 +5568,7 @@ class BaseDomainEditHandler extends Handler {
             return;
         }
         
-        // 找到第一层节点（根节点的直接子节点）
+        // Comment translated to English.
         const firstLevelNodeIds = new Set(
             branchData.edges
                 .filter(edge => edge.source === rootNode.id)
@@ -5175,7 +5577,7 @@ class BaseDomainEditHandler extends Handler {
         
         let firstLevelNodes = branchData.nodes.filter(node => firstLevelNodeIds.has(node.id));
         
-        // 搜索过滤
+        // Comment translated to English.
         if (q && q.trim()) {
             const searchTerm = q.toLowerCase().trim();
             firstLevelNodes = firstLevelNodes.filter(node => 
@@ -5184,12 +5586,12 @@ class BaseDomainEditHandler extends Handler {
             );
         }
         
-        // 找到第一层节点之间的边
+        // Comment translated to English.
         const firstLevelEdges = branchData.edges.filter(edge => 
             firstLevelNodeIds.has(edge.source) && firstLevelNodeIds.has(edge.target)
         );
         
-        // 清理数据，转换为前端需要的格式
+        // Comment translated to English.
         const nodes = firstLevelNodes.map((node: any) => ({
             ...node,
             nodeId: node.id,
@@ -5215,15 +5617,15 @@ class BaseDomainEditHandler extends Handler {
  * Base Expand State Handler — per-user node expand/collapse state for base editor (POST only, load via UiContext)
  */
 export class BaseExpandStateHandler extends Handler {
-    protected async getBase(domainId: string, docId: ObjectId): Promise<BaseDoc | null> {
+    protected async getBase(domainId: string, docId: number): Promise<BaseDoc | null> {
         return BaseModel.get(domainId, docId);
     }
 
-    @post('docId', Types.ObjectId)
+    @post('docId', Types.PositiveInt)
     @post('expandedNodeIds', Types.ArrayOf(Types.String), true)
-    async post(domainId: string, docId: ObjectId, expandedNodeIds?: string[]) {
+    async post(domainId: string, docId: number, expandedNodeIds?: string[]) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
-        const baseDocId = typeof docId === 'string' ? new ObjectId(docId) : docId;
+        const baseDocId = Number(docId);
         const base = await this.getBase(domainId, baseDocId);
         if (!base) throw new NotFoundError('Base not found');
         if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
@@ -5243,8 +5645,11 @@ export class BaseExpandStateHandler extends Handler {
 }
 
 export async function apply(ctx: Context) {
-    ctx.Route('base_outline', '/base', BaseOutlineHandler);
-    ctx.Route('base_outline_branch', '/base/branch/:branch', BaseOutlineHandler);
+    ctx.Route('base_domain', '/base', BaseDomainListHandler);
+    ctx.Route('base_outline_branch', '/base/branch/:branch', BaseOutlineRedirectHandler);
+    ctx.Route('base_create', '/base/create', BaseCreateHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_outline_doc', '/base/:docId/outline', BaseOutlineDocHandler);
+    ctx.Route('base_outline_doc_branch', '/base/:docId/outline/branch/:branch', BaseOutlineDocHandler);
     ctx.Route('base_list', '/base/list', BaseListHandler);
     ctx.Route('base_data', '/base/data', BaseDataHandler);
     ctx.Route('base_node_update', '/base/node/:nodeId', BaseNodeHandler, PRIV.PRIV_USER_PROFILE);
@@ -5284,7 +5689,8 @@ export async function apply(ctx: Context) {
     ctx.Route('base_card_file_download', '/base/:docId/card/:cardId/file/:filename', BaseCardFileDownloadHandler);
     ctx.Route('base_node_files', '/base/:docId/node/:nodeId/files', BaseNodeFilesHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_node_file_download', '/base/:docId/node/:nodeId/file/:filename', BaseNodeFileDownloadHandler);
-    ctx.Route('base_editor', '/base/editor', BaseEditorHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_editor_branch', '/base/branch/:branch/editor', BaseEditorHandler, PRIV.PRIV_USER_PROFILE);
+    // Comment translated to English.
+    ctx.Route('base_editor', '/base/:docId/editor', BaseEditorDocHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_editor_branch', '/base/:docId/branch/:branch/editor', BaseEditorDocHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Connection('base_connection', '/base/ws', BaseConnectionHandler);
 }
