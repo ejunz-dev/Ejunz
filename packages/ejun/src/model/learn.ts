@@ -22,7 +22,7 @@ export interface LearnDAGNode {
 
 export interface LearnDAGDoc {
     domainId: string;
-    baseDocId: ObjectId;
+    baseDocId: number | ObjectId;
     branch: string;
     sections: LearnDAGNode[];
     dag: LearnDAGNode[];
@@ -36,7 +36,7 @@ class LearnModel {
     static collResult = collResult;
     static collConsumptionStats = collConsumptionStats;
 
-    static async getDAG(domainId: string, baseDocId: ObjectId, branch: string): Promise<LearnDAGDoc | null> {
+    static async getDAG(domainId: string, baseDocId: number | ObjectId, branch: string): Promise<LearnDAGDoc | null> {
         const doc = await collDAG.findOne({
             domainId,
             baseDocId,
@@ -47,7 +47,7 @@ class LearnModel {
 
     static async setDAG(
         domainId: string,
-        baseDocId: ObjectId,
+        baseDocId: number | ObjectId,
         branch: string,
         data: { sections: LearnDAGNode[]; dag: LearnDAGNode[]; version: number; updateAt: Date },
         extra?: Record<string, unknown>

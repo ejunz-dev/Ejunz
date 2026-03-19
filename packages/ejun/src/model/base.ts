@@ -14,6 +14,15 @@ export const TYPE_CARD: 71 = 71;
  * Comment translated to English.
  */
 export class BaseModel {
+    private static getRootNodeId(nodes: BaseNode[] = [], edges: BaseEdge[] = []): string | null {
+        if (!nodes.length) return null;
+        const levelRoot = nodes.find((n) => n.level === 0);
+        if (levelRoot) return levelRoot.id;
+        const incoming = new Set(edges.map((e) => e.target));
+        const noIncoming = nodes.find((n) => !incoming.has(n.id));
+        return noIncoming ? noIncoming.id : nodes[0].id;
+    }
+
     static async generateNextDocId(domainId: string): Promise<number> {
         const lastBase = await document.getMulti(domainId, TYPE_MM, { docId: { $type: 'number' } } as any)
             .sort({ docId: -1 })
@@ -176,10 +185,37 @@ export class BaseModel {
         docId: number | ObjectId,
         updates: Partial<Pick<BaseDoc, 'title' | 'content' | 'layout' | 'viewport' | 'theme' | 'files' | 'parentId' | 'domainPosition'>>
     ): Promise<void> {
-        await document.set(domainId, TYPE_MM, docId, {
+        const updatePayload: any = {
             ...updates,
             updateAt: new Date(),
-        });
+        };
+        if (typeof updates.title === 'string') {
+            const base = await this.get(domainId, docId);
+            if (base) {
+                const rootId = this.getRootNodeId(base.nodes || [], base.edges || []);
+                if (rootId) {
+                    const newNodes = [...(base.nodes || [])];
+                    const idx = newNodes.findIndex((n) => n.id === rootId);
+                    if (idx >= 0) {
+                        newNodes[idx] = { ...newNodes[idx], text: updates.title };
+                        updatePayload.nodes = newNodes;
+                    }
+                    const branchData: any = (base as any).branchData || {};
+                    if (branchData.main && Array.isArray(branchData.main.nodes)) {
+                        const bNodes = [...branchData.main.nodes];
+                        const bIdx = bNodes.findIndex((n: BaseNode) => n.id === rootId);
+                        if (bIdx >= 0) {
+                            bNodes[bIdx] = { ...bNodes[bIdx], text: updates.title };
+                            updatePayload.branchData = {
+                                ...branchData,
+                                main: { ...branchData.main, nodes: bNodes },
+                            };
+                        }
+                    }
+                }
+            }
+        }
+        await document.set(domainId, TYPE_MM, docId, updatePayload);
     }
 
     /**
@@ -225,11 +261,20 @@ export class BaseModel {
         }
 
         // Comment translated to English.
-        await document.set(domainId, TYPE_MM, docId, {
+        const updatePayload: any = {
             nodes: newNodes,
             branchData: branchData,
             updateAt: new Date(),
-        });
+        };
+        if (typeof updates.text === 'string' && updates.text.trim()) {
+            const currentBranchEdges = (branchData[currentBranch]?.edges || base.edges || []) as BaseEdge[];
+            const currentBranchNodes = (branchData[currentBranch]?.nodes || newNodes) as BaseNode[];
+            const rootNodeId = this.getRootNodeId(currentBranchNodes, currentBranchEdges);
+            if (rootNodeId === nodeId) {
+                updatePayload.title = updates.text;
+            }
+        }
+        await document.set(domainId, TYPE_MM, docId, updatePayload);
     }
 
     /**
@@ -390,6 +435,11 @@ export class BaseModel {
             } catch (err) {
             }
             return;
+        }
+
+        const rootNodeId = this.getRootNodeId(nodes, edges);
+        if (rootNodeId && nodeId === rootNodeId) {
+            throw new Error('Root node cannot be deleted');
         }
 
         const nodesToDelete = new Set<string>();
