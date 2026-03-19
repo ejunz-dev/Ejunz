@@ -54,6 +54,18 @@ interface MapDAGNode {
   order?: number;
 }
 
+interface LearnBaseOption {
+  docId: number;
+  title?: string;
+  bid?: string | number;
+}
+
+interface LearnBaseOption {
+  docId: number;
+  title?: string;
+  bid?: string | number;
+}
+
 function getChildren(nodeId: string, sections: MapDAGNode[], dag: MapDAGNode[]): MapDAGNode[] {
   const list: MapDAGNode[] = [];
   dag.forEach((n) => {
@@ -95,6 +107,12 @@ function LearnPage() {
   const fullDag = ((window as any).UiContext?.fullDag || []) as MapDAGNode[];
   const currentSectionIndex = (window as any).UiContext?.currentSectionIndex as number | undefined;
   const passedCardIdsSet = new Set<string>((window as any).UiContext?.passedCardIds || []);
+  const learnBases = ((window as any).UiContext?.learnBases || []) as LearnBaseOption[];
+  const selectedLearnBaseDocId = Number((window as any).UiContext?.selectedLearnBaseDocId || 0) || null;
+  const requireBaseSelection = !!(window as any).UiContext?.requireBaseSelection;
+  const selectedLearnBase = selectedLearnBaseDocId
+    ? (learnBases.find((b) => Number(b.docId) === Number(selectedLearnBaseDocId)) || null)
+    : null;
 
   const [goal, setGoal] = useState(dailyGoal);
   const [isEditingGoal, setIsEditingGoal] = useState(false);
@@ -535,6 +553,44 @@ function LearnPage() {
         flexDirection: 'column',
         gap: '24px',
       }}>
+        {!requireBaseSelection && selectedLearnBase && (
+          <div style={{
+            padding: '12px 14px',
+            borderRadius: '12px',
+            border: `1px solid ${themeStyles.border}`,
+            background: themeStyles.bgCard,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '10px',
+            flexWrap: 'wrap',
+          }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '2px' }}>
+                {i18n('Current learn base')}
+              </div>
+              <div style={{ fontSize: '14px', color: themeStyles.textPrimary, fontWeight: 600, wordBreak: 'break-word' }}>
+                {selectedLearnBase.bid ? `[${selectedLearnBase.bid}] ` : ''}{selectedLearnBase.title || i18n('Untitled base')}
+              </div>
+            </div>
+            <a
+              href={`/d/${domainId}/learn/base/select?redirect=${encodeURIComponent(`/d/${domainId}/learn`)}`}
+              style={{
+                padding: '8px 12px',
+                borderRadius: '8px',
+                border: `1px solid ${themeStyles.border}`,
+                color: themeStyles.textPrimary,
+                textDecoration: 'none',
+                background: themeStyles.bgSecondary,
+                fontSize: '13px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {i18n('Change')}
+            </a>
+          </div>
+        )}
+
         <div style={{
           display: 'flex',
           gap: '4px',
@@ -585,7 +641,36 @@ function LearnPage() {
           </button>
         </div>
 
-        {viewMode === 'progress' && (
+        {requireBaseSelection ? (
+          <div style={{
+            padding: isMobile ? '20px 16px' : '24px',
+            background: themeStyles.bgCard,
+            borderRadius: '16px',
+            border: `1px solid ${themeStyles.border}`,
+            boxShadow: theme === 'dark' ? '0 4px 24px rgba(0,0,0,0.4)' : '0 2px 12px rgba(0,0,0,0.06)',
+          }}>
+            <div style={{ fontSize: '16px', fontWeight: 600, color: themeStyles.textPrimary, marginBottom: '8px' }}>
+              {i18n('Select a base before learning')}
+            </div>
+            <div style={{ fontSize: '13px', color: themeStyles.textSecondary, marginBottom: '16px' }}>
+              {i18n('Choose one base and save your learning setting first.')}
+            </div>
+            <a
+              href={`/d/${domainId}/learn/base/select?redirect=${encodeURIComponent(`/d/${domainId}/learn`)}`}
+              style={{
+                display: 'inline-block',
+                padding: '10px 16px',
+                borderRadius: '10px',
+                border: 'none',
+                background: themeStyles.primary,
+                color: '#fff',
+                textDecoration: 'none',
+              }}
+            >
+              {i18n('Select Learn Base')}
+            </a>
+          </div>
+        ) : viewMode === 'progress' && (
         <>
         <div style={{
           padding: isMobile ? '20px 16px' : '28px',

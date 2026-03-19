@@ -1,0 +1,15 @@
+{% set page_name = "learn_base_select" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<script>
+  {{ set(UiContext, 'domainId', domainId) }}
+  {{ set(UiContext, 'bases', bases or []) }}
+  {{ set(UiContext, 'selectedBaseDocId', selectedBaseDocId) }}
+  {{ set(UiContext, 'redirect', redirect or url('learn', { domainId: domainId })) }}
+</script>
+<div class="row">
+  <div class="medium-8 large-6 columns">
+    <div id="learn-base-select-container"></div>
+  </div>
+</div>
+{% endblock %}

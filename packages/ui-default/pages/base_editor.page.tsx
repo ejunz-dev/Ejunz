@@ -4918,7 +4918,22 @@ ${currentCardContext}
               
               if (jsonMatch) {
                 try {
-                  const operations = JSON.parse(jsonMatch[1]);
+                  const parseOperationPayload = (raw: string) => {
+                    let text = String(raw || '').trim();
+                    // Normalize common LLM output issues before JSON.parse.
+                    text = text
+                      .replace(/[“”]/g, '"')
+                      .replace(/[‘’]/g, '\'')
+                      .replace(/^\uFEFF/, '')
+                      .replace(/,\s*([}\]])/g, '$1');
+                    const firstBrace = text.indexOf('{');
+                    const firstBracket = text.indexOf('[');
+                    const start = firstBrace === -1 ? firstBracket : (firstBracket === -1 ? firstBrace : Math.min(firstBrace, firstBracket));
+                    if (start > 0) text = text.slice(start).trim();
+                    return JSON.parse(text);
+                  };
+
+                  const operations = parseOperationPayload(jsonMatch[1]);
                   if (operations.operations && Array.isArray(operations.operations)) {
                     
                     console.log('AI 返回的操作:', operations.operations);
@@ -4992,7 +5007,8 @@ ${currentCardContext}
                   }
                 } catch (e) {
                   console.error('Failed to parse AI operations:', e);
-                  Notification.error('解析 AI 操作失败: ' + (e.message || '未知错误'));
+                  const rawPreview = (jsonMatch[1] || '').slice(0, 240).replace(/\s+/g, ' ');
+                  Notification.error(`解析 AI 操作失败: ${(e as any).message || '未知错误'}。原始片段: ${rawPreview}`);
                 }
               }
             
