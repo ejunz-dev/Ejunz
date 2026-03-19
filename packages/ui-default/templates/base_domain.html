@@ -1,45 +1,84 @@
+{% set page_name = "base_domain" %}
 {% extends "layout/basic.html" %}
 {% block content %}
-<div class="row">
-
-  <div class="medium-9 columns">
-    <div class="section">
-      <div class="section__header">
-        <h2 class="section__title">{{ _("Base Overview") }}</h2>
-      </div>
-      <div class="section__body">
-        {% if base %}
-          <h3>{{ base.title }}</h3>
-          <div class="typo richmedia topic__content" data-emoji-enabled>
-            {{ base.content|markdown|safe }}
-          </div>
-        {% else %}
-          <p>{{ _("No base exists. You can create one.") }}</p>
-        {% endif %}
+{% set _domain_id = UiContext.domainId or domainId or 'system' %}
+  <div class="row">
+    <div class="medium-9 columns">
+      <div class="section display-mode">
+        <div class="section__body no-padding">
+          <form method="get" id="searchForm">
+            <div class="search">
+              <input name="q" type="text" value="{{ qs }}" placeholder="{{ _('Search bases') }}">
+              <button type="submit">
+                <span class="icon icon-search"></span>
+              </button>
+            </div>
+          </form>
+        </div>
+        <div class="section__body no-padding">
+          {% include "partials/base_list.html" %}
+        </div>
       </div>
     </div>
-
-  </div>
-
-  <div class="medium-3 columns">
-    <div class="section side">
-      <div class="section__header">
-        <h2 class="section__title">{{ _("Actions") }}</h2>
-      </div>
-      <div class="section__body">
-        {% if not base %}
-          <a href="{{ url('base_create', domainId=domainId) }}" class="button success expanded">
-            {{ _('Create Base') }}
+    <div class="medium-3 columns">
+      <div class="section side nojs--hide">
+        <ol class="menu">
+          <a href="javascript:;" class="menu__link edit-mode-hide" name="enter-edit-mode">
+            <span class="icon icon-edit"></span>
+            {{ _('Enter Edit Mode') }}
           </a>
-        {% else %}
-          {% if base.docId %}
-            <a href="{{ url('base_edit', domainId=domainId, docId=base.docId) }}" class="button secondary expanded">
-              {{ _('Edit Base') }}
+          <a href="javascript:;" class="menu__link display-mode-hide" name="leave-edit-mode">
+            <span class="icon icon-edit"></span>
+            {{ _('Leave Edit Mode') }}
+          </a>
+          <a href="javascript:;" class="menu__link display-mode-hide" name="hide_selected_bases">
+            <span class="icon icon-close"></span>
+            {{ _('Hide Selected') }}
+          </a>
+          <a href="javascript:;" class="menu__link display-mode-hide" name="unhide_selected_bases">
+            <span class="icon icon-check"></span>
+            {{ _('Unhide Selected') }}
+          </a>
+          <a href="javascript:;" class="menu__link display-mode-hide" name="download_selected_bases">
+            <span class="icon icon-download"></span>
+            {{ _('Download Selected') }}
+          </a>
+          <a href="javascript:;" class="menu__link display-mode-hide" name="delete_selected_bases">
+            <span class="icon icon-delete"></span>
+            {{ _('Remove Selected') }}
+          </a>
+          <a href="javascript:;" class="menu__link display-mode-hide" name="copy_selected_bases">
+            <span class="icon icon-copy"></span>
+            {{ _('Copy Selected') }}
+          </a>
+        </ol>
+      </div>
+      <div class="section side">
+        <div class="section__header">
+          <h1 class="section__title">{{ _('Create Base') }}</h1>
+        </div>
+        <ol class="menu">
+          <li class="menu__item">
+            <a class="menu__link" href="{{ url('base_create', domainId=_domain_id) }}">
+              <span class="icon icon-add"></span>
+              {{ _('Create Base') }}
             </a>
-          {% endif %}
-        {% endif %}
+          </li>
+        </ol>
+        <div class="section__body">
+          <div class="typo supplementary">
+            <p>{{ _('You have permission to create bases for this domain.') }}</p>
+          </div>
+        </div>
+      </div>
+      <div class="section side">
+        <div class="section__header edit-mode-hide">
+          <h1 class="section__title">{{ _('Categories') }}</h1>
+        </div>
+        <div class="section__body">
+          <p class="typo supplementary">{{ _('No categories for bases.') }}</p>
+        </div>
       </div>
     </div>
   </div>
-</div>
 {% endblock %}

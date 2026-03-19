@@ -1,5 +1,5 @@
 /**
- * Skill handlers：复用 Base 逻辑，仅通过 type 区分（Skills Base）
+ * Comment translated to English.
  */
 import type { Context } from '../context';
 import { param, Types } from '../service/server';
@@ -10,6 +10,7 @@ import type { BaseDoc, BaseNode, BaseEdge, CardDoc } from '../interface';
 import * as document from '../model/document';
 import {
     getBranchData,
+    readOptionalRequestBaseDocId,
     BaseCardHandler,
     BaseNodeHandler,
     BaseEdgeHandler,
@@ -36,6 +37,12 @@ async function getSkillsBaseOrNull(domainId: string): Promise<BaseDoc | null> {
 
 class SkillCardHandler extends BaseCardHandler {
     protected override async getBase(domainId: string): Promise<BaseDoc> {
+        const specified = readOptionalRequestBaseDocId(this.request);
+        if (specified) {
+            const b = await BaseModel.get(domainId, specified);
+            if (!b) throw new NotFoundError('Base not found');
+            return b;
+        }
         return getSkillsBase(domainId);
     }
 }

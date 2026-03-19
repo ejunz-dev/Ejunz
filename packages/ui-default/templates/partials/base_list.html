@@ -4,11 +4,11 @@
 {% if not bases or bases.length == 0 %}
   {{ nothing.render('Sorry, there are no bases in the base.') }}
 {% else %}
-  {{ paginator.render(page, totalPages, position='top', add_qs=('q=' + qs if qs else '')) }}
+  {{ paginator.render(page, ppcount, position='top', add_qs=('q=' + qs if qs else '')) }}
   <table class="data-table">
     <colgroup>
       <col class="col--checkbox display-mode-hide">
-      <col class="col--bid">
+      <col class="col--doc-id">
       <col class="col--title">
       <col class="col--nodes">
       <col class="col--views">
@@ -21,7 +21,7 @@
             <input type="checkbox" name="select_all" data-checkbox-toggle="base">
           </label>
         </th>
-        <th class="col--bid">{{ _('ID') }}</th>
+        <th class="col--doc-id">{{ _('BID') }}</th>
         <th class="col--title">{{ _('Base') }}</th>
         <th class="col--nodes">{{ _('Nodes') }}</th>
         <th class="col--views">{{ _('Views') }}</th>
@@ -30,16 +30,16 @@
     </thead>
     <tbody>
       {%- for base in bases -%}
-      <tr data-bid="{{ base.bid }}" data-doc-id="{{ base.docId }}">
+      <tr data-doc-id="{{ base.docId }}">
         <td class="col--checkbox display-mode-hide">
           <label class="compact checkbox">
             <input type="checkbox" data-checkbox-group="base" data-checkbox-range>
           </label>
         </td>
-        <td class="col--bid">{{ base.bid }}</td>
+        <td class="col--doc-id">{{ base.bid or '-' }}</td>
         <td class="col--title">
-          <a href="{{ url('base_detail', domainId=domainId, docId=base.docId) }}">
-            {{ base.title }}
+          <a href="{{ url('base_outline_doc_branch', domainId=domainId, docId=(base.bid or base.docId), branch='main') }}">
+            {{ base.title or _('Untitled') }}
           </a>
         </td>
         <td class="col--nodes">{{ base.nodes|length if base.nodes else 0 }}</td>
@@ -49,7 +49,6 @@
       {%- endfor -%}
     </tbody>
   </table>
-  {{ paginator.render(page, totalPages, add_qs=('q=' + qs if qs else '')) }}
+  {{ paginator.render(page, ppcount, add_qs=('q=' + qs if qs else '')) }}
 {% endif %}
 </div>
-

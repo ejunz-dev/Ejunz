@@ -11,22 +11,31 @@ export const TYPE_CARD: 71 = 71;
 
 /**
  * Base Model
- * 提供思维导图的 CRUD 操作
+ * Comment translated to English.
  */
 export class BaseModel {
+    static async generateNextDocId(domainId: string): Promise<number> {
+        const lastBase = await document.getMulti(domainId, TYPE_MM, { docId: { $type: 'number' } } as any)
+            .sort({ docId: -1 })
+            .limit(1)
+            .project({ docId: 1 })
+            .toArray();
+        return (Number(lastBase[0]?.docId) || 0) + 1;
+    }
+
     /**
-     * 通过 domainId 获取思维导图（一个 domain 一个 base）
-     * 排除 Skills Base（type 为 'skill'）
+     * Comment translated to English.
+     * Comment translated to English.
      */
     static async getByDomain(domainId: string): Promise<BaseDoc | null> {
-        // 排除 Skills Base，确保普通 base 和 Skills base 独立
+        // Comment translated to English.
         const result = await document.getMulti(domainId, TYPE_MM, {
             type: { $ne: 'skill' }
         }).limit(1).toArray();
         return result.length > 0 ? result[0] : null;
     }
 
-    static async getSkillBaseDocId(domainId: string): Promise<ObjectId | null> {
+    static async getSkillBaseDocId(domainId: string): Promise<number | null> {
         const result = await document.getMulti(domainId, TYPE_MM, { type: 'skill' }).limit(1).toArray();
         if (result.length === 0) return null;
         const docId = (result[0] as any).docId;
@@ -34,7 +43,7 @@ export class BaseModel {
     }
 
     /**
-     * 创建或获取思维导图（一个 domain 一个 base）
+     * Comment translated to English.
      */
     static async create(
         domainId: string,
@@ -46,19 +55,21 @@ export class BaseModel {
         ip?: string,
         parentId?: ObjectId,
         domainName?: string,
-        type?: 'base' | 'skill'
-    ): Promise<{ docId: ObjectId }> {
-        // 如果是 skill 类型，使用不同的查询逻辑
+        type?: 'base' | 'skill',
+        forceNew?: boolean,
+        bid?: string
+    ): Promise<{ docId: number }> {
+        // Comment translated to English.
         if (type === 'skill') {
             const existing = await document.getMulti(domainId, TYPE_MM, { type: 'skill' }).limit(1).toArray();
             if (existing.length > 0) {
                 return { docId: existing[0].docId };
             }
-        } else {
-            // 检查 domain 是否已有 base（排除 skill 类型）
+        } else if (!forceNew) {
+            // Comment translated to English.
             const existing = await this.getByDomain(domainId);
             if (existing) {
-                // 如果已存在，更新标题和内容（如果需要）
+                // Comment translated to English.
                 if (title && title !== existing.title) {
                     await this.update(domainId, existing.docId, { title });
                 }
@@ -69,7 +80,7 @@ export class BaseModel {
             }
         }
 
-        // 创建根节点，使用域名字作为默认名称
+        // Comment translated to English.
         const rootNodeText = title || domainName || '根节点';
         const rootNode: BaseNode = {
             id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -85,8 +96,9 @@ export class BaseModel {
             domainId,
             title: title || '未命名思维导图',
             content: content || '',
-            type: type || 'base', // 默认为 'base'，如果未指定
+            type: type || 'base', // Comment translated to English.
             owner,
+            bid: bid ? String(bid).trim() : undefined,
             nodes: [rootNode],
             edges: [],
             layout: {
@@ -105,46 +117,50 @@ export class BaseModel {
             ip,
             rpid,
             branch,
-            parentId, // 设置父思维导图ID
+            parentId, // Comment translated to English.
         };
 
+        const nextDocId = await this.generateNextDocId(domainId);
         const docId = await document.add(
             domainId,
             payload.content!,
             payload.owner!,
             TYPE_MM,
-            null,
+            nextDocId,
             null,
             null,
             _.omit(payload, ['domainId', 'content', 'owner'])
         );
 
-        return { docId };
+        return { docId: Number(docId) };
     }
 
     /**
-     * 获取思维导图
+     * Comment translated to English.
      */
-    static async get(domainId: string, docId: ObjectId): Promise<BaseDoc | null> {
+    static async get(domainId: string, docId: number | ObjectId): Promise<BaseDoc | null> {
         return await document.get(domainId, TYPE_MM, docId);
     }
 
 
-    static async getBybid(domainId: string, bid: number): Promise<BaseDoc | null> {
-        const list = await document.getMulti(domainId, TYPE_MM, { bid } as Filter<BaseDoc>).limit(1).toArray();
+    static async getBybid(domainId: string, bid: string | number): Promise<BaseDoc | null> {
+        const bidString = String(bid).trim();
+        if (!bidString) return null;
+        const list = await document.getMulti(domainId, TYPE_MM, { bid: bidString } as Filter<BaseDoc>).limit(1).toArray();
         return list.length > 0 ? (list[0] as BaseDoc) : null;
     }
 
     /**
-     * 获取所有思维导图（向后兼容，现在一个 domain 只有一个）
+     * Comment translated to English.
      */
     static async getAll(domainId: string, query?: Filter<BaseDoc>): Promise<BaseDoc[]> {
-        const base = await this.getByDomain(domainId);
-        return base ? [base] : [];
+        const filter: Filter<BaseDoc> = { type: { $ne: 'skill' } };
+        const merged = query ? { ...filter, ...query } : filter;
+        return await document.getMulti(domainId, TYPE_MM, merged).toArray();
     }
 
     /**
-     * 获取仓库关联的思维导图
+     * Comment translated to English.
      */
     static async getByRepo(domainId: string, rpid: number, branch?: string): Promise<BaseDoc[]> {
         const query: any = { rpid };
@@ -153,11 +169,11 @@ export class BaseModel {
     }
 
     /**
-     * 更新思维导图基本信息
+     * Comment translated to English.
      */
     static async update(
         domainId: string,
-        docId: ObjectId,
+        docId: number | ObjectId,
         updates: Partial<Pick<BaseDoc, 'title' | 'content' | 'layout' | 'viewport' | 'theme' | 'files' | 'parentId' | 'domainPosition'>>
     ): Promise<void> {
         await document.set(domainId, TYPE_MM, docId, {
@@ -167,11 +183,11 @@ export class BaseModel {
     }
 
     /**
-     * 更新节点
+     * Comment translated to English.
      */
     static async updateNode(
         domainId: string,
-        docId: ObjectId,
+        docId: number | ObjectId,
         nodeId: string,
         updates: Partial<BaseNode>
     ): Promise<void> {
@@ -181,17 +197,17 @@ export class BaseModel {
         const nodeIndex = base.nodes.findIndex(n => n.id === nodeId);
         if (nodeIndex === -1) throw new Error('Node not found');
 
-        // 创建新的 nodes 数组，确保引用改变
+        // Comment translated to English.
         const newNodes = [...base.nodes];
         newNodes[nodeIndex] = {
             ...newNodes[nodeIndex],
             ...updates,
         };
 
-        // 获取当前分支
+        // Comment translated to English.
         const currentBranch = (base as any).currentBranch || 'main';
         
-        // 更新分支数据（如果存在）
+        // Comment translated to English.
         const branchData = (base as any).branchData || {};
         if (branchData[currentBranch]) {
             const branchNodes = branchData[currentBranch].nodes || [];
@@ -208,7 +224,7 @@ export class BaseModel {
             }
         }
 
-        // 使用 $set 更新整个 nodes 数组和分支数据
+        // Comment translated to English.
         await document.set(domainId, TYPE_MM, docId, {
             nodes: newNodes,
             branchData: branchData,
@@ -217,13 +233,13 @@ export class BaseModel {
     }
 
     /**
-     * 添加节点
-     * @param edgeSourceId 如果提供，将同时创建从 edgeSourceId 到新节点的边
-     * @returns 返回 nodeId，如果创建了边则同时返回 edgeId
+     * Comment translated to English.
+     * Comment translated to English.
+     * Comment translated to English.
      */
     static async addNode(
         domainId: string,
-        docId: ObjectId,
+        docId: number | ObjectId,
         node: Omit<BaseNode, 'id'>,
         parentId?: string,
         branch?: string,
@@ -232,26 +248,26 @@ export class BaseModel {
         const base = await this.get(domainId, docId);
         if (!base) throw new Error('Base not found');
 
-        // 获取分支名称（优先使用传入的分支，否则使用 base 中的分支，最后默认为 'main'）
+        // Comment translated to English.
         const branchName = branch || (base as any).currentBranch || (base as any).branch || 'main';
         const branchData: {
             [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] };
         } = (base as any).branchData || {};
 
-        // 确定使用哪个节点和边数组（使用与 getBranchData 相同的逻辑）
+        // Comment translated to English.
         let nodes: BaseNode[];
         let edges: BaseEdge[];
         
-        // 如果存在 branchData，优先使用
+        // Comment translated to English.
         if (branchData[branchName] && branchData[branchName].nodes) {
             nodes = branchData[branchName].nodes;
             edges = branchData[branchName].edges || [];
         } else if (branchName === 'main') {
-            // 向后兼容：如果 branchData 不存在，使用根节点的 nodes/edges（仅对 main 分支）
+            // Comment translated to English.
             nodes = base.nodes || [];
             edges = base.edges || [];
         } else {
-            // 其他分支如果没有数据，创建新的
+            // Comment translated to English.
             nodes = [];
             edges = [];
         }
@@ -262,7 +278,7 @@ export class BaseModel {
             id: newNodeId,
         };
 
-        // 如果指定了父节点，更新父子关系
+        // Comment translated to English.
         if (parentId) {
             const parentNode = nodes.find(n => n.id === parentId);
             if (!parentNode) throw new Error(`Parent node not found: ${parentId}. Branch: ${branchName}`);
@@ -270,7 +286,7 @@ export class BaseModel {
             newNode.parentId = parentId;
             newNode.level = (parentNode.level || 0) + 1;
 
-            // 更新父节点的子节点列表
+            // Comment translated to English.
             if (!parentNode.children) parentNode.children = [];
             parentNode.children.push(newNodeId);
 
@@ -282,16 +298,16 @@ export class BaseModel {
 
         nodes.push(newNode);
 
-        // 如果需要创建边，在同一个操作中创建
+        // Comment translated to English.
         let newEdgeId: string | undefined;
         if (edgeSourceId) {
-            // 验证源节点是否存在
+            // Comment translated to English.
             const sourceExists = nodes.some(n => n.id === edgeSourceId);
             if (!sourceExists) {
                 throw new Error(`Source node not found: ${edgeSourceId}. Branch: ${branchName}`);
             }
 
-            // 检查边是否已存在
+            // Comment translated to English.
             const existingEdge = edges.find(
                 e => e.source === edgeSourceId && e.target === newNodeId
             );
@@ -299,7 +315,7 @@ export class BaseModel {
             if (existingEdge) {
                 newEdgeId = existingEdge.id;
             } else {
-                // 创建新边
+                // Comment translated to English.
                 newEdgeId = `edge_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                 const newEdge: BaseEdge = {
                     id: newEdgeId,
@@ -310,7 +326,7 @@ export class BaseModel {
             }
         }
 
-        // 更新分支数据
+        // Comment translated to English.
         if (!branchData[branchName]) {
             branchData[branchName] = { nodes: [], edges: [] };
         }
@@ -319,7 +335,7 @@ export class BaseModel {
             edges: edges,
         };
 
-        // 同时更新主数据（向后兼容，仅对 main 分支）
+        // Comment translated to English.
         const updateData: any = {
             branchData: branchData,
             updateAt: new Date(),
@@ -336,9 +352,9 @@ export class BaseModel {
     }
 
     /**
-     * 删除节点
+     * Comment translated to English.
      */
-    static async deleteNode(domainId: string, docId: ObjectId, nodeId: string, branch?: string): Promise<void> {
+    static async deleteNode(domainId: string, docId: number | ObjectId, nodeId: string, branch?: string): Promise<void> {
         const actualDomainId = typeof domainId === 'string' ? domainId : String(domainId);
         const base = await this.get(actualDomainId, docId);
         if (!base) {
@@ -485,67 +501,67 @@ export class BaseModel {
     }
 
     /**
-     * 添加连接
+     * Comment translated to English.
      */
     static async addEdge(
         domainId: string,
-        docId: ObjectId,
+        docId: number | ObjectId,
         edge: Omit<BaseEdge, 'id'>,
         branch?: string
     ): Promise<string> {
         let base = await this.get(domainId, docId);
         if (!base) {
-            // 如果获取失败，可能是数据库延迟，尝试再获取一次
-            await new Promise(resolve => setTimeout(resolve, 100)); // 等待100ms
+            // Comment translated to English.
+            await new Promise(resolve => setTimeout(resolve, 100)); // Comment translated to English.
             base = await this.get(domainId, docId);
             if (!base) {
-                // 如果仍然获取失败，再等待一次
-                await new Promise(resolve => setTimeout(resolve, 100)); // 再等待100ms
+                // Comment translated to English.
+                await new Promise(resolve => setTimeout(resolve, 100)); // Comment translated to English.
                 base = await this.get(domainId, docId);
                 if (!base) {
-                    // 如果仍然获取失败，抛出错误
+                    // Comment translated to English.
                     throw new Error('Base not found');
                 }
             }
         }
 
-        // 获取分支名称（优先使用传入的分支，否则使用 base 中的分支，最后默认为 'main'）
+        // Comment translated to English.
         const branchName = branch || (base as any).currentBranch || (base as any).branch || 'main';
         const branchData: {
             [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] };
         } = (base as any).branchData || {};
 
-        // 确定使用哪个节点和边数组（使用与 getBranchData 相同的逻辑）
+        // Comment translated to English.
         let nodes: BaseNode[];
         let edges: BaseEdge[];
         
-        // 如果存在 branchData，优先使用
+        // Comment translated to English.
         if (branchData[branchName] && branchData[branchName].nodes) {
             nodes = branchData[branchName].nodes;
             edges = branchData[branchName].edges || [];
         } else if (branchName === 'main') {
-            // 向后兼容：如果 branchData 不存在，使用根节点的 nodes/edges（仅对 main 分支）
+            // Comment translated to English.
             nodes = base.nodes || [];
             edges = base.edges || [];
         } else {
-            // 其他分支如果没有数据，创建新的
+            // Comment translated to English.
             nodes = [];
             edges = [];
         }
 
-        // 验证源节点和目标节点是否存在（参考旧版本的简单逻辑）
+        // Comment translated to English.
         const sourceExists = nodes.some(n => n.id === edge.source);
         const targetExists = nodes.some(n => n.id === edge.target);
         if (!sourceExists || !targetExists) {
             throw new Error(`Source or target node not found. Source: ${edge.source}, Target: ${edge.target}, Branch: ${branchName}`);
         }
 
-        // 如果连接已经存在，则直接返回已有的 edgeId，而不是抛错
+        // Comment translated to English.
         const existingEdge = edges.find(
             e => e.source === edge.source && e.target === edge.target
         );
         if (existingEdge) {
-            // 同步到当前分支数据（如果分支中没有这条边，则补上）
+            // Comment translated to English.
             if (!branchData[branchName]) {
                 branchData[branchName] = { nodes: nodes, edges: edges };
             }
@@ -585,7 +601,7 @@ export class BaseModel {
 
         edges.push(newEdge);
 
-        // 更新分支数据
+        // Comment translated to English.
         if (!branchData[branchName]) {
             branchData[branchName] = { nodes: nodes, edges: edges };
         } else {
@@ -595,7 +611,7 @@ export class BaseModel {
             };
         }
 
-        // 同时更新主数据（向后兼容，仅对 main 分支）
+        // Comment translated to English.
         const updateData: any = {
             branchData: branchData,
             updateAt: new Date(),
@@ -612,13 +628,13 @@ export class BaseModel {
     }
 
     /**
-     * 删除连接
+     * Comment translated to English.
      */
-    static async deleteEdge(domainId: string, docId: ObjectId, edgeId: string): Promise<void> {
+    static async deleteEdge(domainId: string, docId: number | ObjectId, edgeId: string): Promise<void> {
         const base = await this.get(domainId, docId);
         if (!base) throw new Error('Base not found');
 
-        // 获取当前分支
+        // Comment translated to English.
         const currentBranch = (base as any).currentBranch || 'main';
         const branchData: {
             [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] };
@@ -629,7 +645,7 @@ export class BaseModel {
         base.edges.splice(edgeIndex, 1);
         }
 
-        // 从当前分支的 edges 中删除
+        // Comment translated to English.
         if (branchData[currentBranch]) {
             const branchEdges = branchData[currentBranch].edges || [];
             const branchEdgeIndex = branchEdges.findIndex(e => e.id === edgeId);
@@ -650,17 +666,17 @@ export class BaseModel {
     }
 
     /**
-     * 批量更新节点（用于布局更新）
+     * Comment translated to English.
      */
     static async updateNodes(
         domainId: string,
-        docId: ObjectId,
+        docId: number | ObjectId,
         nodes: BaseNode[]
     ): Promise<void> {
         const base = await this.get(domainId, docId);
         if (!base) throw new Error('Base not found');
 
-        // 验证所有节点ID都存在
+        // Comment translated to English.
         const nodeIds = new Set(base.nodes.map(n => n.id));
         for (const node of nodes) {
             if (!nodeIds.has(node.id)) {
@@ -668,7 +684,7 @@ export class BaseModel {
             }
         }
 
-        // 更新节点
+        // Comment translated to English.
         const nodeMap = new Map(nodes.map(n => [n.id, n]));
         base.nodes = base.nodes.map(n => nodeMap.get(n.id) || n);
 
@@ -679,17 +695,17 @@ export class BaseModel {
     }
 
     /**
-     * 批量更新连接
+     * Comment translated to English.
      */
     static async updateEdges(
         domainId: string,
-        docId: ObjectId,
+        docId: number | ObjectId,
         edges: BaseEdge[]
     ): Promise<void> {
         const base = await this.get(domainId, docId);
         if (!base) throw new Error('Base not found');
 
-        // 验证所有连接ID都存在
+        // Comment translated to English.
         const edgeIds = new Set(base.edges.map(e => e.id));
         for (const edge of edges) {
             if (!edgeIds.has(edge.id)) {
@@ -704,25 +720,25 @@ export class BaseModel {
     }
 
     /**
-     * 删除思维导图
+     * Comment translated to English.
      */
-    static async delete(domainId: string, docId: ObjectId): Promise<void> {
+    static async delete(domainId: string, docId: number | ObjectId): Promise<void> {
         await document.deleteOne(domainId, TYPE_MM, docId);
     }
 
     /**
-     * 增加访问量
+     * Comment translated to English.
      */
-    static async incrementViews(domainId: string, docId: ObjectId): Promise<void> {
+    static async incrementViews(domainId: string, docId: number | ObjectId): Promise<void> {
         await document.inc(domainId, TYPE_MM, docId, 'views', 1);
     }
 
     /**
-     * 更新整个思维导图（用于完整保存）
+     * Comment translated to English.
      */
     static async updateFull(
         domainId: string,
-        docId: ObjectId,
+        docId: number | ObjectId,
         updates: {
             nodes?: BaseNode[];
             edges?: BaseEdge[];
@@ -742,21 +758,21 @@ export class BaseModel {
 }
 
 export function apply(ctx: Context) {
-    // 可以在这里添加索引或其他初始化逻辑
+    // Comment translated to English.
     (ctx as any).on('ready', async () => {
-        // 如果需要，可以在这里添加数据库索引
+        // Comment translated to English.
     });
 }
 
 /**
  * Card Model
- * 提供 Card 的 CRUD 操作（类似 Block）
+ * Comment translated to English.
  */
 export class CardModel {
     /**
-     * 生成下一个 Card ID（在 node 内唯一）
+     * Comment translated to English.
      */
-    static async generateNextCid(domainId: string, baseDocId: ObjectId, nodeId: string): Promise<number> {
+    static async generateNextCid(domainId: string, baseDocId: number | ObjectId, nodeId: string): Promise<number> {
         const lastCard = await document.getMulti(domainId, TYPE_CARD, { baseDocId, nodeId })
             .sort({ cid: -1 })
             .limit(1)
@@ -771,7 +787,7 @@ export class CardModel {
      */
     static async create(
         domainId: string,
-        baseDocId: ObjectId,
+        baseDocId: number | ObjectId,
         nodeId: string,
         owner: number,
         title: string,
@@ -826,14 +842,14 @@ export class CardModel {
     }
 
     /**
-     * 获取 Card
+     * Comment translated to English.
      */
     static async get(domainId: string, docId: ObjectId): Promise<CardDoc | null> {
         return await document.get(domainId, TYPE_CARD, docId);
     }
 
     /**
-     * 获取最近更新的 cards（按 updateAt 降序）
+     * Comment translated to English.
      */
     static async getRecentUpdated(domainId: string, limit: number = 10): Promise<CardDoc[]> {
         const list = await document.getMulti(domainId, TYPE_CARD, {})
@@ -844,9 +860,9 @@ export class CardModel {
     }
 
     /**
-     * 获取 node 下的所有 cards
+     * Comment translated to English.
      */
-    static async getByNodeId(domainId: string, baseDocId: ObjectId, nodeId: string): Promise<CardDoc[]> {
+    static async getByNodeId(domainId: string, baseDocId: number | ObjectId, nodeId: string): Promise<CardDoc[]> {
         const cards = await document.getMulti(domainId, TYPE_CARD, { baseDocId, nodeId })
             .sort({ order: 1, cid: 1 })
             .toArray();
@@ -854,13 +870,13 @@ export class CardModel {
     }
 
     /**
-     * 根据 cid 获取卡片
+     * Comment translated to English.
      */
     static async getByCid(
         domainId: string,
         nodeId: string,
         cid: number,
-        baseDocId?: ObjectId
+        baseDocId?: number | ObjectId
     ): Promise<CardDoc | null> {
         const filter: any = { nodeId, cid };
         if (baseDocId) {
@@ -874,7 +890,7 @@ export class CardModel {
     }
 
     /**
-     * 更新 Card
+     * Comment translated to English.
      */
     static async update(
         domainId: string,
@@ -888,14 +904,14 @@ export class CardModel {
     }
 
     /**
-     * 删除 Card
+     * Comment translated to English.
      */
     static async delete(domainId: string, docId: ObjectId): Promise<void> {
         await document.deleteOne(domainId, TYPE_CARD, docId);
     }
 
     /**
-     * 增加访问量
+     * Comment translated to English.
      */
     static async incrementViews(domainId: string, docId: ObjectId): Promise<void> {
         await document.inc(domainId, TYPE_CARD, docId, 'views', 1);
