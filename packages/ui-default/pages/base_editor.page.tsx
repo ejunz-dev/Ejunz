@@ -8485,11 +8485,20 @@ ${currentCardContext}
                   e.currentTarget.style.backgroundColor = 'transparent';
                 }}
                 onClick={() => {
-                  const path = basePath === 'base/skill'
-                    ? getBaseUrl('/editor/branch/' + currentBranch)
-                    : getBaseUrl('/branch/' + currentBranch + '/editor');
-                  const url = path + '?workspace=' + encodeURIComponent(contextMenu.file.nodeId || '');
-                  window.open(url, '_blank');
+                  const ws = encodeURIComponent(contextMenu.file.nodeId || '');
+                  let path: string;
+                  if (basePath === 'base/skill') {
+                    path = getBaseUrl('/editor/branch/' + currentBranch);
+                  } else {
+                    const baseIdSeg = String(docId || base.docId || base.bid || '').trim();
+                    if (!baseIdSeg) {
+                      Notification.error('Could not open workspace: missing knowledge base identifier');
+                      setContextMenu(null);
+                      return;
+                    }
+                    path = getBaseUrl(`/${baseIdSeg}/branch/${currentBranch}/editor`);
+                  }
+                  window.open(path + '?workspace=' + ws, '_blank');
                   setContextMenu(null);
                 }}
               >
