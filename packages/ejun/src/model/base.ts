@@ -794,6 +794,7 @@ export class BaseModel {
             edges?: BaseEdge[];
             branchData?: { [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] } };
             content?: string;
+            title?: string;
             layout?: BaseDoc['layout'];
             viewport?: BaseDoc['viewport'];
             theme?: BaseDoc['theme'];
@@ -945,7 +946,7 @@ export class CardModel {
     static async update(
         domainId: string,
         docId: ObjectId,
-        updates: Partial<Pick<CardDoc, 'title' | 'content' | 'cardFace' | 'order' | 'nodeId' | 'problems' | 'files'>>
+        updates: Partial<Pick<CardDoc, 'title' | 'content' | 'cardFace' | 'order' | 'nodeId' | 'problems' | 'files' | 'baseDocId'>>
     ): Promise<void> {
         await document.set(domainId, TYPE_CARD, docId, {
             ...updates,
