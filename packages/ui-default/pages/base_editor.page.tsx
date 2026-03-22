@@ -1262,8 +1262,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       setContextMenu(prev => prev ? { ...prev, x, y } : null);
     }
   }, [contextMenu?.x, contextMenu?.y, contextMenu?.file?.id]);
+
+  useEffect(() => {
+    if (!contextMenu || contextMenu.file.type !== 'card') {
+      setNewSiblingCardSubmenuOpen(false);
+    }
+  }, [contextMenu]);
+
   const [emptyAreaContextMenu, setEmptyAreaContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; items: FileItem[] } | null>(null);
+  const [newSiblingCardSubmenuOpen, setNewSiblingCardSubmenuOpen] = useState(false);
   const [sortWindow, setSortWindow] = useState<{ nodeId: string } | null>(null);
   const [migrateToNewBaseModal, setMigrateToNewBaseModal] = useState<{ nodeId: string } | null>(null);
   const [migrateNewBaseTitle, setMigrateNewBaseTitle] = useState('');
@@ -3176,6 +3184,94 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     
     setContextMenu(null);
   }, [pendingDeletes, base.nodes, base.edges]);
+
+  const handleNewSiblingCardPlacement = useCallback((
+    nodeId: string,
+    referenceCardId: string,
+    placement: 'above' | 'below' | 'bottom',
+  ) => {
+    if (placement === 'bottom') {
+      handleNewCard(nodeId);
+      return;
+    }
+    if (pendingDeletes.has(nodeId)) {
+      Notification.error(i18n('Cannot create: node is in delete list'));
+      setContextMenu(null);
+      return;
+    }
+    const nodeExists = base.nodes.some(n => n.id === nodeId);
+    if (!nodeExists && !nodeId.startsWith('temp-node-')) {
+      Notification.error(i18n('Cannot create: node does not exist'));
+      setContextMenu(null);
+      return;
+    }
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const cardsForNode = (nodeCardsMap[nodeId] || []).filter((c: Card) => !c.nodeId || c.nodeId === nodeId);
+    const refCard = cardsForNode.find((c: Card) => String(c.docId) === String(referenceCardId));
+    if (!refCard) {
+      Notification.error(i18n('Card not found'));
+      setContextMenu(null);
+      return;
+    }
+    const childNodeIds = base.edges.filter(e => e.source === nodeId).map(e => e.target);
+    const childNodes = childNodeIds.map(id => base.nodes.find(n => n.id === id)).filter(Boolean) as BaseNode[];
+    type MixRow = { order: number; sortKey: string };
+    const mix: MixRow[] = [
+      ...cardsForNode.map((c: Card) => ({ order: c.order ?? 0, sortKey: `c:${String(c.docId)}` })),
+      ...childNodes.map((n: BaseNode) => ({ order: n.order ?? 0, sortKey: `n:${n.id}` })),
+    ];
+    mix.sort((a, b) => (a.order !== b.order ? a.order - b.order : a.sortKey.localeCompare(b.sortKey)));
+    const refSortKey = `c:${String(refCard.docId)}`;
+    const refIdx = mix.findIndex(m => m.sortKey === refSortKey);
+    if (refIdx < 0) {
+      handleNewCard(nodeId);
+      return;
+    }
+    const refOrder = refCard.order ?? 0;
+    let newOrder: number;
+    if (placement === 'above') {
+      if (refIdx === 0) {
+        newOrder = refOrder > 0 ? refOrder - 1 : -1;
+      } else {
+        const prevOrder = mix[refIdx - 1].order;
+        newOrder = prevOrder < refOrder ? (prevOrder + refOrder) / 2 : refOrder - 0.001;
+      }
+    } else {
+      if (refIdx === mix.length - 1) {
+        newOrder = Math.max(...mix.map(m => m.order), refOrder) + 1;
+      } else {
+        const nextOrder = mix[refIdx + 1].order;
+        newOrder = nextOrder > refOrder ? (refOrder + nextOrder) / 2 : refOrder + 0.001;
+      }
+    }
+    const tempId = `temp-card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const newCard: PendingCreate = {
+      type: 'card',
+      nodeId,
+      title: i18n('New card'),
+      tempId,
+    };
+    pendingCreatesRef.current.set(tempId, newCard);
+    setPendingCreatesCount(pendingCreatesRef.current.size);
+    if (!nodeCardsMap[nodeId]) {
+      nodeCardsMap[nodeId] = [];
+    }
+    const tempCard: Card = {
+      docId: tempId,
+      cid: 0,
+      nodeId,
+      title: i18n('New card'),
+      content: '',
+      order: newOrder,
+      updateAt: new Date().toISOString(),
+    } as Card;
+    nodeCardsMap[nodeId].push(tempCard);
+    nodeCardsMap[nodeId].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+    (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+    setNodeCardsMapVersion(prev => prev + 1);
+    setContextMenu(null);
+    setNewSiblingCardSubmenuOpen(false);
+  }, [handleNewCard, pendingDeletes, base.nodes, base.edges]);
 
   
   const doImportFromText = useCallback((nodeId: string, text: string) => {
@@ -8944,21 +9040,123 @@ ${currentCardContext}
                 </>
               )}
               <div
-                style={{
-                  padding: '6px 16px',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  color: themeStyles.textPrimary,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }}
-                onClick={() => handleNewCard(contextMenu.file.nodeId || '')}
+                style={{ position: 'relative' }}
+                onMouseEnter={() => setNewSiblingCardSubmenuOpen(true)}
+                onMouseLeave={() => setNewSiblingCardSubmenuOpen(false)}
               >
-                新建兄弟 Card
+                <div
+                  style={{
+                    padding: '6px 16px',
+                    cursor: 'default',
+                    fontSize: '13px',
+                    color: themeStyles.textPrimary,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <span>新建兄弟 Card</span>
+                  <span style={{ opacity: 0.65, fontSize: '12px', flexShrink: 0 }}>›</span>
+                </div>
+                {newSiblingCardSubmenuOpen && contextMenu.file.cardId && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: '100%',
+                      top: 0,
+                      marginLeft: '2px',
+                      minWidth: '140px',
+                      backgroundColor: themeStyles.bgPrimary,
+                      border: `1px solid ${themeStyles.borderSecondary}`,
+                      borderRadius: '4px',
+                      boxShadow: theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.15)',
+                      zIndex: 1200,
+                      padding: '4px 0',
+                    }}
+                    onMouseEnter={() => setNewSiblingCardSubmenuOpen(true)}
+                    onMouseLeave={() => setNewSiblingCardSubmenuOpen(false)}
+                  >
+                    <div
+                      style={{
+                        padding: '6px 16px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        color: themeStyles.textPrimary,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNewSiblingCardPlacement(
+                          contextMenu.file.nodeId || '',
+                          String(contextMenu.file.cardId),
+                          'above',
+                        );
+                      }}
+                    >
+                      向上插入
+                    </div>
+                    <div
+                      style={{
+                        padding: '6px 16px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        color: themeStyles.textPrimary,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNewSiblingCardPlacement(
+                          contextMenu.file.nodeId || '',
+                          String(contextMenu.file.cardId),
+                          'below',
+                        );
+                      }}
+                    >
+                      向下插入
+                    </div>
+                    <div
+                      style={{
+                        padding: '6px 16px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        color: themeStyles.textPrimary,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNewSiblingCardPlacement(
+                          contextMenu.file.nodeId || '',
+                          String(contextMenu.file.cardId),
+                          'bottom',
+                        );
+                      }}
+                    >
+                      底部插入
+                    </div>
+                  </div>
+                )}
               </div>
               <div
                 style={{
