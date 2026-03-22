@@ -5613,6 +5613,216 @@ class BaseDomainEditHandler extends Handler {
     }
 }
 
+function collectSubtreeNodeIds(nodes: BaseNode[], edges: BaseEdge[], rootId: string): Set<string> {
+    const ids = new Set<string>();
+    const walk = (id: string) => {
+        if (ids.has(id)) return;
+        ids.add(id);
+        const n = nodes.find((x) => x.id === id);
+        if (n?.children?.length) {
+            for (const c of n.children) walk(c);
+        }
+        for (const e of edges) {
+            if (e.source === id) walk(e.target);
+        }
+    };
+    walk(rootId);
+    return ids;
+}
+
+/**
+ * Cut a node subtree into a newly created base (editor migrate action).
+ */
+class BaseMigrateNodeToNewHandler extends Handler {
+    async post(domainId: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const actualDomainId = this.args.domainId || domainId || 'system';
+        const body = (this.request.body || {}) as Record<string, unknown>;
+        const sourceDocId = readOptionalRequestBaseDocId(this.request);
+        const branch = typeof body.branch === 'string' && body.branch.trim() ? body.branch.trim() : 'main';
+        const nodeId = typeof body.nodeId === 'string' ? body.nodeId.trim() : '';
+        const title = typeof body.title === 'string' ? body.title.trim() : '';
+        const bidRaw = typeof body.bid === 'string' ? body.bid.trim() : '';
+
+        if (!sourceDocId || !nodeId) {
+            throw new ValidationError('docId and nodeId are required');
+        }
+        if (!title) {
+            throw new ValidationError('title is required');
+        }
+
+        const sourceBase = await BaseModel.get(actualDomainId, sourceDocId);
+        if (!sourceBase) throw new NotFoundError('Base not found');
+        if ((sourceBase as any).type === 'skill') {
+            throw new ValidationError('Cannot migrate from skill base');
+        }
+        if (!this.user.own(sourceBase)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+
+        const finalBid = bidRaw;
+        if (finalBid) {
+            const existed = await BaseModel.getBybid(actualDomainId, finalBid);
+            if (existed) {
+                throw new ValidationError(`Base bid already exists: ${finalBid}`);
+            }
+        }
+
+        const { nodes, edges } = getBranchData(sourceBase, branch);
+        const getRoot = (ns: BaseNode[], es: BaseEdge[]) => {
+            const incoming = new Set(es.map((e) => e.target));
+            const noIncoming = ns.find((n) => !incoming.has(n.id));
+            return noIncoming?.id || ns[0]?.id || null;
+        };
+        const graphRootId = getRoot(nodes, edges);
+
+        if (!nodes.some((n) => n.id === nodeId)) {
+            throw new NotFoundError('Node not found in this branch');
+        }
+
+        const subtreeIds = collectSubtreeNodeIds(nodes, edges, nodeId);
+        if (subtreeIds.size === 0) {
+            throw new ValidationError('Empty subtree');
+        }
+
+        const { docId: newDocIdNum } = await BaseModel.create(
+            actualDomainId,
+            this.user._id,
+            title,
+            '',
+            undefined,
+            'main',
+            this.request.ip,
+            undefined,
+            this.domain.name,
+            'base',
+            true,
+            finalBid || undefined,
+        );
+        const newDocId = Number(newDocIdNum);
+
+        const oldDocIdStr = String(sourceDocId);
+
+        const migratedNodes: BaseNode[] = nodes
+            .filter((n) => subtreeIds.has(n.id))
+            .map((n) => ({ ...n }));
+        const migratedEdges: BaseEdge[] = edges.filter(
+            (e) => subtreeIds.has(e.source) && subtreeIds.has(e.target),
+        );
+
+        const isFullMigration = graphRootId && nodeId === graphRootId;
+
+        const rootInNew = migratedNodes.find((n) => n.id === nodeId);
+        if (rootInNew) {
+            const { parentId: _p, ...rest } = rootInNew as any;
+            const updatedRoot: BaseNode = {
+                ...rest,
+                level: 0,
+            };
+            delete (updatedRoot as any).parentId;
+            const idx = migratedNodes.findIndex((n) => n.id === nodeId);
+            migratedNodes[idx] = updatedRoot;
+        }
+
+        const remainingNodes = nodes.filter((n) => !subtreeIds.has(n.id));
+        const remainingEdges = edges.filter((e) => !subtreeIds.has(e.source) && !subtreeIds.has(e.target));
+
+        let finalSourceNodes = remainingNodes;
+        let finalSourceEdges = remainingEdges;
+
+        if (isFullMigration) {
+            const freshRoot: BaseNode = {
+                id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                text: sourceBase.title || '根节点',
+                x: 0,
+                y: 0,
+                level: 0,
+                expanded: true,
+            };
+            finalSourceNodes = [freshRoot];
+            finalSourceEdges = [];
+        }
+
+        const sourceBranchData = { ...(sourceBase.branchData || {}) };
+        sourceBranchData[branch] = { nodes: finalSourceNodes, edges: finalSourceEdges };
+        const sourceUpdate: any = {
+            branchData: sourceBranchData,
+            updateAt: new Date(),
+        };
+        if (branch === 'main') {
+            sourceUpdate.nodes = finalSourceNodes;
+            sourceUpdate.edges = finalSourceEdges;
+        }
+        await BaseModel.updateFull(actualDomainId, sourceDocId, sourceUpdate);
+
+        const createdNew = await BaseModel.get(actualDomainId, newDocId);
+        if (!createdNew) throw new Error('Failed to load new base after create');
+        const newBranchData: any = { ...(createdNew.branchData || {}) };
+        newBranchData.main = { nodes: migratedNodes, edges: migratedEdges };
+        await BaseModel.updateFull(actualDomainId, newDocId, {
+            branchData: newBranchData,
+            nodes: migratedNodes,
+            edges: migratedEdges,
+            title,
+            updateAt: new Date(),
+        });
+
+        const allCards: CardDoc[] = [];
+        for (const nid of subtreeIds) {
+            const cs = await CardModel.getByNodeId(actualDomainId, sourceDocId, nid);
+            allCards.push(...cs);
+        }
+
+        const newDocIdStr = String(newDocId);
+        for (const nid of subtreeIds) {
+            const node = nodes.find((n) => n.id === nid);
+            const files = node?.files || [];
+            for (const f of files) {
+                const name = f.name || (f as any)._id;
+                if (!name) continue;
+                const oldPath = `base/${actualDomainId}/${oldDocIdStr}/node/${nid}/${name}`;
+                const newPath = `base/${actualDomainId}/${newDocIdStr}/node/${nid}/${name}`;
+                try {
+                    await storage.rename(oldPath, newPath, this.user._id);
+                } catch {
+                    // missing file row is ok
+                }
+            }
+        }
+        for (const card of allCards) {
+            const cid = card.docId.toString();
+            const files = card.files || [];
+            for (const f of files) {
+                const name = f.name || (f as any)._id;
+                if (!name) continue;
+                const oldPath = `base/${actualDomainId}/${oldDocIdStr}/card/${cid}/${name}`;
+                const newPath = `base/${actualDomainId}/${newDocIdStr}/card/${cid}/${name}`;
+                try {
+                    await storage.rename(oldPath, newPath, this.user._id);
+                } catch {
+                }
+            }
+        }
+
+        for (const card of allCards) {
+            await CardModel.update(actualDomainId, card.docId, { baseDocId: newDocId });
+        }
+
+        try {
+            await ensureBaseGitRepo(actualDomainId, newDocId);
+        } catch (err) {
+            logger.error('migrate-node: ensureBaseGitRepo failed', err);
+        }
+
+        (this.ctx.emit as any)('base/update', sourceDocId);
+        (this.ctx.emit as any)('base/update', newDocId);
+
+        this.response.body = {
+            success: true,
+            newDocId,
+            bid: finalBid || undefined,
+        };
+    }
+}
+
 /**
  * Base Expand State Handler — per-user node expand/collapse state for base editor (POST only, load via UiContext)
  */
@@ -5657,6 +5867,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_edge', '/base/edge', BaseEdgeHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_save', '/base/save', BaseSaveHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_batch_save', '/base/batch-save', BaseBatchSaveHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_migrate_node_to_new', '/base/migrate-node-to-new', BaseMigrateNodeToNewHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_expand_state', '/base/expand-state', BaseExpandStateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card', '/base/card', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card_update', '/base/card/:cardId', BaseCardHandler, PRIV.PRIV_USER_PROFILE);

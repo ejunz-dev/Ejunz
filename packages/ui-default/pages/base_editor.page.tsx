@@ -1265,6 +1265,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [emptyAreaContextMenu, setEmptyAreaContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; items: FileItem[] } | null>(null);
   const [sortWindow, setSortWindow] = useState<{ nodeId: string } | null>(null);
+  const [migrateToNewBaseModal, setMigrateToNewBaseModal] = useState<{ nodeId: string } | null>(null);
+  const [migrateNewBaseTitle, setMigrateNewBaseTitle] = useState('');
+  const [migrateNewBaseBid, setMigrateNewBaseBid] = useState('');
+  const [migrateToNewBaseSubmitting, setMigrateToNewBaseSubmitting] = useState(false);
   const [importWindow, setImportWindow] = useState<{ nodeId: string } | null>(null);
   const [cardFaceWindow, setCardFaceWindow] = useState<{ file: FileItem } | null>(null);
   const [cardFileListModal, setCardFileListModal] = useState<{ cardId: string; nodeId: string; cardTitle: string } | null>(null);
@@ -8672,6 +8676,30 @@ ${currentCardContext}
               >
                 导入
               </div>
+              {basePath !== 'base/skill' && docId && contextMenu.file.nodeId && !String(contextMenu.file.nodeId).startsWith('temp-node-') && (
+                <div
+                  style={{
+                    padding: '6px 16px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    color: themeStyles.textPrimary,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                  onClick={() => {
+                    setMigrateNewBaseTitle('');
+                    setMigrateNewBaseBid('');
+                    setMigrateToNewBaseModal({ nodeId: contextMenu.file.nodeId || '' });
+                    setContextMenu(null);
+                  }}
+                >
+                  Migrate to new base
+                </div>
+              )}
               <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
                 style={{
@@ -9550,6 +9578,187 @@ ${currentCardContext}
                 }}
               >
                 确定
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {migrateToNewBaseModal && (
+        <>
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.3)',
+              zIndex: 1100,
+            }}
+            onClick={() => !migrateToNewBaseSubmitting && setMigrateToNewBaseModal(null)}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '90%',
+              maxWidth: '420px',
+              backgroundColor: themeStyles.bgPrimary,
+              border: `1px solid ${themeStyles.borderSecondary}`,
+              borderRadius: '8px',
+              boxShadow: theme === 'dark' ? '0 4px 24px rgba(0,0,0,0.5)' : '0 4px 24px rgba(0,0,0,0.15)',
+              zIndex: 1101,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{
+              padding: '16px',
+              borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+              fontSize: '15px',
+              fontWeight: 500,
+              color: themeStyles.textPrimary,
+            }}>
+              Migrate to new base
+            </div>
+            <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <p style={{ margin: 0, fontSize: '13px', color: themeStyles.textSecondary, lineHeight: 1.5 }}>
+                Moves this node and its subtree into a new knowledge base (child nodes, cards, and attached files). Save all pending edits from the toolbar first. Confirming opens the new base in a new tab.
+              </p>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: themeStyles.textPrimary }}>
+                Title
+                <input
+                  type="text"
+                  value={migrateNewBaseTitle}
+                  onChange={(e) => setMigrateNewBaseTitle(e.target.value)}
+                  placeholder="New base title"
+                  disabled={migrateToNewBaseSubmitting}
+                  style={{
+                    padding: '8px 10px',
+                    fontSize: '13px',
+                    color: themeStyles.textPrimary,
+                    backgroundColor: themeStyles.bgSecondary,
+                    border: `1px solid ${themeStyles.borderPrimary}`,
+                    borderRadius: '4px',
+                  }}
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: themeStyles.textPrimary }}>
+                BID (optional)
+                <input
+                  type="text"
+                  value={migrateNewBaseBid}
+                  onChange={(e) => setMigrateNewBaseBid(e.target.value)}
+                  placeholder="e.g. P1001"
+                  disabled={migrateToNewBaseSubmitting}
+                  style={{
+                    padding: '8px 10px',
+                    fontSize: '13px',
+                    color: themeStyles.textPrimary,
+                    backgroundColor: themeStyles.bgSecondary,
+                    border: `1px solid ${themeStyles.borderPrimary}`,
+                    borderRadius: '4px',
+                  }}
+                />
+              </label>
+            </div>
+            <div style={{
+              padding: '12px 16px',
+              borderTop: `1px solid ${themeStyles.borderPrimary}`,
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '8px',
+            }}>
+              <button
+                type="button"
+                disabled={migrateToNewBaseSubmitting}
+                onClick={() => setMigrateToNewBaseModal(null)}
+                style={{
+                  padding: '6px 14px',
+                  fontSize: '13px',
+                  color: themeStyles.textSecondary,
+                  backgroundColor: themeStyles.bgSecondary,
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  borderRadius: '4px',
+                  cursor: migrateToNewBaseSubmitting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {i18n('Cancel')}
+              </button>
+              <button
+                type="button"
+                disabled={migrateToNewBaseSubmitting}
+                onClick={async () => {
+                  const trimmedTitle = migrateNewBaseTitle.trim();
+                  if (!trimmedTitle) {
+                    Notification.error('Please enter a title');
+                    return;
+                  }
+                  const nid = migrateToNewBaseModal.nodeId;
+                  if (!docId || !nid) return;
+                  const numericDocId = Number(docId);
+                  if (!Number.isFinite(numericDocId) || numericDocId <= 0) {
+                    Notification.error('Cannot migrate: invalid document ID');
+                    return;
+                  }
+                  const pendingMigrate =
+                    pendingChanges.size +
+                    pendingDragChanges.size +
+                    pendingRenames.size +
+                    pendingCreatesCount +
+                    pendingDeletes.size +
+                    Object.keys(pendingCardFaceChanges).length +
+                    pendingProblemCardIds.size +
+                    pendingNewProblemCardIds.size +
+                    pendingEditedProblemIds.size +
+                    pendingDeleteProblemIds.size;
+                  if (pendingMigrate > 0) {
+                    Notification.warn('Please save all changes before migrating');
+                    return;
+                  }
+                  setMigrateToNewBaseSubmitting(true);
+                  try {
+                    const res: any = await request.post(getBaseUrl('/migrate-node-to-new'), {
+                      docId: numericDocId,
+                      branch: currentBranch,
+                      nodeId: nid,
+                      title: trimmedTitle,
+                      bid: migrateNewBaseBid.trim(),
+                    });
+                    if (!res?.success) {
+                      Notification.error(res?.message || 'Migration failed');
+                      return;
+                    }
+                    Notification.success('New base created; subtree moved');
+                    setMigrateToNewBaseModal(null);
+                    const openSeg = res.bid ? String(res.bid) : String(res.newDocId);
+                    const editorPath = getBaseUrl(`/${openSeg}/branch/${encodeURIComponent(currentBranch)}/editor`);
+                    window.open(editorPath, '_blank');
+                    await refetchEditorData();
+                    setSelectedFile(null);
+                  } catch (err: any) {
+                    Notification.error(err?.message || 'Migration failed');
+                  } finally {
+                    setMigrateToNewBaseSubmitting(false);
+                  }
+                }}
+                style={{
+                  padding: '6px 14px',
+                  fontSize: '13px',
+                  color: '#fff',
+                  backgroundColor: themeStyles.accent,
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: migrateToNewBaseSubmitting ? 'not-allowed' : 'pointer',
+                  opacity: migrateToNewBaseSubmitting ? 0.7 : 1,
+                }}
+              >
+                {migrateToNewBaseSubmitting ? 'Working…' : 'Confirm'}
               </button>
             </div>
           </div>
@@ -11079,4 +11288,6 @@ const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_edi
 });
 
 export default page;
+
+
 
