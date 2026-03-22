@@ -1244,6 +1244,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const baseEdgesRef = useRef(base.edges);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const [newSiblingCardSubmenuOpen, setNewSiblingCardSubmenuOpen] = useState(false);
+  const [newSiblingNodeSubmenuOpen, setNewSiblingNodeSubmenuOpen] = useState(false);
   useLayoutEffect(() => {
     if (!contextMenu || !contextMenuRef.current) return;
     const el = contextMenuRef.current;
@@ -1267,11 +1269,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (!contextMenu || contextMenu.file.type !== 'card') {
       setNewSiblingCardSubmenuOpen(false);
     }
+    if (!contextMenu || contextMenu.file.type !== 'node') {
+      setNewSiblingNodeSubmenuOpen(false);
+    }
   }, [contextMenu]);
 
   const [emptyAreaContextMenu, setEmptyAreaContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [clipboard, setClipboard] = useState<{ type: 'copy' | 'cut'; items: FileItem[] } | null>(null);
-  const [newSiblingCardSubmenuOpen, setNewSiblingCardSubmenuOpen] = useState(false);
   const [sortWindow, setSortWindow] = useState<{ nodeId: string } | null>(null);
   const [migrateToNewBaseModal, setMigrateToNewBaseModal] = useState<{ nodeId: string } | null>(null);
   const [migrateNewBaseTitle, setMigrateNewBaseTitle] = useState('');
@@ -3525,6 +3529,167 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     
     setEmptyAreaContextMenu(null);
   }, [base.nodes, base.edges]);
+
+  const handleNewSiblingNodePlacement = useCallback((
+    referenceNodeId: string,
+    placement: 'above' | 'below' | 'bottom',
+  ) => {
+    if (pendingDeletes.has(referenceNodeId)) {
+      Notification.error(i18n('Cannot create: node is in delete list'));
+      setContextMenu(null);
+      return;
+    }
+    const refExists = base.nodes.some((n) => n.id === referenceNodeId);
+    if (!refExists && !referenceNodeId.startsWith('temp-node-')) {
+      Notification.error(i18n('Cannot create: node does not exist'));
+      setContextMenu(null);
+      return;
+    }
+
+    const parentEdge = base.edges.find((e) => e.target === referenceNodeId);
+    const parentId = parentEdge?.source;
+
+    if (placement === 'bottom') {
+      if (parentId) {
+        handleNewChildNode(parentId);
+      } else {
+        handleNewRootNode();
+        setContextMenu(null);
+        setNewSiblingNodeSubmenuOpen(false);
+      }
+      return;
+    }
+
+    const computeOrderInMix = (
+      mix: { order: number; sortKey: string }[],
+      refSortKey: string,
+      pl: 'above' | 'below',
+    ): number | null => {
+      const refIdx = mix.findIndex((m) => m.sortKey === refSortKey);
+      if (refIdx < 0) return null;
+      const refOrder = mix[refIdx].order;
+      if (pl === 'above') {
+        if (refIdx === 0) {
+          return refOrder > 0 ? refOrder - 1 : -1;
+        }
+        const prevOrder = mix[refIdx - 1].order;
+        return prevOrder < refOrder ? (prevOrder + refOrder) / 2 : refOrder - 0.001;
+      }
+      if (refIdx === mix.length - 1) {
+        return Math.max(...mix.map((m) => m.order), refOrder) + 1;
+      }
+      const nextOrder = mix[refIdx + 1].order;
+      return nextOrder > refOrder ? (refOrder + nextOrder) / 2 : refOrder + 0.001;
+    };
+
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    let newOrder: number;
+
+    if (parentId) {
+      const childNodes = base.edges
+        .filter((e) => e.source === parentId)
+        .map((e) => base.nodes.find((n) => n.id === e.target))
+        .filter(Boolean) as BaseNode[];
+      const cards = (nodeCardsMap[parentId] || []).filter((c: Card) => !c.nodeId || c.nodeId === parentId);
+      const mix: { order: number; sortKey: string }[] = [
+        ...cards.map((c: Card) => ({ order: c.order ?? 0, sortKey: `c:${String(c.docId)}` })),
+        ...childNodes.map((n: BaseNode) => ({ order: n.order ?? 0, sortKey: `n:${n.id}` })),
+      ];
+      mix.sort((a, b) => (a.order !== b.order ? a.order - b.order : a.sortKey.localeCompare(b.sortKey)));
+      const computed = computeOrderInMix(mix, `n:${referenceNodeId}`, placement);
+      if (computed === null) {
+        handleNewChildNode(parentId);
+        return;
+      }
+      newOrder = computed;
+
+      const tempId = `temp-node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const newChildNode: PendingCreate = {
+        type: 'node',
+        nodeId: parentId,
+        text: i18n('New node'),
+        tempId,
+      };
+      pendingCreatesRef.current.set(tempId, newChildNode);
+      setPendingCreatesCount(pendingCreatesRef.current.size);
+      const tempNode: BaseNode = {
+        id: tempId,
+        text: i18n('New node'),
+        order: newOrder,
+      };
+      const newEdge: BaseEdge = {
+        id: `temp-edge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        source: parentId,
+        target: tempId,
+      };
+      setBase((prev) => {
+        const updated = {
+          ...prev,
+          nodes: [...prev.nodes, tempNode].map((n) =>
+            n.id === parentId ? { ...n, expanded: true } : n,
+          ),
+          edges: [...prev.edges, newEdge],
+        };
+        baseRef.current = updated;
+        return updated;
+      });
+      setExpandedNodes((prev) => {
+        const newSet = new Set(prev);
+        newSet.add(tempId);
+        if (!newSet.has(parentId)) {
+          newSet.add(parentId);
+          expandedNodesRef.current = newSet;
+          triggerExpandAutoSave();
+        }
+        return newSet;
+      });
+    } else {
+      const rootNodes = base.nodes.filter((node) => !base.edges.some((edge) => edge.target === node.id));
+      const mix: { order: number; sortKey: string }[] = rootNodes.map((n: BaseNode) => ({
+        order: n.order ?? 0,
+        sortKey: `n:${n.id}`,
+      }));
+      mix.sort((a, b) => (a.order !== b.order ? a.order - b.order : a.sortKey.localeCompare(b.sortKey)));
+      const computed = computeOrderInMix(mix, `n:${referenceNodeId}`, placement);
+      if (computed === null) {
+        handleNewRootNode();
+        return;
+      }
+      newOrder = computed;
+
+      const tempId = `temp-node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const newRootNode: PendingCreate = {
+        type: 'node',
+        nodeId: '',
+        text: i18n('New node'),
+        tempId,
+      };
+      pendingCreatesRef.current.set(tempId, newRootNode);
+      setPendingCreatesCount(pendingCreatesRef.current.size);
+      const tempNode: BaseNode = {
+        id: tempId,
+        text: i18n('New node'),
+        order: newOrder,
+      };
+      setBase((prev) => {
+        const updated = {
+          ...prev,
+          nodes: [...prev.nodes, tempNode],
+        };
+        baseRef.current = updated;
+        return updated;
+      });
+      setExpandedNodes((prev) => {
+        const newSet = new Set(prev);
+        newSet.add(tempId);
+        expandedNodesRef.current = newSet;
+        return newSet;
+      });
+    }
+
+    setContextMenu(null);
+    setNewSiblingNodeSubmenuOpen(false);
+  }, [base.nodes, base.edges, pendingDeletes, handleNewChildNode, handleNewRootNode, triggerExpandAutoSave]);
 
   
   const handleNewRootCard = useCallback(() => {
@@ -8700,26 +8865,111 @@ ${currentCardContext}
                 新建子 Node
               </div>
               <div
-                style={{
-                  padding: '6px 16px',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  color: themeStyles.textPrimary,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }}
-                onClick={() => {
-                  const nodeId = contextMenu.file.nodeId || '';
-                  const parentId = base.edges.find((e) => e.target === nodeId)?.source;
-                  if (parentId) handleNewChildNode(parentId);
-                  else handleNewRootNode();
-                }}
+                style={{ position: 'relative' }}
+                onMouseEnter={() => setNewSiblingNodeSubmenuOpen(true)}
+                onMouseLeave={() => setNewSiblingNodeSubmenuOpen(false)}
               >
-                新建兄弟 Node
+                <div
+                  style={{
+                    padding: '6px 16px',
+                    cursor: 'default',
+                    fontSize: '13px',
+                    color: themeStyles.textPrimary,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <span>新建兄弟 Node</span>
+                  <span style={{ opacity: 0.65, fontSize: '12px', flexShrink: 0 }}>›</span>
+                </div>
+                {newSiblingNodeSubmenuOpen && contextMenu.file.nodeId && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: '100%',
+                      top: 0,
+                      marginLeft: '2px',
+                      minWidth: '140px',
+                      backgroundColor: themeStyles.bgPrimary,
+                      border: `1px solid ${themeStyles.borderSecondary}`,
+                      borderRadius: '4px',
+                      boxShadow: theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.15)',
+                      zIndex: 1200,
+                      padding: '4px 0',
+                    }}
+                    onMouseEnter={() => setNewSiblingNodeSubmenuOpen(true)}
+                    onMouseLeave={() => setNewSiblingNodeSubmenuOpen(false)}
+                  >
+                    <div
+                      style={{
+                        padding: '6px 16px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        color: themeStyles.textPrimary,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNewSiblingNodePlacement(contextMenu.file.nodeId || '', 'above');
+                      }}
+                    >
+                      向上插入
+                    </div>
+                    <div
+                      style={{
+                        padding: '6px 16px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        color: themeStyles.textPrimary,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNewSiblingNodePlacement(contextMenu.file.nodeId || '', 'below');
+                      }}
+                    >
+                      向下插入
+                    </div>
+                    <div
+                      style={{
+                        padding: '6px 16px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        color: themeStyles.textPrimary,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNewSiblingNodePlacement(contextMenu.file.nodeId || '', 'bottom');
+                      }}
+                    >
+                      底部插入
+                    </div>
+                  </div>
+                )}
               </div>
               <div
                 style={{
