@@ -8770,6 +8770,27 @@ ${currentCardContext}
                 打开工作区
               </div>
               <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => {
+                  setIsMultiSelectMode(!isMultiSelectMode);
+                  setSelectedItems(new Set());
+                  setContextMenu(null);
+                }}
+              >
+                {isMultiSelectMode ? '退出多选' : '多选模式'}
+              </div>
               {/* Multi-select: copy, cut, delete */}
               {isMultiSelectMode && selectedItems.size > 0 && (
                 <>
@@ -9229,6 +9250,27 @@ ${currentCardContext}
             </>
           ) : (
             <>
+              <div
+                style={{
+                  padding: '6px 16px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: themeStyles.textPrimary,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                onClick={() => {
+                  setIsMultiSelectMode(!isMultiSelectMode);
+                  setSelectedItems(new Set());
+                  setContextMenu(null);
+                }}
+              >
+                {isMultiSelectMode ? '退出多选' : '多选模式'}
+              </div>
               {/* Multi-select: copy, cut, delete */}
               {isMultiSelectMode && selectedItems.size > 0 && (
                 <>
