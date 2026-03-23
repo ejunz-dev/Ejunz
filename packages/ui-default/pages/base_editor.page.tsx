@@ -1246,6 +1246,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const [newSiblingCardSubmenuOpen, setNewSiblingCardSubmenuOpen] = useState(false);
   const [newSiblingNodeSubmenuOpen, setNewSiblingNodeSubmenuOpen] = useState(false);
+  const [newSiblingCardForNodeSubmenuOpen, setNewSiblingCardForNodeSubmenuOpen] = useState(false);
   useLayoutEffect(() => {
     if (!contextMenu || !contextMenuRef.current) return;
     const el = contextMenuRef.current;
@@ -1271,6 +1272,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
     if (!contextMenu || contextMenu.file.type !== 'node') {
       setNewSiblingNodeSubmenuOpen(false);
+      setNewSiblingCardForNodeSubmenuOpen(false);
     }
   }, [contextMenu]);
 
@@ -3276,6 +3278,96 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     setContextMenu(null);
     setNewSiblingCardSubmenuOpen(false);
   }, [handleNewCard, pendingDeletes, base.nodes, base.edges]);
+
+  const handleNewSiblingCardForNodePlacement = useCallback((
+    referenceNodeId: string,
+    placement: 'above' | 'below' | 'bottom',
+  ) => {
+    if (pendingDeletes.has(referenceNodeId)) {
+      Notification.error(i18n('Cannot create: node is in delete list'));
+      setContextMenu(null);
+      return;
+    }
+    const refNode = base.nodes.find((n) => n.id === referenceNodeId);
+    if (!refNode && !referenceNodeId.startsWith('temp-node-')) {
+      Notification.error(i18n('Cannot create: node does not exist'));
+      setContextMenu(null);
+      return;
+    }
+    const parentId = base.edges.find((e) => e.target === referenceNodeId)?.source;
+    if (!parentId) {
+      Notification.warn('Root node does not support sibling card');
+      setContextMenu(null);
+      setNewSiblingCardForNodeSubmenuOpen(false);
+      return;
+    }
+    if (placement === 'bottom') {
+      handleNewCard(parentId);
+      setNewSiblingCardForNodeSubmenuOpen(false);
+      return;
+    }
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const cardsForNode = (nodeCardsMap[parentId] || []).filter((c: Card) => !c.nodeId || c.nodeId === parentId);
+    const childNodeIds = base.edges.filter((e) => e.source === parentId).map((e) => e.target);
+    const childNodes = childNodeIds.map((id) => base.nodes.find((n) => n.id === id)).filter(Boolean) as BaseNode[];
+    type MixRow = { order: number; sortKey: string };
+    const mix: MixRow[] = [
+      ...cardsForNode.map((c: Card) => ({ order: c.order ?? 0, sortKey: `c:${String(c.docId)}` })),
+      ...childNodes.map((n: BaseNode) => ({ order: n.order ?? 0, sortKey: `n:${n.id}` })),
+    ];
+    mix.sort((a, b) => (a.order !== b.order ? a.order - b.order : a.sortKey.localeCompare(b.sortKey)));
+    const refSortKey = `n:${referenceNodeId}`;
+    const refIdx = mix.findIndex((m) => m.sortKey === refSortKey);
+    if (refIdx < 0) {
+      handleNewCard(parentId);
+      setNewSiblingCardForNodeSubmenuOpen(false);
+      return;
+    }
+    const refOrder = refNode?.order ?? 0;
+    let newOrder: number;
+    if (placement === 'above') {
+      if (refIdx === 0) {
+        newOrder = refOrder > 0 ? refOrder - 1 : -1;
+      } else {
+        const prevOrder = mix[refIdx - 1].order;
+        newOrder = prevOrder < refOrder ? (prevOrder + refOrder) / 2 : refOrder - 0.001;
+      }
+    } else {
+      if (refIdx === mix.length - 1) {
+        newOrder = Math.max(...mix.map((m) => m.order), refOrder) + 1;
+      } else {
+        const nextOrder = mix[refIdx + 1].order;
+        newOrder = nextOrder > refOrder ? (refOrder + nextOrder) / 2 : refOrder + 0.001;
+      }
+    }
+    const tempId = `temp-card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const newCard: PendingCreate = {
+      type: 'card',
+      nodeId: parentId,
+      title: i18n('New card'),
+      tempId,
+    };
+    pendingCreatesRef.current.set(tempId, newCard);
+    setPendingCreatesCount(pendingCreatesRef.current.size);
+    if (!nodeCardsMap[parentId]) {
+      nodeCardsMap[parentId] = [];
+    }
+    const tempCard: Card = {
+      docId: tempId,
+      cid: 0,
+      nodeId: parentId,
+      title: i18n('New card'),
+      content: '',
+      order: newOrder,
+      updateAt: new Date().toISOString(),
+    } as Card;
+    nodeCardsMap[parentId].push(tempCard);
+    nodeCardsMap[parentId].sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
+    (window as any).UiContext.nodeCardsMap = { ...nodeCardsMap };
+    setNodeCardsMapVersion((prev) => prev + 1);
+    setContextMenu(null);
+    setNewSiblingCardForNodeSubmenuOpen(false);
+  }, [pendingDeletes, base.nodes, base.edges, handleNewCard]);
 
   
   const doImportFromText = useCallback((nodeId: string, text: string) => {
@@ -8985,6 +9077,113 @@ ${currentCardContext}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleNewSiblingNodePlacement(contextMenu.file.nodeId || '', 'bottom');
+                      }}
+                    >
+                      底部插入
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div
+                style={{ position: 'relative' }}
+                onMouseEnter={() => setNewSiblingCardForNodeSubmenuOpen(true)}
+                onMouseLeave={() => setNewSiblingCardForNodeSubmenuOpen(false)}
+              >
+                <div
+                  style={{
+                    padding: '6px 16px',
+                    cursor: 'default',
+                    fontSize: '13px',
+                    color: themeStyles.textPrimary,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <span>新建兄弟 Card</span>
+                  <span style={{ opacity: 0.65, fontSize: '12px', flexShrink: 0 }}>›</span>
+                </div>
+                {newSiblingCardForNodeSubmenuOpen && contextMenu.file.nodeId && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: '100%',
+                      top: 0,
+                      marginLeft: '2px',
+                      minWidth: '140px',
+                      backgroundColor: themeStyles.bgPrimary,
+                      border: `1px solid ${themeStyles.borderSecondary}`,
+                      borderRadius: '4px',
+                      boxShadow: theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.15)',
+                      zIndex: 1200,
+                      padding: '4px 0',
+                    }}
+                    onMouseEnter={() => setNewSiblingCardForNodeSubmenuOpen(true)}
+                    onMouseLeave={() => setNewSiblingCardForNodeSubmenuOpen(false)}
+                  >
+                    <div
+                      style={{
+                        padding: '6px 16px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        color: themeStyles.textPrimary,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNewSiblingCardForNodePlacement(contextMenu.file.nodeId || '', 'above');
+                      }}
+                    >
+                      向上插入
+                    </div>
+                    <div
+                      style={{
+                        padding: '6px 16px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        color: themeStyles.textPrimary,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNewSiblingCardForNodePlacement(contextMenu.file.nodeId || '', 'below');
+                      }}
+                    >
+                      向下插入
+                    </div>
+                    <div
+                      style={{
+                        padding: '6px 16px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        color: themeStyles.textPrimary,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNewSiblingCardForNodePlacement(contextMenu.file.nodeId || '', 'bottom');
                       }}
                     >
                       底部插入
