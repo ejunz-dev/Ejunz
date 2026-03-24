@@ -1,0 +1,27 @@
+{% set bases = payload %}
+{% set currentDomainId = (domain and domain._id) or (handler and handler.args and handler.args.domainId) or 'system' %}
+{% if bases and bases.length %}
+  <div class="section page--base_recent">
+    <div class="section__header">
+      <h1 class="section__title">{{ _('Recent Bases') }}</h1>
+    </div>
+    <div class="section__body typo no-media">
+      {%- for b in bases -%}
+        {% if b and b.docId %}
+          <p>
+            <a href="{{ url('base_outline_doc_branch', domainId=currentDomainId, docId=b.docId, branch='main') }}" data-emoji-enabled>
+              {{ b.title|default('Untitled') }}
+            </a>
+            <span style="float: right">
+              {% if b.updateAt %}
+                {{ datetimeSpan(b.updateAt)|safe }}
+              {% else %}
+                N/A
+              {% endif %}
+            </span>
+          </p>
+        {% endif %}
+      {%- endfor -%}
+    </div>
+  </div>
+{% endif %}

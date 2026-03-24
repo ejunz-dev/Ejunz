@@ -3,8 +3,7 @@ homepage:
   desc: Homepage Config
   default:
     - width: 3
-      card: 10
-      node: 10
+      base: 10
       agent: 3
       checkin: true
     - width: 6

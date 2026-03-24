@@ -20,13 +20,12 @@ import { PERM, PRIV } from '../model/builtin';
 import * as discussion from '../model/discussion';
 import domain from '../model/domain';
 import message from '../model/message';
-import { BaseModel, CardModel } from '../model/base';
+import { BaseModel } from '../model/base';
 import AgentModel from '../model/agent';
 import WorkflowModel from '../model/workflow';
 import EdgeModel from '../model/edge';
 import ToolModel from '../model/tool';
 import ClientModel from '../model/client';
-import NodeModel from '../model/node';
 import * as setting from '../model/setting';
 import storage from '../model/storage';
 import system from '../model/system';
@@ -70,75 +69,14 @@ export class HomeHandler extends Handler {
         return agents;
     }
 
-    async getCard(domainId: string, limit = 10) {
+    async getBase(domainId: string, limit = 10) {
         const limitNum = typeof limit === 'number' ? limit : 10;
-        const cap = Math.min(limitNum * 30, 300);
-        const [cards, skillBaseDocId] = await Promise.all([
-            CardModel.getRecentUpdated(domainId, cap),
-            BaseModel.getSkillBaseDocId(domainId),
-        ]);
-        const skillBaseIdStr = skillBaseDocId != null ? skillBaseDocId.toString() : null;
-        const withBase = cards.filter((c) => c.baseDocId != null);
-        const nonSkillCards = withBase.filter(
-            (c) => skillBaseIdStr === null || (c.baseDocId as ObjectId).toString() !== skillBaseIdStr,
-        );
-        this.collectUser(nonSkillCards.map((c) => c.owner));
-        return nonSkillCards
-            .slice(0, limitNum)
-            .map((c) => ({ ...c, baseDocId: String(c.baseDocId), docId: String((c as any)._id) }));
-    }
-
-    async getNode(domainId: string, limit = 10) {
-        const limitNum = typeof limit === 'number' ? limit : 10;
-        const cap = Math.min(limitNum * 30, 300);
-        const [cards, skillBaseDocId] = await Promise.all([
-            CardModel.getRecentUpdated(domainId, cap),
-            BaseModel.getSkillBaseDocId(domainId),
-        ]);
-        const skillBaseIdStr = skillBaseDocId != null ? skillBaseDocId.toString() : null;
-        const byKey = new Map<string, { updateAt: Date; owner: number }>();
-        for (const c of cards) {
-            if (!c.baseDocId || !c.nodeId) continue;
-            if (skillBaseIdStr !== null && (c.baseDocId as ObjectId).toString() === skillBaseIdStr) continue;
-            const key = `${(c.baseDocId as ObjectId).toString()}\t${c.nodeId}`;
-            const existing = byKey.get(key);
-            if (!existing || c.updateAt > existing.updateAt) {
-                byKey.set(key, { updateAt: c.updateAt, owner: c.owner });
-            }
-        }
-        const entries = Array.from(byKey.entries())
-            .sort((a, b) => (b[1].updateAt as Date).getTime() - (a[1].updateAt as Date).getTime());
-        const result: Array<{ nodeId: string; baseDocId: string; text: string; updateAt: Date; owner: number; baseTitle?: string }> = [];
-        const baseIds = new Set<string>();
-        for (const [key] of entries) {
-            const [baseIdStr] = key.split('\t');
-            baseIds.add(baseIdStr);
-        }
-        const baseDocs = new Map<string, any>();
-        for (const bid of baseIds) {
-            const base = await BaseModel.get(domainId, new ObjectId(bid));
-            if (base) baseDocs.set(bid, base);
-        }
-        for (const [key, { updateAt, owner }] of entries) {
-            const [baseIdStr, nodeId] = key.split('\t');
-            if (skillBaseIdStr !== null && baseIdStr === skillBaseIdStr) continue;
-            const base = baseDocs.get(baseIdStr);
-            let text = nodeId;
-            let baseTitle: string | undefined;
-            if (base) {
-                baseTitle = base.title;
-                const branch = (base as any).currentBranch || (base as any).branch || 'main';
-                const branchData = (base as any).branchData || {};
-                const data = branchData[branch] || (branch === 'main' ? { nodes: base.nodes || [], edges: base.edges || [] } : { nodes: [], edges: [] });
-                const nodes = data.nodes || [];
-                const node = nodes.find((n: any) => n.id === nodeId);
-                if (node && node.text) text = node.text;
-            }
-            result.push({ nodeId, baseDocId: baseIdStr, text, updateAt, owner, baseTitle });
-            if (result.length >= limitNum) break;
-        }
-        this.collectUser(result.map((r) => r.owner));
-        return result;
+        const bases = await BaseModel.getRecentUpdated(domainId, limitNum);
+        this.collectUser(bases.map((b) => b.owner));
+        return bases.map((b) => ({
+            ...b,
+            docId: b.docId != null ? String(b.docId) : b.docId,
+        }));
     }
 
     async getCheckin(domainId: string) {
