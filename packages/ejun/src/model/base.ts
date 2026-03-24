@@ -169,6 +169,18 @@ export class BaseModel {
     }
 
     /**
+     * Non-skill bases (knowledge graphs) by latest update time.
+     */
+    static async getRecentUpdated(domainId: string, limit: number = 10): Promise<BaseDoc[]> {
+        const list = await document
+            .getMulti(domainId, TYPE_MM, { type: { $ne: 'skill' } } as Filter<BaseDoc>)
+            .sort({ updateAt: -1 })
+            .limit(limit)
+            .toArray();
+        return list as BaseDoc[];
+    }
+
+    /**
      * Comment translated to English.
      */
     static async getByRepo(domainId: string, rpid: number, branch?: string): Promise<BaseDoc[]> {
