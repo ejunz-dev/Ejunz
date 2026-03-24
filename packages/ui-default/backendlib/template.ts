@@ -116,6 +116,12 @@ class Nunjucks extends nunjucks.Environment {
       console.log(self);
       return self;
     });
+    this.addFilter('fixed', (self: unknown, digits = 2) => {
+      const n = Number(self);
+      if (Number.isNaN(n)) return '';
+      const d = typeof digits === 'number' ? digits : 2;
+      return n.toFixed(d);
+    });
 
     // eslint-disable-next-line no-eval
     this.addGlobal('eval', eval);

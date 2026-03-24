@@ -350,9 +350,9 @@ __langname: 简体中文
 'Save all changes': 保存所有更改
 'Save ASR Configuration': 保存 ASR 配置
 'Save changes': 保存更改
+'Save completed, but {0} error(s) occurred': 保存完成，但有 {0} 个错误
 'Save failed': 保存失败
 'Save sort failed': 保存排序失败
-'Save completed, but {0} error(s) occurred': 保存完成，但有 {0} 个错误
 'Save successful, {0} changes': 保存成功，共 {0} 项更改
 'Save TTS Configuration': 保存 TTS 配置
 'Save': 保存
@@ -498,6 +498,7 @@ Argument {0} is invalid.: 非法的参数 {0} 。
 Arguments: 参数
 author: 作者
 Avatar: 头像
+Average Rating: 平均评分
 Back to: 返回
 Base Node: 知识库节点
 base_create: 创建知识库
@@ -892,6 +893,7 @@ Quote: 引用
 Rank: 排名
 ranking: 排名
 Ranking: 排名
+Rating: 评分
 Recommended: 推荐
 record_main: 记录
 Refresh: 刷新
