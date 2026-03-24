@@ -963,6 +963,7 @@ declare module './service/db' {
         'learn_progress': any;
         'learn_result': any;
         'learn_consumption_stats': any;
+        'rating': any;
     }
 }
 
@@ -993,6 +994,7 @@ export interface Model {
     workflowNode: typeof import('./model/workflow_node').default,
     workflowTimer: typeof import('./model/workflow_timer').default,
     learn: typeof import('./model/learn').default,
+    rating: typeof import('./model/rating').default,
     scene: typeof import('./model/scene').default,
     sceneEvent: typeof import('./model/scene').SceneEventModel,
 }

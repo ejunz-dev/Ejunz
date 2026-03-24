@@ -37,6 +37,13 @@ import {
 } from '../service/server';
 import moment from 'moment-timezone';
 import { camelCase, md5 } from '../utils';
+import {
+    aggregateConsumptionByUser,
+    aggregateContributionByUser,
+    computeRatingMap,
+    computeStatScore,
+} from '../lib/homepageRanking';
+import RatingModel from '../model/rating';
 
 export class HomeHandler extends Handler {
     uids = new Set<number>();
@@ -230,6 +237,44 @@ export class HomeHandler extends Handler {
             lastCheckinDaysAgo,
             maxConsecutiveDays,
         };
+    }
+
+    async getContributionRanking(domainId: string, limit = 15) {
+        const limitNum = Math.min(100, Math.max(1, typeof limit === 'number' ? limit : 15));
+        const cached = await RatingModel.getTop(domainId, 'contribution', limitNum);
+        if (cached) {
+            this.collectUser(cached.rows.map((r) => r.uid));
+            return { rows: cached.rows };
+        }
+        const rows = await aggregateContributionByUser(domainId);
+        const ratingMap = computeRatingMap(rows);
+        const enriched = rows.map((r) => ({
+            ...r,
+            rating: ratingMap.get(r.uid) ?? 1,
+        }));
+        enriched.sort((a, b) => computeStatScore(b) - computeStatScore(a));
+        const top = enriched.slice(0, limitNum).map((r, i) => ({ ...r, rank: i + 1 }));
+        this.collectUser(top.map((r) => r.uid));
+        return { rows: top };
+    }
+
+    async getConsumptionRanking(domainId: string, limit = 15) {
+        const limitNum = Math.min(100, Math.max(1, typeof limit === 'number' ? limit : 15));
+        const cached = await RatingModel.getTop(domainId, 'consumption', limitNum);
+        if (cached) {
+            this.collectUser(cached.rows.map((r) => r.uid));
+            return { rows: cached.rows };
+        }
+        const rows = await aggregateConsumptionByUser(this.ctx.db.db, domainId);
+        const ratingMap = computeRatingMap(rows);
+        const enriched = rows.map((r) => ({
+            ...r,
+            rating: ratingMap.get(r.uid) ?? 1,
+        }));
+        enriched.sort((a, b) => computeStatScore(b) - computeStatScore(a));
+        const top = enriched.slice(0, limitNum).map((r, i) => ({ ...r, rank: i + 1 }));
+        this.collectUser(top.map((r) => r.uid));
+        return { rows: top };
     }
 
     async get({ domainId }) {

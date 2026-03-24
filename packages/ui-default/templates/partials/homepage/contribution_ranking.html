@@ -1,0 +1,45 @@
+{% import "components/user.html" as user with context %}
+{% set data = payload %}
+{% if data.rows and data.rows.length %}
+  <div class="section page--contribution_ranking">
+    <div class="section__header">
+      <h1 class="section__title">{{ _('Contribution ranking') }}</h1>
+    </div>
+    <div class="section__body typo no-media">
+      <p style="display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: baseline; column-gap: 0.75rem; width: 100%">
+        <span class="muted">{{ _('User') }}</span>
+        <span class="muted" style="text-align: center; justify-self: center; font-variant-numeric: tabular-nums; white-space: nowrap">
+          {{ _('Nodes') }}<span style="opacity: 0.4"> / </span>{{ _('Cards') }}<span style="opacity: 0.4"> / </span>{{ _('Problems') }}
+        </span>
+        <strong class="muted" style="text-align: right; justify-self: end; font-weight: 600">{{ _('Average Rating') }}</strong>
+      </p>
+      {%- for row in data.rows -%}
+        {% set udoc = udict[row.uid] %}
+        {% if row.rating > 1 %}
+          {% set ratingColor = '#4ade80' %}
+        {% elif row.rating < 1 %}
+          {% set ratingColor = '#f87171' %}
+        {% else %}
+          {% set ratingColor = '#ffffff' %}
+        {% endif %}
+        <p style="display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: baseline; column-gap: 0.75rem; width: 100%">
+          <span style="min-width: 0">
+            {% if udoc %}
+              {{ user.render_inline(udoc, avatar=true, badge=false)|safe }}
+            {% else %}
+              <span class="muted">#{{ row.uid }}</span>
+            {% endif %}
+          </span>
+          <span style="text-align: center; justify-self: center">
+            <span style="font-variant-numeric: tabular-nums; white-space: nowrap; text-align: center">
+              <span style="color: #60a5fa">{{ row.nodes }}</span><span class="muted" style="opacity: 0.4"> / </span><span style="color: #4ade80">{{ row.cards }}</span><span class="muted" style="opacity: 0.4"> / </span><span style="color: #fbbf24">{{ row.problems }}</span>
+            </span>
+          </span>
+          <span style="text-align: right; justify-self: end">
+            <strong style="font-weight: 600; color: {{ ratingColor }}">{{ row.rating | fixed(2) }}</strong>
+          </span>
+        </p>
+      {%- endfor -%}
+    </div>
+  </div>
+{% endif %}
