@@ -22,6 +22,7 @@ interface BaseNode {
   expanded?: boolean;
   order?: number;
   files?: CardFileInfo[];
+  intent?: string;
 }
 
 interface BaseEdge {
@@ -896,6 +897,33 @@ function getAggregatedFilesForNode(
   return result;
 }
 
+function effectiveNodeIntent(nodeId: string, base: BaseDoc, pendingIntents: Map<string, string>): string {
+  if (pendingIntents.has(nodeId)) {
+    return pendingIntents.get(nodeId)!;
+  }
+  const n = base.nodes.find((nn) => nn.id === nodeId);
+  return n?.intent ?? '';
+}
+
+/** Descendant nodes in tree order with their effective intent (for inherited Intent view). */
+function getSubtreeIntentRows(
+  rootNodeId: string,
+  base: BaseDoc,
+  pendingIntents: Map<string, string>,
+): Array<{ nodeId: string; nodeText: string; intent: string }> {
+  const descendants = getDescendantNodeIds(rootNodeId, base.edges);
+  const rows: Array<{ nodeId: string; nodeText: string; intent: string }> = [];
+  for (const nid of descendants) {
+    const n = base.nodes.find((nn) => nn.id === nid);
+    rows.push({
+      nodeId: nid,
+      nodeText: n?.text || nid,
+      intent: effectiveNodeIntent(nid, base, pendingIntents),
+    });
+  }
+  return rows;
+}
+
 export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docId: string | undefined; initialData: BaseDoc; basePath?: string }) {
   
   const getTheme = useCallback(() => {
@@ -1294,6 +1322,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [fileListRowMenu, setFileListRowMenu] = useState<{ x: number; y: number; downloadUrl: string; deleteUrl: string; filename: string } | null>(null);
   const [nodeFileListEditMode, setNodeFileListEditMode] = useState(false);
   const [selectedFileListRowKeys, setSelectedFileListRowKeys] = useState<Set<string>>(new Set());
+  const [nodeSidePanelTab, setNodeSidePanelTab] = useState<'intent' | 'files'>('intent');
+  const [pendingNodeIntents, setPendingNodeIntents] = useState<Map<string, string>>(new Map());
+  const [nodeIntentDraft, setNodeIntentDraft] = useState('');
   const cardFileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingCardUploadRef = useRef<{ cardId: string; nodeId: string } | null>(null);
   const pendingNodeUploadRef = useRef<{ nodeId: string } | null>(null);
@@ -1416,7 +1447,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     wrapper.style.alignItems = 'center';
     wrapper.style.gap = '8px';
     rightEl.appendChild(wrapper);
-    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size;
+    const pendingCount = pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size + pendingNodeIntents.size;
     const hasPending = pendingCount > 0;
     ReactDOM.render(
       <>
@@ -1450,7 +1481,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       ReactDOM.unmountComponentAtNode(wrapper);
       wrapper.remove();
     };
-  }, [isMobile, showAIChat, showProblemPanel, selectedFile?.type, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingCardFaceChanges, pendingNewProblemCardIds.size, pendingEditedProblemIds.size, pendingDeleteProblemIds.size]);
+  }, [isMobile, showAIChat, showProblemPanel, selectedFile?.type, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingCardFaceChanges, pendingNewProblemCardIds.size, pendingEditedProblemIds.size, pendingDeleteProblemIds.size, pendingNodeIntents.size]);
 
   
   const getSelectedCard = useCallback((): Card | null => {
@@ -1666,6 +1697,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       
       
       if (file.type === 'node' && file.nodeId) {
+        if (pendingNodeIntents.has(file.nodeId)) return true;
         
         if (pendingDragChanges.has(`node-${file.nodeId}`)) return true;
         
@@ -1825,14 +1857,32 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       });
 
     return items;
-  }, [base.nodes, base.edges, nodeCardsMapVersion, expandedNodes, pendingChanges, pendingRenames, pendingDragChanges, pendingDeletes, clipboard, workspaceNodeId]);
+  }, [base.nodes, base.edges, nodeCardsMapVersion, expandedNodes, pendingChanges, pendingRenames, pendingDragChanges, pendingDeletes, pendingNodeIntents, clipboard, workspaceNodeId]);
 
   useEffect(() => {
     fileTreeRef.current = fileTree;
     baseEdgesRef.current = base.edges;
   }, [fileTree, base.edges]);
 
-  
+  const updateNodeIntentPending = useCallback((nodeId: string, value: string) => {
+    const node = base.nodes.find((n) => n.id === nodeId);
+    const original = node?.intent ?? '';
+    setPendingNodeIntents((prev) => {
+      const next = new Map(prev);
+      if (value === original) next.delete(nodeId);
+      else next.set(nodeId, value);
+      return next;
+    });
+  }, [base.nodes]);
+
+  useEffect(() => {
+    if (selectedFile?.type !== 'node' || !selectedFile.nodeId) return;
+    const nid = selectedFile.nodeId;
+    const node = base.nodes.find((n) => n.id === nid);
+    const draft = pendingNodeIntents.has(nid) ? pendingNodeIntents.get(nid)! : (node?.intent ?? '');
+    setNodeIntentDraft(draft);
+  }, [selectedFile?.type, selectedFile?.nodeId, base.nodes, pendingNodeIntents]);
+
   const triggerExpandAutoSave = useCallback(() => {
     
     if (expandSaveTimerRef.current) {
@@ -1954,6 +2004,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     
     
     if (file.type === 'node') {
+      setNodeSidePanelTab('intent');
       setSelectedFile(file);
       selectedFileRef.current = file;
       if (!skipUrlUpdate && file.nodeId) {
@@ -2226,6 +2277,26 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (isCommitting) {
       return;
     }
+
+    const nodeIdsRequiringIntent = new Set<string>();
+    for (const n of base.nodes) {
+      if (pendingDeletes.has(n.id)) continue;
+      nodeIdsRequiringIntent.add(n.id);
+    }
+    pendingCreatesRef.current.forEach((create, tempId) => {
+      if (create.type !== 'node') return;
+      if (pendingDeletes.has(tempId)) return;
+      nodeIdsRequiringIntent.add(tempId);
+    });
+    for (const nodeId of nodeIdsRequiringIntent) {
+      const intentStr = pendingNodeIntents.has(nodeId)
+        ? String(pendingNodeIntents.get(nodeId) ?? '').trim()
+        : String(base.nodes.find((n) => n.id === nodeId)?.intent ?? '').trim();
+      if (!intentStr) {
+        Notification.warn(i18n('Every node must have an Intent before saving.'));
+        return;
+      }
+    }
     
     setIsCommitting(true);
 
@@ -2254,6 +2325,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const hasCreateChanges = pendingCreatesRef.current.size > 0;
     const hasDeleteChanges = pendingDeletes.size > 0;
     const hasProblemChanges = pendingProblemCardIds.size > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0;
+    const hasIntentChanges = pendingNodeIntents.size > 0;
+    const pendingIntentSaveCount = pendingNodeIntents.size;
     
     
     const totalTasks =
@@ -2262,10 +2335,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       (hasRenameChanges ? pendingRenames.size : 0) +
       (hasCreateChanges ? pendingCreatesRef.current.size : 0) +
       (hasDeleteChanges ? pendingDeletes.size : 0) +
-      (hasProblemChanges ? (pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size) : 0);
+      (hasProblemChanges ? (pendingProblemCardIds.size + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size) : 0) +
+      (hasIntentChanges ? pendingIntentSaveCount : 0);
     
     try {
-      Notification.info(i18n('Saving...'));
       const domainId = (window as any).UiContext?.domainId || 'system';
       
       
@@ -2313,6 +2386,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             x: (create as any).x,
             y: (create as any).y,
             ...(nodeOrder !== undefined && nodeOrder !== null && { order: nodeOrder }),
+            ...(pendingNodeIntents.has(create.tempId) ? { intent: pendingNodeIntents.get(create.tempId)! } : {}),
           });
         }
         
@@ -2690,6 +2764,19 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         
       }
 
+      for (const [nodeId, intent] of pendingNodeIntents.entries()) {
+        if (nodeId.startsWith('temp-node-')) continue;
+        const node = base.nodes.find((n: BaseNode) => n.id === nodeId);
+        const original = node?.intent ?? '';
+        if (intent === original) continue;
+        const existingUpdate = batchSaveData.nodeUpdates.find((u: any) => u.nodeId === nodeId);
+        if (existingUpdate) {
+          existingUpdate.intent = intent;
+        } else {
+          batchSaveData.nodeUpdates.push({ nodeId, intent });
+        }
+      }
+
       const hasDeleteChanges = pendingDeletes.size > 0;
       
       
@@ -2932,6 +3019,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       
       
       setPendingChanges(new Map());
+      setPendingNodeIntents(new Map());
       setPendingDragChanges(new Set());
       setPendingRenames(new Map());
       pendingCreatesRef.current.clear();
@@ -2970,7 +3058,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         + actualRenameCount
         + createCountBeforeSave
         + (hasDeleteChanges ? pendingDeletes.size : 0)
-        + problemChangesCount;
+        + problemChangesCount
+        + pendingIntentSaveCount;
       
       Notification.success(`保存成功，共 ${totalChanges} 项更改`);
       
@@ -3034,7 +3123,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } finally {
       setIsCommitting(false);
     }
-  }, [pendingChanges, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion]);
+  }, [pendingChanges, pendingNodeIntents, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion]);
 
   useEffect(() => {
     saveHandlerRef.current = handleSaveAll;
@@ -10911,22 +11000,22 @@ ${currentCardContext}
                 console.log('[保存按钮] 点击保存，pendingProblemCardIds:', Array.from(pendingProblemCardIds));
                 handleSaveAll();
               }}
-              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0)}
+              disabled={isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0 && pendingNodeIntents.size === 0)}
               style={{
                 padding: isMobile ? '10px 12px' : '4px 12px',
                 minHeight: isMobile ? '44px' : undefined,
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
-                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
+                backgroundColor: (pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || pendingCreatesCount > 0 || pendingDeletes.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0 || pendingNodeIntents.size > 0) ? themeStyles.success : (theme === 'dark' ? '#555' : '#6c757d'),
                 color: themeStyles.textOnPrimary,
-                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0)) ? 'not-allowed' : 'pointer',
+                cursor: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0 && pendingNodeIntents.size === 0)) ? 'not-allowed' : 'pointer',
                 fontSize: '12px',
                 fontWeight: '500',
-                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0)) ? 0.6 : 1,
+                opacity: (isCommitting || (pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0 && pendingNodeIntents.size === 0)) ? 0.6 : 1,
               }}
-              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0) ? i18n('No pending changes') : i18n('Save all changes')}
+              title={(pendingChanges.size === 0 && pendingDragChanges.size === 0 && pendingRenames.size === 0 && pendingCreatesCount === 0 && pendingDeletes.size === 0 && Object.keys(pendingCardFaceChanges).length === 0 && pendingNewProblemCardIds.size === 0 && pendingEditedProblemIds.size === 0 && pendingDeleteProblemIds.size === 0 && pendingNodeIntents.size === 0) ? i18n('No pending changes') : i18n('Save all changes')}
             >
-              {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size})`}
+              {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingChanges.size + pendingDragChanges.size + pendingRenames.size + pendingCreatesCount + pendingDeletes.size + Object.keys(pendingCardFaceChanges).length + pendingNewProblemCardIds.size + pendingEditedProblemIds.size + pendingDeleteProblemIds.size + pendingNodeIntents.size})`}
             </button>
           </div>
           )}
@@ -11147,8 +11236,96 @@ ${currentCardContext}
                     Notification.error(e?.message || i18n('Copy failed.'));
                   }
                 };
+                const subtreeIntentRows = getSubtreeIntentRows(nodeId, base, pendingNodeIntents);
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                    <div style={{
+                      padding: '8px 16px',
+                      borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      flexShrink: 0,
+                      backgroundColor: themeStyles.bgSecondary,
+                    }}>
+                      <span style={{ fontWeight: 600, color: themeStyles.textPrimary, fontSize: '13px', marginRight: 8 }}>{node?.text || selectedFile.nodeId}</span>
+                      <button
+                        type="button"
+                        onClick={() => setNodeSidePanelTab('intent')}
+                        style={{
+                          padding: '6px 12px',
+                          fontSize: '12px',
+                          border: `1px solid ${themeStyles.borderSecondary}`,
+                          borderRadius: '4px',
+                          background: nodeSidePanelTab === 'intent' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                          color: nodeSidePanelTab === 'intent' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                          cursor: 'pointer',
+                        }}
+                      >{i18n('Intent')}</button>
+                      <button
+                        type="button"
+                        onClick={() => setNodeSidePanelTab('files')}
+                        style={{
+                          padding: '6px 12px',
+                          fontSize: '12px',
+                          border: `1px solid ${themeStyles.borderSecondary}`,
+                          borderRadius: '4px',
+                          background: nodeSidePanelTab === 'files' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                          color: nodeSidePanelTab === 'files' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                          cursor: 'pointer',
+                        }}
+                      >{i18n('Files')}</button>
+                    </div>
+                    {nodeSidePanelTab === 'intent' ? (
+                      <div style={{ flex: 1, overflow: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+                        <div>
+                          <div style={{ fontSize: '12px', fontWeight: 600, color: themeStyles.textSecondary, marginBottom: 8 }}>{i18n('This node')}</div>
+                          <textarea
+                            value={nodeIntentDraft}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setNodeIntentDraft(v);
+                              updateNodeIntentPending(nodeId, v);
+                            }}
+                            placeholder={i18n('Describe the intent or goal for this node.')}
+                            style={{
+                              width: '100%',
+                              minHeight: 120,
+                              padding: 12,
+                              fontSize: 14,
+                              lineHeight: 1.5,
+                              border: `1px solid ${themeStyles.borderSecondary}`,
+                              borderRadius: 6,
+                              background: themeStyles.bgPrimary,
+                              color: themeStyles.textPrimary,
+                              resize: 'vertical',
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '12px', fontWeight: 600, color: themeStyles.textSecondary, marginBottom: 8 }}>{i18n('Subtree intents')}</div>
+                          {subtreeIntentRows.length === 0 ? (
+                            <div style={{ color: themeStyles.textTertiary, fontSize: 13 }}>{i18n('No child nodes with intent.')}</div>
+                          ) : (
+                            subtreeIntentRows.map((row) => (
+                              <div key={row.nodeId} style={{ marginBottom: 12, padding: 12, border: `1px solid ${themeStyles.borderSecondary}`, borderRadius: 6, background: themeStyles.bgSecondary }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const target = fileTree.find((f) => f.type === 'node' && f.nodeId === row.nodeId);
+                                    if (target) handleSelectFile(target);
+                                  }}
+                                  style={{ background: 'none', border: 'none', padding: 0, color: themeStyles.accent, cursor: 'pointer', fontWeight: 600, fontSize: 13, marginBottom: 6, textAlign: 'left' }}
+                                >{row.nodeText}</button>
+                                <div style={{ fontSize: 13, color: themeStyles.textPrimary, whiteSpace: 'pre-wrap' }}>{row.intent.trim() ? row.intent : '—'}</div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                    <>
                     <div style={{
                       padding: '12px 16px',
                       borderBottom: `1px solid ${themeStyles.borderPrimary}`,
@@ -11339,6 +11516,8 @@ ${currentCardContext}
                         </table>
                       )}
                     </div>
+                    </>
+                    )}
                   </div>
                 );
               })()
