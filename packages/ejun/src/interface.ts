@@ -310,6 +310,8 @@ export interface BaseNode {
     data?: Record<string, any>; // Comment translated to English.
     /** Mounted files (uploaded to this node) */
     files?: FileInfo[];
+    /** Optional intent / goal text for this node (shown aggregated on ancestors in the editor) */
+    intent?: string;
 }
 
 export interface BaseEdge {
