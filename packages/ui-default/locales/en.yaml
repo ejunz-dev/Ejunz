@@ -436,6 +436,7 @@ agent_detail: Agent Detail
 agent_domain: Agent
 agent_edit: Edit Agent
 All Domains Learn: All Domains Learn
+Average Rating: Average Rating
 Back to: Back to
 Base Node: Base Node
 base_create: Create Base
@@ -561,6 +562,7 @@ Problem ID: Problem ID
 problems: problems
 Problems: Problems
 Publish Statistics: Publish Statistics
+Rating: Rating
 record_main: Record
 repo_config: Repo Config
 repo_create: Create Repo

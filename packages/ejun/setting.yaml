@@ -9,5 +9,7 @@ homepage:
       checkin: true
     - width: 6
       discussion: 20
+      contribution_ranking: 15
+      consumption_ranking: 15
     - width: 3
       discussion_nodes: true
