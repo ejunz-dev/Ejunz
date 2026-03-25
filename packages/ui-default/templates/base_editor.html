@@ -24,6 +24,10 @@
   {{ set(UiContext, 'flagDailyGoal', flagDailyGoal) }}
   {{ set(UiContext, 'flagProgressNodeIds', flagProgressNodeIds or []) }}
   {% endif %}
+  {% if collectDailyGoal is defined %}
+  {{ set(UiContext, 'collectDailyGoal', collectDailyGoal) }}
+  {{ set(UiContext, 'collectTodayCompletedCount', collectTodayCompletedCount or 0) }}
+  {% endif %}
   {{ set(UiContext, 'socketUrl', 'base/ws?domainId=' + (domainId or (base and base.domainId) or '') + '&docId=' + (base.docId.toString() if base and base.docId else '')) }}
 </script>
 <div class="row">

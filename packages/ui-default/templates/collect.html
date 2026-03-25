@@ -3,22 +3,11 @@
 {% block content %}
 <script>
   {{ set(UiContext, 'domainId', domainId) }}
-  {{ set(UiContext, 'currentProgress', currentProgress) }}
-  {{ set(UiContext, 'totalProgress', totalProgress) }}
-  {{ set(UiContext, 'totalCards', totalCards) }}
   {{ set(UiContext, 'totalCheckinDays', totalCheckinDays) }}
   {{ set(UiContext, 'consecutiveDays', consecutiveDays) }}
   {{ set(UiContext, 'dailyGoal', dailyGoal) }}
   {{ set(UiContext, 'todayCompletedCount', todayCompletedCount) }}
-  {{ set(UiContext, 'pendingNodeList', pendingNodeList) }}
-  {{ set(UiContext, 'completedSections', completedSections) }}
   {{ set(UiContext, 'completedCardsToday', completedCardsToday or []) }}
-  {{ set(UiContext, 'nextCard', nextCard) }}
-  {{ set(UiContext, 'sections', sections) }}
-  {{ set(UiContext, 'fullDag', fullDag) }}
-  {{ set(UiContext, 'currentSectionId', currentSectionId) }}
-  {{ set(UiContext, 'currentSectionIndex', currentSectionIndex) }}
-  {{ set(UiContext, 'passedCardIds', passedCardIds) }}
   {{ set(UiContext, 'learnBases', learnBases or []) }}
   {{ set(UiContext, 'selectedLearnBaseDocId', selectedLearnBaseDocId) }}
   {{ set(UiContext, 'requireBaseSelection', requireBaseSelection) }}

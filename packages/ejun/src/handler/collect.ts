@@ -5,7 +5,6 @@ import type { BaseDoc, BaseNode, BaseEdge, CardDoc } from '../interface';
 import * as document from '../model/document';
 import domain from '../model/domain';
 import learn, { type LearnDAGNode } from '../model/learn';
-import user from '../model/user';
 import { PERM, PRIV } from '../model/builtin';
 import { BadRequestError, NotFoundError, ValidationError } from '../error';
 import { MethodNotAllowedError } from '@ejunz/framework';
@@ -111,130 +110,149 @@ async function saveCollectBaseForUser(
     });
 }
 
-interface SectionProgressItem {
-    _id: string;
-    title: string;
-    passed: number;
-    total: number;
-    slotIndex: number;  // 顺序中的位置，用于列表 key 和 sectionId 跳转时区分同 id 的 slot
+function collectUtcDayKey(): string {
+    return moment.utc().format('YYYY-MM-DD');
 }
 
-function getSectionProgress(
-    sections: LearnDAGNode[],
-    allDagNodes: LearnDAGNode[],
-    passedCardIds: Set<string>
-): { pending: SectionProgressItem[]; completed: SectionProgressItem[] } {
-    const nodeMap = new Map<string, LearnDAGNode>();
-    sections.forEach(s => nodeMap.set(String(s._id), s));
-    allDagNodes.forEach(n => nodeMap.set(String(n._id), n));
-
-    const collectCards = (nodeId: string, collected: Set<string>): Array<{ cardId: string }> => {
-        if (collected.has(nodeId)) return [];
-        collected.add(nodeId);
-        const node = nodeMap.get(nodeId);
-        if (!node) return [];
-        const cards = (node.cards || []).map((c: any) => ({ cardId: c.cardId }));
-        const children = allDagNodes.filter((n: any) => n.requireNids?.length > 0 && n.requireNids[n.requireNids.length - 1] === nodeId);
-        for (const child of children) {
-            cards.push(...collectCards(child._id, collected));
-        }
-        return cards;
+/** 与 Flag 的 mergeFlagCheckinNodeProgress 类似：合并 Collect 当日已计进度卡片 id（仅存 domain.user，供今日进度条使用） */
+function mergeCollectCheckinCardProgress(
+    dudoc: Record<string, unknown> | null | undefined,
+    newCardIds: string[],
+): Record<string, unknown> {
+    const today = collectUtcDayKey();
+    let date = typeof dudoc?.collectProgressDate === 'string' ? (dudoc.collectProgressDate as string) : '';
+    let ids: string[] = Array.isArray(dudoc?.collectProgressCardIds)
+        ? (dudoc.collectProgressCardIds as unknown[]).map((x) => String(x))
+        : [];
+    const activityDates: string[] = Array.isArray(dudoc?.collectActivityDates)
+        ? [...((dudoc.collectActivityDates as unknown[]).map((x) => String(x)))]
+        : [];
+    if (date !== today) {
+        date = today;
+        ids = [];
+    }
+    const set = new Set(ids);
+    for (const raw of newCardIds) {
+        const id = String(raw || '').trim();
+        if (id && !id.startsWith('temp-card-')) set.add(id);
+    }
+    ids = Array.from(set);
+    if (ids.length > 0 && !activityDates.includes(today)) {
+        activityDates.push(today);
+        activityDates.sort();
+        while (activityDates.length > 500) activityDates.shift();
+    }
+    return {
+        collectProgressDate: date,
+        collectProgressCardIds: ids,
+        collectActivityDates: activityDates,
     };
+}
 
-    const pending: SectionProgressItem[] = [];
-    const completed: SectionProgressItem[] = [];
+/** 与 Flag 侧写入 flagProgressNodeIds 一样：把卡片计入 Collect 当日进度（不读 learn_result 表）。 */
+async function persistCollectTodayCardIds(
+    domainId: string,
+    uid: number,
+    priv: number,
+    cardIds: string[],
+): Promise<void> {
+    const cleaned = cardIds
+        .map((x) => String(x || '').trim())
+        .filter((id) => id && !id.startsWith('temp-card-'));
+    if (!cleaned.length) return;
+    const dudoc = (await learn.getUserLearnState(domainId, { _id: uid, priv })) as Record<string, unknown> | null;
+    const progressUpdate = mergeCollectCheckinCardProgress(dudoc, cleaned);
+    await learn.setUserLearnState(domainId, uid, progressUpdate);
+}
 
-    for (let i = 0; i < sections.length; i++) {
-        const section = sections[i];
-        const cards = collectCards(section._id, new Set());
-        const total = cards.length;
-        const passed = cards.filter((c: any) => passedCardIds.has(String(c.cardId))).length;
-        const item: SectionProgressItem = {
-            _id: section._id,
-            title: section.title || 'Unnamed',
-            passed,
-            total,
-            slotIndex: i,
-        };
-        if (total > 0 && passed >= total) {
-            completed.push(item);
-        } else {
-            pending.push(item);
+/**
+ * Collect「今日进度」条：与 Flag 一致，仅看 domain.user 里的 collectProgressCardIds（当日有效），不看 learn_result。
+ */
+async function getCollectEditorTodayProgress(
+    domainId: string,
+    uid: number,
+    priv: number,
+    dudocPreloaded?: Record<string, unknown> | null,
+): Promise<{ collectDailyGoal: number; collectTodayCompletedCount: number }> {
+    const dudoc =
+        dudocPreloaded !== undefined
+            ? dudocPreloaded
+            : ((await learn.getUserLearnState(domainId, { _id: uid, priv })) as Record<string, unknown> | null);
+    const collectDailyGoal = getModeDailyGoal(dudoc, 'collect');
+    const todayKey = collectUtcDayKey();
+    const idsRaw =
+        (dudoc as any)?.collectProgressDate === todayKey && Array.isArray((dudoc as any)?.collectProgressCardIds)
+            ? ((dudoc as any).collectProgressCardIds as unknown[])
+            : [];
+    const collectTodayCompletedCount = idsRaw.filter(
+        (x) => String(x || '').trim() && !String(x).startsWith('temp-card-'),
+    ).length;
+    return { collectDailyGoal, collectTodayCompletedCount };
+}
+
+/** Collect 首页：每日目标、今日进度条、打卡、今日完成卡片列表（不含章节/总进度 DAG） */
+async function loadCollectHomeExtras(
+    finalDomainId: string,
+    uid: number,
+    priv: number,
+    base: BaseDoc | null,
+): Promise<{
+    dailyGoal: number;
+    todayCompletedCount: number;
+    totalCheckinDays: number;
+    consecutiveDays: number;
+    completedCardsToday: Array<{ cardId: string; resultId: string; cardTitle: string; nodeTitle: string; completedAt: Date }>;
+}> {
+    const dudoc = await learn.getUserLearnState(finalDomainId, { _id: uid, priv });
+    const dailyGoal = getModeDailyGoal(dudoc as any, 'collect');
+    const todayKeyProgress = collectUtcDayKey();
+    const collectProgressDate = (dudoc as any)?.collectProgressDate;
+    const collectProgressCardIds = (dudoc as any)?.collectProgressCardIds;
+    const todayCompletedCount =
+        collectProgressDate === todayKeyProgress && Array.isArray(collectProgressCardIds)
+            ? collectProgressCardIds.filter(
+                  (x: unknown) => String(x || '').trim() && !String(x).startsWith('temp-card-'),
+              ).length
+            : 0;
+    const collectActivityDates: string[] = Array.isArray((dudoc as any)?.collectActivityDates)
+        ? (dudoc as any).collectActivityDates.map((x: unknown) => String(x))
+        : [];
+    const totalCheckinDays = collectActivityDates.length;
+    const consecutiveDays = countConsecutiveCheckinDays(collectActivityDates);
+
+    const allResults = await learn.getResults(finalDomainId, uid);
+    const todayStart = moment.utc().startOf('day').toDate();
+    const todayEnd = moment.utc().add(1, 'day').startOf('day').toDate();
+    const todayResults = allResults.filter(
+        (r: any) => r.createdAt && r.createdAt >= todayStart && r.createdAt < todayEnd && r.cardId,
+    );
+    const latestByCardId = new Map<string, { createdAt: Date; resultId: string }>();
+    for (const r of todayResults) {
+        const cid = String(r.cardId);
+        const rid = r._id ? String(r._id) : '';
+        const existing = latestByCardId.get(cid);
+        if (!existing || (r.createdAt && r.createdAt > existing.createdAt)) {
+            latestByCardId.set(cid, { createdAt: r.createdAt, resultId: rid });
         }
     }
-
-    return { pending, completed };
-}
-
-/** 今日已完成的节：根据今日 learn_result 统计（含单卡片刷题、node 模式刷题），与学习点无关 */
-function getCompletedSectionsToday(
-    sections: LearnDAGNode[],
-    allDagNodes: LearnDAGNode[],
-    todayResultCardIds: Set<string>
-): Array<{ _id: string; title: string; passed: number; total: number }> {
-    const nodeMap = new Map<string, LearnDAGNode>();
-    sections.forEach(s => nodeMap.set(String(s._id), s));
-    allDagNodes.forEach(n => nodeMap.set(String(n._id), n));
-
-    const collectCards = (nodeId: string, collected: Set<string>): Array<{ cardId: string }> => {
-        if (collected.has(nodeId)) return [];
-        collected.add(nodeId);
-        const node = nodeMap.get(nodeId);
-        if (!node) return [];
-        const cards = (node.cards || []).map((c: any) => ({ cardId: String(c.cardId) }));
-        const children = allDagNodes.filter((n: any) => n.requireNids?.length > 0 && n.requireNids[n.requireNids.length - 1] === nodeId);
-        for (const child of children) {
-            cards.push(...collectCards(child._id, collected));
-        }
-        return cards;
-    };
-
-    const result: Array<{ _id: string; title: string; passed: number; total: number }> = [];
-    for (const section of sections) {
-        const cards = collectCards(section._id, new Set());
-        const total = cards.length;
-        const passed = cards.filter((c) => todayResultCardIds.has(c.cardId)).length;
-        if (total > 0 && passed > 0) {
-            result.push({ _id: section._id, title: section.title || 'Unnamed', passed, total });
-        }
+    const completedCardsToday: Array<{ cardId: string; resultId: string; cardTitle: string; nodeTitle: string; completedAt: Date }> = [];
+    const baseNodes = base ? getBranchData(base, 'main').nodes || [] : [];
+    for (const [cardIdStr, { createdAt, resultId }] of latestByCardId) {
+        if (!resultId) continue;
+        const cardDoc = await CardModel.get(finalDomainId, new ObjectId(cardIdStr));
+        if (!cardDoc) continue;
+        const nodeDoc = baseNodes.find((n: BaseNode) => n.id === cardDoc.nodeId);
+        completedCardsToday.push({
+            cardId: cardIdStr,
+            resultId,
+            cardTitle: cardDoc.title || '',
+            nodeTitle: nodeDoc?.text || '',
+            completedAt: createdAt,
+        });
     }
-    return result;
-}
+    completedCardsToday.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime());
 
-/** 从当前学习点起的节点列表：每个节点一条，带顺序号，及该节点（含子节点）下的卡片与题目题干 */
-function getPendingNodeList(
-    sections: LearnDAGNode[],
-    allDagNodes: LearnDAGNode[]
-): Array<{ orderIndex: number; _id: string; title: string; cards: Array<{ cardId: string; title: string; problems?: Array<{ stem?: string }> }> }> {
-    const fromLearningPoint = sections;
-    if (fromLearningPoint.length === 0) return [];
-    const nodeMap = new Map<string, LearnDAGNode>();
-    fromLearningPoint.forEach(s => nodeMap.set(String(s._id), s));
-    allDagNodes.forEach(n => nodeMap.set(String(n._id), n));
-
-    const collectCardsUnder = (nodeId: string, collected: Set<string>): Array<{ cardId: string; title: string; problems?: Array<{ stem?: string }> }> => {
-        if (collected.has(nodeId)) return [];
-        collected.add(nodeId);
-        const node = nodeMap.get(nodeId);
-        if (!node) return [];
-        const cardList: Array<{ cardId: string; title: string; problems?: Array<{ stem?: string }> }> = (node.cards || []).map((c: any) => ({
-            cardId: String(c.cardId),
-            title: c.title || 'Unnamed',
-            problems: (c.problems || []).map((p: any) => ({ stem: p.stem })),
-        }));
-        const children = allDagNodes.filter((n: any) => n.requireNids?.length > 0 && n.requireNids[n.requireNids.length - 1] === nodeId);
-        for (const child of children) {
-            cardList.push(...collectCardsUnder(child._id, collected));
-        }
-        return cardList;
-    };
-
-    return fromLearningPoint.map((section, i) => ({
-        orderIndex: i + 1,
-        _id: section._id,
-        title: section.title || 'Unnamed',
-        cards: collectCardsUnder(section._id, new Set()),
-    }));
+    return { dailyGoal, todayCompletedCount, totalCheckinDays, consecutiveDays, completedCardsToday };
 }
 
 async function generateDAG(
@@ -402,12 +420,6 @@ class CollectHandler extends Handler {
                 displayName: this.translate('My Task'),
                 checker: () => true,
             },
-            {
-                name: 'collect_sections',
-                args: {},
-                displayName: this.translate('Sections'),
-                checker: () => true,
-            },
         ];
     }
 
@@ -531,51 +543,44 @@ class CollectHandler extends Handler {
         this.response.body = { success: true, dailyGoal };
     }
 
-    @param('sectionId', Types.String, true)
-    async get(domainId: string, sectionId?: string) {
+    async get(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const { bases, selectedBase, selectedBaseDocId } = await getLearnBaseSelection(finalDomainId, this.user._id, this.user.priv);
         let base = selectedBase;
+
         if (!bases.length) {
+            const extras = await loadCollectHomeExtras(finalDomainId, this.user._id, this.user.priv, null);
             this.response.template = 'collect.html';
             this.response.body = {
-                dag: [],
                 domainId: finalDomainId,
                 baseDocId: null,
                 learnBases: [],
                 selectedLearnBaseDocId: null,
                 requireBaseSelection: false,
+                ...extras,
             };
             return;
         }
         if (!base) {
+            const extras = await loadCollectHomeExtras(finalDomainId, this.user._id, this.user.priv, null);
             this.response.template = 'collect.html';
             this.response.body = {
-                dag: [],
-                fullDag: [],
-                sections: [],
-                currentSectionId: null,
-                currentSectionIndex: 0,
                 domainId: finalDomainId,
                 baseDocId: null,
                 learnBases: bases.map((item) => ({ docId: item.docId, title: item.title, bid: item.bid || '' })),
                 selectedLearnBaseDocId: selectedBaseDocId,
                 requireBaseSelection: true,
-                pendingNodeList: [],
-                completedSections: [],
-                completedCardsToday: [],
-                passedCardIds: [],
+                ...extras,
             };
             return;
         }
 
-        
         const initialNodes = base.nodes?.length || 0;
         const initialEdges = base.edges?.length || 0;
         const branchDataNodes = base.branchData?.['main']?.nodes?.length || 0;
         const branchDataEdges = base.branchData?.['main']?.edges?.length || 0;
-        
-        if ((initialNodes <= 1 && initialEdges === 0 && branchDataNodes <= 1 && branchDataEdges === 0)) {
+
+        if (initialNodes <= 1 && initialEdges === 0 && branchDataNodes <= 1 && branchDataEdges === 0) {
             const reloadedBase = await BaseModel.get(finalDomainId, base.docId);
             if (reloadedBase) {
                 base = reloadedBase;
@@ -598,317 +603,34 @@ class CollectHandler extends Handler {
                 }
             }
         }
-        
+
         const branch = 'main';
         const branchData = getBranchData(base, branch);
         const nodes = branchData.nodes || [];
-        const edges = branchData.edges || [];
-        
+
         if (nodes.length === 0) {
+            const extras = await loadCollectHomeExtras(finalDomainId, this.user._id, this.user.priv, base);
             this.response.template = 'collect.html';
             this.response.body = {
-                dag: [],
-                fullDag: [],
-                sections: [],
-                currentSectionId: null,
-                currentSectionIndex: 0,
                 domainId: finalDomainId,
                 baseDocId: base.docId.toString() || null,
-                pendingNodeList: [],
-                completedSections: [],
-                completedCardsToday: [],
-                passedCardIds: [],
                 learnBases: bases.map((item) => ({ docId: item.docId, title: item.title, bid: item.bid || '' })),
                 selectedLearnBaseDocId: Number(base.docId),
                 requireBaseSelection: false,
+                ...extras,
             };
             return;
         }
 
-        
-        const existingDAG = await learn.getDAG(finalDomainId, base.docId, branch);
-
-        const baseVersion = base.updateAt ? base.updateAt.getTime() : 0;
-        const needsUpdate = !existingDAG || (existingDAG.version || 0) < baseVersion;
-        
-        const hasEmptySections = existingDAG && (!existingDAG.sections || existingDAG.sections.length === 0);
-        const cachedNodesCount = existingDAG ? ((existingDAG.dag?.length || 0) + (existingDAG.sections?.length || 0)) : 0;
-        const shouldRegenerate = needsUpdate || !existingDAG || hasEmptySections || (nodes.length > 0 && cachedNodesCount === 0);
-
-        let sections: LearnDAGNode[] = [];
-        let allDagNodes: LearnDAGNode[] = [];
-
-        if (shouldRegenerate) {
-            const result = await generateDAG(finalDomainId, base.docId, nodes, edges, (key: string) => this.translate(key));
-            sections = result.sections;
-            allDagNodes = result.dag;
-            
-            await learn.setDAG(finalDomainId, base.docId, branch, {
-                sections,
-                dag: allDagNodes,
-                version: baseVersion,
-                updateAt: new Date(),
-            });
-        } else {
-            sections = existingDAG.sections || [];
-            allDagNodes = existingDAG.dag || [];
-        }
-
-        const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv });
-        const savedSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
-        const savedSectionId = (dudoc as any)?.currentLearnSectionId;
-        const dailyGoal = getModeDailyGoal(dudoc as any, 'collect');
-        const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
-        const savedLearnProgressPosition = (dudoc as any)?.learnProgressPosition;
-        const savedLearnProgressTotal = (dudoc as any)?.learnProgressTotal;
-        sections = applyUserSectionOrder(sections, learnSectionOrder);
-        
-        let finalSectionId: string | null = null;
-        let currentSectionIndex: number = 0;
-        const totalSectionsForProgress = sections.length;
-        const sectionIndexParam = this.request.query?.sectionIndex;
-        const sectionIndexFromQuery = typeof sectionIndexParam === 'string' ? parseInt(sectionIndexParam, 10) : typeof sectionIndexParam === 'number' ? sectionIndexParam : NaN;
-        if (!Number.isNaN(sectionIndexFromQuery) && sectionIndexFromQuery >= 0 && sectionIndexFromQuery < sections.length) {
-            currentSectionIndex = sectionIndexFromQuery;
-            finalSectionId = sections[sectionIndexFromQuery]._id;
-            await learn.setUserLearnState(finalDomainId, this.user._id, {
-                currentLearnSectionId: finalSectionId,
-                currentLearnSectionIndex: currentSectionIndex,
-                learnProgressPosition: Math.max(0, currentSectionIndex),
-                learnProgressTotal: totalSectionsForProgress,
-            });
-        } else if (sectionId) {
-            const idx = sections.findIndex(s => s._id === sectionId);
-            finalSectionId = sectionId;
-            currentSectionIndex = idx >= 0 ? idx : 0;
-            // 第一个=0/4，最后一个=3/4：已完成数 = currentSectionIndex
-            await learn.setUserLearnState(finalDomainId, this.user._id, {
-                currentLearnSectionId: sectionId,
-                currentLearnSectionIndex: currentSectionIndex,
-                learnProgressPosition: Math.max(0, currentSectionIndex),
-                learnProgressTotal: totalSectionsForProgress,
-            });
-        } else if (typeof savedSectionIndex === 'number' && savedSectionIndex >= 0 && savedSectionIndex < sections.length) {
-            finalSectionId = sections[savedSectionIndex]._id;
-            currentSectionIndex = savedSectionIndex;
-        } else if (savedSectionId && sections.find(s => s._id === savedSectionId)) {
-            const idx = sections.findIndex(s => s._id === savedSectionId);
-            finalSectionId = savedSectionId;
-            currentSectionIndex = idx >= 0 ? idx : 0;
-            await learn.setUserLearnState(finalDomainId, this.user._id, {
-                currentLearnSectionIndex: currentSectionIndex,
-                learnProgressPosition: Math.max(0, currentSectionIndex),
-                learnProgressTotal: totalSectionsForProgress,
-            });
-        } else if (sections.length > 0) {
-            finalSectionId = sections[0]._id;
-            currentSectionIndex = 0;
-            await learn.setUserLearnState(finalDomainId, this.user._id, {
-                currentLearnSectionId: finalSectionId,
-                currentLearnSectionIndex: 0,
-                learnProgressPosition: 0,
-                learnProgressTotal: totalSectionsForProgress,
-            });
-        }
-
-        let dag: LearnDAGNode[] = [];
-        if (finalSectionId) {
-            const collectChildren = (parentId: string, collected: Set<string>) => {
-                if (collected.has(parentId)) return;
-                collected.add(parentId);
-                
-                const children = allDagNodes.filter(node => {
-                    if (collected.has(node._id)) return false;
-                    
-                    const isDirectChild = node.requireNids.length > 0 && 
-                                        node.requireNids[node.requireNids.length - 1] === parentId;
-                    return isDirectChild;
-                });
-                
-                
-                for (const child of children) {
-                    if (!collected.has(child._id)) {
-                        dag.push(child);
-                        collectChildren(child._id, collected);
-                    }
-                }
-            };
-            
-            const collected = new Set<string>();
-            collectChildren(finalSectionId, collected);
-        } else if (sections.length > 0) {
-            const firstSection = sections[0];
-            
-            const collectChildren = (parentId: string, collected: Set<string>) => {
-                if (collected.has(parentId)) return;
-                collected.add(parentId);
-                
-                const children = allDagNodes.filter(node => {
-                    if (collected.has(node._id)) return false;
-                    return node.requireNids.length > 0 && 
-                           node.requireNids[node.requireNids.length - 1] === parentId;
-                });
-                
-                for (const child of children) {
-                    if (!collected.has(child._id)) {
-                        dag.push(child);
-                        collectChildren(child._id, collected);
-                    }
-                }
-            };
-            
-            const collected = new Set<string>();
-            collectChildren(firstSection._id, collected);
-        }
-
-        const passedCardIds = await learn.getPassedCardIds(finalDomainId, this.user._id);
-
-        const flatCards: Array<{ nodeId: string; cardId: string; order: number; nodeIndex: number; cardIndex: number }> = [];
-        dag.forEach((node, nodeIndex) => {
-            (node.cards || []).forEach((card, cardIndex) => {
-                flatCards.push({
-                    nodeId: node._id,
-                    cardId: card.cardId,
-                    order: card.order || 0,
-                    nodeIndex: nodeIndex,
-                    cardIndex: cardIndex,
-                });
-            });
-        });
-
-        const totalCards = flatCards.length;
-
-        // 总进度 = 已完成节数/总节数，仅用数据库 learnProgressPosition / learnProgressTotal
-        const totalSections = sections.length;
-        const currentProgress = typeof savedLearnProgressPosition === 'number' && typeof savedLearnProgressTotal === 'number' && savedLearnProgressTotal > 0
-            ? Math.max(0, Math.min(savedLearnProgressPosition, savedLearnProgressTotal))
-            : 0;
-        const totalProgress = typeof savedLearnProgressTotal === 'number' && savedLearnProgressTotal > 0 ? savedLearnProgressTotal : 0;
-
-        const allResults = await learn.getResults(finalDomainId, this.user._id);
-
-        const collectActivityDates: string[] = Array.isArray((dudoc as any)?.collectActivityDates)
-            ? (dudoc as any).collectActivityDates.map((x: unknown) => String(x))
-            : [];
-
-        const todayStart = moment.utc().startOf('day').toDate();
-        const todayEnd = moment.utc().add(1, 'day').startOf('day').toDate();
-        let todayCompletedCount = 0;
-        const todayResultCardIds = new Set<string>();
-        for (const result of allResults) {
-            if (result.createdAt) {
-                if (result.createdAt >= todayStart && result.createdAt < todayEnd) {
-                    todayCompletedCount++;
-                    if (result.cardId) todayResultCardIds.add(String(result.cardId));
-                }
-            }
-        }
-
-        const pendingNodeList = getPendingNodeList(sections.slice(currentSectionIndex), allDagNodes);
-        const completedSections = getCompletedSectionsToday(sections, allDagNodes, todayResultCardIds);
-
-        const todayResults = allResults.filter(
-            (r: any) => r.createdAt && r.createdAt >= todayStart && r.createdAt < todayEnd && r.cardId
-        );
-        const latestByCardId = new Map<string, { createdAt: Date; resultId: string }>();
-        for (const r of todayResults) {
-            const cid = String(r.cardId);
-            const rid = r._id ? String(r._id) : '';
-            const existing = latestByCardId.get(cid);
-            if (!existing || (r.createdAt && r.createdAt > existing.createdAt)) {
-                latestByCardId.set(cid, { createdAt: r.createdAt, resultId: rid });
-            }
-        }
-        const completedCardsToday: Array<{ cardId: string; resultId: string; cardTitle: string; nodeTitle: string; completedAt: Date }> = [];
-        const baseNodes = getBranchData(base, 'main').nodes || [];
-        for (const [cardIdStr, { createdAt, resultId }] of latestByCardId) {
-            if (!resultId) continue;
-            const cardDoc = await CardModel.get(finalDomainId, new ObjectId(cardIdStr));
-            if (!cardDoc) continue;
-            const nodeDoc = baseNodes.find((n: BaseNode) => n.id === cardDoc.nodeId);
-            completedCardsToday.push({
-                cardId: cardIdStr,
-                resultId,
-                cardTitle: cardDoc.title || '',
-                nodeTitle: nodeDoc?.text || '',
-                completedAt: createdAt,
-            });
-        }
-        completedCardsToday.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime());
-
-        const totalCheckinDays = collectActivityDates.length;
-        const consecutiveDays = countConsecutiveCheckinDays(collectActivityDates);
-
-        const dagWithProgress = dag.map((node, nodeIndex) => ({
-            ...node,
-            cards: (node.cards || []).map((card, cardIndex) => {
-                const cardPassed = passedCardIds.has(card.cardId);
-                const currentCardGlobalIndex = flatCards.findIndex(c => 
-                    c.nodeIndex === nodeIndex && c.cardIndex === cardIndex
-                );
-                
-                let isUnlocked = false;
-                if (currentCardGlobalIndex === 0) {
-                    isUnlocked = true;
-                } else if (currentCardGlobalIndex > 0) {
-                    const prevCard = flatCards[currentCardGlobalIndex - 1];
-                    isUnlocked = passedCardIds.has(prevCard.cardId);
-                }
-                
-                return {
-                    ...card,
-                    passed: cardPassed,
-                    unlocked: isUnlocked,
-                };
-            }),
-        }));
-
-        let nextCard: { nodeId: string; cardId: string } | null = null;
-        for (let i = 0; i < flatCards.length; i++) {
-            if (!passedCardIds.has(flatCards[i].cardId)) {
-                nextCard = { nodeId: flatCards[i].nodeId, cardId: flatCards[i].cardId };
-                break;
-            }
-        }
-
-        // 仅在非第一节时自动进入下一节，否则第一节无卡片时会从 0/4 被写成 1/4
-        if (!nextCard && sections.length > 0 && currentSectionIndex > 0 && currentSectionIndex + 1 < sections.length) {
-            const nextIndex = currentSectionIndex + 1;
-            const nextSectionId = sections[nextIndex]._id;
-            await learn.setUserLearnState(finalDomainId, this.user._id, {
-                currentLearnSectionIndex: nextIndex,
-                currentLearnSectionId: nextSectionId,
-                learnProgressPosition: Math.max(0, nextIndex),
-                learnProgressTotal: totalSections,
-            });
-            this.response.redirect = this.url('collect', { domainId: finalDomainId });
-            return;
-        }
-
+        const extras = await loadCollectHomeExtras(finalDomainId, this.user._id, this.user.priv, base);
         this.response.template = 'collect.html';
         this.response.body = {
-            dag: dagWithProgress,
-            fullDag: allDagNodes,
-            sections: sections,
-            currentSectionId: finalSectionId,
-            currentSectionIndex,
             domainId: finalDomainId,
             baseDocId: base.docId.toString(),
-            currentProgress,
-            totalProgress,
-            totalCards,
-            totalCheckinDays,
-            consecutiveDays,
-            dailyGoal,
-            todayCompletedCount,
-            pendingNodeList,
-            completedSections,
-            completedCardsToday,
-            nextCard,
-            passedCardIds: Array.from(passedCardIds),
             learnBases: bases.map((item) => ({ docId: item.docId, title: item.title, bid: item.bid || '' })),
             selectedLearnBaseDocId: Number(base.docId),
             requireBaseSelection: false,
+            ...extras,
         };
     }
 
@@ -929,12 +651,6 @@ class CollectEditHandler extends Handler {
                 name: 'collect',
                 args: {},
                 displayName: this.translate('Learn'),
-                checker: () => true,
-            },
-            {
-                name: 'collect_sections',
-                args: {},
-                displayName: this.translate('Sections'),
                 checker: () => true,
             },
         ];
@@ -1846,6 +1562,7 @@ class CollectLessonHandler extends Handler {
                 createdAt: new Date(),
             });
             await bus.parallel('learn_result/add', currentCardDomainId);
+            await persistCollectTodayCardIds(currentCardDomainId, this.user._id, this.user.priv, [currentCardId.toString()]);
             await appendUserCheckinDay(currentCardDomainId, this.user._id, this.user.priv, 'collectActivityDates');
             const today = moment.utc().format('YYYY-MM-DD');
             let problemCount = 0;
@@ -1963,6 +1680,7 @@ class CollectLessonHandler extends Handler {
                 createdAt: new Date(),
             });
             await bus.parallel('learn_result/add', finalDomainId);
+            await persistCollectTodayCardIds(finalDomainId, this.user._id, this.user.priv, [currentCardId.toString()]);
             await appendUserCheckinDay(finalDomainId, this.user._id, this.user.priv, 'collectActivityDates');
             const today = moment.utc().format('YYYY-MM-DD');
             let problemCount = 0;
@@ -2043,6 +1761,7 @@ class CollectLessonHandler extends Handler {
                     createdAt: new Date(),
                 });
                 await bus.parallel('learn_result/add', finalDomainId);
+                await persistCollectTodayCardIds(finalDomainId, this.user._id, this.user.priv, [currentCardId.toString()]);
                 await appendUserCheckinDay(finalDomainId, this.user._id, this.user.priv, 'collectActivityDates');
                 const today = moment.utc().format('YYYY-MM-DD');
                 let problemCount = 0;
@@ -2067,6 +1786,7 @@ class CollectLessonHandler extends Handler {
                     createdAt: new Date(),
                 });
                 await bus.parallel('learn_result/add', finalDomainId);
+                await persistCollectTodayCardIds(finalDomainId, this.user._id, this.user.priv, [currentCardId.toString()]);
                 await appendUserCheckinDay(finalDomainId, this.user._id, this.user.priv, 'collectActivityDates');
                 const timeToAdd = (totalTime && typeof totalTime === 'number' && totalTime > 0) ? totalTime : 0;
                 await learn.incConsumptionStats(finalDomainId, this.user._id, moment.utc().format('YYYY-MM-DD'), { nodes: 1, cards: 1, problems: 1, practices: 1, ...(timeToAdd > 0 ? { totalTime: timeToAdd } : {}) });
@@ -2263,6 +1983,7 @@ class CollectLessonHandler extends Handler {
         });
 
         await bus.parallel('learn_result/add', finalDomainId);
+        await persistCollectTodayCardIds(finalDomainId, this.user._id, this.user.priv, [currentCardId.toString()]);
         await appendUserCheckinDay(finalDomainId, this.user._id, this.user.priv, 'collectActivityDates');
 
         const today = moment.utc().format('YYYY-MM-DD');
@@ -2489,287 +2210,6 @@ class CollectLessonNodeResultHandler extends Handler {
     }
 }
 
-class CollectSectionEditHandler extends Handler {
-    async after(domainId: string) {
-        if (this.request.json || !this.response.template) return;
-        
-        const uidParam = this.request.query?.uid;
-        const uid = uidParam ? parseInt(String(uidParam), 10) : this.user._id;
-        this.response.body.overrideNav = [
-            {
-                name: 'homepage',
-                args: {},
-                displayName: this.translate('Home'),
-                checker: () => true,
-            },
-            {
-                name: 'collect',
-                args: {},
-                displayName: this.translate('Learn'),
-                checker: () => true,
-            },
-            {
-                name: 'collect_sections',
-                args: {},
-                displayName: this.translate('Sections'),
-                checker: () => true,
-            },
-            {
-                name: 'collect_section_edit',
-                args: { query: { uid: String(uid) } },
-                displayName: this.translate('Section Order'),
-                checker: () => true,
-            },
-        ];
-    }
-
-    async post(domainId: string) {
-        return this.postSaveOrder(domainId);
-    }
-
-    async resolveTargetUid(domainId: string): Promise<number> {
-        const uidParam = this.request.query?.uid || this.request.body?.uid;
-        let targetUid = uidParam ? parseInt(String(uidParam), 10) : this.user._id;
-        if (Number.isNaN(targetUid)) targetUid = this.user._id;
-        if (targetUid !== this.user._id) {
-            this.checkPerm(PERM.PERM_EDIT_DOMAIN);
-        }
-        const udoc = await user.getById(domainId, targetUid);
-        if (!udoc) throw new NotFoundError('User not found');
-        return targetUid;
-    }
-
-    async postSaveOrder(domainId: string) {
-        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
-        const targetUid = await this.resolveTargetUid(finalDomainId);
-        const body: any = this.request?.body || {};
-        // 原样保存，不去重：每人 learnSectionOrder 可含重复 section id
-        const sectionOrder: string[] = Array.isArray(body.sectionOrder) ? body.sectionOrder : [];
-        const rawIndex = body.currentLearnSectionIndex;
-        const currentLearnSectionIndex = typeof rawIndex === 'number' ? rawIndex : parseInt(String(rawIndex), 10);
-
-        const base = await requireSelectedLearnBase(finalDomainId, this.user._id, this.user.priv);
-        if (!base) {
-            throw new NotFoundError('Base not found for this domain');
-        }
-
-        const existingDAG = await learn.getDAG(finalDomainId, base.docId, 'main');
-
-        if (!existingDAG || !existingDAG.sections || existingDAG.sections.length === 0) {
-            throw new NotFoundError('No sections to reorder');
-        }
-
-        const totalSections = sectionOrder.length;
-        let indexToUse = Number.isNaN(currentLearnSectionIndex) || currentLearnSectionIndex < 0 || currentLearnSectionIndex >= totalSections
-            ? null
-            : currentLearnSectionIndex;
-        if (indexToUse === null) {
-            const dudoc = await domain.getDomainUser(finalDomainId, { _id: targetUid, priv: this.user.priv });
-            const saved = (dudoc as any)?.currentLearnSectionIndex;
-            if (typeof saved === 'number' && saved >= 0 && saved < totalSections) indexToUse = saved;
-            else indexToUse = 0;
-        }
-        const currentLearnSectionIndexFinal = indexToUse;
-
-        // 前端 sectionOrder：[0]=先学，[i]=第 i+1 个，故已完成数 = currentLearnSectionIndex
-        const learnProgressPosition = Math.max(0, Math.min(currentLearnSectionIndexFinal, totalSections));
-        const learnProgressTotal = totalSections;
-
-        const update = {
-            learnSectionOrder: sectionOrder,
-            currentLearnSectionIndex: currentLearnSectionIndexFinal,
-            currentLearnSectionId: sectionOrder[currentLearnSectionIndexFinal],
-            learnProgressPosition,
-            learnProgressTotal,
-        };
-        await learn.setUserLearnState(finalDomainId, targetUid, update);
-
-        this.response.body = { success: true, sectionOrder, currentLearnSectionIndex: currentLearnSectionIndexFinal };
-    }
-
-    async get(domainId: string) {
-        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
-        const targetUid = await this.resolveTargetUid(finalDomainId);
-        const base = await requireSelectedLearnBase(finalDomainId, this.user._id, this.user.priv);
-        
-        if (!base) {
-            this.response.template = 'collect_section_edit.html';
-            this.response.body = {
-                sections: [],
-                allSections: [],
-                dag: [],
-                domainId: finalDomainId,
-                baseDocId: null,
-                targetUid,
-                targetUser: null,
-            };
-            return;
-        }
-
-        const branch = 'main';
-        const existingDAG = await learn.getDAG(finalDomainId, base.docId, branch);
-
-        const allSections: LearnDAGNode[] = [];
-        const dag: LearnDAGNode[] = [];
-        if (existingDAG) {
-            if (existingDAG.sections && existingDAG.sections.length > 0) {
-                allSections.push(...[...existingDAG.sections].sort((a, b) => (a.order || 0) - (b.order || 0)));
-            }
-            if (existingDAG.dag && existingDAG.dag.length > 0) {
-                dag.push(...[...existingDAG.dag].sort((a, b) => (a.order || 0) - (b.order || 0)));
-            }
-        }
-
-        const dudoc = await domain.getDomainUser(finalDomainId, { _id: targetUid, priv: this.user.priv });
-        const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
-        const sections = applyUserSectionOrder(allSections.length ? [...allSections] : [], learnSectionOrder);
-        const currentLearnSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
-        const currentLearnSectionId = (dudoc as any)?.currentLearnSectionId;
-
-        const udoc = await user.getById(finalDomainId, targetUid);
-
-        this.response.template = 'collect_section_edit.html';
-        this.response.body = {
-            sections,
-            allSections,
-            dag,
-            domainId: finalDomainId,
-            baseDocId: base.docId.toString(),
-            targetUid,
-            targetUser: udoc ? { uname: udoc.uname, _id: udoc._id } : null,
-            currentLearnSectionIndex: typeof currentLearnSectionIndex === 'number' ? currentLearnSectionIndex : null,
-            currentLearnSectionId: currentLearnSectionId || null,
-        };
-    }
-}
-
-class CollectSectionsHandler extends Handler {
-    async after(domainId: string) {
-        if (this.request.json || !this.response.template) return;
-        
-        this.response.body.overrideNav = [
-            {
-                name: 'homepage',
-                args: {},
-                displayName: this.translate('Home'),
-                checker: () => true,
-            },
-            {
-                name: 'collect',
-                args: {},
-                displayName: this.translate('Learn'),
-                checker: () => true,
-            },
-            {
-                name: 'collect_sections',
-                args: {},
-                displayName: this.translate('Sections'),
-                checker: () => true,
-            },
-            {
-                name: 'collect_section_edit',
-                args: {},
-                displayName: this.translate('Section Order'),
-                checker: () => true,
-            },
-        ];
-    }
-
-    async get(domainId: string) {
-        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
-        const base = await requireSelectedLearnBase(finalDomainId, this.user._id, this.user.priv);
-        
-        if (!base) {
-            this.response.template = 'collect_sections.html';
-            this.response.body = {
-                sections: [],
-                domainId: finalDomainId,
-                baseDocId: null,
-            };
-            return;
-        }
-
-        const branch = 'main';
-        const branchData = getBranchData(base, branch);
-        const nodes = branchData.nodes || [];
-        const edges = branchData.edges || [];
-        
-        if (nodes.length === 0) {
-            this.response.template = 'collect_sections.html';
-            this.response.body = {
-                sections: [],
-                dag: [],
-                domainId: finalDomainId,
-                baseDocId: base.docId.toString() || null,
-                currentSectionId: null,
-                currentLearnSectionIndex: null,
-            };
-            return;
-        }
-
-        
-        const existingDAG = await learn.getDAG(finalDomainId, base.docId, branch);
-
-        const baseVersion = base.updateAt ? base.updateAt.getTime() : 0;
-        const DAG_SCHEMA_VERSION = 2; // 增量：每个节点只存自身卡片，不聚合子节点
-        const needsUpdate = !existingDAG || (existingDAG.version || 0) < baseVersion;
-        const needsSchemaUpdate = existingDAG && ((existingDAG as any).dagSchemaVersion || 0) < DAG_SCHEMA_VERSION;
-        
-        const hasSectionsWithoutCards = existingDAG && existingDAG.sections && 
-            existingDAG.sections.some((s: any) => !s.cards || s.cards.length === 0);
-
-        // 检查缓存中的卡片是否缺少 problemCount（旧格式），需要重新生成以包含题目数据
-        const hasCardsWithoutProblemCount = existingDAG && (
-            (existingDAG.sections || []).some((s: any) =>
-                (s.cards || []).some((c: any) => c.problemCount === undefined && c.problems === undefined)
-            ) ||
-            (existingDAG.dag || []).some((n: any) =>
-                (n.cards || []).some((c: any) => c.problemCount === undefined && c.problems === undefined)
-            )
-        );
-
-        let sections: LearnDAGNode[] = [];
-        let dag: LearnDAGNode[] = [];
-
-        if (needsUpdate || !existingDAG || hasSectionsWithoutCards || hasCardsWithoutProblemCount || needsSchemaUpdate) {
-            const result = await generateDAG(finalDomainId, base.docId, nodes, edges, (key: string) => this.translate(key));
-            sections = result.sections;
-            dag = result.dag;
-
-            await learn.setDAG(finalDomainId, base.docId, branch, {
-                sections,
-                dag: result.dag,
-                version: baseVersion,
-                updateAt: new Date(),
-            }, { dagSchemaVersion: DAG_SCHEMA_VERSION });
-        } else {
-            sections = existingDAG.sections || [];
-            dag = existingDAG.dag || [];
-        }
-
-        const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv });
-        const currentLearnSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
-        const currentSectionId = (dudoc as any)?.currentLearnSectionId || null;
-        const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
-        sections = applyUserSectionOrder(sections, learnSectionOrder);
-
-        sections = sections.map(section => ({
-            ...section,
-            cards: section.cards || [],
-        }));
-
-        this.response.template = 'collect_sections.html';
-        this.response.body = {
-            sections: sections,
-            dag: dag,
-            domainId: finalDomainId,
-            baseDocId: base.docId.toString(),
-            currentSectionId: currentSectionId,
-            currentLearnSectionIndex: typeof currentLearnSectionIndex === 'number' && currentLearnSectionIndex >= 0 && currentLearnSectionIndex < sections.length ? currentLearnSectionIndex : null,
-        };
-    }
-}
-
 class CollectBaseSelectHandler extends Handler {
     async get(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
@@ -2897,6 +2337,11 @@ class CollectBaseEditorHandler extends Handler {
         const workspaceNodeId = workspaceFromQuery && nodeIds.has(workspaceFromQuery) ? workspaceFromQuery : '';
 
         const z = { nodes: 0, cards: 0, problems: 0, nodeChars: 0, cardChars: 0, problemChars: 0 };
+        const { collectDailyGoal, collectTodayCompletedCount } = await getCollectEditorTodayProgress(
+            finalDomainId,
+            this.user._id,
+            this.user.priv,
+        );
         this.response.body = {
             base: { ...base, nodes, edges },
             currentBranch: requestedBranch,
@@ -2912,6 +2357,8 @@ class CollectBaseEditorHandler extends Handler {
             baseExpandState,
             workspaceNodeId,
             editorUiMode: 'collect_cards_problems',
+            collectDailyGoal,
+            collectTodayCompletedCount,
         };
     }
 }
@@ -2935,6 +2382,12 @@ class CollectLearnSyncHandler extends Handler {
             throw new BadRequestError('Unsupported operation');
         }
 
+        const cardIds = Array.isArray(body.cardIds)
+            ? body.cardIds
+                  .map((x: unknown) => String(x || '').trim())
+                  .filter((id: string) => id && !id.startsWith('temp-card-'))
+            : [];
+
         const { selectedBaseDocId } = await getLearnBaseSelection(finalDomainId, this.user._id, this.user.priv);
         if (selectedBaseDocId === null || Number(selectedBaseDocId) !== Number(docId)) {
             throw new ValidationError(this.translate('Select this base in Collect before syncing') || 'Base mismatch');
@@ -2947,7 +2400,22 @@ class CollectLearnSyncHandler extends Handler {
         }
 
         await saveCollectBaseForUser(finalDomainId, this.user._id, docId, (key: string) => this.translate(key));
-        this.response.body = { success: true };
+        let dudoc = (await learn.getUserLearnState(finalDomainId, {
+            _id: this.user._id,
+            priv: this.user.priv,
+        })) as Record<string, unknown> | null;
+        if (cardIds.length > 0) {
+            const progressUpdate = mergeCollectCheckinCardProgress(dudoc, cardIds);
+            await learn.setUserLearnState(finalDomainId, this.user._id, progressUpdate);
+            dudoc = { ...dudoc, ...progressUpdate } as Record<string, unknown>;
+        }
+        const { collectDailyGoal, collectTodayCompletedCount } = await getCollectEditorTodayProgress(
+            finalDomainId,
+            this.user._id,
+            this.user.priv,
+            dudoc,
+        );
+        this.response.body = { success: true, collectDailyGoal, collectTodayCompletedCount };
     }
 }
 
@@ -2959,8 +2427,6 @@ export async function apply(ctx: Context) {
     ctx.Route('collect_learn_sync', '/collect/base/:docId/sync-learn', CollectLearnSyncHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('collect_base_select', '/collect/base/select', CollectBaseSelectHandler);
     ctx.Route('collect_set_daily_goal', '/collect/daily-goal', CollectHandler);
-    ctx.Route('collect_sections', '/collect/sections', CollectSectionsHandler);
-    ctx.Route('collect_section_edit', '/collect/section/edit', CollectSectionEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('collect_edit', '/collect/edit', CollectEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('collect_lesson', '/collect/lesson', CollectLessonHandler);
     ctx.Route('collect_lesson_result', '/collect/lesson/result/:resultId', CollectLessonHandler);
