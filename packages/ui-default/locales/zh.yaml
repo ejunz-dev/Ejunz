@@ -563,6 +563,7 @@ client_logs: 连接日志
 Close: 关闭
 CLOSE: 关闭
 collapse: 收缩
+collect: 收集
 Comment: 评论
 Comments: 评论
 CommonMark Syntax: CommonMark 语法
@@ -703,6 +704,7 @@ Field {0} validation failed. ({2}): 字段 {0} 验证失败。 ({2})
 Field {0} validation failed.: 字段 {0} 验证失败。
 File Version (Optional): 文件版本（可选）
 Filter: 过滤
+flag: 锚点
 Footer: 页脚
 Forgot Password and/or Username: 忘记密码和/或用户名
 Forgot password or username?: 忘记密码或者用户名？

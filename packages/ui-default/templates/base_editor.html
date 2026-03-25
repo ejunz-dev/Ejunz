@@ -17,6 +17,9 @@
   {{ set(UiContext, 'contributionDetails', contributionDetails or {}) }}
   {{ set(UiContext, 'baseExpandState', baseExpandState or []) }}
   {{ set(UiContext, 'workspaceNodeId', workspaceNodeId or '') }}
+  {% if editorUiMode %}
+  {{ set(UiContext, 'editorUiMode', editorUiMode) }}
+  {% endif %}
   {{ set(UiContext, 'socketUrl', 'base/ws?domainId=' + (domainId or (base and base.domainId) or '') + '&docId=' + (base.docId.toString() if base and base.docId else '')) }}
 </script>
 <div class="row">
