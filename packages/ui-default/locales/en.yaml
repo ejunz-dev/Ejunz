@@ -430,6 +430,7 @@ __langname: English
 'Your Answer': Your Answer
 'your custom message': your custom message
 "This domain today": This domain today
+"Today's goal progress": Today's goal progress
 "Today's contribution": Today's contribution
 "Total today (all domains)": Total today (all domains)
 # Base editor
@@ -442,6 +443,7 @@ All Domains Learn: All Domains Learn
 Average Rating: Average Rating
 Back to: Back to
 Base Node: Base Node
+Base has no nodes: Base has no nodes
 base_create: Create Base
 base_data: Base Data
 base_delete: Delete Base

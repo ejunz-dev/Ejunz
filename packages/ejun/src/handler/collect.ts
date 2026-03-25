@@ -14,6 +14,7 @@ import db from '../service/db';
 import moment from 'moment-timezone';
 import bus from '../service/bus';
 import { updateDomainRanking } from './domain';
+import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../lib/checkin';
 
 function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edges: BaseEdge[] } {
     const branchName = branch || 'main';
@@ -792,15 +793,16 @@ class CollectHandler extends Handler {
 
         const allResults = await learn.getResults(finalDomainId, this.user._id);
 
-        const practiceDates = new Set<string>();
+        const collectActivityDates: string[] = Array.isArray((dudoc as any)?.collectActivityDates)
+            ? (dudoc as any).collectActivityDates.map((x: unknown) => String(x))
+            : [];
+
         const todayStart = moment.utc().startOf('day').toDate();
         const todayEnd = moment.utc().add(1, 'day').startOf('day').toDate();
         let todayCompletedCount = 0;
         const todayResultCardIds = new Set<string>();
         for (const result of allResults) {
             if (result.createdAt) {
-                const date = moment.utc(result.createdAt).format('YYYY-MM-DD');
-                practiceDates.add(date);
                 if (result.createdAt >= todayStart && result.createdAt < todayEnd) {
                     todayCompletedCount++;
                     if (result.cardId) todayResultCardIds.add(String(result.cardId));
@@ -840,21 +842,8 @@ class CollectHandler extends Handler {
         }
         completedCardsToday.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime());
 
-        const totalCheckinDays = practiceDates.size;
-
-        let consecutiveDays = 0;
-        const today = moment.utc();
-        let checkDate = moment.utc(today);
-        
-        while (true) {
-            const dateStr = checkDate.format('YYYY-MM-DD');
-            if (practiceDates.has(dateStr)) {
-                consecutiveDays++;
-                checkDate = checkDate.subtract(1, 'day');
-            } else {
-                break;
-            }
-        }
+        const totalCheckinDays = collectActivityDates.length;
+        const consecutiveDays = countConsecutiveCheckinDays(collectActivityDates);
 
         const dagWithProgress = dag.map((node, nodeIndex) => ({
             ...node,
@@ -1863,6 +1852,7 @@ class CollectLessonHandler extends Handler {
                 createdAt: new Date(),
             });
             await bus.parallel('learn_result/add', currentCardDomainId);
+            await appendUserCheckinDay(currentCardDomainId, this.user._id, this.user.priv, 'collectActivityDates');
             const today = moment.utc().format('YYYY-MM-DD');
             let problemCount = 0;
             for (const h of answerHistory) {
@@ -1979,6 +1969,7 @@ class CollectLessonHandler extends Handler {
                 createdAt: new Date(),
             });
             await bus.parallel('learn_result/add', finalDomainId);
+            await appendUserCheckinDay(finalDomainId, this.user._id, this.user.priv, 'collectActivityDates');
             const today = moment.utc().format('YYYY-MM-DD');
             let problemCount = 0;
             for (const h of answerHistory) {
@@ -2058,6 +2049,7 @@ class CollectLessonHandler extends Handler {
                     createdAt: new Date(),
                 });
                 await bus.parallel('learn_result/add', finalDomainId);
+                await appendUserCheckinDay(finalDomainId, this.user._id, this.user.priv, 'collectActivityDates');
                 const today = moment.utc().format('YYYY-MM-DD');
                 let problemCount = 0;
                 for (const h of answerHistory) {
@@ -2081,6 +2073,7 @@ class CollectLessonHandler extends Handler {
                     createdAt: new Date(),
                 });
                 await bus.parallel('learn_result/add', finalDomainId);
+                await appendUserCheckinDay(finalDomainId, this.user._id, this.user.priv, 'collectActivityDates');
                 const timeToAdd = (totalTime && typeof totalTime === 'number' && totalTime > 0) ? totalTime : 0;
                 await learn.incConsumptionStats(finalDomainId, this.user._id, moment.utc().format('YYYY-MM-DD'), { nodes: 1, cards: 1, problems: 1, practices: 1, ...(timeToAdd > 0 ? { totalTime: timeToAdd } : {}) });
                 const reviewIdsKnow: string[] = Array.isArray(dudocPass?.lessonReviewCardIds) ? dudocPass.lessonReviewCardIds : [];
@@ -2276,6 +2269,7 @@ class CollectLessonHandler extends Handler {
         });
 
         await bus.parallel('learn_result/add', finalDomainId);
+        await appendUserCheckinDay(finalDomainId, this.user._id, this.user.priv, 'collectActivityDates');
 
         const today = moment.utc().format('YYYY-MM-DD');
         let problemCount = 0;
@@ -2939,7 +2933,7 @@ class CollectEditorShortcutHandler extends Handler {
 
 class CollectLearnSyncHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
-    async post(domainId: string, docId: number) {
+    async postSyncDag(domainId: string, docId: number) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const body: any = this.request?.body || {};
