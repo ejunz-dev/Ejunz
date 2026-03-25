@@ -121,6 +121,9 @@ __langname: English
 'Created Clients': Created Clients
 'Created Time': Created Time
 'Cumulative': Cumulative
+'Current base (Collect)': Current base (Collect)
+'Current base (Flag)': Current base (Flag)
+'Current base (Learn)': Current base (Learn)
 'Current base structure': Current base structure
 'Current Progress': Current Progress
 'Current': Current
@@ -430,8 +433,8 @@ __langname: English
 'Your Answer': Your Answer
 'your custom message': your custom message
 "This domain today": This domain today
-"Today's goal progress": Today's goal progress
 "Today's contribution": Today's contribution
+"Today's goal progress": Today's goal progress
 "Total today (all domains)": Total today (all domains)
 # Base editor
 # Client chat translations
@@ -442,8 +445,8 @@ agent_edit: Edit Agent
 All Domains Learn: All Domains Learn
 Average Rating: Average Rating
 Back to: Back to
-Base Node: Base Node
 Base has no nodes: Base has no nodes
+Base Node: Base Node
 base_create: Create Base
 base_data: Base Data
 base_delete: Delete Base

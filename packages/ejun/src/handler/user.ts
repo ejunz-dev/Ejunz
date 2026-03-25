@@ -13,6 +13,7 @@ import {
 } from '../error';
 import { TokenDoc, Udoc, User } from '../interface';
 import avatar from '../lib/avatar';
+import { getModeDailyGoal } from '../lib/learnModePrefs';
 import { sendMail } from '../lib/mail';
 import { verifyTFA } from '../lib/verifyTFA';
 import BlackListModel from '../model/blacklist';
@@ -1277,7 +1278,7 @@ class UserTaskHandler extends Handler {
                 if (!ddoc) return null;
                 
                 const dudoc = dudict[did];
-                const dailyGoal = (dudoc as any)?.dailyGoal || 0;
+                const dailyGoal = getModeDailyGoal(dudoc as any, 'learn');
                 
                 const learnResultColl = this.ctx.db.db.collection('learn_result');
                 const today = moment.utc().format('YYYY-MM-DD');
@@ -1391,7 +1392,7 @@ class UserAllDomainsLearnHandler extends Handler {
             const ddoc = await domain.get(did);
             if (!ddoc) continue;
             const dudoc = dudict[did];
-            const dailyGoal = (dudoc as any)?.dailyGoal || 0;
+            const dailyGoal = getModeDailyGoal(dudoc as any, 'learn');
             const todayResults = await learnResultColl.find({
                 domainId: did,
                 userId: uid,

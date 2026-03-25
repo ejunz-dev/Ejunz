@@ -14,6 +14,7 @@ import moment from 'moment-timezone';
 import bus from '../service/bus';
 import { updateDomainRanking } from './domain';
 import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../lib/checkin';
+import { getModeBaseDocId, getModeDailyGoal } from '../lib/learnModePrefs';
 
 function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edges: BaseEdge[] } {
     const branchName = branch || 'main';
@@ -67,8 +68,7 @@ async function getLearnBaseSelection(domainId: string, uid: number, priv: number
         return { bases, selectedBase: null as BaseDoc | null, selectedBaseDocId: null as number | null };
     }
     const dudoc = await learn.getUserLearnState(domainId, { _id: uid, priv }) as any;
-    const rawSelected = dudoc?.learnBaseDocId;
-    const selectedBaseDocId = Number.isFinite(Number(rawSelected)) ? Number(rawSelected) : null;
+    const selectedBaseDocId = getModeBaseDocId(dudoc, 'learn');
     const selectedBase = selectedBaseDocId !== null
         ? (bases.find((b) => Number(b.docId) === selectedBaseDocId) || null)
         : null;
@@ -531,7 +531,7 @@ class LearnHandler extends Handler {
             }
         }
 
-        await learn.setUserLearnState(finalDomainId, this.user._id, { dailyGoal });
+        await learn.setUserLearnState(finalDomainId, this.user._id, { learnDailyGoal: dailyGoal });
 
         this.response.body = { success: true, dailyGoal };
     }
@@ -662,7 +662,7 @@ class LearnHandler extends Handler {
         const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv });
         const savedSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
         const savedSectionId = (dudoc as any)?.currentLearnSectionId;
-        const dailyGoal = (dudoc as any)?.dailyGoal || 0;
+        const dailyGoal = getModeDailyGoal(dudoc as any, 'learn');
         const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
         const savedLearnProgressPosition = (dudoc as any)?.learnProgressPosition;
         const savedLearnProgressTotal = (dudoc as any)?.learnProgressTotal;
@@ -1355,7 +1355,7 @@ class LessonHandler extends Handler {
                     cardsWithProblems.push(item);
                 }
             }
-            const dailyGoalToday = Math.max(0, (dudoc as any)?.dailyGoal || 0);
+            const dailyGoalToday = Math.max(0, getModeDailyGoal(dudoc as any, 'learn'));
             const cardsForToday = dailyGoalToday > 0 ? cycleList(cardsWithProblems, dailyGoalToday) : cardsWithProblems;
 
             if (cardsForToday.length === 0) {
@@ -1604,7 +1604,7 @@ class LessonHandler extends Handler {
                 continue;
             }
             const dudoc = await learn.getUserLearnState(did, { _id: this.user._id, priv: this.user.priv }) as any;
-            const dailyGoal = (dudoc?.dailyGoal || 0) | 0;
+            const dailyGoal = getModeDailyGoal(dudoc, 'learn') | 0;
             if (dailyGoal <= 0) {
                 excludedDomains.push({ domainId: did, domainName, reason: 'no_daily_goal' });
                 continue;
@@ -1943,7 +1943,7 @@ class LessonHandler extends Handler {
                     cardsWithProblems.push(item);
                 }
             }
-            const dailyGoalToday = Math.max(0, (dudoc as any)?.dailyGoal || 0);
+            const dailyGoalToday = Math.max(0, getModeDailyGoal(dudoc as any, 'learn'));
             const cardsForToday = dailyGoalToday > 0 ? cycleList(cardsWithProblems, dailyGoalToday) : cardsWithProblems;
 
             const currentCardId = cardIdFromBody ? new ObjectId(cardIdFromBody) : (cardsForToday[cardIndexFromBody] ? new ObjectId(cardsForToday[cardIndexFromBody].cardId) : null);
