@@ -13,6 +13,7 @@ import {
 } from '../error';
 import { DomainDoc, Setting } from '../interface';
 import avatar, { validate } from '../lib/avatar';
+import { getModeDailyGoal } from '../lib/learnModePrefs';
 import * as mail from '../lib/mail';
 import { verifyTFA } from '../lib/verifyTFA';
 import BlackListModel from '../model/blacklist';
@@ -138,7 +139,7 @@ export class HomeHandler extends Handler {
         }
 
         const dudoc = await domain.getDomainUser(domainId, { _id: this.user._id, priv: this.user.priv });
-        const dailyGoal = (dudoc as any)?.dailyGoal || 0;
+        const dailyGoal = getModeDailyGoal(dudoc as any, 'learn');
         const todayCompleted = todayCards.size;
         const completedToday = dailyGoal > 0 ? todayCompleted >= dailyGoal : todayCards.size > 0;
         const cardsRemaining = Math.max(0, dailyGoal - todayCompleted);

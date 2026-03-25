@@ -14,6 +14,7 @@ import db from '../service/db';
 import moment from 'moment-timezone';
 import bus from '../service/bus';
 import { updateDomainRanking } from './domain';
+import { getModeBaseDocId, getModeDailyGoal } from '../lib/learnModePrefs';
 
 function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edges: BaseEdge[] } {
     const branchName = branch || 'main';
@@ -67,8 +68,7 @@ async function getLearnBaseSelection(domainId: string, uid: number, priv: number
         return { bases, selectedBase: null as BaseDoc | null, selectedBaseDocId: null as number | null };
     }
     const dudoc = await learn.getUserLearnState(domainId, { _id: uid, priv }) as any;
-    const rawSelected = dudoc?.learnBaseDocId;
-    const selectedBaseDocId = Number.isFinite(Number(rawSelected)) ? Number(rawSelected) : null;
+    const selectedBaseDocId = getModeBaseDocId(dudoc, 'flag');
     const selectedBase = selectedBaseDocId !== null
         ? (bases.find((b) => Number(b.docId) === selectedBaseDocId) || null)
         : null;
@@ -81,7 +81,8 @@ async function requireSelectedLearnBase(domainId: string, uid: number, priv: num
     return selectedBase;
 }
 
-async function saveLearnBaseForUser(
+/** Flag 模式独立知识库，不修改 learnBaseDocId 与 Learn 侧小节进度 */
+async function saveFlagBaseForUser(
     domainId: string,
     uid: number,
     baseDocId: number,
@@ -105,14 +106,7 @@ async function saveLearnBaseForUser(
         }
     }
     await learn.setUserLearnState(domainId, uid, {
-        learnBaseDocId: baseDocId,
-        learnBranch: 'main',
-        currentLearnSectionId: null,
-        currentLearnSectionIndex: 0,
-        lessonMode: null,
-        lessonNodeId: null,
-        lessonCardIndex: 0,
-        lessonUpdatedAt: new Date(),
+        flagBaseDocId: baseDocId,
     });
 }
 
@@ -485,7 +479,7 @@ class FlagHandler extends Handler {
         const base = bases.find((item) => Number(item.docId) === baseDocId);
         if (!base) throw new NotFoundError('Base not found');
 
-        await saveLearnBaseForUser(finalDomainId, this.user._id, baseDocId, (key: string) => this.translate(key));
+        await saveFlagBaseForUser(finalDomainId, this.user._id, baseDocId, (key: string) => this.translate(key));
 
         this.response.body = { success: true, baseDocId };
     }
@@ -513,7 +507,7 @@ class FlagHandler extends Handler {
             }
         }
 
-        await learn.setUserLearnState(finalDomainId, this.user._id, { dailyGoal });
+        await learn.setUserLearnState(finalDomainId, this.user._id, { flagDailyGoal: dailyGoal });
 
         this.response.body = { success: true, dailyGoal };
     }
@@ -591,7 +585,7 @@ class FlagHandler extends Handler {
         }
 
         const dudoc = (await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv })) as any;
-        const dailyGoal = Number(dudoc?.dailyGoal) || 0;
+        const dailyGoal = getModeDailyGoal(dudoc as any, 'flag');
         const today = flagUtcDayKey();
         const flagProgressDate = dudoc?.flagProgressDate;
         const flagProgressNodeIds = dudoc?.flagProgressNodeIds;
@@ -1047,7 +1041,7 @@ class FlagLessonHandler extends Handler {
                     cardsWithProblems.push(item);
                 }
             }
-            const dailyGoalToday = Math.max(0, (dudoc as any)?.dailyGoal || 0);
+            const dailyGoalToday = Math.max(0, getModeDailyGoal(dudoc as any, 'flag'));
             const cardsForToday = dailyGoalToday > 0 ? cycleList(cardsWithProblems, dailyGoalToday) : cardsWithProblems;
 
             if (cardsForToday.length === 0) {
@@ -1296,7 +1290,7 @@ class FlagLessonHandler extends Handler {
                 continue;
             }
             const dudoc = await learn.getUserLearnState(did, { _id: this.user._id, priv: this.user.priv }) as any;
-            const dailyGoal = (dudoc?.dailyGoal || 0) | 0;
+            const dailyGoal = getModeDailyGoal(dudoc, 'flag') | 0;
             if (dailyGoal <= 0) {
                 excludedDomains.push({ domainId: did, domainName, reason: 'no_daily_goal' });
                 continue;
@@ -1634,7 +1628,7 @@ class FlagLessonHandler extends Handler {
                     cardsWithProblems.push(item);
                 }
             }
-            const dailyGoalToday = Math.max(0, (dudoc as any)?.dailyGoal || 0);
+            const dailyGoalToday = Math.max(0, getModeDailyGoal(dudoc as any, 'flag'));
             const cardsForToday = dailyGoalToday > 0 ? cycleList(cardsWithProblems, dailyGoalToday) : cardsWithProblems;
 
             const currentCardId = cardIdFromBody ? new ObjectId(cardIdFromBody) : (cardsForToday[cardIndexFromBody] ? new ObjectId(cardsForToday[cardIndexFromBody].cardId) : null);
@@ -2558,7 +2552,7 @@ class FlagBaseEditorHandler extends Handler {
         const z = { nodes: 0, cards: 0, problems: 0, nodeChars: 0, cardChars: 0, problemChars: 0 };
         const learnDudoc = (await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv })) as any;
         const todayKey = flagUtcDayKey();
-        const flagDailyGoal = Number(learnDudoc?.dailyGoal) || 0;
+        const flagDailyGoal = getModeDailyGoal(learnDudoc as any, 'flag');
         const fpDate = learnDudoc?.flagProgressDate;
         const fpIdsRaw = learnDudoc?.flagProgressNodeIds;
         const flagProgressNodeIds =
@@ -2620,13 +2614,13 @@ class FlagLearnSyncHandler extends Handler {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
 
-        await saveLearnBaseForUser(finalDomainId, this.user._id, docId, (key: string) => this.translate(key));
+        await saveFlagBaseForUser(finalDomainId, this.user._id, docId, (key: string) => this.translate(key));
         const dudoc = (await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv })) as any;
         const progressUpdate = mergeFlagCheckinNodeProgress(dudoc, nodeIds);
         await learn.setUserLearnState(finalDomainId, this.user._id, progressUpdate);
         const merged = { ...dudoc, ...progressUpdate } as any;
         const todayKey = flagUtcDayKey();
-        const flagDailyGoal = Number(merged.dailyGoal) || 0;
+        const flagDailyGoal = getModeDailyGoal(merged as any, 'flag');
         const flagProgressNodeIds =
             merged.flagProgressDate === todayKey && Array.isArray(merged.flagProgressNodeIds)
                 ? merged.flagProgressNodeIds.map((x: unknown) => String(x)).filter((id: string) => id && !id.startsWith('temp-node-'))
@@ -2663,7 +2657,7 @@ class FlagBaseSelectHandler extends Handler {
         const bases = await BaseModel.getAll(finalDomainId);
         const base = bases.find((item) => Number(item.docId) === baseDocId);
         if (!base) throw new NotFoundError('Base not found');
-        await saveLearnBaseForUser(finalDomainId, this.user._id, baseDocId, (key: string) => this.translate(key));
+        await saveFlagBaseForUser(finalDomainId, this.user._id, baseDocId, (key: string) => this.translate(key));
         this.response.redirect = redirect;
     }
 }
