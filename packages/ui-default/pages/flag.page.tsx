@@ -231,7 +231,7 @@ function FlagPage() {
       window.location.href = `/d/${domainId}/flag/base/select?redirect=${encodeURIComponent(`/d/${domainId}/flag`)}`;
       return;
     }
-    window.location.href = `/d/${domainId}/base/${selectedLearnBaseDocId}/branch/main/editor`;
+    window.location.href = `/d/${domainId}/flag/base/${selectedLearnBaseDocId}/branch/main/editor`;
   }, [domainId, selectedLearnBaseDocId]);
 
   const handleSaveGoal = useCallback(async () => {

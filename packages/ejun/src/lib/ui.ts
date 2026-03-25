@@ -69,13 +69,14 @@ export const BaseAdd = (name, args, icon = 'add', text = 'Create Base') => {
 
 inject('Nav', 'homepage', { prefix: 'homepage' });
 inject('Nav', 'learn', { prefix: 'learn' });
-inject('Nav', 'scene_domain', { prefix: 'scene' });
+inject('Nav', 'collect', { prefix: 'collect' });
+inject('Nav', 'flag', { prefix: 'flag' });
 inject('Nav', 'base_domain', { prefix: 'base' });
 inject('Nav', 'agent_domain', { prefix: 'agent' });
-inject('Nav', 'edge_domain', { prefix: 'edge' });
-inject('Nav', 'tool_domain', { prefix: 'tool' });
-inject('Nav', 'session_domain', { prefix: 'session' });
-inject('Nav', 'record_main', { prefix: 'record' });
+// inject('Nav', 'edge_domain', { prefix: 'edge' });
+// inject('Nav', 'tool_domain', { prefix: 'tool' });
+// inject('Nav', 'session_domain', { prefix: 'session' });
+// inject('Nav', 'record_main', { prefix: 'record' });
 inject('Nav', 'discussion_main', { prefix: 'discussion' });
 // inject('Nav', 'workflow_domain', { prefix: 'workflow' });
 

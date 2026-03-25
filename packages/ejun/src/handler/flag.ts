@@ -1,7 +1,8 @@
 import type { Context } from '../context';
 import { Handler, param, post, Types } from '../service/server';
-import { BaseModel, CardModel } from '../model/base';
-import type { BaseDoc, BaseNode, BaseEdge } from '../interface';
+import { BaseModel, CardModel, TYPE_CARD } from '../model/base';
+import type { BaseDoc, BaseNode, BaseEdge, CardDoc } from '../interface';
+import * as document from '../model/document';
 import domain from '../model/domain';
 import learn, { type LearnDAGNode } from '../model/learn';
 import user from '../model/user';
@@ -2781,6 +2782,154 @@ class FlagSectionsHandler extends Handler {
     }
 }
 
+/**
+ * Reuses base_editor.html + base editor UI with UiContext.editorUiMode = flag_nodes_intent (cards hidden / blocked client-side).
+ */
+class FlagBaseEditorHandler extends Handler {
+    base?: BaseDoc;
+
+    @param('docId', Types.String)
+    async _prepare(domainId: string, docId: string) {
+        const key = String(docId || '').trim();
+        if (/^\d+$/.test(key)) {
+            this.base = domainId ? await BaseModel.get(domainId, Number(key)) : null;
+        } else {
+            this.base = null;
+        }
+        if (!this.base && domainId) {
+            this.base = await BaseModel.getBybid(domainId, key);
+        }
+        if (!this.base) throw new NotFoundError('Base not found');
+    }
+
+    @param('branch', Types.String, true)
+    async get(domainId: string, branch?: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+
+        const { selectedBaseDocId } = await getLearnBaseSelection(finalDomainId, this.user._id, this.user.priv);
+        const docIdNum = Number(this.base!.docId);
+        const requestedBranch = branch && String(branch).trim() ? branch : 'main';
+        if (selectedBaseDocId === null || Number(selectedBaseDocId) !== docIdNum) {
+            this.response.redirect = `/d/${finalDomainId}/flag/base/select?redirect=${encodeURIComponent(`/d/${finalDomainId}/flag/base/${docIdNum}/branch/${encodeURIComponent(requestedBranch)}/editor`)}`;
+            return;
+        }
+
+        const base = this.base!;
+        if (!this.user.own(base)) {
+            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        }
+
+        this.response.template = 'base_editor.html';
+
+        let nodes: BaseNode[] = [];
+        let edges: BaseEdge[] = [];
+        const branchData = getBranchData(base, requestedBranch);
+        nodes = branchData.nodes || [];
+        edges = branchData.edges || [];
+
+        const currentBaseBranch = (base as any)?.currentBranch || 'main';
+        if (requestedBranch !== currentBaseBranch) {
+            await document.set(finalDomainId, document.TYPE_BASE, base.docId, { currentBranch: requestedBranch });
+        }
+
+        if (nodes.length === 0) {
+            const rootNode: Omit<BaseNode, 'id'> = { text: (this as any).domain?.name || 'Root', level: 0 };
+            await BaseModel.addNode(finalDomainId, base.docId, rootNode, undefined, requestedBranch);
+            const updated = await BaseModel.get(finalDomainId, base.docId);
+            if (updated) {
+                const updatedBranchData = getBranchData(updated, requestedBranch);
+                nodes = updatedBranchData.nodes || [];
+                edges = updatedBranchData.edges || [];
+            }
+        }
+
+        const allCards = await document.getMulti(finalDomainId, TYPE_CARD, { baseDocId: base.docId })
+            .sort({ order: 1, cid: 1 })
+            .toArray() as CardDoc[];
+        const nodeCardsMap: Record<string, CardDoc[]> = {};
+        for (const card of allCards) {
+            if (card.nodeId) {
+                if (!nodeCardsMap[card.nodeId]) nodeCardsMap[card.nodeId] = [];
+                nodeCardsMap[card.nodeId].push(card);
+            }
+        }
+        for (const nodeId of Object.keys(nodeCardsMap)) {
+            nodeCardsMap[nodeId].sort((a, b) =>
+                (a.order ?? 999999) - (b.order ?? 999999) || (a.cid - b.cid));
+        }
+
+        const branches = Array.isArray((base as any)?.branches) ? (base as any).branches : ['main'];
+        if (!branches.includes('main')) branches.unshift('main');
+
+        let baseExpandState: string[] = [];
+        try {
+            const coll = this.ctx.db.db.collection('base.userExpand');
+            const doc = await coll.findOne({ domainId: finalDomainId, baseDocId: base.docId, uid: this.user._id });
+            baseExpandState = Array.isArray(doc?.expandedNodeIds) ? doc.expandedNodeIds : [];
+        } catch {
+            // ignore
+        }
+
+        const workspaceFromQuery = (this.request.query?.workspace as string) || '';
+        const nodeIds = new Set(nodes.map((n: BaseNode) => n.id));
+        const workspaceNodeId = workspaceFromQuery && nodeIds.has(workspaceFromQuery) ? workspaceFromQuery : '';
+
+        const z = { nodes: 0, cards: 0, problems: 0, nodeChars: 0, cardChars: 0, problemChars: 0 };
+        this.response.body = {
+            base: { ...base, nodes, edges },
+            currentBranch: requestedBranch,
+            branches,
+            nodeCardsMap,
+            files: base.files || [],
+            domainId: finalDomainId,
+            editorMode: 'base',
+            todayContribution: z,
+            todayContributionAllDomains: { ...z },
+            contributions: [],
+            contributionDetails: {},
+            baseExpandState,
+            workspaceNodeId,
+            editorUiMode: 'flag_nodes_intent',
+        };
+    }
+}
+
+class FlagEditorShortcutHandler extends Handler {
+    @param('docId', Types.String)
+    async get(domainId: string, docId: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+        this.response.redirect = `/d/${finalDomainId}/flag/base/${encodeURIComponent(docId)}/branch/main/editor`;
+    }
+}
+
+class FlagLearnSyncHandler extends Handler {
+    @param('docId', Types.PositiveInt, true)
+    async post(domainId: string, docId: number) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
+        const body: any = this.request?.body || {};
+        if (body.operation !== 'syncDag') {
+            throw new BadRequestError('Unsupported operation');
+        }
+
+        const { selectedBaseDocId } = await getLearnBaseSelection(finalDomainId, this.user._id, this.user.priv);
+        if (selectedBaseDocId === null || Number(selectedBaseDocId) !== Number(docId)) {
+            throw new ValidationError(this.translate('Select this base in Flag before syncing') || 'Base mismatch');
+        }
+
+        const base = await BaseModel.get(finalDomainId, docId);
+        if (!base) throw new NotFoundError('Base not found');
+        if (!this.user.own(base)) {
+            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        }
+
+        await saveLearnBaseForUser(finalDomainId, this.user._id, docId, (key: string) => this.translate(key));
+        this.response.body = { success: true };
+    }
+}
+
 class FlagBaseSelectHandler extends Handler {
     async get(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
@@ -2817,6 +2966,9 @@ class FlagBaseSelectHandler extends Handler {
 export async function apply(ctx: Context) {
     ctx.Route('flag', '/flag', FlagHandler);
     ctx.Route('flag_set_base', '/flag/base', FlagHandler);
+    ctx.Route('flag_editor', '/flag/base/:docId/editor', FlagEditorShortcutHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('flag_editor_branch', '/flag/base/:docId/branch/:branch/editor', FlagBaseEditorHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('flag_learn_sync', '/flag/base/:docId/sync-learn', FlagLearnSyncHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('flag_base_select', '/flag/base/select', FlagBaseSelectHandler);
     ctx.Route('flag_set_daily_goal', '/flag/daily-goal', FlagHandler);
     ctx.Route('flag_sections', '/flag/sections', FlagSectionsHandler);
