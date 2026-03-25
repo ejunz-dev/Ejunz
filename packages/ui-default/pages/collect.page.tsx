@@ -571,7 +571,7 @@ function CollectPage() {
           }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '2px' }}>
-                {i18n('Current learn base')}
+                {i18n('Current base (Collect)')}
               </div>
               <div style={{ fontSize: '14px', color: themeStyles.textPrimary, fontWeight: 600, wordBreak: 'break-word' }}>
                 {selectedLearnBase.bid ? `[${selectedLearnBase.bid}] ` : ''}{selectedLearnBase.title || i18n('Untitled base')}
