@@ -20,6 +20,10 @@
   {% if editorUiMode %}
   {{ set(UiContext, 'editorUiMode', editorUiMode) }}
   {% endif %}
+  {% if flagDailyGoal is defined %}
+  {{ set(UiContext, 'flagDailyGoal', flagDailyGoal) }}
+  {{ set(UiContext, 'flagProgressNodeIds', flagProgressNodeIds or []) }}
+  {% endif %}
   {{ set(UiContext, 'socketUrl', 'base/ws?domainId=' + (domainId or (base and base.domainId) or '') + '&docId=' + (base.docId.toString() if base and base.docId else '')) }}
 </script>
 <div class="row">
