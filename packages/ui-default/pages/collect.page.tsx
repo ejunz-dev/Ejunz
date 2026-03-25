@@ -5,14 +5,6 @@ import { i18n } from 'vj/utils';
 import { request } from 'vj/utils';
 import Notification from 'vj/components/notification';
 
-interface SectionProgress {
-  _id: string;
-  title: string;
-  passed: number;
-  total: number;
-  slotIndex?: number;
-}
-
 interface CompletedCardToday {
   cardId: string;
   resultId: string;
@@ -21,92 +13,19 @@ interface CompletedCardToday {
   completedAt?: Date | string;
 }
 
-interface PendingNodeCard {
-  cardId: string;
-  title: string;
-  problems?: Array<{ stem?: string }>;
-}
-
-interface PendingNode {
-  orderIndex: number;
-  _id: string;
-  title: string;
-  cards: PendingNodeCard[];
-}
-
-interface MapCardProblem {
-  stem?: string;
-}
-
-interface MapCard {
-  cardId: string;
-  title: string;
-  order?: number;
-  problemCount?: number;
-  problems?: MapCardProblem[];
-}
-
-interface MapDAGNode {
-  _id: string;
-  title: string;
-  requireNids?: string[];
-  cards?: MapCard[];
-  order?: number;
-}
-
 interface LearnBaseOption {
   docId: number;
   title?: string;
   bid?: string | number;
-}
-
-interface LearnBaseOption {
-  docId: number;
-  title?: string;
-  bid?: string | number;
-}
-
-function getChildren(nodeId: string, sections: MapDAGNode[], dag: MapDAGNode[]): MapDAGNode[] {
-  const list: MapDAGNode[] = [];
-  dag.forEach((n) => {
-    const parentId = n.requireNids?.[n.requireNids.length - 1];
-    if (parentId === nodeId) list.push(n);
-  });
-  return list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-}
-
-function collectCardsUnder(nodeId: string, sections: MapDAGNode[], dag: MapDAGNode[], collected: Set<string>): MapCard[] {
-  if (collected.has(nodeId)) return [];
-  collected.add(nodeId);
-  const nodeMap = new Map<string, MapDAGNode>();
-  sections.forEach((s) => nodeMap.set(s._id, s));
-  dag.forEach((n) => nodeMap.set(n._id, n));
-  const node = nodeMap.get(nodeId);
-  if (!node) return [];
-  const cards = [...(node.cards || [])];
-  const children = getChildren(nodeId, sections, dag);
-  for (const child of children) {
-    cards.push(...collectCardsUnder(child._id, sections, dag, collected));
-  }
-  return cards.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
 
 function CollectPage() {
   const domainId = (window as any).UiContext?.domainId as string;
-  const currentProgress = (window as any).UiContext?.currentProgress || 0;
-  const totalProgress = (window as any).UiContext?.totalProgress || 0;
-  const totalCards = (window as any).UiContext?.totalCards || 0;
   const totalCheckinDays = (window as any).UiContext?.totalCheckinDays ?? 0;
   const consecutiveDays = (window as any).UiContext?.consecutiveDays || 0;
   const dailyGoal = (window as any).UiContext?.dailyGoal || 0;
   const todayCompletedCount = (window as any).UiContext?.todayCompletedCount ?? 0;
-  const pendingNodeList = ((window as any).UiContext?.pendingNodeList || []) as PendingNode[];
   const completedCardsToday = ((window as any).UiContext?.completedCardsToday || []) as CompletedCardToday[];
-  const nextCard = (window as any).UiContext?.nextCard as { nodeId: string; cardId: string } | null;
-  const sections = ((window as any).UiContext?.sections || []) as MapDAGNode[];
-  const fullDag = ((window as any).UiContext?.fullDag || []) as MapDAGNode[];
-  const currentSectionIndex = (window as any).UiContext?.currentSectionIndex as number | undefined;
-  const passedCardIdsSet = new Set<string>((window as any).UiContext?.passedCardIds || []);
   const learnBases = ((window as any).UiContext?.learnBases || []) as LearnBaseOption[];
   const selectedLearnBaseDocId = Number((window as any).UiContext?.selectedLearnBaseDocId || 0) || null;
   const requireBaseSelection = !!(window as any).UiContext?.requireBaseSelection;
@@ -117,52 +36,9 @@ function CollectPage() {
   const [goal, setGoal] = useState(dailyGoal);
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [isSavingGoal, setIsSavingGoal] = useState(false);
-  const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
   const [showConsecutiveTip, setShowConsecutiveTip] = useState(false);
-  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
-  const [expandedCardIds, setExpandedCardIds] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<'progress' | 'path'>('progress');
-  const [expandedMapSectionIds, setExpandedMapSectionIds] = useState<Set<string>>(() => {
-    const s = new Set<string>();
-    sections.forEach((sec) => s.add(sec._id));
-    return s;
-  });
-  const [expandedPathCardIds, setExpandedPathCardIds] = useState<Set<string>>(new Set());
   const consecutiveBubbleRef = useRef<HTMLButtonElement>(null);
-
-  const togglePathCardExpand = useCallback((cardId: string) => {
-    setExpandedPathCardIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(cardId)) next.delete(cardId);
-      else next.add(cardId);
-      return next;
-    });
-  }, []);
-
-  useEffect(() => {
-    if (sections.length > 0 && expandedMapSectionIds.size === 0) {
-      setExpandedMapSectionIds(new Set(sections.map((sec) => sec._id)));
-    }
-  }, [sections.length]);
-
-  const toggleNodeExpand = useCallback((nodeKey: string) => {
-    setExpandedNodeIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(nodeKey)) next.delete(nodeKey);
-      else next.add(nodeKey);
-      return next;
-    });
-  }, []);
-
-  const toggleCardStems = useCallback((cardKey: string) => {
-    setExpandedCardIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(cardKey)) next.delete(cardKey);
-      else next.add(cardKey);
-      return next;
-    });
-  }, []);
 
   const handleConsecutiveBubbleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -253,11 +129,8 @@ function CollectPage() {
     }
   }, [domainId, goal, isSavingGoal]);
 
-  const progressPercentage = totalProgress > 0 ? Math.round((currentProgress / totalProgress) * 100) : 0;
-
   const sidebarWidth = 220;
   const collapsedWidth = 36;
-
   const MOBILE_BREAKPOINT = 768;
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT);
   useEffect(() => {
@@ -268,18 +141,9 @@ function CollectPage() {
 
   useEffect(() => {
     if (!isMobile) return;
-    const onPending = () => { setLeftSidebarOpen(true); setRightSidebarOpen(false); };
-    const onCompleted = () => { setRightSidebarOpen(true); setLeftSidebarOpen(false); };
-    const leftEl = document.getElementById('header-mobile-extra-left');
+    const onCompleted = () => { setRightSidebarOpen(true); };
     const rightEl = document.getElementById('header-mobile-extra');
-    const leftWrap = leftEl ? (() => { const w = document.createElement('div'); leftEl.appendChild(w); return w; })() : null;
     const rightWrap = rightEl ? (() => { const w = document.createElement('div'); rightEl.appendChild(w); return w; })() : null;
-    if (leftWrap) {
-      ReactDOM.render(
-        <button type="button" onClick={onPending}>☰ {i18n('Pending sections')}</button>,
-        leftWrap,
-      );
-    }
     if (rightWrap) {
       ReactDOM.render(
         <button type="button" onClick={onCompleted}>{i18n('Completed cards')} ☰</button>,
@@ -287,7 +151,6 @@ function CollectPage() {
       );
     }
     return () => {
-      if (leftWrap) { ReactDOM.unmountComponentAtNode(leftWrap); leftWrap.remove(); }
       if (rightWrap) { ReactDOM.unmountComponentAtNode(rightWrap); rightWrap.remove(); }
     };
   }, [isMobile]);
@@ -301,18 +164,6 @@ function CollectPage() {
       flexDirection: 'row',
       position: 'relative',
     }}>
-      {isMobile && leftSidebarOpen && (
-        <div
-          role="presentation"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 1001,
-            backgroundColor: 'rgba(0,0,0,0.4)',
-          }}
-          onClick={() => setLeftSidebarOpen(false)}
-        />
-      )}
       {isMobile && rightSidebarOpen && (
         <div
           role="presentation"
@@ -326,220 +177,6 @@ function CollectPage() {
         />
       )}
 
-      <aside style={{
-        ...(isMobile
-          ? {
-              position: 'fixed' as const,
-              left: 0,
-              top: 0,
-              bottom: 0,
-              width: '280px',
-              maxWidth: '85vw',
-              zIndex: 1002,
-              transform: leftSidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
-              transition: 'transform 0.2s ease',
-              boxShadow: leftSidebarOpen ? (theme === 'dark' ? '4px 0 16px rgba(0,0,0,0.4)' : '4px 0 16px rgba(0,0,0,0.1)') : 'none',
-              paddingTop: 'env(safe-area-inset-top, 0px)',
-            }
-          : {
-              position: 'absolute' as const,
-              left: 0,
-              top: 0,
-              bottom: 0,
-              width: leftSidebarOpen ? sidebarWidth : collapsedWidth,
-              transition: 'width 0.25s ease',
-            }),
-        display: 'flex',
-        flexDirection: 'row',
-        background: themeStyles.bgSecondary,
-        borderRight: `1px solid ${themeStyles.border}`,
-        overflow: 'hidden',
-      }}>
-        {leftSidebarOpen ? (
-          <>
-            <div style={{
-              flex: 1,
-              padding: isMobile ? '12px 16px 20px' : '20px 16px',
-              overflowY: 'auto',
-              minWidth: 0,
-              WebkitOverflowScrolling: 'touch',
-            } as React.CSSProperties}>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '12px',
-                paddingBottom: '8px',
-                borderBottom: `1px solid ${themeStyles.border}`,
-              }}>
-                <span style={{
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: themeStyles.textSecondary,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                }}>
-                  {i18n('Pending sections')}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setLeftSidebarOpen(false)}
-                  style={{
-                    padding: isMobile ? '8px 12px' : '4px 8px',
-                    minHeight: isMobile ? '44px' : undefined,
-                    fontSize: '12px',
-                    background: 'transparent',
-                    border: `1px solid ${themeStyles.border}`,
-                    borderRadius: '6px',
-                    color: themeStyles.textSecondary,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {isMobile ? i18n('Close') : '×'}
-                </button>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {pendingNodeList.length === 0 ? (
-                  <div style={{ fontSize: '13px', color: themeStyles.textTertiary, fontStyle: 'italic' }}>
-                    {i18n('No pending sections')}
-                  </div>
-                ) : (
-                  pendingNodeList.map((node) => {
-                    const nodeKey = `${String(node._id)}-${node.orderIndex}`;
-                    const isNodeExpanded = expandedNodeIds.has(nodeKey);
-                    return (
-                      <div
-                        key={nodeKey}
-                        style={{
-                          borderRadius: '8px',
-                          background: themeStyles.bgPrimary,
-                          border: `1px solid ${themeStyles.border}`,
-                          overflow: 'hidden',
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => toggleNodeExpand(nodeKey)}
-                          style={{
-                            width: '100%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: isMobile ? '14px 12px' : '10px 12px',
-                            minHeight: isMobile ? '48px' : undefined,
-                            fontSize: '14px',
-                            fontWeight: 500,
-                            color: themeStyles.textPrimary,
-                            background: 'transparent',
-                            border: 'none',
-                            cursor: 'pointer',
-                            textAlign: 'left',
-                          }}
-                        >
-                          <span style={{ flexShrink: 0, color: themeStyles.textSecondary, fontSize: '12px' }}>
-                            {node.orderIndex}.
-                          </span>
-                          <span style={{ flex: 1 }}>{node.title}</span>
-                          <span style={{ fontSize: '12px', color: themeStyles.textTertiary }}>
-                            {isNodeExpanded ? '▼' : '▶'}
-                          </span>
-                        </button>
-                        {isNodeExpanded && node.cards && node.cards.length > 0 && (
-                          <div style={{ padding: '0 12px 8px', borderTop: `1px solid ${themeStyles.border}` }}>
-                            {node.cards.map((card, cardIndex) => {
-                              const cardNumber = `${node.orderIndex}.${cardIndex + 1}`;
-                              const cardKey = `${nodeKey}-${String(card.cardId)}`;
-                              const isCardExpanded = expandedCardIds.has(cardKey);
-                              const problems = card.problems || [];
-                              return (
-                                <div
-                                  key={cardKey}
-                                  style={{
-                                    marginTop: '6px',
-                                    padding: '6px 8px',
-                                    background: themeStyles.bgSecondary,
-                                    borderRadius: '6px',
-                                  }}
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleCardStems(cardKey)}
-                                    style={{
-                                      width: '100%',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '6px',
-                                      padding: 0,
-                                      fontSize: '13px',
-                                      color: themeStyles.textPrimary,
-                                      background: 'transparent',
-                                      border: 'none',
-                                      cursor: 'pointer',
-                                      textAlign: 'left',
-                                    }}
-                                  >
-                                    <span style={{ flexShrink: 0, color: themeStyles.textSecondary, fontSize: '12px' }}>
-                                      {cardNumber}.
-                                    </span>
-                                    <span style={{ flex: 1 }}>{card.title}</span>
-                                    {problems.length > 0 && (
-                                      <span style={{ color: themeStyles.textTertiary, fontSize: '11px' }}>
-                                        {isCardExpanded ? '▼' : '▶'}
-                                      </span>
-                                    )}
-                                  </button>
-                                  {isCardExpanded && problems.length > 0 && (
-                                    <div style={{ marginTop: '6px', fontSize: '12px', color: themeStyles.textSecondary, whiteSpace: 'pre-wrap' }}>
-                                      {problems.map((p, idx) => {
-                                        const problemNumber = `${cardNumber}.${idx + 1}`;
-                                        return (
-                                          <div key={idx} style={{ marginBottom: '4px' }}>
-                                            <span style={{ color: themeStyles.textTertiary, marginRight: '6px' }}>{problemNumber}.</span>
-                                            {p.stem || ''}
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          </>
-        ) : !isMobile ? (
-          <button
-            type="button"
-            onClick={() => setLeftSidebarOpen(true)}
-            title={i18n('Pending sections')}
-            style={{
-              width: '100%',
-              padding: '16px 0',
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '18px',
-              color: themeStyles.textSecondary,
-              opacity: 0.7,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'opacity 0.2s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7'; }}
-          >
-            →
-          </button>
-        ) : null}
-      </aside>
-
       <main style={{
         flex: 1,
         minWidth: 0,
@@ -550,593 +187,314 @@ function CollectPage() {
         flexDirection: 'column',
         alignItems: 'center',
       }}>
-      <div style={{
-        maxWidth: '520px',
-        width: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '24px',
-      }}>
-        {!requireBaseSelection && selectedLearnBase && (
-          <div style={{
-            padding: '12px 14px',
-            borderRadius: '12px',
-            border: `1px solid ${themeStyles.border}`,
-            background: themeStyles.bgCard,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '10px',
-            flexWrap: 'wrap',
-          }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '2px' }}>
-                {i18n('Current base (Collect)')}
-              </div>
-              <div style={{ fontSize: '14px', color: themeStyles.textPrimary, fontWeight: 600, wordBreak: 'break-word' }}>
-                {selectedLearnBase.bid ? `[${selectedLearnBase.bid}] ` : ''}{selectedLearnBase.title || i18n('Untitled base')}
-              </div>
-            </div>
-            <a
-              href={`/d/${domainId}/collect/base/select?redirect=${encodeURIComponent(`/d/${domainId}/collect`)}`}
-              style={{
-                padding: '8px 12px',
-                borderRadius: '8px',
-                border: `1px solid ${themeStyles.border}`,
-                color: themeStyles.textPrimary,
-                textDecoration: 'none',
-                background: themeStyles.bgSecondary,
-                fontSize: '13px',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {i18n('Change')}
-            </a>
-          </div>
-        )}
-
         <div style={{
+          maxWidth: '520px',
+          width: '100%',
           display: 'flex',
-          gap: '4px',
-          padding: '4px',
-          background: themeStyles.bgSecondary,
-          borderRadius: '12px',
-          border: `1px solid ${themeStyles.border}`,
+          flexDirection: 'column',
+          gap: '24px',
         }}>
-          <button
-            type="button"
-            onClick={() => setViewMode('progress')}
-            style={{
-              flex: 1,
-              padding: '10px 16px',
-              minHeight: isMobile ? '48px' : undefined,
-              fontSize: '14px',
-              fontWeight: 600,
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              background: viewMode === 'progress' ? themeStyles.bgCard : 'transparent',
-              color: viewMode === 'progress' ? themeStyles.textPrimary : themeStyles.textSecondary,
-              boxShadow: viewMode === 'progress' ? (theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 6px rgba(0,0,0,0.08)') : 'none',
-              transition: 'all 0.2s',
-            }}
-          >
-            {i18n('Learning Progress')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('path')}
-            style={{
-              flex: 1,
-              padding: '10px 16px',
-              minHeight: isMobile ? '48px' : undefined,
-              fontSize: '14px',
-              fontWeight: 600,
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              background: viewMode === 'path' ? themeStyles.bgCard : 'transparent',
-              color: viewMode === 'path' ? themeStyles.textPrimary : themeStyles.textSecondary,
-              boxShadow: viewMode === 'path' ? (theme === 'dark' ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 6px rgba(0,0,0,0.08)') : 'none',
-              transition: 'all 0.2s',
-            }}
-          >
-            {i18n('Learning Path')}
-          </button>
-        </div>
-
-        {requireBaseSelection ? (
-          <div style={{
-            padding: isMobile ? '20px 16px' : '24px',
-            background: themeStyles.bgCard,
-            borderRadius: '16px',
-            border: `1px solid ${themeStyles.border}`,
-            boxShadow: theme === 'dark' ? '0 4px 24px rgba(0,0,0,0.4)' : '0 2px 12px rgba(0,0,0,0.06)',
-          }}>
-            <div style={{ fontSize: '16px', fontWeight: 600, color: themeStyles.textPrimary, marginBottom: '8px' }}>
-              {i18n('Select a base before learning')}
-            </div>
-            <div style={{ fontSize: '13px', color: themeStyles.textSecondary, marginBottom: '16px' }}>
-              {i18n('Choose one base and save your learning setting first.')}
-            </div>
-            <a
-              href={`/d/${domainId}/collect/base/select?redirect=${encodeURIComponent(`/d/${domainId}/collect`)}`}
-              style={{
-                display: 'inline-block',
-                padding: '10px 16px',
-                borderRadius: '10px',
-                border: 'none',
-                background: themeStyles.primary,
-                color: '#fff',
-                textDecoration: 'none',
-              }}
-            >
-              {i18n('Select Learn Base')}
-            </a>
-          </div>
-        ) : viewMode === 'progress' && (
-        <>
-        <div style={{
-          padding: isMobile ? '20px 16px' : '28px',
-          background: themeStyles.bgCard,
-          borderRadius: '20px',
-          border: `1px solid ${themeStyles.border}`,
-          boxShadow: theme === 'dark' ? '0 4px 24px rgba(0,0,0,0.4)' : '0 2px 12px rgba(0,0,0,0.06)',
-        }}>
-          <div style={{ marginBottom: '24px' }}>
+          {!requireBaseSelection && selectedLearnBase && (
             <div style={{
+              padding: '12px 14px',
+              borderRadius: '12px',
+              border: `1px solid ${themeStyles.border}`,
+              background: themeStyles.bgCard,
               display: 'flex',
-              justifyContent: 'space-between',
               alignItems: 'center',
-              marginBottom: '10px',
-            }}>
-              <span style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
-                {i18n('Total progress')}
-              </span>
-                <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.textPrimary }}>
-                {currentProgress} / {totalProgress}
-              </span>
-            </div>
-            <div style={{
-              height: '12px',
-              background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-              borderRadius: '6px',
-              overflow: 'hidden',
-            }}>
-              <div style={{
-                width: `${progressPercentage}%`,
-                height: '100%',
-                background: `linear-gradient(90deg, ${themeStyles.primary} 0%, ${theme === 'dark' ? '#2dd47a' : '#22c55e'} 100%)`,
-                borderRadius: '6px',
-                transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                boxShadow: `0 0 12px ${themeStyles.primaryGlow}`,
-              }} />
-            </div>
-          </div>
-
-          <div>
-            <div style={{
-              display: 'flex',
               justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '10px',
+              gap: '10px',
               flexWrap: 'wrap',
-              gap: '8px',
             }}>
-              <span style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
-                {i18n('Today progress')}
-              </span>
-              <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.textPrimary }}>
-                {todayCompletedCount} / {goal}
-              </span>
-              {!isEditingGoal ? (
-                <button
-                  onClick={() => setIsEditingGoal(true)}
-                  type="button"
-                  style={{
-                    padding: '5px 12px',
-                    fontSize: '12px',
-                    background: 'transparent',
-                    border: `1px solid ${themeStyles.border}`,
-                    borderRadius: '8px',
-                    color: themeStyles.textSecondary,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = themeStyles.accent;
-                    e.currentTarget.style.color = themeStyles.accent;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = themeStyles.border;
-                    e.currentTarget.style.color = themeStyles.textSecondary;
-                  }}
-                >
-                  {i18n('Edit')} {i18n('Daily Goal')}
-                </button>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                  <input
-                    type="number"
-                    value={goal}
-                    onChange={(e) => setGoal(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                    min={0}
-                    style={{
-                      width: '56px',
-                      padding: '5px 10px',
-                      fontSize: '13px',
-                      background: themeStyles.bgPrimary,
-                      border: `1px solid ${themeStyles.border}`,
-                      borderRadius: '8px',
-                      color: themeStyles.textPrimary,
-                    }}
-                  />
-                  <span style={{ fontSize: '12px', color: themeStyles.textSecondary }}>{i18n('cards')}</span>
-                  <button
-                    onClick={handleSaveGoal}
-                    disabled={isSavingGoal}
-                    type="button"
-                    style={{
-                      padding: '5px 12px',
-                      fontSize: '12px',
-                      background: themeStyles.primary,
-                      border: 'none',
-                      borderRadius: '8px',
-                      color: '#fff',
-                      cursor: isSavingGoal ? 'not-allowed' : 'pointer',
-                      opacity: isSavingGoal ? 0.7 : 1,
-                    }}
-                  >
-                    {isSavingGoal ? i18n('Saving...') : i18n('Save')}
-                  </button>
-                  <button
-                    onClick={() => { setIsEditingGoal(false); setGoal(dailyGoal); }}
-                    type="button"
-                    style={{
-                      padding: '5px 12px',
-                      fontSize: '12px',
-                      background: 'transparent',
-                      border: `1px solid ${themeStyles.border}`,
-                      borderRadius: '8px',
-                      color: themeStyles.textPrimary,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {i18n('Cancel')}
-                  </button>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '2px' }}>
+                  {i18n('Current base (Collect)')}
                 </div>
-              )}
+                <div style={{ fontSize: '14px', color: themeStyles.textPrimary, fontWeight: 600, wordBreak: 'break-word' }}>
+                  {selectedLearnBase.bid ? `[${selectedLearnBase.bid}] ` : ''}{selectedLearnBase.title || i18n('Untitled base')}
+                </div>
+              </div>
+              <a
+                href={`/d/${domainId}/collect/base/select?redirect=${encodeURIComponent(`/d/${domainId}/collect`)}`}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: `1px solid ${themeStyles.border}`,
+                  color: themeStyles.textPrimary,
+                  textDecoration: 'none',
+                  background: themeStyles.bgSecondary,
+                  fontSize: '13px',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {i18n('Change')}
+              </a>
             </div>
-            <div style={{
-              height: '12px',
-              background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-              borderRadius: '6px',
-              overflow: 'hidden',
-            }}>
-              <div style={{
-                width: `${goal > 0 ? Math.min(100, Math.round((todayCompletedCount / goal) * 100)) : 0}%`,
-                height: '100%',
-                background: `linear-gradient(90deg, ${themeStyles.accent} 0%, ${theme === 'dark' ? '#7dd3fc' : '#38bdf8'} 100%)`,
-                borderRadius: '6px',
-                transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                boxShadow: `0 0 12px ${themeStyles.accentGlow}`,
-              }} />
-            </div>
-            </div>
+          )}
 
+          {requireBaseSelection ? (
             <div style={{
-            marginTop: '24px',
-            paddingTop: '20px',
-            borderTop: `1px solid ${themeStyles.border}`,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-          }}>
-            <div style={{
-              position: 'relative',
-              display: 'inline-flex',
-              flexDirection: 'column',
-              alignItems: 'center',
+              padding: isMobile ? '20px 16px' : '24px',
+              background: themeStyles.bgCard,
+              borderRadius: '16px',
+              border: `1px solid ${themeStyles.border}`,
+              boxShadow: theme === 'dark' ? '0 4px 24px rgba(0,0,0,0.4)' : '0 2px 12px rgba(0,0,0,0.06)',
             }}>
+              <div style={{ fontSize: '16px', fontWeight: 600, color: themeStyles.textPrimary, marginBottom: '8px' }}>
+                {i18n('Select a base before learning')}
+              </div>
+              <div style={{ fontSize: '13px', color: themeStyles.textSecondary, marginBottom: '16px' }}>
+                {i18n('Choose one base and save your learning setting first.')}
+              </div>
+              <a
+                href={`/d/${domainId}/collect/base/select?redirect=${encodeURIComponent(`/d/${domainId}/collect`)}`}
+                style={{
+                  display: 'inline-block',
+                  padding: '10px 16px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: themeStyles.primary,
+                  color: '#fff',
+                  textDecoration: 'none',
+                }}
+              >
+                {i18n('Select Learn Base')}
+              </a>
+            </div>
+          ) : (
+            <>
               <div style={{
-                position: 'relative',
-                width: '56px',
-                height: '56px',
-                borderRadius: '50%',
-                background: theme === 'dark' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(14, 165, 233, 0.12)',
-                border: `2px solid ${theme === 'dark' ? 'rgba(56, 189, 248, 0.4)' : 'rgba(14, 165, 233, 0.3)'}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                padding: isMobile ? '20px 16px' : '28px',
+                background: themeStyles.bgCard,
+                borderRadius: '20px',
+                border: `1px solid ${themeStyles.border}`,
+                boxShadow: theme === 'dark' ? '0 4px 24px rgba(0,0,0,0.4)' : '0 2px 12px rgba(0,0,0,0.06)',
               }}>
-                <span style={{ fontSize: '24px', fontWeight: 700, color: themeStyles.accent, lineHeight: 1 }}>
-                  {totalCheckinDays}
-                </span>
-                <button
-                  ref={consecutiveBubbleRef}
-                  type="button"
-                  onClick={handleConsecutiveBubbleClick}
-                  style={{
-                    position: 'absolute',
-                    top: '-4px',
-                    right: '-4px',
-                    minWidth: '22px',
-                    height: '22px',
-                    padding: '0 6px',
-                    borderRadius: '11px',
-                    background: themeStyles.accent,
-                    color: '#fff',
-                    fontSize: '12px',
-                    fontWeight: 600,
+                <div>
+                  <div style={{
                     display: 'flex',
+                    justifyContent: 'space-between',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    border: `2px solid ${themeStyles.bgCard}`,
-                    boxSizing: 'border-box',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {consecutiveDays}
-                  {showConsecutiveTip && (
-                    <span
-                      style={{
-                        position: 'absolute',
-                        bottom: '100%',
-                        left: '50%',
-                        transform: 'translateX(-50%)',
-                        marginBottom: '6px',
-                        padding: '6px 10px',
-                        fontSize: '12px',
-                        color: themeStyles.textPrimary,
-                        background: themeStyles.bgPrimary,
-                        border: `1px solid ${themeStyles.border}`,
-                        borderRadius: '8px',
-                        whiteSpace: 'nowrap',
-                        boxShadow: theme === 'dark' ? '0 4px 12px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.15)',
-                        zIndex: 20,
-                      }}
-                    >
-                      {i18n('Consecutive check-in days')}
+                    marginBottom: '10px',
+                    flexWrap: 'wrap',
+                    gap: '8px',
+                  }}>
+                    <span style={{ fontSize: '13px', color: themeStyles.textSecondary, fontWeight: 500 }}>
+                      {i18n('Today progress')}
                     </span>
-                  )}
-                </button>
-              </div>
-              <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginTop: '8px', fontWeight: 500 }}>
-                {i18n('Total check-in days')}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <button
-          onClick={handleStart}
-          type="button"
-          style={{
-            padding: isMobile ? '16px 24px' : '18px 28px',
-            minHeight: isMobile ? '52px' : undefined,
-            fontSize: '16px',
-            fontWeight: 600,
-            background: themeStyles.primary,
-            color: '#fff',
-            border: 'none',
-            borderRadius: '14px',
-            cursor: 'pointer',
-            width: '100%',
-            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-            boxShadow: `0 4px 14px ${themeStyles.primaryGlow}`,
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = `0 6px 20px ${themeStyles.primaryGlow}`;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = `0 4px 14px ${themeStyles.primaryGlow}`;
-          }}
-        >
-          {i18n('Collect')}
-        </button>
-
-        <a
-          href={`/d/${domainId}/collect/section/edit?uid=${(window as any).UserContext?._id ?? ''}`}
-          style={{
-            display: 'block',
-            textAlign: 'center',
-            marginTop: '12px',
-            fontSize: '14px',
-            color: themeStyles.accent,
-            textDecoration: 'none',
-            opacity: 0.9,
-            transition: 'opacity 0.2s',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.9'; }}
-        >
-          {i18n('Section Order')}
-        </a>
-      </>
-        )}
-
-        {viewMode === 'path' && sections.length > 0 && (
-          <div style={{
-            padding: '8px 0',
-          }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {sections.map((section, sectionIndex) => {
-                const sectionCards = collectCardsUnder(section._id, sections, fullDag, new Set());
-                const isCurrentSection = typeof currentSectionIndex === 'number' && sectionIndex === currentSectionIndex;
-                const isExpanded = expandedMapSectionIds.has(section._id);
-                const toggleSection = () => {
-                  setExpandedMapSectionIds((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(section._id)) next.delete(section._id);
-                    else next.add(section._id);
-                    return next;
-                  });
-                };
-                return (
-                  <div
-                    key={section._id}
-                    style={{
-                      background: themeStyles.bgCard,
-                      borderRadius: '14px',
-                      border: `1px solid ${isCurrentSection ? themeStyles.primary : themeStyles.border}`,
-                      overflow: 'hidden',
-                      boxShadow: theme === 'dark' ? '0 2px 12px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.06)',
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={toggleSection}
-                      style={{
-                        width: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: isMobile ? '16px 14px' : '14px 18px',
-                        minHeight: isMobile ? '52px' : undefined,
-                        background: 'transparent',
-                        border: 'none',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        color: themeStyles.textPrimary,
-                        fontSize: '15px',
-                        fontWeight: 600,
-                      }}
-                    >
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{
-                          width: '28px',
-                          height: '28px',
-                          borderRadius: '50%',
-                          background: isCurrentSection ? themeStyles.primary : themeStyles.bgSecondary,
-                          color: isCurrentSection ? '#fff' : themeStyles.textSecondary,
-                          fontSize: '13px',
-                          fontWeight: 700,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}>
-                          {sectionIndex + 1}
-                        </span>
-                        {section.title || i18n('Unnamed Section')}
-                        {isCurrentSection && (
-                          <span style={{ fontSize: '12px', color: themeStyles.primary, fontWeight: 500 }}>
-                            ({i18n('Current')})
-                          </span>
-                        )}
-                      </span>
-                      <span style={{ color: themeStyles.textSecondary, fontSize: '14px' }}>
-                        {isExpanded ? '▼' : '▶'}
-                      </span>
-                    </button>
-                    {isExpanded && sectionCards.length > 0 && (
-                      <div style={{
-                        padding: '0 18px 14px',
-                        borderTop: `1px solid ${themeStyles.border}`,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '6px',
-                        marginTop: '4px',
-                        paddingTop: '12px',
-                      }}>
-                        {sectionCards.map((card) => {
-                          const cardIdStr = String(card.cardId);
-                          const problemCount = card.problemCount ?? (card.problems?.length ?? 0);
-                          const problems = card.problems ?? [];
-                          const isCardExpanded = expandedPathCardIds.has(cardIdStr);
-                          return (
-                            <div key={card.cardId} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); togglePathCardExpand(cardIdStr); }}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '8px',
-                                  padding: isMobile ? '12px 14px' : '8px 12px',
-                                  minHeight: isMobile ? '48px' : undefined,
-                                  fontSize: '13px',
-                                  fontWeight: 500,
-                                  color: themeStyles.textPrimary,
-                                  background: themeStyles.bgSecondary,
-                                  border: `1px solid ${themeStyles.border}`,
-                                  borderRadius: '10px',
-                                  cursor: 'pointer',
-                                  textAlign: 'left',
-                                  width: '100%',
-                                  transition: 'all 0.2s',
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.background = themeStyles.bgHover;
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = themeStyles.bgSecondary;
-                                }}
-                              >
-                                <span style={{ flex: 1 }}>{card.title || i18n('Unnamed Card')}</span>
-                                {problemCount > 0 && (
-                                  <span style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    minWidth: '22px',
-                                    height: '22px',
-                                    padding: '0 8px',
-                                    fontSize: '12px',
-                                    fontWeight: 600,
-                                    color: themeStyles.accent,
-                                    backgroundColor: theme === 'dark' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(14, 165, 233, 0.15)',
-                                    border: `1px solid ${themeStyles.accent}`,
-                                    borderRadius: '11px',
-                                  }}>
-                                    {problemCount}
-                                  </span>
-                                )}
-                                <span style={{ color: themeStyles.textSecondary, fontSize: '12px' }}>
-                                  {isCardExpanded ? '▼' : '▶'}
-                                </span>
-                              </button>
-                              {isCardExpanded && problems.length > 0 && (
-                                <div style={{
-                                  marginLeft: '12px',
-                                  paddingLeft: '12px',
-                                  borderLeft: `2px solid ${themeStyles.border}`,
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  gap: '6px',
-                                }}>
-                                  {problems.map((p, idx) => (
-                                    <div
-                                      key={idx}
-                                      style={{
-                                        padding: '8px 10px',
-                                        fontSize: '12px',
-                                        color: themeStyles.textSecondary,
-                                        background: themeStyles.bgPrimary,
-                                        borderRadius: '6px',
-                                        lineHeight: 1.5,
-                                      }}
-                                    >
-                                      <span style={{ color: themeStyles.textTertiary, marginRight: '6px' }}>{idx + 1}.</span>
-                                      {p.stem || i18n('Unnamed question')}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                    <span style={{ fontSize: '15px', fontWeight: 600, color: themeStyles.textPrimary }}>
+                      {todayCompletedCount} / {goal}
+                    </span>
+                    {!isEditingGoal ? (
+                      <button
+                        onClick={() => setIsEditingGoal(true)}
+                        type="button"
+                        style={{
+                          padding: '5px 12px',
+                          fontSize: '12px',
+                          background: 'transparent',
+                          border: `1px solid ${themeStyles.border}`,
+                          borderRadius: '8px',
+                          color: themeStyles.textSecondary,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = themeStyles.accent;
+                          e.currentTarget.style.color = themeStyles.accent;
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = themeStyles.border;
+                          e.currentTarget.style.color = themeStyles.textSecondary;
+                        }}
+                      >
+                        {i18n('Edit')} {i18n('Daily Goal')}
+                      </button>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <input
+                          type="number"
+                          value={goal}
+                          onChange={(e) => setGoal(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                          min={0}
+                          style={{
+                            width: '56px',
+                            padding: '5px 10px',
+                            fontSize: '13px',
+                            background: themeStyles.bgPrimary,
+                            border: `1px solid ${themeStyles.border}`,
+                            borderRadius: '8px',
+                            color: themeStyles.textPrimary,
+                          }}
+                        />
+                        <span style={{ fontSize: '12px', color: themeStyles.textSecondary }}>{i18n('cards')}</span>
+                        <button
+                          onClick={handleSaveGoal}
+                          disabled={isSavingGoal}
+                          type="button"
+                          style={{
+                            padding: '5px 12px',
+                            fontSize: '12px',
+                            background: themeStyles.primary,
+                            border: 'none',
+                            borderRadius: '8px',
+                            color: '#fff',
+                            cursor: isSavingGoal ? 'not-allowed' : 'pointer',
+                            opacity: isSavingGoal ? 0.7 : 1,
+                          }}
+                        >
+                          {isSavingGoal ? i18n('Saving...') : i18n('Save')}
+                        </button>
+                        <button
+                          onClick={() => { setIsEditingGoal(false); setGoal(dailyGoal); }}
+                          type="button"
+                          style={{
+                            padding: '5px 12px',
+                            fontSize: '12px',
+                            background: 'transparent',
+                            border: `1px solid ${themeStyles.border}`,
+                            borderRadius: '8px',
+                            color: themeStyles.textPrimary,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {i18n('Cancel')}
+                        </button>
                       </div>
                     )}
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
+                  <div style={{
+                    height: '12px',
+                    background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                    borderRadius: '6px',
+                    overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      width: `${goal > 0 ? Math.min(100, Math.round((todayCompletedCount / goal) * 100)) : 0}%`,
+                      height: '100%',
+                      background: `linear-gradient(90deg, ${themeStyles.accent} 0%, ${theme === 'dark' ? '#7dd3fc' : '#38bdf8'} 100%)`,
+                      borderRadius: '6px',
+                      transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxShadow: `0 0 12px ${themeStyles.accentGlow}`,
+                    }} />
+                  </div>
+                </div>
+
+                <div style={{
+                  marginTop: '24px',
+                  paddingTop: '20px',
+                  borderTop: `1px solid ${themeStyles.border}`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                }}>
+                  <div style={{
+                    position: 'relative',
+                    display: 'inline-flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                  }}>
+                    <div style={{
+                      position: 'relative',
+                      width: '56px',
+                      height: '56px',
+                      borderRadius: '50%',
+                      background: theme === 'dark' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(14, 165, 233, 0.12)',
+                      border: `2px solid ${theme === 'dark' ? 'rgba(56, 189, 248, 0.4)' : 'rgba(14, 165, 233, 0.3)'}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <span style={{ fontSize: '24px', fontWeight: 700, color: themeStyles.accent, lineHeight: 1 }}>
+                        {totalCheckinDays}
+                      </span>
+                      <button
+                        ref={consecutiveBubbleRef}
+                        type="button"
+                        onClick={handleConsecutiveBubbleClick}
+                        style={{
+                          position: 'absolute',
+                          top: '-4px',
+                          right: '-4px',
+                          minWidth: '22px',
+                          height: '22px',
+                          padding: '0 6px',
+                          borderRadius: '11px',
+                          background: themeStyles.accent,
+                          color: '#fff',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          border: `2px solid ${themeStyles.bgCard}`,
+                          boxSizing: 'border-box',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {consecutiveDays}
+                        {showConsecutiveTip && (
+                          <span
+                            style={{
+                              position: 'absolute',
+                              bottom: '100%',
+                              left: '50%',
+                              transform: 'translateX(-50%)',
+                              marginBottom: '6px',
+                              padding: '6px 10px',
+                              fontSize: '12px',
+                              color: themeStyles.textPrimary,
+                              background: themeStyles.bgPrimary,
+                              border: `1px solid ${themeStyles.border}`,
+                              borderRadius: '8px',
+                              whiteSpace: 'nowrap',
+                              boxShadow: theme === 'dark' ? '0 4px 12px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.15)',
+                              zIndex: 20,
+                            }}
+                          >
+                            {i18n('Consecutive check-in days')}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginTop: '8px', fontWeight: 500 }}>
+                      {i18n('Total check-in days')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={handleStart}
+                type="button"
+                style={{
+                  padding: isMobile ? '16px 24px' : '18px 28px',
+                  minHeight: isMobile ? '52px' : undefined,
+                  fontSize: '16px',
+                  fontWeight: 600,
+                  background: themeStyles.primary,
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '14px',
+                  cursor: 'pointer',
+                  width: '100%',
+                  transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                  boxShadow: `0 4px 14px ${themeStyles.primaryGlow}`,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = `0 6px 20px ${themeStyles.primaryGlow}`;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = `0 4px 14px ${themeStyles.primaryGlow}`;
+                }}
+              >
+                {i18n('Collect')}
+              </button>
+            </>
+          )}
+        </div>
       </main>
 
       <aside style={{
@@ -1170,104 +528,102 @@ function CollectPage() {
         overflow: 'hidden',
       }}>
         {rightSidebarOpen ? (
-          <>
+          <div style={{
+            flex: 1,
+            padding: isMobile ? '12px 16px 20px' : '20px 16px',
+            overflowY: 'auto',
+            minWidth: 0,
+            WebkitOverflowScrolling: 'touch',
+          } as React.CSSProperties}>
             <div style={{
-              flex: 1,
-              padding: isMobile ? '12px 16px 20px' : '20px 16px',
-              overflowY: 'auto',
-              minWidth: 0,
-              WebkitOverflowScrolling: 'touch',
-            } as React.CSSProperties}>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '12px',
-                paddingBottom: '8px',
-                borderBottom: `1px solid ${themeStyles.border}`,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '12px',
+              paddingBottom: '8px',
+              borderBottom: `1px solid ${themeStyles.border}`,
+            }}>
+              <span style={{
+                fontSize: '12px',
+                fontWeight: 600,
+                color: themeStyles.textSecondary,
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
               }}>
-                <span style={{
+                {i18n('Completed cards')}
+              </span>
+              <button
+                type="button"
+                onClick={() => setRightSidebarOpen(false)}
+                style={{
+                  padding: isMobile ? '8px 12px' : '4px 8px',
+                  minHeight: isMobile ? '44px' : undefined,
                   fontSize: '12px',
-                  fontWeight: 600,
+                  background: 'transparent',
+                  border: `1px solid ${themeStyles.border}`,
+                  borderRadius: '6px',
                   color: themeStyles.textSecondary,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                }}>
-                  {i18n('Completed cards')}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setRightSidebarOpen(false)}
-                  style={{
-                    padding: isMobile ? '8px 12px' : '4px 8px',
-                    minHeight: isMobile ? '44px' : undefined,
-                    fontSize: '12px',
-                    background: 'transparent',
-                    border: `1px solid ${themeStyles.border}`,
-                    borderRadius: '6px',
-                    color: themeStyles.textSecondary,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {isMobile ? i18n('Close') : '×'}
-                </button>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {completedCardsToday.length === 0 ? (
-                  <div style={{ fontSize: '13px', color: themeStyles.textTertiary, fontStyle: 'italic' }}>
-                    {i18n('No completed cards')}
-                  </div>
-                ) : (
-                  completedCardsToday.map((c) => (
-                    <button
-                      key={c.cardId}
-                      type="button"
-                      onClick={() => {
-                        if (c.resultId) {
-                          window.open(`/d/${domainId}/collect/lesson/result/${c.resultId}`, '_blank', 'noopener,noreferrer');
-                        }
-                      }}
-                      style={{
-                        padding: isMobile ? '14px 12px' : '10px 12px',
-                        minHeight: isMobile ? '48px' : undefined,
-                        fontSize: '14px',
-                        color: themeStyles.textSecondary,
-                        borderRadius: '8px',
-                        background: themeStyles.bgPrimary,
-                        border: `1px solid ${themeStyles.border}`,
-                        cursor: c.resultId ? 'pointer' : 'default',
-                        textAlign: 'left',
-                        width: '100%',
-                        transition: 'background 0.2s',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (c.resultId) e.currentTarget.style.background = themeStyles.bgHover;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = themeStyles.bgPrimary;
-                      }}
-                      title={c.resultId ? i18n('View result') : undefined}
-                    >
-                      <div style={{ fontWeight: 500, color: themeStyles.textPrimary }}>
-                        {c.cardTitle || i18n('Unnamed Card')}
-                      </div>
-                      <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginTop: '4px' }}>
-                        {c.nodeTitle ? `${c.nodeTitle} · ` : ''}
-                        {c.completedAt
-                          ? (() => {
-                              const d = typeof c.completedAt === 'string' ? new Date(c.completedAt) : c.completedAt;
-                              const pad = (n: number) => String(n).padStart(2, '0');
-                              return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-                            })()
-                          : ''}{' '}
-                        ✓
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
+                  cursor: 'pointer',
+                }}
+              >
+                {isMobile ? i18n('Close') : '×'}
+              </button>
             </div>
-          </>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {completedCardsToday.length === 0 ? (
+                <div style={{ fontSize: '13px', color: themeStyles.textTertiary, fontStyle: 'italic' }}>
+                  {i18n('No completed cards')}
+                </div>
+              ) : (
+                completedCardsToday.map((c) => (
+                  <button
+                    key={c.cardId}
+                    type="button"
+                    onClick={() => {
+                      if (c.resultId) {
+                        window.open(`/d/${domainId}/collect/lesson/result/${c.resultId}`, '_blank', 'noopener,noreferrer');
+                      }
+                    }}
+                    style={{
+                      padding: isMobile ? '14px 12px' : '10px 12px',
+                      minHeight: isMobile ? '48px' : undefined,
+                      fontSize: '14px',
+                      color: themeStyles.textSecondary,
+                      borderRadius: '8px',
+                      background: themeStyles.bgPrimary,
+                      border: `1px solid ${themeStyles.border}`,
+                      cursor: c.resultId ? 'pointer' : 'default',
+                      textAlign: 'left',
+                      width: '100%',
+                      transition: 'background 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (c.resultId) e.currentTarget.style.background = themeStyles.bgHover;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = themeStyles.bgPrimary;
+                    }}
+                    title={c.resultId ? i18n('View result') : undefined}
+                  >
+                    <div style={{ fontWeight: 500, color: themeStyles.textPrimary }}>
+                      {c.cardTitle || i18n('Unnamed Card')}
+                    </div>
+                    <div style={{ fontSize: '12px', color: themeStyles.textTertiary, marginTop: '4px' }}>
+                      {c.nodeTitle ? `${c.nodeTitle} · ` : ''}
+                      {c.completedAt
+                        ? (() => {
+                            const d = typeof c.completedAt === 'string' ? new Date(c.completedAt) : c.completedAt;
+                            const pad = (n: number) => String(n).padStart(2, '0');
+                            return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                          })()
+                        : ''}{' '}
+                      ✓
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
         ) : !isMobile ? (
           <button
             type="button"
