@@ -980,6 +980,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     return { goal, nodeIds: ids };
   });
 
+  const [collectGoalProgress, setCollectGoalProgress] = useState<{ goal: number; completed: number }>(() => {
+    const ctx = (window as any).UiContext;
+    return {
+      goal: Number(ctx?.collectDailyGoal) || 0,
+      completed: Number(ctx?.collectTodayCompletedCount) || 0,
+    };
+  });
+
   useEffect(() => {
     const checkTheme = () => {
       const newTheme = getTheme();
@@ -2874,14 +2882,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         batchSaveData.cardUpdates = [];
         batchSaveData.cardDeletes = [];
       }
+      // Collect：禁止改 DAG（节点/边），允许卡片与题目的增删改
       if (collectCardsProblemsOnly) {
         batchSaveData.nodeCreates = [];
         batchSaveData.nodeUpdates = [];
         batchSaveData.nodeDeletes = [];
         batchSaveData.edgeCreates = [];
         batchSaveData.edgeDeletes = [];
-        batchSaveData.cardCreates = [];
-        batchSaveData.cardDeletes = [];
       }
 
       
@@ -3055,13 +3062,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                 console.warn('[BaseEditor] flag sync-learn failed', _e);
               }
             }
-            if (collectCardsProblemsOnly && docId) {
-              try {
-                await request.post(`/d/${domainId}/collect/base/${Number(docId)}/sync-learn`, { operation: 'syncDag' });
-              } catch (_e) {
-                console.warn('[BaseEditor] collect sync-learn failed', _e);
-              }
-            }
           } else {
             throw new Error(response.errors?.join(', ') || i18n('Batch save failed'));
           }
@@ -3134,6 +3134,41 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         + (hasDeleteChanges ? pendingDeletes.size : 0)
         + problemChangesCount
         + pendingIntentSaveCount;
+
+      let collectCardIdsForSync: string[] = [];
+      if (collectCardsProblemsOnly && hasAnyChanges) {
+        const seen = new Set<string>();
+        for (const c of batchSaveData.cardCreates) {
+          const rid = cardIdMap.get(c.tempId);
+          if (rid && !String(rid).startsWith('temp-card-')) seen.add(String(rid));
+        }
+        for (const u of batchSaveData.cardUpdates) {
+          const raw = String((u as any).cardId || '');
+          const id = String(cardIdMap.get(raw) || raw);
+          if (id && !id.startsWith('temp-card-')) seen.add(id);
+        }
+        collectCardIdsForSync = Array.from(seen);
+      }
+
+      // Collect 编辑器：保存结束后刷新「今日进度」（domain.user.collectProgressCardIds，与 Flag 的 flagProgressNodeIds 同类）
+      if (collectCardsProblemsOnly && docId) {
+        try {
+          const syncRes: any = await request.post(`/d/${domainId}/collect/base/${Number(docId)}/sync-learn`, {
+            operation: 'syncDag',
+            cardIds: collectCardIdsForSync,
+          });
+          const goal = Number(syncRes?.collectDailyGoal);
+          const completed = Number(syncRes?.collectTodayCompletedCount);
+          if (!Number.isNaN(completed)) {
+            setCollectGoalProgress({
+              goal: Number.isNaN(goal) ? 0 : goal,
+              completed,
+            });
+          }
+        } catch (_e) {
+          console.warn('[BaseEditor] collect sync-learn / progress refresh failed', _e);
+        }
+      }
       
       Notification.success(`保存成功，共 ${totalChanges} 项更改`);
       
@@ -11190,6 +11225,50 @@ ${currentCardContext}
                   </span>
                   <span style={{ fontSize: isMobile ? '11px' : '12px', color: themeStyles.textSecondary }}>
                     {i18n('nodes')}
+                  </span>
+                </div>
+                <div style={{
+                  height: isMobile ? '8px' : '10px',
+                  background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                  borderRadius: '5px',
+                  overflow: 'hidden',
+                }}>
+                  <div style={{
+                    width: `${pct}%`,
+                    height: '100%',
+                    background: themeStyles.accent,
+                    borderRadius: '5px',
+                    transition: 'width 0.25s ease',
+                  }} />
+                </div>
+              </div>
+            );
+          }
+          if (collectCardsProblemsOnly) {
+            const g = collectGoalProgress.goal;
+            const c = collectGoalProgress.completed;
+            const pct = g > 0 ? Math.min(100, Math.round((c / g) * 100)) : 0;
+            return (
+              <div
+                style={{
+                  flexShrink: 0,
+                  padding: isMobile ? '6px 10px 8px' : '12px 16px',
+                  borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+                  backgroundColor: themeStyles.bgSecondary,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: isMobile ? '8px' : '10px',
+                }}
+              >
+                <span style={{ fontSize: isMobile ? '12px' : '13px', fontWeight: 600, color: themeStyles.textPrimary }}>
+                  {i18n('Today progress')}
+                </span>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: isMobile ? '16px' : '18px', fontWeight: 700, color: themeStyles.statCard }}>
+                    {c} / {g}
+                  </span>
+                  <span style={{ fontSize: isMobile ? '11px' : '12px', color: themeStyles.textSecondary }}>
+                    {i18n('cards')}
                   </span>
                 </div>
                 <div style={{
