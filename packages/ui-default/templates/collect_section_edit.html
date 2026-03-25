@@ -1,0 +1,29 @@
+{% set page_name = "collectSectionEditPage" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<script>
+  {{ set(UiContext, 'sections', sections) }}
+  {{ set(UiContext, 'allSections', allSections) }}
+  {{ set(UiContext, 'dag', dag) }}
+  {{ set(UiContext, 'domainId', domainId) }}
+  {{ set(UiContext, 'baseDocId', baseDocId) }}
+  {{ set(UiContext, 'targetUid', targetUid) }}
+  {{ set(UiContext, 'targetUser', targetUser) }}
+  {{ set(UiContext, 'currentLearnSectionIndex', currentLearnSectionIndex) }}
+  {{ set(UiContext, 'currentLearnSectionId', currentLearnSectionId) }}
+</script>
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Section Order') }}</h1>
+      </div>
+      <div class="section__body">
+        <div id="collect-section-edit-container">
+          <p class="typo">{{ _('Loading...') }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
