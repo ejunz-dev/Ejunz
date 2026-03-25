@@ -82,6 +82,7 @@ __langname: English
 'Clipboard unavailable': Clipboard unavailable
 'Close and retry': Close and retry
 'Collapse': Collapse
+'Collect': Collect
 'Collecting data...': Collecting data...
 'Commit Message': Commit Message
 'commits': commits
@@ -179,6 +180,7 @@ __langname: English
 'File Mode': File Mode
 'File view': File view
 'Final message will be': Final message will be
+'Flag': Flag
 'Folder description': Folder description
 'Folder/Directory': Folder/Directory
 'Free Scroll': Free Scroll
@@ -358,7 +360,6 @@ __langname: English
 'Source card': Source card
 'Source': Source
 'Start Learning': Start Learning
-'Collect': Collect
 'Status': Status
 'Stem cannot be empty': Stem cannot be empty
 'Stem is required': Stem is required
