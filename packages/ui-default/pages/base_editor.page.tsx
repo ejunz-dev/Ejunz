@@ -963,6 +963,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   });
   const contributionWsRef = useRef<any>(null);
   const saveHandlerRef = useRef<() => void>(() => {});
+  const nodesIntentOnly = useMemo(
+    () => String((window as any).UiContext?.editorUiMode || '') === 'flag_nodes_intent',
+    [],
+  );
+  const collectCardsProblemsOnly = useMemo(
+    () => String((window as any).UiContext?.editorUiMode || '') === 'collect_cards_problems',
+    [],
+  );
+  const editorAiHidden = nodesIntentOnly || collectCardsProblemsOnly;
 
   useEffect(() => {
     const checkTheme = () => {
@@ -1334,6 +1343,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const cardFaceEditorInstanceRef = useRef<any>(null);
   const [importText, setImportText] = useState('');
   const [showAIChat, setShowAIChat] = useState<boolean>(false);
+  useEffect(() => {
+    if (editorAiHidden) setShowAIChat(false);
+  }, [editorAiHidden]);
   const [showProblemPanel, setShowProblemPanel] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<Array<{ 
     role: 'user' | 'assistant' | 'operation'; 
@@ -1798,9 +1810,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         
         const allChildren: Array<{ type: 'node' | 'card'; id: string; order: number; data: any; isPending?: boolean }> = [
           ...childNodes.map(n => ({ type: 'node' as const, id: n.id, order: n.order, data: n.node, isPending: false })),
-          ...nodeCards.map(c => ({ type: 'card' as const, id: c.docId, order: c.order || 0, data: c, isPending: false })),
+          ...(nodesIntentOnly
+            ? []
+            : [
+                ...nodeCards.map(c => ({ type: 'card' as const, id: c.docId, order: c.order || 0, data: c, isPending: false })),
+                ...pendingCards,
+              ]),
           ...pendingNodes,
-          ...pendingCards,
         ];
         
         
@@ -1857,7 +1873,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       });
 
     return items;
-  }, [base.nodes, base.edges, nodeCardsMapVersion, expandedNodes, pendingChanges, pendingRenames, pendingDragChanges, pendingDeletes, pendingNodeIntents, clipboard, workspaceNodeId]);
+  }, [base.nodes, base.edges, nodeCardsMapVersion, expandedNodes, pendingChanges, pendingRenames, pendingDragChanges, pendingDeletes, pendingNodeIntents, clipboard, workspaceNodeId, nodesIntentOnly, collectCardsProblemsOnly]);
 
   useEffect(() => {
     fileTreeRef.current = fileTree;
@@ -2004,7 +2020,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     
     
     if (file.type === 'node') {
-      setNodeSidePanelTab('intent');
+      setNodeSidePanelTab(collectCardsProblemsOnly ? 'files' : 'intent');
       setSelectedFile(file);
       selectedFileRef.current = file;
       if (!skipUrlUpdate && file.nodeId) {
@@ -2079,7 +2095,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
       setFileContent(content);
     });
-  }, [base.nodes, selectedFile, editorInstance, fileContent, pendingChanges, isMultiSelectMode, fileTree, selectedItems]);
+  }, [base.nodes, selectedFile, editorInstance, fileContent, pendingChanges, isMultiSelectMode, fileTree, selectedItems, collectCardsProblemsOnly]);
 
   
   useEffect(() => {
@@ -2278,26 +2294,28 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       return;
     }
 
-    const nodeIdsRequiringIntent = new Set<string>();
-    for (const n of base.nodes) {
-      if (pendingDeletes.has(n.id)) continue;
-      nodeIdsRequiringIntent.add(n.id);
-    }
-    pendingCreatesRef.current.forEach((create, tempId) => {
-      if (create.type !== 'node') return;
-      if (pendingDeletes.has(tempId)) return;
-      nodeIdsRequiringIntent.add(tempId);
-    });
-    for (const nodeId of nodeIdsRequiringIntent) {
-      const intentStr = pendingNodeIntents.has(nodeId)
-        ? String(pendingNodeIntents.get(nodeId) ?? '').trim()
-        : String(base.nodes.find((n) => n.id === nodeId)?.intent ?? '').trim();
-      if (!intentStr) {
-        Notification.warn(i18n('Every node must have an Intent before saving.'));
-        return;
+    if (!collectCardsProblemsOnly) {
+      const nodeIdsRequiringIntent = new Set<string>();
+      for (const n of base.nodes) {
+        if (pendingDeletes.has(n.id)) continue;
+        nodeIdsRequiringIntent.add(n.id);
+      }
+      pendingCreatesRef.current.forEach((create, tempId) => {
+        if (create.type !== 'node') return;
+        if (pendingDeletes.has(tempId)) return;
+        nodeIdsRequiringIntent.add(tempId);
+      });
+      for (const nodeId of nodeIdsRequiringIntent) {
+        const intentStr = pendingNodeIntents.has(nodeId)
+          ? String(pendingNodeIntents.get(nodeId) ?? '').trim()
+          : String(base.nodes.find((n) => n.id === nodeId)?.intent ?? '').trim();
+        if (!intentStr) {
+          Notification.warn(i18n('Every node must have an Intent before saving.'));
+          return;
+        }
       }
     }
-    
+
     setIsCommitting(true);
 
     
@@ -2844,6 +2862,21 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         }
       }
 
+      if (nodesIntentOnly) {
+        batchSaveData.cardCreates = [];
+        batchSaveData.cardUpdates = [];
+        batchSaveData.cardDeletes = [];
+      }
+      if (collectCardsProblemsOnly) {
+        batchSaveData.nodeCreates = [];
+        batchSaveData.nodeUpdates = [];
+        batchSaveData.nodeDeletes = [];
+        batchSaveData.edgeCreates = [];
+        batchSaveData.edgeDeletes = [];
+        batchSaveData.cardCreates = [];
+        batchSaveData.cardDeletes = [];
+      }
+
       
       const hasAnyChanges = 
         batchSaveData.nodeCreates.length > 0 ||
@@ -2988,6 +3021,20 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             if (response.errors && response.errors.length > 0) {
               Notification.warn(i18n('Save completed, but {0} error(s) occurred', response.errors.length));
             }
+            if (nodesIntentOnly && docId) {
+              try {
+                await request.post(`/d/${domainId}/flag/base/${Number(docId)}/sync-learn`, { operation: 'syncDag' });
+              } catch (_e) {
+                console.warn('[BaseEditor] flag sync-learn failed', _e);
+              }
+            }
+            if (collectCardsProblemsOnly && docId) {
+              try {
+                await request.post(`/d/${domainId}/collect/base/${Number(docId)}/sync-learn`, { operation: 'syncDag' });
+              } catch (_e) {
+                console.warn('[BaseEditor] collect sync-learn failed', _e);
+              }
+            }
           } else {
             throw new Error(response.errors?.join(', ') || i18n('Batch save failed'));
           }
@@ -3123,7 +3170,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } finally {
       setIsCommitting(false);
     }
-  }, [pendingChanges, pendingNodeIntents, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion]);
+  }, [pendingChanges, pendingNodeIntents, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, nodesIntentOnly, collectCardsProblemsOnly]);
 
   useEffect(() => {
     saveHandlerRef.current = handleSaveAll;
@@ -9006,7 +9053,7 @@ ${currentCardContext}
           {contextMenu.file.type === 'node' ? (
             <>
               {/* Paste (when clipboard has content) */}
-              {clipboard && (
+              {clipboard && !nodesIntentOnly && (
                 <>
                   <div
                     style={{
@@ -9053,7 +9100,15 @@ ${currentCardContext}
                       setContextMenu(null);
                       return;
                     }
-                    path = getBaseUrl(`/${baseIdSeg}/branch/${currentBranch}/editor`);
+                    if (nodesIntentOnly) {
+                      const flagDomainId = (window as any).UiContext?.domainId || 'system';
+                      path = `/d/${flagDomainId}/flag/base/${baseIdSeg}/branch/${encodeURIComponent(currentBranch)}/editor`;
+                    } else if (collectCardsProblemsOnly) {
+                      const collectDomainId = (window as any).UiContext?.domainId || 'system';
+                      path = `/d/${collectDomainId}/collect/base/${baseIdSeg}/branch/${encodeURIComponent(currentBranch)}/editor`;
+                    } else {
+                      path = getBaseUrl(`/${baseIdSeg}/branch/${currentBranch}/editor`);
+                    }
                   }
                   window.open(path + '?workspace=' + ws, '_blank');
                   setContextMenu(null);
@@ -9061,6 +9116,7 @@ ${currentCardContext}
               >
                 打开工作区
               </div>
+              <>
               <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
                 style={{
@@ -9083,7 +9139,7 @@ ${currentCardContext}
               >
                 {isMultiSelectMode ? '退出多选' : '多选模式'}
               </div>
-              {/* Multi-select: copy, cut, delete */}
+              {/* Multi-select: copy, cut, delete (batch delete hidden in collect: may remove nodes) */}
               {isMultiSelectMode && selectedItems.size > 0 && (
                 <>
                   <div
@@ -9120,6 +9176,8 @@ ${currentCardContext}
                   >
                     剪切选中项 ({selectedItems.size})
                   </div>
+                  {!collectCardsProblemsOnly && (
+                  <>
                   <div
                     style={{
                       padding: '6px 16px',
@@ -9141,8 +9199,13 @@ ${currentCardContext}
                     删除选中项 ({selectedItems.size})
                   </div>
                   <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
+                  </>
+                  )}
                 </>
               )}
+              </>
+              {!nodesIntentOnly && (
+              <>
               <div
                 style={{
                   padding: '6px 16px',
@@ -9160,6 +9223,10 @@ ${currentCardContext}
               >
                 新建 Card
               </div>
+              </>
+              )}
+              {!collectCardsProblemsOnly && (
+              <>
               <div
                 style={{
                   padding: '6px 16px',
@@ -9284,6 +9351,10 @@ ${currentCardContext}
                   </div>
                 )}
               </div>
+              </>
+              )}
+              {!nodesIntentOnly && (
+              <>
               <div
                 style={{ position: 'relative' }}
                 onMouseEnter={() => setNewSiblingCardForNodeSubmenuOpen(true)}
@@ -9408,6 +9479,9 @@ ${currentCardContext}
               >
                 新建多个 Card
               </div>
+              </>
+              )}
+              {!collectCardsProblemsOnly && (
               <div
                 style={{
                   padding: '6px 16px',
@@ -9425,6 +9499,9 @@ ${currentCardContext}
               >
                 新建多个子 Node
               </div>
+              )}
+              {!nodesIntentOnly && (
+              <>
               <div
                 style={{
                   padding: '6px 16px',
@@ -9442,7 +9519,7 @@ ${currentCardContext}
               >
                 导入
               </div>
-              {basePath !== 'base/skill' && docId && contextMenu.file.nodeId && !String(contextMenu.file.nodeId).startsWith('temp-node-') && (
+              {!collectCardsProblemsOnly && basePath !== 'base/skill' && docId && contextMenu.file.nodeId && !String(contextMenu.file.nodeId).startsWith('temp-node-') && (
                 <div
                   style={{
                     padding: '6px 16px',
@@ -9467,6 +9544,8 @@ ${currentCardContext}
                 </div>
               )}
               <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
+              </>
+              )}
               <div
                 style={{
                   padding: '6px 16px',
@@ -9487,6 +9566,8 @@ ${currentCardContext}
               >
                 排序
               </div>
+              {!nodesIntentOnly && (
+              <>
               <div
                 style={{
                   padding: '6px 16px',
@@ -9554,6 +9635,9 @@ ${currentCardContext}
                   return n > 0 ? i18n('{0} file(s) — Open list', n) : i18n('Open file list');
                 })()}
               </div>
+              </>
+              )}
+              <>
               <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
                 style={{
@@ -9575,7 +9659,9 @@ ${currentCardContext}
               >
                 重命名
               </div>
+              {!nodesIntentOnly && !collectCardsProblemsOnly && (
               <div style={{ padding: '6px 16px', cursor: 'pointer', fontSize: '13px', color: themeStyles.textPrimary }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = themeStyles.bgHover; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }} onClick={() => handleConvertCardToNode(contextMenu.file)}>转换为 node</div>
+              )}
               <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
                 style={{
@@ -9628,6 +9714,8 @@ ${currentCardContext}
               >
                 剪切
               </div>
+              {!collectCardsProblemsOnly && (
+              <>
               <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
               <div
                 style={{
@@ -9646,6 +9734,9 @@ ${currentCardContext}
               >
                 删除 Node
               </div>
+              </>
+              )}
+              </>
             </>
           ) : (
             <>
@@ -9670,7 +9761,7 @@ ${currentCardContext}
               >
                 {isMultiSelectMode ? '退出多选' : '多选模式'}
               </div>
-              {/* Multi-select: copy, cut, delete */}
+              {/* Multi-select: copy, cut, delete (batch delete hidden in collect: may remove nodes) */}
               {isMultiSelectMode && selectedItems.size > 0 && (
                 <>
                   <div
@@ -9707,6 +9798,8 @@ ${currentCardContext}
                   >
                     剪切选中项 ({selectedItems.size})
                   </div>
+                  {!collectCardsProblemsOnly && (
+                  <>
                   <div
                     style={{
                       padding: '6px 16px',
@@ -9728,6 +9821,8 @@ ${currentCardContext}
                     删除选中项 ({selectedItems.size})
                   </div>
                   <div style={{ height: '1px', backgroundColor: themeStyles.borderSecondary, margin: '4px 0' }} />
+                  </>
+                  )}
                 </>
               )}
               <div
@@ -9849,6 +9944,8 @@ ${currentCardContext}
                   </div>
                 )}
               </div>
+              {!collectCardsProblemsOnly && (
+              <>
               <div
                 style={{ position: 'relative' }}
                 onMouseEnter={() => setNewSiblingNodeForCardSubmenuOpen(true)}
@@ -9985,6 +10082,8 @@ ${currentCardContext}
               >
                 转换为 node
               </div>
+              </>
+              )}
               <div
                 style={{
                   padding: '6px 16px',
@@ -10175,6 +10274,8 @@ ${currentCardContext}
           onClick={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}
         >
+          {!collectCardsProblemsOnly && (
+          <>
           <div
             style={{
               padding: '6px 16px',
@@ -10192,6 +10293,10 @@ ${currentCardContext}
           >
             新建 Node
           </div>
+          </>
+          )}
+          {!nodesIntentOnly && !collectCardsProblemsOnly && (
+          <>
           <div
             style={{
               padding: '6px 16px',
@@ -10209,6 +10314,10 @@ ${currentCardContext}
           >
             新建 Card
           </div>
+          </>
+          )}
+          {!collectCardsProblemsOnly && (
+          <>
           <div
             style={{
               padding: '6px 16px',
@@ -10226,6 +10335,10 @@ ${currentCardContext}
           >
             新建多个 Node
           </div>
+          </>
+          )}
+          {!nodesIntentOnly && !collectCardsProblemsOnly && (
+          <>
           <div
             style={{
               padding: '6px 16px',
@@ -10243,6 +10356,8 @@ ${currentCardContext}
           >
             新建多个 Card
           </div>
+          </>
+          )}
         </div>
       )}
 
@@ -10914,8 +11029,8 @@ ${currentCardContext}
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        width: (showAIChat && !isMobile) || (showProblemPanel && !isMobile)
-          ? `calc(100% - ${(showAIChat && !isMobile ? chatPanelWidth : 0) + (showProblemPanel && !isMobile ? PROBLEM_PANEL_WIDTH : 0)}px)`
+        width: (showAIChat && !isMobile && !editorAiHidden) || (showProblemPanel && !isMobile)
+          ? `calc(100% - ${(showAIChat && !isMobile && !editorAiHidden ? chatPanelWidth : 0) + (showProblemPanel && !isMobile ? PROBLEM_PANEL_WIDTH : 0)}px)`
           : (basePath === 'base/skill' && !isMobile ? undefined : '100%'),
         transition: isResizing ? 'none' : 'width 0.3s ease',
         paddingTop: isMobile ? 'env(safe-area-inset-top, 0px)' : 0,
@@ -11249,6 +11364,7 @@ ${currentCardContext}
                       backgroundColor: themeStyles.bgSecondary,
                     }}>
                       <span style={{ fontWeight: 600, color: themeStyles.textPrimary, fontSize: '13px', marginRight: 8 }}>{node?.text || selectedFile.nodeId}</span>
+                      {!collectCardsProblemsOnly && (
                       <button
                         type="button"
                         onClick={() => setNodeSidePanelTab('intent')}
@@ -11262,6 +11378,7 @@ ${currentCardContext}
                           cursor: 'pointer',
                         }}
                       >{i18n('Intent')}</button>
+                      )}
                       <button
                         type="button"
                         onClick={() => setNodeSidePanelTab('files')}
@@ -11276,7 +11393,7 @@ ${currentCardContext}
                         }}
                       >{i18n('Files')}</button>
                     </div>
-                    {nodeSidePanelTab === 'intent' ? (
+                    {nodeSidePanelTab === 'intent' && !collectCardsProblemsOnly ? (
                       <div style={{ flex: 1, overflow: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 20 }}>
                         <div>
                           <div style={{ fontSize: '12px', fontWeight: 600, color: themeStyles.textSecondary, marginBottom: 8 }}>{i18n('This node')}</div>
@@ -11882,7 +11999,7 @@ ${currentCardContext}
         </div>
       )}
 
-      {showAIChat && isMobile && (
+      {showAIChat && !editorAiHidden && isMobile && (
         <div
           role="presentation"
           style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: 'rgba(0,0,0,0.4)' }}
@@ -11890,7 +12007,7 @@ ${currentCardContext}
           aria-hidden
         />
       )}
-      {showAIChat && !isMobile && (
+      {showAIChat && !editorAiHidden && !isMobile && (
         <div
           onMouseDown={(e) => {
             e.preventDefault();
@@ -11929,7 +12046,7 @@ ${currentCardContext}
         </div>
       )}
 
-      {showAIChat && (
+      {showAIChat && !editorAiHidden && (
         <div style={{
           ...(isMobile
             ? {
@@ -12300,7 +12417,7 @@ ${currentCardContext}
         </div>
       )}
 
-      {!isMobile && (
+      {!isMobile && !editorAiHidden && (
         <div
           style={{
             width: '32px',
@@ -12345,7 +12462,7 @@ const getBaseUrl = (path: string, docId: string): string => {
   return `/d/${domainId}/base/${docId}${path}`;
 };
 
-const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_editor', 'base_skill_editor_branch'], async (pageName) => {
+const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_editor', 'base_skill_editor_branch', 'flag_editor', 'flag_editor_branch', 'collect_editor', 'collect_editor_branch'], async (pageName) => {
   try {
     
     const isSkill = pageName === 'base_skill_editor' || pageName === 'base_skill_editor_branch';

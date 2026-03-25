@@ -231,7 +231,7 @@ function CollectPage() {
       window.location.href = `/d/${domainId}/collect/base/select?redirect=${encodeURIComponent(`/d/${domainId}/collect`)}`;
       return;
     }
-    window.location.href = `/d/${domainId}/base/${selectedLearnBaseDocId}/branch/main/editor`;
+    window.location.href = `/d/${domainId}/collect/base/${selectedLearnBaseDocId}/branch/main/editor`;
   }, [domainId, selectedLearnBaseDocId]);
 
   const handleSaveGoal = useCallback(async () => {
