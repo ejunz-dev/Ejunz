@@ -973,6 +973,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   );
   const editorAiHidden = nodesIntentOnly || collectCardsProblemsOnly;
 
+  const [flagGoalProgress, setFlagGoalProgress] = useState<{ goal: number; nodeIds: string[] }>(() => {
+    const ctx = (window as any).UiContext;
+    const goal = Number(ctx?.flagDailyGoal) || 0;
+    const ids = Array.isArray(ctx?.flagProgressNodeIds) ? ctx.flagProgressNodeIds.map((x: unknown) => String(x)) : [];
+    return { goal, nodeIds: ids };
+  });
+
   useEffect(() => {
     const checkTheme = () => {
       const newTheme = getTheme();
@@ -3023,7 +3030,27 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             }
             if (nodesIntentOnly && docId) {
               try {
-                await request.post(`/d/${domainId}/flag/base/${Number(docId)}/sync-learn`, { operation: 'syncDag' });
+                const flagProgressNodeIds: string[] = [];
+                for (const [nodeId, intent] of pendingNodeIntents.entries()) {
+                  const resolved = nodeId.startsWith('temp-node-') && nodeIdMap.has(nodeId)
+                    ? nodeIdMap.get(nodeId)!
+                    : nodeId;
+                  if (resolved.startsWith('temp-node-')) continue;
+                  const node = base.nodes.find((n: BaseNode) => n.id === nodeId);
+                  const original = node?.intent ?? '';
+                  if (intent === original) continue;
+                  flagProgressNodeIds.push(resolved);
+                }
+                const syncRes: any = await request.post(`/d/${domainId}/flag/base/${Number(docId)}/sync-learn`, {
+                  operation: 'syncDag',
+                  nodeIds: flagProgressNodeIds,
+                });
+                if (syncRes && Array.isArray(syncRes.flagProgressNodeIds)) {
+                  setFlagGoalProgress(prev => ({
+                    goal: Number(syncRes.flagDailyGoal) || prev.goal,
+                    nodeIds: syncRes.flagProgressNodeIds.map((x: unknown) => String(x)),
+                  }));
+                }
               } catch (_e) {
                 console.warn('[BaseEditor] flag sync-learn failed', _e);
               }
@@ -11138,6 +11165,50 @@ ${currentCardContext}
 
         {/* Comment translated to English. */}
         {(() => {
+          if (nodesIntentOnly) {
+            const g = flagGoalProgress.goal;
+            const n = flagGoalProgress.nodeIds.length;
+            const pct = g > 0 ? Math.min(100, Math.round((n / g) * 100)) : 0;
+            return (
+              <div
+                style={{
+                  flexShrink: 0,
+                  padding: isMobile ? '6px 10px 8px' : '12px 16px',
+                  borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+                  backgroundColor: themeStyles.bgSecondary,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: isMobile ? '8px' : '10px',
+                }}
+              >
+                <span style={{ fontSize: isMobile ? '12px' : '13px', fontWeight: 600, color: themeStyles.textPrimary }}>
+                  {i18n('Today\'s goal progress')}
+                </span>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: isMobile ? '16px' : '18px', fontWeight: 700, color: themeStyles.statNode }}>
+                    {n} / {g}
+                  </span>
+                  <span style={{ fontSize: isMobile ? '11px' : '12px', color: themeStyles.textSecondary }}>
+                    {i18n('nodes')}
+                  </span>
+                </div>
+                <div style={{
+                  height: isMobile ? '8px' : '10px',
+                  background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                  borderRadius: '5px',
+                  overflow: 'hidden',
+                }}>
+                  <div style={{
+                    width: `${pct}%`,
+                    height: '100%',
+                    background: themeStyles.accent,
+                    borderRadius: '5px',
+                    transition: 'width 0.25s ease',
+                  }} />
+                </div>
+              </div>
+            );
+          }
           const todayContribution = contributionData.todayContribution;
           const todayAll = contributionData.todayContributionAllDomains;
           const domainId = (window as any).UiContext?.domainId || (window as any).UiContext?.base?.domainId;
