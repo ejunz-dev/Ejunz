@@ -14,6 +14,9 @@ __langname: 简体中文
 '{0} discussions': '{0} 条讨论'
 '{0} is a moderator of this domain.': '{}是这个域的管理者之一。'
 '{0} limit exceeded (limit: {2} operations in {1} seconds).': '{0} 超过频率限制。限制：{1} 秒内最多 {2} 次操作。'
+'{0} more cards to go': 还差 {0} 张卡片
+'{0} more nodes to go': 还差 {0} 个节点
+'{0} more times to go': 还差 {0} 次
 '{0} parts': '{0} 个部分'
 '{0} units': '{0} 个单元'
 '↓ # Comments': '↓ 评论数'
@@ -82,6 +85,7 @@ __langname: 简体中文
 'cardId is required': cardId 是必需的
 'Check-in Days': 打卡天数
 'Check-in remaining': 今日还需
+'Checked in': 已打卡
 'Clear Agent': 清除 Agent
 'Clear Logs': 清空日志
 'Click a section on the left to add to the top of the order.': 点击左侧章节的加号添加到顺序列表顶部。
@@ -400,6 +404,7 @@ __langname: 简体中文
 'System tool (not Edge)': 系统工具，非 Edge
 'Table of contents': 目录
 'Table of Contents': 目录
+'Tap the day count above to continue in Learn, Collect, or Flag.': 点击上方天数可前往 Learn、Collect 或 Flag 继续学习。
 'The value `{1}` of {0} already exists.': '{0} 的值 `{1}` 已经存在。'
 'Thinking...': 正在思考...
 'This branch is behind remote by {0} commit(s). Please use Pull to sync.': 此分支落后远程 {0} 个提交。请使用 Pull 同步。
