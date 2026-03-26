@@ -3,13 +3,98 @@
  * Raw domain stats align with profile-style counts (nodes / cards / problems).
  */
 import type { Db } from 'mongodb';
-import { coll, TYPE_BASE, TYPE_CARD, TYPE_NODE } from '../model/document';
+import moment from 'moment-timezone';
+import { coll, getMulti, TYPE_BASE, TYPE_CARD, TYPE_NODE } from '../model/document';
 
 export interface DomainStatRow {
     uid: number;
     nodes: number;
     cards: number;
     problems: number;
+}
+
+/** Per-type counts (nodes / cards / problems) for one slice (e.g. today). */
+export interface DayStatTriple {
+    nodes: number;
+    cards: number;
+    problems: number;
+}
+
+/** Today's learning consumption in one domain (learn_consumption_stats row). */
+export async function getTodayUserDomainConsumption(
+    db: Db,
+    domainId: string,
+    userId: number,
+    dateKey: string,
+): Promise<DayStatTriple> {
+    const doc = await db.collection('learn_consumption_stats').findOne({
+        domainId,
+        userId,
+        date: dateKey,
+    });
+    return {
+        nodes: Number(doc?.nodes) || 0,
+        cards: Number(doc?.cards) || 0,
+        problems: Number(doc?.problems) || 0,
+    };
+}
+
+/**
+ * Today's content contribution in one domain (profile-style: node/card/problem activity dates).
+ * Matches user profile contribution calendar for the given UTC calendar day.
+ */
+export async function getTodayUserDomainContribution(
+    domainId: string,
+    userId: number,
+    dateKey: string,
+): Promise<DayStatTriple> {
+    let nodes = 0;
+    let cards = 0;
+    let problems = 0;
+
+    const independentNodes = await getMulti(domainId, TYPE_NODE, { owner: userId })
+        .project({ createdAt: 1, updateAt: 1 })
+        .toArray();
+    for (const nodeDoc of independentNodes) {
+        if (!nodeDoc.createdAt) continue;
+        const createDate = moment.utc(nodeDoc.createdAt).format('YYYY-MM-DD');
+        const updateDate = nodeDoc.updateAt ? moment.utc(nodeDoc.updateAt).format('YYYY-MM-DD') : createDate;
+        const isCreated = createDate === updateDate && nodeDoc.updateAt
+            && Math.abs(moment.utc(nodeDoc.updateAt).diff(moment.utc(nodeDoc.createdAt), 'minutes')) < 5;
+        const date = isCreated ? createDate : updateDate;
+        if (date === dateKey) nodes += 1;
+    }
+
+    const bases = await getMulti(domainId, TYPE_BASE, { owner: userId })
+        .project({ nodes: 1, branchData: 1, updateAt: 1, createdAt: 1 })
+        .toArray();
+    for (const baseDoc of bases) {
+        const totalNodesInBase = countNodesInBaseDoc(baseDoc as any);
+        if (totalNodesInBase <= 0) continue;
+        const date = baseDoc.updateAt
+            ? moment.utc(baseDoc.updateAt).format('YYYY-MM-DD')
+            : (baseDoc.createdAt ? moment.utc(baseDoc.createdAt).format('YYYY-MM-DD') : null);
+        if (date === dateKey) nodes += totalNodesInBase;
+    }
+
+    const cardDocs = await getMulti(domainId, TYPE_CARD, { owner: userId })
+        .project({ createdAt: 1, updateAt: 1, problems: 1 })
+        .toArray();
+    for (const cardDoc of cardDocs) {
+        if (!cardDoc.createdAt) continue;
+        const createDate = moment.utc(cardDoc.createdAt).format('YYYY-MM-DD');
+        const updateDate = cardDoc.updateAt ? moment.utc(cardDoc.updateAt).format('YYYY-MM-DD') : createDate;
+        const isCreated = createDate === updateDate && cardDoc.updateAt
+            && Math.abs(moment.utc(cardDoc.updateAt).diff(moment.utc(cardDoc.createdAt), 'minutes')) < 5;
+        const date = isCreated ? createDate : updateDate;
+        if (date !== dateKey) continue;
+        cards += 1;
+        if (cardDoc.problems && Array.isArray(cardDoc.problems)) {
+            problems += cardDoc.problems.length;
+        }
+    }
+
+    return { nodes, cards, problems };
 }
 
 /** Full leaderboard row after rating + ordering (for cache / API). */

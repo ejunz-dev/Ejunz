@@ -6,6 +6,7 @@ homepage:
       base: 10
       agent: 3
       checkin: true
+      today_domain_stats: true
     - width: 6
       discussion: 20
       contribution_ranking: 15
