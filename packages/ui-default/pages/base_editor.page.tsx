@@ -2309,7 +2309,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       return;
     }
 
-    if (!collectCardsProblemsOnly) {
+    if (nodesIntentOnly) {
       const nodeIdsRequiringIntent = new Set<string>();
       for (const n of base.nodes) {
         if (pendingDeletes.has(n.id)) continue;
