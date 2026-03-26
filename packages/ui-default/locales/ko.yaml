@@ -16,12 +16,14 @@ __langname: 한국어
 'Check-in remaining': 오늘 남은 양
 'Checked in': 완료
 'Completed today': 오늘 완료
+'Content contribution': 콘텐츠 기여
 'days': 일
 'Failed to generate token: {0}': 'Token 생성 실패: {0}'
 'Failed to join the domain. You are already a member.': '그룹 참여 실패. 이미 참여함.'
 'Field {0} or {1} validation failed.': '항목 {0} 또는 {1} 검증 실패'
 'Field {0} validation failed.': '항목 {0} 검증 실패'
 'Last check-in': 마지막 체크인
+'Learning consumption': 학습 소모
 'Max consecutive': 최대 연속
 'No': 아니오
 'Please generate token on': '다음에서 Token 생성:'
@@ -30,6 +32,7 @@ __langname: 한국어
 'Yes': 예
 "This domain today": 오늘 이 도메인
 "Today's contribution": 오늘의 기여
+"Today's domain activity": 오늘 이 도메인 활동
 "Total today (all domains)": 오늘 전체 (모든 도메인)
 (None): (N/A)
 (Not changed): 수정되지 않음

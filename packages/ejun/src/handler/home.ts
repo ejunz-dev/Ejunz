@@ -43,6 +43,8 @@ import {
     aggregateContributionByUser,
     computeRatingMap,
     computeStatScore,
+    getTodayUserDomainConsumption,
+    getTodayUserDomainContribution,
 } from '../lib/homepageRanking';
 import RatingModel from '../model/rating';
 
@@ -156,6 +158,28 @@ export class HomeHandler extends Handler {
             flagTodayRemaining: modeRemaining(flagDailyGoal, flagTodayCompleted),
             collectTodayRemaining: modeRemaining(collectDailyGoal, collectTodayCompleted),
             learnTodayRemaining: modeRemaining(learnDailyGoal, learnTodayCompleted),
+        };
+    }
+
+    /** Today's contribution (content) vs consumption (learn) in this domain, by node/card/problem. */
+    async getTodayDomainStats(domainId: string) {
+        if (this.user._id === 0) {
+            return { needLogin: true, domainId };
+        }
+        const rawDudoc = await this.ctx.db.db.collection('domain.user').findOne({ domainId, uid: this.user._id });
+        if ((!rawDudoc || !rawDudoc.join) && !(this.user.priv & PRIV.PRIV_VIEW_ALL_DOMAIN)) {
+            return { needJoinDomain: true, domainId };
+        }
+        const todayKey = moment.utc().format('YYYY-MM-DD');
+        const [contribution, consumption] = await Promise.all([
+            getTodayUserDomainContribution(domainId, this.user._id, todayKey),
+            getTodayUserDomainConsumption(this.ctx.db.db, domainId, this.user._id, todayKey),
+        ]);
+        return {
+            userUname: this.user.uname,
+            date: todayKey,
+            contribution,
+            consumption,
         };
     }
 
