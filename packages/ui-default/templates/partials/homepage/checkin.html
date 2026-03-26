@@ -2,6 +2,9 @@
 {% if checkin %}
   <div class="section page--checkin">
     <div class="section__header">
+      {% if checkin.userUname is defined and checkin.userUname %}
+        <p class="section__subtitle text-gray" style="margin-bottom:0.35rem;">{{ checkin.userUname }}</p>
+      {% endif %}
       <h1 class="section__title">{{ _('Check-in Days') }}</h1>
     </div>
     <div class="section__body typo no-media">
@@ -11,20 +14,31 @@
       {% elif checkin.needJoinDomain %}
         <p class="text-gray">{{ _('Please join the domain to view') }}</p>
         <p><a href="{{ url('domain_join', domainId=checkin.domainId) }}" class="button primary">{{ _('Join Domain') }}</a></p>
-      {% elif checkin.days is defined %}
-        <p>{{ checkin.days }} {{ _('days') }}</p>
-        {% if checkin.lastCheckinDaysAgo is not none %}
-          <p>{{ _('Last check-in') }}: {% if checkin.lastCheckinDaysAgo == 0 %}{{ _('Today') }}{% else %}{{ _('{0} days ago').format(checkin.lastCheckinDaysAgo) }}{% endif %}</p>
-        {% endif %}
-        {% if checkin.maxConsecutiveDays > 0 %}
-          <p>{{ _('Max consecutive') }}: {{ checkin.maxConsecutiveDays }} {{ _('days') }}</p>
-        {% endif %}
-        {% if not checkin.completedToday %}
-          <p>{{ _('Check-in remaining') }}: {{ checkin.nodesRemaining }} {{ _('nodes') }}, {{ checkin.cardsRemaining }} {{ _('cards') }}</p>
-          <p><a href="{{ checkin.learnUrl }}" class="button primary">{{ _('Start Learning') }}</a></p>
-        {% else %}
-          <p>{{ _('Completed today') }}</p>
-        {% endif %}
+      {% elif checkin.learnDays is defined %}
+        <p style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;">
+          <span>{{ _('Flag') }} <a href="{{ checkin.flagUrl }}"><strong>{{ checkin.flagDays }}</strong></a> {{ _('days') }}</span>
+          {% if checkin.flagTodayDone %}
+            <span style="color:#4caf50;">{{ _('Checked in') }}</span>
+          {% else %}
+            <span class="text-gray">{{ _('{0} more nodes to go').format(checkin.flagTodayRemaining) }}</span>
+          {% endif %}
+        </p>
+        <p style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;">
+          <span>{{ _('Collect') }} <a href="{{ checkin.collectUrl }}"><strong>{{ checkin.collectDays }}</strong></a> {{ _('days') }}</span>
+          {% if checkin.collectTodayDone %}
+            <span style="color:#4caf50;">{{ _('Checked in') }}</span>
+          {% else %}
+            <span class="text-gray">{{ _('{0} more cards to go').format(checkin.collectTodayRemaining) }}</span>
+          {% endif %}
+        </p>
+        <p style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;">
+          <span>{{ _('Learn') }} <a href="{{ checkin.learnUrl }}"><strong>{{ checkin.learnDays }}</strong></a> {{ _('days') }}</span>
+          {% if checkin.learnTodayDone %}
+            <span style="color:#4caf50;">{{ _('Checked in') }}</span>
+          {% else %}
+            <span class="text-gray">{{ _('{0} more cards to go').format(checkin.learnTodayRemaining) }}</span>
+          {% endif %}
+        </p>
       {% endif %}
     </div>
   </div>

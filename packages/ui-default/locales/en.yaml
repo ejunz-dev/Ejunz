@@ -8,6 +8,9 @@ __langname: English
 '-- Please Select Agent --': -- Please Select Agent --
 '(No content)': (No content)
 '{0} days ago': '{0} days ago'
+'{0} more cards to go': Need {0} more cards
+'{0} more nodes to go': Need {0} more nodes
+'{0} more times to go': Need {0} more practices
 '{0} parts': '{0} parts'
 '{0} units': '{0} units'
 'Access Point Type': Access Point Type
@@ -67,6 +70,7 @@ __langname: English
 'cardId is required': 'cardId is required'
 'Check-in Days': Check-in Days
 'Check-in remaining': Remaining today
+'Checked in': Checked in
 'Clear Agent': Clear Agent
 'Clear Logs': Clear Logs
 'Click a section on the left to add to the top of the order.': Click the + button next to a section to add it to the top of the order.
@@ -373,6 +377,7 @@ __langname: English
 'System tool (not Edge)': system (system tool, not Edge)
 'Table of contents': Table of contents
 'Table of Contents': Table of Contents
+'Tap the day count above to continue in Learn, Collect, or Flag.': Tap the day count above to continue in Learn, Collect, or Flag.
 'Thinking...': Thinking...
 'This branch is behind remote by {0} commit(s). Please use Pull to sync.': This branch is behind remote by {0} commit(s). Please use Pull to sync.
 'This section requires completion of the following sections first': This section requires completion of the following sections first

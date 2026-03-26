@@ -13,7 +13,6 @@ import {
 } from '../error';
 import { DomainDoc, Setting } from '../interface';
 import avatar, { validate } from '../lib/avatar';
-import { getModeDailyGoal } from '../lib/learnModePrefs';
 import * as mail from '../lib/mail';
 import { verifyTFA } from '../lib/verifyTFA';
 import BlackListModel from '../model/blacklist';
@@ -35,6 +34,8 @@ import user from '../model/user';
 import {
     Handler, param, query, requireSudo, Types,
 } from '../service/server';
+import { getModeDailyGoal } from '../lib/learnModePrefs';
+import learn from '../model/learn';
 import moment from 'moment-timezone';
 import { camelCase, md5 } from '../utils';
 import {
@@ -88,93 +89,73 @@ export class HomeHandler extends Handler {
         if ((!rawDudoc || !rawDudoc.join) && !(this.user.priv & PRIV.PRIV_VIEW_ALL_DOMAIN)) {
             return { needJoinDomain: true, domainId };
         }
-        const learnResultColl = this.ctx.db.db.collection('learn_result');
-        const today = moment.utc().format('YYYY-MM-DD');
-        const startOfToday = moment.utc(today).startOf('day').toDate();
-        const endOfToday = moment.utc(today).endOf('day').toDate();
-
-        const [allResults, todayResults] = await Promise.all([
-            learnResultColl.find({ domainId, userId: this.user._id }).project({ createdAt: 1 }).toArray(),
-            learnResultColl.find({
-                domainId,
-                userId: this.user._id,
-                createdAt: { $gte: startOfToday, $lte: endOfToday },
-            }).project({ cardId: 1, nodeId: 1 }).toArray(),
-        ]);
-
-        const practiceDates = new Set<string>();
-        for (const r of allResults) {
-            if (r.createdAt) {
-                practiceDates.add(moment.utc(r.createdAt).format('YYYY-MM-DD'));
-            }
-        }
-
-        const dates = Array.from(practiceDates).sort();
-        const lastCheckinDate = dates.length > 0 ? dates[dates.length - 1] : null;
-        const lastCheckinDaysAgo = lastCheckinDate
-            ? moment.utc(today).diff(moment.utc(lastCheckinDate), 'days')
-            : null;
-
-        let maxConsecutiveDays = 0;
-        if (dates.length > 0) {
-            let streak = 1;
-            for (let i = 1; i < dates.length; i++) {
-                const prev = moment.utc(dates[i - 1]);
-                const curr = moment.utc(dates[i]);
-                if (curr.diff(prev, 'days') === 1) {
-                    streak++;
-                } else {
-                    maxConsecutiveDays = Math.max(maxConsecutiveDays, streak);
-                    streak = 1;
-                }
-            }
-            maxConsecutiveDays = Math.max(maxConsecutiveDays, streak);
-        }
-
-        const todayCards = new Set<string>();
-        const todayNodeIds = new Set<string>();
-        for (const r of todayResults) {
-            if (r.cardId) todayCards.add(String(r.cardId));
-            if (r.nodeId) todayNodeIds.add(String(r.nodeId));
-        }
-
         const dudoc = await domain.getDomainUser(domainId, { _id: this.user._id, priv: this.user.priv });
-        const dailyGoal = getModeDailyGoal(dudoc as any, 'learn');
-        const todayCompleted = todayCards.size;
-        const completedToday = dailyGoal > 0 ? todayCompleted >= dailyGoal : todayCards.size > 0;
-        const cardsRemaining = Math.max(0, dailyGoal - todayCompleted);
+        const learnDates: string[] = Array.isArray((dudoc as any)?.learnActivityDates)
+            ? (dudoc as any).learnActivityDates.map((x: unknown) => String(x))
+            : [];
+        const collectDates: string[] = Array.isArray((dudoc as any)?.collectActivityDates)
+            ? (dudoc as any).collectActivityDates.map((x: unknown) => String(x))
+            : [];
+        const flagDates: string[] = Array.isArray((dudoc as any)?.flagActivityDates)
+            ? (dudoc as any).flagActivityDates.map((x: unknown) => String(x))
+            : [];
 
-        let nodesRemaining = 0;
-        const base = await BaseModel.getByDomain(domainId);
-        if (base) {
-            const learnDAGColl = this.ctx.db.db.collection('learn_dag');
-            const existingDAG = await learnDAGColl.findOne({
-                domainId,
-                baseDocId: base.docId,
-                branch: 'main',
-            });
-            if (existingDAG?.dag) {
-                const nodesWithPendingCards = new Set<string>();
-                for (const node of existingDAG.dag) {
-                    for (const card of node.cards || []) {
-                        if (card?.cardId && !todayCards.has(String(card.cardId))) {
-                            nodesWithPendingCards.add(node._id);
-                            break;
-                        }
-                    }
-                }
-                nodesRemaining = nodesWithPendingCards.size;
-            }
+        const learnSet = new Set(learnDates);
+        const collectSet = new Set(collectDates);
+        const flagSet = new Set(flagDates);
+
+        const todayKey = moment.utc().format('YYYY-MM-DD');
+        const todayStart = moment.utc().startOf('day').toDate();
+        const todayEndInclusive = moment.utc().endOf('day').toDate();
+        const learnDailyGoal = getModeDailyGoal(dudoc as any, 'learn');
+        const collectDailyGoal = getModeDailyGoal(dudoc as any, 'collect');
+        const flagDailyGoal = getModeDailyGoal(dudoc as any, 'flag');
+
+        const todayLearnResults = await learn.getResults(domainId, this.user._id, {
+            createdAt: { $gte: todayStart, $lte: todayEndInclusive },
+        });
+        const learnCardsToday = new Set<string>();
+        for (const r of todayLearnResults) {
+            if (r.cardId) learnCardsToday.add(String(r.cardId));
         }
+        const learnTodayCompleted = learnCardsToday.size;
+
+        const collectIdsRaw =
+            (dudoc as any)?.collectProgressDate === todayKey && Array.isArray((dudoc as any)?.collectProgressCardIds)
+                ? ((dudoc as any).collectProgressCardIds as unknown[])
+                : [];
+        const collectTodayCompleted = collectIdsRaw.filter(
+            (x) => String(x || '').trim() && !String(x).startsWith('temp-card-'),
+        ).length;
+
+        const flagIdsRaw =
+            (dudoc as any)?.flagProgressDate === todayKey && Array.isArray((dudoc as any)?.flagProgressNodeIds)
+                ? ((dudoc as any).flagProgressNodeIds as unknown[])
+                : [];
+        const flagTodayCompleted = flagIdsRaw.filter(
+            (x) => String(x || '').trim() && !String(x).startsWith('temp-node-'),
+        ).length;
+
+        const modeDone = (goal: number, completed: number) => (goal > 0 ? completed >= goal : completed > 0);
+        const modeRemaining = (goal: number, completed: number) => {
+            if (goal > 0) return Math.max(0, goal - completed);
+            return completed > 0 ? 0 : 1;
+        };
 
         return {
-            days: practiceDates.size,
-            completedToday,
-            cardsRemaining,
-            nodesRemaining,
+            userUname: this.user.uname,
+            flagDays: flagSet.size,
+            collectDays: collectSet.size,
+            learnDays: learnSet.size,
+            flagUrl: `/d/${domainId}/flag`,
+            collectUrl: `/d/${domainId}/collect`,
             learnUrl: `/d/${domainId}/learn`,
-            lastCheckinDaysAgo,
-            maxConsecutiveDays,
+            flagTodayDone: modeDone(flagDailyGoal, flagTodayCompleted),
+            collectTodayDone: modeDone(collectDailyGoal, collectTodayCompleted),
+            learnTodayDone: modeDone(learnDailyGoal, learnTodayCompleted),
+            flagTodayRemaining: modeRemaining(flagDailyGoal, flagTodayCompleted),
+            collectTodayRemaining: modeRemaining(collectDailyGoal, collectTodayCompleted),
+            learnTodayRemaining: modeRemaining(learnDailyGoal, learnTodayCompleted),
         };
     }
 
