@@ -1,0 +1,28 @@
+{% set s = payload %}
+{% if s %}
+  <div class="section page--today-domain-stats">
+    <div class="section__header">
+      {% if s.userUname is defined and s.userUname %}
+        <p class="section__subtitle text-gray" style="margin-bottom:0.35rem;">{{ s.userUname }}</p>
+      {% endif %}
+      <h1 class="section__title">{{ _("Today's domain activity") }}</h1>
+      {% if s.date is defined %}
+        <p class="text-gray" style="font-size:0.9em;margin-top:0.25rem;">UTC {{ s.date }}</p>
+      {% endif %}
+    </div>
+    <div class="section__body typo no-media">
+      {% if s.needLogin %}
+        <p class="text-gray">{{ _('Please login to view') }}</p>
+        <p><a href="{{ url('user_login') }}" class="button primary">{{ _('Login') }}</a></p>
+      {% elif s.needJoinDomain %}
+        <p class="text-gray">{{ _('Please join the domain to view') }}</p>
+        <p><a href="{{ url('domain_join', domainId=s.domainId) }}" class="button primary">{{ _('Join Domain') }}</a></p>
+      {% elif s.contribution is defined and s.consumption is defined %}
+        <p><strong>{{ _('Content contribution') }}</strong></p>
+        <p>{{ _('Nodes') }}: <span style="color:#60a5fa">{{ s.contribution.nodes }}</span><span class="muted" style="opacity:0.4"> / </span>{{ _('Cards') }}: <span style="color:#4ade80">{{ s.contribution.cards }}</span><span class="muted" style="opacity:0.4"> / </span>{{ _('Problems') }}: <span style="color:#fbbf24">{{ s.contribution.problems }}</span></p>
+        <p style="margin-top:0.75rem;"><strong>{{ _('Learning consumption') }}</strong></p>
+        <p>{{ _('Nodes') }}: <span style="color:#60a5fa">{{ s.consumption.nodes }}</span><span class="muted" style="opacity:0.4"> / </span>{{ _('Cards') }}: <span style="color:#4ade80">{{ s.consumption.cards }}</span><span class="muted" style="opacity:0.4"> / </span>{{ _('Problems') }}: <span style="color:#fbbf24">{{ s.consumption.problems }}</span></p>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}

@@ -15,9 +15,11 @@ __langname: 正體中文
 'Check-in remaining': 今日還需
 'Checked in': 已打卡
 'Completed today': 今日已完成
+'Content contribution': 內容貢獻
 'days': 天
 'Failed to generate token: {0}': '生成 token 失敗: {0}'
 'Last check-in': 上次打卡
+'Learning consumption': 學習消耗
 'Max consecutive': 最長連續
 'No': 否
 'Tap the day count above to continue in Learn, Collect, or Flag.': 點擊上方天數可前往 Learn、Collect 或 Flag 繼續學習。
@@ -25,6 +27,7 @@ __langname: 正體中文
 'Yes': 是
 "This domain today": 本日本域
 "Today's contribution": 今日貢獻
+"Today's domain activity": 本域今日動態
 "Total today (all domains)": 本日所有域
 (None): (無)
 ↓ Create Time: ↓ 創建時間
