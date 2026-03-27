@@ -1411,7 +1411,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const resizeStartWidthRef = useRef<number>(300);
   const executeAIOperationsRef = useRef<((operations: any[]) => Promise<{ success: boolean; errors: string[] }>) | null>(null);
   const chatWebSocketRef = useRef<any>(null);
-  const [explorerMode, setExplorerMode] = useState<'tree' | 'files' | 'pending'>('tree');
+  const [explorerMode, setExplorerMode] = useState<'tree' | 'files' | 'pending' | 'branches'>('tree');
   const [domainTools, setDomainTools] = useState<any[]>([]);
   const [domainToolsLoading, setDomainToolsLoading] = useState<boolean>(false);
   const [files, setFiles] = useState<Array<{ _id: string; name: string; size: number; etag?: string; lastModified?: Date | string }>>(initialData.files || []);
@@ -8004,7 +8004,7 @@ ${currentCardContext}
           alignItems: 'center',
           justifyContent: 'space-between',
         }}>
-          <span>EXPLORER</span>
+          <span />
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'nowrap' }}>
             {isMobile && (
               <button
@@ -8101,6 +8101,23 @@ ${currentCardContext}
               title="查看待提交的更改"
             >
               修改
+            </button>
+            <button
+              onClick={() => setExplorerMode('branches')}
+              style={{
+                padding: isMobile ? '8px 10px' : '2px 8px',
+                minHeight: isMobile ? '36px' : undefined,
+                fontSize: '11px',
+                border: `1px solid ${themeStyles.borderSecondary}`,
+                borderRadius: '3px',
+                backgroundColor: explorerMode === 'branches' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                color: explorerMode === 'branches' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+              title="查看分支并跳转"
+            >
+              分支
             </button>
           </div>
         </div>
@@ -8585,6 +8602,51 @@ ${currentCardContext}
                     </div>
                   ))
                 )}
+              </div>
+            </div>
+          ) : explorerMode === 'branches' ? (
+            <div style={{ padding: '8px' }}>
+              <div style={{
+                fontSize: '12px',
+                fontWeight: '600',
+                color: themeStyles.textSecondary,
+                marginBottom: '8px',
+                padding: '0 8px',
+              }}>
+                当前分支：{base.currentBranch || 'main'}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {(base.branches && base.branches.length > 0 ? base.branches : ['main']).map((branchName) => {
+                  const isCurrent = branchName === (base.currentBranch || 'main');
+                  const targetHref = getBaseUrl(`/${docId}/branch/${encodeURIComponent(branchName)}/editor`);
+                  return (
+                    <a
+                      key={branchName}
+                      href={isCurrent ? undefined : targetHref}
+                      onClick={isCurrent ? (e) => e.preventDefault() : undefined}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 10px',
+                        borderRadius: '4px',
+                        textDecoration: 'none',
+                        border: `1px solid ${themeStyles.borderSecondary}`,
+                        backgroundColor: isCurrent ? themeStyles.bgSelected : themeStyles.bgButton,
+                        color: isCurrent ? themeStyles.textOnPrimary : themeStyles.textPrimary,
+                        fontSize: '12px',
+                        cursor: isCurrent ? 'default' : 'pointer',
+                      }}
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {branchName}
+                      </span>
+                      <span style={{ fontSize: '11px', opacity: 0.85 }}>
+                        {isCurrent ? '当前' : '前往'}
+                      </span>
+                    </a>
+                  );
+                })}
               </div>
             </div>
           ) : (
