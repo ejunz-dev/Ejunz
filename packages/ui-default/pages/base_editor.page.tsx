@@ -1009,7 +1009,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
     let closed = false;
     const apiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
-    const apiQs = docId && basePath === 'base' ? { docId } : {};
+    const editorApiQs: Record<string, string> = {};
+    if (docId && basePath === 'base') editorApiQs.docId = docId;
+    const editorBranch = (window as any).UiContext?.currentBranch;
+    if (editorBranch) editorApiQs.branch = editorBranch;
 
     const connect = async () => {
       try {
@@ -1023,6 +1026,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           try {
             const msg = JSON.parse(data);
             if (msg.type === 'init' || msg.type === 'update') {
+              if (msg.type === 'update' && msg.sourceBranch && editorBranch && msg.sourceBranch !== editorBranch) return;
               if (msg.todayContribution != null) {
                 setContributionData(prev => ({
                   ...prev,
@@ -1035,7 +1039,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                 }));
               }
               // Comment translated to English.
-              request.get(apiPath, apiQs).then((newData: any) => {
+              request.get(apiPath, editorApiQs).then((newData: any) => {
                 if (closed || !newData || (!newData.nodes && !newData.edges)) return;
                 const nextNodes = newData.nodes ?? [];
                 const nextEdges = newData.edges ?? [];
@@ -1136,6 +1140,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           
           await request.post(getBaseUrl('/save'), {
             ...(docId ? { docId } : {}),
+            branch: (window as any).UiContext?.currentBranch || 'main',
             nodes: migrationNodes,
             edges: migrationEdges,
             operationDescription: '自动迁移：为节点和卡片添加order字段',
@@ -1199,7 +1204,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const domainId = (window as any).UiContext?.domainId || 'system';
     const apiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
     try {
-      const qs = docId && basePath === 'base' ? { docId } : {};
+      const qs: Record<string, string> = {};
+      if (docId && basePath === 'base') qs.docId = docId;
+      const refBranch = (window as any).UiContext?.currentBranch;
+      if (refBranch) qs.branch = refBranch;
       const newData: any = await request.get(apiPath, qs);
       if (newData?.nodes != null || newData?.edges != null) {
         setBase(prev => {
@@ -2377,6 +2385,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       
       const batchSaveData: any = {
         ...(docId ? { docId } : {}),
+        branch: (window as any).UiContext?.currentBranch || 'main',
         nodeCreates: [],
         nodeUpdates: [],
         nodeDeletes: [],
@@ -2636,7 +2645,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         let currentBase: BaseDoc | null = null;
         if (nodeEdgeUpdates.size > 0) {
           try {
-            currentBase = await request.get(`/d/${domainId}/base/data`, docId ? { docId } : {});
+            const fetchQs: Record<string, string> = {};
+            if (docId) fetchQs.docId = docId;
+            const fb = (window as any).UiContext?.currentBranch;
+            if (fb) fetchQs.branch = fb;
+            currentBase = await request.get(`/d/${domainId}/base/data`, fetchQs);
           } catch (error: any) {
           }
         }
@@ -3174,7 +3187,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       
       if (hasCreateChanges || hasAnyChanges) {
         try {
-          const response = await request.get(`/d/${domainId}/base/data`, docId ? { docId } : {});
+          const postSaveQs: Record<string, string> = {};
+          if (docId) postSaveQs.docId = docId;
+          const psb = (window as any).UiContext?.currentBranch;
+          if (psb) postSaveQs.branch = psb;
+          const response = await request.get(`/d/${domainId}/base/data`, postSaveQs);
           setBase(response);
         } catch (error) {
         }
@@ -12630,8 +12647,11 @@ const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_edi
     try {
       
       const apiPath = isSkill ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
-      // Comment translated to English.
-      const response = await request.get(apiPath, docId ? { docId } : {});
+      const initQs: Record<string, string> = {};
+      if (docId) initQs.docId = docId;
+      const initBranch = (window as any).UiContext?.currentBranch;
+      if (initBranch) initQs.branch = initBranch;
+      const response = await request.get(apiPath, initQs);
       initialData = response;
       
       if (!initialData.docId) {

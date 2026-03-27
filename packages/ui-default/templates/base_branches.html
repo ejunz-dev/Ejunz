@@ -1,0 +1,99 @@
+{% set page_name = "base_branches" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+{% set _domain_id = UiContext.domainId or domainId or 'system' %}
+{% set _doc_id = base.docId %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__header" style="display: flex; align-items: center; justify-content: space-between;">
+        <h1 class="section__title" style="margin: 0;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: -2px; margin-right: 6px; opacity: 0.7;">
+            <path fill-rule="evenodd" d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6a1 1 0 00-1 1v1.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.492 2.492 0 016 7h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z"/>
+          </svg>
+          {{ _('Branches') }}
+        </h1>
+        <button class="rounded primary button" name="open_create_branch" style="margin: 0;">
+          {{ _('New branch') }}
+        </button>
+      </div>
+      <div class="section__body no-padding">
+        <table class="data-table">
+          <colgroup>
+            <col class="col--branch-name">
+            <col class="col--status">
+            <col class="col--actions">
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="col--branch-name">{{ _('Branch') }}</th>
+              <th class="col--status">{{ _('Status') }}</th>
+              <th class="col--actions">{{ _('Actions') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for b in branches %}
+            <tr>
+              <td class="col--branch-name">
+                <span style="display: inline-flex; align-items: center; gap: 6px;">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="opacity: 0.5;">
+                    <path fill-rule="evenodd" d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6a1 1 0 00-1 1v1.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.492 2.492 0 016 7h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z"/>
+                  </svg>
+                  <a href="{{ url('base_outline_doc_branch', domainId=_domain_id, docId=_doc_id, branch=b) }}" style="font-weight: {% if b == currentBranch %}600{% else %}400{% endif %};">
+                    {{ b }}
+                  </a>
+                </span>
+              </td>
+              <td class="col--status">
+                {% if b == currentBranch %}
+                  <span class="record-status--accepted" style="font-size: 12px;">{{ _('Current') }}</span>
+                {% elif b == 'main' %}
+                  <span style="font-size: 12px; color: #888;">{{ _('Default') }}</span>
+                {% else %}
+                  <span style="font-size: 12px; color: #888;">—</span>
+                {% endif %}
+              </td>
+              <td class="col--actions">
+                <a href="{{ url('base_outline_doc_branch', domainId=_domain_id, docId=_doc_id, branch=b) }}" class="typo" style="font-size: 12px;">
+                  {{ _('Open') }}
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="medium-3 columns">
+    <div class="section side">
+      <div class="section__body">
+        <ol class="menu">
+          <li class="menu__item">
+            <a class="menu__link" href="{{ url('base_outline_doc_branch', domainId=_domain_id, docId=_doc_id, branch=currentBranch) }}">
+              <span class="icon icon-back"></span>
+              {{ _('Back to Outline') }}
+            </a>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="create-branch-dialog" style="display:none;">
+  <div style="margin-bottom: 16px;">
+    <label style="font-size: 14px; font-weight: 600; display: block; margin-bottom: 6px;">{{ _('New branch name') }}</label>
+    <input type="text" id="new-branch-name" placeholder="{{ _('Enter branch name') }}" style="width: 100%;">
+  </div>
+  <div>
+    <label style="font-size: 14px; font-weight: 600; display: block; margin-bottom: 6px;">{{ _('Source') }}</label>
+    <select id="source-branch" class="select" style="width: 100%;">
+      {% for b in branches %}
+        <option value="{{ b }}" {% if b == 'main' %}selected{% endif %}>{{ b }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+{% endblock %}
