@@ -17,6 +17,8 @@
   {{ set(UiContext, 'contributionDetails', contributionDetails or {}) }}
   {{ set(UiContext, 'baseExpandState', baseExpandState or []) }}
   {{ set(UiContext, 'workspaceNodeId', workspaceNodeId or '') }}
+  {{ set(UiContext, 'githubRepo', githubRepo or '') }}
+  {{ set(UiContext, 'userGithubTokenConfigured', userGithubTokenConfigured or false) }}
   {% if editorUiMode %}
   {{ set(UiContext, 'editorUiMode', editorUiMode) }}
   {% endif %}
