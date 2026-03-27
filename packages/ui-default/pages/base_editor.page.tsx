@@ -989,6 +989,17 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     };
   });
 
+  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git'>('tree');
+  const [gitRemoteStatus, setGitRemoteStatus] = useState<any>(null);
+  const [gitStatusLoading, setGitStatusLoading] = useState(false);
+  const [gitRepoDraft, setGitRepoDraft] = useState(() => String((window as any).UiContext?.githubRepo || ''));
+  const [gitTokenDraft, setGitTokenDraft] = useState('');
+  const [githubPATConfigured, setGithubPATConfigured] = useState(
+    () => !!(window as any).UiContext?.userGithubTokenConfigured,
+  );
+  const [gitActionBusy, setGitActionBusy] = useState<'pull' | 'push' | 'commit' | null>(null);
+  const [gitCommitNote, setGitCommitNote] = useState('');
+
   useEffect(() => {
     const checkTheme = () => {
       const newTheme = getTheme();
@@ -1028,6 +1039,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             const msg = JSON.parse(data);
             if (msg.type === 'init' || msg.type === 'update') {
               if (msg.type === 'update' && msg.sourceBranch && editorBranch && msg.sourceBranch !== editorBranch) return;
+              if (msg.gitStatus != null) {
+                setGitRemoteStatus(msg.gitStatus);
+              }
               if (msg.todayContribution != null) {
                 setContributionData(prev => ({
                   ...prev,
@@ -1067,6 +1081,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                 }
                 setNodeCardsMapVersion(v => v + 1);
               }).catch(() => {});
+            }
+            if (msg.type === 'git_status' && msg.gitStatus != null) {
+              const b = (window as any).UiContext?.currentBranch || 'main';
+              if (!msg.branch || msg.branch === b) {
+                setGitRemoteStatus(msg.gitStatus);
+              }
             }
           } catch (e) {
             // ignore parse error
@@ -1412,7 +1432,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const resizeStartWidthRef = useRef<number>(300);
   const executeAIOperationsRef = useRef<((operations: any[]) => Promise<{ success: boolean; errors: string[] }>) | null>(null);
   const chatWebSocketRef = useRef<any>(null);
-  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches'>('tree');
   const [domainTools, setDomainTools] = useState<any[]>([]);
   const [domainToolsLoading, setDomainToolsLoading] = useState<boolean>(false);
   const [files] = useState<Array<{ _id: string; name: string; size: number; etag?: string; lastModified?: Date | string }>>(initialData.files || []);
@@ -1606,6 +1625,33 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     
     return `/d/${domainId}/${basePath}${path}`;
   }, [basePath]);
+
+  const fetchGitRemoteStatus = useCallback(async () => {
+    if (basePath !== 'base' || !docId) return;
+    const branch = (window as any).UiContext?.currentBranch || 'main';
+    setGitStatusLoading(true);
+    try {
+      const res: any = await request.get(getBaseUrl('/git/status'), {
+        docId: String(docId),
+        branch,
+      });
+      setGitRemoteStatus(res?.gitStatus ?? null);
+    } catch (_e) {
+      setGitRemoteStatus(null);
+    } finally {
+      setGitStatusLoading(false);
+    }
+  }, [basePath, docId, getBaseUrl]);
+
+  useEffect(() => {
+    if (explorerMode !== 'git' || basePath !== 'base' || !docId) return;
+    request.get(getBaseUrl('/github/config'), { docId: String(docId) }).then((r: any) => {
+      if (r?.githubRepo != null) setGitRepoDraft(String(r.githubRepo));
+    }).catch(() => {});
+    fetchGitRemoteStatus();
+    const t = setInterval(fetchGitRemoteStatus, 15000);
+    return () => clearInterval(t);
+  }, [explorerMode, basePath, docId, getBaseUrl, fetchGitRemoteStatus]);
 
   const workspaceNodeId = (window as any).UiContext?.workspaceNodeId || '';
   const currentBranch = (window as any).UiContext?.currentBranch || 'main';
@@ -8106,6 +8152,27 @@ ${currentCardContext}
                 <path d="M5.5 4.3L10.5 7.2M5.5 11.7l5-2.9" />
               </svg>
             </button>
+            {basePath === 'base' && docId ? (
+              <button
+                type="button"
+                onClick={() => setExplorerMode('git')}
+                style={{
+                  width: '34px',
+                  height: '34px',
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  borderRadius: '3px',
+                  backgroundColor: explorerMode === 'git' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                  color: explorerMode === 'git' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+                title="GitHub 同步"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                  <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+                </svg>
+              </button>
+            ) : null}
           </div>
         </div>
         <div style={{ padding: '8px 0', flex: 1, minWidth: 0 }}>
@@ -8529,8 +8596,288 @@ ${currentCardContext}
                 })}
               </div>
             </div>
+          ) : explorerMode === 'git' && basePath === 'base' && docId ? (
+            <div style={{ padding: '8px', fontSize: '12px', color: themeStyles.textPrimary }}>
+              <div style={{ fontWeight: 600, color: themeStyles.textSecondary, marginBottom: '8px', padding: '0 8px' }}>
+                GitHub · 分支 {currentBranch || 'main'}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '0 8px' }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ color: themeStyles.textSecondary, fontSize: '11px' }}>仓库 URL（HTTPS 或 git@…）</span>
+                  <input
+                    value={gitRepoDraft}
+                    onChange={(e) => setGitRepoDraft(e.target.value)}
+                    placeholder="https://github.com/org/repo"
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '6px 8px',
+                      border: `1px solid ${themeStyles.borderSecondary}`,
+                      borderRadius: '4px',
+                      background: themeStyles.bgPrimary,
+                      color: themeStyles.textPrimary,
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await request.post(getBaseUrl('/github/config'), { docId, githubRepo: gitRepoDraft.trim() });
+                      if ((window as any).UiContext) (window as any).UiContext.githubRepo = gitRepoDraft.trim();
+                      Notification.success('已保存仓库配置');
+                      fetchGitRemoteStatus();
+                    } catch (err: any) {
+                      Notification.error(err?.message || '保存失败');
+                    }
+                  }}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '4px',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
+                    background: themeStyles.bgButton,
+                    color: themeStyles.textPrimary,
+                    cursor: 'pointer',
+                  }}
+                >
+                  保存仓库地址
+                </button>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ color: themeStyles.textSecondary, fontSize: '11px' }}>
+                    个人访问令牌（PAT）{githubPATConfigured ? ' · 已配置' : ' · 未配置'}
+                  </span>
+                  <input
+                    type="password"
+                    value={gitTokenDraft}
+                    onChange={(e) => setGitTokenDraft(e.target.value)}
+                    placeholder="ghp_…"
+                    autoComplete="off"
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '6px 8px',
+                      border: `1px solid ${themeStyles.borderSecondary}`,
+                      borderRadius: '4px',
+                      background: themeStyles.bgPrimary,
+                      color: themeStyles.textPrimary,
+                    }}
+                  />
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const domainId = (window as any).UiContext?.domainId || 'system';
+                      try {
+                        await request.post(`/d/${domainId}/user/github-token`, { githubToken: gitTokenDraft.trim() });
+                        setGithubPATConfigured(!!gitTokenDraft.trim());
+                        setGitTokenDraft('');
+                        Notification.success('已保存令牌');
+                        fetchGitRemoteStatus();
+                      } catch (err: any) {
+                        Notification.error(err?.message || '保存失败');
+                      }
+                    }}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: '4px',
+                      border: `1px solid ${themeStyles.borderSecondary}`,
+                      background: themeStyles.bgButton,
+                      color: themeStyles.textPrimary,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    保存令牌
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const domainId = (window as any).UiContext?.domainId || 'system';
+                      try {
+                        await request.post(`/d/${domainId}/user/github-token`, { githubToken: '' });
+                        setGithubPATConfigured(false);
+                        setGitTokenDraft('');
+                        Notification.success('已清除令牌');
+                        fetchGitRemoteStatus();
+                      } catch (err: any) {
+                        Notification.error(err?.message || '清除失败');
+                      }
+                    }}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: '4px',
+                      border: `1px solid ${themeStyles.borderSecondary}`,
+                      background: themeStyles.bgSecondary,
+                      color: themeStyles.textSecondary,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    清除令牌
+                  </button>
+                </div>
+                <div
+                  style={{
+                    marginTop: '4px',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
+                    background: themeStyles.bgSecondary,
+                    fontSize: '11px',
+                  }}
+                >
+                  {gitStatusLoading && !gitRemoteStatus ? (
+                    <span style={{ color: themeStyles.textSecondary }}>正在获取远程状态…</span>
+                  ) : gitRemoteStatus ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {(gitRemoteStatus.lastCommitShort || gitRemoteStatus.lastCommit) ? (
+                        <span style={{ wordBreak: 'break-all' }}>
+                          当前分支最新提交：
+                          {gitRemoteStatus.lastCommitShort || String(gitRemoteStatus.lastCommit).slice(0, 8)}
+                          {gitRemoteStatus.lastCommitMessageShort || gitRemoteStatus.lastCommitMessage
+                            ? ` — ${gitRemoteStatus.lastCommitMessageShort || gitRemoteStatus.lastCommitMessage}`
+                            : ''}
+                        </span>
+                      ) : null}
+                      <span>相对 origin：领先 {gitRemoteStatus.ahead ?? 0} · 落后 {gitRemoteStatus.behind ?? 0}</span>
+                      <span>
+                        工作区相对最新提交：{gitRemoteStatus.uncommittedChanges ? '有未提交变更' : '干净'}
+                        {gitRemoteStatus.hasRemoteBranch === false ? ' · 远程无此分支' : ''}
+                      </span>
+                    </div>
+                  ) : (
+                    <span style={{ color: themeStyles.textSecondary }}>配置仓库与令牌后可查看与远程的差异</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <span style={{ color: themeStyles.textSecondary, fontSize: '11px' }}>本地 Git（先保存知识库内容再提交）</span>
+                  <input
+                    value={gitCommitNote}
+                    onChange={(e) => setGitCommitNote(e.target.value)}
+                    placeholder="提交说明（可选）"
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '6px 8px',
+                      border: `1px solid ${themeStyles.borderSecondary}`,
+                      borderRadius: '4px',
+                      background: themeStyles.bgPrimary,
+                      color: themeStyles.textPrimary,
+                      fontSize: '12px',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={!!gitActionBusy}
+                    onClick={async () => {
+                      setGitActionBusy('commit');
+                      try {
+                        await request.post(
+                          getBaseUrl(`/branch/${encodeURIComponent(currentBranch || 'main')}/commit`),
+                          { docId, note: gitCommitNote.trim() },
+                        );
+                        Notification.success('已提交到本地 Git 仓库');
+                        setGitCommitNote('');
+                        fetchGitRemoteStatus();
+                      } catch (err: any) {
+                        Notification.error(err?.message || '本地提交失败');
+                      } finally {
+                        setGitActionBusy(null);
+                      }
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '4px',
+                      border: `1px solid ${themeStyles.borderSecondary}`,
+                      background: themeStyles.bgSecondary,
+                      color: themeStyles.textPrimary,
+                      cursor: gitActionBusy ? 'not-allowed' : 'pointer',
+                      opacity: gitActionBusy ? 0.6 : 1,
+                      alignSelf: 'flex-start',
+                    }}
+                  >
+                    {gitActionBusy === 'commit' ? '提交中…' : '提交到本地仓库'}
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  <button
+                    type="button"
+                    disabled={!!gitActionBusy}
+                    onClick={async () => {
+                      setGitActionBusy('pull');
+                      try {
+                        await request.post(
+                          getBaseUrl(`/branch/${encodeURIComponent(currentBranch || 'main')}/github/pull`),
+                          { docId },
+                        );
+                        Notification.success('Pull 完成');
+                        await refetchEditorData();
+                        fetchGitRemoteStatus();
+                      } catch (err: any) {
+                        Notification.error(err?.message || 'Pull 失败');
+                      } finally {
+                        setGitActionBusy(null);
+                      }
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '4px',
+                      border: 'none',
+                      background: themeStyles.bgButtonActive,
+                      color: themeStyles.textOnPrimary,
+                      cursor: gitActionBusy ? 'not-allowed' : 'pointer',
+                      opacity: gitActionBusy ? 0.6 : 1,
+                    }}
+                  >
+                    {gitActionBusy === 'pull' ? 'Pull…' : 'Pull'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!!gitActionBusy}
+                    onClick={async () => {
+                      setGitActionBusy('push');
+                      try {
+                        await request.post(
+                          getBaseUrl(`/branch/${encodeURIComponent(currentBranch || 'main')}/github/push`),
+                          { docId },
+                        );
+                        Notification.success('Push 完成');
+                        fetchGitRemoteStatus();
+                      } catch (err: any) {
+                        Notification.error(err?.message || 'Push 失败');
+                      } finally {
+                        setGitActionBusy(null);
+                      }
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '4px',
+                      border: `1px solid ${themeStyles.borderSecondary}`,
+                      background: themeStyles.bgButton,
+                      color: themeStyles.textPrimary,
+                      cursor: gitActionBusy ? 'not-allowed' : 'pointer',
+                      opacity: gitActionBusy ? 0.6 : 1,
+                    }}
+                  >
+                    {gitActionBusy === 'push' ? 'Push…' : 'Push'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fetchGitRemoteStatus()}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '4px',
+                      border: `1px solid ${themeStyles.borderSecondary}`,
+                      background: themeStyles.bgSecondary,
+                      color: themeStyles.textSecondary,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    刷新状态
+                  </button>
+                </div>
+              </div>
+            </div>
           ) : (
-            
             <div style={{ padding: '8px' }}>
               <div style={{
                 fontSize: '12px',
