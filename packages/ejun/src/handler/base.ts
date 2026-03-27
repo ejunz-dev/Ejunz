@@ -6,7 +6,7 @@ import { PRIV, PERM } from '../model/builtin';
 import { BaseModel, CardModel, TYPE_CARD, TYPE_MM } from '../model/base';
 import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo } from '../interface';
 import * as document from '../model/document';
-import { exec as execCb } from 'child_process';
+import { exec as execCb, execFile as execFileCb } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -19,8 +19,10 @@ import { pick, omit } from 'lodash';
 import storage from '../model/storage';
 import { sortFiles } from '@ejunz/utils/lib/common';
 import moment from 'moment-timezone';
+import UserModel from '../model/user';
 
 const exec = promisify(execCb);
+const execFile = promisify(execFileCb);
 const logger = new Logger('base');
 
 /* Comment translated to English. */
@@ -37,6 +39,91 @@ export function readOptionalRequestBaseDocId(req: { body?: any; query?: any } | 
     } catch {
         return undefined;
     }
+}
+
+function getSystemGithubToken(ctx: { setting: { get: (k: string) => unknown } }): string {
+    const settingValue = ctx.setting.get('ejunzrepo.github_token');
+    const systemValue = system.get('ejunzrepo.github_token');
+    return String(settingValue || systemValue || '').trim();
+}
+
+async function fetchUserGithubToken(domainId: string, uid: number): Promise<string> {
+    if (!uid || uid <= 0) return '';
+    const u = await UserModel.getById(domainId, uid);
+    if (!u) return '';
+    const raw = (u as any)._udoc?.githubToken;
+    return typeof raw === 'string' ? raw.trim() : '';
+}
+
+async function resolveGithubToken(
+    ctx: { setting: { get: (k: string) => unknown } },
+    domainId: string,
+    uid: number,
+    bodyToken?: unknown,
+): Promise<string> {
+    if (typeof bodyToken === 'string' && bodyToken.trim()) return bodyToken.trim();
+    const userTok = await fetchUserGithubToken(domainId, uid);
+    if (userTok) return userTok;
+    return getSystemGithubToken(ctx);
+}
+
+function buildGithubRemoteUrl(githubRepo: string, token: string): string {
+    const repo = (githubRepo || '').trim();
+    if (!repo) return '';
+    if (repo.startsWith('git@')) return repo;
+    const isGitHubHttps = /^https?:\/\/.*github\.com\//.test(repo);
+    if (isGitHubHttps) {
+        let repoPathMatch = repo.match(/^https?:\/\/[^@]+@github\.com\/(.+)$/);
+        if (!repoPathMatch) repoPathMatch = repo.match(/^https?:\/\/github\.com\/(.+)$/);
+        if (repoPathMatch?.[1]) {
+            const pathPart = repoPathMatch[1];
+            if (!token) return `https://github.com/${pathPart}`;
+            return `https://${token}@github.com/${pathPart}`;
+        }
+        const stripped = repo.replace(/^https?:\/\/[^@]+@github\.com\//, 'https://github.com/');
+        if (!token) return stripped;
+        return stripped.replace(/^https:\/\/github\.com\//, `https://${token}@github.com/`);
+    }
+    if (!repo.includes('://') && !repo.includes('@')) {
+        const repoPath = repo.replace(/\.git$/, '');
+        if (!token) return `https://github.com/${repoPath}.git`;
+        return `https://${token}@github.com/${repoPath}.git`;
+    }
+    return repo;
+}
+
+async function resolveGithubRemoteUrlForRepo(
+    ctx: { setting: { get: (k: string) => unknown } },
+    domainId: string,
+    uid: number,
+    githubRepo: string,
+    bodyToken?: unknown,
+): Promise<string> {
+    const tok = await resolveGithubToken(ctx, domainId, uid, bodyToken);
+    return buildGithubRemoteUrl(githubRepo, tok);
+}
+
+function assertGithubPushPullToken(githubRepo: string, token: string): void {
+    const r = (githubRepo || '').trim();
+    if (!r) return;
+    if (r.startsWith('git@')) return;
+    if (!String(token || '').trim()) {
+        throw new Error(
+            'GitHub token is required for HTTPS remotes. Save a PAT in the editor GitHub panel (stored on your user) or set ejunzrepo.github_token.',
+        );
+    }
+}
+
+async function resolveBaseDocFromGithubRequest(
+    domainId: string,
+    docId: number,
+    bid: number,
+    req: { body?: any; query?: any },
+): Promise<BaseDoc | null> {
+    const bodyDoc = readOptionalRequestBaseDocId(req);
+    if (bodyDoc) return BaseModel.get(domainId, bodyDoc);
+    if (docId > 0) return BaseModel.get(domainId, docId);
+    return BaseModel.getBybid(domainId, bid);
 }
 
 /* Comment translated to English. */
@@ -408,27 +495,13 @@ class BaseDetailHandler extends Handler {
         
         if (githubRepo && githubRepo.trim()) {
             try {
-                const settingValue = this.ctx.setting.get('ejunzrepo.github_token');
-                const systemValue = system.get('ejunzrepo.github_token');
-                const GH_TOKEN = settingValue || systemValue || '';
-                
-                let REPO_URL = githubRepo;
-                if (githubRepo.startsWith('git@')) {
-                    REPO_URL = githubRepo;
-                } else {
-                    if (githubRepo.startsWith('https://github.com/') || githubRepo.startsWith('http://github.com/')) {
-                        if (!githubRepo.includes('@github.com')) {
-                            REPO_URL = githubRepo.replace('https://github.com/', `https://${GH_TOKEN}@github.com/`)
-                                .replace('http://github.com/', `https://${GH_TOKEN}@github.com/`);
-                        } else {
-                            REPO_URL = githubRepo;
-                        }
-                    } else if (!githubRepo.includes('://') && !githubRepo.includes('@')) {
-                        const repoPath = githubRepo.replace('.git', '');
-                        REPO_URL = `https://${GH_TOKEN}@github.com/${repoPath}.git`;
-                    }
-                }
-                
+                const REPO_URL = await resolveGithubRemoteUrlForRepo(
+                    this.ctx,
+                    domainId,
+                    this.user._id,
+                    githubRepo,
+                    this.request.body?.githubToken,
+                );
                 gitStatus = await getBaseGitStatus(domainId, this.base!.docId, requestedBranch, REPO_URL);
             } catch (err) {
                 console.error('Failed to get git status:', err);
@@ -478,9 +551,19 @@ class BaseDetailHandler extends Handler {
 
 }
 
-/**
- * Helper functions for branch data management
- */
+/** Helper functions for branch data management */
+
+/** Root label for Git file import: not represented as a directory, so pull preserves the existing graph root / base title. */
+function getSyntheticRootTextForFileImport(base: BaseDoc, branch: string): string {
+    const { nodes, edges } = getBranchData(base, branch);
+    const root = (nodes || []).find((n) => !(edges || []).some((e) => e.target === n.id));
+    const fromNode = root?.text?.trim();
+    if (fromNode) return fromNode;
+    const fromTitle = (base.title || '').trim();
+    if (fromTitle) return fromTitle;
+    return 'Root';
+}
+
 export function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edges: BaseEdge[] } {
     const branchName = branch || 'main';
     
@@ -819,27 +902,13 @@ export class BaseOutlineHandler extends Handler {
             
             if (githubRepo && githubRepo.trim()) {
                 try {
-                    const settingValue = this.ctx.setting.get('ejunzrepo.github_token');
-                    const systemValue = system.get('ejunzrepo.github_token');
-                    const GH_TOKEN = settingValue || systemValue || '';
-                    
-                    let REPO_URL = githubRepo;
-                    if (githubRepo.startsWith('git@')) {
-                        REPO_URL = githubRepo;
-                    } else {
-                        if (githubRepo.startsWith('https://github.com/') || githubRepo.startsWith('http://github.com/')) {
-                            if (!githubRepo.includes('@github.com')) {
-                                REPO_URL = githubRepo.replace('https://github.com/', `https://${GH_TOKEN}@github.com/`)
-                                    .replace('http://github.com/', `https://${GH_TOKEN}@github.com/`);
-                            } else {
-                                REPO_URL = githubRepo;
-                            }
-                        } else if (!githubRepo.includes('://') && !githubRepo.includes('@')) {
-                            const repoPath = githubRepo.replace('.git', '');
-                            REPO_URL = `https://${GH_TOKEN}@github.com/${repoPath}.git`;
-                        }
-                    }
-                    
+                    const REPO_URL = await resolveGithubRemoteUrlForRepo(
+                        this.ctx,
+                        domainId,
+                        this.user._id,
+                        githubRepo,
+                        this.request.body?.githubToken,
+                    );
                     gitStatus = await getBaseGitStatus(domainId, base.docId, requestedBranch, REPO_URL);
                 } catch (err) {
                     console.error('Failed to get git status:', err);
@@ -1127,6 +1196,9 @@ export class BaseEditorDocHandler extends Handler {
         const nodeIds = new Set(nodes.map((n: BaseNode) => n.id));
         const workspaceNodeId = workspaceFromQuery && nodeIds.has(workspaceFromQuery) ? workspaceFromQuery : '';
 
+        const userTok = await fetchUserGithubToken(domainId, uid);
+        const userGithubTokenConfigured = !!userTok;
+
         this.response.body = {
             base: { ...base, nodes, edges },
             currentBranch: requestedBranch,
@@ -1141,6 +1213,8 @@ export class BaseEditorDocHandler extends Handler {
             contributionDetails,
             baseExpandState,
             workspaceNodeId,
+            githubRepo: (base.githubRepo || '') as string,
+            userGithubTokenConfigured,
         };
     }
 }
@@ -2176,18 +2250,13 @@ class BaseOutlineDocHandler extends Handler {
             const githubRepo = (base.githubRepo || '') as string;
             try {
                 if (githubRepo && githubRepo.trim()) {
-                    const settingValue = this.ctx.setting.get('ejunzrepo.github_token');
-                    const systemValue = system.get('ejunzrepo.github_token');
-                    const GH_TOKEN = settingValue || systemValue || '';
-                    let REPO_URL = githubRepo;
-                    if (githubRepo.startsWith('https://github.com/') || githubRepo.startsWith('http://github.com/')) {
-                        if (!githubRepo.includes('@github.com')) {
-                            REPO_URL = githubRepo.replace('https://github.com/', `https://${GH_TOKEN}@github.com/`)
-                                .replace('http://github.com/', `https://${GH_TOKEN}@github.com/`);
-                        }
-                    } else if (!githubRepo.includes('://') && !githubRepo.includes('@')) {
-                        REPO_URL = `https://${GH_TOKEN}@github.com/${githubRepo.replace('.git', '')}.git`;
-                    }
+                    const REPO_URL = await resolveGithubRemoteUrlForRepo(
+                        this.ctx,
+                        domainId,
+                        this.user._id,
+                        githubRepo,
+                        this.request.body?.githubToken,
+                    );
                     gitStatus = await getBaseGitStatus(domainId, base.docId, requestedBranch, REPO_URL);
                 } else {
                     gitStatus = await getBaseGitStatus(domainId, base.docId, requestedBranch);
@@ -2503,77 +2572,177 @@ async function ensureBaseGitRepo(domainId: string, docId: number, remoteUrl?: st
     return repoPath;
 }
 
+/** Aggregated problem rows for Git export (problems.md / keys.md / problems_all.md). */
+type ExportProblemBundleRow = {
+    pid: string;
+    stem: string;
+    options: string[];
+    answer: number;
+    analysis?: string;
+    cardTitle: string;
+    nodeText: string;
+};
+
+function formatExportProblemOptionsMd(options: string[]): string {
+    return (options || []).map((o, i) => {
+        const label = i < 26 ? String.fromCharCode(65 + i) : `${i + 1}`;
+        return `- **${label}.** ${o}`;
+    }).join('\n');
+}
+
+function formatExportProblemAnswerMd(options: string[], answer: number): string {
+    const opts = options || [];
+    if (typeof answer === 'number' && answer >= 0 && answer < opts.length) {
+        const label = answer < 26 ? String.fromCharCode(65 + answer) : `${answer + 1}`;
+        return `**${label}.** ${opts[answer]}`;
+    }
+    return String(answer);
+}
+
+/** Per-card folder: problems.md / keys.md / problems_all.md (only when entries non-empty). */
+async function writeCardProblemsMarkdownBundle(targetDir: string, entries: ExportProblemBundleRow[]): Promise<void> {
+    const header = '<!-- Auto-generated from this card\'s problems; order matches keys.md and problems_all.md -->\n\n';
+    if (entries.length === 0) return;
+    const problemsParts: string[] = [];
+    const keysParts: string[] = [];
+    const allParts: string[] = [];
+    for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        const n = i + 1;
+        const meta = `> 卡片：${e.cardTitle || '—'} · 节点：${e.nodeText || '—'} · \`${e.pid}\`\n\n`;
+        const stemBlock = `**题干** ${e.stem}\n\n${formatExportProblemOptionsMd(e.options)}\n`;
+        problemsParts.push(`## ${n}\n\n${meta}${stemBlock}\n`);
+        let keysBlock = `## ${n}\n\n**答案：** ${formatExportProblemAnswerMd(e.options, e.answer)}\n`;
+        if (e.analysis) keysBlock += `\n**解析：** ${e.analysis}\n`;
+        keysBlock += '\n';
+        keysParts.push(keysBlock);
+        let allBlock = `## ${n}\n\n${meta}${stemBlock}\n**答案：** ${formatExportProblemAnswerMd(e.options, e.answer)}\n`;
+        if (e.analysis) allBlock += `\n**解析：** ${e.analysis}\n`;
+        allBlock += '\n';
+        allParts.push(allBlock);
+    }
+    const sep = '\n---\n\n';
+    await fs.promises.writeFile(path.join(targetDir, 'problems.md'), header + problemsParts.join(sep), 'utf-8');
+    await fs.promises.writeFile(path.join(targetDir, 'keys.md'), header + keysParts.join(sep), 'utf-8');
+    await fs.promises.writeFile(path.join(targetDir, 'problems_all.md'), header + allParts.join(sep), 'utf-8');
+}
+
 /**
- * Export base to file structure (node as folder, card as md file)
- * Root node is NOT exported as folder, only its children are exported
+ * Export base to file structure (node as folder, card as folder with one md inside)
+ * Root node is NOT exported as folder. Root-level cards and child nodes use one combined order (order + cid / id), same spirit as the editor tree.
+ * Cards: directory `{order}-{sanitizedTitle}/` containing `{sanitizedTitle}.md` (no numeric prefix on the file).
+ * Nodes: `{order}-{sanitizedTitle}/` (recursive). Import also accepts legacy `{order}-{sanitizedTitle}.md` files.
+ * Each card folder with problems also writes problems.md, keys.md, problems_all.md next to `{title}.md`.
  */
-async function exportBaseToFile(base: BaseDoc, outputDir: string, branch?: string): Promise<void> {
+async function exportBaseToFile(base: BaseDoc, outputDir: string, branch?: string, domainIdOverride?: string): Promise<void> {
     await fs.promises.mkdir(outputDir, { recursive: true });
-    
+
+    const domainId = domainIdOverride || (base as any).domainId;
+    if (!domainId) {
+        throw new Error('exportBaseToFile: domainId is required');
+    }
+
     const sanitize = (name: string) => (name || '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'untitled';
-    
-    // Get branch-specific data
+
     const currentBranch = branch || (base as any).currentBranch || 'main';
     const branchData = getBranchData(base, currentBranch);
     const nodes = branchData.nodes;
     const edges = branchData.edges;
-    
-    // Create README.md for base root (only contains the content, no metadata)
+
     const readmePath = path.join(outputDir, 'README.md');
     const contentText = base.content || '';
     await fs.promises.writeFile(readmePath, contentText, 'utf-8');
-    
-    // Build node tree structure
+
     const nodeMap = new Map<string, BaseNode>();
-    
     for (const node of nodes || []) {
         nodeMap.set(node.id, node);
     }
-    
-    // Find root node (node with no incoming edges)
-    const rootNode = (nodes || []).find(node => 
-        !(edges || []).some(edge => edge.target === node.id)
-    );
-    
-    // Recursively export nodes as folders
-    async function exportNode(node: BaseNode, parentPath: string): Promise<void> {
-        const dirName = sanitize(node.text);
-        const nodeDir = path.join(parentPath, dirName);
+
+    const rootNode = (nodes || []).find(node =>
+        !(edges || []).some(edge => edge.target === node.id));
+
+    type MergedChild =
+        | { kind: 'card'; order: number; sortKey: string; card: CardDoc }
+        | { kind: 'node'; order: number; sortKey: string; child: BaseNode };
+
+    async function mergedChildrenForNode(parentNodeId: string): Promise<MergedChild[]> {
+        const cards = await CardModel.getByNodeId(domainId, base.docId, parentNodeId, currentBranch);
+        const childEdges = (edges || []).filter(edge => edge.source === parentNodeId);
+        const childNodes = childEdges
+            .map(e => nodeMap.get(e.target))
+            .filter((n): n is BaseNode => !!n);
+        childNodes.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+        const merged: MergedChild[] = [];
+        for (const c of cards) {
+            merged.push({ kind: 'card', order: c.order ?? 0, sortKey: `c${c.cid}`, card: c });
+        }
+        for (const cn of childNodes) {
+            merged.push({ kind: 'node', order: cn.order ?? 0, sortKey: `n${cn.id}`, child: cn });
+        }
+        merged.sort((a, b) => {
+            const d = a.order - b.order;
+            if (d !== 0) return d;
+            return a.sortKey.localeCompare(b.sortKey);
+        });
+        return merged;
+    }
+
+    async function exportCardFolder(parentDir: string, idx: number, card: CardDoc, parentNode: BaseNode): Promise<void> {
+        const titleSeg = sanitize(card.title || 'untitled');
+        const folderSeg = `${idx}-${titleSeg}`;
+        const cardDir = path.join(parentDir, folderSeg);
+        await fs.promises.mkdir(cardDir, { recursive: true });
+        await fs.promises.writeFile(path.join(cardDir, `${titleSeg}.md`), card.content || '', 'utf-8');
+        const nodeText = parentNode.text || '';
+        const bundleRows: ExportProblemBundleRow[] = [];
+        for (const p of card.problems || []) {
+            if (!p) continue;
+            bundleRows.push({
+                pid: p.pid,
+                stem: p.stem || '',
+                options: Array.isArray(p.options) ? p.options : [],
+                answer: typeof p.answer === 'number' ? p.answer : 0,
+                analysis: p.analysis,
+                cardTitle: card.title || '',
+                nodeText,
+            });
+        }
+        await writeCardProblemsMarkdownBundle(cardDir, bundleRows);
+    }
+
+    async function exportNodeFolder(node: BaseNode, parentPath: string, dirSegment: string): Promise<void> {
+        const nodeDir = path.join(parentPath, dirSegment);
         await fs.promises.mkdir(nodeDir, { recursive: true });
-        
-        // Get all cards for this node
-        const cards = await CardModel.getByNodeId(base.domainId, base.docId, node.id);
-        
-        // Export cards as md files
-        for (const card of cards) {
-            const cardFileName = `${sanitize(card.title)}.md`;
-            const cardFilePath = path.join(nodeDir, cardFileName);
-            await fs.promises.writeFile(cardFilePath, card.content || '', 'utf-8');
+
+        const merged = await mergedChildrenForNode(node.id);
+        if (merged.length === 0) {
+            await fs.promises.writeFile(path.join(nodeDir, '.keep'), '', 'utf-8');
+            return;
         }
-        
-        // If node has no cards, create .keep file
-        if (cards.length === 0) {
-            const keepPath = path.join(nodeDir, '.keep');
-            await fs.promises.writeFile(keepPath, '', 'utf-8');
-        }
-        
-        // Recursively export child nodes (find children through edges)
-        const childEdges = (edges || []).filter(edge => edge.source === node.id);
-        for (const edge of childEdges) {
-            const childNode = nodeMap.get(edge.target);
-            if (childNode) {
-                await exportNode(childNode, nodeDir);
+
+        let idx = 0;
+        for (const item of merged) {
+            idx += 1;
+            if (item.kind === 'card') {
+                await exportCardFolder(nodeDir, idx, item.card, node);
+            } else {
+                const subSeg = `${idx}-${sanitize(item.child.text || 'untitled')}`;
+                await exportNodeFolder(item.child, nodeDir, subSeg);
             }
         }
     }
-    
-    // Export only root node's children (not the root node itself)
+
     if (rootNode) {
-        const rootChildEdges = (edges || []).filter(edge => edge.source === rootNode.id);
-        for (const edge of rootChildEdges) {
-            const childNode = nodeMap.get(edge.target);
-            if (childNode) {
-                await exportNode(childNode, outputDir);
+        const mergedRoot = await mergedChildrenForNode(rootNode.id);
+        let idx = 0;
+        for (const item of mergedRoot) {
+            idx += 1;
+            if (item.kind === 'card') {
+                await exportCardFolder(outputDir, idx, item.card, rootNode);
+            } else {
+                const subSeg = `${idx}-${sanitize(item.child.text || 'untitled')}`;
+                await exportNodeFolder(item.child, outputDir, subSeg);
             }
         }
     }
@@ -2745,7 +2914,7 @@ async function createAndPushToGitHubOrgForBase(
         try {
             const baseForExport = await BaseModel.getBybid(domainId, bid);
             if (baseForExport) {
-                await exportBaseToFile(baseForExport, tmpDir, 'main');
+                await exportBaseToFile(baseForExport, tmpDir, 'main', domainId);
                 const commitMessage = `${domainId}/${user._id}/${user.uname || 'unknown'}: Initial commit`;
                 await gitInitAndPushBase(domainId, bid, baseForExport, REPO_URL, 'main', commitMessage);
             } else {
@@ -2868,7 +3037,7 @@ async function gitInitAndPushBase(
         }
         
         // Export base to files (use the branch parameter from function signature)
-        await exportBaseToFile(base, repoGitPath, branch);
+        await exportBaseToFile(base, repoGitPath, branch, domainId);
         
         await exec('git add -A', execOptions);
         
@@ -2909,55 +3078,29 @@ class BaseGithubPushHandler extends Handler {
     @param('bid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
     async post(domainId: string, docId: number, bid: number, branch?: string) {
-        const base = docId 
-            ? await BaseModel.get(domainId, docId)
-            : await BaseModel.getBybid(domainId, bid);
+        const base = await resolveBaseDocFromGithubRequest(domainId, docId, bid, this.request);
         if (!base) {
             throw new NotFoundError('Base not found');
         }
-        
+
         if (!this.user.own(base)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
-        
-        const settingValue = this.ctx.setting.get('ejunzrepo.github_token');
-        const systemValue = system.get('ejunzrepo.github_token');
-        const GH_TOKEN = settingValue || systemValue || '';
-        if (!GH_TOKEN) {
-            throw new Error('GitHub token not configured. Please configure it in system settings.');
-        }
-        
+
         const githubRepo = (base.githubRepo || '') as string;
         if (!githubRepo) {
             throw new Error('GitHub repository not configured. Please configure it in base settings.');
         }
-        
-        let REPO_URL = githubRepo;
-        if (githubRepo.startsWith('git@')) {
-            REPO_URL = githubRepo;
-        } else {
-            const isGitHubHttps = /^https?:\/\/.*github\.com\//.test(githubRepo);
-            
-            if (isGitHubHttps) {
-                let repoPathMatch = githubRepo.match(/^https?:\/\/[^@]+@github\.com\/(.+)$/);
-                if (!repoPathMatch) {
-                    repoPathMatch = githubRepo.match(/^https?:\/\/github\.com\/(.+)$/);
-                }
-                
-                if (repoPathMatch && repoPathMatch[1]) {
-                    REPO_URL = `https://${GH_TOKEN}@github.com/${repoPathMatch[1]}`;
-                } else {
-                    // Comment translated to English.
-                    // Comment translated to English.
-                    const urlWithoutToken = githubRepo.replace(/^https?:\/\/[^@]+@github\.com\//, 'https://github.com/');
-                    REPO_URL = urlWithoutToken.replace(/^https:\/\/github\.com\//, `https://${GH_TOKEN}@github.com/`);
-                }
-            } else if (!githubRepo.includes('://') && !githubRepo.includes('@')) {
-                const repoPath = githubRepo.replace('.git', '');
-                REPO_URL = `https://${GH_TOKEN}@github.com/${repoPath}.git`;
-            }
-        }
-        
+
+        const ghTok = await resolveGithubToken(
+            this.ctx,
+            domainId,
+            this.user._id,
+            this.request.body?.githubToken,
+        );
+        assertGithubPushPullToken(githubRepo, ghTok);
+        const REPO_URL = buildGithubRemoteUrl(githubRepo, ghTok);
+
         const effectiveBranch = (branch || base.branch || this.args?.branch || this.request.body?.branch || 'main').toString();
         
         // Comment translated to English.
@@ -2982,8 +3125,9 @@ class BaseGithubPushHandler extends Handler {
     }
 
     @param('docId', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
-    async get(domainId: string, docId: number, branch?: string) {
+    async get(domainId: string, docId: number, bid: number, branch?: string) {
         return this.post(domainId, docId, bid, branch);
     }
 }
@@ -4229,7 +4373,7 @@ async function syncBaseToGit(domainId: string, docId: number, branch: string): P
     const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-base-sync-'));
     try {
         const branch = (base as any).currentBranch || 'main';
-        await exportBaseToFile(base, tmpDir, branch);
+        await exportBaseToFile(base, tmpDir, branch, domainId);
         
         // Copy files to git repository and remove extra files
         const copyDirAndCleanup = async (src: string, dest: string) => {
@@ -4531,27 +4675,27 @@ async function commitBaseChanges(
     
     const botName = system.get('ejunzrepo.github_bot_name') || 'ejunz-bot';
     const botEmail = system.get('ejunzrepo.github_bot_email') || 'bot@ejunz.local';
-    await exec(`git config user.name "${botName}"`, { cwd: repoGitPath });
-    await exec(`git config user.email "${botEmail}"`, { cwd: repoGitPath });
+    await execFile('git', ['config', 'user.name', String(botName)], { cwd: repoGitPath });
+    await execFile('git', ['config', 'user.email', String(botEmail)], { cwd: repoGitPath });
     
     const branch = (base as any).currentBranch || base.branch || 'main';
     try {
-        await exec(`git checkout ${branch}`, { cwd: repoGitPath });
+        await execFile('git', ['checkout', String(branch)], { cwd: repoGitPath });
     } catch {
         // Branch doesn't exist, create it from main
         try {
-            await exec(`git checkout main`, { cwd: repoGitPath });
-            await exec(`git checkout -b ${branch}`, { cwd: repoGitPath });
+            await execFile('git', ['checkout', 'main'], { cwd: repoGitPath });
+            await execFile('git', ['checkout', '-b', String(branch)], { cwd: repoGitPath });
         } catch {
             // If main doesn't exist either, just create the branch
-            await exec(`git checkout -b ${branch}`, { cwd: repoGitPath });
+            await execFile('git', ['checkout', '-b', String(branch)], { cwd: repoGitPath });
         }
     }
     
     const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ejunz-base-commit-'));
     try {
         const branch = (base as any).currentBranch || 'main';
-        await exportBaseToFile(base, tmpDir, branch);
+        await exportBaseToFile(base, tmpDir, branch, domainId);
         
         // Comment translated to English.
         const copyDirAndCleanup = async (src: string, dest: string) => {
@@ -4603,61 +4747,19 @@ async function commitBaseChanges(
         };
         await copyDirAndCleanup(tmpDir, repoGitPath);
         
-        // Comment translated to English.
-        // Comment translated to English.
-        try {
-            const { stdout: statusOutput } = await exec('git status --porcelain', { cwd: repoGitPath });
-            if (statusOutput.trim()) {
-                const lines = statusOutput.trim().split('\n');
-                const changedFiles: string[] = [];
-                
-                for (const line of lines) {
-                    const status = line.substring(0, 2).trim();
-                    const filePath = line.substring(3).trim();
-                    
-                    // Comment translated to English.
-                    if (status === 'M' || status.startsWith('M')) {
-                        try {
-                            // Comment translated to English.
-                            await exec(`git diff --quiet "${filePath}"`, { cwd: repoGitPath });
-                            // Comment translated to English.
-                            continue;
-                        } catch {
-                            // Comment translated to English.
-                            changedFiles.push(filePath);
-                        }
-                    } else if (status === '??' || status.startsWith('A') || status.startsWith('D')) {
-                        // Comment translated to English.
-                        changedFiles.push(filePath);
-                    }
-                }
-                
-                // Comment translated to English.
-                if (changedFiles.length > 0) {
-                    for (const file of changedFiles) {
-                        try {
-                            await exec(`git add "${file}"`, { cwd: repoGitPath });
-                        } catch (err: any) {
-                            console.warn(`[commitBaseChanges] Failed to add ${file}:`, err.message);
-                        }
-                    }
-                }
-            }
-        } catch (err: any) {
-            // Comment translated to English.
-            console.warn(`[commitBaseChanges] Failed to check file changes, using git add -A:`, err.message);
-        await exec('git add -A', { cwd: repoGitPath });
-        }
+        // After mirroring the export tree into the repo, stage everything. Parsing
+        // `git status --porcelain` paths (quotes, \nnn octal, renames) is fragile;
+        // `git add -A` matches the working tree reliably for full-tree sync.
+        await execFile('git', ['add', '-A'], { cwd: repoGitPath });
         
         try {
-            const { stdout } = await exec('git status --porcelain', { cwd: repoGitPath });
+            const { stdout } = await execFile('git', ['status', '--porcelain'], { cwd: repoGitPath });
             if (stdout.trim()) {
                 const defaultPrefix = `${domainId}/${userId}/${userName || 'unknown'}`;
-                const finalMessage = commitMessage && commitMessage.trim() 
+                const finalMessage = commitMessage && commitMessage.trim()
                     ? `${defaultPrefix}: ${commitMessage.trim()}`
                     : defaultPrefix;
-                const escapedMessage = finalMessage.replace(/'/g, "'\\''");
-                await exec(`git commit -m '${escapedMessage}'`, { cwd: repoGitPath });
+                await execFile('git', ['commit', '-m', finalMessage], { cwd: repoGitPath });
             }
         } catch (err: any) {
             console.error(`[commitBaseChanges] Error during commit:`, err);
@@ -4835,40 +4937,28 @@ class BaseGitStatusHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
     @param('branch', Types.String, true)
     async get(domainId: string, docId: number, branch?: string) {
-        const base = docId 
-            ? await BaseModel.get(domainId, docId)
+        const qDoc = readOptionalRequestBaseDocId(this.request);
+        const id = qDoc ?? (docId > 0 ? docId : undefined);
+        const base = id
+            ? await BaseModel.get(domainId, id)
             : await BaseModel.getByDomain(domainId);
         if (!base) {
             throw new NotFoundError('Base not found');
         }
-        
-        const effectiveBranch = branch || (base as any).currentBranch || 'main';
+
+        const effectiveBranch = (branch || (base as any).currentBranch || 'main').toString();
         const githubRepo = (base.githubRepo || '') as string;
-        
+
         let gitStatus: any = null;
         if (githubRepo) {
             try {
-                const settingValue = this.ctx.setting.get('ejunzrepo.github_token');
-                const systemValue = system.get('ejunzrepo.github_token');
-                const GH_TOKEN = settingValue || systemValue || '';
-                
-                let REPO_URL = githubRepo;
-                if (githubRepo.startsWith('git@')) {
-                    REPO_URL = githubRepo;
-                } else {
-                    if (githubRepo.startsWith('https://github.com/') || githubRepo.startsWith('http://github.com/')) {
-                        if (githubRepo.includes('@github.com')) {
-                            REPO_URL = githubRepo;
-                        } else {
-                            REPO_URL = githubRepo.replace('https://github.com/', `https://${GH_TOKEN}@github.com/`)
-                                .replace('http://github.com/', `https://${GH_TOKEN}@github.com/`);
-                        }
-                    } else if (!githubRepo.includes('://') && !githubRepo.includes('@')) {
-                        const repoPath = githubRepo.replace('.git', '');
-                        REPO_URL = `https://${GH_TOKEN}@github.com/${repoPath}.git`;
-                    }
-                }
-                
+                const REPO_URL = await resolveGithubRemoteUrlForRepo(
+                    this.ctx,
+                    domainId,
+                    this.user._id,
+                    githubRepo,
+                    this.request.body?.githubToken,
+                );
                 gitStatus = await getBaseGitStatus(domainId, base.docId, effectiveBranch, REPO_URL);
             } catch (err) {
                 console.error('Failed to get git status:', err);
@@ -4877,7 +4967,7 @@ class BaseGitStatusHandler extends Handler {
         } else {
             gitStatus = await getBaseGitStatus(domainId, base.docId, effectiveBranch);
         }
-        
+
         this.response.body = { gitStatus, branch: effectiveBranch };
     }
 }
@@ -4887,35 +4977,36 @@ class BaseGitStatusHandler extends Handler {
  */
 class BaseCommitHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
+    @param('branch', Types.String, true)
     @param('commitMessage', Types.String, true)
     @param('note', Types.String, true)
-    async post(domainId: string, docId: number, commitMessage?: string, note?: string) {
-        // Get commit message from request body if not provided as parameter
+    async post(domainId: string, docId: number, branch?: string, commitMessage?: string, note?: string) {
         const body = this.request.body || {};
         const customMessage = commitMessage || note || body.commitMessage || body.note || '';
-        
-        const base = docId 
-            ? await BaseModel.get(domainId, docId)
+
+        const bodyDoc = readOptionalRequestBaseDocId(this.request);
+        const useDocId = bodyDoc ?? (docId > 0 ? docId : undefined);
+        const base = useDocId
+            ? await BaseModel.get(domainId, useDocId)
             : await BaseModel.getByDomain(domainId);
         if (!base) {
             throw new NotFoundError('Base not found');
         }
-        
+
         if (!this.user.own(base)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
-        
-        // Generate final commit message with prefix (same format as repo)
-        const defaultPrefix = `${domainId}/${this.user._id}/${this.user.uname || 'unknown'}`;
-        const finalCommitMessage = customMessage && customMessage.trim() 
-            ? `${defaultPrefix}: ${customMessage.trim()}`
-            : defaultPrefix;
+
+        const branchFromPath = branch && String(branch).trim();
+        const branchFromBody = body.branch && String(body.branch).trim();
+        const effectiveBranch = (branchFromPath || branchFromBody || (base as any).currentBranch || 'main').toString();
+        const baseForCommit = { ...base, currentBranch: effectiveBranch, branch: effectiveBranch } as BaseDoc;
         
         try {
             await commitBaseChanges(
                 domainId,
                 base.docId,
-                base,
+                baseForCommit,
                 customMessage,
                 this.user._id,
                 this.user.uname || 'unknown'
@@ -4942,13 +5033,149 @@ async function importBaseFromFileStructure(
     domainId: string,
     baseDocId: number,
     localDir: string,
-    branch: string
+    branch: string,
+    syntheticRootText: string = 'Root',
 ): Promise<{ nodes: BaseNode[]; edges: BaseEdge[] }> {
     const nodes: BaseNode[] = [];
     const edges: BaseEdge[] = [];
     const nodeIdMap = new Map<string, string>(); // dirPath -> nodeId
-    
+
     const sanitize = (name: string) => (name || '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'untitled';
+
+    function parseExportOrderedSegment(raw: string): { order: number; label: string } | null {
+        const m = String(raw || '').trim().match(/^(\d+)-(.+)$/);
+        if (!m) return null;
+        return { order: parseInt(m[1], 10), label: m[2] };
+    }
+
+    type SortEnt = { kind: 'md' | 'dir'; name: string; order: number; tie: string; entry: fs.Dirent };
+
+    async function collectSortedEntries(dirPath: string): Promise<SortEnt[]> {
+        const rawEntries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+        const sortList: SortEnt[] = [];
+        for (const entry of rawEntries) {
+            if (entry.name === '.git' || entry.name === '.keep') continue;
+            const lower = entry.name.toLowerCase();
+            if (entry.isFile() && lower === 'readme.md') continue;
+            if (
+                entry.isFile() &&
+                (lower === 'problems.md' || lower === 'keys.md' || lower === 'problems_all.md')
+            ) {
+                continue;
+            }
+            if (entry.isFile() && lower.endsWith('.md')) {
+                const stem = entry.name.replace(/\.md$/i, '');
+                const p = parseExportOrderedSegment(stem);
+                sortList.push({
+                    kind: 'md',
+                    name: entry.name,
+                    order: p ? p.order : 1_000_000,
+                    tie: entry.name,
+                    entry,
+                });
+            } else if (entry.isDirectory()) {
+                const p = parseExportOrderedSegment(entry.name);
+                sortList.push({
+                    kind: 'dir',
+                    name: entry.name,
+                    order: p ? p.order : 1_000_000,
+                    tie: entry.name,
+                    entry,
+                });
+            }
+        }
+        sortList.sort((a, b) => a.order - b.order || a.tie.localeCompare(b.tie));
+        return sortList;
+    }
+
+    /** Folder `N-label/` with `label.md` (+ optional problems.md / keys.md / problems_all.md), no subdirs → card. */
+    async function tryReadCardFolder(
+        folderAbsPath: string,
+        folderSegmentName: string,
+    ): Promise<{ order: number; title: string; mdPath: string } | null> {
+        const p = parseExportOrderedSegment(folderSegmentName);
+        if (!p) return null;
+        let entries: fs.Dirent[];
+        try {
+            entries = await fs.promises.readdir(folderAbsPath, { withFileTypes: true });
+        } catch {
+            return null;
+        }
+        const reservedMd = new Set(['readme.md', 'problems.md', 'keys.md', 'problems_all.md']);
+        let mdPath: string | null = null;
+        let mdStem: string | null = null;
+        for (const e of entries) {
+            if (e.name === '.git' || e.name === '.keep') continue;
+            if (e.isDirectory()) return null;
+            if (!e.isFile() || !e.name.toLowerCase().endsWith('.md')) continue;
+            const low = e.name.toLowerCase();
+            if (reservedMd.has(low)) continue;
+            if (mdPath) return null;
+            mdPath = path.join(folderAbsPath, e.name);
+            mdStem = e.name.replace(/\.md$/i, '');
+        }
+        if (!mdPath || mdStem === null) return null;
+        if (mdStem !== p.label) return null;
+        return { order: p.order, title: p.label, mdPath };
+    }
+
+    async function upsertCardWithMeta(
+        parentNodeId: string,
+        mdAbsPath: string,
+        cardTitle: string,
+        fileOrder: number,
+        existingCardsByTitle: Map<string, CardDoc>,
+        processedCardIds: Set<string>,
+    ): Promise<void> {
+        const cardContent = await fs.promises.readFile(mdAbsPath, 'utf-8');
+        try {
+            const existingCard = existingCardsByTitle.get(cardTitle);
+            if (existingCard) {
+                await CardModel.update(domainId, existingCard.docId, {
+                    content: cardContent,
+                    order: fileOrder,
+                });
+                processedCardIds.add(existingCard.docId.toString());
+            } else {
+                const newCardId = await CardModel.create(
+                    domainId,
+                    baseDocId,
+                    parentNodeId,
+                    0,
+                    cardTitle,
+                    cardContent,
+                    '127.0.0.1',
+                    undefined,
+                    fileOrder,
+                    branch,
+                );
+                processedCardIds.add(newCardId.toString());
+            }
+        } catch (err) {
+            console.error(`Failed to create/update card ${cardTitle} for node ${parentNodeId}:`, err);
+        }
+    }
+
+    async function upsertCardFromMarkdown(
+        parentNodeId: string,
+        cardPath: string,
+        fileName: string,
+        existingCardsByTitle: Map<string, CardDoc>,
+        processedCardIds: Set<string>,
+    ): Promise<void> {
+        const stem = fileName.replace(/\.md$/i, '');
+        const p = parseExportOrderedSegment(stem);
+        const cardTitle = p ? p.label : sanitize(stem);
+        const fileOrder = p ? p.order : 1_000_000;
+        await upsertCardWithMeta(
+            parentNodeId,
+            cardPath,
+            cardTitle,
+            fileOrder,
+            existingCardsByTitle,
+            processedCardIds,
+        );
+    }
     
     // Read README.md as base content (but we don't update it here, just for reference)
     const readmePath = path.join(localDir, 'README.md');
@@ -4956,11 +5183,12 @@ async function importBaseFromFileStructure(
         await fs.promises.readFile(readmePath, 'utf-8');
     } catch {}
     
-    // Create root node (invisible, just for structure)
+    // Synthetic root (not exported as a folder); label is not in the repo, so preserve from DB on pull.
     const rootNodeId = `root_${baseDocId.toString().substring(0, 8)}`;
+    const rootLabel = (syntheticRootText || '').trim() || 'Root';
     nodes.push({
         id: rootNodeId,
-        text: 'Root',
+        text: rootLabel,
         x: 0,
         y: 0,
         data: {},
@@ -4970,23 +5198,24 @@ async function importBaseFromFileStructure(
     
     let nodeCounter = 0;
     
-    // Recursively import nodes from directory structure
+    // Recursively import nodes from directory structure (ordered md + subdirs interleaved)
     async function importNode(parentNodeId: string, dirPath: string, dirName: string, level: number = 0): Promise<void> {
-        const nodeId = `node_${bid}_${++nodeCounter}`;
-        const nodeText = sanitize(dirName);
-        
-        // Create node
+        const dirParsed = parseExportOrderedSegment(dirName);
+        const nodeText = dirParsed ? dirParsed.label : sanitize(dirName);
+        const nodeOrder = dirParsed ? dirParsed.order : 1_000_000 + level;
+
+        const nodeId = `node_${baseDocId}_${++nodeCounter}`;
         const node: BaseNode = {
             id: nodeId,
             text: nodeText,
+            order: nodeOrder,
             x: level * 200,
             y: 0,
             data: {},
         };
         nodes.push(node);
         nodeIdMap.set(dirPath, nodeId);
-        
-        // Create edge from parent to this node
+
         if (parentNodeId) {
             edges.push({
                 id: `edge_${parentNodeId}_${nodeId}`,
@@ -4995,65 +5224,46 @@ async function importBaseFromFileStructure(
                 type: 'bezier',
             });
         }
-        
-        // Read cards (Markdown files) in this directory
+
         try {
-            const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-            // Comment translated to English.
-            const existingCards = await CardModel.getByNodeId(domainId, bid, nodeId);
+            const sortList = await collectSortedEntries(dirPath);
+            const existingCards = await CardModel.getByNodeId(domainId, baseDocId, nodeId, branch);
             const existingCardsByTitle = new Map<string, CardDoc>();
             const processedCardIds = new Set<string>();
 
             for (const card of existingCards) {
-                // Comment translated to English.
                 if (card.title) {
                     existingCardsByTitle.set(card.title, card);
                 }
             }
 
-            for (const entry of entries) {
-                if (
-                    entry.isFile() &&
-                    entry.name.toLowerCase().endsWith('.md') &&
-                    entry.name.toLowerCase() !== 'readme.md'
-                ) {
-                    const cardPath = path.join(dirPath, entry.name);
-                    const cardContent = await fs.promises.readFile(cardPath, 'utf-8');
-                    const cardTitle = sanitize(entry.name.replace(/\.md$/i, ''));
-
-                    // Comment translated to English.
-                    try {
-                        const existingCard = existingCardsByTitle.get(cardTitle);
-
-                        if (existingCard) {
-                            // Comment translated to English.
-                            await CardModel.update(domainId, existingCard.docId, {
-                                content: cardContent,
-                            });
-                            processedCardIds.add(existingCard.docId.toString());
-                        } else {
-                            // Comment translated to English.
-                            const newCardId = await CardModel.create(
-                                domainId,
-                                baseDocId,
-                                nodeId,
-                                0, // owner (system)
-                                cardTitle,
-                                cardContent,
-                                '127.0.0.1',
-                                undefined,
-                                undefined,
-                                branch,
-                            );
-                            processedCardIds.add(newCardId.toString());
-                        }
-                    } catch (err) {
-                        console.error(`Failed to create/update card ${cardTitle} for node ${nodeId}:`, err);
+            for (const se of sortList) {
+                if (se.kind === 'md') {
+                    await upsertCardFromMarkdown(
+                        nodeId,
+                        path.join(dirPath, se.name),
+                        se.name,
+                        existingCardsByTitle,
+                        processedCardIds,
+                    );
+                } else {
+                    const subAbs = path.join(dirPath, se.name);
+                    const cardFolder = await tryReadCardFolder(subAbs, se.name);
+                    if (cardFolder) {
+                        await upsertCardWithMeta(
+                            nodeId,
+                            cardFolder.mdPath,
+                            cardFolder.title,
+                            cardFolder.order,
+                            existingCardsByTitle,
+                            processedCardIds,
+                        );
+                    } else {
+                        await importNode(nodeId, subAbs, se.name, level + 1);
                     }
                 }
             }
 
-            // Comment translated to English.
             for (const card of existingCards) {
                 const idStr = card.docId.toString();
                 if (!processedCardIds.has(idStr)) {
@@ -5064,26 +5274,55 @@ async function importBaseFromFileStructure(
                     }
                 }
             }
-            
-            // Recursively import child directories
-            for (const entry of entries) {
-                if (entry.isDirectory() && entry.name !== '.git') {
-                    const childDirPath = path.join(dirPath, entry.name);
-                    await importNode(nodeId, childDirPath, entry.name, level + 1);
-                }
-            }
         } catch (err) {
             console.error(`Failed to read directory ${dirPath}:`, err);
         }
     }
-    
-    // Import top-level directories (children of root)
+
     try {
-        const topEntries = await fs.promises.readdir(localDir, { withFileTypes: true });
-        for (const entry of topEntries) {
-            if (entry.isDirectory() && entry.name !== '.git') {
-                const childDirPath = path.join(localDir, entry.name);
-                await importNode(rootNodeId, childDirPath, entry.name, 1);
+        const topList = await collectSortedEntries(localDir);
+        const existingRootCards = await CardModel.getByNodeId(domainId, baseDocId, rootNodeId, branch);
+        const existingRootByTitle = new Map<string, CardDoc>();
+        for (const card of existingRootCards) {
+            if (card.title) existingRootByTitle.set(card.title, card);
+        }
+        const processedRootCardIds = new Set<string>();
+
+        for (const se of topList) {
+            if (se.kind === 'md') {
+                await upsertCardFromMarkdown(
+                    rootNodeId,
+                    path.join(localDir, se.name),
+                    se.name,
+                    existingRootByTitle,
+                    processedRootCardIds,
+                );
+            } else {
+                const subAbs = path.join(localDir, se.name);
+                const cardFolder = await tryReadCardFolder(subAbs, se.name);
+                if (cardFolder) {
+                    await upsertCardWithMeta(
+                        rootNodeId,
+                        cardFolder.mdPath,
+                        cardFolder.title,
+                        cardFolder.order,
+                        existingRootByTitle,
+                        processedRootCardIds,
+                    );
+                } else {
+                    await importNode(rootNodeId, subAbs, se.name, 1);
+                }
+            }
+        }
+
+        for (const card of existingRootCards) {
+            const idStr = card.docId.toString();
+            if (!processedRootCardIds.has(idStr)) {
+                try {
+                    await CardModel.delete(domainId, card.docId);
+                } catch (err) {
+                    console.error(`Failed to delete stale root card ${idStr}:`, err);
+                }
             }
         }
     } catch (err) {
@@ -5121,50 +5360,29 @@ class BaseGithubPullHandler extends Handler {
     @param('bid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
     async post(domainId: string, docId: number, bid: number, branch?: string) {
-        const base = docId 
-            ? await BaseModel.get(domainId, docId)
-            : await BaseModel.getBybid(domainId, bid);
+        const base = await resolveBaseDocFromGithubRequest(domainId, docId, bid, this.request);
         if (!base) {
             throw new NotFoundError('Base not found');
         }
-        
+
         if (!this.user.own(base)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
-        
+
         const githubRepo = (base.githubRepo || '') as string;
         if (!githubRepo) {
             throw new Error('GitHub repository not configured. Please configure it in base settings.');
         }
-        
-        const settingValue = this.ctx.setting.get('ejunzrepo.github_token');
-        const systemValue = system.get('ejunzrepo.github_token');
-        const GH_TOKEN = settingValue || systemValue || '';
-        if (!GH_TOKEN) {
-            throw new Error('GitHub token not configured. Please configure it in system settings.');
-        }
-        
-        let REPO_URL = githubRepo;
-        if (githubRepo.startsWith('git@')) {
-            REPO_URL = githubRepo;
-        } else {
-            if (githubRepo.startsWith('https://github.com/') || githubRepo.startsWith('http://github.com/')) {
-                // Comment translated to English.
-                // Comment translated to English.
-                // Comment translated to English.
-                const repoPathMatch = githubRepo.match(/^https?:\/\/[^@]*@?github\.com\/(.+)$/);
-                if (repoPathMatch && repoPathMatch[1]) {
-                    REPO_URL = `https://${GH_TOKEN}@github.com/${repoPathMatch[1]}`;
-                } else {
-                    // Comment translated to English.
-                    REPO_URL = githubRepo.replace(/^https?:\/\/[^@]*@?github\.com\//, `https://${GH_TOKEN}@github.com/`);
-                }
-            } else if (!githubRepo.includes('://') && !githubRepo.includes('@')) {
-                const repoPath = githubRepo.replace('.git', '');
-                REPO_URL = `https://${GH_TOKEN}@github.com/${repoPath}.git`;
-            }
-        }
-        
+
+        const ghTok = await resolveGithubToken(
+            this.ctx,
+            domainId,
+            this.user._id,
+            this.request.body?.githubToken,
+        );
+        assertGithubPushPullToken(githubRepo, ghTok);
+        const REPO_URL = buildGithubRemoteUrl(githubRepo, ghTok);
+
         const effectiveBranch = (branch || base.branch || this.args?.branch || this.request.body?.branch || 'main').toString();
         
         const repoGitPath = await ensureBaseGitRepo(domainId, base.docId, REPO_URL);
@@ -5195,7 +5413,8 @@ class BaseGithubPullHandler extends Handler {
                 domainId,
                 base.docId,
                 repoGitPath,
-                effectiveBranch
+                effectiveBranch,
+                getSyntheticRootTextForFileImport(base, effectiveBranch),
             );
             
             // Update branch data
@@ -5233,11 +5452,9 @@ class BaseGithubConfigHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     async _prepare(domainId: string, docId: number, bid: number) {
-        this.base = docId 
-            ? await BaseModel.get(domainId, docId)
-            : await BaseModel.getBybid(domainId, bid);
+        this.base = await resolveBaseDocFromGithubRequest(domainId, docId, bid, this.request);
         if (!this.base) throw new NotFoundError('Base not found');
-        
+
         if (!this.user.own(this.base)) {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
@@ -5245,20 +5462,36 @@ class BaseGithubConfigHandler extends Handler {
 
     @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
+    async get(domainId: string, docId: number, bid: number) {
+        await this._prepare(domainId, docId, bid);
+        const r = (this.base!.githubRepo || '') as string;
+        this.response.body = { githubRepo: r || null };
+    }
+
+    @param('docId', Types.PositiveInt, true)
+    @param('bid', Types.PositiveInt, true)
     @param('githubRepo', Types.String, true)
     async post(domainId: string, docId: number, bid: number, githubRepo?: string) {
-        if (githubRepo !== undefined) {
-            let repoUrlForStorage = githubRepo;
+        await this._prepare(domainId, docId, bid);
+        const fromBody = (this.request.body || {}).githubRepo;
+        const repoVal = fromBody !== undefined ? fromBody : githubRepo;
+        let outRepo: string | null = ((this.base!.githubRepo || '') as string) || null;
+        if (repoVal !== undefined) {
+            let repoUrlForStorage = typeof repoVal === 'string' ? repoVal : String(repoVal);
             if (repoUrlForStorage && repoUrlForStorage.startsWith('https://') && repoUrlForStorage.includes('@github.com')) {
                 repoUrlForStorage = repoUrlForStorage.replace(/^https:\/\/[^@]+@github\.com\//, 'https://github.com/');
             }
-            
+
             await document.set(domainId, document.TYPE_BASE, this.base!.docId, {
                 githubRepo: repoUrlForStorage || null,
             });
+            outRepo = repoUrlForStorage || null;
         }
-        
-        this.response.body = { success: true, githubRepo: githubRepo || null };
+
+        this.response.body = {
+            success: true,
+            githubRepo: outRepo,
+        };
     }
 }
 
@@ -5867,6 +6100,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_commit_branch', '/base/branch/:branch/commit', BaseCommitHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_github_push', '/base/github/push', BaseGithubPushHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_github_push_branch', '/base/branch/:branch/github/push', BaseGithubPushHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_github_config', '/base/github/config', BaseGithubConfigHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_github_pull', '/base/github/pull', BaseGithubPullHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_github_pull_branch', '/base/branch/:branch/github/pull', BaseGithubPullHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_branches', '/base/:docId/branches', BaseBranchesHandler);

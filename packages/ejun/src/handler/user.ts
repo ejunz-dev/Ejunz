@@ -1554,6 +1554,29 @@ class OauthCallbackHandler extends Handler {
     }
 }
 
+class UserGithubTokenHandler extends Handler {
+    async get(domainId: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const u = await user.getById(domainId, this.user._id);
+        const t = u ? String((u as any)._udoc?.githubToken || '').trim() : '';
+        this.response.body = { configured: !!t };
+    }
+
+    async post(domainId: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const body = this.request.body || {};
+        const raw = body.githubToken;
+        if (raw === null || raw === undefined || raw === '') {
+            await user.setById(this.user._id, {}, { githubToken: '' } as any);
+            this.response.body = { success: true, configured: false };
+        } else {
+            const tok = String(raw).trim();
+            await user.setById(this.user._id, { githubToken: tok } as any);
+            this.response.body = { success: true, configured: true };
+        }
+    }
+}
+
 class ContestModeHandler extends Handler {
     async get() {
         const bindings = await user.getMulti({ loginip: { $exists: true } })
@@ -1641,6 +1664,7 @@ export async function apply(ctx: Context) {
     ctx.Route('user_sudo', '/user/sudo', UserSudoHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('user_tfa', '/user/tfa', UserTFAHandler);
     ctx.Route('user_webauthn', '/user/webauthn', UserWebauthnHandler);
+    ctx.Route('user_github_token', '/user/github-token', UserGithubTokenHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('user_oauth_callback', '/oauth/:type/callback', OauthCallbackHandler);
     ctx.Route('user_register', '/register', UserRegisterHandler, PRIV.PRIV_REGISTER_USER);
     ctx.Route('user_register_with_code', '/register/:code', UserRegisterWithCodeHandler, PRIV.PRIV_REGISTER_USER);
