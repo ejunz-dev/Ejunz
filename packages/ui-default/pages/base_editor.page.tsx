@@ -48,6 +48,7 @@ interface BaseDoc {
   nodes: BaseNode[];
   edges: BaseEdge[];
   currentBranch?: string;
+  branches?: string[];
   files?: Array<{ _id: string; name: string; size: number; etag?: string; lastModified?: Date | string }>;
 }
 
@@ -7968,6 +7969,7 @@ ${currentCardContext}
         />
       )}
       <div style={{
+        position: 'relative',
         ...(isMobile
           ? {
               position: 'fixed' as const,
@@ -7988,32 +7990,33 @@ ${currentCardContext}
             }),
         borderRight: `1px solid ${themeStyles.borderPrimary}`,
         backgroundColor: themeStyles.bgSecondary,
+        display: 'flex',
+        alignItems: 'stretch',
         overflow: 'auto',
         WebkitOverflowScrolling: 'touch',
       } as React.CSSProperties}
         ref={explorerScrollRef}
       >
         <div style={{
-          padding: isMobile ? '12px 16px' : '12px 16px',
-          borderBottom: `1px solid ${themeStyles.borderPrimary}`,
-          fontSize: '12px',
-          fontWeight: '600',
-          color: themeStyles.textSecondary,
+          width: isMobile ? '48px' : '44px',
+          padding: isMobile ? '10px 6px' : '8px 5px',
+          borderRight: `1px solid ${themeStyles.borderPrimary}`,
           backgroundColor: themeStyles.bgPrimary,
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          justifyContent: 'flex-start',
+          gap: '6px',
+          flexShrink: 0,
         }}>
-          <span />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'nowrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flexWrap: 'nowrap' }}>
             {isMobile && (
               <button
                 type="button"
                 onClick={() => setMobileExplorerOpen(false)}
                 style={{
-                  padding: '6px 10px',
-                  minHeight: '36px',
-                  fontSize: '11px',
+                  width: '34px',
+                  height: '34px',
                   border: `1px solid ${themeStyles.borderSecondary}`,
                   borderRadius: '4px',
                   background: themeStyles.bgButton,
@@ -8021,42 +8024,42 @@ ${currentCardContext}
                   cursor: 'pointer',
                   flexShrink: 0,
                 }}
+                title="Close"
               >
-                Close
+                X
               </button>
             )}
-            {explorerMode === 'tree' && (
-              <>
-                <button
-                  onClick={() => {
-                    setIsMultiSelectMode(!isMultiSelectMode);
-                    if (isMultiSelectMode) {
-                      setSelectedItems(new Set());
-                    }
-                  }}
-                  style={{
-                    padding: isMobile ? '8px 10px' : '2px 8px',
-                    minHeight: isMobile ? '36px' : undefined,
-                    fontSize: '11px',
-                    border: `1px solid ${themeStyles.borderSecondary}`,
-                    borderRadius: '3px',
-                    backgroundColor: isMultiSelectMode ? themeStyles.bgButtonActive : themeStyles.bgButton,
-                    color: isMultiSelectMode ? themeStyles.textOnPrimary : themeStyles.textSecondary,
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                  }}
-                  title={isMultiSelectMode ? i18n('Exit multi-select') : i18n('Multi-select')}
-                >
-                  {isMultiSelectMode ? '✓' : '☐'}
-                </button>
-              </>
-            )}
+            <button
+              onClick={() => {
+                if (explorerMode !== 'tree') {
+                  setExplorerMode('tree');
+                  setIsMultiSelectMode(true);
+                  return;
+                }
+                setIsMultiSelectMode(!isMultiSelectMode);
+                if (isMultiSelectMode) {
+                  setSelectedItems(new Set());
+                }
+              }}
+              style={{
+                width: '34px',
+                height: '34px',
+                border: `1px solid ${themeStyles.borderSecondary}`,
+                borderRadius: '3px',
+                backgroundColor: isMultiSelectMode ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                color: isMultiSelectMode ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+              title={isMultiSelectMode ? i18n('Exit multi-select') : i18n('Multi-select')}
+            >
+              {isMultiSelectMode ? '✓' : '☐'}
+            </button>
             <button
               onClick={() => setExplorerMode('tree')}
               style={{
-                padding: isMobile ? '8px 10px' : '2px 8px',
-                minHeight: isMobile ? '36px' : undefined,
-                fontSize: '11px',
+                width: '34px',
+                height: '34px',
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
                 backgroundColor: explorerMode === 'tree' ? themeStyles.bgButtonActive : themeStyles.bgButton,
@@ -8066,14 +8069,15 @@ ${currentCardContext}
               }}
               title="树形视图"
             >
-              树形
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M8 2v12M2 5h6M8 5h6M3 11h5M8 11h4" />
+              </svg>
             </button>
             <button
               onClick={() => setExplorerMode('files')}
               style={{
-                padding: isMobile ? '8px 10px' : '2px 8px',
-                minHeight: isMobile ? '36px' : undefined,
-                fontSize: '11px',
+                width: '34px',
+                height: '34px',
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
                 backgroundColor: explorerMode === 'files' ? themeStyles.bgButtonActive : themeStyles.bgButton,
@@ -8083,14 +8087,16 @@ ${currentCardContext}
               }}
               title={i18n('File view')}
             >
-              文件
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M2.5 4.5h4l1 1h6v6h-11z" />
+                <path d="M2.5 5.5v-1h4l1 1" />
+              </svg>
             </button>
             <button
               onClick={() => setExplorerMode('pending')}
               style={{
-                padding: isMobile ? '8px 10px' : '2px 8px',
-                minHeight: isMobile ? '36px' : undefined,
-                fontSize: '11px',
+                width: '34px',
+                height: '34px',
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
                 backgroundColor: explorerMode === 'pending' ? themeStyles.bgButtonActive : themeStyles.bgButton,
@@ -8100,14 +8106,16 @@ ${currentCardContext}
               }}
               title="查看待提交的更改"
             >
-              修改
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M4 2.5h8v11H4z" />
+                <path d="M6 6h4M6 8.5h4M6 11h3" />
+              </svg>
             </button>
             <button
               onClick={() => setExplorerMode('branches')}
               style={{
-                padding: isMobile ? '8px 10px' : '2px 8px',
-                minHeight: isMobile ? '36px' : undefined,
-                fontSize: '11px',
+                width: '34px',
+                height: '34px',
                 border: `1px solid ${themeStyles.borderSecondary}`,
                 borderRadius: '3px',
                 backgroundColor: explorerMode === 'branches' ? themeStyles.bgButtonActive : themeStyles.bgButton,
@@ -8117,11 +8125,16 @@ ${currentCardContext}
               }}
               title="查看分支并跳转"
             >
-              分支
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <circle cx="4" cy="3.5" r="1.5" />
+                <circle cx="4" cy="12.5" r="1.5" />
+                <circle cx="12" cy="8" r="1.5" />
+                <path d="M5.5 4.3L10.5 7.2M5.5 11.7l5-2.9" />
+              </svg>
             </button>
           </div>
         </div>
-        <div style={{ padding: '8px 0' }}>
+        <div style={{ padding: '8px 0', flex: 1, minWidth: 0 }}>
           {explorerMode === 'tree' ? (
             fileTree.map((file, index) => {
             // Comment translated to English.
