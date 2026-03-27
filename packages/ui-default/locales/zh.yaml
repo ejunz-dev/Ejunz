@@ -520,6 +520,7 @@ Arguments: 参数
 author: 作者
 Avatar: 头像
 Average Rating: 平均评分
+Back to Outline: 返回文件模式
 Back to: 返回
 Base Node: 知识库节点
 base_create: 创建知识库
@@ -548,6 +549,11 @@ block_detail: 块详情
 block_edit: 编辑块
 Bold: 加粗
 Boom!: 炸了！
+Branch already exists: 分支已存在
+Branch created successfully: 分支创建成功
+Branch name is required: 请输入分支名称
+Branch: 分支
+Branches: 分支
 Browser: 浏览器
 Built-in: 内置
 Bulletin: 公告
@@ -603,12 +609,15 @@ Copy WeChat Account: 复制微信号
 Copy: 复制
 Copyright Complaint: 版权申诉
 CPU Info: CPU信息
+Create a branch: 创建分支
 Create a Discussion: 创建一个讨论
+Create Branch: 新建分支
 Create Discussion in {0}: 在 {0} 下创建讨论
 Create Discussion: 创建讨论
 Create discussions: 创建讨论
 Create Domain: 创建域
 Create Link: 创建链接
+Create new branch: 创建新分支
 Create Role: 创建角色
 Create: 创建
 Created at: 创建时间
@@ -621,6 +630,7 @@ Current Password: 当前密码
 Current Status: 当前状态
 currently offline: 目前离线
 Custom File Name (Optional): 自定义文件名（可选）
+Default: 默认
 Delay: 延迟
 Delete a user: 删除用户
 Delete discussion replies of own discussion: 删除自己讨论中的回复
@@ -706,6 +716,7 @@ Enabled: 开启
 End at: 结束于
 End Date: 结束日期
 End Time: 结束时间
+Enter branch name: 输入分支名称
 Enter Edit Mode: 进入编辑模式
 error: 错误
 expand: 展开
@@ -839,6 +850,8 @@ name: 名称
 Name: 名称
 Network error: 网络错误
 Never expire: 从不过期
+New branch name: 新分支名称
+New branch: 新建分支
 New Email: 新电子邮件
 New file: 新文件
 New Password: 新密码

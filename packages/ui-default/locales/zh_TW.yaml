@@ -65,6 +65,7 @@ ASR Configuration: ASR 配置
 author: 作者
 Back to Details: 返回詳情
 Back to List: 返回列表
+Back to Outline: 返回檔案模式
 Base URL: Base URL
 Begin Date: 開始日期
 Begin Time: 開始時間
@@ -72,6 +73,11 @@ Belongs to: 屬於
 Bio Visibility: 個人簡介可見性
 Bio: 個人簡介
 Boom!: 炸了！
+Branch already exists: 分支已存在
+Branch created successfully: 分支建立成功
+Branch name is required: 請輸入分支名稱
+Branch: 分支
+Branches: 分支
 Browser: 瀏覽器
 Built-in: 內建
 Calendar View: 日曆視圖
@@ -107,12 +113,15 @@ Contact: 聯絡
 content: 內容
 Content: 內容
 Copied to clipboard: 已複製到剪貼板
+Create a branch: 建立分支
 Create a Discussion: 創建一個討論
+Create Branch: 新建分支
 Create Client: 創建客戶端
 Create Discussion in {0}: 在 {0} 下創建討論
 Create Discussion: 創建討論
 Create discussions: 創建討論
 Create Domain: 創建域
+Create new branch: 建立新分支
 Create Role: 創建角色
 Create: 創建
 Created Clients: 已創建的客戶端
@@ -122,8 +131,10 @@ Current Email: 當前電子郵件
 Current Location: 當前位置
 Current password doesn't match.: 當前密碼輸入錯誤。
 Current Password: 當前密碼
+Current: 當前
 currently offline: 目前離線
 Currently Selected Agent: 當前選擇的 Agent
+Default: 預設
 Delete Client: 刪除客戶端
 Delete discussion replies of own discussion: 刪除自己討論中的回覆
 Delete discussion replies: 刪除討論回覆
@@ -182,6 +193,7 @@ End at: 結束於
 End Date: 結束日期
 End Time: 結束時間
 Endpoint: Endpoint
+Enter branch name: 輸入分支名稱
 Error Message: 錯誤資訊
 error: 錯誤
 Error: 錯誤
@@ -256,6 +268,8 @@ My Domains: 我的域
 My Profile: 我的資料
 My Role: 我的角色
 Name: 名稱
+New branch name: 新分支名稱
+New branch: 新建分支
 New Email: 新電子郵件
 New Password: 新密碼
 New: 創建
@@ -374,6 +388,7 @@ Sign Up: 註冊
 Skill branch: Skill 分支
 Sorry: 對不起
 Sort by: 排序
+Source: 來源
 Star Topic: 收藏討論
 Star: 收藏
 Start at: 開始於
