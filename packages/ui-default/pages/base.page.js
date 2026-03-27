@@ -1,7 +1,9 @@
 import $ from 'jquery';
 import _ from 'lodash';
+import { ConfirmDialog } from 'vj/components/dialog/index';
+import Notification from 'vj/components/notification';
 import { NamedPage } from 'vj/misc/Page';
-import { pjax } from 'vj/utils';
+import { i18n, pjax, request, tpl } from 'vj/utils';
 
 function loadQuery() {
   const q = $('[name="q"]').val().toString();
@@ -10,6 +12,15 @@ function loadQuery() {
   else url.searchParams.set('q', q);
   url.searchParams.delete('page');
   pjax.request({ url: url.toString() });
+}
+
+function getSelectedDocIds() {
+  const ids = [];
+  $('[data-checkbox-group="base"]:checked').each(function () {
+    const docId = $(this).closest('tr').attr('data-doc-id');
+    if (docId) ids.push(docId);
+  });
+  return ids;
 }
 
 const page = new NamedPage('base_domain', () => {
@@ -22,6 +33,31 @@ const page = new NamedPage('base_domain', () => {
   });
   $(document).on('click', '[name="enter-edit-mode"]', () => {
     $body.removeClass('display-mode').addClass('edit-mode');
+  });
+
+  $(document).on('click', '[name="delete_selected_bases"]', async () => {
+    const docIds = getSelectedDocIds();
+    if (docIds.length === 0) {
+      Notification.error(i18n('Please select at least one base to delete.'));
+      return;
+    }
+    const action = await new ConfirmDialog({
+      $body: tpl`
+        <div class="typo">
+          <p>${i18n('Confirm deleting {0} selected base(s)?').replace('{0}', docIds.length)}</p>
+        </div>`,
+    }).open();
+    if (action !== 'yes') return;
+    try {
+      await request.post('', {
+        operation: 'delete_selected',
+        docIds,
+      });
+      Notification.success(i18n('Selected bases have been deleted.'));
+      await pjax.request({ push: false });
+    } catch (error) {
+      Notification.error(error.message);
+    }
   });
 
   function inputChanged() {

@@ -30,6 +30,7 @@ __langname: 한국어
 'Tap the day count above to continue in Learn, Collect, or Flag.': 위의 일수를 눌러 Learn, Collect 또는 Flag로 이동하세요.
 'Today': 오늘
 'Yes': 예
+"Confirm deleting {0} selected base(s)?": "선택한 {0}개의 베이스를 삭제하시겠습니까?"
 "This domain today": 오늘 이 도메인
 "Today's contribution": 오늘의 기여
 "Today's domain activity": 오늘 이 도메인 활동
@@ -392,6 +393,7 @@ perm_general: 일반
 Permission: 권한
 Permissions: 권한
 Plan: 계획
+Please select at least one base to delete.: 삭제할 베이스를 하나 이상 선택하십시오.
 Please select at least one role to perform this operation.: 작업을 하려면 적어도 하나의 역할을 고르십시오.
 Please select at least one user to perform this operation.: 작업을 하려면 적어도 하나의 역할을 고르십시오.
 Please select: 선택하세요
@@ -455,6 +457,7 @@ Select a role: 노드 선택
 Select Agent: Agent 선택
 Select the type of access point to generate a token: Token을 생성할 액세스 포인트 유형 선택
 Select User: 사용자 선택
+Selected bases have been deleted.: 선택한 베이스가 삭제되었습니다.
 Selected roles have been deleted.: 선택한 역할은 이미 제거되었습니다.
 Selected users have been removed from the domain.: 선택한 사용자는 이미 그룹에서 제거되었습니다.
 Send Message: 메시지 보내기
