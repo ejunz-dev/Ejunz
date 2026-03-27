@@ -25,6 +25,7 @@ __langname: 正體中文
 'Tap the day count above to continue in Learn, Collect, or Flag.': 點擊上方天數可前往 Learn、Collect 或 Flag 繼續學習。
 'Today': 今天
 'Yes': 是
+"Confirm deleting {0} selected base(s)?": "確定要刪除選中的 {0} 個倉庫嗎？"
 "This domain today": 本日本域
 "Today's contribution": 今日貢獻
 "Today's domain activity": 本域今日動態
@@ -292,6 +293,7 @@ perm_general: 一般
 Permission: 許可權
 Permissions: 許可權
 Please generate token on: 請在
+Please select at least one base to delete.: 請選擇至少一個倉庫進行刪除。
 Please select at least one role to perform this operation.: 請選擇至少一個角色來進行操作。
 Please select at least one user to perform this operation.: 請選擇至少一個使用者來進行操作。
 Please select: 請選擇
@@ -341,6 +343,7 @@ Select a role: 選擇一個角色
 Select Agent: 選擇 Agent
 Select the type of access point to generate a token: 選擇接入點類型以生成 token
 Select User: 選擇使用者
+Selected bases have been deleted.: 已刪除選中的倉庫。
 Selected roles have been deleted.: 所選角色已刪除。
 Selected users have been removed from the domain.: 所選使用者已從此域中移除。
 Send Password Reset Email: 傳送密碼重置郵件

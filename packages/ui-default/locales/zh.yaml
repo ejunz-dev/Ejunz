@@ -467,6 +467,7 @@ __langname: 简体中文
 'Yes': 是
 'Your Answer': 您的答案
 'your custom message': 您的自定义消息
+"Confirm deleting {0} selected base(s)?": "确定要删除选中的 {0} 个仓库吗？"
 "This domain today": 本日本域
 "Today's contribution": 今日贡献
 "Today's domain activity": 本域今日动态
@@ -894,6 +895,7 @@ Permissions: 权限
 Phone: 手机号
 Pin discussions: 置顶讨论
 Plan: 计划
+Please select at least one base to delete.: 请选择至少一个仓库进行删除。
 Please select at least one role to perform this operation.: 请选择至少一个角色来进行操作。
 Please select at least one user to perform this operation.: 请选择至少一个用户来进行操作。
 Plugins: 插件
@@ -967,6 +969,7 @@ Select a node to create discussion.: 选择一个节点来发表讨论。
 Select a role: 选择一个角色
 Select Category: 选择标签
 Select User: 选择用户
+Selected bases have been deleted.: 已删除选中的仓库。
 Selected categories: 已选标签
 Selected roles have been deleted.: 所选角色已删除。
 Selected users have been removed from the domain.: 所选用户已从此域中移除。

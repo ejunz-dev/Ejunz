@@ -2022,6 +2022,24 @@ class BaseDomainListHandler extends Handler {
             };
         }
     }
+
+    async postDeleteSelected(domainId: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const { docIds } = this.request.body;
+        const did = typeof domainId === 'string' ? domainId : (this.args?.domainId ?? 'system');
+        const ids: string[] = Array.isArray(docIds) ? docIds : [];
+        for (const raw of ids) {
+            const id = Number(raw);
+            if (!Number.isFinite(id)) continue;
+            const base = await BaseModel.get(did, id);
+            if (!base) continue;
+            if (!this.user.own(base)) {
+                this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
+            }
+            await BaseModel.delete(did, id);
+        }
+        this.response.body = { success: true };
+    }
 }
 
 /**
