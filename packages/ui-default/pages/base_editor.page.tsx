@@ -1412,11 +1412,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const resizeStartWidthRef = useRef<number>(300);
   const executeAIOperationsRef = useRef<((operations: any[]) => Promise<{ success: boolean; errors: string[] }>) | null>(null);
   const chatWebSocketRef = useRef<any>(null);
-  const [explorerMode, setExplorerMode] = useState<'tree' | 'files' | 'pending' | 'branches'>('tree');
+  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches'>('tree');
   const [domainTools, setDomainTools] = useState<any[]>([]);
   const [domainToolsLoading, setDomainToolsLoading] = useState<boolean>(false);
-  const [files, setFiles] = useState<Array<{ _id: string; name: string; size: number; etag?: string; lastModified?: Date | string }>>(initialData.files || []);
-  const [selectedFileForPreview, setSelectedFileForPreview] = useState<string | null>(null);
+  const [files] = useState<Array<{ _id: string; name: string; size: number; etag?: string; lastModified?: Date | string }>>(initialData.files || []);
   const [problemStem, setProblemStem] = useState<string>('');
   const [problemOptions, setProblemOptions] = useState<string[]>(['', '', '', '']);
   const [problemAnswer, setProblemAnswer] = useState<number>(0);
@@ -1550,14 +1549,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
   }, [selectedFile?.id]);
   
-  
-  useEffect(() => {
-    if (base.files) {
-      setFiles(base.files);
-    }
-  }, [base.files]);
-  
-  
+
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
     const initialExpanded = new Set<string>();
     const fromContext = (window as any).UiContext?.baseExpandState;
@@ -8070,24 +8062,6 @@ ${currentCardContext}
               title="树形视图"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M8 2v12M2 5h6M8 5h6M3 11h5M8 11h4" />
-              </svg>
-            </button>
-            <button
-              onClick={() => setExplorerMode('files')}
-              style={{
-                width: '34px',
-                height: '34px',
-                border: `1px solid ${themeStyles.borderSecondary}`,
-                borderRadius: '3px',
-                backgroundColor: explorerMode === 'files' ? themeStyles.bgButtonActive : themeStyles.bgButton,
-                color: explorerMode === 'files' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
-                cursor: 'pointer',
-                flexShrink: 0,
-              }}
-              title={i18n('File view')}
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M2.5 4.5h4l1 1h6v6h-11z" />
                 <path d="M2.5 5.5v-1h4l1 1" />
               </svg>
@@ -8510,113 +8484,6 @@ ${currentCardContext}
             </div>
             );
           })
-          ) : explorerMode === 'files' ? (
-            
-            <div style={{ padding: '8px' }}>
-              {/* Button to file management */}
-              <div style={{ marginBottom: '8px' }}>
-                <button
-                  onClick={() => {
-                    const domainId = (window as any).UiContext?.domainId || 'system';
-                    const branch = base.currentBranch || 'main';
-                    const filesUrl = docId 
-                      ? `/d/${domainId}/base/${docId}/files${branch ? `?branch=${branch}` : ''}`
-                      : `/d/${domainId}/base/bid/${base.bid}/files${branch ? `?branch=${branch}` : ''}`;
-                    window.open(filesUrl, '_blank');
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '6px 8px',
-                    fontSize: '12px',
-                    border: `1px solid ${themeStyles.borderSecondary}`,
-                    borderRadius: '3px',
-                    backgroundColor: themeStyles.bgButton,
-                    color: themeStyles.textSecondary,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '4px',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = themeStyles.bgButtonHover;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = themeStyles.bgButton;
-                  }}
-                >
-                  <span>📁</span>
-                  <span>管理文件</span>
-                </button>
-              </div>
-              
-              {/* File list */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                {files.length === 0 ? (
-                  <div style={{
-                    padding: '20px',
-                    textAlign: 'center',
-                    color: themeStyles.textTertiary,
-                    fontSize: '12px',
-                  }}>
-                    暂无文件
-                  </div>
-                ) : (
-                  files.map((file) => (
-                    <div
-                      key={file._id}
-                      onClick={() => {
-                        const branch = base.currentBranch || 'main';
-                        let url = docId 
-                          ? getBaseUrl(`/${docId}/file/${encodeURIComponent(file.name)}`)
-                          : getBaseUrl(`/bid/${base.bid}/file/${encodeURIComponent(file.name)}`);
-                        
-                        url = url.includes('?') ? `${url}&noDisposition=1` : `${url}?noDisposition=1`;
-                        window.open(url, '_blank');
-                        setSelectedFileForPreview(file.name);
-                      }}
-                      style={{
-                        padding: '6px 8px',
-                        fontSize: '12px',
-                        color: selectedFileForPreview === file.name ? themeStyles.textOnPrimary : themeStyles.textPrimary,
-                        backgroundColor: selectedFileForPreview === file.name ? themeStyles.bgSelected : 'transparent',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        borderRadius: '3px',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (selectedFileForPreview !== file.name) {
-                          e.currentTarget.style.backgroundColor = themeStyles.bgHover;
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (selectedFileForPreview !== file.name) {
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                        }
-                      }}
-                    >
-                      <span style={{ fontSize: '14px' }}>📄</span>
-                      <span style={{ 
-                        flex: 1,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}>
-                        {file.name}
-                      </span>
-                      <span style={{ 
-                        fontSize: '11px',
-                        color: selectedFileForPreview === file.name ? 'rgba(255,255,255,0.8)' : themeStyles.textTertiary,
-                      }}>
-                        {(file.size / 1024).toFixed(1)} KB
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
           ) : explorerMode === 'branches' ? (
             <div style={{ padding: '8px' }}>
               <div style={{
