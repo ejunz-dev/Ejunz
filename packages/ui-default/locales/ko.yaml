@@ -74,6 +74,7 @@ ASR Configuration: ASR 설정
 author: 저자
 Back to Details: 상세 정보로 돌아가기
 Back to List: 목록으로 돌아가기
+Back to Outline: 아웃라인으로 돌아가기
 Base URL: Base URL
 Be Copied: 복사됨
 Begin at: 시작
@@ -84,6 +85,11 @@ Bio Visibility: 소개 공개
 Bio: 소개
 Bold: 굵게
 Boom!: 펑!
+Branch already exists: 브랜치가 이미 존재합니다
+Branch created successfully: 브랜치가 생성되었습니다
+Branch name is required: 브랜치 이름을 입력하세요
+Branch: 브랜치
+Branches: 브랜치
 Browser: 브라우저
 Built-in: 빌트인
 Bulletin: 게시판
@@ -139,13 +145,16 @@ Copy WeChat Account: WeChat 계정 복사
 Copy: 복사
 Copyright Complaint: 저작권 항의
 CPU Info: CPU 정보
+Create a branch: 브랜치 만들기
 Create a Discussion: 토론 만들기
+Create Branch: 브랜치 생성
 Create Client: 클라이언트 만들기
 Create Discussion in {0}: '''{0}에 토론 만들기'''
 Create Discussion: 토론 만들기
 Create discussions: 토론 만들기
 Create Domain: 그룹 만들기
 Create Link: 링크 만들기
+Create new branch: 새 브랜치 생성
 Create Role: 역할 만들기
 Create: 만들기
 Created By: 제작자
@@ -157,8 +166,10 @@ Current Location: 위치
 Current password doesn't match.: 비밀번호가 틀렸습니다.
 Current Password: 현재 비밀번호
 Current Status: 현재 상태
+Current: 현재
 currently offline: 오프라인
 Currently Selected Agent: 현재 선택된 Agent
+Default: 기본
 Delete Client: 클라이언트 삭제
 Delete discussion replies of own discussion: 본인의 토론의 댓글 제거
 Delete discussion replies: 토론 댓글 제거
@@ -236,6 +247,7 @@ End at: End at
 End Date: End Date
 End Time: End Time
 Endpoint: Endpoint
+Enter branch name: 브랜치 이름 입력
 Error Message: 오류 메시지
 error: 에러
 Error: 오류
@@ -347,6 +359,8 @@ name: 이름
 Name: 이름
 Network error: Network error
 Never expire: 영원히 만료되지 않음
+New branch name: 새 브랜치 이름
+New branch: 새 브랜치
 New Email: 새 이메일
 New file: 새 파일
 New Password: 새 비밀번호
@@ -495,6 +509,7 @@ Size: 크기
 Sorry: 죄송합니다.
 Sort by: 정렬 기준
 Source type: 소스 방식
+Source: 소스
 Star Topic: 주제 북마크
 Start at: 시작 시각
 Statistics: 분석

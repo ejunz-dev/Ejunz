@@ -757,6 +757,19 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     return loadOutlineExpandedState();
   });
 
+  const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
+  const branchDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (branchDropdownRef.current && !branchDropdownRef.current.contains(e.target as Node)) {
+        setBranchDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // Comment translated to English.
   const expandedNodesRef = useRef<Set<string>>(expandedNodes);
   const baseRef = useRef<BaseDoc>(base);
@@ -780,7 +793,10 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
   const refetchOutlineData = useCallback(async () => {
     const domainId = (window as any).UiContext?.domainId || 'system';
     const apiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
-    const apiQs = docId && basePath === 'base' ? { docId } : {};
+    const apiQs: Record<string, string> = {};
+    if (docId && basePath === 'base') apiQs.docId = docId;
+    const curBranch = (window as any).UiContext?.currentBranch;
+    if (curBranch) apiQs.branch = curBranch;
     try {
       const newData: any = await request.get(apiPath, apiQs);
       if (newData?.nodes != null || newData?.edges != null) {
@@ -802,7 +818,10 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
 
     let closed = false;
     const apiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
-    const apiQs = docId && basePath === 'base' ? { docId } : {};
+    const wsApiQs: Record<string, string> = {};
+    if (docId && basePath === 'base') wsApiQs.docId = docId;
+    const wsBranch = (window as any).UiContext?.currentBranch;
+    if (wsBranch) wsApiQs.branch = wsBranch;
 
     const connect = async () => {
       try {
@@ -816,7 +835,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           try {
             const msg = JSON.parse(data);
             if (msg.type === 'init' || msg.type === 'update') {
-              request.get(apiPath, apiQs).then((newData: any) => {
+              if (msg.type === 'update' && msg.sourceBranch && wsBranch && msg.sourceBranch !== wsBranch) return;
+              request.get(apiPath, wsApiQs).then((newData: any) => {
                 if (!closed && newData && (newData.nodes || newData.edges)) {
                   const nextBase: BaseDoc = { ...baseRef.current, ...newData, nodes: newData.nodes ?? baseRef.current.nodes, edges: newData.edges ?? baseRef.current.edges };
                   setBase(nextBase);
@@ -927,8 +947,10 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         const saveUrl = basePath === 'base/skill'
           ? `/d/${domainIdForSave}/base/skill/save`
           : `/d/${domainIdForSave}/base/save`;
+        const saveBranch = (window as any).UiContext?.currentBranch || 'main';
         await request.post(saveUrl, {
           ...(docId ? { docId } : {}),
+          branch: saveBranch,
           nodes: filteredNodes,
           edges: filteredEdges,
           operationDescription: '自动保存 outline 展开状态',
@@ -2627,8 +2649,11 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       // Comment translated to English.
       const domainId = (window as any).UiContext?.domainId || 'system';
       const dataApiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
-      const dataQs = docId && basePath === 'base' ? { docId } : {};
-      request.get(dataApiPath, dataQs).then((responseData) => {
+      const dataQs2: Record<string, string> = {};
+      if (docId && basePath === 'base') dataQs2.docId = docId;
+      const dBranch2 = (window as any).UiContext?.currentBranch;
+      if (dBranch2) dataQs2.branch = dBranch2;
+      request.get(dataApiPath, dataQs2).then((responseData) => {
         if (responseData?.base) {
           setBase(responseData.base);
         } else {
@@ -2751,7 +2776,10 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             setTimeout(() => {
               const domainId = (window as any).UiContext?.domainId || 'system';
               const dataApiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
-              const dataQs = docId && basePath === 'base' ? { docId } : {};
+              const dataQs: Record<string, string> = {};
+              if (docId && basePath === 'base') dataQs.docId = docId;
+              const dBranch = (window as any).UiContext?.currentBranch;
+              if (dBranch) dataQs.branch = dBranch;
               request.get(dataApiPath, dataQs).then((responseData) => {
                 const newBase = responseData?.base || responseData;
                 
@@ -2891,25 +2919,112 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         gap: '10px',
         flexShrink: 0,
       }}>
-        <a
-          href={(() => {
-            const domainId = (window as any).UiContext?.domainId || 'system';
-            const branch = base.currentBranch || 'main';
-            return `/d/${domainId}/base/${docId}/branch/${branch}`;
-          })()}
-          style={{
-            padding: '6px 12px',
-            border: `1px solid ${themeStyles.borderPrimary}`,
-            borderRadius: '4px',
-            background: themeStyles.bgButton,
-            color: themeStyles.textPrimary,
-            textDecoration: 'none',
-            cursor: 'pointer',
-            fontWeight: 'bold',
-          }}
-        >
-          返回导图模式
-        </a>
+        <div ref={branchDropdownRef} style={{ position: 'relative' }}>
+          <button
+            onClick={() => setBranchDropdownOpen(!branchDropdownOpen)}
+            style={{
+              padding: '5px 12px',
+              border: `1px solid ${themeStyles.borderPrimary}`,
+              borderRadius: '6px',
+              background: themeStyles.bgButton,
+              color: themeStyles.textPrimary,
+              cursor: 'pointer',
+              fontSize: '13px',
+              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              lineHeight: '20px',
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style={{ opacity: 0.7 }}>
+              <path fillRule="evenodd" d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6a1 1 0 00-1 1v1.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.492 2.492 0 016 7h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z"/>
+            </svg>
+            <span>{base.currentBranch || 'main'}</span>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style={{ opacity: 0.5 }}>
+              <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
+            </svg>
+          </button>
+          {branchDropdownOpen && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              marginTop: '4px',
+              minWidth: '220px',
+              background: themeStyles.bgSecondary,
+              border: `1px solid ${themeStyles.borderPrimary}`,
+              borderRadius: '8px',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+              zIndex: 1000,
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                padding: '8px 12px',
+                borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+                fontSize: '12px',
+                fontWeight: 600,
+                color: themeStyles.textPrimary,
+              }}>
+                Switch branches
+              </div>
+              <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
+                {(base.branches && base.branches.length > 0 ? base.branches : ['main']).map((b) => {
+                  const isCurrent = b === (base.currentBranch || 'main');
+                  const domainId = (window as any).UiContext?.domainId || 'system';
+                  const href = `/d/${domainId}/base/${docId}/outline/branch/${encodeURIComponent(b)}`;
+                  return (
+                    <a
+                      key={b}
+                      href={isCurrent ? undefined : href}
+                      onClick={isCurrent ? (e) => { e.preventDefault(); setBranchDropdownOpen(false); } : undefined}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 12px',
+                        fontSize: '13px',
+                        textDecoration: 'none',
+                        color: themeStyles.textPrimary,
+                        background: isCurrent ? (themeStyles.bgPrimary) : 'transparent',
+                        fontWeight: isCurrent ? 600 : 400,
+                        cursor: isCurrent ? 'default' : 'pointer',
+                        borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+                      }}
+                      onMouseEnter={(e) => { if (!isCurrent) (e.currentTarget as HTMLElement).style.background = themeStyles.bgPrimary; }}
+                      onMouseLeave={(e) => { if (!isCurrent) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                    >
+                      <span style={{ width: '16px', textAlign: 'center' }}>
+                        {isCurrent ? '✓' : ''}
+                      </span>
+                      <span>{b}</span>
+                    </a>
+                  );
+                })}
+              </div>
+              <a
+                href={(() => {
+                  const domainId = (window as any).UiContext?.domainId || 'system';
+                  return `/d/${domainId}/base/${docId}/branches`;
+                })()}
+                style={{
+                  display: 'block',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  textAlign: 'center',
+                  textDecoration: 'none',
+                  color: '#4493f8',
+                  borderTop: `1px solid ${themeStyles.borderPrimary}`,
+                  fontWeight: 500,
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
+              >
+                View all branches
+              </a>
+            </div>
+          )}
+        </div>
         <a
           href={(() => {
             const rawDomainId = (window as any).UiContext?.domainId;
@@ -3910,12 +4025,26 @@ const page = new NamedPage(['base_outline', 'base_skill_outline', 'base_outline_
     try {
       // Comment translated to English.
       const apiPath = isSkill ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
-      const params = docId ? { docId } : {};
+      const branch = (window as any).UiContext?.currentBranch || undefined;
+      const params: Record<string, string> = {};
+      if (docId) params.docId = docId;
+      if (branch) params.branch = branch;
       const response = await request.get(apiPath, params);
       initialData = response;
       // Comment translated to English.
       if (!initialData.docId) {
         initialData.docId = docId || '';
+      }
+      if (!initialData.branches) {
+        const bd = (initialData as any).branchData;
+        const brSet = new Set<string>(['main']);
+        if (bd && typeof bd === 'object') {
+          Object.keys(bd).forEach((k) => brSet.add(k));
+        }
+        initialData.branches = Array.from(brSet);
+      }
+      if (!initialData.currentBranch) {
+        initialData.currentBranch = (window as any).UiContext?.currentBranch || 'main';
       }
     } catch (error: any) {
       console.error('[BaseOutline] Failed to load data:', error);

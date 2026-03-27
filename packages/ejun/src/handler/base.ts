@@ -745,11 +745,16 @@ export class BaseOutlineHandler extends Handler {
             }
         }
 
-        const allCards = await document.getMulti(domainId, document.TYPE_CARD, { baseDocId: base.docId })
+        const cardFilter: any = { baseDocId: base.docId };
+        if (requestedBranch === 'main') {
+            cardFilter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
+        } else {
+            cardFilter.branch = requestedBranch;
+        }
+        const allCards = await document.getMulti(domainId, document.TYPE_CARD, cardFilter)
             .sort({ order: 1, cid: 1 })
             .toArray() as CardDoc[];
         
-        // Comment translated to English.
         const nodeCardsMap: Record<string, CardDoc[]> = {};
         for (const card of allCards) {
             if (card.nodeId) {
@@ -963,7 +968,13 @@ export class BaseEditorHandler extends Handler {
             }
         }
 
-        const allCards = await document.getMulti(domainId, TYPE_CARD, { baseDocId: base.docId })
+        const editorCardFilter: any = { baseDocId: base.docId };
+        if (requestedBranch === 'main') {
+            editorCardFilter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
+        } else {
+            editorCardFilter.branch = requestedBranch;
+        }
+        const allCards = await document.getMulti(domainId, TYPE_CARD, editorCardFilter)
             .sort({ order: 1, cid: 1 })
             .toArray() as CardDoc[];
         const nodeCardsMap: Record<string, CardDoc[]> = {};
@@ -1070,7 +1081,13 @@ export class BaseEditorDocHandler extends Handler {
             }
         }
 
-        const allCards = await document.getMulti(domainId, TYPE_CARD, { baseDocId: base.docId })
+        const docCardFilter: any = { baseDocId: base.docId };
+        if (requestedBranch === 'main') {
+            docCardFilter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
+        } else {
+            docCardFilter.branch = requestedBranch;
+        }
+        const allCards = await document.getMulti(domainId, TYPE_CARD, docCardFilter)
             .sort({ order: 1, cid: 1 })
             .toArray() as CardDoc[];
         const nodeCardsMap: Record<string, CardDoc[]> = {};
@@ -1572,7 +1589,6 @@ export class BaseNodeHandler extends Handler {
         if (y !== undefined) updates.y = y;
         if (expanded !== undefined) updates.expanded = expanded;
         
-        // Comment translated to English.
         const body: any = this.request?.body || {};
         if (body.order !== undefined) {
             updates.order = body.order;
@@ -1586,7 +1602,8 @@ export class BaseNodeHandler extends Handler {
             return;
         }
 
-        await BaseModel.updateNode(domainId, docId, nodeId, updates);
+        const effectiveBranch = body.branch?.trim() || (base as any).currentBranch || 'main';
+        await BaseModel.updateNode(domainId, docId, nodeId, updates, effectiveBranch);
         this.response.body = { success: true };
     }
 
@@ -1655,10 +1672,13 @@ export class BaseEdgeHandler extends Handler {
             label,
         };
 
+        const body: any = this.request?.body || {};
+        const effectiveBranch = body.branch?.trim() || (base as any).currentBranch || 'main';
         const newEdgeId = await BaseModel.addEdge(
             domainId,
             docId,
-            edge
+            edge,
+            effectiveBranch
         );
 
         this.response.body = { edgeId: newEdgeId };
@@ -1675,7 +1695,9 @@ export class BaseEdgeHandler extends Handler {
             this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
         }
 
-        await BaseModel.deleteEdge(domainId, docId, edgeId);
+        const body: any = this.request?.body || {};
+        const effectiveBranch = body.branch?.trim() || (base as any).currentBranch || 'main';
+        await BaseModel.deleteEdge(domainId, docId, edgeId, effectiveBranch);
         this.response.body = { success: true };
     }
 }
@@ -1777,9 +1799,10 @@ export class BaseSaveHandler extends Handler {
         let { nodes, edges, layout, viewport, theme, operationDescription } = data;
         
         const isExpandOnlySave = operationDescription === '自动保存展开状态' || operationDescription === '自动保存 outline 展开状态';
+        const requestBranch = data.branch?.trim();
         
         if (isExpandOnlySave && nodes && Array.isArray(nodes)) {
-            const currentBranch = (base as any).currentBranch || 'main';
+            const currentBranch = requestBranch || (base as any).currentBranch || 'main';
             const currentBranchData = getBranchData(base, currentBranch);
             
             const updatedNodes = currentBranchData.nodes.map((existingNode: BaseNode) => {
@@ -1805,7 +1828,7 @@ export class BaseSaveHandler extends Handler {
                 edges: base.edges, // Comment translated to English.
             });
             
-            (this.ctx.emit as any)('base/update', docId);
+            (this.ctx.emit as any)('base/update', docId, null, currentBranch);
             
             this.response.body = { success: true, hasNonPositionChanges: false };
             return;
@@ -1845,13 +1868,10 @@ export class BaseSaveHandler extends Handler {
             });
         }
         
-        // Comment translated to English.
-        const currentBranch = (base as any).currentBranch || 'main';
+        const currentBranch = requestBranch || (base as any).currentBranch || 'main';
         
-        // Comment translated to English.
         const currentBranchData = getBranchData(base, currentBranch);
 
-        // Comment translated to English.
         const hasNonPositionChanges = this.detectNonPositionChanges(
             { ...base, nodes: currentBranchData.nodes, edges: currentBranchData.edges },
             nodes,
@@ -1885,8 +1905,7 @@ export class BaseSaveHandler extends Handler {
             }
         }
         
-        // Comment translated to English.
-        (this.ctx.emit as any)('base/update', docId);
+        (this.ctx.emit as any)('base/update', docId, null, currentBranch);
         (this.ctx.emit as any)('base/git/status/update', docId);
         
         this.response.body = { success: true, hasNonPositionChanges };
@@ -2103,7 +2122,13 @@ class BaseOutlineDocHandler extends Handler {
             }
         }
 
-        const allCards = await document.getMulti(domainId, document.TYPE_CARD, { baseDocId: base.docId })
+        const outlineDocCardFilter: any = { baseDocId: base.docId };
+        if (requestedBranch === 'main') {
+            outlineDocCardFilter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
+        } else {
+            outlineDocCardFilter.branch = requestedBranch;
+        }
+        const allCards = await document.getMulti(domainId, document.TYPE_CARD, outlineDocCardFilter)
             .sort({ order: 1, cid: 1 })
             .toArray() as CardDoc[];
         const nodeCardsMap: Record<string, CardDoc[]> = {};
@@ -2393,7 +2418,13 @@ export class BaseDataHandler extends Handler {
             }
         }
         
-        const allCards = await document.getMulti(domainId, TYPE_CARD, this.getCardFilter(base))
+        const dataCardFilter: any = { ...this.getCardFilter(base) };
+        if (currentBranch === 'main') {
+            dataCardFilter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
+        } else {
+            dataCardFilter.branch = currentBranch;
+        }
+        const allCards = await document.getMulti(domainId, TYPE_CARD, dataCardFilter)
             .sort({ order: 1, cid: 1 })
             .toArray() as CardDoc[];
         
@@ -3010,6 +3041,7 @@ export class BaseCardHandler extends Handler {
             this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         }
         
+        const cardBranch = body.branch?.trim() || (base as any).currentBranch || 'main';
         const cardDocId = await CardModel.create(
             domainId,
             base.docId,
@@ -3019,6 +3051,8 @@ export class BaseCardHandler extends Handler {
             finalContent,
             this.request.ip,
             body?.problems,
+            undefined,
+            cardBranch,
         );
         
         this.response.body = { cardId: cardDocId.toString() };
@@ -3825,7 +3859,10 @@ class BaseCardEditHandler extends Handler {
                 this.user._id,
                 title,
                 content || '',
-                this.request.ip
+                this.request.ip,
+                undefined,
+                undefined,
+                effectiveBranch,
             );
         // Comment translated to English.
         if (docId) {
@@ -4077,7 +4114,7 @@ export class BaseBatchSaveHandler extends Handler {
         }
         if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
         const docId = base.docId;
-        const branch = opts.getBranch(base);
+        const branch = data.branch?.trim() || opts.getBranch(base);
 
         const {
             nodeCreates = [],
@@ -4184,7 +4221,7 @@ export class BaseBatchSaveHandler extends Handler {
                 if (nodeUpdate.order != null) updates.order = nodeUpdate.order;
                 if (nodeUpdate.intent !== undefined) updates.intent = nodeUpdate.intent;
                 if (Object.keys(updates).length === 0) continue;
-                await BaseModel.updateNode(actualDomainId, docId, nodeUpdate.nodeId, updates);
+                await BaseModel.updateNode(actualDomainId, docId, nodeUpdate.nodeId, updates, branch);
             } catch (error: any) {
                 errors.push(`更新节点失败: ${error.message || '未知错误'}`);
             }
@@ -4193,7 +4230,7 @@ export class BaseBatchSaveHandler extends Handler {
         // Comment translated to English.
         for (const edgeId of edgeDeletes) {
             try {
-                await BaseModel.deleteEdge(actualDomainId, docId, edgeId);
+                await BaseModel.deleteEdge(actualDomainId, docId, edgeId, branch);
             } catch (error: any) {
                 // Comment translated to English.
             }
@@ -4247,7 +4284,8 @@ export class BaseBatchSaveHandler extends Handler {
                         cardCreate.content || '',
                         this.request.ip,
                         cardCreate.problems,
-                        cardCreate.order
+                        cardCreate.order,
+                        branch,
                     );
                     
                     if (cardCreate.tempId) {
@@ -4284,8 +4322,7 @@ export class BaseBatchSaveHandler extends Handler {
             }
         }
         
-        // Comment translated to English.
-        (this.ctx.emit as any)('base/update', docId);
+        (this.ctx.emit as any)('base/update', docId, null, branch);
         
         this.response.body = {
             success: errors.length === 0,
@@ -4866,6 +4903,64 @@ class BaseBranchCreateHandler extends Handler {
     }
 }
 
+class BaseBranchesHandler extends Handler {
+    @param('docId', Types.PositiveInt)
+    async get(domainId: string, docId: number) {
+        const base = await resolveBaseByDocIdOrBid(domainId, String(docId));
+        if (!base) throw new NotFoundError('Base not found');
+        const branches: string[] = Array.isArray((base as any).branches) ? (base as any).branches : ['main'];
+        if (!branches.includes('main')) branches.unshift('main');
+        const currentBranch = (base as any).currentBranch || 'main';
+        this.response.template = 'base_branches.html';
+        this.response.body = {
+            base: { ...base, docId: base.docId.toString() },
+            branches,
+            currentBranch,
+            domainId,
+        };
+    }
+
+    @param('docId', Types.PositiveInt)
+    async postCreateBranch(domainId: string, docId: number) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const { branch: newBranch, sourceBranch } = this.request.body;
+        if (!newBranch || !newBranch.trim()) {
+            throw new BadRequestError('Branch name is required');
+        }
+        const branchName = newBranch.trim();
+        if (branchName === 'main') {
+            throw new ForbiddenError('Cannot create branch named main');
+        }
+
+        const base = await BaseModel.get(domainId, docId);
+        if (!base) throw new NotFoundError('Base not found');
+        if (!this.user.own(base)) {
+            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        }
+
+        const source = sourceBranch?.trim() || 'main';
+        const branches: string[] = Array.isArray((base as any).branches) ? [...(base as any).branches] : ['main'];
+        if (branches.includes(branchName)) {
+            throw new BadRequestError('Branch already exists');
+        }
+        branches.push(branchName);
+
+        const srcData = getBranchData(base, source);
+        setBranchData(base, branchName,
+            JSON.parse(JSON.stringify(srcData.nodes)),
+            JSON.parse(JSON.stringify(srcData.edges)),
+        );
+
+        await document.set(domainId, document.TYPE_BASE, base.docId, {
+            branches,
+            branchData: base.branchData,
+        });
+
+        this.response.body = { success: true };
+        this.response.redirect = this.url('base_branches', { docId: docId.toString() });
+    }
+}
+
 /**
  * Base Git Status Handler
  */
@@ -5078,7 +5173,10 @@ async function importBaseFromFileStructure(
                                 0, // owner (system)
                                 cardTitle,
                                 cardContent,
-                                '127.0.0.1'
+                                '127.0.0.1',
+                                undefined,
+                                undefined,
+                                branch,
                             );
                             processedCardIds.add(newCardId.toString());
                         }
@@ -5349,9 +5447,9 @@ class BaseConnectionHandler extends ConnectionHandler {
 
         // Comment translated to English.
         const dispose1 = (this.ctx.on as any)('base/update', async (...args: any[]) => {
-            const [updateDocId, updatebid] = args;
+            const [updateDocId, updatebid, updateBranch] = args;
             if (updateDocId && updateDocId.toString() === this.docId!.toString()) {
-                await this.sendUpdate(finalDomainId);
+                await this.sendUpdate(finalDomainId, updateBranch);
             }
         });
         this.subscriptions.push({ dispose: dispose1 });
@@ -5503,7 +5601,7 @@ class BaseConnectionHandler extends ConnectionHandler {
         }
     }
 
-    private async sendUpdate(domainId: string) {
+    private async sendUpdate(domainId: string, sourceBranch?: string) {
         try {
             const base = await BaseModel.get(domainId, this.docId!);
             if (!base) return;
@@ -5520,6 +5618,7 @@ class BaseConnectionHandler extends ConnectionHandler {
                 type: 'update',
                 gitStatus,
                 branch,
+                sourceBranch: sourceBranch || branch,
                 todayContribution: contrib.todayContribution,
                 todayContributionAllDomains: todayAllDomains,
                 contributions: contrib.contributions,
@@ -5903,6 +6002,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_github_push_branch', '/base/branch/:branch/github/push', BaseGithubPushHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_github_pull', '/base/github/pull', BaseGithubPullHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_github_pull_branch', '/base/branch/:branch/github/pull', BaseGithubPullHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_branches', '/base/:docId/branches', BaseBranchesHandler);
     ctx.Route('base_detail', '/base/:docId', BaseDetailHandler);
     ctx.Route('base_detail_branch', '/base/:docId/branch/:branch', BaseDetailHandler);
     ctx.Route('base_study', '/base/:docId/study', BaseStudyHandler);
