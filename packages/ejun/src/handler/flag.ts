@@ -14,6 +14,7 @@ import moment from 'moment-timezone';
 import bus from '../service/bus';
 import { updateDomainRanking } from './domain';
 import { getModeBaseDocId, getModeDailyGoal } from '../lib/learnModePrefs';
+import { loadBaseEditorUiPrefs } from '../lib/baseEditorUiPrefs';
 
 function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edges: BaseEdge[] } {
     const branchName = branch || 'main';
@@ -2137,6 +2138,14 @@ class FlagBaseEditorHandler extends Handler {
             // ignore
         }
 
+        const baseEditorUiPrefs = await loadBaseEditorUiPrefs(
+            this.ctx.db.db,
+            finalDomainId,
+            base.docId,
+            requestedBranch,
+            this.user._id,
+        );
+
         const workspaceFromQuery = (this.request.query?.workspace as string) || '';
         const nodeIds = new Set(nodes.map((n: BaseNode) => n.id));
         const workspaceNodeId = workspaceFromQuery && nodeIds.has(workspaceFromQuery) ? workspaceFromQuery : '';
@@ -2164,6 +2173,7 @@ class FlagBaseEditorHandler extends Handler {
             contributions: [],
             contributionDetails: {},
             baseExpandState,
+            baseEditorUiPrefs,
             workspaceNodeId,
             editorUiMode: 'flag_nodes_intent',
             flagDailyGoal,

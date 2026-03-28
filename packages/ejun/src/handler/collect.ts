@@ -15,6 +15,7 @@ import bus from '../service/bus';
 import { updateDomainRanking } from './domain';
 import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../lib/checkin';
 import { getModeBaseDocId, getModeDailyGoal } from '../lib/learnModePrefs';
+import { loadBaseEditorUiPrefs } from '../lib/baseEditorUiPrefs';
 
 function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edges: BaseEdge[] } {
     const branchName = branch || 'main';
@@ -2332,6 +2333,14 @@ class CollectBaseEditorHandler extends Handler {
             // ignore
         }
 
+        const baseEditorUiPrefs = await loadBaseEditorUiPrefs(
+            this.ctx.db.db,
+            finalDomainId,
+            base.docId,
+            requestedBranch,
+            this.user._id,
+        );
+
         const workspaceFromQuery = (this.request.query?.workspace as string) || '';
         const nodeIds = new Set(nodes.map((n: BaseNode) => n.id));
         const workspaceNodeId = workspaceFromQuery && nodeIds.has(workspaceFromQuery) ? workspaceFromQuery : '';
@@ -2355,6 +2364,7 @@ class CollectBaseEditorHandler extends Handler {
             contributions: [],
             contributionDetails: {},
             baseExpandState,
+            baseEditorUiPrefs,
             workspaceNodeId,
             editorUiMode: 'collect_cards_problems',
             collectDailyGoal,
