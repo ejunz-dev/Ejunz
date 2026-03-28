@@ -1160,6 +1160,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         text: '#cccccc',
         textDim: '#858585',
         promptUser: '#6a9955',
+        /** Input-line prompt: user@host — magenta user, white @:, green host (caret matches host). */
+        promptShellUser: '#E91E63',
+        promptShellHost: '#4CAF50',
+        promptShellSep: '#ffffff',
+        promptShellPath: '#9CDCFE',
         promptAi: '#4ec9b0',
         operationBg: '#2d2d30',
         operationBorder: '#3c3c3c',
@@ -1178,6 +1183,10 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       text: '#333333',
       textDim: '#767676',
       promptUser: '#098658',
+      promptShellUser: '#C2185B',
+      promptShellHost: '#2E7D32',
+      promptShellSep: '#24292e',
+      promptShellPath: '#0277bd',
       promptAi: '#0451a5',
       operationBg: '#f0f6fc',
       operationBorder: '#c8c8c8',
@@ -1186,6 +1195,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       resizeActive: '#007acc',
     };
   }, [theme]);
+
+  /** Shell-style prompt parts for the bottom AI input (user@domain:). */
+  const aiTerminalInputPromptParts = useMemo(() => {
+    const uname = String((window as any).UserContext?.uname || '').trim() || 'user';
+    const dom = String((window as any).UiContext?.domainId || '').trim() || 'system';
+    return { uname, domain: dom, full: `${uname}@${dom}:` };
+  }, []);
 
   const migrationResult = useMemo(() => migrateOrderFields(initialData), [initialData]);
   const [base, setBase] = useState<BaseDoc>(() => migrationResult.base);
@@ -5074,6 +5090,30 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     return path;
   }, [base]);
 
+  const sanitizeShellPathSeg = useCallback(
+    (name: string) => (name || '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'untitled',
+    [],
+  );
+
+  /** Filesystem-style path for terminal + AI: folders = nodes (trailing /), files = cards (.md). */
+  const editorShellPath = useMemo(() => {
+    if (!selectedFile) return '~';
+    const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    if (selectedFile.type === 'node' && selectedFile.nodeId) {
+      const segs = getNodePath(selectedFile.nodeId).map((t) => sanitizeShellPathSeg(t));
+      return segs.length ? `/${segs.join('/')}/` : '/';
+    }
+    if (selectedFile.type === 'card' && selectedFile.nodeId) {
+      const segs = getNodePath(selectedFile.nodeId).map((t) => sanitizeShellPathSeg(t));
+      const prefix = segs.length ? `/${segs.join('/')}/` : '/';
+      const nodeCards = nodeCardsMap[selectedFile.nodeId] || [];
+      const card = nodeCards.find((c: Card) => c.docId === selectedFile.cardId);
+      const title = sanitizeShellPathSeg(card?.title ?? selectedFile.name ?? 'untitled');
+      return `${prefix}${title}.md`;
+    }
+    return '~';
+  }, [selectedFile, getNodePath, sanitizeShellPathSeg, nodeCardsMapVersion]);
+
   
   const handleGenerateProblemWithAgent = useCallback(async (userPrompt?: string) => {
     if (!selectedFile || selectedFile.type !== 'card') {
@@ -5631,6 +5671,10 @@ ${cardContext}
 ${baseText}
 ${currentCardContext}
 
+【编辑器当前路径】
+用户在左侧资源树中的选中位置（与 Git 导出一致：节点视为文件夹、路径以 / 结尾；卡片视为该文件夹下的 .md 文件）：
+${editorShellPath}
+
 【操作格式】
 你需要以 JSON 格式回复操作指令，格式如下：
 \`\`\`json
@@ -5935,7 +5979,17 @@ ${currentCardContext}
     } finally {
       setIsChatLoading(false);
     }
-  }, [chatInput, isChatLoading, chatMessages, convertBaseToText, expandReferences]);
+  }, [
+    chatInput,
+    isChatLoading,
+    chatMessages,
+    convertBaseToText,
+    expandReferences,
+    editorShellPath,
+    getSelectedCard,
+    selectedFile,
+    getNodePath,
+  ]);
 
   
   const executeAIOperations = useCallback(async (operations: any[]): Promise<{ success: boolean; errors: string[] }> => {
@@ -12539,23 +12593,6 @@ ${currentCardContext}
                       lineHeight: 1.5,
                     }}
                   >
-                    {chatMessages.length === 0 && (
-                      <div
-                        style={{
-                          textAlign: 'left',
-                          color: aiTerminalStyles.textDim,
-                          padding: '4px 0',
-                          fontSize: '12px',
-                          whiteSpace: 'pre-wrap',
-                        }}
-                      >
-                        <span style={{ color: aiTerminalStyles.promptAi }}># </span>
-                        就绪。可让我创建/移动节点与卡片、重命名、删除等。
-                        {'\n'}
-                        <span style={{ color: aiTerminalStyles.textDim }}># </span>
-                        按 Enter 发送。
-                      </div>
-                    )}
                     {chatMessages.map((msg, index) => {
                       if (msg.role === 'operation') {
                         return (
@@ -12668,8 +12705,9 @@ ${currentCardContext}
                   </div>
                   <div
                     style={{
-                      padding: '4px 10px 6px',
+                      padding: '4px 10px 6px 7px',
                       borderTop: `1px solid ${aiTerminalStyles.tabBorder}`,
+                      borderLeft: `3px solid ${aiTerminalStyles.tabActiveTop}`,
                       backgroundColor: aiTerminalStyles.shellBg,
                       flexShrink: 0,
                       fontFamily: aiTerminalStyles.mono,
@@ -12734,26 +12772,99 @@ ${currentCardContext}
                     <div
                       style={{
                         display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        minHeight: 22,
+                        flexDirection: 'column',
+                        alignItems: 'stretch',
+                        gap: 3,
                       }}
                     >
-                      <span
+                      <div
                         style={{
-                          color: aiTerminalStyles.promptUser,
-                          fontSize: '12px',
-                          lineHeight: '22px',
-                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: '11px',
+                          lineHeight: '15px',
                           userSelect: 'none',
+                          opacity: 0.92,
+                          minWidth: 0,
+                        }}
+                        title={editorShellPath}
+                      >
+                        <span
+                          style={{
+                            color: aiTerminalStyles.promptShellPath,
+                            flexShrink: 0,
+                          }}
+                        >
+                          $
+                        </span>
+                        <span
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            color: aiTerminalStyles.promptShellPath,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {editorShellPath}
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          minHeight: 22,
                         }}
                       >
-                        $
-                      </span>
-                      <input
-                        type="text"
-                        value={chatInput}
-                        onChange={(e) => {
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            flexShrink: 0,
+                            maxWidth: '52%',
+                            fontSize: '12px',
+                            lineHeight: '22px',
+                            userSelect: 'none',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            fontFamily: aiTerminalStyles.mono,
+                          }}
+                          title={aiTerminalInputPromptParts.full}
+                        >
+                          <span style={{ color: aiTerminalStyles.promptShellUser, flexShrink: 0 }}>
+                            {aiTerminalInputPromptParts.uname}
+                          </span>
+                          <span
+                            style={{
+                              color: aiTerminalStyles.promptShellSep,
+                              flexShrink: 0,
+                              paddingLeft: 3,
+                              paddingRight: 3,
+                            }}
+                          >
+                            @
+                          </span>
+                          <span
+                            style={{
+                              color: aiTerminalStyles.promptShellHost,
+                              flexShrink: 1,
+                              minWidth: 0,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {aiTerminalInputPromptParts.domain}
+                          </span>
+                          <span style={{ color: aiTerminalStyles.promptShellSep, flexShrink: 0 }}>:</span>
+                        </span>
+                        <input
+                          type="text"
+                          value={chatInput}
+                          onChange={(e) => {
                           const newText = e.target.value;
                           const oldText = chatInput;
                           if (newText.length !== oldText.length) {
@@ -12778,35 +12889,37 @@ ${currentCardContext}
                             );
                           }
                           setChatInput(newText);
-                        }}
-                        onPaste={handleAIChatPaste}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAIChatSend();
-                          }
-                        }}
-                        autoComplete="off"
-                        spellCheck={false}
-                        disabled={isChatLoading}
-                        aria-label="终端输入"
-                        style={{
-                          flex: 1,
-                          minWidth: 0,
-                          padding: 0,
-                          margin: 0,
-                          border: 'none',
-                          outline: 'none',
-                          boxShadow: 'none',
-                          fontSize: '12px',
-                          lineHeight: '22px',
-                          fontFamily: 'inherit',
-                          backgroundColor: 'transparent',
-                          color: aiTerminalStyles.text,
-                          WebkitAppearance: 'none' as any,
-                          appearance: 'none' as any,
-                        }}
-                      />
+                          }}
+                          onPaste={handleAIChatPaste}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAIChatSend();
+                            }
+                          }}
+                          autoComplete="off"
+                          spellCheck={false}
+                          disabled={isChatLoading}
+                          aria-label="终端输入"
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            padding: 0,
+                            margin: 0,
+                            border: 'none',
+                            outline: 'none',
+                            boxShadow: 'none',
+                            fontSize: '12px',
+                            lineHeight: '22px',
+                            fontFamily: 'inherit',
+                            backgroundColor: 'transparent',
+                            color: aiTerminalStyles.text,
+                            caretColor: aiTerminalStyles.promptShellHost,
+                            WebkitAppearance: 'none' as any,
+                            appearance: 'none' as any,
+                          }}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
