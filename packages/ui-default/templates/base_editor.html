@@ -32,11 +32,11 @@
   {% endif %}
   {{ set(UiContext, 'socketUrl', 'base/ws?domainId=' + (domainId or (base and base.domainId) or '') + '&docId=' + (base.docId.toString() if base and base.docId else '')) }}
 </script>
-<div class="row">
-  <div class="large-12 columns">
-    <div class="section" style="background: transparent; border: none; box-shadow: none; margin: 0;">
-      <div class="section__body no-padding" style="background: transparent; padding: 0;">
-        <div id="{{ _editor_mode }}-editor-mode" data-doc-id="{{ base.docId if base else '' }}"></div>
+<div class="row base-editor-page">
+  <div class="large-12 columns base-editor-page__col">
+    <div class="section base-editor-section" style="background: transparent; border: none; box-shadow: none; margin: 0;">
+      <div class="section__body no-padding base-editor-section-body" style="background: transparent; padding: 0;">
+        <div id="{{ _editor_mode }}-editor-mode" class="base-editor-mount" data-doc-id="{{ base.docId if base else '' }}"></div>
       </div>
     </div>
   </div>

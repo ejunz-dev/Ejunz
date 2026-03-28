@@ -1426,6 +1426,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   }, []);
   
   const [chatPanelWidth, setChatPanelWidth] = useState<number>(300);
+  const EXPLORER_PANEL_MIN = 180;
+  const EXPLORER_PANEL_MAX = 640;
+  const [explorerPanelWidth, setExplorerPanelWidth] = useState<number>(250);
+  const [isResizingExplorer, setIsResizingExplorer] = useState<boolean>(false);
+  const explorerResizeStartXRef = useRef<number>(0);
+  const explorerResizeStartWidthRef = useRef<number>(250);
   const PROBLEM_PANEL_WIDTH = 360;
   const [isResizing, setIsResizing] = useState<boolean>(false);
   const resizeStartXRef = useRef<number>(0);
@@ -4906,6 +4912,36 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     };
   }, [isResizing]);
 
+  useEffect(() => {
+    const handleExplorerResizeMove = (e: MouseEvent) => {
+      if (!isResizingExplorer) return;
+      const deltaX = e.clientX - explorerResizeStartXRef.current;
+      const next = Math.max(
+        EXPLORER_PANEL_MIN,
+        Math.min(EXPLORER_PANEL_MAX, explorerResizeStartWidthRef.current + deltaX),
+      );
+      setExplorerPanelWidth(next);
+    };
+
+    const handleExplorerResizeEnd = () => {
+      setIsResizingExplorer(false);
+    };
+
+    if (isResizingExplorer) {
+      document.addEventListener('mousemove', handleExplorerResizeMove);
+      document.addEventListener('mouseup', handleExplorerResizeEnd);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleExplorerResizeMove);
+      document.removeEventListener('mouseup', handleExplorerResizeEnd);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizingExplorer]);
+
   
   useEffect(() => {
     scrollToBottomIfNeeded();
@@ -7987,7 +8023,12 @@ ${currentCardContext}
   return (
     <div style={{
       display: 'flex',
-      height: isMobile ? '100dvh' : '100vh',
+      flexDirection: 'row',
+      flex: 1,
+      minHeight: 0,
+      alignItems: 'stretch',
+      overflow: 'hidden',
+      height: isMobile ? '100dvh' : '100%',
       width: '100%',
       backgroundColor: themeStyles.bgPrimary,
     }}>
@@ -8006,34 +8047,51 @@ ${currentCardContext}
           aria-hidden
         />
       )}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          flexShrink: 0,
+          alignItems: 'stretch',
+          alignSelf: 'stretch',
+          ...(isMobile
+            ? {
+                position: 'fixed' as const,
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: '280px',
+                maxWidth: '85vw',
+                zIndex: 1002,
+                transform: mobileExplorerOpen ? 'translateX(0)' : 'translateX(-100%)',
+                transition: 'transform 0.2s ease',
+                boxShadow: mobileExplorerOpen ? '4px 0 16px rgba(0,0,0,0.15)' : 'none',
+                paddingTop: 'env(safe-area-inset-top, 0px)',
+              }
+            : {
+                minHeight: 0,
+                maxHeight: '100%',
+                height: '100%',
+                overflow: 'hidden',
+              }),
+        } as React.CSSProperties}
+      >
       <div style={{
         position: 'relative',
-        ...(isMobile
-          ? {
-              position: 'fixed' as const,
-              left: 0,
-              top: 0,
-              bottom: 0,
-              width: '280px',
-              maxWidth: '85vw',
-              zIndex: 1002,
-              transform: mobileExplorerOpen ? 'translateX(0)' : 'translateX(-100%)',
-              transition: 'transform 0.2s ease',
-              boxShadow: mobileExplorerOpen ? '4px 0 16px rgba(0,0,0,0.15)' : 'none',
-              paddingTop: 'env(safe-area-inset-top, 0px)',
-            }
-          : {
-              width: '250px',
-              flexShrink: 0,
-            }),
+        width: isMobile ? '100%' : explorerPanelWidth,
+        minWidth: 0,
+        minHeight: 0,
+        flexShrink: 0,
+        alignSelf: 'stretch',
+        height: isMobile ? undefined : '100%',
+        maxHeight: isMobile ? undefined : '100%',
         borderRight: `1px solid ${themeStyles.borderPrimary}`,
         backgroundColor: themeStyles.bgSecondary,
         display: 'flex',
+        flexDirection: 'row',
         alignItems: 'stretch',
-        overflow: 'auto',
-        WebkitOverflowScrolling: 'touch',
+        overflow: 'hidden',
       } as React.CSSProperties}
-        ref={explorerScrollRef}
       >
         <div style={{
           width: isMobile ? '48px' : '44px',
@@ -8046,6 +8104,10 @@ ${currentCardContext}
           justifyContent: 'flex-start',
           gap: '6px',
           flexShrink: 0,
+          alignSelf: 'stretch',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
         }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flexWrap: 'nowrap' }}>
             {isMobile && (
@@ -8175,7 +8237,18 @@ ${currentCardContext}
             ) : null}
           </div>
         </div>
-        <div style={{ padding: '8px 0', flex: 1, minWidth: 0 }}>
+        <div
+          ref={explorerScrollRef}
+          style={{
+            padding: '8px 0',
+            flex: 1,
+            minWidth: 0,
+            minHeight: 0,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
           {explorerMode === 'tree' ? (
             fileTree.map((file, index) => {
             // Comment translated to English.
@@ -9146,6 +9219,52 @@ ${currentCardContext}
             </div>
           )}
         </div>
+      </div>
+      {!isMobile && (
+        <div
+          onMouseDown={(e) => {
+            e.preventDefault();
+            explorerResizeStartXRef.current = e.clientX;
+            explorerResizeStartWidthRef.current = explorerPanelWidth;
+            setIsResizingExplorer(true);
+          }}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="调整侧边栏宽度"
+          title="拖拽调整侧边栏宽度"
+          style={{
+            width: '4px',
+            flexShrink: 0,
+            alignSelf: 'stretch',
+            background: isResizingExplorer ? themeStyles.accent : themeStyles.borderPrimary,
+            cursor: 'col-resize',
+            position: 'relative',
+            transition: isResizingExplorer ? 'none' : 'background 0.2s ease',
+          }}
+          onMouseEnter={(e) => {
+            if (!isResizingExplorer) {
+              e.currentTarget.style.background = themeStyles.textSecondary;
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!isResizingExplorer) {
+              e.currentTarget.style.background = themeStyles.borderPrimary;
+            }
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              left: '-2px',
+              top: 0,
+              width: '8px',
+              height: '100%',
+              cursor: 'col-resize',
+            }}
+            aria-hidden
+          />
+        </div>
+      )}
       </div>
 
 
@@ -12123,7 +12242,7 @@ ${currentCardContext}
         <div style={{
           ...(isMobile
             ? { position: 'fixed' as const, right: 0, top: 0, bottom: 0, width: 'min(400px, 85vw)', zIndex: 1002, boxShadow: '-4px 0 16px rgba(0,0,0,0.15)', paddingTop: 'env(safe-area-inset-top, 0px)' }
-            : { width: `${PROBLEM_PANEL_WIDTH}px`, height: '100%', flexShrink: 0 }),
+            : { width: `${PROBLEM_PANEL_WIDTH}px`, height: '100%', minHeight: 0, alignSelf: 'stretch', flexShrink: 0 }),
           borderLeft: `1px solid ${themeStyles.borderPrimary}`,
           display: 'flex',
           flexDirection: 'column',
@@ -12354,6 +12473,9 @@ ${currentCardContext}
         <div style={{
           width: '280px',
           flexShrink: 0,
+          height: '100%',
+          minHeight: 0,
+          alignSelf: 'stretch',
           borderLeft: `1px solid ${themeStyles.borderPrimary}`,
           backgroundColor: themeStyles.bgSecondary,
           display: 'flex',
@@ -12474,6 +12596,7 @@ ${currentCardContext}
           style={{
             width: '4px',
             height: '100%',
+            alignSelf: 'stretch',
             background: isResizing ? themeStyles.accent : themeStyles.borderPrimary,
             cursor: 'col-resize',
             position: 'relative',
@@ -12518,6 +12641,8 @@ ${currentCardContext}
             : {
                 width: `${chatPanelWidth}px`,
                 height: '100%',
+                minHeight: 0,
+                alignSelf: 'stretch',
                 flexShrink: 0,
                 transition: isResizing ? 'none' : 'width 0.3s ease',
               }),
@@ -12878,6 +13003,7 @@ ${currentCardContext}
           style={{
             width: '32px',
             flexShrink: 0,
+            alignSelf: 'stretch',
             borderLeft: `1px solid ${themeStyles.borderPrimary}`,
             backgroundColor: themeStyles.bgSecondary,
             display: 'flex',
