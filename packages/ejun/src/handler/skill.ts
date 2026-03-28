@@ -22,6 +22,7 @@ import {
     BatchSaveOptions,
     BaseEditorHandler,
     BaseEditorOptions,
+    BaseEditorUiPrefsHandler,
 } from './base';
 
 async function getSkillsBase(domainId: string): Promise<BaseDoc> {
@@ -309,4 +310,5 @@ export async function apply(ctx: Context) {
     ctx.Route('base_skill_outline_branch', '/base/skill/branch/:branch', SkillOutlineHandler);
     ctx.Route('base_skill_editor', '/base/skill/editor', SkillEditorHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_skill_editor_branch', '/base/skill/editor/branch/:branch', SkillEditorHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_skill_editor_ui_prefs', '/base/skill/editor-ui-prefs', BaseEditorUiPrefsHandler, PRIV.PRIV_USER_PROFILE);
 }

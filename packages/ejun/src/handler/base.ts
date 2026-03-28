@@ -20,6 +20,7 @@ import storage from '../model/storage';
 import { sortFiles } from '@ejunz/utils/lib/common';
 import moment from 'moment-timezone';
 import UserModel from '../model/user';
+import { loadBaseEditorUiPrefs, sanitizeBaseEditorUiPrefs } from '../lib/baseEditorUiPrefs';
 
 const exec = promisify(execCb);
 const execFile = promisify(execFileCb);
@@ -1079,6 +1080,14 @@ export class BaseEditorHandler extends Handler {
             // ignore
         }
 
+        const baseEditorUiPrefs = await loadBaseEditorUiPrefs(
+            this.ctx.db.db,
+            domainId,
+            base.docId,
+            requestedBranch,
+            uid,
+        );
+
         const workspaceFromQuery = (this.request.query?.workspace as string) || '';
         const nodeIds = new Set(nodes.map((n: BaseNode) => n.id));
         const workspaceNodeId = workspaceFromQuery && nodeIds.has(workspaceFromQuery) ? workspaceFromQuery : '';
@@ -1096,6 +1105,7 @@ export class BaseEditorHandler extends Handler {
             contributions,
             contributionDetails,
             baseExpandState,
+            baseEditorUiPrefs,
             workspaceNodeId,
             // Comment translated to English.
             ...(opts.editorMode === 'skill' ? { page_name: 'base_skill_editor_branch' } : {}),
@@ -1192,6 +1202,14 @@ export class BaseEditorDocHandler extends Handler {
             // ignore
         }
 
+        const baseEditorUiPrefs = await loadBaseEditorUiPrefs(
+            this.ctx.db.db,
+            domainId,
+            base.docId,
+            requestedBranch,
+            uid,
+        );
+
         const workspaceFromQuery = (this.request.query?.workspace as string) || '';
         const nodeIds = new Set(nodes.map((n: BaseNode) => n.id));
         const workspaceNodeId = workspaceFromQuery && nodeIds.has(workspaceFromQuery) ? workspaceFromQuery : '';
@@ -1212,6 +1230,7 @@ export class BaseEditorDocHandler extends Handler {
             contributions,
             contributionDetails,
             baseExpandState,
+            baseEditorUiPrefs,
             workspaceNodeId,
             githubRepo: (base.githubRepo || '') as string,
             userGithubTokenConfigured,
@@ -6078,6 +6097,47 @@ export class BaseExpandStateHandler extends Handler {
     }
 }
 
+/**
+ * Per-user editor layout (tabs, panel sizes) for a base doc + branch. Loaded via UiContext.baseEditorUiPrefs.
+ */
+export class BaseEditorUiPrefsHandler extends Handler {
+    protected async getBase(domainId: string, docId: number): Promise<BaseDoc | null> {
+        return BaseModel.get(domainId, docId);
+    }
+
+    @post('docId', Types.PositiveInt)
+    @post('branch', Types.String, true)
+    @post('prefs', Types.Any, true)
+    async post(domainId: string, docId: number, branch?: string, prefs?: unknown) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const baseDocId = Number(docId);
+        const base = await this.getBase(domainId, baseDocId);
+        if (!base) throw new NotFoundError('Base not found');
+        if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+
+        const branchNorm = branch && String(branch).trim() ? String(branch).trim() : 'main';
+        const sanitized = sanitizeBaseEditorUiPrefs(prefs);
+
+        const coll = this.ctx.db.db.collection('base.userEditorUi');
+        await coll.updateOne(
+            { domainId, baseDocId, branch: branchNorm, uid: this.user._id },
+            {
+                $set: {
+                    domainId,
+                    baseDocId,
+                    branch: branchNorm,
+                    uid: this.user._id,
+                    prefs: sanitized,
+                    updateAt: new Date(),
+                },
+            },
+            { upsert: true },
+        );
+
+        this.response.body = { success: true };
+    }
+}
+
 export async function apply(ctx: Context) {
     ctx.Route('base_domain', '/base', BaseDomainListHandler);
     ctx.Route('base_outline_branch', '/base/branch/:branch', BaseOutlineRedirectHandler);
@@ -6093,6 +6153,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_batch_save', '/base/batch-save', BaseBatchSaveHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_migrate_node_to_new', '/base/migrate-node-to-new', BaseMigrateNodeToNewHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_expand_state', '/base/expand-state', BaseExpandStateHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_editor_ui_prefs', '/base/editor-ui-prefs', BaseEditorUiPrefsHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card', '/base/card', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_card_update', '/base/card/:cardId', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_branch_create', '/base/branch', BaseBranchCreateHandler, PRIV.PRIV_USER_PROFILE);
