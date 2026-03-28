@@ -1145,6 +1145,48 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     };
   }, [theme]);
 
+  const aiTerminalStyles = useMemo(() => {
+    const isDark = theme === 'dark';
+    const mono =
+      'ui-monospace, Monaco, Menlo, "Ubuntu Mono", Consolas, "Courier New", monospace';
+    if (isDark) {
+      return {
+        mono,
+        shellBg: '#1e1e1e',
+        tabBarBg: '#252526',
+        tabBorder: '#3c3c3c',
+        tabActiveBg: '#1e1e1e',
+        tabActiveTop: '#007acc',
+        text: '#cccccc',
+        textDim: '#858585',
+        promptUser: '#6a9955',
+        promptAi: '#4ec9b0',
+        operationBg: '#2d2d30',
+        operationBorder: '#3c3c3c',
+        operationText: '#4fc1ff',
+        resizeDefault: '#3c3c3c',
+        resizeActive: '#007acc',
+      };
+    }
+    return {
+      mono,
+      shellBg: '#ffffff',
+      tabBarBg: '#f3f3f3',
+      tabBorder: '#e8e8e8',
+      tabActiveBg: '#ffffff',
+      tabActiveTop: '#007acc',
+      text: '#333333',
+      textDim: '#767676',
+      promptUser: '#098658',
+      promptAi: '#0451a5',
+      operationBg: '#f0f6fc',
+      operationBorder: '#c8c8c8',
+      operationText: '#0071bc',
+      resizeDefault: '#cecece',
+      resizeActive: '#007acc',
+    };
+  }, [theme]);
+
   const migrationResult = useMemo(() => migrateOrderFields(initialData), [initialData]);
   const [base, setBase] = useState<BaseDoc>(() => migrationResult.base);
   
@@ -1386,11 +1428,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const cardFaceEditorRef = useRef<HTMLTextAreaElement | null>(null);
   const cardFaceEditorInstanceRef = useRef<any>(null);
   const [importText, setImportText] = useState('');
-  const [showAIChat, setShowAIChat] = useState<boolean>(false);
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [aiBottomOpen, setAiBottomOpen] = useState(() => !editorAiHidden);
+  const [aiPanelHeight, setAiPanelHeight] = useState(280);
+  const [aiPanelMaxHeight, setAiPanelMaxHeight] = useState(640);
   useEffect(() => {
-    if (editorAiHidden) setShowAIChat(false);
+    if (editorAiHidden) {
+      setAiBottomOpen(false);
+    }
   }, [editorAiHidden]);
-  const [showProblemPanel, setShowProblemPanel] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<Array<{ 
     role: 'user' | 'assistant' | 'operation'; 
     content: string; 
@@ -1425,17 +1471,24 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
   }, []);
   
-  const [chatPanelWidth, setChatPanelWidth] = useState<number>(300);
+  const [problemsPanelWidth, setProblemsPanelWidth] = useState<number>(320);
   const EXPLORER_PANEL_MIN = 180;
   const EXPLORER_PANEL_MAX = 640;
   const [explorerPanelWidth, setExplorerPanelWidth] = useState<number>(250);
   const [isResizingExplorer, setIsResizingExplorer] = useState<boolean>(false);
   const explorerResizeStartXRef = useRef<number>(0);
   const explorerResizeStartWidthRef = useRef<number>(250);
-  const PROBLEM_PANEL_WIDTH = 360;
-  const [isResizing, setIsResizing] = useState<boolean>(false);
-  const resizeStartXRef = useRef<number>(0);
-  const resizeStartWidthRef = useRef<number>(300);
+  const RIGHT_SIDE_RAIL_PX = 44;
+  const [isResizingProblemsPanel, setIsResizingProblemsPanel] = useState<boolean>(false);
+  const problemsResizeStartXRef = useRef<number>(0);
+  const problemsResizeStartWidthRef = useRef<number>(320);
+  const [isResizingAiPanel, setIsResizingAiPanel] = useState<boolean>(false);
+  const aiResizeStartYRef = useRef<number>(0);
+  const aiResizeStartHeightRef = useRef<number>(280);
+  const editorContainerRef = useRef<HTMLDivElement | null>(null);
+  const aiPanelMaxHeightRef = useRef<number>(640);
+  const AI_TERMINAL_MIN_H = 120;
+  const EDITOR_MAIN_MIN_H = 160;
   const executeAIOperationsRef = useRef<((operations: any[]) => Promise<{ success: boolean; errors: string[] }>) | null>(null);
   const chatWebSocketRef = useRef<any>(null);
   const [domainTools, setDomainTools] = useState<any[]>([]);
@@ -1479,16 +1532,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         <button type="button" onClick={() => setMobileExplorerOpen(true)} aria-label="Explorer">
           ☰ Explorer
         </button>
-        {selectedFile?.type === 'card' && (
-          <button
-            type="button"
-            className={showProblemPanel ? 'header-mobile-extra-btn is-active' : 'header-mobile-extra-btn'}
-            onClick={() => setShowProblemPanel((prev) => !prev)}
-            aria-label={i18n('Question')}
-          >
-            {i18n('Question')}
-          </button>
-        )}
+        <button
+          type="button"
+          className={rightPanelOpen ? 'header-mobile-extra-btn is-active' : 'header-mobile-extra-btn'}
+          onClick={() => {
+            setRightPanelOpen((prev) => !prev);
+          }}
+          aria-label={i18n('Question')}
+        >
+          {i18n('Question')}
+        </button>
       </>,
       wrapper,
     );
@@ -1496,7 +1549,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       ReactDOM.unmountComponentAtNode(wrapper);
       wrapper.remove();
     };
-  }, [isMobile, showProblemPanel, selectedFile?.type]);
+  }, [isMobile, rightPanelOpen]);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -1526,14 +1579,18 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         >
           {isCommitting ? i18n('Saving...') : `${i18n('Save changes')} (${pendingCount})`}
         </button>
-        <button
-          type="button"
-          className={showAIChat ? 'header-mobile-extra-btn is-active' : 'header-mobile-extra-btn'}
-          onClick={() => setShowAIChat((prev) => !prev)}
-          aria-label="AI"
-        >
-          AI
-        </button>
+        {!editorAiHidden && (
+          <button
+            type="button"
+            className={aiBottomOpen ? 'header-mobile-extra-btn is-active' : 'header-mobile-extra-btn'}
+            onClick={() => {
+              setAiBottomOpen((prev) => !prev);
+            }}
+            aria-label="AI"
+          >
+            AI
+          </button>
+        )}
       </>,
       wrapper,
     );
@@ -1541,7 +1598,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       ReactDOM.unmountComponentAtNode(wrapper);
       wrapper.remove();
     };
-  }, [isMobile, showAIChat, showProblemPanel, selectedFile?.type, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingCardFaceChanges, pendingNewProblemCardIds.size, pendingEditedProblemIds.size, pendingDeleteProblemIds.size, pendingNodeIntents.size]);
+  }, [isMobile, aiBottomOpen, editorAiHidden, isCommitting, pendingChanges.size, pendingDragChanges.size, pendingRenames.size, pendingCreatesCount, pendingDeletes.size, pendingCardFaceChanges, pendingNewProblemCardIds.size, pendingEditedProblemIds.size, pendingDeleteProblemIds.size, pendingNodeIntents.size]);
 
   
   const getSelectedCard = useCallback((): Card | null => {
@@ -4886,18 +4943,17 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   
   useEffect(() => {
     const handleResizeMove = (e: MouseEvent) => {
-      if (!isResizing) return;
-      
-      const deltaX = resizeStartXRef.current - e.clientX;
-      const newWidth = Math.max(200, Math.min(800, resizeStartWidthRef.current + deltaX));
-      setChatPanelWidth(newWidth);
+      if (!isResizingProblemsPanel) return;
+      const deltaX = problemsResizeStartXRef.current - e.clientX;
+      const newWidth = Math.max(200, Math.min(800, problemsResizeStartWidthRef.current + deltaX));
+      setProblemsPanelWidth(newWidth);
     };
 
     const handleResizeEnd = () => {
-      setIsResizing(false);
+      setIsResizingProblemsPanel(false);
     };
 
-    if (isResizing) {
+    if (isResizingProblemsPanel) {
       document.addEventListener('mousemove', handleResizeMove);
       document.addEventListener('mouseup', handleResizeEnd);
       document.body.style.cursor = 'col-resize';
@@ -4910,7 +4966,55 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isResizing]);
+  }, [isResizingProblemsPanel]);
+
+  useLayoutEffect(() => {
+    const el = editorContainerRef.current;
+    if (!el) return;
+    const updateMax = () => {
+      const h = el.getBoundingClientRect().height;
+      const max = Math.max(AI_TERMINAL_MIN_H, Math.floor(h - EDITOR_MAIN_MIN_H));
+      aiPanelMaxHeightRef.current = max;
+      setAiPanelMaxHeight(max);
+      setAiPanelHeight((prev) => (prev > max ? max : prev));
+    };
+    updateMax();
+    const ro = new ResizeObserver(updateMax);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const handleAiResizeMove = (e: PointerEvent) => {
+      if (!isResizingAiPanel) return;
+      const deltaY = aiResizeStartYRef.current - e.clientY;
+      const cap = aiPanelMaxHeightRef.current;
+      const next = Math.max(AI_TERMINAL_MIN_H, Math.min(cap, aiResizeStartHeightRef.current + deltaY));
+      setAiPanelHeight(next);
+    };
+
+    const handleAiResizeEnd = () => {
+      setIsResizingAiPanel(false);
+    };
+
+    if (isResizingAiPanel) {
+      document.addEventListener('pointermove', handleAiResizeMove);
+      document.addEventListener('pointerup', handleAiResizeEnd);
+      document.addEventListener('pointercancel', handleAiResizeEnd);
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
+      document.body.style.touchAction = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('pointermove', handleAiResizeMove);
+      document.removeEventListener('pointerup', handleAiResizeEnd);
+      document.removeEventListener('pointercancel', handleAiResizeEnd);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.body.style.touchAction = '';
+    };
+  }, [isResizingAiPanel]);
 
   useEffect(() => {
     const handleExplorerResizeMove = (e: MouseEvent) => {
@@ -5138,11 +5242,11 @@ ${cardContext}
   }, [selectedFile, problemStem, getNodePath, setNodeCardsMapVersion, setPendingProblemCardIds, setPendingNewProblemCardIds]);
 
   
-  const handleAIChatPaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+  const handleAIChatPaste = useCallback(async (e: React.ClipboardEvent<HTMLInputElement>) => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
-    const textarea = e.currentTarget;
-    const selectionStart = textarea.selectionStart;
-    const selectionEnd = textarea.selectionEnd;
+    const inputEl = e.currentTarget;
+    const selectionStart = inputEl.selectionStart ?? 0;
+    const selectionEnd = inputEl.selectionEnd ?? 0;
     const currentText = chatInput;
 
     let reference: { type: 'node' | 'card'; id: string; name: string; path: string[] } | null = null;
@@ -5280,8 +5384,8 @@ ${cardContext}
       
       setTimeout(() => {
         const newCursorPos = selectionStart + placeholder.length;
-        textarea.setSelectionRange(newCursorPos, newCursorPos);
-        textarea.focus();
+        inputEl.setSelectionRange(newCursorPos, newCursorPos);
+        inputEl.focus();
       }, 0);
     }
   }, [clipboard, chatInput, base, getNodePath, setClipboard]);
@@ -10116,7 +10220,118 @@ ${currentCardContext}
                   setContextMenu(null);
                 }}
               >
-                {(() => {
+                {/* Skill mode: right sidebar, click tool to copy params */}
+      {basePath === 'base/skill' && (
+        <div style={{
+          width: '280px',
+          flexShrink: 0,
+          height: '100%',
+          minHeight: 0,
+          alignSelf: 'stretch',
+          borderLeft: `1px solid ${themeStyles.borderPrimary}`,
+          backgroundColor: themeStyles.bgSecondary,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            padding: '12px 16px',
+            borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+            fontSize: '12px',
+            fontWeight: '600',
+            color: themeStyles.textSecondary,
+            backgroundColor: themeStyles.bgPrimary,
+          }}>
+            工具
+          </div>
+          <div style={{ padding: '8px 12px', fontSize: '11px', color: themeStyles.textTertiary, borderBottom: `1px solid ${themeStyles.borderPrimary}` }}>
+            点击工具可复制「工具名 + 参数」到剪贴板
+          </div>
+          <div style={{ flex: 1, overflow: 'auto', padding: '8px 0' }}>
+            {domainToolsLoading ? (
+              <div style={{ padding: '12px 16px', fontSize: '12px', color: themeStyles.textSecondary }}>加载中...</div>
+            ) : domainTools.length === 0 ? (
+              <div style={{ padding: '12px 16px', fontSize: '12px', color: themeStyles.textSecondary }}>当前域下暂无工具。</div>
+            ) : (
+              domainTools.map((tool: any) => {
+                const toolKey = tool.toolKey || tool.name || '';
+                const label = tool.name || tool.toolKey || '';
+                const serverLabel = tool.edgeName || '';
+                const schema = tool.inputSchema;
+                const params: Array<{ name: string; desc?: string; defaultVal?: string }> = [];
+                if (schema?.properties && typeof schema.properties === 'object') {
+                  Object.entries(schema.properties).forEach(([k, v]: [string, any]) => {
+                    params.push({
+                      name: k,
+                      desc: v?.description,
+                      defaultVal: v?.default != null ? String(v.default) : undefined,
+                    });
+                  });
+                }
+                const buildCopyPayload = () => {
+                  const args: Record<string, string> = {};
+                  params.forEach((p) => {
+                    args[p.name] = p.defaultVal ?? '';
+                  });
+                  return JSON.stringify({ tool: toolKey, arguments: args }, null, 2);
+                };
+                const copyPayload = toolKey ? (params.length > 0 ? buildCopyPayload() : JSON.stringify({ tool: toolKey, arguments: {} }, null, 2)) : '';
+                return (
+                  <div
+                    key={tool.tid != null ? `edge-${tool.tid}-${tool.edgeToken}` : `system-${tool.toolKey}`}
+                    title={copyPayload ? '点击复制工具参数' : ''}
+                    onClick={() => {
+                      if (!copyPayload) return;
+                      if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(copyPayload).then(() => {
+                          Notification.success('已复制到剪贴板');
+                        }).catch(() => {
+                          Notification.error(i18n('Copy failed'));
+                        });
+                      } else {
+                        Notification.error('剪贴板不可用');
+                      }
+                    }}
+                    style={{
+                      padding: '10px 16px',
+                      fontSize: '12px',
+                      color: themeStyles.textPrimary,
+                      cursor: copyPayload ? 'pointer' : 'default',
+                      borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (copyPayload) e.currentTarget.style.backgroundColor = themeStyles.bgHover;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    <div style={{ fontWeight: 500 }}>{label}</div>
+                    {serverLabel && (
+                      <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginTop: '2px' }}>{serverLabel}</div>
+                    )}
+                    {params.length > 0 && (
+                      <div style={{ marginTop: '6px', fontSize: '11px', color: themeStyles.textSecondary }}>
+                        <div style={{ fontWeight: 600, marginBottom: '4px' }}>参数：</div>
+                        {params.map((p) => (
+                          <div key={p.name} style={{ marginLeft: '4px', marginBottom: '2px' }}>
+                            <code style={{ fontSize: '10px' }}>{p.name}</code>
+                            {p.desc && <span style={{ marginLeft: '4px' }}>— {p.desc}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+
+
+      {(() => {
                   const node = base.nodes.find((n: BaseNode) => n.id === contextMenu.file.nodeId);
                   const n = node?.files?.length ?? 0;
                   return n > 0 ? i18n('{0} file(s) — Open list', n) : i18n('Open file list');
@@ -11516,10 +11731,6 @@ ${currentCardContext}
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        width: (showAIChat && !isMobile && !editorAiHidden) || (showProblemPanel && !isMobile)
-          ? `calc(100% - ${(showAIChat && !isMobile && !editorAiHidden ? chatPanelWidth : 0) + (showProblemPanel && !isMobile ? PROBLEM_PANEL_WIDTH : 0)}px)`
-          : (basePath === 'base/skill' && !isMobile ? undefined : '100%'),
-        transition: isResizing ? 'none' : 'width 0.3s ease',
         paddingTop: isMobile ? 'env(safe-area-inset-top, 0px)' : 0,
         paddingLeft: isMobile ? 'env(safe-area-inset-left, 0px)' : 0,
         paddingRight: isMobile ? 'env(safe-area-inset-right, 0px)' : 0,
@@ -11561,25 +11772,6 @@ ${currentCardContext}
           </div>
           {!isMobile && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
-            {selectedFile?.type === 'card' && (
-              <button
-                type="button"
-                onClick={() => setShowProblemPanel((prev) => !prev)}
-                aria-label="题目"
-                style={{
-                  padding: isMobile ? '10px 12px' : '4px 10px',
-                  minHeight: isMobile ? '44px' : undefined,
-                  border: `1px solid ${themeStyles.borderSecondary}`,
-                  borderRadius: '3px',
-                  backgroundColor: showProblemPanel ? themeStyles.bgButtonActive : themeStyles.bgButton,
-                  color: showProblemPanel ? themeStyles.textOnPrimary : themeStyles.textSecondary,
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                }}
-              >
-                题目
-              </button>
-            )}
             {(pendingChanges.size > 0 || pendingDragChanges.size > 0 || pendingRenames.size > 0 || Object.keys(pendingCardFaceChanges).length > 0 || pendingNewProblemCardIds.size > 0 || pendingEditedProblemIds.size > 0 || pendingDeleteProblemIds.size > 0) && (
               <span style={{ fontSize: '12px', color: themeStyles.textSecondary }}>
                 {pendingChanges.size > 0 && `${pendingChanges.size} 个文件已修改`}
@@ -11789,6 +11981,7 @@ ${currentCardContext}
         {/* Editor + problems */}
         <div 
           id="editor-container"
+          ref={editorContainerRef}
           style={{ flex: 1, minHeight: 0, padding: '0', overflow: 'hidden', position: 'relative', backgroundColor: themeStyles.bgPrimary, display: 'flex', flexDirection: 'column' }}
         >
           {/* Markdown editor */}
@@ -12227,47 +12420,427 @@ ${currentCardContext}
             )}
           </div>
 
+          {!editorAiHidden && (
+            <>
+              {aiBottomOpen && (
+                <div
+                  onPointerDown={(e) => {
+                    if (e.button !== 0) return;
+                    e.preventDefault();
+                    setIsResizingAiPanel(true);
+                    aiResizeStartYRef.current = e.clientY;
+                    aiResizeStartHeightRef.current = aiPanelHeight;
+                  }}
+                  style={{
+                    height: '8px',
+                    flexShrink: 0,
+                    cursor: 'row-resize',
+                    touchAction: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxSizing: 'border-box',
+                    borderTop: `1px solid ${aiTerminalStyles.tabBorder}`,
+                    background: isResizingAiPanel ? aiTerminalStyles.resizeActive : aiTerminalStyles.tabBarBg,
+                  }}
+                  role="separator"
+                  aria-orientation="horizontal"
+                  aria-label="拖拽调整终端与编辑器高度比例"
+                >
+                  <div
+                    style={{
+                      width: '40px',
+                      height: '3px',
+                      borderRadius: '2px',
+                      background: isResizingAiPanel ? aiTerminalStyles.resizeActive : aiTerminalStyles.resizeDefault,
+                      opacity: isResizingAiPanel ? 1 : 0.55,
+                      pointerEvents: 'none',
+                    }}
+                  />
+                </div>
+              )}
+              {aiBottomOpen ? (
+                <div
+                  style={{
+                    flexShrink: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    borderTop: 'none',
+                    backgroundColor: aiTerminalStyles.shellBg,
+                    overflow: 'hidden',
+                    fontFamily: aiTerminalStyles.mono,
+                    height: aiPanelHeight,
+                    minHeight: AI_TERMINAL_MIN_H,
+                    maxHeight: aiPanelMaxHeight,
+                  }}
+                >
+                  <div
+                    style={{
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'stretch',
+                      justifyContent: 'space-between',
+                      minHeight: 28,
+                      backgroundColor: aiTerminalStyles.tabBarBg,
+                      borderBottom: `1px solid ${aiTerminalStyles.tabBorder}`,
+                      fontSize: '12px',
+                      color: aiTerminalStyles.textDim,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '0 10px',
+                        backgroundColor: aiTerminalStyles.tabActiveBg,
+                        borderTop: `2px solid ${aiTerminalStyles.tabActiveTop}`,
+                        borderRight: `1px solid ${aiTerminalStyles.tabBorder}`,
+                        color: aiTerminalStyles.text,
+                        fontWeight: 500,
+                        marginBottom: -1,
+                        paddingBottom: 1,
+                      }}
+                    >
+                      AI
+                    </div>
+                    <div style={{ flex: 1 }} />
+                    <button
+                      type="button"
+                      onClick={() => setAiBottomOpen(false)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        borderLeft: `1px solid ${aiTerminalStyles.tabBorder}`,
+                        cursor: 'pointer',
+                        color: aiTerminalStyles.textDim,
+                        fontSize: '14px',
+                        lineHeight: 1,
+                        padding: '0 10px',
+                        fontFamily: 'inherit',
+                      }}
+                      aria-label="收起面板"
+                      title="收起"
+                    >
+                      ▼
+                    </button>
+                  </div>
+                  <div
+                    ref={chatMessagesContainerRef}
+                    style={{
+                      flex: 1,
+                      minHeight: 0,
+                      overflowY: 'auto',
+                      padding: '8px 10px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '6px',
+                      backgroundColor: aiTerminalStyles.shellBg,
+                      fontSize: '12px',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {chatMessages.length === 0 && (
+                      <div
+                        style={{
+                          textAlign: 'left',
+                          color: aiTerminalStyles.textDim,
+                          padding: '4px 0',
+                          fontSize: '12px',
+                          whiteSpace: 'pre-wrap',
+                        }}
+                      >
+                        <span style={{ color: aiTerminalStyles.promptAi }}># </span>
+                        就绪。可让我创建/移动节点与卡片、重命名、删除等。
+                        {'\n'}
+                        <span style={{ color: aiTerminalStyles.textDim }}># </span>
+                        按 Enter 发送。
+                      </div>
+                    )}
+                    {chatMessages.map((msg, index) => {
+                      if (msg.role === 'operation') {
+                        return (
+                          <div key={index} style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
+                            <div
+                              onClick={() => {
+                                setChatMessages((prev) => {
+                                  const next = [...prev];
+                                  next[index] = { ...next[index], isExpanded: !next[index].isExpanded };
+                                  return next;
+                                });
+                              }}
+                              style={{
+                                padding: '4px 8px',
+                                background: aiTerminalStyles.operationBg,
+                                border: `1px solid ${aiTerminalStyles.operationBorder}`,
+                                color: aiTerminalStyles.operationText,
+                                fontSize: '12px',
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                              }}
+                            >
+                              <span style={{ color: aiTerminalStyles.promptAi }}>[op]</span>
+                              <span style={{ flex: 1 }}>{msg.content}</span>
+                              <span style={{ color: aiTerminalStyles.textDim, flexShrink: 0 }}>
+                                {msg.isExpanded ? '▼' : '▶'}
+                              </span>
+                            </div>
+                            {msg.isExpanded && msg.operations && (
+                              <div
+                                style={{
+                                  marginTop: '4px',
+                                  padding: '6px 8px',
+                                  background: aiTerminalStyles.tabBarBg,
+                                  border: `1px solid ${aiTerminalStyles.tabBorder}`,
+                                  fontSize: '11px',
+                                  fontFamily: aiTerminalStyles.mono,
+                                  overflowX: 'auto',
+                                  color: aiTerminalStyles.text,
+                                }}
+                              >
+                                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                  {JSON.stringify({ operations: msg.operations }, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+                      return (
+                        <div
+                          key={index}
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'row',
+                            alignItems: 'flex-start',
+                            gap: '6px',
+                            maxWidth: '100%',
+                          }}
+                        >
+                          <span
+                            style={{
+                              flexShrink: 0,
+                              color: msg.role === 'user' ? aiTerminalStyles.promptUser : aiTerminalStyles.promptAi,
+                              userSelect: 'none',
+                            }}
+                          >
+                            {msg.role === 'user' ? '$' : '>'}
+                          </span>
+                          <div
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              color: aiTerminalStyles.text,
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                            }}
+                          >
+                            {msg.role === 'user' && msg.references && msg.references.length > 0 && (
+                              <div
+                                style={{
+                                  marginBottom: '4px',
+                                  color: aiTerminalStyles.textDim,
+                                  fontSize: '11px',
+                                }}
+                              >
+                                {msg.references.map((ref, refIndex) => (
+                                  <span key={refIndex}>
+                                    {refIndex > 0 ? ' ' : ''}@{ref.name}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {msg.content}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {isChatLoading && (
+                      <div style={{ color: aiTerminalStyles.textDim, fontSize: '12px' }}>
+                        <span style={{ color: aiTerminalStyles.promptAi }}>...</span> 正在处理
+                      </div>
+                    )}
+                    <div ref={chatMessagesEndRef} />
+                  </div>
+                  <div
+                    style={{
+                      padding: '4px 10px 6px',
+                      borderTop: `1px solid ${aiTerminalStyles.tabBorder}`,
+                      backgroundColor: aiTerminalStyles.shellBg,
+                      flexShrink: 0,
+                      fontFamily: aiTerminalStyles.mono,
+                    }}
+                  >
+                    {chatInputReferences.length > 0 && (
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          alignItems: 'center',
+                          gap: '6px',
+                          marginBottom: '4px',
+                          fontSize: '11px',
+                          color: aiTerminalStyles.textDim,
+                        }}
+                      >
+                        <span style={{ userSelect: 'none' }}>#</span>
+                        {chatInputReferences.map((ref, index) => (
+                          <span key={index} style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                            <span style={{ color: aiTerminalStyles.operationText }}>@{ref.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const placeholder = '@' + ref.name;
+                                const { startIndex, endIndex } = ref;
+                                const newText = chatInput.slice(0, startIndex) + chatInput.slice(endIndex);
+                                setChatInputReferences((prev) =>
+                                  prev
+                                    .filter((_, i) => i !== index)
+                                    .map((r) => {
+                                      if (r.startIndex > startIndex) {
+                                        return {
+                                          ...r,
+                                          startIndex: r.startIndex - placeholder.length,
+                                          endIndex: r.endIndex - placeholder.length,
+                                        };
+                                      }
+                                      return r;
+                                    }),
+                                );
+                                setChatInput(newText);
+                              }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: 0,
+                                color: aiTerminalStyles.textDim,
+                                fontFamily: 'inherit',
+                                fontSize: '11px',
+                                lineHeight: 1,
+                              }}
+                              title="移除引用"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        minHeight: 22,
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: aiTerminalStyles.promptUser,
+                          fontSize: '12px',
+                          lineHeight: '22px',
+                          flexShrink: 0,
+                          userSelect: 'none',
+                        }}
+                      >
+                        $
+                      </span>
+                      <input
+                        type="text"
+                        value={chatInput}
+                        onChange={(e) => {
+                          const newText = e.target.value;
+                          const oldText = chatInput;
+                          if (newText.length !== oldText.length) {
+                            const diff = newText.length - oldText.length;
+                            const selectionStart = e.currentTarget.selectionStart ?? 0;
+                            setChatInputReferences((prev) =>
+                              prev
+                                .map((ref) => {
+                                  if (selectionStart <= ref.startIndex) {
+                                    return {
+                                      ...ref,
+                                      startIndex: ref.startIndex + diff,
+                                      endIndex: ref.endIndex + diff,
+                                    };
+                                  }
+                                  if (selectionStart > ref.startIndex && selectionStart < ref.endIndex) {
+                                    return null as any;
+                                  }
+                                  return ref;
+                                })
+                                .filter((ref) => ref != null && ref.startIndex >= 0 && ref.endIndex <= newText.length),
+                            );
+                          }
+                          setChatInput(newText);
+                        }}
+                        onPaste={handleAIChatPaste}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAIChatSend();
+                          }
+                        }}
+                        autoComplete="off"
+                        spellCheck={false}
+                        disabled={isChatLoading}
+                        aria-label="终端输入"
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          padding: 0,
+                          margin: 0,
+                          border: 'none',
+                          outline: 'none',
+                          boxShadow: 'none',
+                          fontSize: '12px',
+                          lineHeight: '22px',
+                          fontFamily: 'inherit',
+                          backgroundColor: 'transparent',
+                          color: aiTerminalStyles.text,
+                          WebkitAppearance: 'none' as any,
+                          appearance: 'none' as any,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setAiBottomOpen(true)}
+                  style={{
+                    flexShrink: 0,
+                    width: '100%',
+                    padding: '4px 10px',
+                    border: 'none',
+                    borderTop: `1px solid ${aiTerminalStyles.tabBorder}`,
+                    backgroundColor: aiTerminalStyles.tabBarBg,
+                    color: aiTerminalStyles.textDim,
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    fontWeight: 500,
+                    textAlign: 'left',
+                    fontFamily: aiTerminalStyles.mono,
+                  }}
+                >
+                  ▲ AI
+                </button>
+              )}
+            </>
+          )}
+
         </div>
       </div>
 
-      {showProblemPanel && isMobile && (
-        <div
-          role="presentation"
-          style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: 'rgba(0,0,0,0.4)' }}
-          onClick={() => setShowProblemPanel(false)}
-          aria-hidden
-        />
-      )}
-      {showProblemPanel && selectedFile?.type === 'card' && (
-        <div style={{
-          ...(isMobile
-            ? { position: 'fixed' as const, right: 0, top: 0, bottom: 0, width: 'min(400px, 85vw)', zIndex: 1002, boxShadow: '-4px 0 16px rgba(0,0,0,0.15)', paddingTop: 'env(safe-area-inset-top, 0px)' }
-            : { width: `${PROBLEM_PANEL_WIDTH}px`, height: '100%', minHeight: 0, alignSelf: 'stretch', flexShrink: 0 }),
-          borderLeft: `1px solid ${themeStyles.borderPrimary}`,
-          display: 'flex',
-          flexDirection: 'column',
-          background: themeStyles.bgPrimary,
-        }}>
-          <div style={{
-            padding: '12px 16px',
-            borderBottom: `1px solid ${themeStyles.borderPrimary}`,
-            background: themeStyles.bgSecondary,
-            fontWeight: 'bold',
-            color: themeStyles.textPrimary,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}>
-            <span>本卡片的练习题</span>
-            <button
-              type="button"
-              onClick={() => setShowProblemPanel(false)}
-              style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: themeStyles.textTertiary }}
-              aria-label="关闭"
-            >
-              &times;
-            </button>
-          </div>
+      {(() => {
+        /* problems sidebar only; AI is in editor bottom panel */
+        const problemsBody = (
           <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px', minHeight: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <span style={{ fontSize: '12px', color: themeStyles.textTertiary }}>支持本地单选题</span>
@@ -12465,167 +13038,61 @@ ${currentCardContext}
               </div>
             )}
           </div>
-        </div>
-      )}
+        );
 
-      {/* Skill mode: right sidebar, click tool to copy params */}
-      {basePath === 'base/skill' && (
-        <div style={{
-          width: '280px',
-          flexShrink: 0,
-          height: '100%',
-          minHeight: 0,
-          alignSelf: 'stretch',
-          borderLeft: `1px solid ${themeStyles.borderPrimary}`,
-          backgroundColor: themeStyles.bgSecondary,
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        }}>
-          <div style={{
-            padding: '12px 16px',
-            borderBottom: `1px solid ${themeStyles.borderPrimary}`,
-            fontSize: '12px',
-            fontWeight: '600',
-            color: themeStyles.textSecondary,
-            backgroundColor: themeStyles.bgPrimary,
-          }}>
-            工具
-          </div>
-          <div style={{ padding: '8px 12px', fontSize: '11px', color: themeStyles.textTertiary, borderBottom: `1px solid ${themeStyles.borderPrimary}` }}>
-            点击工具可复制「工具名 + 参数」到剪贴板
-          </div>
-          <div style={{ flex: 1, overflow: 'auto', padding: '8px 0' }}>
-            {domainToolsLoading ? (
-              <div style={{ padding: '12px 16px', fontSize: '12px', color: themeStyles.textSecondary }}>加载中...</div>
-            ) : domainTools.length === 0 ? (
-              <div style={{ padding: '12px 16px', fontSize: '12px', color: themeStyles.textSecondary }}>当前域下暂无工具。</div>
-            ) : (
-              domainTools.map((tool: any) => {
-                const toolKey = tool.toolKey || tool.name || '';
-                const label = tool.name || tool.toolKey || '';
-                const serverLabel = tool.edgeName || '';
-                const schema = tool.inputSchema;
-                const params: Array<{ name: string; desc?: string; defaultVal?: string }> = [];
-                if (schema?.properties && typeof schema.properties === 'object') {
-                  Object.entries(schema.properties).forEach(([k, v]: [string, any]) => {
-                    params.push({
-                      name: k,
-                      desc: v?.description,
-                      defaultVal: v?.default != null ? String(v.default) : undefined,
-                    });
-                  });
-                }
-                const buildCopyPayload = () => {
-                  const args: Record<string, string> = {};
-                  params.forEach((p) => {
-                    args[p.name] = p.defaultVal ?? '';
-                  });
-                  return JSON.stringify({ tool: toolKey, arguments: args }, null, 2);
-                };
-                const copyPayload = toolKey ? (params.length > 0 ? buildCopyPayload() : JSON.stringify({ tool: toolKey, arguments: {} }, null, 2)) : '';
-                return (
-                  <div
-                    key={tool.tid != null ? `edge-${tool.tid}-${tool.edgeToken}` : `system-${tool.toolKey}`}
-                    title={copyPayload ? '点击复制工具参数' : ''}
-                    onClick={() => {
-                      if (!copyPayload) return;
-                      if (navigator.clipboard && navigator.clipboard.writeText) {
-                        navigator.clipboard.writeText(copyPayload).then(() => {
-                          Notification.success('已复制到剪贴板');
-                        }).catch(() => {
-                          Notification.error(i18n('Copy failed'));
-                        });
-                      } else {
-                        Notification.error('剪贴板不可用');
-                      }
-                    }}
-                    style={{
-                      padding: '10px 16px',
-                      fontSize: '12px',
-                      color: themeStyles.textPrimary,
-                      cursor: copyPayload ? 'pointer' : 'default',
-                      borderBottom: `1px solid ${themeStyles.borderPrimary}`,
-                    }}
-                    onMouseEnter={(e) => {
-                      if (copyPayload) e.currentTarget.style.backgroundColor = themeStyles.bgHover;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                  >
-                    <div style={{ fontWeight: 500 }}>{label}</div>
-                    {serverLabel && (
-                      <div style={{ fontSize: '11px', color: themeStyles.textSecondary, marginTop: '2px' }}>{serverLabel}</div>
-                    )}
-                    {params.length > 0 && (
-                      <div style={{ marginTop: '6px', fontSize: '11px', color: themeStyles.textSecondary }}>
-                        <div style={{ fontWeight: 600, marginBottom: '4px' }}>参数：</div>
-                        {params.map((p) => (
-                          <div key={p.name} style={{ marginLeft: '4px', marginBottom: '2px' }}>
-                            <code style={{ fontSize: '10px' }}>{p.name}</code>
-                            {p.desc && <span style={{ marginLeft: '4px' }}>— {p.desc}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })
+        return (
+          <>
+            {rightPanelOpen && isMobile && (
+              <div
+                role="presentation"
+                style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: 'rgba(0,0,0,0.4)' }}
+                onClick={() => setRightPanelOpen(false)}
+                aria-hidden
+              />
             )}
-          </div>
-        </div>
-      )}
+            {!isMobile && rightPanelOpen && (
+              <div
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setIsResizingProblemsPanel(true);
+                  problemsResizeStartXRef.current = e.clientX;
+                  problemsResizeStartWidthRef.current = problemsPanelWidth;
+                }}
+                style={{
+                  width: '4px',
+                  height: '100%',
+                  alignSelf: 'stretch',
+                  background: isResizingProblemsPanel ? themeStyles.accent : themeStyles.borderPrimary,
+                  cursor: 'col-resize',
+                  position: 'relative',
+                  flexShrink: 0,
+                  transition: isResizingProblemsPanel ? 'none' : 'background 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isResizingProblemsPanel) {
+                    e.currentTarget.style.background = themeStyles.textSecondary;
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isResizingProblemsPanel) {
+                    e.currentTarget.style.background = themeStyles.borderPrimary;
+                  }
+                }}
+              >
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: '-2px',
+                    top: 0,
+                    width: '8px',
+                    height: '100%',
+                    cursor: 'col-resize',
+                  }}
+                />
+              </div>
+            )}
 
-      {showAIChat && !editorAiHidden && isMobile && (
-        <div
-          role="presentation"
-          style={{ position: 'fixed', inset: 0, zIndex: 1001, backgroundColor: 'rgba(0,0,0,0.4)' }}
-          onClick={() => setShowAIChat(false)}
-          aria-hidden
-        />
-      )}
-      {showAIChat && !editorAiHidden && !isMobile && (
-        <div
-          onMouseDown={(e) => {
-            e.preventDefault();
-            setIsResizing(true);
-            resizeStartXRef.current = e.clientX;
-            resizeStartWidthRef.current = chatPanelWidth;
-          }}
-          style={{
-            width: '4px',
-            height: '100%',
-            alignSelf: 'stretch',
-            background: isResizing ? themeStyles.accent : themeStyles.borderPrimary,
-            cursor: 'col-resize',
-            position: 'relative',
-            flexShrink: 0,
-            transition: isResizing ? 'none' : 'background 0.2s ease',
-          }}
-          onMouseEnter={(e) => {
-            if (!isResizing) {
-              e.currentTarget.style.background = themeStyles.textSecondary;
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!isResizing) {
-              e.currentTarget.style.background = themeStyles.borderPrimary;
-            }
-          }}
-        >
-          <div style={{
-            position: 'absolute',
-            left: '-2px',
-            top: 0,
-            width: '8px',
-            height: '100%',
-            cursor: 'col-resize',
-          }} />
-        </div>
-      )}
-
-      {showAIChat && !editorAiHidden && (
+            {rightPanelOpen && (
         <div style={{
           ...(isMobile
             ? {
@@ -12639,401 +13106,140 @@ ${currentCardContext}
                 paddingTop: 'env(safe-area-inset-top, 0px)',
               }
             : {
-                width: `${chatPanelWidth}px`,
+                width: `${problemsPanelWidth}px`,
                 height: '100%',
                 minHeight: 0,
                 alignSelf: 'stretch',
                 flexShrink: 0,
-                transition: isResizing ? 'none' : 'width 0.3s ease',
+                transition: isResizingProblemsPanel ? 'none' : 'width 0.3s ease',
               }),
           borderLeft: `1px solid ${themeStyles.borderPrimary}`,
           display: 'flex',
           flexDirection: 'column',
           background: themeStyles.bgPrimary,
         }}>
-          <div style={{
-            padding: '12px 16px',
-            borderBottom: `1px solid ${themeStyles.borderPrimary}`,
-            background: themeStyles.bgSecondary,
-            fontWeight: 'bold',
-            color: themeStyles.textPrimary,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}>
-            <span>AI 助手</span>
-            <button
-              onClick={() => setShowAIChat(false)}
-              style={{
-                background: 'none',
-                border: 'none',
-                fontSize: '18px',
-                cursor: 'pointer',
-                color: themeStyles.textTertiary,
-              }}
-            >
-              &times;
-            </button>
-          </div>
-          
-          <div 
-            ref={chatMessagesContainerRef}
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: '16px',
+          {isMobile && (
+            <div style={{
               display: 'flex',
-              flexDirection: 'column',
-              gap: '12px',
-              backgroundColor: themeStyles.bgPrimary,
-            }}
-          >
-            {chatMessages.length === 0 && (
-              <div style={{
-                textAlign: 'center',
-                color: themeStyles.textTertiary,
-                padding: '20px',
-                fontSize: '14px',
-              }}>
-                <p>你好！我是 AI 助手，可以帮助你操作知识库。</p>
-                <p style={{ marginTop: '8px', fontSize: '12px' }}>例如：</p>
-                <ul style={{ textAlign: 'left', marginTop: '8px', fontSize: '12px', color: themeStyles.textSecondary }}>
-                  <li>"在根节点下创建一个名为 i18n('New node') 的节点"</li>
-                  <li>"在 '节点名' 下创建一个卡片，标题为 i18n('New card')"</li>
-                  <li>"将 '节点A' 移动到 '节点B' 下"</li>
-                  <li>"将 '节点A' 重命名为 '新名称'"</li>
-                  <li>"删除 '节点A'"</li>
-                </ul>
-              </div>
-            )}
-            {chatMessages.map((msg, index) => {
-              if (msg.role === 'operation') {
-                
-                return (
-                  <div
-                    key={index}
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'flex-start',
-                    }}
-                  >
-                    <div
-                      onClick={() => {
-                        setChatMessages(prev => {
-                          const newMessages = [...prev];
-                          newMessages[index] = {
-                            ...newMessages[index],
-                            isExpanded: !newMessages[index].isExpanded,
-                          };
-                          return newMessages;
-                        });
-                      }}
-                      style={{
-                        padding: '8px 12px',
-                        borderRadius: '8px',
-                        background: '#e3f2fd',
-                        border: '1px solid #90caf9',
-                        color: '#1976d2',
-                        maxWidth: '85%',
-                        fontSize: '14px',
-                        cursor: 'pointer',
-                        userSelect: 'none',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                      }}
-                    >
-                      <span style={{ fontSize: '16px' }}>⚙️</span>
-                      <span>{msg.content}</span>
-                      <span style={{ fontSize: '12px', opacity: 0.7 }}>
-                        {msg.isExpanded ? '▼' : '▶'}
-                      </span>
-                    </div>
-                    {msg.isExpanded && msg.operations && (
-                      <div style={{
-                        marginTop: '8px',
-                        padding: '12px',
-                        background: '#f5f5f5',
-                        borderRadius: '8px',
-                        maxWidth: '85%',
-                        fontSize: '12px',
-                        fontFamily: 'Monaco, Menlo, "Ubuntu Mono", Consolas, monospace',
-                        overflowX: 'auto',
-                      }}>
-                        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                          {JSON.stringify({ operations: msg.operations }, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-              
-              
-              return (
-                <div
-                  key={index}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                  }}
-                >
-                  <div style={{
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    background: msg.role === 'user' ? themeStyles.accent : themeStyles.bgSecondary,
-                    color: msg.role === 'user' ? themeStyles.textOnPrimary : themeStyles.textPrimary,
-                    maxWidth: '85%',
-                    fontSize: '14px',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                  }}>
-                    {msg.role === 'user' && msg.references && msg.references.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
-                        {msg.references.map((ref, refIndex) => (
-                          <div
-                            key={refIndex}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              padding: '4px 8px',
-                              background: 'rgba(255, 255, 255, 0.2)',
-                              borderRadius: '4px',
-                              fontSize: '12px',
-                            }}
-                          >
-                            <span style={{ fontSize: '12px' }}>
-                              {ref.type === 'node' ? '📂' : '📄'}
-                            </span>
-                            <span style={{ fontWeight: '500' }}>{ref.name}</span>
-                            <span style={{ opacity: 0.8, fontSize: '11px' }}>
-                              {ref.path.join(' > ')}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {msg.content}
-                  </div>
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 10px',
+              borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+              backgroundColor: themeStyles.bgSecondary,
+              flexShrink: 0,
+            }}>
+              <span style={{ fontWeight: 600, fontSize: '14px', color: themeStyles.textPrimary }}>本卡片的练习题</span>
+              <button
+                type="button"
+                onClick={() => setRightPanelOpen(false)}
+                style={{
+                  marginLeft: 'auto',
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '20px',
+                  cursor: 'pointer',
+                  color: themeStyles.textTertiary,
+                  lineHeight: 1,
+                  padding: '0 4px',
+                }}
+                aria-label="关闭"
+              >
+                &times;
+              </button>
+            </div>
+          )}
+          {!isMobile && (
+            <div style={{
+              padding: '12px 16px',
+              borderBottom: `1px solid ${themeStyles.borderPrimary}`,
+              background: themeStyles.bgSecondary,
+              fontWeight: 'bold',
+              color: themeStyles.textPrimary,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexShrink: 0,
+            }}>
+              <span>本卡片的练习题</span>
+              <button
+                type="button"
+                onClick={() => setRightPanelOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '18px',
+                  cursor: 'pointer',
+                  color: themeStyles.textTertiary,
+                }}
+                aria-label="关闭"
+              >
+                &times;
+              </button>
+            </div>
+          )}
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {selectedFile?.type === 'card' ? (
+                problemsBody
+              ) : (
+                <div style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px',
+                  color: themeStyles.textSecondary,
+                  fontSize: '14px',
+                  textAlign: 'center',
+                }}>
+                  请先在左侧树中选择一张卡片
                 </div>
-              );
-            })}
-            {isChatLoading && (
-              <div style={{
-                padding: '8px 12px',
-                borderRadius: '8px',
-                background: themeStyles.bgSecondary,
-                color: themeStyles.textTertiary,
-                fontSize: '14px',
-              }}>
-                正在思考...
-              </div>
-            )}
-            <div ref={chatMessagesEndRef} />
+              )}
           </div>
+        </div>
+      )}
 
-          <div style={{
-            padding: '12px',
-            borderTop: `1px solid ${themeStyles.borderPrimary}`,
-            background: themeStyles.bgSecondary,
-          }}>
-            {/* Reference tags */}
-            {chatInputReferences.length > 0 && (
+            {!isMobile && (
               <div style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '6px',
-                marginBottom: '8px',
-                padding: '6px',
-                background: themeStyles.bgPrimary,
-                borderRadius: '4px',
-                border: `1px solid ${themeStyles.borderPrimary}`,
-                minHeight: '32px',
-              }}>
-                {chatInputReferences.map((ref, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '4px 8px',
-                      background: themeStyles.bgDragOver,
-                      borderRadius: '4px',
-                      fontSize: '12px',
-                      border: `1px solid ${themeStyles.accent}`,
-                    }}
-                  >
-                    <span style={{ fontSize: '12px' }}>
-                      {ref.type === 'node' ? '📂' : '📄'}
-                    </span>
-                    <span style={{ fontWeight: '500', color: themeStyles.accent }}>{ref.name}</span>
-                    <span style={{ opacity: 0.7, fontSize: '11px', color: themeStyles.accent }}>
-                      {ref.path.join(' > ')}
-                    </span>
-                    <button
-                      onClick={() => {
-                        
-                        const placeholder = `@${ref.name}`;
-                        const startIndex = ref.startIndex;
-                        const endIndex = ref.endIndex;
-                        
-                        
-                        const newText = chatInput.slice(0, startIndex) + chatInput.slice(endIndex);
-                        
-                        
-                        setChatInputReferences(prev => {
-                          const newRefs = prev
-                            .filter((_, i) => i !== index)
-                            .map(r => {
-                              
-                              if (r.startIndex > startIndex) {
-                                return {
-                                  ...r,
-                                  startIndex: r.startIndex - placeholder.length,
-                                  endIndex: r.endIndex - placeholder.length,
-                                };
-                              }
-                              return r;
-                            });
-                          return newRefs;
-                        });
-                        
-                        setChatInput(newText);
-                      }}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        padding: '0',
-                        marginLeft: '4px',
-                        fontSize: '14px',
-                        color: '#1976d2',
-                        lineHeight: '1',
-                      }}
-                      title="移除引用"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <textarea
-              value={chatInput}
-              onChange={(e) => {
-                const newText = e.target.value;
-                const oldText = chatInput;
-                
-                
-                if (newText.length !== oldText.length) {
-                  const diff = newText.length - oldText.length;
-                  const selectionStart = e.currentTarget.selectionStart;
-                  
-                  setChatInputReferences(prev => {
-                    return prev.map(ref => {
-                      
-                      if (selectionStart <= ref.startIndex) {
-                        return {
-                          ...ref,
-                          startIndex: ref.startIndex + diff,
-                          endIndex: ref.endIndex + diff,
-                        };
-                      }
-                      
-                      else if (selectionStart > ref.startIndex && selectionStart < ref.endIndex) {
-                        
-                        return null as any;
-                      }
-                      return ref;
-                    }).filter(ref => ref !== null && ref.startIndex >= 0 && ref.endIndex <= newText.length);
-                  });
-                }
-                
-                setChatInput(newText);
-              }}
-              onPaste={handleAIChatPaste}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleAIChatSend();
-                }
-              }}
-              placeholder="输入消息... (Shift+Enter换行，Enter发送，粘贴复制的节点/卡片会自动添加引用)"
-              rows={3}
-              disabled={isChatLoading}
-              style={{
-                width: '100%',
-                padding: '8px',
-                border: `1px solid ${themeStyles.borderPrimary}`,
-                borderRadius: '4px',
-                fontSize: '14px',
-                resize: 'none',
-                fontFamily: 'inherit',
+                width: `${RIGHT_SIDE_RAIL_PX}px`,
+                flexShrink: 0,
+                alignSelf: 'stretch',
+                borderLeft: `1px solid ${themeStyles.borderPrimary}`,
                 backgroundColor: themeStyles.bgPrimary,
-                color: themeStyles.textPrimary,
-              }}
-            />
-            <button
-              onClick={handleAIChatSend}
-              disabled={!chatInput.trim() || isChatLoading}
-              style={{
-                marginTop: '8px',
-                width: '100%',
-                padding: '8px',
-                border: 'none',
-                borderRadius: '4px',
-                background: (!chatInput.trim() || isChatLoading) ? themeStyles.textTertiary : themeStyles.accent,
-                color: themeStyles.textOnPrimary,
-                cursor: (!chatInput.trim() || isChatLoading) ? 'not-allowed' : 'pointer',
-                fontWeight: 'bold',
-              }}
-            >
-              发送
-            </button>
-          </div>
-        </div>
-      )}
-
-      {!isMobile && !editorAiHidden && (
-        <div
-          style={{
-            width: '32px',
-            flexShrink: 0,
-            alignSelf: 'stretch',
-            borderLeft: `1px solid ${themeStyles.borderPrimary}`,
-            backgroundColor: themeStyles.bgSecondary,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setShowAIChat((prev) => !prev)}
-            aria-label="AI"
-            title={showAIChat ? '隐藏 AI 助手' : '显示 AI 助手'}
-            style={{
-              writingMode: 'vertical-rl',
-              textOrientation: 'mixed',
-              padding: '12px 6px',
-              fontSize: '12px',
-              fontWeight: '600',
-              letterSpacing: '0.05em',
-              border: 'none',
-              borderRadius: '4px',
-              background: showAIChat ? themeStyles.accent : themeStyles.bgButton,
-              color: showAIChat ? themeStyles.textOnPrimary : themeStyles.textSecondary,
-              cursor: 'pointer',
-            }}
-          >
-            AI
-          </button>
-        </div>
-      )}
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'flex-start',
+                gap: '6px',
+                padding: '8px 5px',
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                WebkitOverflowScrolling: 'touch',
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setRightPanelOpen((prev) => !prev)}
+                  style={{
+                    width: '34px',
+                    height: '34px',
+                    border: `1px solid ${themeStyles.borderSecondary}`,
+                    borderRadius: '3px',
+                    backgroundColor: rightPanelOpen ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                    color: rightPanelOpen ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                    fontSize: '11px',
+                    fontWeight: 600,
+                  }}
+                  title="本卡片的练习题"
+                  aria-label="题目"
+                >
+                  题
+                </button>
+              </div>
+            )}
+          </>
+        );
+      })()}
     </div>
   );
 }
