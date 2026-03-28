@@ -581,7 +581,11 @@ export default class Editor extends DOMAttachedObject {
           <MdEditor
             key={editorKey}
             className={'textbox' + (getTheme() === 'dark' ? ' md-editor-dark-softer' : '')}
-            style={getTheme() === 'dark' ? { backgroundColor: '#323334' } : undefined}
+            style={{
+              height: '100%',
+              minHeight: 0,
+              ...(getTheme() === 'dark' ? { backgroundColor: '#323334' } : {}),
+            }}
             autoFocus={hasFocus}
             codeTheme='github'
             codeStyleReverse={false}
@@ -643,6 +647,8 @@ export default class Editor extends DOMAttachedObject {
       );
     }
 
+    ele.style.width = '100%';
+    ele.style.height = '100%';
     this.reactRoot = ReactDOM.createRoot(ele);
     this.reactRoot.render(<EditorComponent />);
     $dom.hide();
