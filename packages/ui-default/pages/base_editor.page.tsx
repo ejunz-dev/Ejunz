@@ -925,6 +925,68 @@ function getSubtreeIntentRows(
   return rows;
 }
 
+type SavedEditorLayout = {
+  explorerMode: 'tree' | 'pending' | 'branches' | 'git';
+  nodeSidePanelTab: 'intent' | 'files';
+  rightPanelOpen: boolean;
+  aiBottomOpen: boolean;
+  explorerPanelWidth: number;
+  problemsPanelWidth: number;
+  aiPanelHeight: number;
+};
+
+function readSavedBaseEditorUiPrefs(editorAiHidden: boolean): SavedEditorLayout {
+  const raw =
+    (typeof window !== 'undefined' && (window as any).UiContext?.baseEditorUiPrefs) || null;
+  const modes = new Set(['tree', 'pending', 'branches', 'git']);
+  const tabs = new Set(['intent', 'files']);
+
+  let explorerMode: SavedEditorLayout['explorerMode'] = 'tree';
+  if (raw && typeof raw.explorerMode === 'string' && modes.has(raw.explorerMode)) {
+    explorerMode = raw.explorerMode as SavedEditorLayout['explorerMode'];
+  }
+
+  let nodeSidePanelTab: SavedEditorLayout['nodeSidePanelTab'] = 'intent';
+  if (raw && typeof raw.nodeSidePanelTab === 'string' && tabs.has(raw.nodeSidePanelTab)) {
+    nodeSidePanelTab = raw.nodeSidePanelTab as SavedEditorLayout['nodeSidePanelTab'];
+  }
+
+  let rightPanelOpen = true;
+  if (raw && typeof raw.rightPanelOpen === 'boolean') {
+    rightPanelOpen = raw.rightPanelOpen;
+  }
+
+  let aiBottomOpen = !editorAiHidden;
+  if (!editorAiHidden && raw && typeof raw.aiBottomOpen === 'boolean') {
+    aiBottomOpen = raw.aiBottomOpen;
+  }
+
+  let explorerPanelWidth = 250;
+  if (raw && typeof raw.explorerPanelWidth === 'number' && Number.isFinite(raw.explorerPanelWidth)) {
+    explorerPanelWidth = Math.round(Math.max(180, Math.min(640, raw.explorerPanelWidth)));
+  }
+
+  let problemsPanelWidth = 320;
+  if (raw && typeof raw.problemsPanelWidth === 'number' && Number.isFinite(raw.problemsPanelWidth)) {
+    problemsPanelWidth = Math.round(Math.max(200, Math.min(800, raw.problemsPanelWidth)));
+  }
+
+  let aiPanelHeight = 280;
+  if (raw && typeof raw.aiPanelHeight === 'number' && Number.isFinite(raw.aiPanelHeight)) {
+    aiPanelHeight = Math.round(Math.max(120, Math.min(640, raw.aiPanelHeight)));
+  }
+
+  return {
+    explorerMode,
+    nodeSidePanelTab,
+    rightPanelOpen,
+    aiBottomOpen,
+    explorerPanelWidth,
+    problemsPanelWidth,
+    aiPanelHeight,
+  };
+}
+
 export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docId: string | undefined; initialData: BaseDoc; basePath?: string }) {
   
   const getTheme = useCallback(() => {
@@ -973,6 +1035,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     [],
   );
   const editorAiHidden = nodesIntentOnly || collectCardsProblemsOnly;
+  const savedEditorLayout = readSavedBaseEditorUiPrefs(editorAiHidden);
 
   const [flagGoalProgress, setFlagGoalProgress] = useState<{ goal: number; nodeIds: string[] }>(() => {
     const ctx = (window as any).UiContext;
@@ -989,7 +1052,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     };
   });
 
-  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git'>('tree');
+  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git'>(
+    () => savedEditorLayout.explorerMode,
+  );
   const [gitRemoteStatus, setGitRemoteStatus] = useState<any>(null);
   const [gitStatusLoading, setGitStatusLoading] = useState(false);
   const [gitRepoDraft, setGitRepoDraft] = useState(() => String((window as any).UiContext?.githubRepo || ''));
@@ -1433,7 +1498,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const [fileListRowMenu, setFileListRowMenu] = useState<{ x: number; y: number; downloadUrl: string; deleteUrl: string; filename: string } | null>(null);
   const [nodeFileListEditMode, setNodeFileListEditMode] = useState(false);
   const [selectedFileListRowKeys, setSelectedFileListRowKeys] = useState<Set<string>>(new Set());
-  const [nodeSidePanelTab, setNodeSidePanelTab] = useState<'intent' | 'files'>('intent');
+  const [nodeSidePanelTab, setNodeSidePanelTab] = useState<'intent' | 'files'>(
+    () => savedEditorLayout.nodeSidePanelTab,
+  );
   const [pendingNodeIntents, setPendingNodeIntents] = useState<Map<string, string>>(new Map());
   const [nodeIntentDraft, setNodeIntentDraft] = useState('');
   const cardFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1444,9 +1511,9 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const cardFaceEditorRef = useRef<HTMLTextAreaElement | null>(null);
   const cardFaceEditorInstanceRef = useRef<any>(null);
   const [importText, setImportText] = useState('');
-  const [rightPanelOpen, setRightPanelOpen] = useState(true);
-  const [aiBottomOpen, setAiBottomOpen] = useState(() => !editorAiHidden);
-  const [aiPanelHeight, setAiPanelHeight] = useState(280);
+  const [rightPanelOpen, setRightPanelOpen] = useState(() => savedEditorLayout.rightPanelOpen);
+  const [aiBottomOpen, setAiBottomOpen] = useState(() => savedEditorLayout.aiBottomOpen);
+  const [aiPanelHeight, setAiPanelHeight] = useState(() => savedEditorLayout.aiPanelHeight);
   const [aiPanelMaxHeight, setAiPanelMaxHeight] = useState(640);
   useEffect(() => {
     if (editorAiHidden) {
@@ -1487,20 +1554,24 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     }
   }, []);
   
-  const [problemsPanelWidth, setProblemsPanelWidth] = useState<number>(320);
+  const [problemsPanelWidth, setProblemsPanelWidth] = useState<number>(
+    () => savedEditorLayout.problemsPanelWidth,
+  );
   const EXPLORER_PANEL_MIN = 180;
   const EXPLORER_PANEL_MAX = 640;
-  const [explorerPanelWidth, setExplorerPanelWidth] = useState<number>(250);
+  const [explorerPanelWidth, setExplorerPanelWidth] = useState<number>(
+    () => savedEditorLayout.explorerPanelWidth,
+  );
   const [isResizingExplorer, setIsResizingExplorer] = useState<boolean>(false);
   const explorerResizeStartXRef = useRef<number>(0);
-  const explorerResizeStartWidthRef = useRef<number>(250);
+  const explorerResizeStartWidthRef = useRef<number>(savedEditorLayout.explorerPanelWidth);
   const RIGHT_SIDE_RAIL_PX = 44;
   const [isResizingProblemsPanel, setIsResizingProblemsPanel] = useState<boolean>(false);
   const problemsResizeStartXRef = useRef<number>(0);
-  const problemsResizeStartWidthRef = useRef<number>(320);
+  const problemsResizeStartWidthRef = useRef<number>(savedEditorLayout.problemsPanelWidth);
   const [isResizingAiPanel, setIsResizingAiPanel] = useState<boolean>(false);
   const aiResizeStartYRef = useRef<number>(0);
-  const aiResizeStartHeightRef = useRef<number>(280);
+  const aiResizeStartHeightRef = useRef<number>(savedEditorLayout.aiPanelHeight);
   const editorContainerRef = useRef<HTMLDivElement | null>(null);
   const aiPanelMaxHeightRef = useRef<number>(640);
   const AI_TERMINAL_MIN_H = 120;
@@ -3302,6 +3373,28 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
       
       Notification.success(`保存成功，共 ${totalChanges} 项更改`);
+
+      try {
+        const baseDocIdNum = docId ? Number(docId) : NaN;
+        if (Number.isFinite(baseDocIdNum) && baseDocIdNum > 0) {
+          const branch = (window as any).UiContext?.currentBranch || 'main';
+          await request.post(getBaseUrl('/editor-ui-prefs'), {
+            docId: baseDocIdNum,
+            branch,
+            prefs: {
+              explorerMode,
+              nodeSidePanelTab,
+              rightPanelOpen,
+              aiBottomOpen: editorAiHidden ? false : aiBottomOpen,
+              explorerPanelWidth,
+              problemsPanelWidth,
+              aiPanelHeight,
+            },
+          });
+        }
+      } catch (_persistUi) {
+        /* layout persistence is best-effort */
+      }
       
       if (hasCreateChanges || hasAnyChanges) {
         try {
@@ -3367,7 +3460,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     } finally {
       setIsCommitting(false);
     }
-  }, [pendingChanges, pendingNodeIntents, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, nodesIntentOnly, collectCardsProblemsOnly]);
+  }, [pendingChanges, pendingNodeIntents, pendingDragChanges, pendingRenames, pendingDeletes, pendingCardFaceChanges, pendingProblemCardIds, pendingNewProblemCardIds, pendingEditedProblemIds, pendingDeleteProblemIds, selectedFile, editorInstance, fileContent, docId, getBaseUrl, base.nodes, base.edges, setNodeCardsMapVersion, setNewProblemIds, setEditedProblemIds, setOriginalProblemsVersion, nodesIntentOnly, collectCardsProblemsOnly, explorerMode, nodeSidePanelTab, rightPanelOpen, aiBottomOpen, explorerPanelWidth, problemsPanelWidth, aiPanelHeight, editorAiHidden]);
 
   useEffect(() => {
     saveHandlerRef.current = handleSaveAll;
