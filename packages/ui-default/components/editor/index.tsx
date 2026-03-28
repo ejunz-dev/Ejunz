@@ -27,6 +27,8 @@ export default class Editor extends DOMAttachedObject {
   valueCache?: string;
   setMarkdownEditorValue?: (v: string) => void;
   reactRoot?: ReactDOM.Root;
+  /** Imperative mount root for md-editor-rt; must be removed on destroy or it survives textarea remounts. */
+  markdownMountEl?: HTMLDivElement;
   isValid: boolean;
 
   constructor($dom, public options: Options = {}) {
@@ -155,6 +157,10 @@ export default class Editor extends DOMAttachedObject {
     const value = $dom.val();
     const { onChange } = this.options;
     const { MdEditor } = await import('./mdeditor');
+
+    if (this.detached || !origin?.isConnected || !origin.parentElement) {
+      return;
+    }
 
     const renderCallback = (ref) => {
       this.markdownEditor = ref;
@@ -647,8 +653,13 @@ export default class Editor extends DOMAttachedObject {
       );
     }
 
+    if (this.detached || !origin.isConnected || !origin.parentElement) {
+      return;
+    }
+
     ele.style.width = '100%';
     ele.style.height = '100%';
+    this.markdownMountEl = ele;
     this.reactRoot = ReactDOM.createRoot(ele);
     this.reactRoot.render(<EditorComponent />);
     $dom.hide();
@@ -659,8 +670,15 @@ export default class Editor extends DOMAttachedObject {
 
   destroy() {
     this.detach();
-    if (this.reactRoot) this.reactRoot.unmount();
-    else if (this.editor?.dispose) this.editor.dispose();
+    if (this.reactRoot) {
+      this.reactRoot.unmount();
+      this.reactRoot = undefined;
+    }
+    if (this.markdownMountEl) {
+      this.markdownMountEl.remove();
+      this.markdownMountEl = undefined;
+    }
+    if (this.editor?.dispose) this.editor.dispose();
   }
 
   ensureValid() {
