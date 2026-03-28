@@ -2630,8 +2630,8 @@ async function writeCardProblemsMarkdownBundle(targetDir: string, entries: Expor
 /**
  * Export base to file structure (node as folder, card as folder with one md inside)
  * Root node is NOT exported as folder. Root-level cards and child nodes use one combined order (order + cid / id), same spirit as the editor tree.
- * Cards: directory `{order}-{sanitizedTitle}/` containing `{sanitizedTitle}.md` (no numeric prefix on the file).
- * Nodes: `{order}-{sanitizedTitle}/` (recursive). Import also accepts legacy `{order}-{sanitizedTitle}.md` files.
+ * Cards: directory `{NN}-{sanitizedTitle}/` (NN = 01, 02, …) containing `{sanitizedTitle}.md` (no numeric prefix on the file).
+ * Nodes: `{NN}-{sanitizedTitle}/` (recursive). Import accepts this and legacy unpadded `{N}-{sanitizedTitle}` / `.md` names.
  * Each card folder with problems also writes problems.md, keys.md, problems_all.md next to `{title}.md`.
  */
 async function exportBaseToFile(base: BaseDoc, outputDir: string, branch?: string, domainIdOverride?: string): Promise<void> {
@@ -2643,6 +2643,8 @@ async function exportBaseToFile(base: BaseDoc, outputDir: string, branch?: strin
     }
 
     const sanitize = (name: string) => (name || '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'untitled';
+
+    const exportOrderPrefix = (idx: number) => String(idx).padStart(2, '0');
 
     const currentBranch = branch || (base as any).currentBranch || 'main';
     const branchData = getBranchData(base, currentBranch);
@@ -2690,7 +2692,7 @@ async function exportBaseToFile(base: BaseDoc, outputDir: string, branch?: strin
 
     async function exportCardFolder(parentDir: string, idx: number, card: CardDoc, parentNode: BaseNode): Promise<void> {
         const titleSeg = sanitize(card.title || 'untitled');
-        const folderSeg = `${idx}-${titleSeg}`;
+        const folderSeg = `${exportOrderPrefix(idx)}-${titleSeg}`;
         const cardDir = path.join(parentDir, folderSeg);
         await fs.promises.mkdir(cardDir, { recursive: true });
         await fs.promises.writeFile(path.join(cardDir, `${titleSeg}.md`), card.content || '', 'utf-8');
@@ -2727,7 +2729,7 @@ async function exportBaseToFile(base: BaseDoc, outputDir: string, branch?: strin
             if (item.kind === 'card') {
                 await exportCardFolder(nodeDir, idx, item.card, node);
             } else {
-                const subSeg = `${idx}-${sanitize(item.child.text || 'untitled')}`;
+                const subSeg = `${exportOrderPrefix(idx)}-${sanitize(item.child.text || 'untitled')}`;
                 await exportNodeFolder(item.child, nodeDir, subSeg);
             }
         }
@@ -2741,7 +2743,7 @@ async function exportBaseToFile(base: BaseDoc, outputDir: string, branch?: strin
             if (item.kind === 'card') {
                 await exportCardFolder(outputDir, idx, item.card, rootNode);
             } else {
-                const subSeg = `${idx}-${sanitize(item.child.text || 'untitled')}`;
+                const subSeg = `${exportOrderPrefix(idx)}-${sanitize(item.child.text || 'untitled')}`;
                 await exportNodeFolder(item.child, outputDir, subSeg);
             }
         }
