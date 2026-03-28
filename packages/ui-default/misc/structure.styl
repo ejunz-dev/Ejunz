@@ -49,6 +49,65 @@ html
 .monaco-editor .main
   padding: 0
 
+#panel:has(.base-editor-page)
+  display: flex
+  flex-direction: column
+  height: 100vh
+  height: 100dvh
+  min-height: 0
+  overflow: hidden
+
+.main:has(.base-editor-page)
+  padding-top: rem(55px)
+  padding-bottom: 0
+  flex: 1
+  min-height: 0
+  display: flex
+  flex-direction: column
+
+  +above(rupture.desktop-cutoff)
+    padding-top: 4rem
+
+  +mobile()
+    padding-top: 0
+
+.base-editor-page
+  flex: 1
+  min-height: 0
+  display: flex
+  flex-direction: column
+  width: 100%
+  max-width: none
+
+.base-editor-page__col
+  flex: 1
+  min-height: 0
+  display: flex
+  flex-direction: column
+  padding-left: 0 !important
+  padding-right: 0 !important
+  width: 100%
+  max-width: none
+
+.base-editor-section
+  flex: 1
+  min-height: 0
+  display: flex
+  flex-direction: column
+
+.base-editor-section-body
+  flex: 1
+  min-height: 0
+  display: flex
+  flex-direction: column
+
+.base-editor-mount
+  flex: 1
+  min-height: 0
+  display: flex
+  flex-direction: column
+  width: 100%
+
 .v-center
   vertical-align: middle
 
