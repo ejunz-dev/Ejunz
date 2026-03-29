@@ -16,6 +16,13 @@ interface BaseItem {
   views: number;
   rpid?: number;
   branch?: string;
+  listStats?: {
+    nodeCount: number;
+    mainLevelCount: number;
+    cardCount: number;
+    problemCount: number;
+    maxLayers: number;
+  };
 }
 
 function BaseList() {
@@ -36,7 +43,7 @@ function BaseList() {
       if (rpid) params.rpid = rpid;
       if (branch) params.branch = branch;
 
-      const response = await request.get(`/d/${domainId}/base/list`, { params });
+      const response = await request.get(`/d/${domainId}/base/list`, params);
       setBases(response.bases || []);
     } catch (error: any) {
       Notification.error('加载知识库列表失败: ' + (error.message || '未知错误'));
@@ -128,6 +135,24 @@ function BaseList() {
                 <p style={{ margin: '0 0 15px 0', color: '#666', fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                   {base.content}
                 </p>
+              )}
+              {base.listStats && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '10px 16px',
+                    fontSize: '12px',
+                    color: '#555',
+                    marginBottom: '10px',
+                  }}
+                >
+                  <span>节点: {base.listStats.nodeCount}</span>
+                  <span>卡片: {base.listStats.cardCount}</span>
+                  <span>题目: {base.listStats.problemCount}</span>
+                  <span>Main: {base.listStats.mainLevelCount}</span>
+                  <span>Depth: {base.listStats.maxLayers}</span>
+                </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: '#999', marginTop: '15px' }}>
                 <span>访问量: {base.views}</span>
