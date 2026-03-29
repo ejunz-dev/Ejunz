@@ -59,7 +59,8 @@ html
 
 .main:has(.base-editor-page)
   padding-top: rem(55px)
-  padding-bottom: 0
+  // Keep editor workspace visually separated from the global footer (Language / Theme bar).
+  padding-bottom: rem(12px)
   flex: 1
   min-height: 0
   display: flex
@@ -67,9 +68,11 @@ html
 
   +above(rupture.desktop-cutoff)
     padding-top: 4rem
+    padding-bottom: rem(16px)
 
   +mobile()
     padding-top: 0
+    padding-bottom: rem(10px)
 
 .base-editor-page
   flex: 1
