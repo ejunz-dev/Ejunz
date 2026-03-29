@@ -11,6 +11,10 @@
       <col class="col--doc-id">
       <col class="col--title">
       <col class="col--nodes">
+      <col class="col--cards">
+      <col class="col--problems">
+      <col class="col--main-level">
+      <col class="col--layers">
       <col class="col--views">
       <col class="col--updated">
     </colgroup>
@@ -24,6 +28,10 @@
         <th class="col--doc-id">{{ _('BID') }}</th>
         <th class="col--title">{{ _('Base') }}</th>
         <th class="col--nodes">{{ _('Nodes') }}</th>
+        <th class="col--cards">{{ _('Cards') }}</th>
+        <th class="col--problems">{{ _('Problems') }}</th>
+        <th class="col--main-level">Main</th>
+        <th class="col--layers">Depth</th>
         <th class="col--views">{{ _('Views') }}</th>
         <th class="col--updated">{{ _('Updated') }}</th>
       </tr>
@@ -42,7 +50,11 @@
             {{ base.title or _('Untitled') }}
           </a>
         </td>
-        <td class="col--nodes">{{ base.nodes|length if base.nodes else 0 }}</td>
+        <td class="col--nodes">{{ base.listStats.nodeCount if base.listStats else (base.nodes|length if base.nodes else 0) }}</td>
+        <td class="col--cards">{{ base.listStats.cardCount if base.listStats else 0 }}</td>
+        <td class="col--problems">{{ base.listStats.problemCount if base.listStats else 0 }}</td>
+        <td class="col--main-level">{{ base.listStats.mainLevelCount if base.listStats else 0 }}</td>
+        <td class="col--layers">{{ base.listStats.maxLayers if base.listStats else 0 }}</td>
         <td class="col--views">{{ base.views|default(0) }}</td>
         <td class="col--updated">{{ datetimeSpan(base.updateAt)|safe if base.updateAt else 'N/A' }}</td>
       </tr>
