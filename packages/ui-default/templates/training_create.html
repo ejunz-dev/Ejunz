@@ -1,0 +1,44 @@
+{% set page_name = "training_create" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+    <div class="columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">{{ _('page.training.create.title') }}</h1>
+            </div>
+            <div class="section__body">
+                <p class="typo">{{ _('page.training.create.blurb') }}</p>
+                <form id="training-create-form" method="post" action="{{ url('training_create', domainId=domainId) }}" data-tpe-form data-preview-url="{{ url('training_preview', domainId=domainId) }}">
+                    <div class="row">
+                        <label class="field">
+                            <span class="field__label">{{ _('page.training.field.name') }}</span>
+                            <input class="textbox" type="text" name="name" required placeholder="{{ _('page.training.field.name_placeholder') }}">
+                        </label>
+                    </div>
+                    <div class="row">
+                        <label class="field">
+                            <span class="field__label">{{ _('page.training.field.description') }}</span>
+                            <textarea class="textbox" name="description" rows="2"></textarea>
+                        </label>
+                    </div>
+                    <div class="row">
+                        <label class="field">
+                            <span class="field__label">{{ _('page.training.field.intro_quote') }}</span>
+                            <input class="textbox" type="text" name="introQuote" placeholder="{{ _('page.training.field.intro_quote_placeholder') }}">
+                        </label>
+                    </div>
+                    <script type="application/json" id="tpe-meta">{{ basesMetaJson | safe }}</script>
+                    <script type="application/json" id="tpe-initial-plan">[]</script>
+                    <script type="application/json" id="tpe-initial-sections">[]</script>
+                    {% include "partials/training_plan_visual_editor.html" %}
+                    <div class="row" style="margin-top:1rem;">
+                        <button type="submit" class="button primary">{{ _('page.training.btn.create') }}</button>
+                        <a class="button" href="{{ url('training_domain', domainId=domainId) }}">{{ _('page.training.btn.cancel') }}</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
