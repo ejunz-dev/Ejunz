@@ -21,6 +21,7 @@ import { sortFiles } from '@ejunz/utils/lib/common';
 import moment from 'moment-timezone';
 import UserModel from '../model/user';
 import { loadBaseEditorUiPrefs, sanitizeBaseEditorUiPrefs } from '../lib/baseEditorUiPrefs';
+import { computeMaxNodeLayers, countMainLevelChildNodes, loadCardStatsByBaseDocId } from '../lib/baseListStats';
 
 const exec = promisify(execCb);
 const execFile = promisify(execFileCb);
@@ -2062,6 +2063,35 @@ export class BaseSaveHandler extends Handler {
 /**
  * Base List Handler
  */
+function attachBaseListStats<T extends BaseDoc & { docId?: number | string }>(
+    bases: T[],
+    cardStats: Map<number, { cardCount: number; problemCount: number }>,
+): Array<T & {
+    listStats: {
+        nodeCount: number;
+        mainLevelCount: number;
+        cardCount: number;
+        problemCount: number;
+        maxLayers: number;
+    };
+}> {
+    return bases.map((b) => {
+        const id = typeof b.docId === 'number' ? b.docId : Number((b as any).docId);
+        const { nodes, edges } = getBranchData(b as BaseDoc, 'main');
+        const cs = Number.isFinite(id) ? cardStats.get(id) : undefined;
+        return {
+            ...b,
+            listStats: {
+                nodeCount: nodes.length,
+                mainLevelCount: countMainLevelChildNodes(nodes, edges),
+                cardCount: cs?.cardCount ?? 0,
+                problemCount: cs?.problemCount ?? 0,
+                maxLayers: computeMaxNodeLayers(nodes, edges),
+            },
+        };
+    });
+}
+
 class BaseListHandler extends Handler {
     @param('rpid', Types.PositiveInt, true)
     @param('branch', Types.String, true)
@@ -2076,12 +2106,15 @@ class BaseListHandler extends Handler {
         }
 
         const basesPayload = bases.map((b) => ({ ...b, docId: b.docId.toString() }));
+        const numericIds = bases.map((b) => Number(b.docId)).filter((n) => Number.isFinite(n) && n > 0);
+        const cardStats = await loadCardStatsByBaseDocId(domainId, numericIds);
+        const withStats = attachBaseListStats(basesPayload as any, cardStats);
         if (format === 'json') {
-            this.response.body = { bases: basesPayload, rpid, branch };
+            this.response.body = { bases: withStats, rpid, branch };
             return;
         }
         this.response.template = 'base_list.html';
-        this.response.body = { bases: basesPayload, rpid, branch };
+        this.response.body = { bases: withStats, rpid, branch };
     }
 }
 
@@ -2104,11 +2137,17 @@ class BaseDomainListHandler extends Handler {
         const total = bases.length;
         const ppcount = Math.max(1, Math.ceil(total / limit));
         const page1 = Math.max(1, Math.min(page, ppcount));
-        const basesPage = bases.slice((page1 - 1) * limit, page1 * limit).map((b) => ({
-            ...b,
-            docId: b.docId.toString(),
-            nodes: (b as any).nodes || [],
-        }));
+        const basesSlice = bases.slice((page1 - 1) * limit, page1 * limit);
+        const pageNumericIds = basesSlice.map((b) => Number(b.docId)).filter((n) => Number.isFinite(n) && n > 0);
+        const cardStatsPage = await loadCardStatsByBaseDocId(did, pageNumericIds);
+        const basesPage = attachBaseListStats(
+            basesSlice.map((b) => ({
+                ...b,
+                docId: b.docId.toString(),
+                nodes: (b as any).nodes || [],
+            })) as any,
+            cardStatsPage,
+        );
         this.response.template = 'base_domain.html';
         if (pjax) {
             const html = await this.renderHTML('partials/base_list.html', {
