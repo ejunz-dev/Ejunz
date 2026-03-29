@@ -1,0 +1,48 @@
+{% set page_name = "training_domain" %}
+{% extends "layout/basic.html" %}
+{% import "components/nothing.html" as nothing with context %}
+{% block content %}
+<div class="row">
+    <div class="columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">{{ _('page.training.domain.title') }}</h1>
+                <div class="section__action">
+                    {% if handler.user._id %}
+                    <a href="{{ url('training_create', domainId=domainId) }}" class="button primary">{{ _('page.training.domain.new_plan') }}</a>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="section__body">
+                {% if trainings and trainings.length > 0 %}
+                    <div class="training-list">
+                        {% for t in trainings %}
+                        <div class="training-item" style="margin-bottom:1.5rem;padding:1rem;border:1px solid rgba(0,0,0,.08);border-radius:8px;">
+                            <h3><a href="{{ url('training_detail', domainId=domainId, docId=t.docId) }}">{{ t.name }}</a></h3>
+                            {% if t.description %}<p class="typo">{{ t.description }}</p>{% endif %}
+                            <div class="typo secondary" style="font-size:13px;">
+                                <span>{{ _('page.training.domain.doc_id_label') }} <code>{{ t.docId }}</code></span>
+                                · <span>
+                                    {% if t.planSources and t.planSources.length > 1 %}
+                                    {{ _('page.training.domain.multi_plan_sources').format(t.planSources.length) }}
+                                    {% endif %}
+                                    {{ _('page.training.domain.first_group_line').format(t.baseDocId, t.sourceBranch, t.targetBranch) }}
+                                </span>
+                            </div>
+                            <div style="margin-top:.75rem;">
+                                <a class="button" href="{{ url('training_detail', domainId=domainId, docId=t.docId) }}">{{ _('page.training.domain.view') }}</a>
+                                {% if handler.user._id and (t.owner == handler.user._id or handler.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) %}
+                                <a class="button" href="{{ url('training_edit', domainId=domainId, docId=t.docId) }}">{{ _('page.training.domain.edit') }}</a>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    {{ nothing.render('training_list_empty', compact=true) }}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

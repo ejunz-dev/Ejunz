@@ -6,7 +6,8 @@ import {
 import { Context } from '../context';
 import {
     Content, ContestClarificationDoc, DiscussionDoc,
-    DiscussionReplyDoc, AgentDoc, BaseDoc, RepoDoc, DocDoc, BlockDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc, DomainMarketToolDoc, WorkflowDoc, WorkflowNodeDoc, BaseDoc, CardDoc, SceneDoc, SceneEventDoc,
+    DiscussionReplyDoc, AgentDoc, BaseDoc, RepoDoc, DocDoc, BlockDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc,
+    DomainMarketToolDoc, WorkflowDoc, WorkflowNodeDoc, TrainingDoc, CardDoc, SceneDoc, SceneEventDoc,
 } from '../interface';
 import bus from '../service/bus';
 import db from '../service/db';
@@ -30,6 +31,7 @@ export const TYPE_WORKFLOW: 60 = 60;
 export const TYPE_WORKFLOW_NODE: 61 = 61;
 export const TYPE_BASE: 70 = 70;
 export const TYPE_CARD: 71 = 71;
+export const TYPE_TRAINING: 72 = 72;
 export const TYPE_SCENE: 80 = 80;
 export const TYPE_EVENT: 81 = 81;
 export const TYPE_DISCUSSION_NODE: 90 = 90;
@@ -50,6 +52,7 @@ export interface DocType {
     [TYPE_WORKFLOW_NODE]: WorkflowNodeDoc;
     [TYPE_BASE]: BaseDoc;
     [TYPE_CARD]: CardDoc;
+    [TYPE_TRAINING]: TrainingDoc;
     [TYPE_SCENE]: SceneDoc;
     [TYPE_EVENT]: SceneEventDoc;
 }
@@ -487,8 +490,10 @@ export async function apply(ctx: Context) {
         // For contest
         { key: { domainId: 1, docType: 1, pids: 1 }, name: 'contest', sparse: true },
         { key: { domainId: 1, docType: 1, rule: 1, docId: -1 }, name: 'contestRule', sparse: true },
-        // For training
+        // For training (legacy dag)
         { key: { domainId: 1, docType: 1, 'dag.pids': 1 }, name: 'training', sparse: true },
+        // Training plan by domain tid
+        { key: { domainId: 1, docType: 1, tid: 1 }, name: 'trainingPlanTid', sparse: true },
     );
     await db.ensureIndexes(
         collStatus,
@@ -548,4 +553,5 @@ global.Ejunz.model.document = {
     TYPE_WORKFLOW_NODE,
     TYPE_BASE,
     TYPE_CARD,
+    TYPE_TRAINING,
 };

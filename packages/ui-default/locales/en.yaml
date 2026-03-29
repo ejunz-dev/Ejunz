@@ -561,6 +561,85 @@ Online: Online
 page.problem_detail.sidebar.show_category: Click to Show
 page.training_detail.invalid_when_not_enrolled: You cannot view problem details unless enrolled.
 page.training_detail.see_other_user_detail: You are viewing user {0} training details.
+page.training.btn.back_list: Back to list
+page.training.btn.cancel: Cancel
+page.training.btn.create: Create
+page.training.btn.delete_plan: Delete training plan
+page.training.btn.edit: Edit
+page.training.btn.save: Save
+page.training.btn.view: View
+page.training.create.blurb: Use the visual editor below to add multiple knowledge bases and load problems from branch diffs; search for bases, drag to reorder sections and problems, and check boxes to set section prerequisites (the server builds the DAG). No manual JSON required.
+page.training.create.title: New training plan
+page.training.detail.col.ac: AC
+page.training.detail.col.difficulty: Difficulty
+page.training.detail.col.title: Problem
+page.training.detail.col.tried: Tried
+page.training.quote_left: '"'
+page.training.quote_right: '"'
+page.training.detail.created_by: Created By
+page.training.detail.edit: Edit
+page.training.detail.enrollees: Enrollees
+page.training.detail.help: Help
+page.training.detail.login_hint: Please sign in to view training progress.
+page.training.detail.logged_in_hint: You are signed in and can follow this training plan on this page.
+page.training.detail.no_problems: No problems in this section yet.
+page.training.detail.note_title: 'NOTE:'
+page.training.detail.plan_source_item: 'Base {0}: {1} → {2}'
+page.training.detail.prereq_sep: ', '
+page.training.detail.prereq_prefix: 'Complete section(s) '
+page.training.detail.prereq_suffix: ' first (progress may show 0% until learning data is connected).'
+page.training.detail.status.invalid: Invalid
+page.training.detail.status.locked: Locked
+page.training.detail.status.open: Open
+page.training.detail.task_list: Task list
+page.training.domain.doc_id_label: 'docId:'
+page.training.domain.edit: Edit
+page.training.domain.first_group_line: 'First group docId {0} · {1} → {2}'
+page.training.domain.multi_plan_sources: '{0} base groups;'
+page.training.domain.new_plan: New training plan
+page.training.domain.title: Training plans
+page.training.domain.view: View
+page.training.edit.advanced_json: 'Advanced: edit JSON (read-only snapshots)'
+page.training.edit.confirm_delete: Delete this training plan?
+page.training.edit.field.enroll_count: Display enroll count
+page.training.edit.field.intro_detail: Intro quote (detail page)
+page.training.edit.field.intro_placeholder: A quote shown at the top of the detail page
+page.training.edit.label_plan_sources: planSources
+page.training.edit.label_sections_readonly: sections (read-only snapshot; save uses the visual editor above)
+page.training.edit.title: Edit training plan
+page.training.editor.add_base_group: Add base group
+page.training.editor.add_empty_section: Insert empty section
+page.training.editor.alert_load_failed: Failed to load.
+page.training.editor.alert_need_base: Keep at least one valid knowledge base group.
+page.training.editor.base_label: Base
+page.training.editor.chapter_default_title: New section
+page.training.editor.chapter_desc_ph: Section description (optional)
+page.training.editor.chapter_nth: 'Section {0}'
+page.training.editor.chapter_title_ph: Section title
+page.training.editor.delete_problem: Delete
+page.training.editor.delete_section: Delete this section
+page.training.editor.drag_sort_section: Drag to reorder sections
+page.training.editor.insert_below_section: Insert section below
+page.training.editor.insert_problem_row: + Insert problem row
+page.training.editor.load_from_diff: Load problems from branch diff
+page.training.editor.load_hint: Loading merges groups into multiple sections; reorder sections, problems, and prerequisites below.
+page.training.editor.move_down: Move down
+page.training.editor.move_up: Move up
+page.training.editor.oj_ph: OJ
+page.training.editor.pid_ph: Problem ID
+page.training.editor.prereq_label: 'Must complete first:'
+page.training.editor.problem_title_ph: Problem title
+page.training.editor.remove_row: Remove
+page.training.editor.search_placeholder: Search base title or docId…
+page.training.editor.select_base: Select knowledge base
+page.training.editor.source_branch: Source branch
+page.training.editor.sources_heading: Knowledge base sources (multiple allowed)
+page.training.editor.target_branch: Target branch
+page.training.field.description: Description
+page.training.field.intro_quote: Intro quote
+page.training.field.intro_quote_placeholder: 'Default: Every great goal starts with a tiny step.'
+page.training.field.name: Name
+page.training.field.name_placeholder: Training plan title
 pager_first: « First
 pager_last: Last »
 pager_next: Next ›
@@ -608,7 +687,9 @@ tool_market: Tool Market
 Total: Total
 training_create: Training Create
 training_detail: Training Detail
+training_domain: Training Plans
 training_edit: Training Edit
+training_list_empty: No training plans yet.
 training_main: Training
 Type: Type
 Unnamed Card: Unnamed Card
