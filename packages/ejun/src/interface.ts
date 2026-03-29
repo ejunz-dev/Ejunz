@@ -709,6 +709,68 @@ declare module './model/workflow_node' {
 export type { WorkflowDoc } from './model/workflow';
 export type { WorkflowNodeDoc } from './model/workflow_node';
 
+/** One Base + branch pair that contributes problems to the plan. */
+export interface TrainingPlanSource {
+    baseDocId: number;
+    sourceBranch: string;
+    targetBranch: string;
+}
+
+/**
+ * Optional DAG over sections (Hydro-style _id / requireNids).
+ * Section at index i uses dag[i]; requireNids reference other nodes' _id (mapped to section indices).
+ */
+export interface TrainingDagNode {
+    _id: number;
+    title: string;
+    requireNids: number[];
+}
+
+/** Row in a training section problem table. */
+export interface TrainingProblemRow {
+    source?: string;
+    pid?: string;
+    title: string;
+    tried?: number;
+    ac?: number;
+    difficulty?: number;
+    nodeId?: string;
+}
+
+/** Collapsible section on training plan detail (e.g. Section 1 …). */
+export interface TrainingSection {
+    title: string;
+    description?: string;
+    status?: 'open' | 'locked' | 'invalid';
+    /** Zero-based indices of sections that must be completed first (for locked note). */
+    requireSectionIndexes?: number[];
+    problems: TrainingProblemRow[];
+}
+
+export interface TrainingDoc {
+    _id: ObjectId;
+    docType: document['TYPE_TRAINING'];
+    docId: ObjectId;
+    domainId: string;
+    name: string;
+    description?: string;
+    introQuote?: string;
+    /** First source (denormalized for list/display). */
+    baseDocId: number;
+    sourceBranch: string;
+    targetBranch: string;
+    /** All Base+branch pairs composed into this plan (ordered). */
+    planSources?: TrainingPlanSource[];
+    /** Optional DAG metadata aligned by index with `sections`. */
+    dag?: TrainingDagNode[];
+    sections: TrainingSection[];
+    enrollCount?: number;
+    createdAt: Date;
+    updatedAt: Date;
+    owner: number;
+    content?: string;
+}
+
 declare module './model/tool' {
     interface ToolDoc {
         _id: ObjectId;
@@ -993,6 +1055,7 @@ export interface Model {
     workflow: typeof import('./model/workflow').default,
     workflowNode: typeof import('./model/workflow_node').default,
     workflowTimer: typeof import('./model/workflow_timer').default,
+    training: typeof import('./model/training').default,
     learn: typeof import('./model/learn').default,
     rating: typeof import('./model/rating').default,
     scene: typeof import('./model/scene').default,

@@ -1,0 +1,63 @@
+{% set page_name = "training_edit" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+    <div class="columns">
+        <div class="section">
+            <div class="section__header">
+                <h1 class="section__title">{{ _('page.training.edit.title') }}</h1>
+            </div>
+            <div class="section__body">
+                <form method="post" action="{{ url('training_edit', domainId=domainId, docId=training.docId) }}" data-tpe-form data-preview-url="{{ url('training_preview', domainId=domainId) }}">
+                    <div class="row">
+                        <label class="field">
+                            <span class="field__label">{{ _('page.training.field.name') }}</span>
+                            <input class="textbox" type="text" name="name" value="{{ training.name }}" required>
+                        </label>
+                    </div>
+                    <div class="row">
+                        <label class="field">
+                            <span class="field__label">{{ _('page.training.field.description') }}</span>
+                            <textarea class="textbox" name="description" rows="3">{{ training.description or '' }}</textarea>
+                        </label>
+                    </div>
+                    <div class="row">
+                        <label class="field">
+                            <span class="field__label">{{ _('page.training.edit.field.intro_detail') }}</span>
+                            <input class="textbox" type="text" name="introQuote" value="{{ training.introQuote or '' }}" placeholder="{{ _('page.training.edit.field.intro_placeholder') }}">
+                        </label>
+                    </div>
+                    <div class="row">
+                        <label class="field">
+                            <span class="field__label">{{ _('page.training.edit.field.enroll_count') }}</span>
+                            <input class="textbox" type="number" min="0" name="enrollCount" value="{{ training.enrollCount or 0 }}">
+                        </label>
+                    </div>
+                    <script type="application/json" id="tpe-meta">{{ basesMetaJson | safe }}</script>
+                    <script type="application/json" id="tpe-initial-plan">{{ initialPlanSourcesJson | safe }}</script>
+                    <script type="application/json" id="tpe-initial-sections">{{ initialSectionsJson | safe }}</script>
+                    {% include "partials/training_plan_visual_editor.html" %}
+                    <details class="row" style="margin-top:1.5rem;">
+                        <summary class="typo secondary" style="cursor:pointer;">{{ _('page.training.edit.advanced_json') }}</summary>
+                        <label class="field" style="margin-top:12px;">
+                            <span class="field__label">{{ _('page.training.edit.label_plan_sources') }}</span>
+                            <textarea class="textbox monospace" rows="4" readonly style="font-size:12px;">{{ planSourcesJson | safe }}</textarea>
+                        </label>
+                        <label class="field">
+                            <span class="field__label">{{ _('page.training.edit.label_sections_readonly') }}</span>
+                            <textarea class="textbox monospace" rows="6" readonly style="font-size:12px;">{{ sectionsJson | safe }}</textarea>
+                        </label>
+                    </details>
+                    <div class="row" style="margin-top:1rem;">
+                        <button type="submit" class="button primary">{{ _('page.training.btn.save') }}</button>
+                        <a class="button" href="{{ url('training_detail', domainId=domainId, docId=training.docId) }}">{{ _('page.training.btn.cancel') }}</a>
+                    </div>
+                </form>
+                <form method="post" action="{{ url('training_delete', domainId=domainId, docId=training.docId) }}" style="margin-top:2rem;" onsubmit="return confirm(this.getAttribute('data-confirm'));" data-confirm="{{ _('page.training.edit.confirm_delete') | e }}">
+                    <button type="submit" class="button">{{ _('page.training.btn.delete_plan') }}</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
