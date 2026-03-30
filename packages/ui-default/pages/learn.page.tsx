@@ -54,16 +54,10 @@ interface MapDAGNode {
   order?: number;
 }
 
-interface LearnBaseOption {
-  docId: number;
-  title?: string;
-  bid?: string | number;
-}
-
-interface LearnBaseOption {
-  docId: number;
-  title?: string;
-  bid?: string | number;
+interface LearnTrainingOption {
+  docId: string;
+  name?: string;
+  baseDocId?: number;
 }
 
 function getChildren(nodeId: string, sections: MapDAGNode[], dag: MapDAGNode[]): MapDAGNode[] {
@@ -107,11 +101,11 @@ function LearnPage() {
   const fullDag = ((window as any).UiContext?.fullDag || []) as MapDAGNode[];
   const currentSectionIndex = (window as any).UiContext?.currentSectionIndex as number | undefined;
   const passedCardIdsSet = new Set<string>((window as any).UiContext?.passedCardIds || []);
-  const learnBases = ((window as any).UiContext?.learnBases || []) as LearnBaseOption[];
-  const selectedLearnBaseDocId = Number((window as any).UiContext?.selectedLearnBaseDocId || 0) || null;
+  const learnTrainings = ((window as any).UiContext?.learnTrainings || []) as LearnTrainingOption[];
+  const selectedLearnTrainingDocId = String((window as any).UiContext?.selectedLearnTrainingDocId || '').trim() || null;
   const requireBaseSelection = !!(window as any).UiContext?.requireBaseSelection;
-  const selectedLearnBase = selectedLearnBaseDocId
-    ? (learnBases.find((b) => Number(b.docId) === Number(selectedLearnBaseDocId)) || null)
+  const selectedLearnTraining = selectedLearnTrainingDocId
+    ? (learnTrainings.find((t) => String(t.docId) === String(selectedLearnTrainingDocId)) || null)
     : null;
 
   const [goal, setGoal] = useState(dailyGoal);
@@ -553,7 +547,7 @@ function LearnPage() {
         flexDirection: 'column',
         gap: '24px',
       }}>
-        {!requireBaseSelection && selectedLearnBase && (
+        {!requireBaseSelection && selectedLearnTraining && (
           <div style={{
             padding: '12px 14px',
             borderRadius: '12px',
@@ -567,14 +561,14 @@ function LearnPage() {
           }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: '12px', color: themeStyles.textSecondary, marginBottom: '2px' }}>
-                {i18n('Current base (Learn)')}
+                {i18n('Current training (Learn)')}
               </div>
               <div style={{ fontSize: '14px', color: themeStyles.textPrimary, fontWeight: 600, wordBreak: 'break-word' }}>
-                {selectedLearnBase.bid ? `[${selectedLearnBase.bid}] ` : ''}{selectedLearnBase.title || i18n('Untitled base')}
+                {selectedLearnTraining.name || i18n('Untitled training')}
               </div>
             </div>
             <a
-              href={`/d/${domainId}/learn/base/select?redirect=${encodeURIComponent(`/d/${domainId}/learn`)}`}
+              href={`/d/${domainId}/learn/training/select?redirect=${encodeURIComponent(`/d/${domainId}/learn`)}`}
               style={{
                 padding: '8px 12px',
                 borderRadius: '8px',
@@ -650,13 +644,13 @@ function LearnPage() {
             boxShadow: theme === 'dark' ? '0 4px 24px rgba(0,0,0,0.4)' : '0 2px 12px rgba(0,0,0,0.06)',
           }}>
             <div style={{ fontSize: '16px', fontWeight: 600, color: themeStyles.textPrimary, marginBottom: '8px' }}>
-              {i18n('Select a base before learning')}
+              {i18n('Select a training before learning')}
             </div>
             <div style={{ fontSize: '13px', color: themeStyles.textSecondary, marginBottom: '16px' }}>
-              {i18n('Choose one base and save your learning setting first.')}
+              {i18n('Choose one training plan and save your learning setting first.')}
             </div>
             <a
-              href={`/d/${domainId}/learn/base/select?redirect=${encodeURIComponent(`/d/${domainId}/learn`)}`}
+              href={`/d/${domainId}/learn/training/select?redirect=${encodeURIComponent(`/d/${domainId}/learn`)}`}
               style={{
                 display: 'inline-block',
                 padding: '10px 16px',
@@ -667,7 +661,7 @@ function LearnPage() {
                 textDecoration: 'none',
               }}
             >
-              {i18n('Select Learn Base')}
+              {i18n('Select Learn Training')}
             </a>
           </div>
         ) : viewMode === 'progress' && (
