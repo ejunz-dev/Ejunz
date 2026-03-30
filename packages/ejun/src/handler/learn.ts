@@ -15,6 +15,7 @@ import bus from '../service/bus';
 import { updateDomainRanking } from './domain';
 import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../lib/checkin';
 import { getModeBaseDocId, getModeDailyGoal } from '../lib/learnModePrefs';
+import TrainingModel from '../model/training';
 
 function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edges: BaseEdge[] } {
     const branchName = branch || 'main';
@@ -62,31 +63,57 @@ function cycleList<T>(arr: T[], length: number): T[] {
     return out;
 }
 
-async function getLearnBaseSelection(domainId: string, uid: number, priv: number) {
-    const bases = await BaseModel.getAll(domainId);
-    if (!bases.length) {
-        return { bases, selectedBase: null as BaseDoc | null, selectedBaseDocId: null as number | null };
+async function getLearnTrainingSelection(domainId: string, uid: number, priv: number) {
+    const trainings = await TrainingModel.getByDomain(domainId);
+    trainings.sort((a, b) => {
+        const ta = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
+        const tb = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+        return tb - ta;
+    });
+    if (!trainings.length) {
+        return {
+            trainings,
+            selectedTraining: null as any,
+            selectedTrainingDocId: null as string | null,
+            selectedBase: null as BaseDoc | null,
+        };
     }
     const dudoc = await learn.getUserLearnState(domainId, { _id: uid, priv }) as any;
-    const selectedBaseDocId = getModeBaseDocId(dudoc, 'learn');
-    const selectedBase = selectedBaseDocId !== null
-        ? (bases.find((b) => Number(b.docId) === selectedBaseDocId) || null)
+    const selectedTrainingDocId = dudoc?.learnTrainingDocId ? String(dudoc.learnTrainingDocId) : null;
+    const selectedTraining = selectedTrainingDocId
+        ? (trainings.find((t: any) => String(t.docId) === selectedTrainingDocId) || null)
         : null;
-    return { bases, selectedBase, selectedBaseDocId };
+    let selectedBase: BaseDoc | null = null;
+    if (selectedTraining?.baseDocId) {
+        selectedBase = await BaseModel.get(domainId, Number(selectedTraining.baseDocId));
+    } else {
+        const selectedBaseDocId = getModeBaseDocId(dudoc, 'learn');
+        if (selectedBaseDocId !== null) {
+            selectedBase = await BaseModel.get(domainId, Number(selectedBaseDocId));
+        }
+    }
+    return { trainings, selectedTraining, selectedTrainingDocId, selectedBase };
 }
 
 async function requireSelectedLearnBase(domainId: string, uid: number, priv: number): Promise<BaseDoc> {
-    const { selectedBase } = await getLearnBaseSelection(domainId, uid, priv);
+    const { selectedBase } = await getLearnTrainingSelection(domainId, uid, priv);
     if (!selectedBase) throw new ValidationError('Please select a base for learning first');
     return selectedBase;
 }
 
-async function saveLearnBaseForUser(
+async function saveLearnTrainingForUser(
     domainId: string,
     uid: number,
-    baseDocId: number,
+    trainingDocId: string,
     translate: (key: string) => string,
 ) {
+    if (!ObjectId.isValid(trainingDocId)) throw new ValidationError('Invalid trainingDocId');
+    const training = await TrainingModel.get(domainId, new ObjectId(trainingDocId));
+    if (!training) throw new NotFoundError('Training not found');
+    const baseDocId = Number((training as any).baseDocId);
+    if (!Number.isFinite(baseDocId) || baseDocId <= 0) {
+        throw new ValidationError('Invalid training base');
+    }
     const base = await BaseModel.get(domainId, baseDocId);
     if (base) {
         const branch = 'main';
@@ -105,6 +132,7 @@ async function saveLearnBaseForUser(
         }
     }
     await learn.setUserLearnState(domainId, uid, {
+        learnTrainingDocId: training.docId,
         learnBaseDocId: baseDocId,
         learnBranch: 'main',
         currentLearnSectionId: null,
@@ -428,18 +456,12 @@ class LearnHandler extends Handler {
     async postSetBase(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const body: any = this.request?.body || {};
-        const baseDocId = Number(body.baseDocId);
-        if (!Number.isFinite(baseDocId) || baseDocId <= 0) {
-            throw new ValidationError('Invalid baseDocId');
+        const trainingDocId = String(body.trainingDocId || '').trim();
+        if (!ObjectId.isValid(trainingDocId)) {
+            throw new ValidationError('Invalid trainingDocId');
         }
-
-        const bases = await BaseModel.getAll(finalDomainId);
-        const base = bases.find((item) => Number(item.docId) === baseDocId);
-        if (!base) throw new NotFoundError('Base not found');
-
-        await saveLearnBaseForUser(finalDomainId, this.user._id, baseDocId, (key: string) => this.translate(key));
-
-        this.response.body = { success: true, baseDocId };
+        await saveLearnTrainingForUser(finalDomainId, this.user._id, trainingDocId, (key: string) => this.translate(key));
+        this.response.body = { success: true, trainingDocId };
     }
 
     async postSetDailyGoal(domainId: string) {
@@ -539,16 +561,17 @@ class LearnHandler extends Handler {
     @param('sectionId', Types.String, true)
     async get(domainId: string, sectionId?: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
-        const { bases, selectedBase, selectedBaseDocId } = await getLearnBaseSelection(finalDomainId, this.user._id, this.user.priv);
+        const { trainings, selectedTraining, selectedTrainingDocId, selectedBase } = await getLearnTrainingSelection(finalDomainId, this.user._id, this.user.priv);
+        const learnTrainings = trainings.map((item: any) => ({ docId: String(item.docId), name: item.name || '', baseDocId: Number(item.baseDocId) || 0 }));
         let base = selectedBase;
-        if (!bases.length) {
+        if (!trainings.length) {
             this.response.template = 'learn.html';
             this.response.body = {
                 dag: [],
                 domainId: finalDomainId,
                 baseDocId: null,
-                learnBases: [],
-                selectedLearnBaseDocId: null,
+                learnTrainings: [],
+                selectedLearnTrainingDocId: null,
                 requireBaseSelection: false,
             };
             return;
@@ -563,8 +586,8 @@ class LearnHandler extends Handler {
                 currentSectionIndex: 0,
                 domainId: finalDomainId,
                 baseDocId: null,
-                learnBases: bases.map((item) => ({ docId: item.docId, title: item.title, bid: item.bid || '' })),
-                selectedLearnBaseDocId: selectedBaseDocId,
+                learnTrainings,
+                selectedLearnTrainingDocId: selectedTrainingDocId,
                 requireBaseSelection: true,
                 pendingNodeList: [],
                 completedSections: [],
@@ -623,8 +646,8 @@ class LearnHandler extends Handler {
                 completedSections: [],
                 completedCardsToday: [],
                 passedCardIds: [],
-                learnBases: bases.map((item) => ({ docId: item.docId, title: item.title, bid: item.bid || '' })),
-                selectedLearnBaseDocId: Number(base.docId),
+                learnTrainings,
+                selectedLearnTrainingDocId: selectedTraining ? String((selectedTraining as any).docId) : selectedTrainingDocId,
                 requireBaseSelection: false,
             };
             return;
@@ -911,8 +934,8 @@ class LearnHandler extends Handler {
             completedCardsToday,
             nextCard,
             passedCardIds: Array.from(passedCardIds),
-            learnBases: bases.map((item) => ({ docId: item.docId, title: item.title, bid: item.bid || '' })),
-            selectedLearnBaseDocId: Number(base.docId),
+            learnTrainings,
+            selectedLearnTrainingDocId: selectedTraining ? String((selectedTraining as any).docId) : selectedTrainingDocId,
             requireBaseSelection: false,
         };
     }
@@ -2778,15 +2801,15 @@ class LearnSectionsHandler extends Handler {
 class LearnBaseSelectHandler extends Handler {
     async get(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
-        const { bases, selectedBaseDocId } = await getLearnBaseSelection(finalDomainId, this.user._id, this.user.priv);
+        const { trainings, selectedTrainingDocId } = await getLearnTrainingSelection(finalDomainId, this.user._id, this.user.priv);
         const redirect = typeof this.request.query?.redirect === 'string' && this.request.query.redirect
             ? this.request.query.redirect
             : `/d/${finalDomainId}/learn`;
         this.response.template = 'learn_base_select.html';
         this.response.body = {
             domainId: finalDomainId,
-            bases,
-            selectedBaseDocId,
+            trainings: trainings.map((item: any) => ({ docId: String(item.docId), name: item.name || '', baseDocId: Number(item.baseDocId) || 0 })),
+            selectedTrainingDocId,
             redirect,
         };
     }
@@ -2794,16 +2817,13 @@ class LearnBaseSelectHandler extends Handler {
     async post(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const body: any = this.request?.body || {};
-        const baseDocId = Number(body.baseDocId);
-        if (!Number.isFinite(baseDocId) || baseDocId <= 0) throw new ValidationError('Invalid baseDocId');
+        const trainingDocId = String(body.trainingDocId || '').trim();
+        if (!ObjectId.isValid(trainingDocId)) throw new ValidationError('Invalid trainingDocId');
         const redirect = typeof body.redirect === 'string' && body.redirect
             ? body.redirect
             : `/d/${finalDomainId}/learn`;
 
-        const bases = await BaseModel.getAll(finalDomainId);
-        const base = bases.find((item) => Number(item.docId) === baseDocId);
-        if (!base) throw new NotFoundError('Base not found');
-        await saveLearnBaseForUser(finalDomainId, this.user._id, baseDocId, (key: string) => this.translate(key));
+        await saveLearnTrainingForUser(finalDomainId, this.user._id, trainingDocId, (key: string) => this.translate(key));
         this.response.redirect = redirect;
     }
 }
@@ -2811,7 +2831,7 @@ class LearnBaseSelectHandler extends Handler {
 export async function apply(ctx: Context) {
     ctx.Route('learn', '/learn', LearnHandler);
     ctx.Route('learn_set_base', '/learn/base', LearnHandler);
-    ctx.Route('learn_base_select', '/learn/base/select', LearnBaseSelectHandler);
+    ctx.Route('learn_base_select', '/learn/training/select', LearnBaseSelectHandler);
     ctx.Route('learn_set_daily_goal', '/learn/daily-goal', LearnHandler);
     ctx.Route('learn_sections', '/learn/sections', LearnSectionsHandler);
     ctx.Route('learn_section_edit', '/learn/section/edit', LearnSectionEditHandler, PRIV.PRIV_USER_PROFILE);
