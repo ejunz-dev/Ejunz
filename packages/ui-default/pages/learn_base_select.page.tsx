@@ -4,27 +4,27 @@ import { NamedPage } from 'vj/misc/Page';
 import { i18n, request } from 'vj/utils';
 import Notification from 'vj/components/notification';
 
-interface LearnBaseItem {
-  docId: number;
-  title?: string;
-  bid?: string | number;
+interface LearnTrainingItem {
+  docId: string;
+  name?: string;
+  baseDocId?: number;
 }
 
 function LearnBaseSelectPage() {
   const domainId = (window as any).UiContext?.domainId as string;
-  const bases = ((window as any).UiContext?.bases || []) as LearnBaseItem[];
-  const selectedBaseDocId = Number((window as any).UiContext?.selectedBaseDocId || 0) || null;
+  const trainings = ((window as any).UiContext?.trainings || []) as LearnTrainingItem[];
+  const selectedTrainingDocId = String((window as any).UiContext?.selectedTrainingDocId || '').trim() || null;
   const redirect = ((window as any).UiContext?.redirect as string) || `/d/${domainId}/learn`;
-  const [current, setCurrent] = useState<number | null>(selectedBaseDocId ?? (bases[0]?.docId ?? null));
+  const [current, setCurrent] = useState<string | null>(selectedTrainingDocId ?? (trainings[0]?.docId ?? null));
   const [saving, setSaving] = useState(false);
 
-  const empty = useMemo(() => !bases || bases.length === 0, [bases]);
+  const empty = useMemo(() => !trainings || trainings.length === 0, [trainings]);
 
   const handleSubmit = async () => {
     if (!current || saving) return;
     setSaving(true);
     try {
-      await request.post(`/d/${domainId}/learn/base`, { baseDocId: current });
+      await request.post(`/d/${domainId}/learn/base`, { trainingDocId: current });
       window.location.href = redirect;
     } catch (error: any) {
       const msg = error?.response?.data?.message ?? error?.response?.data?.error ?? error?.message ?? i18n('Failed to save');
@@ -65,22 +65,22 @@ function LearnBaseSelectPage() {
             boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.35)' : '0 8px 24px rgba(15,23,42,0.08)',
           }}
         >
-          <h1 style={{ margin: 0, marginBottom: 8, color: theme.textPrimary }}>{i18n('Select Learn Base')}</h1>
+          <h1 style={{ margin: 0, marginBottom: 8, color: theme.textPrimary }}>{i18n('Select Learn Training')}</h1>
           <div style={{ marginBottom: 16, color: theme.textSecondary, fontSize: 13 }}>
-            {i18n('Select one base as your learning source, then continue to learn.')}
+            {i18n('Select one training plan as your learning source, then continue to learn.')}
           </div>
           {empty ? (
             <div>
-              <div className="note" style={{ marginBottom: 12 }}>{i18n('No base available in this domain.')}</div>
-              <a className="button" href={`/d/${domainId}/base`}>{i18n('Go To Base List')}</a>
+              <div className="note" style={{ marginBottom: 12 }}>{i18n('No training available in this domain.')}</div>
+              <a className="button" href={`/d/${domainId}/training`}>{i18n('Go To Training List')}</a>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {bases.map((base) => {
-                const selected = Number(current) === Number(base.docId);
+              {trainings.map((training) => {
+                const selected = String(current) === String(training.docId);
                 return (
                   <label
-                    key={base.docId}
+                    key={training.docId}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -95,13 +95,13 @@ function LearnBaseSelectPage() {
                   >
                     <input
                       type="radio"
-                      name="baseDocId"
-                      value={base.docId}
+                      name="trainingDocId"
+                      value={training.docId}
                       checked={selected}
-                      onChange={() => setCurrent(base.docId)}
+                      onChange={() => setCurrent(training.docId)}
                     />
                     <span style={{ fontWeight: selected ? 600 : 500 }}>
-                      {base.bid ? `[${base.bid}] ` : ''}{base.title || i18n('Untitled base')}
+                      {training.name || i18n('Untitled training')}
                     </span>
                   </label>
                 );
@@ -150,8 +150,8 @@ function LearnBaseSelectPage() {
   );
 }
 
-const page = new NamedPage('learn_base_select', async () => {
-  const container = document.getElementById('learn-base-select-container');
+const page = new NamedPage(['learn_training_select', 'learn_base_select'], async () => {
+  const container = document.getElementById('learn-training-select-container');
   if (!container) return;
   ReactDOM.render(<LearnBaseSelectPage />, container);
 });
