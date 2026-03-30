@@ -121,6 +121,9 @@ class TrainingModel {
             planSources: TrainingPlanSource[];
             sections: TrainingSection[];
             dag?: TrainingDagNode[];
+            baseDocId?: number;
+            sourceBranch?: string;
+            targetBranch?: string;
         },
     ): Promise<TrainingDoc> {
         const now = new Date();
@@ -131,9 +134,9 @@ class TrainingModel {
             description: training.description,
             introQuote: training.introQuote,
             planSources: training.planSources,
-            baseDocId: first.baseDocId,
-            sourceBranch: first.sourceBranch,
-            targetBranch: first.targetBranch,
+            baseDocId: training.baseDocId ?? first.baseDocId,
+            sourceBranch: training.sourceBranch ?? first.sourceBranch,
+            targetBranch: training.targetBranch ?? first.targetBranch,
             dag: training.dag,
             sections: training.sections,
             enrollCount: training.enrollCount ?? 0,

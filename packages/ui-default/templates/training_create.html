@@ -8,7 +8,8 @@
                 <h1 class="section__title">{{ _('page.training.create.title') }}</h1>
             </div>
             <div class="section__body">
-                <p class="typo">{{ _('page.training.create.blurb') }}</p>
+                {% set hide_plan_editor = true %}
+                <p class="typo" id="tpe-training-blurb">{{ _('page.training.create.blurb_training') }}</p>
                 <form id="training-create-form" method="post" action="{{ url('training_create', domainId=domainId) }}" data-tpe-form data-preview-url="{{ url('training_preview', domainId=domainId) }}">
                     <div class="row">
                         <label class="field">
@@ -29,7 +30,13 @@
                         </label>
                     </div>
                     <script type="application/json" id="tpe-meta">{{ basesMetaJson | safe }}</script>
-                    <script type="application/json" id="tpe-initial-plan">[]</script>
+                    <script type="application/json" id="tpe-initial-plan">
+                    {% if bases and bases.length > 0 %}
+                    [{"baseDocId": {{ bases[0].docId }}, "targetBranch": "main"}]
+                    {% else %}
+                    []
+                    {% endif %}
+                    </script>
                     <script type="application/json" id="tpe-initial-sections">[]</script>
                     {% include "partials/training_plan_visual_editor.html" %}
                     <div class="row" style="margin-top:1rem;">
