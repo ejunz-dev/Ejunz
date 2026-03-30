@@ -83,6 +83,9 @@
     <div class="training-aside-actions" style="margin-top:1rem;">
       {% if handler.user._id and (training.owner == handler.user._id or handler.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) %}
       <a class="button" href="{{ url('training_edit', domainId=domainId, docId=training.docId) }}">{{ _('page.training.detail.edit') }}</a>
+      <form method="post" action="{{ url('training_delete', domainId=domainId, docId=training.docId) }}" style="display:inline;" onsubmit="return confirm('{{ _('page.training.edit.confirm_delete') | e }}');">
+        <button type="submit" class="button" style="margin-left:8px;">{{ _('page.training.btn.delete_plan') }}</button>
+      </form>
       {% endif %}
       <a class="button" href="{{ url('training_domain', domainId=domainId) }}">{{ _('page.training.btn.back_list') }}</a>
     </div>

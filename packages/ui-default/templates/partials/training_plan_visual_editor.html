@@ -2,8 +2,7 @@
 {% set tpe_i18n = {
   "selectBase": _("page.training.editor.select_base"),
   "baseLabel": _("page.training.editor.base_label"),
-  "sourceBranch": _("page.training.editor.source_branch"),
-  "targetBranch": _("page.training.editor.target_branch"),
+  "branchLabel": _("page.training.editor.target_branch"),
   "removeRow": _("page.training.editor.remove_row"),
   "dragSortSection": _("page.training.editor.drag_sort_section"),
   "chapterTitlePh": _("page.training.editor.chapter_title_ph"),
@@ -33,12 +32,14 @@
     <button type="button" class="button" id="tpe-add-src">{{ _('page.training.editor.add_base_group') }}</button>
     <input type="hidden" name="planSources" id="tpe-plan-sources" value="">
   </div>
+  {% if not hide_plan_editor %}
   <div class="row" style="margin-top:1rem;">
     <button type="button" class="button" id="tpe-load-preview">{{ _('page.training.editor.load_from_diff') }}</button>
     <button type="button" class="button" id="tpe-add-section">{{ _('page.training.editor.add_empty_section') }}</button>
     <span class="typo secondary" style="margin-left:8px;">{{ _('page.training.editor.load_hint') }}</span>
   </div>
-  <div id="tpe-sections-root"></div>
+  {% endif %}
+  <div id="tpe-sections-root" {% if hide_plan_editor %}style="display:none"{% endif %}></div>
   <input type="hidden" name="sections" id="tpe-sections" value="">
   <input type="hidden" name="dag" id="tpe-dag" value="">
   <script type="application/json" id="tpe-i18n">{{ tpe_i18n | json | safe }}</script>
@@ -110,31 +111,31 @@
   function baseOptionsHtml(selectedId) {
     var list = metaFiltered();
     var h = '<option value="">' + escHtml(I.selectBase) + '</option>';
+    var found = false;
     for (var i = 0; i < list.length; i++) {
       var m = list[i];
       var sel = String(m.docId) === String(selectedId) ? ' selected' : '';
+      if (String(m.docId) === String(selectedId)) found = true;
       h += '<option value="' + m.docId + '"' + sel + '>' + (String(m.title || m.docId).replace(/</g, '&lt;')) + ' (' + m.docId + ')</option>';
+    }
+    // If filtering/search hides the selectedId, still keep it selectable.
+    if (!found && selectedId !== undefined && selectedId !== null && String(selectedId).trim()) {
+      var sid = String(selectedId);
+      h += '<option value="' + escHtml(sid) + '" selected>' + escHtml(sid) + '</option>';
     }
     return h;
   }
 
-  function fillBranchSelects(row, docId) {
+  function fillBranchSelect(row, docId) {
     var br = branchesFor(docId);
-    var src = row.querySelector('.tpe-row-src');
-    var tgt = row.querySelector('.tpe-row-tgt');
-    var sv = src.value;
-    var tv = tgt.value;
-    src.innerHTML = '';
-    tgt.innerHTML = '';
+    var sel = row.querySelector('.tpe-row-branch');
+    var sv = sel.value;
+    sel.innerHTML = '';
     br.forEach(function (b) {
-      var o1 = document.createElement('option'); o1.value = b; o1.textContent = b; src.appendChild(o1);
-      var o2 = document.createElement('option'); o2.value = b; o2.textContent = b; tgt.appendChild(o2);
+      var o1 = document.createElement('option'); o1.value = b; o1.textContent = b; sel.appendChild(o1);
     });
-    if (sv && br.indexOf(sv) !== -1) src.value = sv;
-    else if (br.length) src.selectedIndex = 0;
-    if (tv && br.indexOf(tv) !== -1) tgt.value = tv;
-    else if (br.length >= 2) tgt.selectedIndex = 1;
-    else if (br.length) tgt.selectedIndex = 0;
+    if (sv && br.indexOf(sv) !== -1) sel.value = sv;
+    else if (br.length) sel.selectedIndex = 0;
   }
 
   function syncPlanHidden() {
@@ -145,8 +146,9 @@
       if (!b) return;
       arr.push({
         baseDocId: Number(b),
-        sourceBranch: row.querySelector('.tpe-row-src').value,
-        targetBranch: row.querySelector('.tpe-row-tgt').value
+        // training plan generation defaults to main -> selectedBranch.
+        sourceBranch: 'main',
+        targetBranch: row.querySelector('.tpe-row-branch').value,
       });
     });
     planHidden.value = JSON.stringify(arr);
@@ -157,27 +159,35 @@
     prefill = prefill || {};
     var row = document.createElement('div');
     row.className = 'tpe-src-row';
-    var sel = prefill.baseDocId != null ? String(prefill.baseDocId) : '';
+    // Default to the first Base (if available) to avoid required select being empty.
+    var sel = prefill.baseDocId != null ? String(prefill.baseDocId) : (meta[0] && meta[0].docId ? String(meta[0].docId) : '');
     row.innerHTML =
       '<label class="field"><span class="field__label">' + escHtml(I.baseLabel) + '</span><select class="select tpe-row-base" required>' + baseOptionsHtml(sel) + '</select></label>' +
-      '<label class="field"><span class="field__label">' + escHtml(I.sourceBranch) + '</span><select class="select tpe-row-src"></select></label>' +
-      '<label class="field"><span class="field__label">' + escHtml(I.targetBranch) + '</span><select class="select tpe-row-tgt"></select></label>' +
+      '<label class="field"><span class="field__label">' + escHtml(I.branchLabel || '') + '</span><select class="select tpe-row-branch"></select></label>' +
       '<button type="button" class="button tpe-row-remove">' + escHtml(I.removeRow) + '</button>';
     var bs = row.querySelector('.tpe-row-base');
     if (sel) bs.value = sel;
-    fillBranchSelects(row, bs.value || meta[0] && meta[0].docId);
-    if (prefill.sourceBranch) row.querySelector('.tpe-row-src').value = prefill.sourceBranch;
-    if (prefill.targetBranch) row.querySelector('.tpe-row-tgt').value = prefill.targetBranch;
+    var initBranch = prefill.targetBranch || prefill.branch || prefill.sourceBranch || 'main';
+    fillBranchSelect(row, bs.value || (meta[0] && meta[0].docId));
+    var branchEl = row.querySelector('.tpe-row-branch');
+    if (initBranch) {
+      // If initBranch isn't in option list, fallback to first option.
+      var ok = false;
+      for (var oi = 0; oi < branchEl.options.length; oi++) {
+        if (String(branchEl.options[oi].value) === String(initBranch)) { ok = true; break; }
+      }
+      if (ok) branchEl.value = initBranch;
+      else if (branchEl.options.length) branchEl.selectedIndex = 0;
+    }
     bs.addEventListener('change', function () {
-      fillBranchSelects(row, bs.value);
+      fillBranchSelect(row, bs.value);
       syncPlanHidden();
     });
     row.querySelector('.tpe-row-remove').addEventListener('click', function () {
       row.remove();
       syncPlanHidden();
     });
-    row.querySelector('.tpe-row-src').addEventListener('change', syncPlanHidden);
-    row.querySelector('.tpe-row-tgt').addEventListener('change', syncPlanHidden);
+    row.querySelector('.tpe-row-branch').addEventListener('change', syncPlanHidden);
     rowsEl.appendChild(row);
     syncPlanHidden();
   }
@@ -188,7 +198,7 @@
       var sel = row.querySelector('.tpe-row-base').value;
       row.querySelector('.tpe-row-base').innerHTML = baseOptionsHtml(sel);
       row.querySelector('.tpe-row-base').value = sel;
-      fillBranchSelects(row, sel);
+      fillBranchSelect(row, sel);
     });
   }
 
