@@ -5559,7 +5559,7 @@ class BaseGithubConfigHandler extends Handler {
  * Base WebSocket Connection Handler
  * Comment translated to English.
  */
-class BaseConnectionHandler extends ConnectionHandler {
+export class BaseConnectionHandler extends ConnectionHandler {
     private docId?: number;
     private bid?: string;
     private subscriptions: Array<{ dispose: () => void }> = [];

@@ -1,14 +1,27 @@
 import { Handler } from '@ejunz/framework';
 import { ObjectId } from 'mongodb';
 import { Context } from '../context';
+import { param, Types } from '../service/server';
 import { NotFoundError, PermissionError, ValidationError } from '../error';
 import * as document from '../model/document';
 import { PRIV } from '../model/builtin';
-import { BaseModel } from '../model/base';
+import { BaseModel, CardModel } from '../model/base';
 import TrainingModel, { listBranchesForBase } from '../model/training';
 import UserModel from '../model/user';
+import {
+    BaseBatchSaveHandler,
+    BaseCardHandler,
+    BaseConnectionHandler,
+    BaseDataHandler,
+    BaseEdgeHandler,
+    BaseEditorDocHandler,
+    BaseEditorUiPrefsHandler,
+    BaseExpandStateHandler,
+    BaseNodeHandler,
+    BaseSaveHandler,
+} from './base';
 import type {
-    BaseDoc, TrainingDagNode, TrainingProblemRow, TrainingPlanSource, TrainingSection, TrainingDoc,
+    BaseDoc, TrainingDagNode, TrainingPlanSource, TrainingSection, TrainingDoc,
 } from '../interface';
 
 function trainingDocIdFromParam(raw: string | undefined): ObjectId | null {
@@ -16,45 +29,11 @@ function trainingDocIdFromParam(raw: string | undefined): ObjectId | null {
     return new ObjectId(raw);
 }
 
-function parseSectionsPayload(raw: unknown): TrainingSection[] {
-    let data = raw;
-    if (typeof data === 'string') {
-        try {
-            data = JSON.parse(data);
-        } catch {
-            throw new ValidationError('sections');
-        }
-    }
-    if (!Array.isArray(data)) throw new ValidationError('sections');
-    return data.map((s: any, i: number) => {
-        const problems: TrainingProblemRow[] = Array.isArray(s.problems)
-            ? s.problems.map((p: any) => ({
-                title: typeof p.title === 'string' ? p.title : '',
-                source: typeof p.source === 'string' ? p.source : undefined,
-                pid: typeof p.pid === 'string' ? p.pid : undefined,
-                tried: typeof p.tried === 'number' ? p.tried : 0,
-                ac: typeof p.ac === 'number' ? p.ac : 0,
-                difficulty: typeof p.difficulty === 'number' ? p.difficulty : undefined,
-                nodeId: typeof p.nodeId === 'string' ? p.nodeId : undefined,
-            }))
-            : [];
-        const st = s.status;
-        const status = st === 'locked' || st === 'invalid' || st === 'open' ? st : 'open';
-        return {
-            title: typeof s.title === 'string' && s.title.trim() ? s.title.trim() : `Section ${i + 1}`,
-            description: typeof s.description === 'string' ? s.description : undefined,
-            status,
-            requireSectionIndexes: Array.isArray(s.requireSectionIndexes)
-                ? s.requireSectionIndexes.map((n: any) => Number(n)).filter((n: number) => !Number.isNaN(n))
-                : undefined,
-            problems,
-        };
-    });
-}
-
 async function loadBases(domainId: string): Promise<BaseDoc[]> {
     const rows = await document.getMulti(domainId, document.TYPE_BASE, {}).toArray() as BaseDoc[];
-    return rows.filter((b) => (b as any).type !== 'skill');
+    // Training mode may clone/edit both knowledge bases and skill bases.
+    // So we should not filter out `type === 'skill'` here.
+    return rows;
 }
 
 function parsePlanSourcesPayload(raw: unknown): TrainingPlanSource[] {
@@ -111,6 +90,24 @@ function parseDagPayload(raw: unknown): TrainingDagNode[] | undefined {
     return out;
 }
 
+function sanitizeBranchName(raw: string): string {
+    // Branch name is used as URL path segment. We keep it identical to training.name,
+    // but we must forbid '/' because it would break path segmentation.
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    if (s.includes('/')) throw new ValidationError('name');
+    return s;
+}
+
+function pickBranchData(base: BaseDoc, branch: string): { nodes: any[]; edges: any[] } {
+    const b = String(branch || 'main');
+    const bd: any = (base as any).branchData || {};
+    if (b === 'main') {
+        return { nodes: (base as any).nodes || [], edges: (base as any).edges || [] };
+    }
+    return { nodes: bd[b]?.nodes || [], edges: bd[b]?.edges || [] };
+}
+
 export class TrainingDomainHandler extends Handler<Context> {
     async get() {
         const trainings = await TrainingModel.getByDomain(this.domain._id);
@@ -152,8 +149,6 @@ export class TrainingCreateHandler extends Handler<Context> {
             baseDocId: baseRaw,
             sourceBranch,
             targetBranch,
-            sections: sectionsRaw,
-            dag: dagRaw,
         } = this.request.body || {};
         if (!name || typeof name !== 'string' || !name.trim()) {
             throw new ValidationError('name');
@@ -180,35 +175,135 @@ export class TrainingCreateHandler extends Handler<Context> {
             }];
         }
 
+        const baseByDocId = new Map<number, BaseDoc>();
         for (const s of planSources) {
             const b = await BaseModel.get(this.domain._id, s.baseDocId);
             if (!b) throw new ValidationError('planSources');
+            baseByDocId.set(s.baseDocId, b);
         }
 
-        let sections: TrainingSection[];
-        if (
-            sectionsRaw !== undefined
-            && sectionsRaw !== null
-            && String(sectionsRaw).trim() !== ''
-            && String(sectionsRaw).trim() !== '[]'
-        ) {
-            sections = parseSectionsPayload(sectionsRaw);
-        } else {
-            sections = await TrainingModel.buildSectionsFromPlanSources(this.domain._id, planSources);
-        }
-        if (!sections.length) {
-            sections = await TrainingModel.buildSectionsFromPlanSources(this.domain._id, planSources);
-        }
+        let mergedBaseDocId: number | null = null;
+        let mergedBranch = 'main';
+        const mergedBase = await BaseModel.create(
+            this.domain._id,
+            this.user._id,
+            String(name).trim(),
+            '',
+            undefined,
+            'main',
+            this.request.ip,
+            undefined,
+            this.domain.name,
+            'base',
+            true,
+        );
+        mergedBaseDocId = Number(mergedBase.docId);
 
-        let dag = parseDagPayload(dagRaw);
-        if (dag && dag.length) {
-            if (dag.length !== sections.length) {
-                throw new ValidationError('dag');
+            const mergedNodes: any[] = [];
+            const mergedEdges: any[] = [];
+            const rootId = `training_root_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+            mergedNodes.push({
+                id: rootId,
+                text: String(name).trim(),
+                level: 0,
+                expanded: true,
+            });
+
+            for (let i = 0; i < planSources.length; i++) {
+                const ps = planSources[i];
+                const base = baseByDocId.get(ps.baseDocId);
+                if (!base) throw new ValidationError('planSources');
+                const srcBranch = ps.targetBranch || ps.sourceBranch || 'main';
+                const src = pickBranchData(base, srcBranch);
+                const srcNodes = (src.nodes || []).map((n: any) => ({ ...n }));
+                const srcEdges = (src.edges || []).map((e: any) => ({ ...e }));
+
+                const idMap = new Map<string, string>();
+                for (const n of srcNodes) {
+                    const newId = `training_${i}_${String(n.id)}`;
+                    idMap.set(String(n.id), newId);
+                }
+
+                for (const n of srcNodes) {
+                    const oldId = String(n.id);
+                    const newId = idMap.get(oldId)!;
+                    const mergedParent = n.parentId && idMap.has(String(n.parentId))
+                        ? idMap.get(String(n.parentId))
+                        : rootId;
+                    mergedNodes.push({
+                        ...n,
+                        id: newId,
+                        parentId: mergedParent,
+                        level: Number(n.level ?? 0) + 1,
+                    });
+                }
+
+                for (const e of srcEdges) {
+                    const source = idMap.get(String(e.source));
+                    const target = idMap.get(String(e.target));
+                    if (!source || !target) continue;
+                    mergedEdges.push({
+                        ...e,
+                        id: `training_${i}_${String(e.id || `${e.source}_${e.target}`)}`,
+                        source,
+                        target,
+                    });
+                }
+
+                const incoming = new Set<string>(srcEdges.map((e: any) => String(e.target)));
+                const roots = srcNodes.filter((n: any) => !incoming.has(String(n.id)));
+                for (let r = 0; r < roots.length; r++) {
+                    const mapped = idMap.get(String(roots[r].id));
+                    if (!mapped) continue;
+                    mergedEdges.push({
+                        id: `training_edge_root_src_${i}_${r}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+                        source: rootId,
+                        target: mapped,
+                    });
+                }
+
+                for (const n of srcNodes) {
+                    const oldNodeId = String(n.id);
+                    const newNodeId = idMap.get(oldNodeId);
+                    if (!newNodeId) continue;
+                    const cards = await CardModel.getByNodeId(
+                        this.domain._id,
+                        ps.baseDocId,
+                        oldNodeId,
+                        srcBranch,
+                    );
+                    for (const c of cards) {
+                        const newCardDocId = await CardModel.create(
+                            this.domain._id,
+                            mergedBaseDocId,
+                            newNodeId,
+                            this.user._id,
+                            c.title,
+                            c.content,
+                            this.request.ip,
+                            c.problems,
+                            c.order,
+                            mergedBranch,
+                        );
+                        await CardModel.update(this.domain._id, newCardDocId, {
+                            cardFace: (c as any).cardFace,
+                            files: (c as any).files,
+                        } as any);
+                    }
+                }
             }
-            sections = TrainingModel.applyDagToSections(sections, dag);
-        } else {
-            dag = undefined;
-        }
+
+        await BaseModel.updateFull(this.domain._id, mergedBaseDocId, {
+            title: String(name).trim(),
+            nodes: mergedNodes,
+            edges: mergedEdges,
+            branchData: {
+                main: { nodes: mergedNodes, edges: mergedEdges },
+            },
+        });
+
+        const sections: TrainingSection[] = [];
+        const dag: TrainingDagNode[] | undefined = undefined;
 
         const training = await TrainingModel.add({
             domainId: this.domain._id,
@@ -219,9 +314,27 @@ export class TrainingCreateHandler extends Handler<Context> {
             sections,
             dag,
             owner: this.user._id,
+            baseDocId: mergedBaseDocId || undefined,
+            sourceBranch: mergedBranch,
+            targetBranch: mergedBranch,
         });
+        this.response.redirect = this.url('training_editor_branch', {
+            domainId: this.domain._id,
+            docId: String(mergedBaseDocId),
+            branch: encodeURIComponent(String(mergedBranch)),
+        });
+    }
+}
 
-        this.response.redirect = `/training/${training.docId}`;
+class TrainingEditorDocHandler extends BaseEditorDocHandler {
+    /** 与 BaseEditorDocHandler.get 一致：框架传入整包 args，需 @param 拆出 domainId + branch */
+    @param('branch', Types.String, true)
+    async get(domainId: string, branch?: string) {
+        await super.get(domainId, branch);
+        this.response.template = 'training_editor.html';
+        if (this.response.body) {
+            (this.response.body as any).editorMode = 'training';
+        }
     }
 }
 
@@ -278,6 +391,16 @@ export class TrainingDetailHandler extends Handler<Context> {
         const training = await TrainingModel.get(this.domain._id, docId);
         if (!training) throw new NotFoundError('training');
 
+        const baseDocId = Number((training as any).baseDocId);
+        if (!baseDocId) throw new ValidationError('baseDocId');
+        const branch = String((training as any).targetBranch || (training as any).sourceBranch || 'main');
+        this.response.redirect = this.url('training_editor_branch', {
+            domainId: this.domain._id,
+            docId: String(baseDocId),
+            branch: encodeURIComponent(String(branch)),
+        });
+        return;
+
         const owner = await UserModel.getById(this.domain._id, training.owner);
         const ownerDisplayName = owner?.uname ? owner.uname : `uid:${training.owner}`;
         const introQuote = training.introQuote || '任何一个伟大的目标，都有一个微不足道的开始。';
@@ -308,96 +431,27 @@ export class TrainingEditHandler extends Handler<Context> {
 
     async get() {
         const training = await this.prepareTraining();
-        const planSources = TrainingModel.resolvePlanSources(training);
-        const bases = await loadBases(this.domain._id);
-        const basesMeta = bases.map((b) => ({
-            docId: b.docId,
-            title: b.title || String(b.docId),
-            branches: listBranchesForBase(b),
-        }));
-        this.response.template = 'training_edit.html';
-        this.response.body = {
-            training,
+        const baseDocId = Number((training as any).baseDocId);
+        if (!baseDocId) throw new ValidationError('baseDocId');
+        const branch = String((training as any).targetBranch || (training as any).sourceBranch || 'main');
+        this.response.redirect = this.url('training_editor_branch', {
             domainId: this.domain._id,
-            basesMetaJson: JSON.stringify(basesMeta),
-            initialSectionsJson: JSON.stringify(training.sections || []),
-            initialPlanSourcesJson: JSON.stringify(planSources),
-            sectionsJson: JSON.stringify(training.sections || [], null, 2),
-            planSourcesJson: JSON.stringify(planSources, null, 2),
-            dagJson: training.dag?.length ? JSON.stringify(training.dag, null, 2) : '',
-        };
+            docId: String(baseDocId),
+            branch: encodeURIComponent(String(branch)),
+        });
+        return;
     }
 
     async post() {
         const training = await this.prepareTraining();
-        const {
-            name,
-            description,
-            introQuote,
-            enrollCount: enrollRaw,
-            sections: sectionsRaw,
-            planSources: planSourcesRaw,
-            dag: dagRaw,
-        } = this.request.body || {};
-        if (!name || typeof name !== 'string' || !name.trim()) {
-            throw new ValidationError('name');
-        }
-
-        let merged = sectionsRaw !== undefined && sectionsRaw !== ''
-            ? parseSectionsPayload(sectionsRaw)
-            : [...(training.sections || [])];
-
-        let planSources: TrainingPlanSource[] | undefined;
-        if (planSourcesRaw !== undefined && String(planSourcesRaw).trim() !== '') {
-            planSources = parsePlanSourcesPayload(planSourcesRaw);
-            for (const s of planSources) {
-                const b = await BaseModel.get(this.domain._id, s.baseDocId);
-                if (!b) throw new ValidationError('planSources');
-            }
-        }
-
-        let dagStored: TrainingDagNode[] | undefined;
-        if (dagRaw !== undefined && String(dagRaw).trim() !== '') {
-            const dag = parseDagPayload(dagRaw);
-            if (merged.length) {
-                if (!dag?.length || dag.length !== merged.length) {
-                    throw new ValidationError('dag');
-                }
-                dagStored = dag;
-                merged = TrainingModel.applyDagToSections(merged, dag);
-            } else {
-                dagStored = undefined;
-            }
-        } else if (dagRaw !== undefined && String(dagRaw).trim() === '') {
-            dagStored = undefined;
-        }
-
-        let enrollCount: number | undefined;
-        if (enrollRaw !== undefined && enrollRaw !== '') {
-            const n = Number(enrollRaw);
-            if (Number.isFinite(n) && n >= 0) enrollCount = Math.floor(n);
-        }
-        const update: Partial<TrainingDoc> = {
-            name: name.trim(),
-            description: typeof description === 'string' ? description : undefined,
-            introQuote: typeof introQuote === 'string' ? introQuote.trim() : undefined,
-        };
-        if ((sectionsRaw !== undefined && sectionsRaw !== '') || dagRaw !== undefined) {
-            update.sections = merged;
-        }
-        if (planSources?.length) {
-            update.planSources = planSources;
-            update.baseDocId = planSources[0].baseDocId;
-            update.sourceBranch = planSources[0].sourceBranch;
-            update.targetBranch = planSources[0].targetBranch;
-        }
-        if (dagRaw !== undefined) {
-            update.dag = dagStored;
-        }
-        if (enrollCount !== undefined) update.enrollCount = enrollCount;
-
-        await TrainingModel.update(this.domain._id, training.docId, update);
-        this.response.redirect = `/training/${training.docId}`;
+        const baseDocId = Number((training as any).baseDocId);
+        if (!baseDocId) throw new ValidationError('baseDocId');
+        const branch = String((training as any).targetBranch || (training as any).sourceBranch || 'main');
+        this.response.redirect = this.url('training_editor_branch', {
+            domainId: this.domain._id,
+            docId: String(baseDocId),
+            branch: encodeURIComponent(String(branch)),
+        });
     }
 }
 
@@ -420,7 +474,23 @@ export async function apply(ctx: Context) {
     ctx.Route('training_preview', '/training/preview', TrainingPreviewHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('training_create', '/training/create', TrainingCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('training_delete', '/training/:docId/delete', TrainingDeleteHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('training_edit', '/training/:docId/edit', TrainingEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('training_domain', '/training', TrainingDomainHandler);
-    ctx.Route('training_detail', '/training/:docId', TrainingDetailHandler);
+    ctx.Route('training_editor_branch', '/training/:docId/branch/:branch/editor', TrainingEditorDocHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('training_editor', '/training/:docId/editor', TrainingEditorDocHandler, PRIV.PRIV_USER_PROFILE);
+
+    // Training editor backend endpoints (reuse base handlers, only route prefix differs).
+    ctx.Route('training_data', '/training/data', BaseDataHandler);
+    ctx.Connection('training_connection', '/training/ws', BaseConnectionHandler);
+
+    ctx.Route('training_node_update', '/training/node/:nodeId', BaseNodeHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('training_node', '/training/node', BaseNodeHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('training_edge', '/training/edge', BaseEdgeHandler, PRIV.PRIV_USER_PROFILE);
+
+    ctx.Route('training_save', '/training/save', BaseSaveHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('training_batch_save', '/training/batch-save', BaseBatchSaveHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('training_expand_state', '/training/expand-state', BaseExpandStateHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('training_editor_ui_prefs', '/training/editor-ui-prefs', BaseEditorUiPrefsHandler, PRIV.PRIV_USER_PROFILE);
+
+    ctx.Route('training_card', '/training/card', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('training_card_update', '/training/card/:cardId', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
 }

@@ -1085,9 +1085,13 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (!socketUrl) return;
 
     let closed = false;
-    const apiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+    const apiPath = basePath === 'base/skill'
+      ? `/d/${domainId}/base/skill/data`
+      : basePath === 'training'
+        ? `/d/${domainId}/training/data`
+        : `/d/${domainId}/base/data`;
     const editorApiQs: Record<string, string> = {};
-    if (docId && basePath === 'base') editorApiQs.docId = docId;
+    if (docId) editorApiQs.docId = docId;
     const editorBranch = (window as any).UiContext?.currentBranch;
     if (editorBranch) editorApiQs.branch = editorBranch;
 
@@ -1346,7 +1350,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   const refetchEditorData = useCallback(async () => {
     const domainId = (window as any).UiContext?.domainId || 'system';
-    const apiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+    const apiPath = basePath === 'base/skill'
+      ? `/d/${domainId}/base/skill/data`
+      : basePath === 'training'
+        ? `/d/${domainId}/training/data`
+        : `/d/${domainId}/base/data`;
     try {
       const qs: Record<string, string> = {};
       if (docId && basePath === 'base') qs.docId = docId;
@@ -1759,6 +1767,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   const getBaseUrl = useCallback((path: string, docId?: string): string => {
     const domainId = (window as any).UiContext?.domainId || 'system';
     
+    // File endpoints are implemented only under original `/base/*` routes.
+    // In training editor we keep non-file endpoints under `/training/*`,
+    // but route file ops back to `/base/*` to avoid missing backend handlers.
+    if (basePath === 'training' && (path.includes('/files') || path.includes('/file/'))) {
+      return `/d/${domainId}/base${path}`;
+    }
     return `/d/${domainId}/${basePath}${path}`;
   }, [basePath]);
 
@@ -2787,7 +2801,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
             if (docId) fetchQs.docId = docId;
             const fb = (window as any).UiContext?.currentBranch;
             if (fb) fetchQs.branch = fb;
-            currentBase = await request.get(`/d/${domainId}/base/data`, fetchQs);
+            currentBase = await request.get(
+              basePath === 'base/skill'
+                ? `/d/${domainId}/base/skill/data`
+                : basePath === 'training'
+                  ? `/d/${domainId}/training/data`
+                  : `/d/${domainId}/base/data`,
+              fetchQs,
+            );
           } catch (error: any) {
           }
         }
@@ -3351,7 +3372,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           if (docId) postSaveQs.docId = docId;
           const psb = (window as any).UiContext?.currentBranch;
           if (psb) postSaveQs.branch = psb;
-          const response = await request.get(`/d/${domainId}/base/data`, postSaveQs);
+          const response = await request.get(
+            basePath === 'base/skill'
+              ? `/d/${domainId}/base/skill/data`
+              : basePath === 'training'
+                ? `/d/${domainId}/training/data`
+                : `/d/${domainId}/base/data`,
+            postSaveQs,
+          );
           setBase(response);
         } catch (error) {
         }
@@ -13162,11 +13190,12 @@ const getBaseUrl = (path: string, docId: string): string => {
   return `/d/${domainId}/base/${docId}${path}`;
 };
 
-const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_editor', 'base_skill_editor_branch', 'flag_editor', 'flag_editor_branch', 'collect_editor', 'collect_editor_branch'], async (pageName) => {
+const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_editor', 'base_skill_editor_branch', 'training_editor', 'training_editor_branch', 'flag_editor', 'flag_editor_branch', 'collect_editor', 'collect_editor_branch'], async (pageName) => {
   try {
     
     const isSkill = pageName === 'base_skill_editor' || pageName === 'base_skill_editor_branch';
-    const containerId = isSkill ? '#skill-editor-mode' : '#base-editor-mode';
+    const isTraining = pageName === 'training_editor' || pageName === 'training_editor_branch';
+    const containerId = isSkill ? '#skill-editor-mode' : (isTraining ? '#training-editor-mode' : '#base-editor-mode');
     const $container = $(containerId);
     if (!$container.length) {
       return;
@@ -13179,7 +13208,11 @@ const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_edi
     let initialData: BaseDoc;
     try {
       
-      const apiPath = isSkill ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
+      const apiPath = isSkill
+        ? `/d/${domainId}/base/skill/data`
+        : isTraining
+          ? `/d/${domainId}/training/data`
+          : `/d/${domainId}/base/data`;
       const initQs: Record<string, string> = {};
       if (docId) initQs.docId = docId;
       const initBranch = (window as any).UiContext?.currentBranch;
@@ -13195,8 +13228,9 @@ const page = new NamedPage(['base_editor', 'base_editor_branch', 'base_skill_edi
       return;
     }
 
+    const trainingBasePath = isTraining ? 'training' : (isSkill ? 'base/skill' : 'base');
     ReactDOM.render(
-      <BaseEditorMode docId={initialData.docId || ''} initialData={initialData} basePath={isSkill ? 'base/skill' : 'base'} />,
+      <BaseEditorMode docId={initialData.docId || ''} initialData={initialData} basePath={trainingBasePath} />,
       $container[0]
     );
   } catch (error: any) {
