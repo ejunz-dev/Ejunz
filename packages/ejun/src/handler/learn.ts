@@ -84,13 +84,11 @@ async function getLearnTrainingSelection(domainId: string, uid: number, priv: nu
         ? (trainings.find((t: any) => String(t.docId) === selectedTrainingDocId) || null)
         : null;
     let selectedBase: BaseDoc | null = null;
-    if (selectedTraining?.baseDocId) {
-        selectedBase = await BaseModel.get(domainId, Number(selectedTraining.baseDocId));
-    } else {
-        const selectedBaseDocId = getModeBaseDocId(dudoc, 'learn');
-        if (selectedBaseDocId !== null) {
-            selectedBase = await BaseModel.get(domainId, Number(selectedBaseDocId));
-        }
+    const selectedBaseDocId = selectedTraining
+        ? Number(TrainingModel.resolvePlanSources(selectedTraining as any)?.[0]?.baseDocId || 0)
+        : (getModeBaseDocId(dudoc, 'learn') ?? null);
+    if (selectedBaseDocId !== null && Number.isFinite(selectedBaseDocId) && selectedBaseDocId > 0) {
+        selectedBase = await BaseModel.get(domainId, Number(selectedBaseDocId));
     }
     return { trainings, selectedTraining, selectedTrainingDocId, selectedBase };
 }
@@ -110,13 +108,13 @@ async function saveLearnTrainingForUser(
     if (!ObjectId.isValid(trainingDocId)) throw new ValidationError('Invalid trainingDocId');
     const training = await TrainingModel.get(domainId, new ObjectId(trainingDocId));
     if (!training) throw new NotFoundError('Training not found');
-    const baseDocId = Number((training as any).baseDocId);
-    if (!Number.isFinite(baseDocId) || baseDocId <= 0) {
-        throw new ValidationError('Invalid training base');
-    }
+    const sources = TrainingModel.resolvePlanSources(training as any);
+    const primary = sources?.[0];
+    const baseDocId = Number(primary?.baseDocId || 0);
+    const branch = String(primary?.targetBranch || 'main') || 'main';
+    if (!Number.isFinite(baseDocId) || baseDocId <= 0) throw new ValidationError('Invalid training base');
     const base = await BaseModel.get(domainId, baseDocId);
     if (base) {
-        const branch = 'main';
         const branchData = getBranchData(base, branch);
         const nodes = branchData.nodes || [];
         const edges = branchData.edges || [];
@@ -134,7 +132,7 @@ async function saveLearnTrainingForUser(
     await learn.setUserLearnState(domainId, uid, {
         learnTrainingDocId: training.docId,
         learnBaseDocId: baseDocId,
-        learnBranch: 'main',
+        learnBranch: branch,
         currentLearnSectionId: null,
         currentLearnSectionIndex: 0,
         lessonMode: null,
@@ -562,7 +560,20 @@ class LearnHandler extends Handler {
     async get(domainId: string, sectionId?: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const { trainings, selectedTraining, selectedTrainingDocId, selectedBase } = await getLearnTrainingSelection(finalDomainId, this.user._id, this.user.priv);
-        const learnTrainings = trainings.map((item: any) => ({ docId: String(item.docId), name: item.name || '', baseDocId: Number(item.baseDocId) || 0 }));
+        const learnTrainings = trainings.map((item: any) => {
+            const first = TrainingModel.resolvePlanSources(item as any)?.[0];
+            return { docId: String(item.docId), name: item.name || '', baseDocId: Number(first?.baseDocId) || 0 };
+        });
+        // If the selected training has been deleted, clear selection so UI shows "pending selection".
+        if (selectedTrainingDocId && !selectedTraining) {
+            await learn.setUserLearnState(finalDomainId, this.user._id, {
+                learnTrainingDocId: null,
+                learnBaseDocId: null,
+                learnBranch: 'main',
+                currentLearnSectionId: null,
+                currentLearnSectionIndex: 0,
+            });
+        }
         let base = selectedBase;
         if (!trainings.length) {
             this.response.template = 'learn.html';
@@ -587,7 +598,7 @@ class LearnHandler extends Handler {
                 domainId: finalDomainId,
                 baseDocId: null,
                 learnTrainings,
-                selectedLearnTrainingDocId: selectedTrainingDocId,
+                selectedLearnTrainingDocId: selectedTraining ? String((selectedTraining as any).docId) : null,
                 requireBaseSelection: true,
                 pendingNodeList: [],
                 completedSections: [],

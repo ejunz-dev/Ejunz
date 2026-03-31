@@ -547,7 +547,7 @@ function LearnPage() {
         flexDirection: 'column',
         gap: '24px',
       }}>
-        {!requireBaseSelection && selectedLearnTraining && (
+        {(
           <div style={{
             padding: '12px 14px',
             borderRadius: '12px',
@@ -564,7 +564,9 @@ function LearnPage() {
                 {i18n('Current training (Learn)')}
               </div>
               <div style={{ fontSize: '14px', color: themeStyles.textPrimary, fontWeight: 600, wordBreak: 'break-word' }}>
-                {selectedLearnTraining.name || i18n('Untitled training')}
+                {selectedLearnTraining
+                  ? (selectedLearnTraining.name || i18n('Untitled training'))
+                  : i18n('Pending selection')}
               </div>
             </div>
             <a
@@ -580,7 +582,7 @@ function LearnPage() {
                 whiteSpace: 'nowrap',
               }}
             >
-              {i18n('Change')}
+              {i18n('Edit')}
             </a>
           </div>
         )}
