@@ -9,10 +9,6 @@ import { Collection } from 'mongodb';
 export const TYPE_MM: 70 = 70;
 export const TYPE_CARD: 71 = 71;
 
-/**
- * Base Model
- * Comment translated to English.
- */
 export class BaseModel {
     private static getRootNodeId(nodes: BaseNode[] = [], edges: BaseEdge[] = []): string | null {
         if (!nodes.length) return null;
@@ -32,14 +28,9 @@ export class BaseModel {
         return (Number(lastBase[0]?.docId) || 0) + 1;
     }
 
-    /**
-     * Comment translated to English.
-     * Comment translated to English.
-     */
     static async getByDomain(domainId: string): Promise<BaseDoc | null> {
-        // Comment translated to English.
         const result = await document.getMulti(domainId, TYPE_MM, {
-            type: { $ne: 'skill' }
+            type: { $nin: ['skill', 'training'] }
         }).limit(1).toArray();
         return result.length > 0 ? result[0] : null;
     }
@@ -52,7 +43,7 @@ export class BaseModel {
     }
 
     /**
-     * Comment translated to English.
+    
      */
     static async create(
         domainId: string,
@@ -68,17 +59,14 @@ export class BaseModel {
         forceNew?: boolean,
         bid?: string
     ): Promise<{ docId: number }> {
-        // Comment translated to English.
         if (type === 'skill') {
             const existing = await document.getMulti(domainId, TYPE_MM, { type: 'skill' }).limit(1).toArray();
             if (existing.length > 0) {
                 return { docId: existing[0].docId };
             }
         } else if (!forceNew) {
-            // Comment translated to English.
             const existing = await this.getByDomain(domainId);
             if (existing) {
-                // Comment translated to English.
                 if (title && title !== existing.title) {
                     await this.update(domainId, existing.docId, { title });
                 }
@@ -89,7 +77,6 @@ export class BaseModel {
             }
         }
 
-        // Comment translated to English.
         const rootNodeText = title || domainName || '根节点';
         const rootNode: BaseNode = {
             id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -105,7 +92,7 @@ export class BaseModel {
             domainId,
             title: title || '未命名思维导图',
             content: content || '',
-            type: type || 'base', // Comment translated to English.
+            type: type || 'base',
             owner,
             bid: bid ? String(bid).trim() : undefined,
             nodes: [rootNode],
@@ -126,7 +113,7 @@ export class BaseModel {
             ip,
             rpid,
             branch,
-            parentId, // Comment translated to English.
+            parentId,
         };
 
         const nextDocId = await this.generateNextDocId(domainId);
@@ -144,10 +131,7 @@ export class BaseModel {
         return { docId: Number(docId) };
     }
 
-    /**
-     * Comment translated to English.
-     */
-    static async get(domainId: string, docId: number | ObjectId): Promise<BaseDoc | null> {
+    static async get(domainId: string, docId: number): Promise<BaseDoc | null> {
         return await document.get(domainId, TYPE_MM, docId);
     }
 
@@ -159,42 +143,30 @@ export class BaseModel {
         return list.length > 0 ? (list[0] as BaseDoc) : null;
     }
 
-    /**
-     * Comment translated to English.
-     */
     static async getAll(domainId: string, query?: Filter<BaseDoc>): Promise<BaseDoc[]> {
-        const filter: Filter<BaseDoc> = { type: { $ne: 'skill' } };
+        const filter: Filter<BaseDoc> = { type: { $nin: ['skill', 'training'] } };
         const merged = query ? { ...filter, ...query } : filter;
         return await document.getMulti(domainId, TYPE_MM, merged).toArray();
     }
 
-    /**
-     * Non-skill bases (knowledge graphs) by latest update time.
-     */
     static async getRecentUpdated(domainId: string, limit: number = 10): Promise<BaseDoc[]> {
         const list = await document
-            .getMulti(domainId, TYPE_MM, { type: { $ne: 'skill' } } as Filter<BaseDoc>)
+            .getMulti(domainId, TYPE_MM, { type: { $nin: ['skill', 'training'] } } as Filter<BaseDoc>)
             .sort({ updateAt: -1 })
             .limit(limit)
             .toArray();
         return list as BaseDoc[];
     }
 
-    /**
-     * Comment translated to English.
-     */
     static async getByRepo(domainId: string, rpid: number, branch?: string): Promise<BaseDoc[]> {
-        const query: any = { rpid };
+        const query: any = { rpid, type: { $nin: ['skill', 'training'] } };
         if (branch) query.branch = branch;
         return await document.getMulti(domainId, TYPE_MM, query).toArray();
     }
 
-    /**
-     * Comment translated to English.
-     */
     static async update(
         domainId: string,
-        docId: number | ObjectId,
+        docId: number,
         updates: Partial<Pick<BaseDoc, 'title' | 'content' | 'layout' | 'viewport' | 'theme' | 'files' | 'parentId' | 'domainPosition'>>
     ): Promise<void> {
         const updatePayload: any = {
@@ -230,12 +202,9 @@ export class BaseModel {
         await document.set(domainId, TYPE_MM, docId, updatePayload);
     }
 
-    /**
-     * Comment translated to English.
-     */
     static async updateNode(
         domainId: string,
-        docId: number | ObjectId,
+        docId: number,
         nodeId: string,
         updates: Partial<BaseNode>,
         branch?: string
@@ -287,14 +256,9 @@ export class BaseModel {
         await document.set(domainId, TYPE_MM, docId, updatePayload);
     }
 
-    /**
-     * Comment translated to English.
-     * Comment translated to English.
-     * Comment translated to English.
-     */
     static async addNode(
         domainId: string,
-        docId: number | ObjectId,
+        docId: number,
         node: Omit<BaseNode, 'id'>,
         parentId?: string,
         branch?: string,
@@ -303,26 +267,21 @@ export class BaseModel {
         const base = await this.get(domainId, docId);
         if (!base) throw new Error('Base not found');
 
-        // Comment translated to English.
         const branchName = branch || (base as any).currentBranch || (base as any).branch || 'main';
         const branchData: {
             [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] };
         } = (base as any).branchData || {};
 
-        // Comment translated to English.
         let nodes: BaseNode[];
         let edges: BaseEdge[];
         
-        // Comment translated to English.
         if (branchData[branchName] && branchData[branchName].nodes) {
             nodes = branchData[branchName].nodes;
             edges = branchData[branchName].edges || [];
         } else if (branchName === 'main') {
-            // Comment translated to English.
             nodes = base.nodes || [];
             edges = base.edges || [];
         } else {
-            // Comment translated to English.
             nodes = [];
             edges = [];
         }
@@ -333,7 +292,6 @@ export class BaseModel {
             id: newNodeId,
         };
 
-        // Comment translated to English.
         if (parentId) {
             const parentNode = nodes.find(n => n.id === parentId);
             if (!parentNode) throw new Error(`Parent node not found: ${parentId}. Branch: ${branchName}`);
@@ -341,7 +299,6 @@ export class BaseModel {
             newNode.parentId = parentId;
             newNode.level = (parentNode.level || 0) + 1;
 
-            // Comment translated to English.
             if (!parentNode.children) parentNode.children = [];
             parentNode.children.push(newNodeId);
 
@@ -353,16 +310,13 @@ export class BaseModel {
 
         nodes.push(newNode);
 
-        // Comment translated to English.
         let newEdgeId: string | undefined;
         if (edgeSourceId) {
-            // Comment translated to English.
             const sourceExists = nodes.some(n => n.id === edgeSourceId);
             if (!sourceExists) {
                 throw new Error(`Source node not found: ${edgeSourceId}. Branch: ${branchName}`);
             }
 
-            // Comment translated to English.
             const existingEdge = edges.find(
                 e => e.source === edgeSourceId && e.target === newNodeId
             );
@@ -370,7 +324,6 @@ export class BaseModel {
             if (existingEdge) {
                 newEdgeId = existingEdge.id;
             } else {
-                // Comment translated to English.
                 newEdgeId = `edge_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                 const newEdge: BaseEdge = {
                     id: newEdgeId,
@@ -381,7 +334,6 @@ export class BaseModel {
             }
         }
 
-        // Comment translated to English.
         if (!branchData[branchName]) {
             branchData[branchName] = { nodes: [], edges: [] };
         }
@@ -390,7 +342,6 @@ export class BaseModel {
             edges: edges,
         };
 
-        // Comment translated to English.
         const updateData: any = {
             branchData: branchData,
             updateAt: new Date(),
@@ -406,10 +357,7 @@ export class BaseModel {
         return { nodeId: newNodeId, edgeId: newEdgeId };
     }
 
-    /**
-     * Comment translated to English.
-     */
-    static async deleteNode(domainId: string, docId: number | ObjectId, nodeId: string, branch?: string): Promise<void> {
+    static async deleteNode(domainId: string, docId: number, nodeId: string, branch?: string): Promise<void> {
         const actualDomainId = typeof domainId === 'string' ? domainId : String(domainId);
         const base = await this.get(actualDomainId, docId);
         if (!base) {
@@ -560,68 +508,54 @@ export class BaseModel {
         await document.set(actualDomainId, TYPE_MM, docId, updateData);
     }
 
-    /**
-     * Comment translated to English.
-     */
     static async addEdge(
         domainId: string,
-        docId: number | ObjectId,
+        docId: number,
         edge: Omit<BaseEdge, 'id'>,
         branch?: string
     ): Promise<string> {
         let base = await this.get(domainId, docId);
         if (!base) {
-            // Comment translated to English.
-            await new Promise(resolve => setTimeout(resolve, 100)); // Comment translated to English.
+            await new Promise(resolve => setTimeout(resolve, 100));
             base = await this.get(domainId, docId);
             if (!base) {
-                // Comment translated to English.
-                await new Promise(resolve => setTimeout(resolve, 100)); // Comment translated to English.
+                await new Promise(resolve => setTimeout(resolve, 100));
                 base = await this.get(domainId, docId);
                 if (!base) {
-                    // Comment translated to English.
                     throw new Error('Base not found');
                 }
             }
         }
 
-        // Comment translated to English.
         const branchName = branch || (base as any).currentBranch || (base as any).branch || 'main';
         const branchData: {
             [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] };
         } = (base as any).branchData || {};
 
-        // Comment translated to English.
         let nodes: BaseNode[];
         let edges: BaseEdge[];
         
-        // Comment translated to English.
         if (branchData[branchName] && branchData[branchName].nodes) {
             nodes = branchData[branchName].nodes;
             edges = branchData[branchName].edges || [];
         } else if (branchName === 'main') {
-            // Comment translated to English.
             nodes = base.nodes || [];
             edges = base.edges || [];
         } else {
-            // Comment translated to English.
             nodes = [];
             edges = [];
         }
 
-        // Comment translated to English.
         const sourceExists = nodes.some(n => n.id === edge.source);
         const targetExists = nodes.some(n => n.id === edge.target);
         if (!sourceExists || !targetExists) {
             throw new Error(`Source or target node not found. Source: ${edge.source}, Target: ${edge.target}, Branch: ${branchName}`);
         }
 
-        // Comment translated to English.
         const existingEdge = edges.find(
             e => e.source === edge.source && e.target === edge.target
         );
         if (existingEdge) {
-            // Comment translated to English.
             if (!branchData[branchName]) {
                 branchData[branchName] = { nodes: nodes, edges: edges };
             }
@@ -661,7 +595,6 @@ export class BaseModel {
 
         edges.push(newEdge);
 
-        // Comment translated to English.
         if (!branchData[branchName]) {
             branchData[branchName] = { nodes: nodes, edges: edges };
         } else {
@@ -671,7 +604,6 @@ export class BaseModel {
             };
         }
 
-        // Comment translated to English.
         const updateData: any = {
             branchData: branchData,
             updateAt: new Date(),
@@ -687,10 +619,7 @@ export class BaseModel {
         return newEdgeId;
     }
 
-    /**
-     * Comment translated to English.
-     */
-    static async deleteEdge(domainId: string, docId: number | ObjectId, edgeId: string, branch?: string): Promise<void> {
+    static async deleteEdge(domainId: string, docId: number, edgeId: string, branch?: string): Promise<void> {
         const base = await this.get(domainId, docId);
         if (!base) throw new Error('Base not found');
 
@@ -732,18 +661,14 @@ export class BaseModel {
         await document.set(domainId, TYPE_MM, docId, updatePayload);
     }
 
-    /**
-     * Comment translated to English.
-     */
     static async updateNodes(
         domainId: string,
-        docId: number | ObjectId,
+        docId: number,
         nodes: BaseNode[]
     ): Promise<void> {
         const base = await this.get(domainId, docId);
         if (!base) throw new Error('Base not found');
 
-        // Comment translated to English.
         const nodeIds = new Set(base.nodes.map(n => n.id));
         for (const node of nodes) {
             if (!nodeIds.has(node.id)) {
@@ -751,7 +676,6 @@ export class BaseModel {
             }
         }
 
-        // Comment translated to English.
         const nodeMap = new Map(nodes.map(n => [n.id, n]));
         base.nodes = base.nodes.map(n => nodeMap.get(n.id) || n);
 
@@ -761,18 +685,14 @@ export class BaseModel {
         });
     }
 
-    /**
-     * Comment translated to English.
-     */
     static async updateEdges(
         domainId: string,
-        docId: number | ObjectId,
+        docId: number,
         edges: BaseEdge[]
     ): Promise<void> {
         const base = await this.get(domainId, docId);
         if (!base) throw new Error('Base not found');
 
-        // Comment translated to English.
         const edgeIds = new Set(base.edges.map(e => e.id));
         for (const edge of edges) {
             if (!edgeIds.has(edge.id)) {
@@ -786,26 +706,17 @@ export class BaseModel {
         });
     }
 
-    /**
-     * Comment translated to English.
-     */
-    static async delete(domainId: string, docId: number | ObjectId): Promise<void> {
+    static async delete(domainId: string, docId: number): Promise<void> {
         await document.deleteOne(domainId, TYPE_MM, docId);
     }
 
-    /**
-     * Comment translated to English.
-     */
-    static async incrementViews(domainId: string, docId: number | ObjectId): Promise<void> {
+    static async incrementViews(domainId: string, docId: number): Promise<void> {
         await document.inc(domainId, TYPE_MM, docId, 'views', 1);
     }
 
-    /**
-     * Comment translated to English.
-     */
     static async updateFull(
         domainId: string,
-        docId: number | ObjectId,
+        docId: number,
         updates: {
             nodes?: BaseNode[];
             edges?: BaseEdge[];
@@ -826,20 +737,11 @@ export class BaseModel {
 }
 
 export function apply(ctx: Context) {
-    // Comment translated to English.
     (ctx as any).on('ready', async () => {
-        // Comment translated to English.
     });
 }
 
-/**
- * Card Model
- * Comment translated to English.
- */
 export class CardModel {
-    /**
-     * Comment translated to English.
-     */
     static async generateNextCid(domainId: string, baseDocId: number | ObjectId, nodeId: string): Promise<number> {
         const lastCard = await document.getMulti(domainId, TYPE_CARD, { baseDocId, nodeId })
             .sort({ cid: -1 })
@@ -849,10 +751,6 @@ export class CardModel {
         return (lastCard[0]?.cid || 0) + 1;
     }
 
-    /**
-     * Create a card.
-     * @param order Optional; if omitted, uses max(order)+1 for the node so new cards sort last when order is missing.
-     */
     static async create(
         domainId: string,
         baseDocId: number | ObjectId,
@@ -915,16 +813,10 @@ export class CardModel {
         return docId;
     }
 
-    /**
-     * Comment translated to English.
-     */
     static async get(domainId: string, docId: ObjectId): Promise<CardDoc | null> {
         return await document.get(domainId, TYPE_CARD, docId);
     }
 
-    /**
-     * Comment translated to English.
-     */
     static async getRecentUpdated(domainId: string, limit: number = 10): Promise<CardDoc[]> {
         const list = await document.getMulti(domainId, TYPE_CARD, {})
             .sort({ updateAt: -1 })
@@ -933,9 +825,6 @@ export class CardModel {
         return list as CardDoc[];
     }
 
-    /**
-     * Comment translated to English.
-     */
     static async getByNodeId(domainId: string, baseDocId: number | ObjectId, nodeId: string, branch?: string): Promise<CardDoc[]> {
         const filter: any = { baseDocId, nodeId };
         if (branch) {
@@ -951,9 +840,6 @@ export class CardModel {
         return cards;
     }
 
-    /**
-     * Comment translated to English.
-     */
     static async getByCid(
         domainId: string,
         nodeId: string,
@@ -971,9 +857,6 @@ export class CardModel {
         return cards[0] || null;
     }
 
-    /**
-     * Comment translated to English.
-     */
     static async update(
         domainId: string,
         docId: ObjectId,
@@ -985,16 +868,10 @@ export class CardModel {
         });
     }
 
-    /**
-     * Comment translated to English.
-     */
     static async delete(domainId: string, docId: ObjectId): Promise<void> {
         await document.deleteOne(domainId, TYPE_CARD, docId);
     }
 
-    /**
-     * Comment translated to English.
-     */
     static async incrementViews(domainId: string, docId: ObjectId): Promise<void> {
         await document.inc(domainId, TYPE_CARD, docId, 'views', 1);
     }

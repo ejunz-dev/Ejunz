@@ -1122,7 +1122,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
                     : prev.contributionDetails,
                 }));
               }
-              // Comment translated to English.
               request.get(apiPath, editorApiQs).then((newData: any) => {
                 if (closed || !newData || (!newData.nodes && !newData.edges)) return;
                 const nextNodes = newData.nodes ?? [];
@@ -2227,7 +2226,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       return;
     }
     
-    // Comment translated to English.
     if (selectedItems.size > 0) setSelectedItems(new Set());
     
     
@@ -2266,7 +2264,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (!skipUrlUpdate && file.type === 'card' && file.cardId) {
       const urlParams = new URLSearchParams(window.location.search);
       urlParams.set('cardId', String(file.cardId));
-      urlParams.delete('nodeId'); // Comment translated to English.
+      urlParams.delete('nodeId');
       const newUrl = window.location.pathname + '?' + urlParams.toString();
       window.history.pushState({ cardId: file.cardId }, '', newUrl);
     }
@@ -2409,7 +2407,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
   }, [selectedFile?.id, explorerMode]);
 
   /** Append an empty single-choice row; edit in place, then save with the rest of pending changes. */
-  /** Append an empty single-choice row; edit in place, then save with pending changes. */
 
   const handleAddBlankProblem = useCallback(() => {
     if (!selectedFile || selectedFile.type !== 'card') {
@@ -2495,7 +2492,6 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
     
     let allChanges = new Map(pendingChanges);
-    // Only merge current editor content into allChanges when the selected item is a card. When a node is selected the editor is never loaded with node text (still shows card content); merging that would send card content as node.text and overwrite the parent node title on save.
     if (selectedFile && selectedFile.type === 'card' && editorInstance) {
       try {
         const currentContent = editorInstance.value() || fileContent;
@@ -8313,11 +8309,9 @@ ${editorShellPath}
         >
           {explorerMode === 'tree' ? (
             fileTree.map((file, index) => {
-            // Comment translated to English.
             const isSelected = isMultiSelectMode
               ? selectedItems.has(file.id)
               : (selectedFile?.id === file.id);
-            // Comment translated to English.
             const selectedIndex = selectedFile != null ? fileTree.findIndex(f => f.id === selectedFile.id) : -1;
             const isHighlighted = !isMultiSelectMode && selectedFile != null && selectedFile.id === file.id && selectedIndex === index;
             const isDragOver = dragOverFile?.id === file.id;
@@ -9071,7 +9065,7 @@ ${editorShellPath}
                   </div>
                 )}
                 
-                {/* Comment translated to English. */}
+                {/* */}
                 {pendingRenames.size > 0 && (
                   <div>
                     <div style={{ fontWeight: '500', marginBottom: '4px' }}>重命名 ({pendingRenames.size})</div>
@@ -11773,7 +11767,7 @@ ${editorShellPath}
           )}
         </div>
 
-        {/* Comment translated to English. */}
+        {/* */}
         {(() => {
           if (nodesIntentOnly) {
             const g = flagGoalProgress.goal;
