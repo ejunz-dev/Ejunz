@@ -926,7 +926,7 @@ function getSubtreeIntentRows(
 }
 
 type SavedEditorLayout = {
-  explorerMode: 'tree' | 'pending' | 'branches' | 'git';
+  explorerMode: 'tree' | 'pending' | 'branches' | 'git' | 'training';
   nodeSidePanelTab: 'intent' | 'files';
   rightPanelOpen: boolean;
   aiBottomOpen: boolean;
@@ -938,7 +938,7 @@ type SavedEditorLayout = {
 function readSavedBaseEditorUiPrefs(editorAiHidden: boolean): SavedEditorLayout {
   const raw =
     (typeof window !== 'undefined' && (window as any).UiContext?.baseEditorUiPrefs) || null;
-  const modes = new Set(['tree', 'pending', 'branches', 'git']);
+  const modes = new Set(['tree', 'pending', 'branches', 'git', 'training']);
   const tabs = new Set(['intent', 'files']);
 
   let explorerMode: SavedEditorLayout['explorerMode'] = 'tree';
@@ -1052,9 +1052,59 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     };
   });
 
-  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git'>(
+  const [explorerMode, setExplorerMode] = useState<'tree' | 'pending' | 'branches' | 'git' | 'training'>(
     () => savedEditorLayout.explorerMode,
   );
+  const [trainingManageLoading, setTrainingManageLoading] = useState(false);
+  const [trainingManageList, setTrainingManageList] = useState<Array<{
+    docId: string;
+    name: string;
+    targetBranch?: string;
+    baseDocId?: number;
+    planSources?: Array<{ baseDocId: number; sourceBranch: string; targetBranch: string }>;
+  }>>([]);
+  const [trainingManageDoc, setTrainingManageDoc] = useState<any>(null);
+
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      if (!(explorerMode === 'training' && basePath === 'training' && docId)) return;
+      setTrainingManageLoading(true);
+      try {
+        const branch = String((window as any).UiContext?.currentBranch || 'main');
+        const urlParams = new URLSearchParams(window.location.search);
+        const trainingDocId = urlParams.get('trainingDocId') || '';
+        if (trainingDocId) {
+          const r2 = await request.get(getBaseUrl(`/get?docId=${encodeURIComponent(trainingDocId)}`));
+          if (!alive) return;
+          setTrainingManageDoc((r2 as any)?.training || null);
+          const sources = Array.isArray((r2 as any)?.training?.planSources) ? (r2 as any).training.planSources : [];
+          setTrainingManageList([{
+            docId: String((r2 as any)?.training?.docId || trainingDocId),
+            name: String((r2 as any)?.training?.name || trainingDocId),
+            targetBranch: String((r2 as any)?.training?.targetBranch || branch),
+            baseDocId: Number((r2 as any)?.training?.baseDocId) || undefined,
+            planSources: sources,
+          }]);
+          return;
+        }
+        const r = await request.get(getBaseUrl(`/for-base?docId=${encodeURIComponent(String(docId))}&branch=${encodeURIComponent(branch)}`));
+        if (!alive) return;
+        const list = Array.isArray((r as any)?.trainings) ? (r as any).trainings : [];
+        setTrainingManageList(list);
+        setTrainingManageDoc(null);
+      } catch {
+        if (!alive) return;
+        setTrainingManageList([]);
+        setTrainingManageDoc(null);
+      } finally {
+        if (!alive) return;
+        setTrainingManageLoading(false);
+      }
+    }
+    load();
+    return () => { alive = false; };
+  }, [explorerMode, basePath, docId]);
   const [gitRemoteStatus, setGitRemoteStatus] = useState<any>(null);
   const [gitStatusLoading, setGitStatusLoading] = useState(false);
   const [gitRepoDraft, setGitRepoDraft] = useState(() => String((window as any).UiContext?.githubRepo || ''));
@@ -1093,7 +1143,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     const editorApiQs: Record<string, string> = {};
     if (docId) editorApiQs.docId = docId;
     const editorBranch = (window as any).UiContext?.currentBranch;
-    if (editorBranch) editorApiQs.branch = editorBranch;
+    if (basePath !== 'training' && editorBranch) editorApiQs.branch = editorBranch;
 
     const connect = async () => {
       try {
@@ -1278,11 +1328,11 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (migrationResult.needsSave) {
       const saveMigration = async () => {
         try {
-          const migrationNodes = migrationResult.base.nodes.filter(n => !n.id.startsWith('temp-node-'));
-          const migrationEdges = migrationResult.base.edges.filter(e => 
-            !e.source.startsWith('temp-node-') && 
-            !e.target.startsWith('temp-node-') &&
-            !e.id.startsWith('temp-edge-')
+          const migrationNodes = migrationResult.base.nodes.filter(n => !String((n as any).id ?? (n as any)._id ?? '').startsWith('temp-node-'));
+          const migrationEdges = migrationResult.base.edges.filter(e =>
+            !String((e as any).source ?? '').startsWith('temp-node-') &&
+            !String((e as any).target ?? '').startsWith('temp-node-') &&
+            !String((e as any).id ?? (e as any)._id ?? '').startsWith('temp-edge-')
           );
           
           await request.post(getBaseUrl('/save'), {
@@ -1907,14 +1957,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       
       
       
-      if (file.id.startsWith('temp-') || 
-          (file.type === 'card' && file.cardId && file.cardId.startsWith('temp-')) ||
-          (file.type === 'card' && file.id.startsWith('card-temp-')) ||
+      const fid = String((file as any).id ?? '');
+      const fcid = String((file as any).cardId ?? '');
+      if (fid.startsWith('temp-') || 
+          (file.type === 'card' && fcid && fcid.startsWith('temp-')) ||
+          (file.type === 'card' && fid.startsWith('card-temp-')) ||
           Array.from(pendingCreatesRef.current.values()).some(c => {
             
-            if (file.type === 'node' && c.type === 'node' && c.tempId === file.id) return true;
+            if (file.type === 'node' && c.type === 'node' && c.tempId === fid) return true;
             
-            if (file.type === 'card' && c.type === 'card' && file.id === `card-${c.tempId}`) return true;
+            if (file.type === 'card' && c.type === 'card' && fid === `card-${c.tempId}`) return true;
             return false;
           })) return true;
       
@@ -8251,27 +8303,51 @@ ${editorShellPath}
                 <path d="M6 6h4M6 8.5h4M6 11h3" />
               </svg>
             </button>
-            <button
-              onClick={() => setExplorerMode('branches')}
-              style={{
-                width: '34px',
-                height: '34px',
-                border: `1px solid ${themeStyles.borderSecondary}`,
-                borderRadius: '3px',
-                backgroundColor: explorerMode === 'branches' ? themeStyles.bgButtonActive : themeStyles.bgButton,
-                color: explorerMode === 'branches' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
-                cursor: 'pointer',
-                flexShrink: 0,
-              }}
-              title="查看分支并跳转"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <circle cx="4" cy="3.5" r="1.5" />
-                <circle cx="4" cy="12.5" r="1.5" />
-                <circle cx="12" cy="8" r="1.5" />
-                <path d="M5.5 4.3L10.5 7.2M5.5 11.7l5-2.9" />
-              </svg>
-            </button>
+            {basePath !== 'training' ? (
+              <button
+                onClick={() => setExplorerMode('branches')}
+                style={{
+                  width: '34px',
+                  height: '34px',
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  borderRadius: '3px',
+                  backgroundColor: explorerMode === 'branches' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                  color: explorerMode === 'branches' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+                title="查看分支并跳转"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <circle cx="4" cy="3.5" r="1.5" />
+                  <circle cx="4" cy="12.5" r="1.5" />
+                  <circle cx="12" cy="8" r="1.5" />
+                  <path d="M5.5 4.3L10.5 7.2M5.5 11.7l5-2.9" />
+                </svg>
+              </button>
+            ) : null}
+            {basePath === 'training' && docId ? (
+              <button
+                type="button"
+                onClick={() => setExplorerMode('training')}
+                style={{
+                  width: '34px',
+                  height: '34px',
+                  border: `1px solid ${themeStyles.borderSecondary}`,
+                  borderRadius: '3px',
+                  backgroundColor: explorerMode === 'training' ? themeStyles.bgButtonActive : themeStyles.bgButton,
+                  color: explorerMode === 'training' ? themeStyles.textOnPrimary : themeStyles.textSecondary,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+                title="Training 管理"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M3 3.5h10M3 8h10M3 12.5h10" />
+                  <path d="M5 3.5v9" />
+                </svg>
+              </button>
+            ) : null}
             {basePath === 'base' && docId ? (
               <button
                 type="button"
@@ -8723,6 +8799,74 @@ ${editorShellPath}
                     </a>
                   );
                 })}
+              </div>
+            </div>
+          ) : explorerMode === 'training' && basePath === 'training' && docId ? (
+            <div style={{ padding: '8px', fontSize: '12px', color: themeStyles.textPrimary }}>
+              <div style={{ fontWeight: 600, color: themeStyles.textSecondary, marginBottom: '8px', padding: '0 8px' }}>
+                Training · 分支 {currentBranch || 'main'}
+              </div>
+              <div style={{ padding: '0 8px' }}>
+                {trainingManageLoading ? (
+                  <div style={{ color: themeStyles.textSecondary }}>加载中…</div>
+                ) : trainingManageList.length ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {trainingManageList.map((t) => {
+                      const sources = Array.isArray(t.planSources) ? t.planSources : [];
+                      return (
+                        <div
+                          key={t.docId}
+                          style={{
+                            border: `1px solid ${themeStyles.borderSecondary}`,
+                            borderRadius: '6px',
+                            background: themeStyles.bgSecondary,
+                            padding: '10px',
+                          }}
+                        >
+                          <div style={{ fontWeight: 600, marginBottom: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {t.name || t.docId}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {sources.map((s) => {
+                              const href = getBaseUrl(`/${s.baseDocId}/editor?trainingDocId=${encodeURIComponent(String(t.docId))}`);
+                              const isHere = Number(s.baseDocId) === Number(docId);
+                              return (
+                                <a
+                                  key={`${t.docId}-${s.baseDocId}`}
+                                  href={isHere ? undefined : href}
+                                  onClick={isHere ? (e) => e.preventDefault() : undefined}
+                                  style={{
+                                    textDecoration: 'none',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    gap: '8px',
+                                    padding: '6px 8px',
+                                    borderRadius: '4px',
+                                    border: `1px solid ${themeStyles.borderSecondary}`,
+                                    background: isHere ? themeStyles.bgSelected : themeStyles.bgButton,
+                                    color: isHere ? themeStyles.textOnPrimary : themeStyles.textPrimary,
+                                  }}
+                                  title={isHere ? '当前 Base' : '前往该训练计划下的 Base'}
+                                >
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    base #{s.baseDocId}
+                                  </span>
+                                  <span style={{ opacity: 0.85 }}>
+                                    {isHere ? '当前' : '前往'}
+                                  </span>
+                                </a>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ color: themeStyles.textSecondary }}>
+                    未找到引用该 Base + 分支的训练计划。你可以先去 /training 创建。
+                  </div>
+                )}
               </div>
             </div>
           ) : explorerMode === 'git' && basePath === 'base' && docId ? (
@@ -11702,7 +11846,9 @@ ${editorShellPath}
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: isMobile ? '1 1 100%' : undefined }}>
             <a
-              href={getBaseUrl(`/${docId}/branch/${base.currentBranch || 'main'}`)}
+              href={basePath === 'training'
+                ? getBaseUrl(`/${docId}/editor${window.location.search || ''}`)
+                : getBaseUrl(`/${docId}/branch/${base.currentBranch || 'main'}`)}
               style={{
                 padding: isMobile ? '10px 12px' : '4px 8px',
                 minHeight: isMobile ? '44px' : undefined,

@@ -554,4 +554,6 @@ global.Ejunz.model.document = {
     TYPE_BASE,
     TYPE_CARD,
     TYPE_TRAINING,
+    TYPE_SCENE,
+    TYPE_EVENT,
 };

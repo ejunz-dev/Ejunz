@@ -3,7 +3,7 @@ import type { Context } from '../context';
 import { Handler, param, route, post, Types, ConnectionHandler } from '../service/server';
 import { NotFoundError, ForbiddenError, BadRequestError, ValidationError, FileLimitExceededError, FileUploadError, FileExistsError } from '../error';
 import { PRIV, PERM } from '../model/builtin';
-import { BaseModel, CardModel, TYPE_CARD, TYPE_MM } from '../model/base';
+import { BaseModel, CardModel, TYPE_CARD } from '../model/base';
 import type { BaseDoc, BaseNode, BaseEdge, CardDoc, FileInfo } from '../interface';
 import * as document from '../model/document';
 import { exec as execCb, execFile as execFileCb } from 'child_process';
@@ -343,7 +343,7 @@ async function buildTodayContributionAllDomains(uid: number): Promise<{
     let problemChars = 0;
 
     const basesToday = await document.coll.find({
-        docType: TYPE_MM,
+        docType: document.TYPE_BASE,
         owner: uid,
         updateAt: { $gte: todayStart, $lte: todayEnd },
     }).project({ nodes: 1, edges: 1 }).toArray();
@@ -1809,7 +1809,7 @@ export class BaseSaveHandler extends Handler {
             level: 0,
         }];
         const payload: Partial<BaseDoc> = {
-            docType: TYPE_MM,
+            docType: document.TYPE_BASE,
             domainId,
             title: this.getDefaultTitle(),
             content: '',
@@ -1829,12 +1829,13 @@ export class BaseSaveHandler extends Handler {
             branch: 'main',
         };
         const { domainId: _, content: __, owner: ___, ...restPayload } = payload;
+        const nextDocId = await BaseModel.generateNextDocId(domainId);
         const docId = await document.add(
             domainId,
             payload.content!,
             payload.owner!,
-            TYPE_MM,
-            null,
+            document.TYPE_BASE,
+            nextDocId,
             null,
             null,
             restPayload
@@ -1987,7 +1988,7 @@ export class BaseSaveHandler extends Handler {
         
         (this.ctx.emit as any)('base/update', docId, null, currentBranch);
         (this.ctx.emit as any)('base/git/status/update', docId);
-        
+
         this.response.body = { success: true, hasNonPositionChanges };
     }
 

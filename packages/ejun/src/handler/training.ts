@@ -1,28 +1,97 @@
 import { Handler } from '@ejunz/framework';
+import type { Context } from '../context';
+import { Types, ConnectionHandler, param } from '../service/server';
 import { ObjectId } from 'mongodb';
-import { Context } from '../context';
-import { param, Types } from '../service/server';
+import { Logger } from '../utils';
 import { NotFoundError, PermissionError, ValidationError } from '../error';
 import * as document from '../model/document';
 import { PRIV } from '../model/builtin';
+import { PERM } from '../model/builtin';
 import { BaseModel, CardModel } from '../model/base';
 import TrainingModel, { listBranchesForBase } from '../model/training';
 import UserModel from '../model/user';
-import {
-    BaseBatchSaveHandler,
-    BaseCardHandler,
-    BaseConnectionHandler,
-    BaseDataHandler,
-    BaseEdgeHandler,
-    BaseEditorDocHandler,
-    BaseEditorUiPrefsHandler,
-    BaseExpandStateHandler,
-    BaseNodeHandler,
-    BaseSaveHandler,
-} from './base';
 import type {
-    BaseDoc, TrainingDagNode, TrainingPlanSource, TrainingSection, TrainingDoc,
+    BaseDoc, TrainingDagNode, TrainingPlanSource, TrainingSection, TrainingDoc, CardDoc, BaseNode, BaseEdge,
 } from '../interface';
+const logger = new Logger('training');
+
+function normalizeDomainId(domainId: any, args: any): string {
+    if (typeof domainId === 'string' && domainId) return domainId;
+    const did = args?.domainId ?? (domainId as any)?._id ?? (domainId as any)?.domainId ?? 'system';
+    return String(did || 'system');
+}
+
+function makeTrainingRootId(trainingDocId: string): string {
+    return `training_root_${trainingDocId}`;
+}
+
+function makeTrainingNodeId(baseDocId: number, nodeId: string): string {
+    return `t_${baseDocId}_${nodeId}`;
+}
+
+function parseTrainingNodeId(nodeId: string): { baseDocId: number; nodeId: string } | null {
+    const m = /^t_(\d+)_(.+)$/.exec(String(nodeId || ''));
+    if (!m) return null;
+    const baseDocId = Number(m[1]);
+    if (!Number.isSafeInteger(baseDocId) || baseDocId < 1) return null;
+    return { baseDocId, nodeId: String(m[2]) };
+}
+
+function stripTrainingPrefix(baseDocId: number, s: string): string {
+    const prefix = `t_${baseDocId}_`;
+    const v = String(s || '');
+    return v.startsWith(prefix) ? v.slice(prefix.length) : v;
+}
+
+export class TrainingConnectionHandler extends ConnectionHandler {
+    private trainingDocId?: string;
+    private subscriptions: Array<{ dispose: () => void }> = [];
+
+    @param('docId', Types.String, true)
+    async prepare(domainId: string, docId?: string) {
+        const finalDomainId = domainId || (this.request.query?.domainId as string) || (this.args as any).domainId;
+        const qDocId = this.request.query?.docId as string;
+        const finalDocId = (docId && String(docId).trim()) || (qDocId && String(qDocId).trim()) || '';
+        if (!finalDomainId || !finalDocId || !ObjectId.isValid(finalDocId)) {
+            this.close(1000, 'domainId and docId are required');
+            return;
+        }
+        this.trainingDocId = finalDocId;
+        const tid = new ObjectId(finalDocId);
+        const training = await TrainingModel.get(finalDomainId, tid);
+        if (!training) {
+            this.close(1000, 'Training not found');
+            return;
+        }
+        if (training.owner !== this.user._id) {
+            this.checkPerm(PERM.PERM_VIEW_DISCUSSION);
+        }
+        const sources = TrainingModel.resolvePlanSources(training);
+        const targetPairs = new Set(sources.map((s) => `${s.baseDocId}::${s.targetBranch || 'main'}`));
+
+        logger.info('Training WebSocket connected: docId=%s', finalDocId);
+
+        this.send({ type: 'init' });
+
+        const dispose = (this.ctx.on as any)('base/update', async (...args: any[]) => {
+            const [baseDocId, _userId, branch] = args;
+            const key = `${Number(baseDocId)}::${String(branch || 'main')}`;
+            if (targetPairs.has(key)) this.send({ type: 'update' });
+        });
+        this.subscriptions.push({ dispose });
+    }
+
+    async message(_msg: any) {
+        // Editor uses WS only as a trigger to refetch data.
+    }
+
+    async cleanup() {
+        for (const sub of this.subscriptions) {
+            try { sub.dispose(); } catch { }
+        }
+        this.subscriptions = [];
+    }
+}
 
 function trainingDocIdFromParam(raw: string | undefined): ObjectId | null {
     if (!raw || !ObjectId.isValid(raw)) return null;
@@ -182,126 +251,68 @@ export class TrainingCreateHandler extends Handler<Context> {
             baseByDocId.set(s.baseDocId, b);
         }
 
-        let mergedBaseDocId: number | null = null;
-        let mergedBranch = 'main';
-        const mergedBase = await BaseModel.create(
-            this.domain._id,
-            this.user._id,
-            String(name).trim(),
-            '',
-            undefined,
-            'main',
-            this.request.ip,
-            undefined,
-            this.domain.name,
-            'base',
-            true,
-        );
-        mergedBaseDocId = Number(mergedBase.docId);
-        await document.set(this.domain._id, document.TYPE_BASE, mergedBaseDocId, { type: 'training' } as any);
+        const trainingName = String(name).trim();
+        if (!trainingName) throw new ValidationError('name');
 
-            const mergedNodes: any[] = [];
-            const mergedEdges: any[] = [];
-            const rootId = `training_root_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-            mergedNodes.push({
-                id: rootId,
-                text: String(name).trim(),
-                level: 0,
-                expanded: true,
-            });
+        const baseBranchName = sanitizeBranchName(trainingName);
+        if (!baseBranchName) throw new ValidationError('name');
 
-            for (let i = 0; i < planSources.length; i++) {
-                const ps = planSources[i];
-                const base = baseByDocId.get(ps.baseDocId);
-                if (!base) throw new ValidationError('planSources');
-                const srcBranch = ps.targetBranch || ps.sourceBranch || 'main';
-                const src = pickBranchData(base, srcBranch);
-                const srcNodes = (src.nodes || []).map((n: any) => ({ ...n }));
-                const srcEdges = (src.edges || []).map((e: any) => ({ ...e }));
+        // Also create a same-named branch on each selected source base (from main),
+        // so the original base keeps a "training branch" snapshot for management/sync.
+        for (const ps of planSources) {
+            const base = baseByDocId.get(ps.baseDocId);
+            if (!base) throw new ValidationError('planSources');
 
-                const idMap = new Map<string, string>();
-                for (const n of srcNodes) {
-                    const newId = `training_${i}_${String(n.id)}`;
-                    idMap.set(String(n.id), newId);
-                }
-
-                for (const n of srcNodes) {
-                    const oldId = String(n.id);
-                    const newId = idMap.get(oldId)!;
-                    const mergedParent = n.parentId && idMap.has(String(n.parentId))
-                        ? idMap.get(String(n.parentId))
-                        : rootId;
-                    mergedNodes.push({
-                        ...n,
-                        id: newId,
-                        parentId: mergedParent,
-                        level: Number(n.level ?? 0) + 1,
-                    });
-                }
-
-                for (const e of srcEdges) {
-                    const source = idMap.get(String(e.source));
-                    const target = idMap.get(String(e.target));
-                    if (!source || !target) continue;
-                    mergedEdges.push({
-                        ...e,
-                        id: `training_${i}_${String(e.id || `${e.source}_${e.target}`)}`,
-                        source,
-                        target,
-                    });
-                }
-
-                const incoming = new Set<string>(srcEdges.map((e: any) => String(e.target)));
-                const roots = srcNodes.filter((n: any) => !incoming.has(String(n.id)));
-                for (let r = 0; r < roots.length; r++) {
-                    const mapped = idMap.get(String(roots[r].id));
-                    if (!mapped) continue;
-                    mergedEdges.push({
-                        id: `training_edge_root_src_${i}_${r}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-                        source: rootId,
-                        target: mapped,
-                    });
-                }
-
-                for (const n of srcNodes) {
-                    const oldNodeId = String(n.id);
-                    const newNodeId = idMap.get(oldNodeId);
-                    if (!newNodeId) continue;
-                    const cards = await CardModel.getByNodeId(
-                        this.domain._id,
-                        ps.baseDocId,
-                        oldNodeId,
-                        srcBranch,
-                    );
-                    for (const c of cards) {
-                        const newCardDocId = await CardModel.create(
-                            this.domain._id,
-                            mergedBaseDocId,
-                            newNodeId,
-                            this.user._id,
-                            c.title,
-                            c.content,
-                            this.request.ip,
-                            c.problems,
-                            c.order,
-                            mergedBranch,
-                        );
-                        await CardModel.update(this.domain._id, newCardDocId, {
-                            cardFace: (c as any).cardFace,
-                            files: (c as any).files,
-                        } as any);
-                    }
-                }
+            const main = pickBranchData(base, 'main');
+            const bd: any = (base as any).branchData || {};
+            if (!bd[baseBranchName]) {
+                bd[baseBranchName] = {
+                    nodes: JSON.parse(JSON.stringify(main.nodes || [])),
+                    edges: JSON.parse(JSON.stringify(main.edges || [])),
+                };
+                await document.set(this.domain._id, document.TYPE_BASE, ps.baseDocId, {
+                    branchData: bd,
+                    updateAt: new Date(),
+                } as any);
             }
 
-        await BaseModel.updateFull(this.domain._id, mergedBaseDocId, {
-            title: String(name).trim(),
-            nodes: mergedNodes,
-            edges: mergedEdges,
-            branchData: {
-                main: { nodes: mergedNodes, edges: mergedEdges },
-            },
-        });
+            // Clone main-branch cards into the new training branch if that branch has no cards yet.
+            // This is a one-time cost at create time and keeps training editor reading/writing only `targetBranch`.
+            const existing = await document.getMulti(this.domain._id, document.TYPE_CARD, {
+                baseDocId: ps.baseDocId,
+                branch: baseBranchName,
+            } as any).limit(1).toArray();
+            if (existing.length) continue;
+
+            const mainCards = await document.getMulti(this.domain._id, document.TYPE_CARD, {
+                baseDocId: ps.baseDocId,
+                $or: [{ branch: 'main' }, { branch: { $exists: false } }],
+            } as any).toArray() as any[];
+            for (const c of mainCards) {
+                const newCardDocId = await CardModel.create(
+                    this.domain._id,
+                    ps.baseDocId,
+                    String(c.nodeId),
+                    this.user._id,
+                    String(c.title || ''),
+                    String(c.content || ''),
+                    this.request.ip,
+                    (c as any).problems,
+                    (c as any).order,
+                    baseBranchName,
+                );
+                await CardModel.update(this.domain._id, newCardDocId, {
+                    cardFace: (c as any).cardFace,
+                    files: (c as any).files,
+                } as any);
+            }
+        }
+
+        planSources = planSources.map((s) => ({
+            baseDocId: s.baseDocId,
+            sourceBranch: 'main',
+            targetBranch: baseBranchName,
+        }));
 
         const sections: TrainingSection[] = [];
         const dag: TrainingDagNode[] | undefined = undefined;
@@ -315,27 +326,581 @@ export class TrainingCreateHandler extends Handler<Context> {
             sections,
             dag,
             owner: this.user._id,
-            baseDocId: mergedBaseDocId || undefined,
-            sourceBranch: mergedBranch,
-            targetBranch: mergedBranch,
         });
-        this.response.redirect = this.url('training_editor_branch', {
+        this.response.redirect = this.url('training_editor', {
             domainId: this.domain._id,
-            docId: String(mergedBaseDocId),
-            branch: encodeURIComponent(String(mergedBranch)),
+            trainingDocId: String(training.docId),
         });
     }
 }
 
-class TrainingEditorDocHandler extends BaseEditorDocHandler {
-    /** 与 BaseEditorDocHandler.get 一致：框架传入整包 args，需 @param 拆出 domainId + branch */
-    @param('branch', Types.String, true)
-    async get(domainId: string, branch?: string) {
-        await super.get(domainId, branch);
-        this.response.template = 'training_editor.html';
-        if (this.response.body) {
-            (this.response.body as any).editorMode = 'training';
+async function loadTrainingMergedGraph(
+    domainId: string,
+    training: TrainingDoc,
+): Promise<{ nodes: BaseNode[]; edges: BaseEdge[]; nodeCardsMap: Record<string, CardDoc[]> }> {
+    const sources = TrainingModel.resolvePlanSources(training);
+    const trainingDocId = String(training.docId);
+    const rootId = makeTrainingRootId(trainingDocId);
+
+    const allNodes: BaseNode[] = [{
+        id: rootId,
+        text: training.name || 'Training',
+        level: 0,
+        expanded: true,
+        order: 0,
+    } as any];
+    const allEdges: BaseEdge[] = [];
+    const nodeCardsMap: Record<string, CardDoc[]> = {};
+
+    for (const src of sources) {
+        const base = await BaseModel.get(domainId, src.baseDocId);
+        if (!base) continue;
+        const branch = src.targetBranch || 'main';
+        const { nodes, edges } = pickBranchData(base, branch);
+        const existingNodeIds = new Set((nodes || []).map((n: any) => String((n as any).id ?? '')));
+
+        for (const n of (nodes || [])) {
+            const rawId = String((n as any).id ?? '');
+            if (!rawId) continue;
+            const nid = makeTrainingNodeId(src.baseDocId, rawId);
+            const rawParentId = (n as any).parentId ? String((n as any).parentId) : '';
+            const parentId = rawParentId && existingNodeIds.has(rawParentId)
+                ? makeTrainingNodeId(src.baseDocId, rawParentId)
+                : rootId;
+            allNodes.push({
+                ...(n as any),
+                id: nid,
+                parentId,
+                level: Number((n as any).level || 0) + 1,
+            } as any);
         }
+
+        for (const e of (edges || [])) {
+            const rawEid = String((e as any).id ?? '');
+            const rawS = String((e as any).source ?? '');
+            const rawT = String((e as any).target ?? '');
+            if (!rawS || !rawT) continue;
+            allEdges.push({
+                ...(e as any),
+                id: makeTrainingNodeId(src.baseDocId, rawEid || `${rawS}=>${rawT}`),
+                source: makeTrainingNodeId(src.baseDocId, rawS),
+                target: makeTrainingNodeId(src.baseDocId, rawT),
+            } as any);
+        }
+
+        const cards = await document.getMulti(domainId, document.TYPE_CARD, { baseDocId: src.baseDocId, branch } as any)
+            .sort({ order: 1, cid: 1 })
+            .toArray() as CardDoc[];
+        for (const c of cards) {
+            if (!c.nodeId) continue;
+            const tnid = makeTrainingNodeId(src.baseDocId, String(c.nodeId));
+            const cloned = { ...(c as any), nodeId: tnid };
+            if (!nodeCardsMap[tnid]) nodeCardsMap[tnid] = [];
+            nodeCardsMap[tnid].push(cloned);
+        }
+    }
+
+    return { nodes: allNodes, edges: allEdges, nodeCardsMap };
+}
+
+export class TrainingEditorHandler extends Handler<Context> {
+    @param('trainingDocId', Types.String)
+    async get(domainId: string, trainingDocId: string) {
+        const did = normalizeDomainId(domainId, (this as any).args);
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        if (!trainingDocId || !ObjectId.isValid(trainingDocId)) throw new ValidationError('docId');
+        const tid = new ObjectId(trainingDocId);
+        const training = await TrainingModel.get(did, tid);
+        if (!training) throw new NotFoundError('training');
+        if (training.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        }
+
+        const { nodes, edges, nodeCardsMap } = await loadTrainingMergedGraph(did, training);
+        this.response.template = 'training_editor.html';
+        this.response.body = {
+            base: {
+                docId: String(training.docId),
+                title: training.name,
+                type: 'training',
+                nodes,
+                edges,
+            },
+            currentBranch: 'main',
+            branches: ['main'],
+            nodeCardsMap,
+            files: [],
+            domainId: did,
+            editorMode: 'training',
+            trainingDocId: String(training.docId),
+            githubRepo: '',
+            userGithubTokenConfigured: false,
+        };
+    }
+}
+
+export class TrainingDataHandler extends Handler<Context> {
+    @param('docId', Types.String)
+    async get(domainId: string, docId: string) {
+        const did = normalizeDomainId(domainId, (this as any).args);
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        if (!docId || !ObjectId.isValid(docId)) throw new ValidationError('docId');
+        const tid = new ObjectId(docId);
+        const training = await TrainingModel.get(did, tid);
+        if (!training) throw new NotFoundError('training');
+        const { nodes, edges, nodeCardsMap } = await loadTrainingMergedGraph(did, training);
+        this.response.body = {
+            docId: String(training.docId),
+            title: training.name,
+            nodes,
+            edges,
+            currentBranch: 'main',
+            nodeCardsMap,
+        };
+    }
+}
+
+export class TrainingSaveHandler extends Handler<Context> {
+    async post(domainId: string) {
+        const did = normalizeDomainId(domainId, (this as any).args);
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const body: any = this.request.body || {};
+        const rawDocId = String(body.docId || body.trainingDocId || '');
+        if (!rawDocId || !ObjectId.isValid(rawDocId)) throw new ValidationError('docId');
+        const tid = new ObjectId(rawDocId);
+        const training = await TrainingModel.get(did, tid);
+        if (!training) throw new NotFoundError('training');
+        if (training.owner !== this.user._id) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+
+        const nodes: BaseNode[] = Array.isArray(body.nodes) ? body.nodes : [];
+        const edges: BaseEdge[] = Array.isArray(body.edges) ? body.edges : [];
+        const sources = TrainingModel.resolvePlanSources(training);
+        const byBase = new Map<number, { branch: string; nodes: BaseNode[]; edges: BaseEdge[] }>();
+        for (const s of sources) byBase.set(s.baseDocId, { branch: s.targetBranch || 'main', nodes: [], edges: [] });
+
+        const rootId = makeTrainingRootId(String(training.docId));
+        for (const n of nodes) {
+            const nid = String((n as any).id ?? (n as any)._id ?? '');
+            if (!nid || nid === rootId) continue;
+            const parsed = parseTrainingNodeId(nid);
+            if (!parsed) continue;
+            const bucket = byBase.get(parsed.baseDocId);
+            if (!bucket) continue;
+
+            const rawParentId = (n as any).parentId ? String((n as any).parentId) : '';
+            const parsedParent = rawParentId ? parseTrainingNodeId(rawParentId) : null;
+            const parentId = (parsedParent && parsedParent.baseDocId === parsed.baseDocId) ? parsedParent.nodeId : undefined;
+
+            bucket.nodes.push({
+                ...(n as any),
+                id: parsed.nodeId,
+                parentId,
+                level: Math.max(0, Number((n as any).level || 0) - 1),
+            } as any);
+        }
+
+        for (const e of edges) {
+            const parsedS = parseTrainingNodeId(String((e as any).source ?? (e as any).from ?? ''));
+            const parsedT = parseTrainingNodeId(String((e as any).target ?? (e as any).to ?? ''));
+            if (!parsedS || !parsedT) continue;
+            if (parsedS.baseDocId !== parsedT.baseDocId) continue;
+            const bucket = byBase.get(parsedS.baseDocId);
+            if (!bucket) continue;
+            bucket.edges.push({
+                ...(e as any),
+                id: stripTrainingPrefix(
+                    parsedS.baseDocId,
+                    (e as any).id ? String((e as any).id) : `${parsedS.nodeId}=>${parsedT.nodeId}`,
+                ),
+                source: parsedS.nodeId,
+                target: parsedT.nodeId,
+            } as any);
+        }
+
+        for (const [baseDocId, bucket] of byBase) {
+            // Safety: if we couldn't parse any node/edge for this base from payload,
+            // do NOT overwrite the branch to empty (prevents accidental wipeout).
+            if (!bucket.nodes.length && !bucket.edges.length) continue;
+            const base = await BaseModel.get(did, baseDocId);
+            if (!base) continue;
+            (base as any).branchData = (base as any).branchData || {};
+            (base as any).branchData[bucket.branch] = { nodes: bucket.nodes, edges: bucket.edges };
+            await BaseModel.updateFull(did, baseDocId, { branchData: (base as any).branchData } as any);
+            (this.ctx.emit as any)('base/update', baseDocId, null, bucket.branch);
+        }
+
+        this.response.body = { success: true };
+    }
+}
+
+export class TrainingCardHandler extends Handler<Context> {
+    async post(domainId: string) {
+        const did = normalizeDomainId(domainId, (this as any).args);
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const body: any = this.request.body || {};
+        const rawDocId = String(body.docId || '');
+        const nodeId = String(body.nodeId || '');
+        if (!rawDocId || !ObjectId.isValid(rawDocId)) throw new ValidationError('docId');
+        if (!nodeId) throw new ValidationError('nodeId');
+        const tid = new ObjectId(rawDocId);
+        const training = await TrainingModel.get(did, tid);
+        if (!training) throw new NotFoundError('training');
+
+        const parsed = parseTrainingNodeId(nodeId);
+        if (!parsed) throw new ValidationError('nodeId');
+        const source = TrainingModel.resolvePlanSources(training).find((s) => s.baseDocId === parsed.baseDocId);
+        if (!source) throw new ValidationError('nodeId');
+        const branch = source.targetBranch || 'main';
+
+        const title = typeof body.title === 'string' ? body.title : '';
+        const content = typeof body.content === 'string' ? body.content : '';
+        const problems = Array.isArray(body.problems) ? body.problems : undefined;
+        const order = typeof body.order === 'number' ? body.order : undefined;
+        const cardId = await CardModel.create(
+            did,
+            parsed.baseDocId,
+            parsed.nodeId,
+            this.user._id,
+            title,
+            content,
+            this.request.ip,
+            problems,
+            order,
+            branch,
+        );
+        this.response.body = { cardId };
+    }
+}
+
+export class TrainingBatchSaveHandler extends Handler<Context> {
+    async post(domainId: string) {
+        const did = normalizeDomainId(domainId, (this as any).args);
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const body: any = this.request.body || {};
+        const rawDocId = String(body.docId || body.trainingDocId || '');
+        if (!rawDocId || !ObjectId.isValid(rawDocId)) throw new ValidationError('docId');
+        const tid = new ObjectId(rawDocId);
+        const training = await TrainingModel.get(did, tid);
+        if (!training) throw new NotFoundError('training');
+        if (training.owner !== this.user._id) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+
+        const sources = TrainingModel.resolvePlanSources(training);
+        const baseDocIds = sources.map((s) => s.baseDocId);
+        const defaultBaseDocId = baseDocIds.length ? baseDocIds[0] : 0;
+        const branchByBase = new Map<number, string>();
+        for (const s of sources) branchByBase.set(s.baseDocId, s.targetBranch || 'main');
+
+        const {
+            nodeCreates = [],
+            nodeUpdates = [],
+            nodeDeletes = [],
+            edgeCreates = [],
+            edgeDeletes = [],
+            cardCreates = [],
+            cardUpdates = [],
+            cardDeletes = [],
+        } = body;
+
+        const errors: string[] = [];
+        const nodeIdMap = new Map<string, string>();
+        const cardIdMap = new Map<string, string>();
+
+        const grouped = new Map<number, any>();
+        const ensureGroup = (baseDocId: number) => {
+            const bid = Number(baseDocId);
+            if (!Number.isSafeInteger(bid) || bid <= 0) return null;
+            if (!grouped.has(bid)) grouped.set(bid, {
+                nodeCreates: [],
+                nodeUpdates: [],
+                nodeDeletes: [],
+                edgeCreates: [],
+                edgeDeletes: [],
+                cardCreates: [],
+                cardUpdates: [],
+                cardDeletes: [],
+            });
+            return grouped.get(bid);
+        };
+
+        const resolveBaseForCreateParent = (parentId: string | undefined): number => {
+            const p = String(parentId || '');
+            const parsed = parseTrainingNodeId(p);
+            if (parsed) return parsed.baseDocId;
+            return defaultBaseDocId;
+        };
+
+        for (const c of (nodeCreates || [])) {
+            const baseDocId = resolveBaseForCreateParent(c.parentId);
+            const g = ensureGroup(baseDocId);
+            if (!g) continue;
+            g.nodeCreates.push(c);
+        }
+        for (const u of (nodeUpdates || [])) {
+            const parsed = parseTrainingNodeId(String(u.nodeId || ''));
+            if (!parsed) continue;
+            const g = ensureGroup(parsed.baseDocId);
+            if (!g) continue;
+            g.nodeUpdates.push({ ...u, nodeId: parsed.nodeId });
+        }
+        for (const d of (nodeDeletes || [])) {
+            const parsed = parseTrainingNodeId(String(d || ''));
+            if (!parsed) continue;
+            const g = ensureGroup(parsed.baseDocId);
+            if (!g) continue;
+            g.nodeDeletes.push(parsed.nodeId);
+        }
+        for (const e of (edgeDeletes || [])) {
+            // edgeId is prefixed in training view; best-effort parse baseId from prefix.
+            const m = /^t_(\d+)_(.+)$/.exec(String(e || ''));
+            if (!m) continue;
+            const baseDocId = Number(m[1]);
+            const edgeId = String(m[2] || '');
+            const g = ensureGroup(baseDocId);
+            if (!g) continue;
+            g.edgeDeletes.push(edgeId);
+        }
+        for (const e of (edgeCreates || [])) {
+            const src = String(e.source || '');
+            const tgt = String(e.target || '');
+            const parsedS = parseTrainingNodeId(src);
+            const parsedT = parseTrainingNodeId(tgt);
+            // ignore cross-base edges
+            if (!parsedS || !parsedT || parsedS.baseDocId !== parsedT.baseDocId) continue;
+            const g = ensureGroup(parsedS.baseDocId);
+            if (!g) continue;
+            g.edgeCreates.push({
+                ...e,
+                source: parsedS.nodeId,
+                target: parsedT.nodeId,
+            });
+        }
+
+        for (const c of (cardCreates || [])) {
+            const nodeId = String(c.nodeId || '');
+            const parsed = parseTrainingNodeId(nodeId);
+            if (!parsed) continue;
+            const g = ensureGroup(parsed.baseDocId);
+            if (!g) continue;
+            g.cardCreates.push({ ...c, nodeId: parsed.nodeId });
+        }
+        for (const u of (cardUpdates || [])) {
+            const nodeId = u.nodeId !== undefined ? String(u.nodeId || '') : undefined;
+            const parsed = nodeId ? parseTrainingNodeId(nodeId) : null;
+            const baseDocId = parsed?.baseDocId;
+            // cardUpdate may not include nodeId; we can still update by cardId alone
+            const g = baseDocId ? ensureGroup(baseDocId) : null;
+            if (g) g.cardUpdates.push({ ...u, nodeId: parsed ? parsed.nodeId : u.nodeId });
+            else {
+                // fall back: put into first base (update doesn't need baseDocId)
+                const gg = ensureGroup(defaultBaseDocId);
+                if (gg) gg.cardUpdates.push({ ...u, nodeId: parsed ? parsed.nodeId : u.nodeId });
+            }
+        }
+        for (const d of (cardDeletes || [])) {
+            const gg = ensureGroup(defaultBaseDocId);
+            if (gg) gg.cardDeletes.push(String(d || ''));
+        }
+
+        // Apply per base using the same BaseModel/CardModel operations as BaseBatchSaveHandler.
+        for (const [baseDocId, g] of grouped) {
+            const branch = branchByBase.get(baseDocId) || 'main';
+            const docId = baseDocId;
+
+            const remainingNodeCreates = [...(g.nodeCreates || [])];
+            const processedNodeCreates = new Set<string>();
+
+            while (remainingNodeCreates.length > 0) {
+                const beforeCount = remainingNodeCreates.length;
+                const currentRound: any[] = [];
+                for (const nodeCreate of remainingNodeCreates) {
+                    if (processedNodeCreates.has(nodeCreate.tempId)) continue;
+                    let realParentId = nodeCreate.parentId;
+                    if (realParentId && realParentId.startsWith('temp-node-')) {
+                        realParentId = nodeIdMap.get(realParentId);
+                        if (!realParentId) continue;
+                    } else if (realParentId) {
+                        // parentId came from training view: might be prefixed
+                        const parsedParent = parseTrainingNodeId(String(realParentId));
+                        if (parsedParent && parsedParent.baseDocId === baseDocId) realParentId = parsedParent.nodeId;
+                        else if (parsedParent) realParentId = undefined;
+                    }
+                    currentRound.push({ ...nodeCreate, parentId: realParentId });
+                    processedNodeCreates.add(nodeCreate.tempId);
+                }
+                if (currentRound.length === 0) break;
+
+                for (const nodeCreate of currentRound) {
+                    try {
+                        let realParentId = nodeCreate.parentId;
+                        if (realParentId && realParentId.startsWith('temp-node-')) {
+                            realParentId = nodeIdMap.get(realParentId);
+                        }
+                        if (realParentId && !realParentId.startsWith('temp-node-')) {
+                            const currentBase = await BaseModel.get(did, docId);
+                            if (currentBase) {
+                                const branchData = pickBranchData(currentBase as any, branch);
+                                const parentExists = branchData.nodes.some((n: BaseNode) => n.id === realParentId);
+                                if (!parentExists) realParentId = undefined;
+                            } else {
+                                realParentId = undefined;
+                            }
+                        }
+                        const nodePayload: Partial<BaseNode> = {
+                            text: nodeCreate.text,
+                            x: nodeCreate.x,
+                            y: nodeCreate.y,
+                            parentId: realParentId,
+                        };
+                        if (nodeCreate.order != null) nodePayload.order = nodeCreate.order;
+                        if (nodeCreate.intent !== undefined) nodePayload.intent = nodeCreate.intent;
+                        const result = await BaseModel.addNode(
+                            did,
+                            docId,
+                            nodePayload as Omit<BaseNode, 'id'>,
+                            realParentId,
+                            branch,
+                            realParentId,
+                        );
+                        if (nodeCreate.tempId) {
+                            nodeIdMap.set(nodeCreate.tempId, makeTrainingNodeId(baseDocId, result.nodeId));
+                        }
+                    } catch (e: any) {
+                        errors.push(`创建节点失败(base:${docId}): ${e?.message || '未知错误'}`);
+                    }
+                }
+
+                remainingNodeCreates.splice(0, remainingNodeCreates.length,
+                    ...remainingNodeCreates.filter((nc: any) => !processedNodeCreates.has(nc.tempId)),
+                );
+                if (remainingNodeCreates.length === beforeCount) break;
+            }
+
+            for (const nodeUpdate of (g.nodeUpdates || [])) {
+                try {
+                    const updates: Partial<BaseNode> = {};
+                    if (nodeUpdate.text != null) updates.text = nodeUpdate.text;
+                    if (nodeUpdate.order != null) updates.order = nodeUpdate.order;
+                    if (nodeUpdate.intent !== undefined) updates.intent = nodeUpdate.intent;
+                    if (Object.keys(updates).length === 0) continue;
+                    await BaseModel.updateNode(did, docId, nodeUpdate.nodeId, updates, branch);
+                } catch (e: any) {
+                    errors.push(`更新节点失败(base:${docId}): ${e?.message || '未知错误'}`);
+                }
+            }
+
+            for (const edgeId of (g.edgeDeletes || [])) {
+                try { await BaseModel.deleteEdge(did, docId, String(edgeId), branch); } catch { }
+            }
+            for (const nodeId of (g.nodeDeletes || [])) {
+                try { await BaseModel.deleteNode(did, docId, String(nodeId), branch); } catch (e: any) {
+                    errors.push(`删除节点失败(base:${docId}): ${e?.message || '未知错误'}`);
+                }
+            }
+            for (const edgeCreate of (g.edgeCreates || [])) {
+                try {
+                    const sourceId = String(edgeCreate.source || '');
+                    const targetId = String(edgeCreate.target || '');
+                    if (sourceId && targetId && !sourceId.startsWith('temp-node-') && !targetId.startsWith('temp-node-')) {
+                        await BaseModel.addEdge(did, docId, { source: sourceId, target: targetId, label: edgeCreate.label }, branch);
+                    }
+                } catch (e: any) {
+                    errors.push(`创建边失败(base:${docId}): ${e?.message || '未知错误'}`);
+                }
+            }
+
+            for (const cardCreate of (g.cardCreates || [])) {
+                try {
+                    const realNodeId = String(cardCreate.nodeId || '');
+                    if (realNodeId && !realNodeId.startsWith('temp-node-')) {
+                        const resp = await CardModel.create(
+                            did,
+                            docId,
+                            realNodeId,
+                            this.user._id,
+                            cardCreate.title || '新卡片',
+                            cardCreate.content || '',
+                            this.request.ip,
+                            cardCreate.problems,
+                            cardCreate.order,
+                            branch,
+                        );
+                        if (cardCreate.tempId) cardIdMap.set(String(cardCreate.tempId), String(resp));
+                    }
+                } catch (e: any) {
+                    errors.push(`创建卡片失败(base:${docId}): ${e?.message || '未知错误'}`);
+                }
+            }
+            for (const cardUpdate of (g.cardUpdates || [])) {
+                try {
+                    const updates: any = {};
+                    if (cardUpdate.title !== undefined) updates.title = cardUpdate.title;
+                    if (cardUpdate.content !== undefined) updates.content = cardUpdate.content;
+                    if (cardUpdate.cardFace !== undefined) updates.cardFace = cardUpdate.cardFace;
+                    if (cardUpdate.nodeId !== undefined) updates.nodeId = cardUpdate.nodeId;
+                    if (cardUpdate.order !== undefined) updates.order = cardUpdate.order;
+                    if (cardUpdate.problems !== undefined) updates.problems = cardUpdate.problems;
+                    if (Object.keys(updates).length === 0) continue;
+                    await CardModel.update(did, new ObjectId(cardUpdate.cardId), updates);
+                } catch (e: any) {
+                    errors.push(`更新卡片失败(base:${docId}): ${e?.message || '未知错误'}`);
+                }
+            }
+            for (const cardId of (g.cardDeletes || [])) {
+                try { if (ObjectId.isValid(cardId)) await CardModel.delete(did, new ObjectId(cardId)); } catch (e: any) {
+                    errors.push(`删除卡片失败(base:${docId}): ${e?.message || '未知错误'}`);
+                }
+            }
+
+            (this.ctx.emit as any)('base/update', docId, null, branch);
+        }
+
+        this.response.body = {
+            success: errors.length === 0,
+            errors,
+            nodeIdMap: Object.fromEntries(nodeIdMap),
+            cardIdMap: Object.fromEntries(cardIdMap),
+        };
+    }
+}
+
+export class TrainingExpandStateHandler extends Handler<Context> {
+    async post(domainId: string) {
+        const did = normalizeDomainId(domainId, (this as any).args);
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        // Reuse the same collection schema as base, but key by trainingDocId (ObjectId) in baseDocId field.
+        const body: any = this.request.body || {};
+        const rawDocId = String(body.docId || body.baseDocId || body.trainingDocId || '');
+        if (!rawDocId || !ObjectId.isValid(rawDocId)) throw new ValidationError('docId');
+        const tid = new ObjectId(rawDocId);
+        const expandedNodeIds = Array.isArray(body.expandedNodeIds) ? body.expandedNodeIds.map((x: any) => String(x)) : [];
+        const uid = this.user._id;
+        const coll = this.ctx.db.db.collection('base.userExpand');
+        await coll.updateOne(
+            { domainId: did, baseDocId: tid, uid },
+            { $set: { expandedNodeIds, updateAt: new Date() } },
+            { upsert: true },
+        );
+        this.response.body = { success: true };
+    }
+}
+
+export class TrainingEditorUiPrefsHandler extends Handler<Context> {
+    async post(domainId: string) {
+        const did = normalizeDomainId(domainId, (this as any).args);
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const body: any = this.request.body || {};
+        const rawDocId = String(body.docId || body.baseDocId || body.trainingDocId || '');
+        if (!rawDocId || !ObjectId.isValid(rawDocId)) throw new ValidationError('docId');
+        const tid = new ObjectId(rawDocId);
+        const prefs = body.prefs && typeof body.prefs === 'object' ? body.prefs : {};
+        const uid = this.user._id;
+        const coll = this.ctx.db.db.collection('base.userEditorUi');
+        await coll.updateOne(
+            { domainId: did, baseDocId: tid, uid },
+            { $set: { prefs, updateAt: new Date() } },
+            { upsert: true },
+        );
+        this.response.body = { success: true };
     }
 }
 
@@ -392,13 +957,9 @@ export class TrainingDetailHandler extends Handler<Context> {
         const training = await TrainingModel.get(this.domain._id, docId);
         if (!training) throw new NotFoundError('training');
 
-        const baseDocId = Number((training as any).baseDocId);
-        if (!baseDocId) throw new ValidationError('baseDocId');
-        const branch = String((training as any).targetBranch || (training as any).sourceBranch || 'main');
-        this.response.redirect = this.url('training_editor_branch', {
+        this.response.redirect = this.url('training_editor', {
             domainId: this.domain._id,
-            docId: String(baseDocId),
-            branch: encodeURIComponent(String(branch)),
+            trainingDocId: String(training.docId),
         });
         return;
 
@@ -432,26 +993,18 @@ export class TrainingEditHandler extends Handler<Context> {
 
     async get() {
         const training = await this.prepareTraining();
-        const baseDocId = Number((training as any).baseDocId);
-        if (!baseDocId) throw new ValidationError('baseDocId');
-        const branch = String((training as any).targetBranch || (training as any).sourceBranch || 'main');
-        this.response.redirect = this.url('training_editor_branch', {
+        this.response.redirect = this.url('training_editor', {
             domainId: this.domain._id,
-            docId: String(baseDocId),
-            branch: encodeURIComponent(String(branch)),
+            trainingDocId: String(training.docId),
         });
         return;
     }
 
     async post() {
         const training = await this.prepareTraining();
-        const baseDocId = Number((training as any).baseDocId);
-        if (!baseDocId) throw new ValidationError('baseDocId');
-        const branch = String((training as any).targetBranch || (training as any).sourceBranch || 'main');
-        this.response.redirect = this.url('training_editor_branch', {
+        this.response.redirect = this.url('training_editor', {
             domainId: this.domain._id,
-            docId: String(baseDocId),
-            branch: encodeURIComponent(String(branch)),
+            trainingDocId: String(training.docId),
         });
     }
 }
@@ -471,27 +1024,37 @@ export class TrainingDeleteHandler extends Handler<Context> {
     }
 }
 
+export class TrainingGetHandler extends Handler<Context> {
+    @param('docId', Types.String)
+    async get(domainId: string, docId: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const id = trainingDocIdFromParam(docId);
+        if (!id) throw new ValidationError('docId');
+        const training = await TrainingModel.get(domainId, id);
+        if (!training) throw new NotFoundError('training');
+        if (training.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        }
+        this.response.type = 'application/json';
+        this.response.template = null;
+        this.response.body = { training };
+    }
+}
+
 export async function apply(ctx: Context) {
     ctx.Route('training_preview', '/training/preview', TrainingPreviewHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('training_create', '/training/create', TrainingCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('training_delete', '/training/:docId/delete', TrainingDeleteHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('training_domain', '/training', TrainingDomainHandler);
-    ctx.Route('training_editor_branch', '/training/:docId/branch/:branch/editor', TrainingEditorDocHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('training_editor', '/training/:docId/editor', TrainingEditorDocHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('training_editor', '/training/:trainingDocId/editor', TrainingEditorHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('training_get', '/training/get', TrainingGetHandler, PRIV.PRIV_USER_PROFILE);
 
-    // Training editor backend endpoints (reuse base handlers, only route prefix differs).
-    ctx.Route('training_data', '/training/data', BaseDataHandler);
-    ctx.Connection('training_connection', '/training/ws', BaseConnectionHandler);
-
-    ctx.Route('training_node_update', '/training/node/:nodeId', BaseNodeHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('training_node', '/training/node', BaseNodeHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('training_edge', '/training/edge', BaseEdgeHandler, PRIV.PRIV_USER_PROFILE);
-
-    ctx.Route('training_save', '/training/save', BaseSaveHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('training_batch_save', '/training/batch-save', BaseBatchSaveHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('training_expand_state', '/training/expand-state', BaseExpandStateHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('training_editor_ui_prefs', '/training/editor-ui-prefs', BaseEditorUiPrefsHandler, PRIV.PRIV_USER_PROFILE);
-
-    ctx.Route('training_card', '/training/card', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('training_card_update', '/training/card/:cardId', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
+    // Training endpoints: shared storage in source base branches.
+    ctx.Route('training_data', '/training/data', TrainingDataHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Connection('training_connection', '/training/ws', TrainingConnectionHandler);
+    ctx.Route('training_save', '/training/save', TrainingSaveHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('training_batch_save', '/training/batch-save', TrainingBatchSaveHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('training_expand_state', '/training/expand-state', TrainingExpandStateHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('training_editor_ui_prefs', '/training/editor-ui-prefs', TrainingEditorUiPrefsHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('training_card', '/training/card', TrainingCardHandler, PRIV.PRIV_USER_PROFILE);
 }
