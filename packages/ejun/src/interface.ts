@@ -210,10 +210,10 @@ declare module './model/agent'{
         owner: number;
         apiKey?: string;
         memory?: string;
-        mcpToolIds?: ObjectId[]; // Comment translated to English.
-        repoIds?: number[]; // Comment translated to English.
+        mcpToolIds?: ObjectId[];
+        repoIds?: number[];
         skillIds?: string[]; // Assigned skill names; domain market tools only when referenced in these skills
-        skillBranch?: string; // Comment translated to English.
+        skillBranch?: string;
     }
 }
 export type { AgentDoc } from './model/agent';
@@ -223,7 +223,7 @@ export interface BaseDoc {
     docType: document['TYPE_BASE']; // Base 
     docId: number;
     domainId: string;
-    rpids: number[]; // Comment translated to English.
+    rpids: number[];
     title: string;
     content: string;
     owner: number;
@@ -232,7 +232,7 @@ export interface BaseDoc {
 }
 
 export interface RepoDoc {
-    docType: document['TYPE_REPO'];  // Comment translated to English.
+    docType: document['TYPE_REPO']; 
     docId: ObjectId;
     domainId: string;
     rpid: number;
@@ -241,13 +241,13 @@ export interface RepoDoc {
     owner: number;
     createdAt: Date;
     updateAt: Date;
-    currentBranch?: string; // Comment translated to English.
-    branches?: string[];    // Comment translated to English.
-    githubRepo?: string;    // Comment translated to English.
-    mode?: 'file' | 'manuscript'; // Comment translated to English.
-    config?: Record<string, any>; // Comment translated to English.
-    mcpServerId?: number; // Comment translated to English.
-    edgeId?: number; // Comment translated to English.
+    currentBranch?: string;
+    branches?: string[];   
+    githubRepo?: string;   
+    mode?: 'file' | 'manuscript';
+    config?: Record<string, any>;
+    mcpServerId?: number;
+    edgeId?: number;
 }
 
 export interface DocDoc {
@@ -255,7 +255,7 @@ export interface DocDoc {
     docId: ObjectId;
     domainId: string;
     rpid: number;
-    did: number;  // Comment translated to English.
+    did: number; 
     owner: number;
     title: string;
     content: string;
@@ -267,7 +267,7 @@ export interface DocDoc {
     doc: boolean;
     childrenCount?: number;
     createdAt?: Date;
-    branch?: string; // Comment translated to English.
+    branch?: string;
     order?: number;
 }
 
@@ -276,8 +276,8 @@ export interface BlockDoc {
     docId: ObjectId;
     domainId: string;
     rpid: number;
-    did: number;  // Comment translated to English.
-    bid: number;  // Comment translated to English.
+    did: number; 
+    bid: number; 
     owner: number;
     title: string;
     content: string;
@@ -285,29 +285,29 @@ export interface BlockDoc {
     updateAt: Date;
     views: number;
     createdAt?: Date;
-    branch?: string; // Comment translated to English.
+    branch?: string;
     order?: number;
 }
 
 // Base document
 export interface BaseNode {
-    id: string; // Comment translated to English.
-    text: string; // Comment translated to English.
-    x?: number; // Comment translated to English.
-    y?: number; // Comment translated to English.
-    width?: number; // Comment translated to English.
-    height?: number; // Comment translated to English.
-    color?: string; // Comment translated to English.
-    backgroundColor?: string; // Comment translated to English.
-    fontSize?: number; // Comment translated to English.
-    shape?: 'rectangle' | 'circle' | 'ellipse' | 'diamond'; // Comment translated to English.
-    parentId?: string; // Comment translated to English.
-    children?: string[]; // Comment translated to English.
-    expanded?: boolean; // Comment translated to English.
-    level?: number; // Comment translated to English.
-    order?: number; // Comment translated to English.
-    style?: Record<string, any>; // Comment translated to English.
-    data?: Record<string, any>; // Comment translated to English.
+    id: string;
+    text: string;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    color?: string;
+    backgroundColor?: string;
+    fontSize?: number;
+    shape?: 'rectangle' | 'circle' | 'ellipse' | 'diamond';
+    parentId?: string;
+    children?: string[];
+    expanded?: boolean;
+    level?: number;
+    order?: number;
+    style?: Record<string, any>;
+    data?: Record<string, any>;
     /** Mounted files (uploaded to this node) */
     files?: FileInfo[];
     /** Optional intent / goal text for this node (shown aggregated on ancestors in the editor) */
@@ -315,14 +315,14 @@ export interface BaseNode {
 }
 
 export interface BaseEdge {
-    id: string; // Comment translated to English.
-    source: string; // Comment translated to English.
-    target: string; // Comment translated to English.
-    label?: string; // Comment translated to English.
-    style?: Record<string, any>; // Comment translated to English.
-    type?: 'straight' | 'curved' | 'bezier'; // Comment translated to English.
-    color?: string; // Comment translated to English.
-    width?: number; // Comment translated to English.
+    id: string;
+    source: string;
+    target: string;
+    label?: string;
+    style?: Record<string, any>;
+    type?: 'straight' | 'curved' | 'bezier';
+    color?: string;
+    width?: number;
 }
 
 export interface BaseDoc {
@@ -331,21 +331,21 @@ export interface BaseDoc {
     domainId: string;
     owner: number;
     title: string;
-    content: string; // Comment translated to English.
-    type?: 'base' | 'skill';
-    nodes: BaseNode[]; // Comment translated to English.
-    edges: BaseEdge[]; // Comment translated to English.
-    branchData?: { [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] } }; // Comment translated to English.
+    content: string;
+    type?: 'base' | 'skill' | 'training';
+    nodes: BaseNode[];
+    edges: BaseEdge[];
+    branchData?: { [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] } };
     layout?: {
-        type: 'hierarchical' | 'force' | 'manual'; // Comment translated to English.
-        direction?: 'LR' | 'RL' | 'TB' | 'BT'; // Comment translated to English.
-        spacing?: { x: number; y: number }; // Comment translated to English.
-        config?: Record<string, any>; // Comment translated to English.
+        type: 'hierarchical' | 'force' | 'manual';
+        direction?: 'LR' | 'RL' | 'TB' | 'BT';
+        spacing?: { x: number; y: number };
+        config?: Record<string, any>;
     };
     viewport?: {
-        x: number; // Comment translated to English.
-        y: number; // Comment translated to English.
-        zoom: number; // Comment translated to English.
+        x: number;
+        y: number;
+        zoom: number;
     };
     theme?: {
         primaryColor?: string;
@@ -357,26 +357,26 @@ export interface BaseDoc {
     updateAt: Date;
     views: number;
     ip?: string;
-    rpid?: number; // Comment translated to English.
-    bid?: string | number; // Comment translated to English.
-    branch?: string; // Comment translated to English.
-    githubRepo?: string; // Comment translated to English.
-    branches?: string[]; // Comment translated to English.
-    currentBranch?: string; // Comment translated to English.
-    parentId?: ObjectId; // Comment translated to English.
-    domainPosition?: { x: number; y: number }; // Comment translated to English.
-    history?: BaseHistoryEntry[]; // Comment translated to English.
-    files?: FileInfo[]; // Comment translated to English.
+    rpid?: number;
+    bid?: string | number;
+    branch?: string;
+    githubRepo?: string;
+    branches?: string[];
+    currentBranch?: string;
+    parentId?: ObjectId;
+    domainPosition?: { x: number; y: number };
+    history?: BaseHistoryEntry[];
+    files?: FileInfo[];
 }
 
 export interface BaseHistoryEntry {
-    id: string; // Comment translated to English.
-    type: 'save' | 'commit'; // Comment translated to English.
-    timestamp: Date; // Comment translated to English.
-    userId: number; // Comment translated to English.
-    username: string; // Comment translated to English.
-    description: string; // Comment translated to English.
-    snapshot: { // Comment translated to English.
+    id: string;
+    type: 'save' | 'commit';
+    timestamp: Date;
+    userId: number;
+    username: string;
+    description: string;
+    snapshot: {
         nodes: BaseNode[];
         edges: BaseEdge[];
         viewport?: {
@@ -391,27 +391,26 @@ export interface CardDoc {
     docType: document['TYPE_CARD'];
     docId: ObjectId;
     domainId: string;
-    baseDocId: number | ObjectId; // Comment translated to English.
-    nodeId: string; // Comment translated to English.
-    cid: number; // Comment translated to English.
+    baseDocId: number | ObjectId;
+    nodeId: string;
+    cid: number;
     owner: number;
     title: string;
     content: string;
-    /* Comment translated to English. */
     cardFace?: string;
     ip?: string;
     updateAt: Date;
     views: number;
     createdAt?: Date;
     order?: number;
-    // Comment translated to English.
+   
     problems?: {
-        pid: string;          // Comment translated to English.
-        type: 'single';       // Comment translated to English.
-        stem: string;         // Comment translated to English.
-        options: string[];    // Comment translated to English.
-        answer: number;       // Comment translated to English.
-        analysis?: string;    // Comment translated to English.
+        pid: string;         
+        type: 'single';      
+        stem: string;        
+        options: string[];   
+        answer: number;      
+        analysis?: string;   
     }[];
     /** Mounted files (uploaded to this card) */
     files?: FileInfo[];
@@ -420,23 +419,23 @@ export interface CardDoc {
 // Node document
 declare module './model/node' {
     interface NodeDoc {
-        _id: ObjectId; // Comment translated to English.
+        _id: ObjectId;
         docType: document['TYPE_NODE'];
-        docId: ObjectId; // Comment translated to English.
+        docId: ObjectId;
         domainId: string;
-        nid: number; // Comment translated to English.
+        nid: number;
         name: string;
         description?: string;
-        wsEndpoint?: string; // Comment translated to English.
-        mqttClientId?: string; // Comment translated to English.
+        wsEndpoint?: string;
+        mqttClientId?: string;
         status: 'active' | 'inactive' | 'disconnected';
-        host?: string; // Comment translated to English.
-        port?: number; // Comment translated to English.
-        edgeId?: number; // Comment translated to English.
+        host?: string;
+        port?: number;
+        edgeId?: number;
         createdAt: Date;
         updatedAt: Date;
-        owner: number; // Comment translated to English.
-        content?: string; // Comment translated to English.
+        owner: number;
+        content?: string;
     }
 }
 export type { NodeDoc } from './model/node';
@@ -444,47 +443,47 @@ export type { NodeDoc } from './model/node';
 // Scene document
 declare module './model/scene' {
     interface SceneDoc {
-        _id: ObjectId; // Comment translated to English.
+        _id: ObjectId;
         docType: document['TYPE_SCENE'];
-        docId: ObjectId; // Comment translated to English.
+        docId: ObjectId;
         domainId: string;
-        sid: number; // Comment translated to English.
+        sid: number;
         name: string;
         description?: string;
-        enabled: boolean; // Comment translated to English.
+        enabled: boolean;
         createdAt: Date;
         updatedAt: Date;
-        owner: number; // Comment translated to English.
-        content?: string; // Comment translated to English.
+        owner: number;
+        content?: string;
     }
 
     interface SceneEventDoc {
-        _id: ObjectId; // Comment translated to English.
+        _id: ObjectId;
         docType: document['TYPE_EVENT'];
-        docId: ObjectId; // Comment translated to English.
+        docId: ObjectId;
         domainId: string;
-        sceneId: number; // Comment translated to English.
-        sceneDocId: ObjectId; // Comment translated to English.
-        parentType: document['TYPE_SCENE']; // Comment translated to English.
-        parentId: ObjectId; // Comment translated to English.
-        eid: number; // Comment translated to English.
+        sceneId: number;
+        sceneDocId: ObjectId;
+        parentType: document['TYPE_SCENE'];
+        parentId: ObjectId;
+        eid: number;
         name: string;
         description?: string;
-        // Comment translated to English.
-        sourceNodeId?: number; // Comment translated to English.
-        sourceDeviceId?: string; // Comment translated to English.
-        sourceClientId?: number; // Comment translated to English.
-        sourceWidgetName?: string; // Comment translated to English.
-        sourceGsiPath?: string; // Comment translated to English.
-        sourceGsiOperator?: string; // Comment translated to English.
-        sourceGsiValue?: any; // Comment translated to English.
-        sourceAction?: string; // Comment translated to English.
-        // Comment translated to English.
-        targets: Array<{ // Comment translated to English.
-            targetNodeId?: number; // Comment translated to English.
-            targetDeviceId?: string; // Comment translated to English.
-            targetClientId?: number; // Comment translated to English.
-            targetWidgetName?: string; // Comment translated to English.
+       
+        sourceNodeId?: number;
+        sourceDeviceId?: string;
+        sourceClientId?: number;
+        sourceWidgetName?: string;
+        sourceGsiPath?: string;
+        sourceGsiOperator?: string;
+        sourceGsiValue?: any;
+        sourceAction?: string;
+       
+        targets: Array<{
+            targetNodeId?: number;
+            targetDeviceId?: string;
+            targetClientId?: number;
+            targetWidgetName?: string;
             targetAction: string;
             targetValue?: any;
             order?: number; // Execution order
@@ -497,8 +496,8 @@ declare module './model/scene' {
         triggerDelay?: number; // Delay before trigger (ms)
         createdAt: Date;
         updatedAt: Date;
-        owner: number; // Comment translated to English.
-        content?: string; // Comment translated to English.
+        owner: number;
+        content?: string;
     }
 }
 export type { SceneDoc, SceneEventDoc } from './model/scene';
@@ -506,45 +505,45 @@ export type { SceneDoc, SceneEventDoc } from './model/scene';
 // MCP Server document
 declare module './model/mcp' {
     interface McpServerDoc {
-        _id: ObjectId; // Comment translated to English.
+        _id: ObjectId;
         docType: document['TYPE_EDGE'];
-        docId: ObjectId; // Comment translated to English.
+        docId: ObjectId;
         domainId: string;
-        serverId: number; // Comment translated to English.
+        serverId: number;
         name: string;
         description?: string;
-        wsEndpoint: string; // Comment translated to English.
-        wsToken?: string; // Comment translated to English.
-        status?: 'connected' | 'disconnected' | 'error'; // Comment translated to English.
-        lastConnectedAt?: Date; // Comment translated to English.
-        lastDisconnectedAt?: Date; // Comment translated to English.
-        errorMessage?: string; // Comment translated to English.
-        toolsCount?: number; // Comment translated to English.
-        type?: 'provider' | 'repo' | 'node'; // Comment translated to English.
+        wsEndpoint: string;
+        wsToken?: string;
+        status?: 'connected' | 'disconnected' | 'error';
+        lastConnectedAt?: Date;
+        lastDisconnectedAt?: Date;
+        errorMessage?: string;
+        toolsCount?: number;
+        type?: 'provider' | 'repo' | 'node';
         createdAt: Date;
         updatedAt: Date;
-        owner: number; // Comment translated to English.
-        content?: string; // Comment translated to English.
+        owner: number;
+        content?: string;
     }
 
     interface McpToolDoc {
-        _id: ObjectId; // Comment translated to English.
+        _id: ObjectId;
         docType: document['TYPE_TOOL'];
-        docId: ObjectId; // Comment translated to English.
+        docId: ObjectId;
         domainId: string;
-        serverId: number; // Comment translated to English.
-        serverDocId: ObjectId; // Comment translated to English.
-        toolId: number; // Comment translated to English.
-        name: string; // Comment translated to English.
-        description: string; // Comment translated to English.
+        serverId: number;
+        serverDocId: ObjectId;
+        toolId: number;
+        name: string;
+        description: string;
         inputSchema: {
             type: string;
             properties?: Record<string, any>;
-        }; // Comment translated to English.
+        };
         createdAt: Date;
         updatedAt: Date;
-        owner: number; // Comment translated to English.
-        content?: string; // Comment translated to English.
+        owner: number;
+        content?: string;
     }
 }
 
@@ -592,7 +591,7 @@ declare module './model/client' {
         lastConnectedAt?: Date;
         lastDisconnectedAt?: Date;
         errorMessage?: string;
-        edgeId?: number; // Comment translated to English.
+        edgeId?: number;
         settings: {
             asr?: {
                 provider: string;
@@ -639,7 +638,7 @@ declare module './model/edge' {
         docType: document['TYPE_EDGE'];
         docId: ObjectId;
         domainId: string;
-        eid: number; // Comment translated to English.
+        eid: number;
         token: string;
         type: 'provider' | 'client' | 'node' | 'repo';
         status: 'online' | 'offline' | 'working';
@@ -652,8 +651,8 @@ declare module './model/edge' {
         lastDisconnectedAt?: Date;
         errorMessage?: string;
         toolsCount?: number;
-        nodeId?: number; // Comment translated to English.
-        clientId?: number; // Comment translated to English.
+        nodeId?: number;
+        clientId?: number;
         createdAt: Date;
         updatedAt: Date;
         owner: number;
@@ -669,7 +668,7 @@ declare module './model/workflow' {
         docType: document['TYPE_WORKFLOW'];
         docId: ObjectId;
         domainId: string;
-        wid: number; // Comment translated to English.
+        wid: number;
         name: string;
         description?: string;
         status: 'active' | 'inactive' | 'paused';
@@ -677,7 +676,7 @@ declare module './model/workflow' {
         createdAt: Date;
         updatedAt: Date;
         owner: number;
-        content?: string; // Comment translated to English.
+        content?: string;
     }
 }
 
@@ -688,22 +687,22 @@ declare module './model/workflow_node' {
         docType: document['TYPE_WORKFLOW_NODE'];
         docId: ObjectId;
         domainId: string;
-        workflowId: number; // Comment translated to English.
-        workflowDocId: ObjectId; // Comment translated to English.
-        nid: number; // Comment translated to English.
+        workflowId: number;
+        workflowDocId: ObjectId;
+        nid: number;
         type: 'trigger' | 'action' | 'condition' | 'delay';
         nodeType: 'timer' | 'button' | 'device_control' | 'agent_message' | 'object_action' | 'agent_action' | 'condition' | 'delay' | 'start' | 'end' | 'receiver';
         name: string;
-        position: { x: number; y: number }; // Comment translated to English.
-        config: Record<string, any>; // Comment translated to English.
+        position: { x: number; y: number };
+        config: Record<string, any>;
         connections: Array<{
-            targetNodeId: number; // Comment translated to English.
-            condition?: string; // Comment translated to English.
+            targetNodeId: number;
+            condition?: string;
         }>;
         createdAt: Date;
         updatedAt: Date;
         owner: number;
-        content?: string; // Comment translated to English.
+        content?: string;
     }
 }
 export type { WorkflowDoc } from './model/workflow';
@@ -779,7 +778,7 @@ declare module './model/tool' {
         domainId: string;
         token: string;
         edgeDocId: ObjectId;
-        tid: number; // Comment translated to English.
+        tid: number;
         name: string;
         description: string;
         inputSchema: {
@@ -794,7 +793,6 @@ declare module './model/tool' {
 }
 export type { ToolDoc } from './model/tool';
 
-/* Comment translated to English. */
 export interface AssignedToolEntry {
     name: string;
     description: string;
@@ -802,7 +800,6 @@ export interface AssignedToolEntry {
     token?: string;
     edgeId?: ObjectId;
     type?: 'system';
-    /* Comment translated to English. */
     system?: boolean;
 }
 export type { DomainMarketToolDoc } from './model/domain_market_tool';
@@ -1116,9 +1113,9 @@ export interface SessionDoc {
     agentId: string;
     uid: number;
     recordIds: ObjectId[];
-    type: 'client' | 'chat'; // Comment translated to English.
+    type: 'client' | 'chat';
     title?: string;
-    context?: any; // Comment translated to English.
+    context?: any;
     createdAt: Date;
     updatedAt: Date;
     lastActivityAt?: Date;
@@ -1130,7 +1127,7 @@ declare module '@ejunz/common/types' {
     export interface RecordDoc {
         // Task fields (when lang === 'task')
         agentId?: string;
-        sessionId?: ObjectId; // Comment translated to English.
+        sessionId?: ObjectId;
         agentMessages?: Array<{
             role: 'user' | 'assistant' | 'tool';
             content: string;

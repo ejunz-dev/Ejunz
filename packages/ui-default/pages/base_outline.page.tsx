@@ -18,10 +18,10 @@ interface BaseNode {
   shape?: 'rectangle' | 'circle' | 'ellipse' | 'diamond';
   parentId?: string;
   children?: string[];
-  expanded?: boolean; // Comment translated to English.
-  expandedOutline?: boolean; // Comment translated to English.
+  expanded?: boolean;
+  expandedOutline?: boolean;
   level?: number;
-  order?: number; // Comment translated to English.
+  order?: number;
   style?: Record<string, any>;
   data?: Record<string, any>;
 }
@@ -78,7 +78,7 @@ interface CardFileInfo {
   lastModified?: Date | string;
 }
 
-// Comment translated to English.
+
 interface Card {
   docId: string;
   cid: number;
@@ -91,7 +91,7 @@ interface Card {
   files?: CardFileInfo[];
 }
 
-// Comment translated to English.
+
 type FileItem = {
   type: 'node' | 'card';
   id: string;
@@ -104,7 +104,7 @@ type FileItem = {
   clipboardType?: 'copy' | 'cut';
 };
 
-// Comment translated to English.
+
 interface ReactFlowNode {
   id: string;
   type?: string;
@@ -144,9 +144,9 @@ const OutlineView = ({
   rootNodeId?: string | null;
   basePath?: string;
 }) => {
-  // Comment translated to English.
+ 
   const [expandedNodesOutline, setExpandedNodesOutline] = useState<Set<string>>(() => {
-    // Comment translated to English.
+   
     const allExpanded = new Set<string>();
     nodes.forEach(node => {
       allExpanded.add(node.id);
@@ -154,10 +154,10 @@ const OutlineView = ({
     return allExpanded;
   });
   
-  // Comment translated to English.
+ 
   const handleToggleExpand = useCallback((nodeId: string) => {
     setExpandedNodesOutline(prev => {
-      // Comment translated to English.
+     
       const newSet = new Set(prev);
       const wasExpanded = newSet.has(nodeId);
       if (wasExpanded) {
@@ -165,13 +165,13 @@ const OutlineView = ({
       } else {
         newSet.add(nodeId);
       }
-      // Comment translated to English.
+     
       return new Set(newSet);
     });
-    // Comment translated to English.
+   
   }, []);
   
-  // Comment translated to English.
+ 
   const getStorageKey = useCallback(() => {
     const docId = (window as any).UiContext?.base?.docId;
     const bid = (window as any).UiContext?.base?.bid;
@@ -184,7 +184,7 @@ const OutlineView = ({
     return 'base_cards_expanded_default';
   }, []);
 
-  // Comment translated to English.
+ 
   const loadCardsExpandedState = useCallback((): Record<string, boolean> => {
     try {
       const key = getStorageKey();
@@ -198,7 +198,7 @@ const OutlineView = ({
     return {};
   }, [getStorageKey]);
 
-  // Comment translated to English.
+ 
   const saveCardsExpandedState = useCallback((state: Record<string, boolean>) => {
     try {
       const key = getStorageKey();
@@ -208,11 +208,11 @@ const OutlineView = ({
     }
   }, [getStorageKey]);
 
-  // Comment translated to English.
+ 
   const [cardsExpanded, setCardsExpanded] = useState<Record<string, boolean>>(() => {
-    // Comment translated to English.
+   
     const loaded = loadCardsExpandedState();
-    // Comment translated to English.
+   
     const defaultExpanded: Record<string, boolean> = {};
     nodes.forEach(node => {
       const nodeCards = (window as any).UiContext?.nodeCardsMap?.[node.id] || [];
@@ -223,7 +223,7 @@ const OutlineView = ({
     return { ...loaded, ...defaultExpanded };
   });
 
-  // Comment translated to English.
+ 
   const toggleCardsExpanded = useCallback((nodeId: string) => {
     setCardsExpanded(prev => {
       const newState = {
@@ -235,7 +235,7 @@ const OutlineView = ({
     });
   }, [saveCardsExpandedState]);
 
-  // Comment translated to English.
+ 
   useEffect(() => {
     setExpandedNodesOutline(prev => {
       const newSet = new Set(prev);
@@ -250,7 +250,7 @@ const OutlineView = ({
     });
   }, [nodes]);
 
-  // Comment translated to English.
+ 
   useEffect(() => {
     const loaded = loadCardsExpandedState();
     const newState: Record<string, boolean> = {};
@@ -274,17 +274,17 @@ const OutlineView = ({
     });
   }, [nodes, loadCardsExpandedState]);
 
-  // Comment translated to English.
+ 
   const buildTree = useMemo(() => {
     const nodeMap = new Map<string, { node: ReactFlowNode; children: string[] }>();
     const rootNodes: string[] = [];
 
-    // Comment translated to English.
+   
     nodes.forEach((node) => {
       nodeMap.set(node.id, { node, children: [] });
     });
 
-    // Comment translated to English.
+   
     edges.forEach((edge) => {
       const parent = nodeMap.get(edge.source);
       if (parent) {
@@ -292,7 +292,7 @@ const OutlineView = ({
       }
     });
 
-    // Comment translated to English.
+   
     nodeMap.forEach((nodeData) => {
       nodeData.children.sort((a, b) => {
         const nodeA = nodes.find(n => n.id === a);
@@ -305,8 +305,8 @@ const OutlineView = ({
       });
     });
 
-    // Comment translated to English.
-    // Comment translated to English.
+   
+   
     if (rootNodeId && nodeMap.has(rootNodeId)) {
       rootNodes.push(rootNodeId);
     } else {
@@ -321,9 +321,9 @@ const OutlineView = ({
     return { nodeMap, rootNodes };
   }, [nodes, edges, rootNodeId]);
 
-  // Comment translated to English.
+ 
   const rootNodeInfo = useMemo(() => {
-    // Comment translated to English.
+   
     const targetRootNodeId = rootNodeId || (buildTree.rootNodes.length > 0 ? buildTree.rootNodes[0] : null);
     if (!targetRootNodeId) return null;
     
@@ -337,13 +337,13 @@ const OutlineView = ({
     };
   }, [buildTree, rootNodeId]);
 
-  // Comment translated to English.
+ 
   const getAllVisibleChildren = useCallback((nodeId: string): string[] => {
     const nodeData = buildTree.nodeMap.get(nodeId);
     if (!nodeData) return [];
     
     const { node, children } = nodeData;
-    // Comment translated to English.
+   
     const expanded = expandedNodesOutline.has(nodeId);
     
     if (!expanded || children.length === 0) return [];
@@ -357,11 +357,11 @@ const OutlineView = ({
     return visibleChildren;
   }, [buildTree, expandedNodesOutline]);
 
-  // Comment translated to English.
+ 
   const getNodeCards = useCallback((nodeId: string): Card[] => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const cards = nodeCardsMap[nodeId] || [];
-    // Comment translated to English.
+   
     return [...cards].sort((a, b) => {
       const orderA = (a.order as number) || 0;
       const orderB = (b.order as number) || 0;
@@ -369,7 +369,7 @@ const OutlineView = ({
     });
   }, []);
 
-  // Comment translated to English.
+ 
   const getCardUrl = useCallback((card: Card, nodeId: string): string => {
     const domainId = (window as any).UiContext?.domainId || 'system';
     const branch = (window as any).UiContext?.currentBranch || 'main';
@@ -384,7 +384,7 @@ const OutlineView = ({
     return '#';
   }, [basePath]);
 
-  // Comment translated to English.
+ 
   const renderNodeTree = useCallback(
     (nodeId: string, level: number = 0, isLast: boolean = false, hasSiblings: boolean = false): JSX.Element | null => {
       const nodeData = buildTree.nodeMap.get(nodeId);
@@ -392,15 +392,15 @@ const OutlineView = ({
 
       const { node, children } = nodeData;
       const originalNode = node.data.originalNode as BaseNode;
-      // Comment translated to English.
+     
       const expanded = expandedNodesOutline.has(nodeId);
       const hasChildren = children.length > 0;
       const isSelected = selectedNodeId === nodeId;
       
-      // Comment translated to English.
+     
       const cards = getNodeCards(nodeId);
       
-      // Comment translated to English.
+     
       const childNodes = children.map(childId => {
         const childNodeData = buildTree.nodeMap.get(childId);
         if (!childNodeData) return null;
@@ -411,7 +411,7 @@ const OutlineView = ({
         };
       }).filter(Boolean) as Array<{ id: string; order: number }>;
       
-      // Comment translated to English.
+     
       const allChildren: Array<{ type: 'node' | 'card'; id: string; order: number; data: any }> = [
         ...childNodes.map(n => ({ type: 'node' as const, id: n.id, order: n.order, data: null })),
         ...cards.map(c => ({ 
@@ -422,13 +422,11 @@ const OutlineView = ({
         })),
       ];
       
-      // Comment translated to English.
       allChildren.sort((a, b) => (a.order || 0) - (b.order || 0));
 
       return (
         <div key={nodeId} style={{ position: 'relative' }}>
           <div style={{ marginLeft: `${level * 24}px`, position: 'relative' }}>
-            {/* Comment translated to English. */}
             <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
               <div
                 style={{
@@ -452,7 +450,7 @@ const OutlineView = ({
                   }
                 }}
               >
-                {/* Comment translated to English. */}
+    
                 {hasChildren || cards.length > 0 ? (
                   <button
                     onClick={(e) => {
@@ -491,7 +489,7 @@ const OutlineView = ({
                   <div style={{ width: '22px', marginRight: '0px', flexShrink: 0 }} />
                 )}
                 
-                {/* Comment translated to English. */}
+    
                 <span style={{ 
                   marginRight: '8px',
                   color: '#666',
@@ -502,7 +500,7 @@ const OutlineView = ({
                   •
                 </span>
                 
-                {/* Comment translated to English. */}
+    
                 <div
                   style={{
                     flex: 1,
@@ -518,10 +516,9 @@ const OutlineView = ({
             </div>
                 </div>
                 
-          {/* Comment translated to English. */}
           {expanded && allChildren.length > 0 && (
             <div style={{ position: 'relative', marginLeft: `${level * 24}px` }}>
-              {/* Comment translated to English. */}
+  
                   <div
                     style={{
                   position: 'absolute',
@@ -536,7 +533,7 @@ const OutlineView = ({
               <div>
                 {allChildren.map((item, index) => {
                   if (item.type === 'card') {
-                    // Comment translated to English.
+                   
                     const card = item.data as Card;
                     return (
                       <div
@@ -580,7 +577,7 @@ const OutlineView = ({
           </div>
                     );
                   } else {
-                    // Comment translated to English.
+                   
                     const childId = item.id;
                     const childNodeData = buildTree.nodeMap.get(childId);
                     if (!childNodeData) return null;
@@ -613,7 +610,6 @@ const OutlineView = ({
         </div>
       ) : (
         <>
-          {/* Comment translated to English. */}
           <div
             style={{
               fontSize: '20px',
@@ -627,7 +623,6 @@ const OutlineView = ({
             {rootNodeInfo.text}
           </div>
           
-          {/* Comment translated to English. */}
           {(() => {
             const rootCards = getNodeCards(rootNodeInfo.id);
             const rootChildNodes = rootNodeInfo.children.map(childId => {
@@ -640,7 +635,7 @@ const OutlineView = ({
               };
             }).filter(Boolean) as Array<{ id: string; order: number }>;
             
-            // Comment translated to English.
+           
             const rootAllChildren: Array<{ type: 'node' | 'card'; id: string; order: number; data: any }> = [
               ...rootChildNodes.map(n => ({ type: 'node' as const, id: n.id, order: n.order, data: null })),
               ...rootCards.map(c => ({ 
@@ -651,7 +646,7 @@ const OutlineView = ({
               })),
             ];
             
-            // Comment translated to English.
+           
             rootAllChildren.sort((a, b) => (a.order || 0) - (b.order || 0));
             
             if (rootAllChildren.length === 0) {
@@ -666,7 +661,7 @@ const OutlineView = ({
             <div style={{ paddingLeft: '4px' }}>
                 {rootAllChildren.map((item, index) => {
                   if (item.type === 'card') {
-                    // Comment translated to English.
+                   
                     const card = item.data as Card;
                     return (
                       <div
@@ -710,7 +705,7 @@ const OutlineView = ({
                       </div>
                     );
                   } else {
-                    // Comment translated to English.
+                   
                     const childId = item.id;
                     const isLastChild = index === rootAllChildren.length - 1;
                     const childHasSiblings = rootAllChildren.length > 1;
@@ -733,18 +728,18 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
   );
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  // Comment translated to English.
+ 
   const isManualSelectionRef = useRef(false);
-  // Comment translated to English.
+ 
   const selectedFileIdRef = useRef<string | null>(null);
-  // Comment translated to English.
+ 
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
-  // Comment translated to English.
+ 
   const loadOutlineExpandedState = useCallback((): Set<string> => {
     const expanded = new Set<string>();
     if (initialData?.nodes) {
       initialData.nodes.forEach(node => {
-        // Comment translated to English.
+       
         if (node.expandedOutline !== false) {
           expanded.add(node.id);
         }
@@ -770,11 +765,11 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Comment translated to English.
+ 
   const expandedNodesRef = useRef<Set<string>>(expandedNodes);
   const baseRef = useRef<BaseDoc>(base);
   
-  // Comment translated to English.
+ 
   useEffect(() => {
     expandedNodesRef.current = expandedNodes;
   }, [expandedNodes]);
@@ -783,7 +778,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     baseRef.current = base;
   }, [base]);
 
-  // Comment translated to English.
+ 
   useEffect(() => {
     if ((window as any).UiContext) {
       (window as any).UiContext.nodeCardsMap = nodeCardsMap;
@@ -808,7 +803,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     }
   }, [basePath, docId]);
 
-  // Comment translated to English.
+ 
   const outlineWsRef = useRef<{ close: () => void } | null>(null);
   useEffect(() => {
     const socketUrl = (window as any).UiContext?.socketUrl;
@@ -910,10 +905,10 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     };
   }, [theme]);
 
-  // Comment translated to English.
+ 
   const expandSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const triggerExpandAutoSave = useCallback(() => {
-    // Comment translated to English.
+   
     if (expandSaveTimerRef.current) {
       clearTimeout(expandSaveTimerRef.current);
       expandSaveTimerRef.current = null;
@@ -921,11 +916,11 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
 
     expandSaveTimerRef.current = setTimeout(async () => {
       try {
-        // Comment translated to English.
+       
         const currentExpandedNodes = expandedNodesRef.current;
         const currentBase = baseRef.current;
         
-        // Comment translated to English.
+       
         const updatedNodes = currentBase.nodes.map((node) => {
           const isExpanded = currentExpandedNodes.has(node.id);
           return {
@@ -934,8 +929,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           };
         });
 
-        // Comment translated to English.
-        // Comment translated to English.
+       
+       
         const filteredNodes = updatedNodes.filter(n => !n.id.startsWith('temp-node-'));
         const filteredEdges = currentBase.edges.filter(e => 
           !e.source.startsWith('temp-node-') && 
@@ -956,8 +951,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           operationDescription: '自动保存 outline 展开状态',
         });
         
-        // Comment translated to English.
-        // Comment translated to English.
+       
+       
         setBase(prev => ({
           ...prev,
           nodes: updatedNodes,
@@ -971,34 +966,34 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     }, 1500);
   }, [docId, basePath]);
 
-  // Comment translated to English.
+ 
   const cardContentCacheRef = useRef<Record<string, string>>({});
-  // Comment translated to English.
+ 
   const imageCacheRef = useRef<Cache | null>(null);
-  // Comment translated to English.
+ 
   const cachedCardsRef = useRef<Set<string>>(new Set());
-  // Comment translated to English.
+ 
   const [cachingProgress, setCachingProgress] = useState<{ current: number; total: number; currentCard?: string } | null>(null);
-  // Comment translated to English.
+ 
   const [cacheStatus, setCacheStatus] = useState<{
     outdated: Array<{ cardId: string; title: string; cachedUpdateAt: string; currentUpdateAt: string }>;
     total: number;
   } | null>(null);
   const [isCheckingCache, setIsCheckingCache] = useState(false);
   const [isUpdatingCache, setIsUpdatingCache] = useState(false);
-  // Comment translated to English.
+ 
   const [explorerMode, setExplorerMode] = useState<'tree' | 'cache'>('tree');
   
-  // Comment translated to English.
+ 
   const [isMobile, setIsMobile] = useState(false);
   const [isExplorerOpen, setIsExplorerOpen] = useState(false);
   
-  // Comment translated to English.
+ 
   useEffect(() => {
     const checkMobile = () => {
       const mobile = window.innerWidth <= 600;
       setIsMobile(mobile);
-      // Comment translated to English.
+     
       if (mobile) {
         setIsExplorerOpen(false);
       }
@@ -1008,28 +1003,28 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
-  // Comment translated to English.
+ 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null);
-  // Comment translated to English.
+ 
   const longPressTriggeredRef = useRef<boolean>(false);
-  // Comment translated to English.
+ 
   // const [cachedCount, setCachedCount] = useState(0);
-  // Comment translated to English.
+ 
   // const [cachingProgress, setCachingProgress] = useState<{ current: number; total: number } | null>(null);
-  // Comment translated to English.
+ 
   // const [imageCachingProgress, setImageCachingProgress] = useState<{ current: number; total: number } | null>(null);
-  // Comment translated to English.
+ 
   // const [isCachingPaused, setIsCachingPaused] = useState(false);
-  // Comment translated to English.
+ 
   // const [showCachePanel, setShowCachePanel] = useState(false);
-  // Comment translated to English.
+ 
   // const cachingTaskRef = useRef<{ cancelled: boolean }>({ cancelled: false });
-  // Comment translated to English.
+ 
   const wsRef = useRef<any>(null);
-  // Comment translated to English.
+ 
   const wsRequestMapRef = useRef<Map<string, { resolve: (value: any) => void; reject: (error: any) => void }>>(new Map());
 
-  // Comment translated to English.
+ 
   useEffect(() => {
     try {
       const keys = Object.keys(localStorage);
@@ -1037,7 +1032,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       let loadedCount = 0;
       let invalidatedCount = 0;
       
-      // Comment translated to English.
+     
       const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
       const allCards: Card[] = [];
       Object.values(nodeCardsMap).forEach((cards: Card[]) => {
@@ -1056,13 +1051,13 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           const cachedDataStr = localStorage.getItem(key);
           if (cachedDataStr) {
             try {
-              // Comment translated to English.
+             
               const cachedData = JSON.parse(cachedDataStr);
               if (cachedData.html && cachedData.updateAt) {
-                // Comment translated to English.
+               
                 const currentCard = cardMap.get(cardId);
                 if (currentCard && currentCard.updateAt && currentCard.updateAt !== cachedData.updateAt) {
-                  // Comment translated to English.
+                 
                   localStorage.removeItem(key);
                   invalidatedCount++;
                   return;
@@ -1071,13 +1066,13 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                 cachedCardsRef.current.add(cardId);
                 loadedCount++;
               } else {
-                // Comment translated to English.
+               
                 cardContentCacheRef.current[cardId] = cachedData.html || cachedDataStr;
                 cachedCardsRef.current.add(cardId);
                 loadedCount++;
               }
             } catch (e) {
-              // Comment translated to English.
+             
               cardContentCacheRef.current[cardId] = cachedDataStr;
               cachedCardsRef.current.add(cardId);
               loadedCount++;
@@ -1096,7 +1091,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       console.error('Failed to load cache from localStorage:', error);
     }
     
-    // Comment translated to English.
+   
     if ('caches' in window && !imageCacheRef.current) {
       caches.open('base-outline-images-v1').then(cache => {
         imageCacheRef.current = cache;
@@ -1106,7 +1101,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     }
   }, []);
 
-  // Comment translated to English.
+ 
   useEffect(() => {
     const bg = theme === 'dark' ? '#121212' : '#fff';
     document.body.style.backgroundColor = bg;
@@ -1122,16 +1117,16 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     };
   }, [theme]);
 
-  // Comment translated to English.
+ 
   const checkCacheStatus = useCallback(async () => {
-    // Comment translated to English.
+   
     if (isCheckingCache) {
       return;
     }
     
     setIsCheckingCache(true);
     try {
-      // Comment translated to English.
+     
       await new Promise(resolve => {
         if (window.requestIdleCallback) {
           window.requestIdleCallback(() => resolve(undefined), { timeout: 1000 });
@@ -1151,7 +1146,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       const outdated: Array<{ cardId: string; title: string; cachedUpdateAt: string; currentUpdateAt: string }> = [];
       const cachedCardIds = new Set<string>();
       
-      // Comment translated to English.
+     
       const BATCH_SIZE = 50;
       for (let i = 0; i < allCards.length; i += BATCH_SIZE) {
         const batch = allCards.slice(i, i + BATCH_SIZE);
@@ -1162,18 +1157,18 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             const cacheKey = `base-outline-card-${cardIdStr}`;
             const cachedDataStr = localStorage.getItem(cacheKey);
             if (cachedDataStr) {
-              // Comment translated to English.
+             
               cachedCardIds.add(cardIdStr);
-              // Comment translated to English.
+             
               if (!cachedCardsRef.current.has(cardIdStr)) {
                 cachedCardsRef.current.add(cardIdStr);
               }
               
               try {
                 const cachedData = JSON.parse(cachedDataStr);
-                // Comment translated to English.
+               
                 if (cachedData.html) {
-                  // Comment translated to English.
+                 
                   if (cachedData.updateAt && card.updateAt && cachedData.updateAt !== card.updateAt) {
                     outdated.push({
                       cardId: cardIdStr,
@@ -1182,9 +1177,9 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                       currentUpdateAt: card.updateAt,
                     });
                   }
-                  // Comment translated to English.
+                 
                 } else {
-                  // Comment translated to English.
+                 
                   outdated.push({
                     cardId: cardIdStr,
                     title: card.title || '未命名卡片',
@@ -1193,7 +1188,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                   });
                 }
               } catch (e) {
-                // Comment translated to English.
+               
                 outdated.push({
                   cardId: cardIdStr,
                   title: card.title || '未命名卡片',
@@ -1207,14 +1202,14 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           }
         }
         
-        // Comment translated to English.
+       
         if (i + BATCH_SIZE < allCards.length) {
           await new Promise(resolve => setTimeout(resolve, 0));
         }
       }
       
-      // Comment translated to English.
-      // Comment translated to English.
+     
+     
       try {
         const allKeys: string[] = [];
         for (let i = 0; i < localStorage.length; i++) {
@@ -1224,7 +1219,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           }
         }
         
-        // Comment translated to English.
+       
         const CLEANUP_BATCH_SIZE = 100;
         for (let i = 0; i < allKeys.length; i += CLEANUP_BATCH_SIZE) {
           const batch = allKeys.slice(i, i + CLEANUP_BATCH_SIZE);
@@ -1233,7 +1228,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             const cardIdStr = key.replace('base-outline-card-', '');
             const card = allCards.find(c => String(c.docId) === cardIdStr);
             if (!card) {
-              // Comment translated to English.
+             
               cachedCardsRef.current.delete(cardIdStr);
               delete cardContentCacheRef.current[cardIdStr];
               try {
@@ -1244,7 +1239,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             }
           }
           
-          // Comment translated to English.
+         
           if (i + CLEANUP_BATCH_SIZE < allKeys.length) {
             await new Promise(resolve => setTimeout(resolve, 0));
           }
@@ -1253,7 +1248,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         console.error('Failed to clean up old cache entries:', error);
       }
       
-      // Comment translated to English.
+     
       const cachedCardIdsArray = Array.from(cachedCardsRef.current);
       const SYNC_BATCH_SIZE = 100;
       for (let i = 0; i < cachedCardIdsArray.length; i += SYNC_BATCH_SIZE) {
@@ -1281,16 +1276,16 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     }
   }, [isCheckingCache]);
 
-  // Comment translated to English.
+ 
   const initializedBaseRef = useRef<number | null>(null);
   
-  // Comment translated to English.
+ 
   useEffect(() => {
     const currentbid = base?.bid;
     
-    // Comment translated to English.
+   
     if (currentbid && currentbid !== initializedBaseRef.current) {
-      // Comment translated to English.
+     
       const expanded = new Set<string>();
       base.nodes.forEach(node => {
         if (node.expandedOutline !== false) {
@@ -1302,16 +1297,16 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       initializedBaseRef.current = currentbid;
     }
     
-    // Comment translated to English.
+   
     const timer = setTimeout(() => {
       if (cachedCardsRef.current.size > 0) {
         checkCacheStatus();
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [base?.bid, checkCacheStatus]); // Comment translated to English.
+  }, [base?.bid, checkCacheStatus]);
 
-  // Comment translated to English.
+ 
   const checkNodeCachedRef = useRef<((nodeId: string) => boolean) | null>(null);
   const checkNodeCached = useCallback((nodeId: string): boolean => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
@@ -1319,7 +1314,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       return !card.nodeId || card.nodeId === nodeId;
     });
     
-    // Comment translated to English.
+   
     const allCardsCached = nodeCards.length === 0 || nodeCards.every((card: Card) => {
       const cardIdStr = String(card.docId);
       return cachedCardsRef.current.has(cardIdStr);
@@ -1329,13 +1324,13 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       return false;
     }
     
-    // Comment translated to English.
+   
     const nodeData = base.nodes.find(n => n.id === nodeId);
     if (!nodeData) {
       return allCardsCached;
     }
     
-    // Comment translated to English.
+   
     const childNodeIds = base.edges
       .filter(edge => edge.source === nodeId)
       .map(edge => edge.target);
@@ -1344,7 +1339,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       return allCardsCached;
     }
     
-    // Comment translated to English.
+   
     const checkFn = checkNodeCachedRef.current || checkNodeCached;
     const allChildNodesCached = childNodeIds.every(childNodeId => {
       return checkFn(childNodeId);
@@ -1353,24 +1348,24 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     return allCardsCached && allChildNodesCached;
   }, [base]);
   
-  // Comment translated to English.
+ 
   useEffect(() => {
     checkNodeCachedRef.current = checkNodeCached;
   }, [checkNodeCached]);
 
-  // Comment translated to English.
+ 
   const expandedNodesArray = useMemo(() => Array.from(expandedNodes), [expandedNodes]);
   const fileTree = useMemo(() => {
     const items: FileItem[] = [];
     const nodeMap = new Map<string, { node: BaseNode; children: string[] }>();
     const rootNodes: string[] = [];
 
-    // Comment translated to English.
+   
     base.nodes.forEach((node) => {
       nodeMap.set(node.id, { node, children: [] });
     });
 
-    // Comment translated to English.
+   
     base.edges.forEach((edge) => {
       const parent = nodeMap.get(edge.source);
       if (parent) {
@@ -1378,7 +1373,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       }
     });
 
-    // Comment translated to English.
+   
     const hasParentSet = new Set(base.edges.map(e => e.target));
     base.nodes.forEach((node) => {
       if (!hasParentSet.has(node.id)) {
@@ -1386,11 +1381,11 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       }
     });
 
-    // Comment translated to English.
+   
     const nodeCardsMapCurrent = nodeCardsMap;
     const expandedSet = new Set(expandedNodesArray);
 
-    // Comment translated to English.
+   
     const buildTree = (nodeId: string, level: number, parentId?: string) => {
       const nodeData = nodeMap.get(nodeId);
       if (!nodeData) return;
@@ -1398,7 +1393,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       const { node, children } = nodeData;
       const isExpanded = expandedSet.has(nodeId);
 
-      // Comment translated to English.
+     
       const nodeFileItem: FileItem = {
         type: 'node',
         id: nodeId,
@@ -1409,16 +1404,16 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       };
       items.push(nodeFileItem);
 
-      // Comment translated to English.
+     
       if (isExpanded) {
-        // Comment translated to English.
+       
         const nodeCards = (nodeCardsMapCurrent[nodeId] || [])
           .filter((card: Card) => {
             return !card.nodeId || card.nodeId === nodeId;
           })
           .sort((a: Card, b: Card) => (a.order || 0) - (b.order || 0));
         
-        // Comment translated to English.
+       
         const childNodes = children
           .map(childId => {
             const childNodeData = nodeMap.get(childId);
@@ -1429,16 +1424,16 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           .filter(Boolean)
           .sort((a, b) => (a!.order || 0) - (b!.order || 0)) as Array<{ id: string; node: BaseNode; order: number }>;
 
-        // Comment translated to English.
+       
         const allChildren: Array<{ type: 'node' | 'card'; id: string; order: number; data: any }> = [
           ...childNodes.map(n => ({ type: 'node' as const, id: n.id, order: n.order, data: n.node })),
           ...nodeCards.map(c => ({ type: 'card' as const, id: c.docId, order: c.order || 0, data: c })),
         ];
         
-        // Comment translated to English.
+       
         allChildren.sort((a, b) => (a.order || 0) - (b.order || 0));
         
-        // Comment translated to English.
+       
         allChildren.forEach(item => {
           if (item.type === 'card') {
             const card = item.data as Card;
@@ -1453,7 +1448,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             };
             items.push(cardFileItem);
           } else {
-            // Comment translated to English.
+           
             buildTree(item.id, level + 1, nodeId);
       }
         });
@@ -1467,7 +1462,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     return items;
   }, [base.nodes, base.edges, expandedNodesArray, nodeCardsMap]);
 
-  // Comment translated to English.
+ 
   const toggleNodeExpanded = useCallback((nodeId: string) => {
     setExpandedNodes(prev => {
       const newSet = new Set(prev);
@@ -1477,7 +1472,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         newSet.add(nodeId);
       }
       
-      // Comment translated to English.
+     
       setBase(prev => {
         const updated = {
           ...prev,
@@ -1487,28 +1482,28 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
               : n
           ),
         };
-        // Comment translated to English.
+       
         baseRef.current = updated;
         return updated;
       });
       
-      // Comment translated to English.
+     
       expandedNodesRef.current = newSet;
       
-      // Comment translated to English.
+     
       triggerExpandAutoSave();
       
       return newSet;
     });
   }, [triggerExpandAutoSave]);
 
-  // Comment translated to English.
+ 
   const getNodeSubgraph = useCallback((nodeId: string): { nodes: ReactFlowNode[]; edges: ReactFlowEdge[] } => {
     const nodeMap = new Map<string, BaseNode>();
     const edgeMap = new Map<string, BaseEdge>();
     const visitedNodes = new Set<string>();
 
-    // Comment translated to English.
+   
     const collectNodes = (id: string) => {
       if (visitedNodes.has(id)) return;
       visitedNodes.add(id);
@@ -1518,19 +1513,19 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     
       nodeMap.set(id, node);
 
-      // Comment translated to English.
+     
       const childEdges = base.edges.filter(e => e.source === id);
       childEdges.forEach(edge => {
         edgeMap.set(edge.id, edge);
-        // Comment translated to English.
+       
         collectNodes(edge.target);
     });
     };
 
-    // Comment translated to English.
+   
     collectNodes(nodeId);
 
-    // Comment translated to English.
+   
     const reactFlowNodes: ReactFlowNode[] = Array.from(nodeMap.values()).map(node => ({
         id: node.id,
       type: 'default',
@@ -1541,7 +1536,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       },
     }));
 
-    // Comment translated to English.
+   
     const reactFlowEdges: ReactFlowEdge[] = Array.from(edgeMap.values())
       .filter(edge => nodeMap.has(edge.source) && nodeMap.has(edge.target))
       .map(edge => ({
@@ -1557,9 +1552,9 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     return { nodes: reactFlowNodes, edges: reactFlowEdges };
   }, [base]);
 
-  // Comment translated to English.
+ 
   const handleNodeToggleExpand = useCallback((nodeId: string) => {
-    // Comment translated to English.
+   
     setBase(prev => ({
       ...prev,
       nodes: prev.nodes.map(node =>
@@ -1570,13 +1565,13 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     }));
   }, []);
 
-  // Comment translated to English.
+ 
   const handleNodeClick = useCallback((nodeId: string) => {
-    // Comment translated to English.
+   
     console.log('Node clicked:', nodeId);
   }, []);
 
-  // Comment translated to English.
+ 
   const initImageCache = useCallback(async () => {
     if ('caches' in window && !imageCacheRef.current) {
       try {
@@ -1587,7 +1582,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     }
   }, []);
 
-  // Comment translated to English.
+ 
   const getCachedImage = useCallback(async (url: string): Promise<string> => {
     if (!imageCacheRef.current) {
       await initImageCache();
@@ -1618,7 +1613,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     return url;
   }, [initImageCache]);
 
-  // Comment translated to English.
+ 
   const preloadAndCacheImages = useCallback(async (html: string): Promise<void> => {
     if (!html) return;
     
@@ -1637,7 +1632,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     
     await initImageCache();
     
-    // Comment translated to English.
+   
     const imagePromises = imageUrls.map(async (originalUrl) => {
       try {
         await getCachedImage(originalUrl);
@@ -1649,7 +1644,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     await Promise.all(imagePromises);
   }, [initImageCache, getCachedImage]);
 
-  // Comment translated to English.
+ 
   const replaceImagesWithCache = useCallback(async (html: string): Promise<string> => {
     if (!html) return html;
     
@@ -1659,7 +1654,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     
     while ((match = imgRegex.exec(html)) !== null) {
       const url = match[1];
-      // Comment translated to English.
+     
       if (url && !url.startsWith('blob:') && !url.startsWith('data:')) {
         imageUrls.push(url);
       }
@@ -1692,7 +1687,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     return updatedHtml;
   }, [initImageCache, getCachedImage]);
 
-  // Comment translated to English.
+ 
   const preloadCardContent = useCallback(async (card: Card) => {
     const cardIdStr = String(card.docId);
     
@@ -1749,10 +1744,10 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         html = await response.text();
       }
       
-      // Comment translated to English.
+     
       await preloadAndCacheImages(html);
       
-      // Comment translated to English.
+     
       cardContentCacheRef.current[cardIdStr] = html;
       cachedCardsRef.current.add(cardIdStr);
       
@@ -1774,20 +1769,20 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     }
   }, [preloadAndCacheImages]);
 
-  // Comment translated to English.
+ 
   const clearCardCache = useCallback((cardId: string) => {
     const cardIdStr = String(cardId);
-    // Comment translated to English.
+   
     delete cardContentCacheRef.current[cardIdStr];
     cachedCardsRef.current.delete(cardIdStr);
-    // Comment translated to English.
+   
     try {
       const cacheKey = `base-outline-card-${cardIdStr}`;
       localStorage.removeItem(cacheKey);
     } catch (error) {
       console.error(`Failed to remove cache for ${cardIdStr}:`, error);
     }
-    // Comment translated to English.
+   
     if (selectedCard && String(selectedCard.docId) === cardIdStr) {
       const currentCard = selectedCard;
       setSelectedCard(null);
@@ -1795,7 +1790,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         setSelectedCard(currentCard);
       }, 100);
     }
-    // Comment translated to English.
+   
     if (cacheStatus) {
       setCacheStatus(prev => {
         if (!prev) return null;
@@ -1807,12 +1802,12 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     }
   }, [selectedCard, cacheStatus]);
 
-  // Comment translated to English.
+ 
   const clearNodeCache = useCallback((nodeId: string) => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const nodeCards = nodeCardsMap[nodeId] || [];
     
-    // Comment translated to English.
+   
     nodeCards.forEach((card: Card) => {
       const cardIdStr = String(card.docId);
       delete cardContentCacheRef.current[cardIdStr];
@@ -1825,7 +1820,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       }
     });
     
-    // Comment translated to English.
+   
     const childNodeIds = base.edges
       .filter(edge => edge.source === nodeId)
       .map(edge => edge.target);
@@ -1834,7 +1829,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       clearNodeCache(childNodeId);
     });
     
-    // Comment translated to English.
+   
     if (selectedCard && selectedCard.nodeId === nodeId) {
       const currentCard = selectedCard;
       setSelectedCard(null);
@@ -1843,13 +1838,13 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       }, 100);
     }
     
-    // Comment translated to English.
+   
     if (cacheStatus) {
       checkCacheStatus();
     }
   }, [base.edges, selectedCard, cacheStatus, checkCacheStatus]);
 
-  // Comment translated to English.
+ 
   const updateOutdatedCache = useCallback(async () => {
     if (!cacheStatus || cacheStatus.outdated.length === 0) return;
     
@@ -1868,13 +1863,13 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         }
       });
       
-      // Comment translated to English.
+     
       const remainingOutdated = [...cacheStatus.outdated];
       for (let i = 0; i < remainingOutdated.length; i++) {
         const item = remainingOutdated[i];
         const card = allCards.find(c => String(c.docId) === item.cardId);
         if (card) {
-          // Comment translated to English.
+         
           setCachingProgress(prev => {
             if (!prev) return null;
             return {
@@ -1884,7 +1879,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             };
           });
           
-          // Comment translated to English.
+         
           delete cardContentCacheRef.current[item.cardId];
           cachedCardsRef.current.delete(item.cardId);
           try {
@@ -1894,13 +1889,13 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             console.error(`Failed to remove cache for ${item.cardId}:`, error);
           }
           
-          // Comment translated to English.
+         
           await preloadCardContent(card);
           
-          // Comment translated to English.
+         
           await new Promise(resolve => setTimeout(resolve, 50));
           
-          // Comment translated to English.
+         
           let cacheVerified = false;
           try {
             const cacheKey = `base-outline-card-${item.cardId}`;
@@ -1908,26 +1903,26 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             if (cachedDataStr) {
               try {
                 const cachedData = JSON.parse(cachedDataStr);
-                // Comment translated to English.
+               
                 if (cachedData.html) {
-                  // Comment translated to English.
+                 
                   if (cachedData.updateAt && card.updateAt && cachedData.updateAt === card.updateAt) {
                     cacheVerified = true;
                   } else {
-                    // Comment translated to English.
+                   
                     console.warn(`Cache updateAt mismatch for ${item.cardId}: cached=${cachedData.updateAt}, card=${card.updateAt}, but cache was just updated`);
-                    cacheVerified = true; // Comment translated to English.
+                    cacheVerified = true;
                   }
                 } else {
-                  // Comment translated to English.
+                 
                   cacheVerified = false;
                 }
               } catch (e) {
-                // Comment translated to English.
+               
                 cacheVerified = false;
               }
             } else {
-              // Comment translated to English.
+             
               cacheVerified = false;
             }
           } catch (error) {
@@ -1935,7 +1930,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             cacheVerified = false;
           }
           
-          // Comment translated to English.
+         
           if (cacheVerified) {
             setCacheStatus(prev => {
               if (!prev) return null;
@@ -1950,7 +1945,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           }
         }
         
-        // Comment translated to English.
+       
         setCachingProgress(prev => {
           if (!prev) return null;
           return {
@@ -1960,8 +1955,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         });
       }
       
-      // Comment translated to English.
-      // Comment translated to English.
+     
+     
       setCacheStatus(prev => {
         if (!prev || prev.outdated.length === 0) {
           return null;
@@ -1977,7 +1972,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     }
   }, [cacheStatus, preloadCardContent]);
 
-  // Comment translated to English.
+ 
   const cacheNodeCards = useCallback(async (nodeId: string) => {
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
     const nodeCards = (nodeCardsMap[nodeId] || []).sort((a: Card, b: Card) => {
@@ -2000,7 +1995,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     
     console.log(`[Base Outline] 开始缓存 node ${nodeId} 下的 ${cardsToCache.length} 个 card`);
     
-    // Comment translated to English.
+   
     setCachingProgress({ current: 0, total: cardsToCache.length });
     
     const batchSize = 5;
@@ -2021,41 +2016,41 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     }
     
     console.log(`[Base Outline] 完成缓存 node ${nodeId} 下的 card`);
-    // Comment translated to English.
+   
     setTimeout(() => {
       setCachingProgress(null);
     }, 500);
   }, [preloadCardContent]);
 
-  // Comment translated to English.
+ 
   /*
   const preloadAllCards = useCallback(async () => {
-    // Comment translated to English.
+   
   }, []);
   */
 
-  // Comment translated to English.
+ 
   /*
   const startCaching = useCallback(() => {
-    // Comment translated to English.
+   
   }, []);
   */
 
-  // Comment translated to English.
+ 
   /*
   const pauseCaching = useCallback(() => {
-    // Comment translated to English.
+   
   }, []);
   */
 
-  // Comment translated to English.
+ 
   /*
   const clearCache = useCallback(async () => {
-    // Comment translated to English.
+   
   }, []);
   */
 
-  // Comment translated to English.
+ 
   /* const getCacheSize = useCallback(() => {
     let size = 0;
     Object.values(cardContentCacheRef.current).forEach((html: string) => {
@@ -2064,21 +2059,21 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     return size;
   }, []);
 
-  // Comment translated to English.
+ 
   /* const formatCacheSize = useCallback((bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   }, []); */
 
-  // Comment translated to English.
+ 
   const clearAllHighlights = useCallback(() => {
     const fileTreeContainer = document.querySelector('[data-file-tree-container]');
     if (fileTreeContainer) {
       const allItems = fileTreeContainer.querySelectorAll('[data-file-item]');
       allItems.forEach((item) => {
         const element = item as HTMLElement;
-        // Comment translated to English.
+       
         element.style.backgroundColor = '';
         element.style.borderLeft = '';
         element.style.color = '';
@@ -2087,30 +2082,30 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     }
   }, []);
 
-  // Comment translated to English.
+ 
   const handleSelectCard = useCallback((card: Card, skipUrlUpdate = false) => {
-    // Comment translated to English.
+   
     clearAllHighlights();
     
     setSelectedCard(card);
-    // Comment translated to English.
+   
     const fileId = `card-${card.docId}`;
     selectedFileIdRef.current = fileId;
-    setSelectedFileId(fileId); // Comment translated to English.
+    setSelectedFileId(fileId);
     
-    // Comment translated to English.
+   
     if (!skipUrlUpdate) {
       const urlParams = new URLSearchParams(window.location.search);
       urlParams.set('cardId', String(card.docId));
-      urlParams.delete('nodeId'); // Comment translated to English.
+      urlParams.delete('nodeId');
       const newUrl = window.location.pathname + '?' + urlParams.toString();
       window.history.pushState({ cardId: card.docId }, '', newUrl);
     }
   }, [clearAllHighlights]);
 
-  // Comment translated to English.
+ 
   useEffect(() => {
-    // Comment translated to English.
+   
     if (isManualSelectionRef.current) {
       isManualSelectionRef.current = false;
       return;
@@ -2121,12 +2116,12 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     const nodeId = urlParams.get('nodeId');
     
     if (cardId) {
-      // Comment translated to English.
+     
       const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
       let foundCard: Card | null = null;
       let cardNodeId: string | null = null;
       
-      // Comment translated to English.
+     
       for (const [nodeIdKey, cards] of Object.entries(nodeCardsMap)) {
         if (Array.isArray(cards)) {
           const card = cards.find((c: Card) => String(c.docId) === String(cardId));
@@ -2139,14 +2134,14 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       }
       
       if (foundCard && cardNodeId) {
-        // Comment translated to English.
+       
         if (!expandedNodes.has(cardNodeId)) {
           setExpandedNodes(prev => {
             const newSet = new Set(prev);
             newSet.add(cardNodeId!);
             return newSet;
           });
-          // Comment translated to English.
+         
           setTimeout(() => {
             if (!selectedCard || String(selectedCard.docId) !== String(cardId)) {
               clearAllHighlights();
@@ -2160,73 +2155,73 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           return;
         }
         
-        // Comment translated to English.
+       
         if (!selectedCard || String(selectedCard.docId) !== String(cardId)) {
-          // Comment translated to English.
+         
           clearAllHighlights();
           
-          // Comment translated to English.
+         
           const fileId = `card-${foundCard.docId}`;
           selectedFileIdRef.current = fileId;
-          setSelectedFileId(fileId); // Comment translated to English.
-          handleSelectCard(foundCard, true); // Comment translated to English.
-          setSelectedNodeId(null); // Comment translated to English.
+          setSelectedFileId(fileId);
+          handleSelectCard(foundCard, true);
+          setSelectedNodeId(null);
         }
       }
     } else if (nodeId) {
-      // Comment translated to English.
-      // Comment translated to English.
+     
+     
       if (base.nodes.length > 0) {
         const nodeFile = fileTree.find(f => f.type === 'node' && f.nodeId === nodeId);
         if (nodeFile && (!selectedNodeId || selectedNodeId !== nodeId)) {
-          // Comment translated to English.
+         
           clearAllHighlights();
           
-          // Comment translated to English.
+         
           selectedFileIdRef.current = nodeId;
-          setSelectedFileId(nodeId); // Comment translated to English.
+          setSelectedFileId(nodeId);
           setSelectedNodeId(nodeId);
-          setSelectedCard(null); // Comment translated to English.
+          setSelectedCard(null);
         }
       }
     } else if (!cardId && !nodeId) {
-      // Comment translated to English.
+     
       selectedFileIdRef.current = null;
-      setSelectedFileId(null); // Comment translated to English.
+      setSelectedFileId(null);
       setSelectedCard(null);
       setSelectedNodeId(null);
     }
   }, [fileTree, selectedCard, selectedNodeId, handleSelectCard, expandedNodes, base.nodes]);
 
-  // Comment translated to English.
+ 
   const scrollToSelectedItem = useCallback(() => {
     if (!selectedCard && !selectedNodeId) return;
     
-    // Comment translated to English.
+   
     setTimeout(() => {
       const fileTreeContainer = document.querySelector('[data-file-tree-container]') as HTMLElement;
       if (!fileTreeContainer) return;
       
-      // Comment translated to English.
+     
       let selectedElement: HTMLElement | null = null;
       if (selectedCard) {
-        // Comment translated to English.
+       
         const cardId = String(selectedCard.docId);
         const items = Array.from(fileTreeContainer.querySelectorAll('[data-file-item]'));
         for (const item of items) {
           const fileCardId = (item as HTMLElement).getAttribute('data-file-card-id');
-          // Comment translated to English.
+         
           if (fileCardId && fileCardId === cardId && !(item as HTMLElement).getAttribute('data-file-node-id')) {
             selectedElement = item as HTMLElement;
             break;
           }
         }
       } else if (selectedNodeId) {
-        // Comment translated to English.
+       
         const items = Array.from(fileTreeContainer.querySelectorAll('[data-file-item]'));
         for (const item of items) {
           const fileNodeId = (item as HTMLElement).getAttribute('data-file-node-id');
-          // Comment translated to English.
+         
           if (fileNodeId && fileNodeId === selectedNodeId && !(item as HTMLElement).getAttribute('data-file-card-id')) {
             selectedElement = item as HTMLElement;
             break;
@@ -2234,18 +2229,18 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         }
       }
       
-      // Comment translated to English.
+     
       if (selectedElement) {
         const containerRect = fileTreeContainer.getBoundingClientRect();
         const elementRect = selectedElement.getBoundingClientRect();
         
-        // Comment translated to English.
+       
         const scrollTop = fileTreeContainer.scrollTop;
         const elementTop = elementRect.top - containerRect.top + scrollTop;
         const elementBottom = elementTop + elementRect.height;
         const containerHeight = fileTreeContainer.clientHeight;
         
-        // Comment translated to English.
+       
         if (elementTop < scrollTop || elementBottom > scrollTop + containerHeight) {
           fileTreeContainer.scrollTo({
             top: elementTop - containerHeight / 2 + elementRect.height / 2,
@@ -2256,31 +2251,31 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     }, 100);
   }, [selectedCard, selectedNodeId]);
 
-  // Comment translated to English.
+ 
   useEffect(() => {
     scrollToSelectedItem();
   }, [scrollToSelectedItem, fileTree]);
 
-  // Comment translated to English.
+ 
   useEffect(() => {
     if (isMobile && isExplorerOpen && (selectedCard || selectedNodeId)) {
-      // Comment translated to English.
+     
       const timer = setTimeout(() => {
         scrollToSelectedItem();
-      }, 350); // Comment translated to English.
+      }, 350);
       
       return () => clearTimeout(timer);
     }
   }, [isMobile, isExplorerOpen, selectedCard, selectedNodeId, scrollToSelectedItem]);
 
-  // Comment translated to English.
+ 
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
       const urlParams = new URLSearchParams(window.location.search);
       const cardId = urlParams.get('cardId');
       const nodeId = urlParams.get('nodeId');
       
-      // Comment translated to English.
+     
       isManualSelectionRef.current = false;
       
       if (cardId && fileTree.length > 0) {
@@ -2290,35 +2285,35 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           const nodeCards = nodeCardsMap[cardFile.nodeId || ''] || [];
           const card = nodeCards.find((c: Card) => c.docId === cardId);
           if (card && (!selectedCard || selectedCard.docId !== card.docId)) {
-            // Comment translated to English.
+           
             clearAllHighlights();
             
-            // Comment translated to English.
+           
             const fileId = `card-${card.docId}`;
             selectedFileIdRef.current = fileId;
-            setSelectedFileId(fileId); // Comment translated to English.
-            handleSelectCard(card, true); // Comment translated to English.
-            setSelectedNodeId(null); // Comment translated to English.
+            setSelectedFileId(fileId);
+            handleSelectCard(card, true);
+            setSelectedNodeId(null);
           }
         }
       } else if (nodeId && fileTree.length > 0) {
         const nodeFile = fileTree.find(f => f.type === 'node' && f.nodeId === nodeId);
         if (nodeFile && (!selectedNodeId || selectedNodeId !== nodeId)) {
-          // Comment translated to English.
+         
           clearAllHighlights();
           
-          // Comment translated to English.
+         
           selectedFileIdRef.current = nodeId;
-          setSelectedFileId(nodeId); // Comment translated to English.
+          setSelectedFileId(nodeId);
           setSelectedNodeId(nodeId);
-          setSelectedCard(null); // Comment translated to English.
+          setSelectedCard(null);
         }
       } else if (!cardId && !nodeId) {
-        // Comment translated to English.
+       
         clearAllHighlights();
         
         selectedFileIdRef.current = null;
-        setSelectedFileId(null); // Comment translated to English.
+        setSelectedFileId(null);
         setSelectedCard(null);
         setSelectedNodeId(null);
       }
@@ -2330,15 +2325,15 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     };
   }, [fileTree, selectedCard, selectedNodeId, handleSelectCard]);
 
-  // Comment translated to English.
+ 
   const attachImagePreviewHandlers = useCallback((container: HTMLElement) => {
     const images = container.querySelectorAll('img');
     images.forEach((img) => {
-      // Comment translated to English.
+     
       const newImg = img.cloneNode(true) as HTMLImageElement;
       img.parentNode?.replaceChild(newImg, img);
       
-      // Comment translated to English.
+     
       newImg.style.cursor = 'pointer';
       newImg.addEventListener('click', async (e) => {
         e.preventDefault();
@@ -2347,12 +2342,12 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         if (!imageUrl) return;
         
         try {
-          // Comment translated to English.
+         
           const previewImage = (window as any).Ejunz?.components?.preview?.previewImage;
           if (previewImage) {
             await previewImage(imageUrl);
           } else {
-            // Comment translated to English.
+           
             const { InfoDialog } = await import('vj/components/dialog/index');
             const $ = (await import('jquery')).default;
             const isMobile = window.innerWidth <= 600;
@@ -2371,7 +2366,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             
             const dialog = new InfoDialog({
               $body: $(`<div class="typo" style="padding: ${padding}; text-align: center;"></div>`).append($img),
-              $action: null, // Comment translated to English.
+              $action: null,
               cancelByClickingBack: true,
               cancelByEsc: true,
             });
@@ -2385,8 +2380,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     });
   }, []);
 
-  // Comment translated to English.
-  const renderingCardRef = useRef<string | null>(null); // Comment translated to English.
+ 
+  const renderingCardRef = useRef<string | null>(null);
   useEffect(() => {
     if (!selectedCard) {
       renderingCardRef.current = null;
@@ -2398,18 +2393,18 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     
     const cardIdStr = String(selectedCard.docId);
     
-    // Comment translated to English.
+   
     if (renderingCardRef.current === cardIdStr) {
       return;
     }
     renderingCardRef.current = cardIdStr;
     
-    // Comment translated to English.
+   
     if (cardContentCacheRef.current[cardIdStr]) {
       const cachedHtml = cardContentCacheRef.current[cardIdStr];
-      // Comment translated to English.
+     
       replaceImagesWithCache(cachedHtml).then(htmlWithCachedImages => {
-        // Comment translated to English.
+       
         if (selectedCard && String(selectedCard.docId) === cardIdStr) {
           contentDiv.innerHTML = htmlWithCachedImages;
           $(contentDiv).trigger('vjContentNew');
@@ -2417,18 +2412,18 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         }
       }).catch(error => {
         console.error('Failed to replace images with cache:', error);
-        // Comment translated to English.
+       
         contentDiv.innerHTML = cachedHtml;
         $(contentDiv).trigger('vjContentNew');
         attachImagePreviewHandlers(contentDiv);
       });
       
-      // Comment translated to English.
+     
       const nodeId = selectedCard.nodeId || '';
       if (nodeId) {
-        // Comment translated to English.
+       
         setTimeout(() => {
-          // Comment translated to English.
+         
           if (selectedCard && String(selectedCard.docId) === cardIdStr) {
             cacheNodeCards(nodeId).catch(error => {
               console.error('Failed to cache node cards:', error);
@@ -2439,20 +2434,20 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       return;
     }
     
-    // Comment translated to English.
+   
     try {
       const cacheKey = `base-outline-card-${cardIdStr}`;
       const cachedDataStr = localStorage.getItem(cacheKey);
       if (cachedDataStr) {
         try {
-          // Comment translated to English.
+         
           const cachedData = JSON.parse(cachedDataStr);
           const cachedHtml = cachedData.html || cachedDataStr;
           cardContentCacheRef.current[cardIdStr] = cachedHtml;
           cachedCardsRef.current.add(cardIdStr);
-          // Comment translated to English.
+         
           replaceImagesWithCache(cachedHtml).then(htmlWithCachedImages => {
-            // Comment translated to English.
+           
             if (selectedCard && String(selectedCard.docId) === cardIdStr) {
               contentDiv.innerHTML = htmlWithCachedImages;
               $(contentDiv).trigger('vjContentNew');
@@ -2460,7 +2455,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             }
           }).catch(error => {
             console.error('Failed to replace images with cache:', error);
-            // Comment translated to English.
+           
             if (selectedCard && String(selectedCard.docId) === cardIdStr) {
               contentDiv.innerHTML = cachedHtml;
               $(contentDiv).trigger('vjContentNew');
@@ -2468,7 +2463,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             }
           });
           
-          // Comment translated to English.
+         
           const nodeId = selectedCard.nodeId || '';
           if (nodeId) {
             setTimeout(() => {
@@ -2481,12 +2476,12 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           }
           return;
         } catch (e) {
-          // Comment translated to English.
+         
           cardContentCacheRef.current[cardIdStr] = cachedDataStr;
           cachedCardsRef.current.add(cardIdStr);
-          // Comment translated to English.
+         
           replaceImagesWithCache(cachedDataStr).then(htmlWithCachedImages => {
-            // Comment translated to English.
+           
             if (selectedCard && String(selectedCard.docId) === cardIdStr) {
               contentDiv.innerHTML = htmlWithCachedImages;
               $(contentDiv).trigger('vjContentNew');
@@ -2494,7 +2489,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             }
           }).catch(error => {
             console.error('Failed to replace images with cache:', error);
-            // Comment translated to English.
+           
             if (selectedCard && String(selectedCard.docId) === cardIdStr) {
               contentDiv.innerHTML = cachedDataStr;
               $(contentDiv).trigger('vjContentNew');
@@ -2519,7 +2514,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       console.error('Failed to read from localStorage:', error);
     }
     
-    // Comment translated to English.
+   
     if (selectedCard.content) {
       contentDiv.innerHTML = '<p style="color: #999; text-align: center;">加载中...</p>';
       
@@ -2561,16 +2556,16 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       
       renderMarkdown()
       .then(async html => {
-        // Comment translated to English.
+       
         contentDiv.innerHTML = html;
         $(contentDiv).trigger('vjContentNew');
         attachImagePreviewHandlers(contentDiv);
         
-        // Comment translated to English.
+       
         cardContentCacheRef.current[cardIdStr] = html;
         cachedCardsRef.current.add(cardIdStr);
         
-        // Comment translated to English.
+       
         try {
           const cacheKey = `base-outline-card-${cardIdStr}`;
           const cacheData = {
@@ -2582,11 +2577,11 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           console.error('Failed to save to localStorage:', error);
         }
         
-        // Comment translated to English.
+       
         preloadAndCacheImages(html).then(async () => {
-          // Comment translated to English.
+         
           replaceImagesWithCache(html).then(htmlWithCachedImages => {
-            // Comment translated to English.
+           
             if (selectedCard && String(selectedCard.docId) === cardIdStr) {
               contentDiv.innerHTML = htmlWithCachedImages;
               $(contentDiv).trigger('vjContentNew');
@@ -2599,7 +2594,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           console.error('Failed to cache images:', error);
         });
         
-        // Comment translated to English.
+       
         const nodeId = selectedCard.nodeId || '';
         if (nodeId) {
           setTimeout(() => {
@@ -2626,19 +2621,19 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
   }, [selectedCard, preloadAndCacheImages, replaceImagesWithCache, cacheNodeCards, preloadCardContent, attachImagePreviewHandlers]);
 
 
-  // Comment translated to English.
+ 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const fromEdit = urlParams.get('fromEdit');
     const cardId = urlParams.get('cardId');
     
     if (fromEdit === 'true' && cardId && selectedCard && String(selectedCard.docId) === cardId) {
-      // Comment translated to English.
+     
       const cardIdStr = String(selectedCard.docId);
       delete cardContentCacheRef.current[cardIdStr];
       cachedCardsRef.current.delete(cardIdStr);
       
-      // Comment translated to English.
+     
       try {
         const cacheKey = `base-outline-card-${cardIdStr}`;
         localStorage.removeItem(cacheKey);
@@ -2646,7 +2641,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         console.error('Failed to remove from localStorage:', error);
       }
       
-      // Comment translated to English.
+     
       const domainId = (window as any).UiContext?.domainId || 'system';
       const dataApiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
       const dataQs2: Record<string, string> = {};
@@ -2665,7 +2660,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             || {};
           (window as any).UiContext.nodeCardsMap = updatedMap;
           
-          // Comment translated to English.
+         
           const nodeCards = updatedMap[selectedCard.nodeId || ''] || [];
           const updatedCard = nodeCards.find((c: Card) => c.docId === selectedCard.docId);
           if (updatedCard) {
@@ -2673,7 +2668,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           }
         }
         
-        // Comment translated to English.
+       
         urlParams.delete('fromEdit');
         const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
         window.history.replaceState({}, '', newUrl);
@@ -2683,22 +2678,22 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
     }
   }, [docId, selectedCard]);
 
-  // Comment translated to English.
-  // Comment translated to English.
+ 
+ 
   const globalWsKey = `base-ws-${docId}`;
   
   useEffect(() => {
-    // Comment translated to English.
+   
     const cleanupOldConnection = () => {
       const oldWs = (window as any)[globalWsKey];
       if (oldWs) {
         try {
-          // Comment translated to English.
+         
           if (oldWs.onopen) oldWs.onopen = null;
           if (oldWs.onclose) oldWs.onclose = null;
           if (oldWs.onmessage) oldWs.onmessage = null;
-          // Comment translated to English.
-          // Comment translated to English.
+         
+         
           if (oldWs.close) {
             oldWs.close(1000, 'Reconnecting');
           } else if (oldWs.sock && oldWs.sock.close) {
@@ -2711,44 +2706,44 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
       }
     };
     
-    // Comment translated to English.
+   
     const existingWs = (window as any)[globalWsKey];
     if (existingWs && existingWs.readyState === 1) { // WebSocket.OPEN
       wsRef.current = existingWs;
       return () => {
-        // Comment translated to English.
+       
         if (wsRef.current === existingWs) {
           wsRef.current = null;
         }
       };
     }
     
-    // Comment translated to English.
+   
     cleanupOldConnection();
     
     const domainId = (window as any).UiContext?.domainId || 'system';
     const wsUrl = `/d/${domainId}/${basePath}/${docId}/ws`;
 
-    // Comment translated to English.
+   
     import('../components/socket').then(({ default: WebSocket }) => {
       const ws = new WebSocket(wsUrl, false, true);
       
-      // Comment translated to English.
+     
       (window as any)[globalWsKey] = ws;
       wsRef.current = ws;
 
       ws.onopen = () => {
-        // Comment translated to English.
+       
         // console.log('[Base Outline] WebSocket connected');
       };
 
       ws.onmessage = (_: any, data: string) => {
         try {
           const msg = JSON.parse(data);
-          // Comment translated to English.
+         
           // console.log('[Base Outline] WebSocket message:', msg);
 
-          // Comment translated to English.
+         
           if (msg.type === 'markdown_response') {
             const { requestId, html, error } = msg;
             const requestHandler = wsRequestMapRef.current.get(requestId);
@@ -2772,7 +2767,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
               }
             }
           } else if (msg.type === 'init' || msg.type === 'update') {
-            // Comment translated to English.
+           
             setTimeout(() => {
               const domainId = (window as any).UiContext?.domainId || 'system';
               const dataApiPath = basePath === 'base/skill' ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
@@ -2783,13 +2778,13 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
               request.get(dataApiPath, dataQs).then((responseData) => {
                 const newBase = responseData?.base || responseData;
                 
-                // Comment translated to English.
+               
                 const currentExpandedNodes = expandedNodesRef.current;
                 
-                // Comment translated to English.
+               
                 const mergedNodes = newBase.nodes.map((node: BaseNode) => {
                   const isCurrentlyExpanded = currentExpandedNodes.has(node.id);
-                  // Comment translated to English.
+                 
                   return {
                     ...node,
                     expandedOutline: currentExpandedNodes.has(node.id) ? isCurrentlyExpanded : (node.expandedOutline !== false),
@@ -2801,20 +2796,20 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                   nodes: mergedNodes,
                 });
                 
-                // Comment translated to English.
-                // Comment translated to English.
+               
+               
                 setExpandedNodes(prev => {
                   const newSet = new Set(prev);
                   let changed = false;
                   mergedNodes.forEach((node: BaseNode) => {
-                    // Comment translated to English.
+                   
                     if (!prev.has(node.id)) {
                       if (node.expandedOutline !== false) {
                         newSet.add(node.id);
                         changed = true;
                       }
                     }
-                    // Comment translated to English.
+                   
                   });
                   if (changed) {
                     expandedNodesRef.current = newSet;
@@ -2829,16 +2824,16 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                   (window as any).UiContext.nodeCardsMap = updatedMap;
                   setNodeCardsMap(updatedMap);
                   
-                  // Comment translated to English.
+                 
                   const currentSelectedCard = selectedCard;
                   if (currentSelectedCard) {
                     const nodeCards = updatedMap[currentSelectedCard.nodeId || ''] || [];
                     const updatedCard = nodeCards.find((c: Card) => c.docId === currentSelectedCard.docId);
                     if (updatedCard) {
-                      // Comment translated to English.
+                     
                       if (updatedCard.updateAt && currentSelectedCard.updateAt && 
                           updatedCard.updateAt !== currentSelectedCard.updateAt) {
-                        // Comment translated to English.
+                       
                         setTimeout(() => {
                           const cardIdStr = String(currentSelectedCard.docId);
                           delete cardContentCacheRef.current[cardIdStr];
@@ -2851,21 +2846,21 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                           }
                         }, 0);
                       }
-                      // Comment translated to English.
-                      // Comment translated to English.
+                     
+                     
                       if (JSON.stringify(updatedCard) !== JSON.stringify(currentSelectedCard)) {
                         setSelectedCard(updatedCard);
                       }
                     } else {
-                      // Comment translated to English.
+                     
                       selectedFileIdRef.current = null;
-                      setSelectedFileId(null); // Comment translated to English.
+                      setSelectedFileId(null);
                       setSelectedCard(null);
                     }
                   }
                   
-                  // Comment translated to English.
-                  // Comment translated to English.
+                 
+                 
                 }
               }).catch((error) => {
                 console.error('Failed to reload data:', error);
@@ -2879,37 +2874,36 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
 
       ws.onclose = (event: any) => {
         // console.log('[Base Outline] WebSocket closed', event.code, event.reason);
-        // Comment translated to English.
+       
         if ((window as any)[globalWsKey] === ws) {
           (window as any)[globalWsKey] = null;
         }
-        // Comment translated to English.
+       
         if (wsRef.current === ws) {
           wsRef.current = null;
         }
-        // Comment translated to English.
+       
       };
 
-      // Comment translated to English.
-      // Comment translated to English.
+     
+     
     }).catch((error) => {
       console.error('[Base Outline] Failed to load WebSocket:', error);
     });
 
     return () => {
-      // Comment translated to English.
+     
       const currentWs = (window as any)[globalWsKey];
-      // Comment translated to English.
-      // Comment translated to English.
+     
+     
       if (wsRef.current === currentWs) {
         wsRef.current = null;
       }
     };
-  }, [docId, basePath]); // Comment translated to English.
+  }, [docId, basePath]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', backgroundColor: themeStyles.bgPrimary, overflow: 'hidden' }}>
-      {/* Comment translated to English. */}
       <div style={{
         padding: '10px 20px',
         background: themeStyles.bgSecondary,
@@ -3031,11 +3025,11 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
             const domainId = typeof rawDomainId === 'object'
               ? (rawDomainId?._id ? String(rawDomainId._id) : 'system')
               : (rawDomainId ? String(rawDomainId) : 'system');
-            // Comment translated to English.
+           
             if (basePath === 'base/skill') {
               return `/d/${domainId}/base/skill/editor`;
             }
-            // Comment translated to English.
+           
             const rawUiDocId = (window as any).UiContext?.base?.docId;
             const uiDocId = typeof rawUiDocId === 'object'
               ? (rawUiDocId?._id ? String(rawUiDocId._id) : '')
@@ -3061,7 +3055,6 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           <span>.</span>
           <span>编辑器</span>
         </a>
-        {/* Comment translated to English. */}
         {/* <button
           onClick={() => setShowCachePanel(!showCachePanel)}
           style={{
@@ -3078,7 +3071,6 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         >
           💾 缓存
         </button> */}
-        {/* Comment translated to English. */}
         {isMobile && (
           <button
             onClick={() => setIsExplorerOpen(true)}
@@ -3105,9 +3097,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         </div>
       </div>
 
-      {/* Comment translated to English. */}
       <div style={{ display: 'flex', flex: 1, width: '100%', position: 'relative', backgroundColor: themeStyles.bgPrimary, minHeight: 0, overflow: 'hidden' }}>
-        {/* Comment translated to English. */}
         {/* {showCachePanel && (
           <div style={{
             width: '280px',
@@ -3240,7 +3230,6 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           </div>
         )} */}
 
-        {/* Comment translated to English. */}
         {isMobile && isExplorerOpen && (
           <div
             onClick={() => setIsExplorerOpen(false)}
@@ -3256,7 +3245,6 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           />
         )}
         
-        {/* Comment translated to English. */}
         <div style={{
           width: isMobile ? '280px' : '300px',
           borderRight: `1px solid ${themeStyles.borderPrimary}`,
@@ -3319,7 +3307,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                 <button
                   onClick={() => {
                     setExplorerMode('cache');
-                    // Comment translated to English.
+                   
                     setTimeout(() => {
                       if (!isCheckingCache && cachedCardsRef.current.size > 0) {
                         checkCacheStatus();
@@ -3363,12 +3351,12 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
               </div>
             </div>
             
-            {/* Comment translated to English. */}
+
             {explorerMode === 'tree' ? (
-              // Comment translated to English.
+             
               null
             ) : (
-              // Comment translated to English.
+             
               <div>
                 {cacheStatus ? (
                   <div>
@@ -3479,18 +3467,18 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
               </div>
             )}
             {explorerMode === 'tree' && fileTree.map((file) => {
-              // Comment translated to English.
+             
               let isCached = false;
               if (file.type === 'card') {
-                // Comment translated to English.
+               
                 const cardIdStr = String(file.cardId);
                 isCached = cachedCardsRef.current.has(cardIdStr);
               } else if (file.type === 'node') {
-                // Comment translated to English.
+               
                 isCached = checkNodeCached(file.nodeId || '');
               }
               
-              // Comment translated to English.
+             
               const isSelected = selectedFileIdRef.current === file.id && selectedFileId === file.id;
               
               return (
@@ -3502,50 +3490,50 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                   data-file-node-id={file.type === 'node' ? file.nodeId : undefined}
                   data-cached={isCached ? 'true' : 'false'}
                   onClick={() => {
-                    // Comment translated to English.
+                   
                     if (longPressTriggeredRef.current) {
                       longPressTriggeredRef.current = false;
                       return;
                     }
                     
-                    // Comment translated to English.
+                   
                     clearAllHighlights();
                     
-                    // Comment translated to English.
+                   
                     selectedFileIdRef.current = file.id;
-                    setSelectedFileId(file.id); // Comment translated to English.
+                    setSelectedFileId(file.id);
                     
                     if (file.type === 'card') {
                       const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
                       const nodeCards = nodeCardsMap[file.nodeId || ''] || [];
                       const card = nodeCards.find((c: Card) => c.docId === file.cardId);
                       if (card) {
-                        // Comment translated to English.
+                       
                         isManualSelectionRef.current = true;
                         handleSelectCard(card);
-                        setSelectedNodeId(null); // Comment translated to English.
-                        // Comment translated to English.
+                        setSelectedNodeId(null);
+                       
                       }
                     } else {
-                      // Comment translated to English.
+                     
                       const nodeId = file.nodeId || null;
                       
-                      // Comment translated to English.
+                     
                       isManualSelectionRef.current = true;
-                      // Comment translated to English.
+                     
                       clearAllHighlights();
                       
                       setSelectedNodeId(nodeId);
-                      setSelectedCard(null); // Comment translated to English.
-                      // Comment translated to English.
+                      setSelectedCard(null);
+                     
                       selectedFileIdRef.current = nodeId || null;
-                      setSelectedFileId(nodeId || null); // Comment translated to English.
+                      setSelectedFileId(nodeId || null);
                       
-                      // Comment translated to English.
+                     
                       const urlParams = new URLSearchParams(window.location.search);
                       if (nodeId) {
                         urlParams.set('nodeId', nodeId);
-                        urlParams.delete('cardId'); // Comment translated to English.
+                        urlParams.delete('cardId');
                       } else {
                         urlParams.delete('nodeId');
                       }
@@ -3553,13 +3541,13 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                       window.history.pushState({ nodeId }, '', newUrl);
                     }
                     
-                    // Comment translated to English.
+                   
                     if (isMobile) {
                       setIsExplorerOpen(false);
                     }
                   }}
                   onContextMenu={(e) => {
-                    // Comment translated to English.
+                   
                     if (!isMobile) {
                       e.preventDefault();
                       e.stopPropagation();
@@ -3567,7 +3555,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                     }
                   }}
                   onTouchStart={(e) => {
-                    // Comment translated to English.
+                   
                     if (!isMobile) return;
                     
                     const touch = e.touches[0];
@@ -3584,7 +3572,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                       const distance = Math.sqrt(
                         Math.pow(moveX - startX, 2) + Math.pow(moveY - startY, 2)
                       );
-                      // Comment translated to English.
+                     
                       if (distance > 10) {
                         touchMoved = true;
                         document.removeEventListener('touchend', handleTouchEnd);
@@ -3613,21 +3601,21 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
                         longPressTimer = null;
                       }
                       
-                      // Comment translated to English.
+                     
                       if (duration >= 500 && distance < 10 && !touchMoved) {
                         longPressTriggeredRef.current = true;
                         e.preventDefault();
                         e.stopPropagation();
                         setContextMenu({ x: endX, y: endY, file });
                       } else {
-                        // Comment translated to English.
+                       
                         setTimeout(() => {
                           longPressTriggeredRef.current = false;
                         }, 300);
                       }
                     };
                     
-                    // Comment translated to English.
+                   
                     longPressTimer = setTimeout(() => {
                       if (!touchMoved && e.touches[0]) {
                         const currentTouch = e.touches[0];
@@ -3698,7 +3686,6 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
           </div>
         </div>
 
-        {/* Comment translated to English. */}
         {selectedCard ? (
           <div style={{
             flex: 1,
@@ -3881,10 +3868,8 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
         )}
       </div>
 
-      {/* Comment translated to English. */}
       {contextMenu && (
         <>
-          {/* Comment translated to English. */}
           <div
             style={{
               position: 'fixed',
@@ -3901,7 +3886,6 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
               setContextMenu(null);
             }}
           />
-          {/* Comment translated to English. */}
           <div
             style={{
               position: 'fixed',
@@ -4001,7 +3985,7 @@ export function BaseOutlineEditor({ docId, initialData, basePath = 'base' }: { d
   );
 }
 
-// Comment translated to English.
+
 const getBaseUrl = (path: string, docId: string): string => {
   const domainId = (window as any).UiContext?.domainId || 'system';
   return `/d/${domainId}/base/${docId}${path}`;
@@ -4009,7 +3993,7 @@ const getBaseUrl = (path: string, docId: string): string => {
 
 const page = new NamedPage(['base_outline', 'base_skill_outline', 'base_outline_doc', 'base_outline_doc_branch'], async (pageName) => {
   try {
-    // Comment translated to English.
+   
     const isSkill = pageName === 'base_skill_outline';
     const containerId = isSkill ? '#skill-outline-editor' : '#base-outline-editor';
     const $container = $(containerId);
@@ -4020,10 +4004,10 @@ const page = new NamedPage(['base_outline', 'base_skill_outline', 'base_outline_
     const domainId = (window as any).UiContext?.domainId || 'system';
     const docId = ($container.data('doc-id') || $container.attr('data-doc-id') || '') as string;
 
-    // Comment translated to English.
+   
     let initialData: BaseDoc;
     try {
-      // Comment translated to English.
+     
       const apiPath = isSkill ? `/d/${domainId}/base/skill/data` : `/d/${domainId}/base/data`;
       const branch = (window as any).UiContext?.currentBranch || undefined;
       const params: Record<string, string> = {};
@@ -4031,7 +4015,7 @@ const page = new NamedPage(['base_outline', 'base_skill_outline', 'base_outline_
       if (branch) params.branch = branch;
       const response = await request.get(apiPath, params);
       initialData = response;
-      // Comment translated to English.
+     
       if (!initialData.docId) {
         initialData.docId = docId || '';
       }

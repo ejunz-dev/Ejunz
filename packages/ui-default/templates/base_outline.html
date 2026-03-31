@@ -65,7 +65,6 @@
     </div>
   </div>
   
-  <!-- Comment translated to English. -->
   <div class="large-3 columns" style="display: none;">
     <div class="section">
       <div class="section__header">
@@ -343,7 +342,6 @@
 </div>
 
 <script>
-  // Comment translated to English.
   async function loadHistory() {
     const historyListEl = document.getElementById('history-list');
     if (!historyListEl) return;
@@ -391,12 +389,10 @@
     }
   }
   
-  // Comment translated to English.
   async function restoreHistory(historyId) {
     if (!confirm('确定要恢复到该历史节点吗？当前未保存的更改将丢失。')) return;
     
     try {
-      // Comment translated to English.
       const baseUrl = '{{ url('base_history_restore_branch', domainId=domainId, branch=currentBranch, historyId='__HISTORY_ID__') }}';
       const url = baseUrl.replace('__HISTORY_ID__', encodeURIComponent(historyId));
       const response = await fetch(url, {
@@ -421,11 +417,8 @@
     }
   }
   
-  // Comment translated to English.
   {% if base %}
   loadHistory();
-  
-  // Comment translated to English.
   setInterval(loadHistory, 10000);
   {% endif %}
 </script>

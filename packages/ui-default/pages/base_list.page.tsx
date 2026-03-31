@@ -58,7 +58,6 @@ function BaseList() {
     }
 
     try {
-      // Comment translated to English.
       const domainId = (window as any).UiContext?.domainId || 'system';
       await request.post(`/d/${domainId}/base/${docId}/edit`, {
         operation: 'delete',

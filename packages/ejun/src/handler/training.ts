@@ -198,6 +198,7 @@ export class TrainingCreateHandler extends Handler<Context> {
             true,
         );
         mergedBaseDocId = Number(mergedBase.docId);
+        await document.set(this.domain._id, document.TYPE_BASE, mergedBaseDocId, { type: 'training' } as any);
 
             const mergedNodes: any[] = [];
             const mergedEdges: any[] = [];
