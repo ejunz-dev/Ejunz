@@ -1080,7 +1080,47 @@ function LessonPage() {
       <div style={{ fontSize: '12px', color: '#333', marginBottom: '12px', fontWeight: 600 }}>
         {i18n('Cumulative')}: {(cumulativeMs / 1000).toFixed(1)}s
       </div>
-      {nodeTree.map((root, i) => renderNodeTreeItem(root, 0))}
+      {isTodayMode && rootNodeId === 'today' ? (
+        <div>
+          {flatCards.map((item, idx) => {
+            const inReview = lessonReviewCardIds.includes(String(item.cardId));
+            const isDone = idx < currentCardIndex && !inReview;
+            const isCurrent = idx === currentCardIndex;
+            let timeText = '—';
+            if (isCurrent) timeText = `${(currentCardCumulativeMs / 1000).toFixed(1)}s`;
+            else if (idx < cardTimesMs.length) timeText = `${(cardTimesMs[idx] / 1000).toFixed(1)}s`;
+            const cardStyle: React.CSSProperties = {
+              padding: '6px 10px',
+              marginBottom: '2px',
+              fontSize: '13px',
+              borderRadius: '6px',
+              backgroundColor: isCurrent ? '#e3f2fd' : inReview ? '#fff3e0' : isDone ? '#e8f5e9' : 'transparent',
+              color: isCurrent ? '#1976d2' : inReview ? '#e65100' : isDone ? '#2e7d32' : '#666',
+              fontWeight: isCurrent ? 600 : 400,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '8px',
+            };
+            return (
+              <div key={`today-card-${idx}-${String(item.cardId)}`} style={cardStyle}>
+                <span>
+                  {isDone && <span style={{ marginRight: '6px' }}>✓</span>}
+                  {inReview && (
+                    <span style={{ marginRight: '6px', fontSize: '11px', color: '#e65100', fontWeight: 600 }}>
+                      {i18n('Review')}
+                    </span>
+                  )}
+                  {item.cardTitle || i18n('Unnamed Card')}
+                </span>
+                <span style={{ fontSize: '12px', color: '#999', flexShrink: 0 }}>{timeText}</span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        nodeTree.map((root, i) => renderNodeTreeItem(root, 0))
+      )}
       {isAllDomainsMode && excludedDomains.length > 0 && (
         <div style={{ marginTop: '16px', borderTop: '1px solid #e0e0e0', paddingTop: '12px' }}>
           <button
