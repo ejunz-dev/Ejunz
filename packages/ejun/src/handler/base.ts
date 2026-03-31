@@ -27,7 +27,7 @@ const exec = promisify(execCb);
 const execFile = promisify(execFileCb);
 const logger = new Logger('base');
 
-/* Comment translated to English. */
+
 export function readOptionalRequestBaseDocId(req: { body?: any; query?: any } | undefined): number | undefined {
     if (!req) return undefined;
     const body = req.body || {};
@@ -128,7 +128,7 @@ async function resolveBaseDocFromGithubRequest(
     return BaseModel.getBybid(domainId, bid);
 }
 
-/* Comment translated to English. */
+
 async function resolveBaseByDocIdOrBid(domainId: string, docIdOrBid: string): Promise<BaseDoc | null> {
     const key = String(docIdOrBid || '').trim();
     if (!key) return null;
@@ -139,7 +139,7 @@ async function resolveBaseByDocIdOrBid(domainId: string, docIdOrBid: string): Pr
     return BaseModel.getBybid(domainId, key);
 }
 
-/* Comment translated to English. */
+
 async function buildContributionDataForDomain(
     domainId: string,
     uid: number,
@@ -324,7 +324,7 @@ async function buildContributionDataForDomain(
     return { todayContribution, contributions, contributionDetails };
 }
 
-/* Comment translated to English. */
+
 async function buildTodayContributionAllDomains(uid: number): Promise<{
     nodes: number;
     cards: number;
@@ -402,7 +402,7 @@ class BaseDetailHandler extends Handler {
         if (docId) {
             this.base = await BaseModel.get(domainId, docId);
         } else {
-            // Comment translated to English.
+            
             this.base = await BaseModel.getByDomain(domainId);
         }
         
@@ -518,10 +518,10 @@ class BaseDetailHandler extends Handler {
             }
         }
         
-        // Comment translated to English.
+        
         const branchData = getBranchData(this.base!, requestedBranch);
         
-        // Comment translated to English.
+        
         const nodeCardsMap: Record<string, CardDoc[]> = {};
         if (branchData.nodes && branchData.nodes.length > 0) {
             for (const node of branchData.nodes) {
@@ -546,8 +546,8 @@ class BaseDetailHandler extends Handler {
             gitStatus,
             currentBranch: requestedBranch,
             branches,
-            nodeCardsMap, // Comment translated to English.
-            files: this.base.files || [], // Comment translated to English.
+            nodeCardsMap, 
+            files: this.base.files || [], 
         };
     }
 
@@ -569,7 +569,7 @@ function getSyntheticRootTextForFileImport(base: BaseDoc, branch: string): strin
 export function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edges: BaseEdge[] } {
     const branchName = branch || 'main';
     
-    // Comment translated to English.
+    
     if (base.branchData && base.branchData[branchName]) {
         return {
             nodes: base.branchData[branchName].nodes || [],
@@ -577,7 +577,7 @@ export function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[
         };
     }
     
-    // Comment translated to English.
+    
     if (branchName === 'main') {
         return {
             nodes: base.nodes || [],
@@ -585,7 +585,7 @@ export function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[
         };
     }
     
-    // Comment translated to English.
+    
     return { nodes: [], edges: [] };
 }
 
@@ -598,7 +598,7 @@ export function setBranchData(base: BaseDoc, branch: string, nodes: BaseNode[], 
     
     base.branchData[branchName] = { nodes, edges };
     
-    // Comment translated to English.
+    
     if (branchName === 'main') {
         base.nodes = nodes;
         base.edges = edges;
@@ -628,7 +628,7 @@ class BaseStudyHandler extends Handler {
         const currentBranch = branch || (this.base as any)?.currentBranch || 'main';
         const branchData = getBranchData(this.base!, currentBranch);
         
-        // Comment translated to English.
+        
         const rootNodes = branchData.nodes.filter(node => 
             !branchData.edges.some(edge => edge.target === node.id)
         );
@@ -649,7 +649,7 @@ class BaseStudyHandler extends Handler {
             }>;
         }> = [];
 
-        // Comment translated to English.
+        
         const collectNodeProblems = async (node: BaseNode): Promise<Array<{
             pid: string;
             type: 'single';
@@ -681,7 +681,7 @@ class BaseStudyHandler extends Handler {
                     
                     for (const card of cards) {
                         if (card.problems && card.problems.length > 0) {
-                            // Comment translated to English.
+                            
                             const cardUrl = `/d/${domainId}/base/${docId}/branch/${currentBranch}/node/${node.id}/cards?cardId=${card.docId}`;
                             
                             for (const problem of card.problems) {
@@ -705,7 +705,7 @@ class BaseStudyHandler extends Handler {
         if (rootNodes.length > 0) {
             const rootNode = rootNodes[0];
             
-            // Comment translated to English.
+            
             const rootProblems = await collectNodeProblems(rootNode);
             units.push({
                 node: rootNode,
@@ -713,7 +713,7 @@ class BaseStudyHandler extends Handler {
                 problems: rootProblems,
             });
             
-            // Comment translated to English.
+            
             const childEdges = branchData.edges.filter(e => e.source === rootNode.id);
             
             for (const edge of childEdges) {
@@ -742,7 +742,7 @@ class BaseStudyHandler extends Handler {
     }
 }
 
-/* Comment translated to English. */
+
 export interface BaseOutlineOptions {
     template: string;
     editorMode: 'base' | 'skill';
@@ -760,9 +760,7 @@ export interface BaseOutlineOptions {
     ) => Promise<{ nodes: BaseNode[]; edges: BaseEdge[] }>;
 }
 
-/**
- * Comment translated to English.
- */
+
 export class BaseOutlineHandler extends Handler {
     protected getOutlineOptions(domainId: string, branch?: string): BaseOutlineOptions {
         return {
@@ -889,7 +887,7 @@ export class BaseOutlineHandler extends Handler {
             }
         }
         
-        // Comment translated to English.
+        
         const branches = base && Array.isArray((base as any)?.branches) 
             ? (base as any).branches 
             : ['main'];
@@ -897,7 +895,7 @@ export class BaseOutlineHandler extends Handler {
             branches.unshift('main');
         }
         
-        // Comment translated to English.
+        
         let gitStatus: any = null;
         if (base) {
             const githubRepo = (base.githubRepo || '') as string;
@@ -944,7 +942,7 @@ export class BaseOutlineHandler extends Handler {
     }
 }
 
-/* Comment translated to English. */
+
 export interface BaseEditorOptions {
     template: string;
     editorMode: 'base' | 'skill';
@@ -962,9 +960,7 @@ export interface BaseEditorOptions {
     ) => Promise<{ nodes: BaseNode[]; edges: BaseEdge[] }>;
 }
 
-/**
- * Comment translated to English.
- */
+
 export class BaseEditorHandler extends Handler {
     protected getEditorOptions(domainId: string, branch?: string): BaseEditorOptions {
         return {
@@ -1108,18 +1104,12 @@ export class BaseEditorHandler extends Handler {
             baseExpandState,
             baseEditorUiPrefs,
             workspaceNodeId,
-            // Comment translated to English.
+            
             ...(opts.editorMode === 'skill' ? { page_name: 'base_skill_editor_branch' } : {}),
         };
     }
 }
 
-/**
- * Comment translated to English.
- *
- * Comment translated to English.
- *   /d/:domainId/base/:docId/branch/:branch/editor
- */
 export class BaseEditorDocHandler extends Handler {
     base?: BaseDoc;
 
@@ -1291,7 +1281,7 @@ class BaseCreateHandler extends Handler {
             throw new Error(`Failed to create base: record not found after creation (docId: ${docId.toString()}, domainId: ${actualDomainId})`);
         }
 
-        // Comment translated to English.
+        
         try {
             await ensureBaseGitRepo(actualDomainId, docId);
             
@@ -1299,11 +1289,11 @@ class BaseCreateHandler extends Handler {
                 await createAndPushToGitHubOrgForBase(this, actualDomainId, docId, title, this.user);
             } catch (err) {
                 console.error('Failed to create remote GitHub repo:', err);
-                // Comment translated to English.
+                
             }
         } catch (err) {
             console.error('Failed to create git repo:', err);
-            // Comment translated to English.
+            
         }
 
         this.response.body = { docId, bid: finalBid || undefined };
@@ -1311,10 +1301,10 @@ class BaseCreateHandler extends Handler {
     }
 }
 
-// Comment translated to English.
+
 // key: `${domainId}:${docId}:${text}:${parentId}`, value: timestamp
 const nodeCreationDedupCache = new Map<string, number>();
-const DEDUP_WINDOW_MS = 2000; // Comment translated to English.
+const DEDUP_WINDOW_MS = 2000; 
 
 /**
  * Base Edit Handler
@@ -1358,7 +1348,7 @@ class BaseEditHandler extends Handler {
 
         await BaseModel.update(domainId, docId, updates);
         this.response.body = { docId };
-        // Comment translated to English.
+        
         const operation = this.request.body?.operation;
         if (operation !== 'update') {
             this.response.redirect = this.url('base_detail', { docId: docId.toString() });
@@ -1367,7 +1357,7 @@ class BaseEditHandler extends Handler {
 
     @param('docId', Types.PositiveInt)
     async postDelete(domainId: string, docId: number) {
-        // Comment translated to English.
+        
         if (!this.user.own(this.base)) {
             this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
         }
@@ -1378,19 +1368,15 @@ class BaseEditHandler extends Handler {
     }
 }
 
-/**
- * Base Node Handler
- * Comment translated to English.
- */
 export class BaseNodeHandler extends Handler {
-    /* Comment translated to English. */
+    
     protected async getBase(domainId: string): Promise<BaseDoc> {
         const base = await BaseModel.getByDomain(domainId);
         if (!base) throw new NotFoundError('Base not found');
         return base;
     }
 
-    /* Comment translated to English. */
+    
     protected async resolveBase(domainId: string): Promise<BaseDoc> {
         const specified = readOptionalRequestBaseDocId(this.request);
         if (specified) {
@@ -1409,7 +1395,7 @@ export class BaseNodeHandler extends Handler {
     @post('operation', Types.String, true)
     @param('nodeId', Types.String, true)
     @post('branch', Types.String, true)
-    // Comment translated to English.
+    
     async post(
         domainId: string,
         text?: string,
@@ -1461,7 +1447,7 @@ export class BaseNodeHandler extends Handler {
         
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        // Comment translated to English.
+        
         const actualDomainId = this.args.domainId || domainId || 'system';
         const base = await this.resolveBase(actualDomainId);
         const docId = base.docId;
@@ -1499,10 +1485,10 @@ export class BaseNodeHandler extends Handler {
                 }
             }
 
-            // Comment translated to English.
+            
             const effectiveBranch = branch || body.branch || (base as any).currentBranch || (base as any).branch || 'main';
             
-            // Comment translated to English.
+            
             const branchData: {
                 [branch: string]: { nodes: BaseNode[]; edges: BaseEdge[] };
             } = (base as any).branchData || {};
@@ -1516,8 +1502,8 @@ export class BaseNodeHandler extends Handler {
                 nodes = [];
             }
             
-            // Comment translated to English.
-            // Comment translated to English.
+            
+            
             if (finalParentId) {
                 const recentDuplicateNode = nodes.find(n => 
                     n.text === text.trim() && 
@@ -1527,15 +1513,15 @@ export class BaseNodeHandler extends Handler {
                 );
                 
                 if (recentDuplicateNode) {
-                    // Comment translated to English.
+                    
                     const nodeIdMatch = recentDuplicateNode.id.match(/^node_(\d+)_/);
                     if (nodeIdMatch) {
                         const nodeCreatedTime = parseInt(nodeIdMatch[1], 10);
                         const timeSinceNodeCreation = startTime - nodeCreatedTime;
                         
                         if (timeSinceNodeCreation < DEDUP_WINDOW_MS && timeSinceNodeCreation >= 0) {
-                            // Comment translated to English.
-                            // Comment translated to English.
+                            
+                            
                             let edgesForDedup: BaseEdge[];
                             if (branchData[effectiveBranch] && branchData[effectiveBranch].edges) {
                                 edgesForDedup = branchData[effectiveBranch].edges;
@@ -1574,10 +1560,10 @@ export class BaseNodeHandler extends Handler {
                 parentId: effectiveParentId,
             };
 
-            // Comment translated to English.
+            
             if (finalSiblingId && !finalParentId) {
                 if (!effectiveParentId) {
-                    // Comment translated to English.
+                    
                     const result = await BaseModel.addNode(
                         actualDomainId,
                         docId,
@@ -1592,7 +1578,7 @@ export class BaseNodeHandler extends Handler {
             } else if (finalParentId) {
                 edgeSourceId = finalParentId;
             } else {
-                // Comment translated to English.
+                
                 const result = await BaseModel.addNode(
                     actualDomainId,
                     docId,
@@ -1610,7 +1596,7 @@ export class BaseNodeHandler extends Handler {
                 node,
                 effectiveParentId,
                 effectiveBranch,
-                edgeSourceId  // Comment translated to English.
+                edgeSourceId  
             );
             
             newNodeId = result.nodeId;
@@ -1713,7 +1699,7 @@ export class BaseNodeHandler extends Handler {
             this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
         }
 
-        // Comment translated to English.
+        
         const effectiveBranch = branch || (this.request.body as any)?.branch || (base as any).currentBranch || (base as any).branch || 'main';
         
         await BaseModel.deleteNode(domainId, docId, nodeId, effectiveBranch);
@@ -1725,7 +1711,7 @@ export class BaseNodeHandler extends Handler {
  * Base Edge Handler
  */
 export class BaseEdgeHandler extends Handler {
-    /* Comment translated to English. */
+    
     protected async getBase(domainId: string): Promise<BaseDoc> {
         const base = await BaseModel.getByDomain(domainId);
         if (!base) throw new NotFoundError('Base not found');
@@ -1800,19 +1786,19 @@ export class BaseEdgeHandler extends Handler {
  * Base Save Handler
  */
 export class BaseSaveHandler extends Handler {
-    /* Comment translated to English. */
+    
     protected async getBase(domainId: string): Promise<BaseDoc | null> {
         return BaseModel.getByDomain(domainId);
     }
-    /* Comment translated to English. */
+    
     protected getDefaultTitle(): string {
         return this.domain.name || '知识库';
     }
-    /* Comment translated to English. */
+    
     protected getDefaultRootText(): string {
         return this.domain.name;
     }
-    /* Comment translated to English. */
+    
     protected async createBase(domainId: string): Promise<BaseDoc> {
         const data = this.request.body || {};
         const { nodes = [], edges = [] } = data;
@@ -1857,7 +1843,7 @@ export class BaseSaveHandler extends Handler {
         if (!base) throw new NotFoundError('Failed to create document');
         return base;
     }
-    /* Comment translated to English. */
+    
     protected shouldSyncToGit(): boolean {
         return true;
     }
@@ -1918,8 +1904,8 @@ export class BaseSaveHandler extends Handler {
             
             await BaseModel.updateFull(domainId, docId, {
                 branchData: base.branchData,
-                nodes: base.nodes, // Comment translated to English.
-                edges: base.edges, // Comment translated to English.
+                nodes: base.nodes, 
+                edges: base.edges, 
             });
             
             (this.ctx.emit as any)('base/update', docId, null, currentBranch);
@@ -1928,12 +1914,12 @@ export class BaseSaveHandler extends Handler {
             return;
         }
         
-        // Comment translated to English.
-        // Comment translated to English.
+        
+        
         if (nodes && Array.isArray(nodes)) {
             nodes = nodes.filter((node: BaseNode) => {
                 if (!node.id) return false;
-                // Comment translated to English.
+                
                 if (node.id.startsWith('temp-node-')) {
                     console.warn(`Rejected temporary node from save: ${node.id}`);
                     return false;
@@ -1945,7 +1931,7 @@ export class BaseSaveHandler extends Handler {
         if (edges && Array.isArray(edges)) {
             edges = edges.filter((edge: BaseEdge) => {
                 if (!edge.id && !edge.source && !edge.target) return false;
-                // Comment translated to English.
+                
                 if (edge.id && edge.id.startsWith('temp-edge-')) {
                     console.warn(`Rejected temporary edge from save: ${edge.id}`);
                     return false;
@@ -1973,19 +1959,19 @@ export class BaseSaveHandler extends Handler {
         );
 
 
-        // Comment translated to English.
+        
         setBranchData(base, currentBranch, nodes || [], edges || []);
 
         await BaseModel.updateFull(domainId, docId, {
             branchData: base.branchData,
-            nodes: base.nodes, // Comment translated to English.
-            edges: base.edges, // Comment translated to English.
+            nodes: base.nodes, 
+            edges: base.edges, 
             layout,
             viewport,
             theme,
         });
         
-        // Comment translated to English.
+        
         if (hasNonPositionChanges && this.shouldSyncToGit()) {
             try {
                 const updatedBase = await BaseModel.get(domainId, docId);
@@ -1995,7 +1981,7 @@ export class BaseSaveHandler extends Handler {
                 }
             } catch (err) {
                 console.error('Failed to sync to git after save:', err);
-                // Comment translated to English.
+                
             }
         }
         
@@ -2005,9 +1991,7 @@ export class BaseSaveHandler extends Handler {
         this.response.body = { success: true, hasNonPositionChanges };
     }
 
-    /**
-     * Comment translated to English.
-     */
+
     private detectNonPositionChanges(
         oldBase: BaseDoc,
         newNodes?: BaseNode[],
@@ -2015,23 +1999,23 @@ export class BaseSaveHandler extends Handler {
     ): boolean {
         if (!newNodes && !newEdges) return false;
 
-        // Comment translated to English.
+        
         if (newNodes && newNodes.length !== oldBase.nodes.length) {
             return true;
         }
 
-        // Comment translated to English.
+        
         if (newEdges && newEdges.length !== oldBase.edges.length) {
             return true;
         }
 
-        // Comment translated to English.
+        
         if (newNodes) {
             for (const newNode of newNodes) {
                 const oldNode = oldBase.nodes.find(n => n.id === newNode.id);
-                if (!oldNode) return true; // Comment translated to English.
+                if (!oldNode) return true; 
 
-                // Comment translated to English.
+                
                 if (
                     oldNode.text !== newNode.text ||
                     oldNode.color !== newNode.color ||
@@ -2046,7 +2030,7 @@ export class BaseSaveHandler extends Handler {
             }
         }
 
-        // Comment translated to English.
+        
         if (newEdges) {
             const oldEdgeSet = new Set(oldBase.edges.map(e => `${e.source}-${e.target}`));
             const newEdgeSet = new Set(newEdges.map(e => `${e.source}-${e.target}`));
@@ -2118,9 +2102,7 @@ class BaseListHandler extends Handler {
     }
 }
 
-/**
- * Comment translated to English.
- */
+
 class BaseDomainListHandler extends Handler {
     @param('page', Types.PositiveInt, true)
     @param('q', Types.Content, true)
@@ -2193,9 +2175,7 @@ class BaseDomainListHandler extends Handler {
     }
 }
 
-/**
- * Comment translated to English.
- */
+
 class BaseCreateNewHandler extends Handler {
     async post(domainId: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
@@ -2218,9 +2198,7 @@ class BaseCreateNewHandler extends Handler {
     }
 }
 
-/**
- * Comment translated to English.
- */
+
 class BaseOutlineDocHandler extends Handler {
     @param('docId', Types.String)
     @param('branch', Types.String, true)
@@ -2337,9 +2315,7 @@ class BaseOutlineDocHandler extends Handler {
     }
 }
 
-/**
- * Comment translated to English.
- */
+
 class BaseOutlineRedirectHandler extends Handler {
     @param('branch', Types.String, true)
     async get(domainId: string, branch?: string) {
@@ -2355,17 +2331,14 @@ class BaseOutlineRedirectHandler extends Handler {
     }
 }
 
-/**
- * Base Domain Handler
- * Comment translated to English.
- */
+
 class BaseDomainHandler extends Handler {
     @param('page', Types.PositiveInt, true)
     @param('q', Types.Content, true)
     @param('pjax', Types.Boolean)
     @param('all', Types.Boolean, true)
     async get(domainId: string, page = 1, q = '', pjax = false, all = false) {
-        // Comment translated to English.
+        
         const base = await BaseModel.getByDomain(domainId);
         
         if (!base) {
@@ -2375,14 +2348,14 @@ class BaseDomainHandler extends Handler {
         const branch = (base as any)?.currentBranch || 'main';
         const branchData = getBranchData(base, branch);
         
-        // Comment translated to English.
+        
         const rootNodes = branchData.nodes.filter(node => 
             node.level === 0 || !branchData.edges.some(edge => edge.target === node.id)
         );
         const rootNode = rootNodes[0] || branchData.nodes[0];
         
         if (!rootNode) {
-            // Comment translated to English.
+            
             this.response.template = 'base_domain.html';
             this.response.body = {
                 base: {
@@ -2402,7 +2375,7 @@ class BaseDomainHandler extends Handler {
             return;
         }
         
-        // Comment translated to English.
+        
         const firstLevelNodeIds = new Set(
             branchData.edges
                 .filter(edge => edge.source === rootNode.id)
@@ -2411,12 +2384,12 @@ class BaseDomainHandler extends Handler {
         
         const firstLevelNodes = branchData.nodes.filter(node => firstLevelNodeIds.has(node.id));
         
-        // Comment translated to English.
+        
         const firstLevelEdges = branchData.edges.filter(edge => 
             firstLevelNodeIds.has(edge.source) && firstLevelNodeIds.has(edge.target)
         );
         
-        // Comment translated to English.
+        
         let filteredNodes = firstLevelNodes;
         if (q && q.trim()) {
             const searchTerm = q.toLowerCase().trim();
@@ -2426,14 +2399,14 @@ class BaseDomainHandler extends Handler {
             );
         }
         
-        // Comment translated to English.
+        
         const limit = 20;
         const skip = (page - 1) * limit;
         const total = filteredNodes.length;
         const totalPages = Math.ceil(total / limit);
         const nodesRaw = all ? filteredNodes : filteredNodes.slice(skip, skip + limit);
         
-        // Comment translated to English.
+        
         const nodes = nodesRaw.map((node: any) => ({
             ...node,
             nodeId: node.id,
@@ -2473,11 +2446,11 @@ class BaseDomainHandler extends Handler {
 }
 
 export class BaseDataHandler extends Handler {
-    /* Comment translated to English. */
+    
     protected async getBase(domainId: string): Promise<BaseDoc | null> {
         return BaseModel.getByDomain(domainId);
     }
-    /* Comment translated to English. */
+    
     protected async createBase(domainId: string, branch: string): Promise<BaseDoc> {
         const { docId } = await BaseModel.create(
             domainId,
@@ -2492,11 +2465,11 @@ export class BaseDataHandler extends Handler {
         if (!base) throw new Error('Failed to create base');
         return base;
     }
-    /* Comment translated to English. */
+    
     protected getDefaultRootText(): string {
         return this.domain.name;
     }
-    /* Comment translated to English. */
+    
     protected getCardFilter(_base: BaseDoc): Record<string, unknown> {
         return {};
     }
@@ -3004,7 +2977,7 @@ async function gitInitAndPushBase(
 ) {
     const repoGitPath = await ensureBaseGitRepo(domainId, docId, remoteUrlWithAuth);
     
-    // Comment translated to English.
+    
     const gitEnv: Record<string, string> = {
         ...process.env,
         GIT_TERMINAL_PROMPT: '0',
@@ -3163,7 +3136,7 @@ class BaseGithubPushHandler extends Handler {
 
         const effectiveBranch = (branch || base.branch || this.args?.branch || this.request.body?.branch || 'main').toString();
         
-        // Comment translated to English.
+        
         try {
             const commitMessage = this.request.body?.commitMessage || `${domainId}/${this.user._id}/${this.user.uname || 'unknown'}: Update base`;
             await commitBaseChanges(domainId, base.docId, base, commitMessage, this.user._id, this.user.uname || 'unknown');
@@ -3171,7 +3144,7 @@ class BaseGithubPushHandler extends Handler {
             console.warn('Commit before push failed (may be no changes):', err?.message || err);
         }
         
-        // Comment translated to English.
+        
         const commitMessage = `${domainId}/${this.user._id}/${this.user.uname || 'unknown'}: Update base`;
         
         try {
@@ -3196,7 +3169,7 @@ class BaseGithubPushHandler extends Handler {
  * Base Card Handler
  */
 export class BaseCardHandler extends Handler {
-    /* Comment translated to English. */
+    
     protected async getBase(domainId: string): Promise<BaseDoc> {
         const specified = readOptionalRequestBaseDocId(this.request);
         if (specified) {
@@ -3220,21 +3193,21 @@ export class BaseCardHandler extends Handler {
         content: string = '',
         operation?: string
     ) {
-        // Comment translated to English.
-        // Comment translated to English.
+        
+        
         if (operation) {
             return;
         }
         
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        // Comment translated to English.
+        
         const body: any = this.request?.body || {};
         const finalNodeId: string | undefined = body.nodeId || nodeId;
         const finalTitle: string | undefined = body.title || title;
         const finalContent: string = body.content !== undefined ? body.content : content || '';
 
-        // Comment translated to English.
+        
         if (!finalNodeId || !finalTitle) {
             throw new ValidationError('nodeId and title are required for creating a card');
         }
@@ -3418,8 +3391,8 @@ export class BaseCardHandler extends Handler {
         if (title !== undefined) updates.title = title;
         if (content !== undefined) updates.content = content;
         if (order !== undefined) updates.order = order;
-        if (nodeId !== undefined) updates.nodeId = nodeId; // Comment translated to English.
-        // Comment translated to English.
+        if (nodeId !== undefined) updates.nodeId = nodeId; 
+        
         const body: any = (this as any).request?.body || {};
         if (body && body.problems !== undefined) {
             updates.problems = body.problems;
@@ -3430,10 +3403,6 @@ export class BaseCardHandler extends Handler {
     }
 }
 
-/**
- * Base Card List Handler
- * Comment translated to English.
- */
 class BaseCardListHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
@@ -3453,29 +3422,29 @@ class BaseCardListHandler extends Handler {
         const nodes = branchData.nodes || [];
         const edges = branchData.edges || [];
         
-        // Comment translated to English.
+        
         const node = nodes.find(n => n.id === nodeId);
         if (!node) {
             throw new NotFoundError('Node not found in this branch');
         }
         
-        // Comment translated to English.
+        
         const cards = await CardModel.getByNodeId(domainId, base.docId, nodeId);
         
-        // Comment translated to English.
+        
         const nodePath: Array<{ id: string; text: string }> = [];
         
-        // Comment translated to English.
+        
         const nodeMap = new Map<string, BaseNode>();
         nodes.forEach(n => nodeMap.set(n.id, n));
         
-        // Comment translated to English.
+        
         const parentMap = new Map<string, string>();
         edges.forEach(edge => {
             parentMap.set(edge.target, edge.source);
         });
         
-        // Comment translated to English.
+        
         let currentNodeId: string | undefined = nodeId;
         const pathNodes: Array<{ id: string; text: string }> = [];
         while (currentNodeId) {
@@ -3486,10 +3455,10 @@ class BaseCardListHandler extends Handler {
             currentNodeId = parentMap.get(currentNodeId);
         }
         
-        // Comment translated to English.
+        
         const reversedPathNodes = pathNodes.slice().reverse();
         
-        // Comment translated to English.
+        
         let selectedCard = null;
         if (cardId) {
             selectedCard = cards.find(c => c.docId.toString() === cardId.toString());
@@ -3506,7 +3475,7 @@ class BaseCardListHandler extends Handler {
             cards,
             nodeId,
             nodeText: node?.text || '节点',
-            nodePath: reversedPathNodes, // Comment translated to English.
+            nodePath: reversedPathNodes, 
             branch: branch || 'main',
             selectedCard,
         };
@@ -3827,10 +3796,6 @@ class BaseNodeFileDownloadHandler extends Handler {
     }
 }
 
-/**
- * Base Card Edit Handler
- * Comment translated to English.
- */
 class BaseCardEditHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
@@ -3862,12 +3827,12 @@ class BaseCardEditHandler extends Handler {
         this.UiContext.extraTitleContent = `${card?.title || '卡片'} - ${base.title}`;
     }
     
-    // Comment translated to English.
+    
     @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
     @param('nodeId', Types.String)
     @param('branch', Types.String, true)
-    // Comment translated to English.
+    
     @post('title', Types.String)
     @post('content', Types.String, true)
     @post('operation', Types.String, true)
@@ -3896,13 +3861,13 @@ class BaseCardEditHandler extends Handler {
         
         const effectiveBranch = branch || 'main';
         
-        // Comment translated to English.
+        
         if (operation === 'update' && cardId) {
             const updates: any = {};
             if (title !== undefined) updates.title = title;
             if (content !== undefined) updates.content = content;
             await CardModel.update(domainId, cardId, updates);
-            // Comment translated to English.
+            
             if (docId) {
             this.response.redirect = this.url('base_card_list_branch', { 
                 docId: docId.toString(), 
@@ -3919,7 +3884,7 @@ class BaseCardEditHandler extends Handler {
             return;
         }
         
-            // Comment translated to English.
+            
             if (!title) {
                 throw new ValidationError('title is required');
             }
@@ -3935,7 +3900,7 @@ class BaseCardEditHandler extends Handler {
                 undefined,
                 effectiveBranch,
             );
-        // Comment translated to English.
+        
         if (docId) {
             this.response.redirect = this.url('base_card_list_branch', { 
                 docId: docId.toString(), 
@@ -3956,7 +3921,7 @@ class BaseCardEditHandler extends Handler {
     @param('nodeId', Types.String)
     @route('cardId', Types.ObjectId, true)
     @param('branch', Types.String, true)
-    // Comment translated to English.
+    
     @post('title', Types.String, true)
     @post('content', Types.String, true)
     @post('operation', Types.String, true)
@@ -3985,7 +3950,7 @@ class BaseCardEditHandler extends Handler {
         const effectiveBranch = branch || 'main';
         
         if (cardId) {
-            // Comment translated to English.
+            
             if (operation === 'delete') {
                 const card = await CardModel.get(domainId, cardId);
                 if (!card) throw new NotFoundError('Card not found');
@@ -4003,10 +3968,10 @@ class BaseCardEditHandler extends Handler {
             if (content !== undefined) updates.content = content;
             await CardModel.update(domainId, cardId, updates);
             
-            // Comment translated to English.
+            
             const returnUrl = this.request.body.returnUrl || this.request.query.returnUrl;
             if (returnUrl) {
-                // Comment translated to English.
+                
                 const returnUrlObj = new URL(returnUrl, `http://${this.request.headers.host || 'localhost'}`);
                 returnUrlObj.searchParams.set('fromEdit', 'true');
                 returnUrlObj.searchParams.set('cardId', cardId.toString());
@@ -4032,10 +3997,6 @@ class BaseCardEditHandler extends Handler {
     }
 }
 
-/**
- * Base Card Detail Handler
- * Comment translated to English.
- */
 class BaseCardDetailHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
     @param('bid', Types.PositiveInt, true)
@@ -4052,7 +4013,7 @@ class BaseCardDetailHandler extends Handler {
         const branchData = getBranchData(base, effectiveBranch);
         const nodes = branchData.nodes || [];
         
-        // Comment translated to English.
+        
         const node = nodes.find(n => n.id === nodeId);
         if (!node) {
             throw new NotFoundError('Node not found in this branch');
@@ -4062,7 +4023,7 @@ class BaseCardDetailHandler extends Handler {
         if (!card) throw new NotFoundError('Card not found');
         if (card.nodeId !== nodeId) throw new NotFoundError('Card does not belong to this node');
         
-        // Comment translated to English.
+        
         const cards = await CardModel.getByNodeId(domainId, base.docId, nodeId);
         const currentIndex = cards.findIndex(c => c.docId.toString() === cardId.toString());
         
@@ -4094,7 +4055,7 @@ class BaseCardDetailHandler extends Handler {
     ) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        // Comment translated to English.
+        
         if (operation === 'delete') {
             const card = await CardModel.get(domainId, cardId);
             if (!card) throw new NotFoundError('Card not found');
@@ -4110,7 +4071,7 @@ class BaseCardDetailHandler extends Handler {
             return;
         }
         
-        // Comment translated to English.
+        
         const card = await CardModel.get(domainId, cardId);
         if (!card) throw new NotFoundError('Card not found');
         
@@ -4124,14 +4085,14 @@ class BaseCardDetailHandler extends Handler {
         if (title !== undefined) updates.title = title;
         if (content !== undefined) updates.content = content;
         if (order !== undefined) updates.order = order;
-        if (nodeId !== undefined) updates.nodeId = nodeId; // Comment translated to English.
+        if (nodeId !== undefined) updates.nodeId = nodeId; 
         
         await CardModel.update(domainId, cardId, updates);
         this.response.body = { success: true };
     }
 }
 
-/* Comment translated to English. */
+
 export interface BatchSaveOptions {
     type: 'base' | 'skill';
     getBase: (actualDomainId: string) => Promise<BaseDoc | null>;
@@ -4139,10 +4100,6 @@ export interface BatchSaveOptions {
     getBranch: (base: BaseDoc) => string;
 }
 
-/**
- * Base Batch Save Handler
- * Comment translated to English.
- */
 export class BaseBatchSaveHandler extends Handler {
     protected getBatchSaveOptions(): BatchSaveOptions {
         return {
@@ -4227,11 +4184,11 @@ export class BaseBatchSaveHandler extends Handler {
             }
             
             if (currentRound.length === 0) {
-                // Comment translated to English.
+                
                 break;
             }
             
-            // Comment translated to English.
+            
             for (const nodeCreate of currentRound) {
                 try {
                     let realParentId = nodeCreate.parentId;
@@ -4298,16 +4255,16 @@ export class BaseBatchSaveHandler extends Handler {
             }
         }
         
-        // Comment translated to English.
+        
         for (const edgeId of edgeDeletes) {
             try {
                 await BaseModel.deleteEdge(actualDomainId, docId, edgeId, branch);
             } catch (error: any) {
-                // Comment translated to English.
+                
             }
         }
         
-        // Comment translated to English.
+        
         for (const nodeId of nodeDeletes) {
             try {
                 await BaseModel.deleteNode(actualDomainId, docId, nodeId, branch);
@@ -4337,10 +4294,10 @@ export class BaseBatchSaveHandler extends Handler {
             }
         }
         
-        // Comment translated to English.
+        
         for (const cardCreate of cardCreates) {
             try {
-                // Comment translated to English.
+                
                 const realNodeId = cardCreate.nodeId.startsWith('temp-node-')
                     ? nodeIdMap.get(cardCreate.nodeId) || cardCreate.nodeId
                     : cardCreate.nodeId;
@@ -4368,7 +4325,7 @@ export class BaseBatchSaveHandler extends Handler {
             }
         }
         
-        // Comment translated to English.
+        
         for (const cardUpdate of cardUpdates) {
             try {
                 const updates: Partial<Pick<CardDoc, 'title' | 'content' | 'cardFace' | 'order' | 'nodeId' | 'problems'>> = {};
@@ -4628,13 +4585,13 @@ async function getBaseGitStatus(
             status.hasLocalBranch = false;
         }
         
-        // Comment translated to English.
+        
         try {
             const { stdout: statusOutput } = await exec('git status --porcelain', { cwd: repoGitPath });
             const changes = statusOutput.trim();
             status.uncommittedChanges = changes.length > 0;
             
-            // Comment translated to English.
+            
             if (changes) {
                 const lines = changes.split('\n').filter(l => l.trim());
                 for (const line of lines) {
@@ -4653,7 +4610,7 @@ async function getBaseGitStatus(
             status.uncommittedChanges = false;
         }
         
-        // Comment translated to English.
+        
         try {
             const { stdout: existingRemote } = await exec('git remote get-url origin', { cwd: repoGitPath });
             if (existingRemote && existingRemote.trim()) {
@@ -4673,7 +4630,7 @@ async function getBaseGitStatus(
             }
         }
         
-        // Comment translated to English.
+        
         if (status.hasRemote) {
             try {
                 try {
@@ -4757,7 +4714,7 @@ async function commitBaseChanges(
         const branch = (base as any).currentBranch || 'main';
         await exportBaseToFile(base, tmpDir, branch, domainId);
         
-        // Comment translated to English.
+        
         const copyDirAndCleanup = async (src: string, dest: string) => {
             await fs.promises.mkdir(dest, { recursive: true });
             
@@ -4872,7 +4829,7 @@ class BaseBranchCreateHandler extends Handler {
             branches.push(branchName);
         }
         
-        // Comment translated to English.
+        
         const mainBranchData = getBranchData(base, 'main');
         setBranchData(base, branchName, 
             JSON.parse(JSON.stringify(mainBranchData.nodes)), 
@@ -5072,7 +5029,7 @@ class BaseCommitHandler extends Handler {
                 this.user.uname || 'unknown'
             );
 
-            // Comment translated to English.
+            
             (this.ctx.emit as any)('base/update', base.docId, base.bid);
             (this.ctx.emit as any)('base/git/status/update', base.docId, base.bid);
 
@@ -5392,17 +5349,13 @@ async function importBaseFromFileStructure(
     return { nodes, edges };
 }
 
-/**
- * Cleanup all cards of a base before re-importing from Git.
- * Comment translated to English.
- */
 async function cleanupBaseCards(
     domainId: string,
     bid: number,
-    _nodes: BaseNode[] // Comment translated to English.
+    _nodes: BaseNode[] 
 ): Promise<void> {
     try {
-        // Comment translated to English.
+        
         await document.deleteMulti(domainId, TYPE_CARD as any, { bid } as any);
     } catch (err) {
         console.error(
@@ -5465,10 +5418,10 @@ class BaseGithubPullHandler extends Handler {
             await exec('git fetch origin', { cwd: repoGitPath });
             await exec(`git reset --hard origin/${effectiveBranch}`, { cwd: repoGitPath });
             
-            // Comment translated to English.
+            
             await cleanupBaseCards(domainId, base.docId, []);
 
-            // Comment translated to English.
+            
             const { nodes, edges } = await importBaseFromFileStructure(
                 domainId,
                 base.docId,
@@ -5489,8 +5442,8 @@ class BaseGithubPullHandler extends Handler {
             
             await BaseModel.updateFull(domainId, base.docId, {
                 branchData: base.branchData,
-                nodes: base.nodes, // Comment translated to English.
-                edges: base.edges, // Comment translated to English.
+                nodes: base.nodes, 
+                edges: base.edges, 
                 content,
             });
             
@@ -5555,10 +5508,6 @@ class BaseGithubConfigHandler extends Handler {
     }
 }
 
-/**
- * Base WebSocket Connection Handler
- * Comment translated to English.
- */
 export class BaseConnectionHandler extends ConnectionHandler {
     private docId?: number;
     private bid?: string;
@@ -5567,7 +5516,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
     @param('docId', Types.String, true)
     @param('bid', Types.String, true)
     async prepare(domainId: string, docId?: string, bid?: string) {
-        // Comment translated to English.
+        
         const finalDomainId = domainId || (this.request.query?.domainId as string) || (this.args as any).domainId;
         const qDocId = this.request.query?.docId as string;
         const qBid = this.request.query?.bid as string;
@@ -5595,17 +5544,17 @@ export class BaseConnectionHandler extends ConnectionHandler {
 
         this.docId = base.docId;
 
-        // Comment translated to English.
+        
         if (!this.user.own(base)) {
             this.checkPerm(PERM.PERM_VIEW_DISCUSSION);
         }
 
         logger.info('Base WebSocket connected: docId=%s', this.docId);
 
-        // Comment translated to English.
+        
         await this.sendInitialData(finalDomainId, base);
 
-        // Comment translated to English.
+        
         const dispose1 = (this.ctx.on as any)('base/update', async (...args: any[]) => {
             const [updateDocId, updatebid, updateBranch] = args;
             if (updateDocId && updateDocId.toString() === this.docId!.toString()) {
@@ -5614,7 +5563,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
         });
         this.subscriptions.push({ dispose: dispose1 });
 
-        // Comment translated to English.
+        
         const dispose2 = (this.ctx.on as any)('base/git/status/update', async (...args: any[]) => {
             const [updateDocId, updatebid] = args;
             if (updateDocId && updateDocId.toString() === this.docId!.toString()) {
@@ -5809,16 +5758,12 @@ export class BaseConnectionHandler extends ConnectionHandler {
 
 }
 
-/**
- * Base Domain Edit Handler
- * Comment translated to English.
- */
 class BaseDomainEditHandler extends Handler {
     @param('q', Types.Content, true)
     async get(domainId: string, q = '') {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         
-        // Comment translated to English.
+        
         const base = await BaseModel.getByDomain(domainId);
         
         if (!base) {
@@ -5828,14 +5773,14 @@ class BaseDomainEditHandler extends Handler {
         const branch = (base as any)?.currentBranch || 'main';
         const branchData = getBranchData(base, branch);
         
-        // Comment translated to English.
+        
         const rootNodes = branchData.nodes.filter(node => 
             node.level === 0 || !branchData.edges.some(edge => edge.target === node.id)
         );
         const rootNode = rootNodes[0] || branchData.nodes[0];
         
         if (!rootNode) {
-            // Comment translated to English.
+            
             this.response.template = 'base_domain_edit.html';
             this.response.body = { 
                 base: {
@@ -5850,7 +5795,7 @@ class BaseDomainEditHandler extends Handler {
             return;
         }
         
-        // Comment translated to English.
+        
         const firstLevelNodeIds = new Set(
             branchData.edges
                 .filter(edge => edge.source === rootNode.id)
@@ -5859,7 +5804,7 @@ class BaseDomainEditHandler extends Handler {
         
         let firstLevelNodes = branchData.nodes.filter(node => firstLevelNodeIds.has(node.id));
         
-        // Comment translated to English.
+        
         if (q && q.trim()) {
             const searchTerm = q.toLowerCase().trim();
             firstLevelNodes = firstLevelNodes.filter(node => 
@@ -5868,12 +5813,12 @@ class BaseDomainEditHandler extends Handler {
             );
         }
         
-        // Comment translated to English.
+        
         const firstLevelEdges = branchData.edges.filter(edge => 
             firstLevelNodeIds.has(edge.source) && firstLevelNodeIds.has(edge.target)
         );
         
-        // Comment translated to English.
+        
         const nodes = firstLevelNodes.map((node: any) => ({
             ...node,
             nodeId: node.id,
@@ -6223,7 +6168,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_card_file_download', '/base/:docId/card/:cardId/file/:filename', BaseCardFileDownloadHandler);
     ctx.Route('base_node_files', '/base/:docId/node/:nodeId/files', BaseNodeFilesHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_node_file_download', '/base/:docId/node/:nodeId/file/:filename', BaseNodeFileDownloadHandler);
-    // Comment translated to English.
+    
     ctx.Route('base_editor', '/base/:docId/editor', BaseEditorDocHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_editor_branch', '/base/:docId/branch/:branch/editor', BaseEditorDocHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Connection('base_connection', '/base/ws', BaseConnectionHandler);

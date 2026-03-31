@@ -1,6 +1,3 @@
-/**
- * Comment translated to English.
- */
 import type { Context } from '../context';
 import { param, Types } from '../service/server';
 import { NotFoundError } from '../error';
