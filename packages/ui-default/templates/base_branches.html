@@ -57,6 +57,13 @@
                 <a href="{{ url('base_outline_doc_branch', domainId=_domain_id, docId=_doc_id, branch=b) }}" class="typo" style="font-size: 12px;">
                   {{ _('Open') }}
                 </a>
+                {% if b != 'main' %}
+                  <form method="post" action="{{ url('base_branch_delete', domainId=_domain_id, docId=_doc_id, branch=b) }}" style="display:inline; margin-left: 10px;" onsubmit="return window.confirm('{{ _('Delete this branch? This cannot be undone.') }}');">
+                    <button type="submit" class="typo" style="font-size: 12px; color: #d1242f; background: transparent; border: none; padding: 0; cursor: pointer;">
+                      {{ _('Delete') }}
+                    </button>
+                  </form>
+                {% endif %}
               </td>
             </tr>
             {% endfor %}
