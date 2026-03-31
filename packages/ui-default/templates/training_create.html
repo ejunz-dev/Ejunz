@@ -30,6 +30,7 @@
                         </label>
                     </div>
                     <script type="application/json" id="tpe-meta">{{ basesMetaJson | safe }}</script>
+                    <script type="application/json" id="tpe-options">{"disableBranch": true}</script>
                     <script type="application/json" id="tpe-initial-plan">
                     {% if bases and bases.length > 0 %}
                     [{"baseDocId": {{ bases[0].docId }}, "targetBranch": "main"}]

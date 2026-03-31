@@ -6,7 +6,6 @@ import type { BaseDoc, BaseNode, BaseEdge, CardDoc, BaseHistoryEntry } from '../
 import db from '../service/db';
 import { Collection } from 'mongodb';
 
-export const TYPE_MM: 70 = 70;
 export const TYPE_CARD: 71 = 71;
 
 export class BaseModel {
@@ -20,7 +19,7 @@ export class BaseModel {
     }
 
     static async generateNextDocId(domainId: string): Promise<number> {
-        const lastBase = await document.getMulti(domainId, TYPE_MM, { docId: { $type: 'number' } } as any)
+        const lastBase = await document.getMulti(domainId, document.TYPE_BASE, { docId: { $type: 'number' } } as any)
             .sort({ docId: -1 })
             .limit(1)
             .project({ docId: 1 })
@@ -29,14 +28,14 @@ export class BaseModel {
     }
 
     static async getByDomain(domainId: string): Promise<BaseDoc | null> {
-        const result = await document.getMulti(domainId, TYPE_MM, {
+        const result = await document.getMulti(domainId, document.TYPE_BASE, {
             type: { $nin: ['skill', 'training'] }
         }).limit(1).toArray();
         return result.length > 0 ? result[0] : null;
     }
 
     static async getSkillBaseDocId(domainId: string): Promise<number | null> {
-        const result = await document.getMulti(domainId, TYPE_MM, { type: 'skill' }).limit(1).toArray();
+        const result = await document.getMulti(domainId, document.TYPE_BASE, { type: 'skill' }).limit(1).toArray();
         if (result.length === 0) return null;
         const docId = (result[0] as any).docId;
         return docId != null ? docId : null;
@@ -60,7 +59,7 @@ export class BaseModel {
         bid?: string
     ): Promise<{ docId: number }> {
         if (type === 'skill') {
-            const existing = await document.getMulti(domainId, TYPE_MM, { type: 'skill' }).limit(1).toArray();
+            const existing = await document.getMulti(domainId, document.TYPE_BASE, { type: 'skill' }).limit(1).toArray();
             if (existing.length > 0) {
                 return { docId: existing[0].docId };
             }
@@ -88,7 +87,7 @@ export class BaseModel {
         };
 
         const payload: Partial<BaseDoc> = {
-            docType: TYPE_MM,
+            docType: document.TYPE_BASE,
             domainId,
             title: title || '未命名思维导图',
             content: content || '',
@@ -121,7 +120,7 @@ export class BaseModel {
             domainId,
             payload.content!,
             payload.owner!,
-            TYPE_MM,
+            document.TYPE_BASE,
             nextDocId,
             null,
             null,
@@ -132,26 +131,26 @@ export class BaseModel {
     }
 
     static async get(domainId: string, docId: number): Promise<BaseDoc | null> {
-        return await document.get(domainId, TYPE_MM, docId);
+        return await document.get(domainId, document.TYPE_BASE, docId);
     }
 
 
     static async getBybid(domainId: string, bid: string | number): Promise<BaseDoc | null> {
         const bidString = String(bid).trim();
         if (!bidString) return null;
-        const list = await document.getMulti(domainId, TYPE_MM, { bid: bidString } as Filter<BaseDoc>).limit(1).toArray();
+        const list = await document.getMulti(domainId, document.TYPE_BASE, { bid: bidString } as Filter<BaseDoc>).limit(1).toArray();
         return list.length > 0 ? (list[0] as BaseDoc) : null;
     }
 
     static async getAll(domainId: string, query?: Filter<BaseDoc>): Promise<BaseDoc[]> {
         const filter: Filter<BaseDoc> = { type: { $nin: ['skill', 'training'] } };
         const merged = query ? { ...filter, ...query } : filter;
-        return await document.getMulti(domainId, TYPE_MM, merged).toArray();
+        return await document.getMulti(domainId, document.TYPE_BASE, merged).toArray();
     }
 
     static async getRecentUpdated(domainId: string, limit: number = 10): Promise<BaseDoc[]> {
         const list = await document
-            .getMulti(domainId, TYPE_MM, { type: { $nin: ['skill', 'training'] } } as Filter<BaseDoc>)
+            .getMulti(domainId, document.TYPE_BASE, { type: { $nin: ['skill', 'training'] } } as Filter<BaseDoc>)
             .sort({ updateAt: -1 })
             .limit(limit)
             .toArray();
@@ -161,7 +160,7 @@ export class BaseModel {
     static async getByRepo(domainId: string, rpid: number, branch?: string): Promise<BaseDoc[]> {
         const query: any = { rpid, type: { $nin: ['skill', 'training'] } };
         if (branch) query.branch = branch;
-        return await document.getMulti(domainId, TYPE_MM, query).toArray();
+        return await document.getMulti(domainId, document.TYPE_BASE, query).toArray();
     }
 
     static async update(
@@ -199,7 +198,7 @@ export class BaseModel {
                 }
             }
         }
-        await document.set(domainId, TYPE_MM, docId, updatePayload);
+        await document.set(domainId, document.TYPE_BASE, docId, updatePayload);
     }
 
     static async updateNode(
@@ -253,7 +252,7 @@ export class BaseModel {
                 updatePayload.title = updates.text;
             }
         }
-        await document.set(domainId, TYPE_MM, docId, updatePayload);
+        await document.set(domainId, document.TYPE_BASE, docId, updatePayload);
     }
 
     static async addNode(
@@ -352,7 +351,7 @@ export class BaseModel {
             updateData.edges = edges;
         }
 
-        await document.set(domainId, TYPE_MM, docId, updateData);
+        await document.set(domainId, document.TYPE_BASE, docId, updateData);
 
         return { nodeId: newNodeId, edgeId: newEdgeId };
     }
@@ -505,7 +504,7 @@ export class BaseModel {
             updateData.edges = edges;
         }
 
-        await document.set(actualDomainId, TYPE_MM, docId, updateData);
+        await document.set(actualDomainId, document.TYPE_BASE, docId, updateData);
     }
 
     static async addEdge(
@@ -582,7 +581,7 @@ export class BaseModel {
                 updateData.edges = edges;
             }
 
-            await document.set(domainId, TYPE_MM, docId, updateData);
+            await document.set(domainId, document.TYPE_BASE, docId, updateData);
 
             return existingEdge.id;
         }
@@ -614,7 +613,7 @@ export class BaseModel {
             updateData.edges = edges;
         }
 
-        await document.set(domainId, TYPE_MM, docId, updateData);
+        await document.set(domainId, document.TYPE_BASE, docId, updateData);
 
         return newEdgeId;
     }
@@ -658,7 +657,7 @@ export class BaseModel {
             updatePayload.edges = edges;
         }
 
-        await document.set(domainId, TYPE_MM, docId, updatePayload);
+        await document.set(domainId, document.TYPE_BASE, docId, updatePayload);
     }
 
     static async updateNodes(
@@ -679,7 +678,7 @@ export class BaseModel {
         const nodeMap = new Map(nodes.map(n => [n.id, n]));
         base.nodes = base.nodes.map(n => nodeMap.get(n.id) || n);
 
-        await document.set(domainId, TYPE_MM, docId, {
+        await document.set(domainId, document.TYPE_BASE, docId, {
             nodes: base.nodes,
             updateAt: new Date(),
         });
@@ -700,18 +699,18 @@ export class BaseModel {
             }
         }
 
-        await document.set(domainId, TYPE_MM, docId, {
+        await document.set(domainId, document.TYPE_BASE, docId, {
             edges: edges,
             updateAt: new Date(),
         });
     }
 
     static async delete(domainId: string, docId: number): Promise<void> {
-        await document.deleteOne(domainId, TYPE_MM, docId);
+        await document.deleteOne(domainId, document.TYPE_BASE, docId);
     }
 
     static async incrementViews(domainId: string, docId: number): Promise<void> {
-        await document.inc(domainId, TYPE_MM, docId, 'views', 1);
+        await document.inc(domainId, document.TYPE_BASE, docId, 'views', 1);
     }
 
     static async updateFull(
@@ -729,7 +728,7 @@ export class BaseModel {
             history?: BaseDoc['history'];
         }
     ): Promise<void> {
-        await document.set(domainId, TYPE_MM, docId, {
+        await document.set(domainId, document.TYPE_BASE, docId, {
             ...updates,
             updateAt: new Date(),
         });

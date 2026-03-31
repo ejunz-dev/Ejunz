@@ -17,15 +17,9 @@
                 {% if trainings and trainings.length > 0 %}
                     <div class="training-list">
                         {% for t in trainings %}
-                        {% set mainBaseDocId = t.baseDocId %}
-                        {% set mainBranch = t.targetBranch or t.sourceBranch or 'main' %}
                         <div class="training-item" style="margin-bottom:1.5rem;padding:1rem;border:1px solid rgba(0,0,0,.08);border-radius:8px;">
                             <h3>
-                        {% if mainBaseDocId %}
-                            <a href="{{ url('training_editor_branch', domainId=domainId, docId=mainBaseDocId, branch=mainBranch) }}">{{ t.name }}</a>
-                                {% else %}
-                                    {{ t.name }}
-                                {% endif %}
+                            <a href="{{ url('training_editor', domainId=domainId, trainingDocId=t.docId) }}">{{ t.name }}</a>
                             </h3>
                             {% if t.description %}<p class="typo">{{ t.description }}</p>{% endif %}
                             <div class="typo secondary" style="font-size:13px;">
@@ -34,19 +28,17 @@
                                     {% if t.planSources and t.planSources.length > 1 %}
                                     {{ _('page.training.domain.multi_plan_sources').format(t.planSources.length) }}
                                     {% endif %}
-                                    {{ _('page.training.domain.first_group_line').format(mainBaseDocId, mainBranch, mainBranch) }}
+                                    {{ _('page.training.domain.first_group_line').format(t.planSources[0].baseDocId if t.planSources and t.planSources.length else '', 'main', 'main') }}
                                 </span>
                             </div>
                             <div style="margin-top:.75rem;">
-                                {% if mainBaseDocId %}
-                                    <a class="button" href="{{ url('training_editor_branch', domainId=domainId, docId=mainBaseDocId, branch=mainBranch) }}">
-                                        {{ _('page.training.domain.view') }} <code>{{ mainBaseDocId }}</code>
+                                <a class="button" href="{{ url('training_editor', domainId=domainId, trainingDocId=t.docId) }}">
+                                    {{ _('page.training.domain.view') }}
+                                </a>
+                                {% if handler.user._id and (t.owner == handler.user._id or handler.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) %}
+                                    <a class="button" href="{{ url('training_editor', domainId=domainId, trainingDocId=t.docId) }}">
+                                        {{ _('page.training.domain.edit') }}
                                     </a>
-                                    {% if handler.user._id and (t.owner == handler.user._id or handler.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) %}
-                                        <a class="button" href="{{ url('training_editor_branch', domainId=domainId, docId=mainBaseDocId, branch=mainBranch) }}">
-                                            {{ _('page.training.domain.edit') }} <code>{{ mainBaseDocId }}</code>
-                                        </a>
-                                    {% endif %}
                                 {% endif %}
                             </div>
                         </div>

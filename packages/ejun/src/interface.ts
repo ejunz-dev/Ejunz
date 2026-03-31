@@ -754,10 +754,6 @@ export interface TrainingDoc {
     name: string;
     description?: string;
     introQuote?: string;
-    /** First source (denormalized for list/display). */
-    baseDocId: number;
-    sourceBranch: string;
-    targetBranch: string;
     /** All Base+branch pairs composed into this plan (ordered). */
     planSources?: TrainingPlanSource[];
     /** Optional DAG metadata aligned by index with `sections`. */
