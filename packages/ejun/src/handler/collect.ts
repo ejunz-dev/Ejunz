@@ -111,6 +111,8 @@ async function saveCollectBaseForUser(
     });
 }
 
+const COLLECT_DAILY_GOAL_MAX = 10000;
+
 function collectUtcDayKey(): string {
     return moment.utc().format('YYYY-MM-DD');
 }
@@ -459,84 +461,13 @@ class CollectHandler extends Handler {
             throw new ValidationError('Invalid daily goal');
         }
 
+        if (dailyGoal > 0 && dailyGoal > COLLECT_DAILY_GOAL_MAX) {
+            throw new ValidationError('Invalid daily goal');
+        }
+        // Collect 模式允许选择“空 base / 仅根节点 / 暂无卡片”的知识库；不强制要求有卡片或题目。
+        // 具体可收集内容为空时，由后续学习/编辑器流程自行引导创建卡片与题目。
         if (dailyGoal > 0) {
-            const base = await requireSelectedLearnBase(finalDomainId, this.user._id, this.user.priv);
-            if (!base) throw new NotFoundError('Base not found');
-            const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-            const branch = (dudoc as any)?.learnBranch || 'main';
-            const branchData = getBranchData(base, branch);
-            const nodes = branchData.nodes || [];
-            const edges = branchData.edges || [];
-
-            let existingDAG = await learn.getDAG(finalDomainId, base.docId, branch);
-            const baseVersion = base.updateAt ? base.updateAt.getTime() : 0;
-            const needsRegenerate = !existingDAG || (existingDAG.version || 0) < baseVersion;
-            if (needsRegenerate && nodes.length > 0) {
-                const generated = await generateDAG(finalDomainId, base.docId, nodes, edges, (key: string) => this.translate(key));
-                await learn.setDAG(finalDomainId, base.docId, branch, {
-                    sections: generated.sections,
-                    dag: generated.dag,
-                    version: baseVersion,
-                    updateAt: new Date(),
-                });
-                existingDAG = await learn.getDAG(finalDomainId, base.docId, branch);
-            }
-
-            const sections: LearnDAGNode[] = existingDAG?.sections || [];
-            const allDagNodes: LearnDAGNode[] = existingDAG?.dag || [];
-            if (sections.length === 0) {
-                throw new ValidationError(this.translate('No cards in this domain') || '该域暂无题目卡片');
-            }
-            const savedSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
-            const currentSectionIndex = typeof savedSectionIndex === 'number' && savedSectionIndex >= 0 && savedSectionIndex < sections.length
-                ? savedSectionIndex
-                : 0;
-            const finalSectionId = sections[currentSectionIndex]?._id ?? sections[0]._id;
-            let dag: LearnDAGNode[] = [];
-            if (finalSectionId) {
-                const collectChildren = (parentId: string, collected: Set<string>) => {
-                    if (collected.has(parentId)) return;
-                    collected.add(parentId);
-                    const children = allDagNodes.filter(n =>
-                        n.requireNids && n.requireNids[n.requireNids.length - 1] === parentId && !collected.has(n._id)
-                    );
-                    for (const ch of children) {
-                        dag.push(ch);
-                        collectChildren(ch._id, collected);
-                    }
-                };
-                collectChildren(finalSectionId, new Set());
-            }
-            const nodeMap = new Map(allDagNodes.map(n => [n._id, n]));
-            sections.forEach(s => nodeMap.set(s._id, s));
-            const cardIdsToCheck: string[] = [];
-            for (const node of dag) {
-                const n = nodeMap.get(node._id);
-                if (!n) continue;
-                for (const c of (n.cards || [])) cardIdsToCheck.push(c.cardId);
-            }
-            let hasCardWithProblems = false;
-            for (const cid of cardIdsToCheck) {
-                const cardDoc = await CardModel.get(finalDomainId, new ObjectId(cid));
-                if (cardDoc?.problems?.length) {
-                    hasCardWithProblems = true;
-                    break;
-                }
-            }
-            // Fallback: if section-local scan doesn't hit, check the selected base globally.
-            if (!hasCardWithProblems) {
-                const cardColl = this.ctx.db.db.collection('document');
-                const anyProblemCard = await cardColl.findOne({
-                    domainId: finalDomainId,
-                    docType: 71,
-                    baseDocId: base.docId,
-                    problems: { $exists: true, $ne: [] },
-                });
-                hasCardWithProblems = !!anyProblemCard;
-            }
-            if (!hasCardWithProblems) {
-                throw new ValidationError(this.translate('No cards with problems in this domain') || '该域暂无带题目的卡片');
-            }
+            await requireSelectedLearnBase(finalDomainId, this.user._id, this.user.priv);
         }
 
         await learn.setUserLearnState(finalDomainId, this.user._id, { collectDailyGoal: dailyGoal });
@@ -608,20 +539,7 @@ class CollectHandler extends Handler {
         const branch = 'main';
         const branchData = getBranchData(base, branch);
         const nodes = branchData.nodes || [];
-
-        if (nodes.length === 0) {
-            const extras = await loadCollectHomeExtras(finalDomainId, this.user._id, this.user.priv, base);
-            this.response.template = 'collect.html';
-            this.response.body = {
-                domainId: finalDomainId,
-                baseDocId: base.docId.toString() || null,
-                learnBases: bases.map((item) => ({ docId: item.docId, title: item.title, bid: item.bid || '' })),
-                selectedLearnBaseDocId: Number(base.docId),
-                requireBaseSelection: false,
-                ...extras,
-            };
-            return;
-        }
+        // Collect 模式允许空 nodes；页面仍可展示并引导进入编辑器创建节点/卡片。
 
         const extras = await loadCollectHomeExtras(finalDomainId, this.user._id, this.user.priv, base);
         this.response.template = 'collect.html';
