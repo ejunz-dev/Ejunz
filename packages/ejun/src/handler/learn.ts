@@ -84,9 +84,40 @@ async function getLearnTrainingSelection(domainId: string, uid: number, priv: nu
         ? (trainings.find((t: any) => String(t.docId) === selectedTrainingDocId) || null)
         : null;
     let selectedBase: BaseDoc | null = null;
-    const selectedBaseDocId = selectedTraining
-        ? Number(TrainingModel.resolvePlanSources(selectedTraining as any)?.[0]?.baseDocId || 0)
+    let selectedBaseDocId = selectedTraining
+        ? Number(dudoc?.learnBaseDocId || 0)
         : (getModeBaseDocId(dudoc, 'learn') ?? null);
+
+    // Auto-correct training base/branch selection:
+    // prefer a plan source that has ANY cards in its target branch (no-problem cards included).
+    if (selectedTraining) {
+        const sources = TrainingModel.resolvePlanSources(selectedTraining as any);
+        let picked = sources?.[0];
+        for (const s of (sources || [])) {
+            const b = Number((s as any)?.baseDocId || 0);
+            const br = String((s as any)?.targetBranch || 'main') || 'main';
+            if (!Number.isFinite(b) || b <= 0) continue;
+            const filter: any = { domainId, docType: 71, baseDocId: b };
+            if (br === 'main') {
+                filter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
+            } else {
+                filter.branch = br;
+            }
+            const anyCard = await db.collection('document' as any).find(filter).limit(1).toArray();
+            if (anyCard.length) {
+                picked = s;
+                break;
+            }
+        }
+        const pickedBaseDocId = Number(picked?.baseDocId || 0);
+        const pickedBranch = String(picked?.targetBranch || 'main') || 'main';
+        if (Number.isFinite(pickedBaseDocId) && pickedBaseDocId > 0) {
+            if (Number(dudoc?.learnBaseDocId || 0) !== pickedBaseDocId || String(dudoc?.learnBranch || 'main') !== pickedBranch) {
+                await learn.setUserLearnState(domainId, uid, { learnBaseDocId: pickedBaseDocId, learnBranch: pickedBranch } as any);
+            }
+            selectedBaseDocId = pickedBaseDocId;
+        }
+    }
     if (selectedBaseDocId !== null && Number.isFinite(selectedBaseDocId) && selectedBaseDocId > 0) {
         selectedBase = await BaseModel.get(domainId, Number(selectedBaseDocId));
     }
@@ -109,9 +140,29 @@ async function saveLearnTrainingForUser(
     const training = await TrainingModel.get(domainId, new ObjectId(trainingDocId));
     if (!training) throw new NotFoundError('Training not found');
     const sources = TrainingModel.resolvePlanSources(training as any);
-    const primary = sources?.[0];
-    const baseDocId = Number(primary?.baseDocId || 0);
-    const branch = String(primary?.targetBranch || 'main') || 'main';
+
+    // Prefer a plan source that actually has cards in its target branch (no-problem cards included).
+    // Otherwise, fall back to the first source (legacy behavior).
+    let picked = sources?.[0];
+    for (const s of (sources || [])) {
+        const b = Number((s as any)?.baseDocId || 0);
+        const br = String((s as any)?.targetBranch || 'main') || 'main';
+        if (!Number.isFinite(b) || b <= 0) continue;
+        const filter: any = { domainId, docType: 71, baseDocId: b };
+        if (br === 'main') {
+            filter.$or = [{ branch: 'main' }, { branch: { $exists: false } }];
+        } else {
+            filter.branch = br;
+        }
+        const anyCard = await db.collection('document' as any).find(filter).limit(1).toArray();
+        if (anyCard.length) {
+            picked = s;
+            break;
+        }
+    }
+
+    const baseDocId = Number(picked?.baseDocId || 0);
+    const branch = String(picked?.targetBranch || 'main') || 'main';
     if (!Number.isFinite(baseDocId) || baseDocId <= 0) throw new ValidationError('Invalid training base');
     const base = await BaseModel.get(domainId, baseDocId);
     if (base) {
@@ -1069,6 +1120,9 @@ class LessonHandler extends Handler {
             throw new NotFoundError('Base not found for this domain');
         }
 
+        const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+        const branch = (dudoc as any)?.learnBranch || 'main';
+
         const queryCardId = this.request.query?.cardId;
         const queryNodeId = this.request.query?.nodeId as string | undefined;
         const queryToday = this.request.query?.today === '1' || this.request.query?.today === 'true';
@@ -1079,7 +1133,6 @@ class LessonHandler extends Handler {
         }
 
         if (!queryCardId && !queryNodeId && !queryToday) {
-            const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
             const lessonMode = dudoc?.lessonMode;
             const lessonCardIndex = typeof dudoc?.lessonCardIndex === 'number' ? dudoc.lessonCardIndex : 0;
             const lessonNodeId = dudoc?.lessonNodeId as string | undefined;
@@ -1113,7 +1166,7 @@ class LessonHandler extends Handler {
             }
 
             const hasCardProblems = !!(card.problems && card.problems.length > 0);
-            const node = (getBranchData(base, 'main').nodes || []).find(n => n.id === card.nodeId);
+            const node = (getBranchData(base, branch).nodes || []).find(n => n.id === card.nodeId);
             if (hasCardProblems && !node) {
                 throw new NotFoundError('Node not found');
             }
@@ -1126,7 +1179,6 @@ class LessonHandler extends Handler {
                 lessonUpdatedAt: new Date(),
             });
 
-            const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
             const lessonReviewCardIds = Array.isArray(dudoc?.lessonReviewCardIds) ? dudoc.lessonReviewCardIds : [];
             const lessonCardTimesMs = Array.isArray(dudoc?.lessonCardTimesMs) ? dudoc.lessonCardTimesMs : [];
 
@@ -1166,7 +1218,6 @@ class LessonHandler extends Handler {
         }
 
         if (queryNodeId) {
-            const branch = 'main';
             const branchData = getBranchData(base, branch);
             const nodes = branchData.nodes || [];
             const edges = branchData.edges || [];
@@ -1263,7 +1314,7 @@ class LessonHandler extends Handler {
 
             const currentCard = await CardModel.get(finalDomainId, new ObjectId(currentItem.cardId));
             if (!currentCard) throw new NotFoundError('Card not found');
-            const currentNode = (getBranchData(base, 'main').nodes || []).find(n => n.id === currentItem.nodeId);
+            const currentNode = (getBranchData(base, branch).nodes || []).find(n => n.id === currentItem.nodeId);
             if (!currentNode) throw new NotFoundError('Node not found');
             const currentCardList = await CardModel.getByNodeId(finalDomainId, base.docId, currentItem.nodeId);
             const currentIndexInNode = currentCardList.findIndex(c => c.docId.toString() === currentItem.cardId);
@@ -1299,7 +1350,6 @@ class LessonHandler extends Handler {
         }
 
         if (queryToday) {
-            const branch = 'main';
             const branchData = getBranchData(base, branch);
             const nodes = branchData.nodes || [];
             const edges = branchData.edges || [];
@@ -1325,7 +1375,6 @@ class LessonHandler extends Handler {
                 allDagNodes = existingDAG!.dag || [];
             }
 
-            const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv });
             const savedSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
             const savedSectionId = (dudoc as any)?.currentLearnSectionId;
             const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
@@ -1389,8 +1438,10 @@ class LessonHandler extends Handler {
                     cardsWithProblems.push(item);
                 }
             }
+            // Fallback: if no problem cards exist, allow "card view mode" (Know it / No impression) to continue learning.
+            const candidateCards = cardsWithProblems.length > 0 ? cardsWithProblems : todayFlatCards;
             const dailyGoalToday = Math.max(0, getModeDailyGoal(dudoc as any, 'learn'));
-            const cardsForToday = dailyGoalToday > 0 ? cycleList(cardsWithProblems, dailyGoalToday) : cardsWithProblems;
+            const cardsForToday = dailyGoalToday > 0 ? cycleList(candidateCards, dailyGoalToday) : candidateCards;
 
             if (cardsForToday.length === 0) {
                 if (sections.length > 0 && currentSectionIndex + 1 < sections.length) {
@@ -1428,10 +1479,11 @@ class LessonHandler extends Handler {
 
             const currentItem = cardsForToday[currentCardIndex];
             const currentCard = await CardModel.get(finalDomainId, new ObjectId(currentItem.cardId));
-            if (!currentCard || !currentCard.problems || currentCard.problems.length === 0) {
+            // Allow no-problem cards in today's lesson (card view mode).
+            if (!currentCard) {
                 throw new NotFoundError('Card not found');
             }
-            const currentNode = (getBranchData(base, 'main').nodes || []).find((n: any) => n.id === currentItem.nodeId);
+            const currentNode = (getBranchData(base, branch).nodes || []).find((n: any) => n.id === currentItem.nodeId);
             if (!currentNode) throw new NotFoundError('Node not found');
             const currentCardList = await CardModel.getByNodeId(finalDomainId, base.docId, currentItem.nodeId);
             const currentIndexInNode = currentCardList.findIndex(c => c.docId.toString() === currentItem.cardId);
@@ -1460,6 +1512,7 @@ class LessonHandler extends Handler {
                 baseDocId: base.docId.toString(),
                 isAlonePractice: false,
                 isTodayMode: true,
+                rootNodeId: 'today',
                 rootNodeTitle: this.translate('Today task') || '今日任务',
                 flatCards: cardsForToday,
                 nodeTree: todayNodeTree,
@@ -1469,7 +1522,6 @@ class LessonHandler extends Handler {
             return;
         }
 
-        const branch = 'main';
         const branchData = getBranchData(base, branch);
         const nodes = branchData.nodes || [];
         const edges = branchData.edges || [];
@@ -1505,10 +1557,10 @@ class LessonHandler extends Handler {
             allDagNodes = existingDAG.dag || [];
         }
 
-        const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv });
-        const savedSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
-        const savedSectionId = (dudoc as any)?.currentLearnSectionId;
-        const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
+        const dudoc2 = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv });
+        const savedSectionIndex = (dudoc2 as any)?.currentLearnSectionIndex;
+        const savedSectionId = (dudoc2 as any)?.currentLearnSectionId;
+        const learnSectionOrder = (dudoc2 as any)?.learnSectionOrder;
         sections = applyUserSectionOrder(sections, learnSectionOrder);
         
         let finalSectionId: string | null = null;
@@ -1924,7 +1976,8 @@ class LessonHandler extends Handler {
         const isTodayMode = body.todayMode === true;
 
         if (isTodayMode) {
-            const branch = 'main';
+            const dudocBranch = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+            const branch = (dudocBranch as any)?.learnBranch || 'main';
             const branchData = getBranchData(base, branch);
             const nodes = branchData.nodes || [];
             const edges = branchData.edges || [];
@@ -1937,8 +1990,7 @@ class LessonHandler extends Handler {
                 sections = result.sections;
                 allDagNodes = result.dag;
             }
-            const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv });
-            const savedSectionIndex = (dudoc as any)?.currentLearnSectionIndex ?? 0;
+            const savedSectionIndex = (dudocBranch as any)?.currentLearnSectionIndex ?? 0;
             const currentSectionIndex = Math.min(savedSectionIndex, sections.length - 1);
             const finalSectionId = sections[currentSectionIndex]?._id || null;
 
@@ -1961,7 +2013,8 @@ class LessonHandler extends Handler {
             const nodeMap = new Map(allDagNodes.map(n => [n._id, n]));
             sections.forEach(s => nodeMap.set(s._id, s));
             const todayFlatCards: Array<{ nodeId: string; cardId: string }> = [];
-            for (const node of dag) {
+            const nodesForToday = finalSectionId ? [{ _id: finalSectionId } as LearnDAGNode, ...dag] : dag;
+            for (const node of nodesForToday) {
                 const n = nodeMap.get(node._id);
                 if (!n) continue;
                 const cardList = (n.cards || []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -1977,8 +2030,9 @@ class LessonHandler extends Handler {
                     cardsWithProblems.push(item);
                 }
             }
-            const dailyGoalToday = Math.max(0, getModeDailyGoal(dudoc as any, 'learn'));
-            const cardsForToday = dailyGoalToday > 0 ? cycleList(cardsWithProblems, dailyGoalToday) : cardsWithProblems;
+            const candidateCards = cardsWithProblems.length > 0 ? cardsWithProblems : todayFlatCards;
+            const dailyGoalToday = Math.max(0, getModeDailyGoal(dudocBranch as any, 'learn'));
+            const cardsForToday = dailyGoalToday > 0 ? cycleList(candidateCards, dailyGoalToday) : candidateCards;
 
             const currentCardId = cardIdFromBody ? new ObjectId(cardIdFromBody) : (cardsForToday[cardIndexFromBody] ? new ObjectId(cardsForToday[cardIndexFromBody].cardId) : null);
             if (!currentCardId) {
@@ -1992,11 +2046,16 @@ class LessonHandler extends Handler {
             }
             const currentCardNodeId = card.nodeId;
             await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId);
-            const score = answerHistory.length * 5;
+            const finalAnswerHistory = (Array.isArray(answerHistory) && answerHistory.length > 0)
+                ? answerHistory
+                : (card.problems && card.problems.length > 0)
+                    ? []
+                    : [{ problemId: 'browse_judge', correct: true, selected: 0, timeSpent: totalTime || 0, attempts: 1 }];
+            const score = Array.isArray(finalAnswerHistory) ? finalAnswerHistory.length * 5 : 0;
             const resultId = await learn.addResult(finalDomainId, this.user._id, {
                 cardId: currentCardId,
                 nodeId: currentCardNodeId,
-                answerHistory,
+                answerHistory: finalAnswerHistory,
                 totalTime,
                 score,
                 createdAt: new Date(),
@@ -2005,7 +2064,7 @@ class LessonHandler extends Handler {
             await appendUserCheckinDay(finalDomainId, this.user._id, this.user.priv, 'learnActivityDates');
             const today = moment.utc().format('YYYY-MM-DD');
             let problemCount = 0;
-            for (const h of answerHistory) {
+            for (const h of (finalAnswerHistory as any[])) {
                 if (h.problemId) problemCount++;
             }
             const timeToAdd = (totalTime && typeof totalTime === 'number' && totalTime > 0) ? totalTime : 0;
