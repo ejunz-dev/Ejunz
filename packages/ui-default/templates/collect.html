@@ -11,6 +11,9 @@
   {{ set(UiContext, 'learnBases', learnBases or []) }}
   {{ set(UiContext, 'selectedLearnBaseDocId', selectedLearnBaseDocId) }}
   {{ set(UiContext, 'requireBaseSelection', requireBaseSelection) }}
+  {% if baseDocId is defined %}
+  {{ set(UiContext, 'baseDocId', baseDocId) }}
+  {% endif %}
 </script>
 <div class="row">
   <div class="medium-12 columns">
