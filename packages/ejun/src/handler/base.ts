@@ -4895,8 +4895,20 @@ class BaseBranchesHandler extends Handler {
     async get(domainId: string, docId: number) {
         const base = await resolveBaseByDocIdOrBid(domainId, String(docId));
         if (!base) throw new NotFoundError('Base not found');
-        const branches: string[] = Array.isArray((base as any).branches) ? (base as any).branches : ['main'];
-        if (!branches.includes('main')) branches.unshift('main');
+        const brSet = new Set<string>();
+        const branchesArr: string[] = Array.isArray((base as any).branches) ? (base as any).branches : [];
+        for (const b of branchesArr) {
+            const s = String(b || '').trim();
+            if (s) brSet.add(s);
+        }
+        const branchData: any = (base as any).branchData || {};
+        for (const k of Object.keys(branchData)) {
+            const s = String(k || '').trim();
+            if (s) brSet.add(s);
+        }
+        brSet.add('main');
+        const branches = Array.from(brSet);
+        branches.sort((a, b) => (a === 'main' ? -1 : b === 'main' ? 1 : a.localeCompare(b)));
         const currentBranch = (base as any).currentBranch || 'main';
         this.response.template = 'base_branches.html';
         this.response.body = {
@@ -4945,6 +4957,46 @@ class BaseBranchesHandler extends Handler {
 
         this.response.body = { success: true };
         this.response.redirect = this.url('base_branches', { docId: docId.toString() });
+    }
+}
+
+class BaseBranchDeleteHandler extends Handler {
+    @param('docId', Types.PositiveInt)
+    @param('branch', Types.String)
+    async post(domainId: string, docId: number, branch: string) {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        const branchName = String(branch || '').trim();
+        if (!branchName) throw new BadRequestError('Branch name is required');
+        if (branchName === 'main') throw new ForbiddenError('Cannot delete main branch');
+
+        const base = await BaseModel.get(domainId, docId);
+        if (!base) throw new NotFoundError('Base not found');
+        if (!this.user.own(base)) this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
+
+        // Training-owned branch cannot be deleted from base; delete the training plan instead.
+        const trainings = await document.getMulti(domainId, document.TYPE_TRAINING, {
+            planSources: { $elemMatch: { baseDocId: docId, targetBranch: branchName } },
+        } as any).limit(5).toArray() as any[];
+        if (trainings.length) {
+            throw new ForbiddenError('This branch is managed by a training plan. Please delete the corresponding training plan first.');
+        }
+
+        const branches: string[] = Array.isArray((base as any).branches) ? [...(base as any).branches] : ['main'];
+        const nextBranches = branches.filter((b) => String(b) !== branchName);
+        const nextBranchData: any = { ...((base as any).branchData || {}) };
+        if (nextBranchData[branchName]) delete nextBranchData[branchName];
+
+        // Remove all cards under this branch.
+        await document.deleteMulti(domainId, document.TYPE_CARD, { baseDocId: docId, branch: branchName } as any);
+
+        await document.set(domainId, document.TYPE_BASE, docId, {
+            branches: nextBranches,
+            branchData: nextBranchData,
+            updateAt: new Date(),
+        } as any);
+
+        this.response.body = { success: true };
+        this.response.redirect = this.url('base_branches', { docId: String(docId) });
     }
 }
 
@@ -6143,6 +6195,7 @@ export async function apply(ctx: Context) {
     ctx.Route('base_card_update', '/base/card/:cardId', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_branch_create', '/base/branch', BaseBranchCreateHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_branch_create_with_param', '/base/branch/:branch/create', BaseBranchCreateHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_branch_delete', '/base/:docId/branch/:branch/delete', BaseBranchDeleteHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_git_status', '/base/git/status', BaseGitStatusHandler);
     ctx.Route('base_commit', '/base/commit', BaseCommitHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('base_commit_branch', '/base/branch/:branch/commit', BaseCommitHandler, PRIV.PRIV_USER_PROFILE);

@@ -1019,8 +1019,41 @@ export class TrainingDeleteHandler extends Handler<Context> {
         if (training.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
             throw new PermissionError(PRIV.PRIV_USER_PROFILE);
         }
+
+        const sources = TrainingModel.resolvePlanSources(training);
+        // Delete training doc first (so branch cleanup can detect "other trainings still using branch").
         await TrainingModel.del(this.domain._id, docId);
-        this.response.redirect = `/training`;
+
+        // Cleanup training-owned branches on source bases.
+        for (const s of sources) {
+            const baseDocId = Number(s.baseDocId);
+            const branchName = String(s.targetBranch || '').trim();
+            if (!Number.isSafeInteger(baseDocId) || baseDocId <= 0) continue;
+            if (!branchName || branchName === 'main') continue;
+
+            const stillUsed = await document.getMulti(this.domain._id, document.TYPE_TRAINING, {
+                planSources: { $elemMatch: { baseDocId, targetBranch: branchName } },
+            } as any).limit(1).toArray();
+            if (stillUsed.length) continue;
+
+            const base = await BaseModel.get(this.domain._id, baseDocId);
+            if (!base) continue;
+
+            const branches: string[] = Array.isArray((base as any).branches) ? [...(base as any).branches] : ['main'];
+            const nextBranches = branches.filter((b) => String(b) !== branchName);
+            const nextBranchData: any = { ...((base as any).branchData || {}) };
+            if (nextBranchData[branchName]) delete nextBranchData[branchName];
+
+            await document.deleteMulti(this.domain._id, document.TYPE_CARD, { baseDocId, branch: branchName } as any);
+            await document.set(this.domain._id, document.TYPE_BASE, baseDocId, {
+                branches: nextBranches,
+                branchData: nextBranchData,
+                updateAt: new Date(),
+            } as any);
+            (this.ctx.emit as any)('base/update', baseDocId, null, branchName);
+        }
+
+        this.response.redirect = this.url('training_domain', { domainId: this.domain._id });
     }
 }
 
