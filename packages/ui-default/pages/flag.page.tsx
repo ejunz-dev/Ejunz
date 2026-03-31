@@ -19,7 +19,9 @@ function FlagPage() {
   const todayCompletedCount = (window as any).UiContext?.todayCompletedCount ?? 0;
   const learnBases = ((window as any).UiContext?.learnBases || []) as LearnBaseOption[];
   const selectedLearnBaseDocId = Number((window as any).UiContext?.selectedLearnBaseDocId || 0) || null;
+  const baseDocId = Number((window as any).UiContext?.baseDocId || 0) || null;
   const requireBaseSelection = !!(window as any).UiContext?.requireBaseSelection;
+  const effectiveBaseDocId = baseDocId || selectedLearnBaseDocId || null;
   const selectedLearnBase = selectedLearnBaseDocId
     ? (learnBases.find((b) => Number(b.docId) === Number(selectedLearnBaseDocId)) || null)
     : null;
@@ -90,12 +92,12 @@ function FlagPage() {
   };
 
   const handleStart = useCallback(() => {
-    if (!selectedLearnBaseDocId) {
+    if (!effectiveBaseDocId) {
       window.location.href = `/d/${domainId}/flag/base/select?redirect=${encodeURIComponent(`/d/${domainId}/flag`)}`;
       return;
     }
-    window.location.href = `/d/${domainId}/flag/base/${selectedLearnBaseDocId}/branch/main/editor`;
-  }, [domainId, selectedLearnBaseDocId]);
+    window.location.href = `/d/${domainId}/flag/base/${effectiveBaseDocId}/branch/main/editor`;
+  }, [domainId, effectiveBaseDocId]);
 
   const handleSaveGoal = useCallback(async () => {
     if (isSavingGoal) return;
