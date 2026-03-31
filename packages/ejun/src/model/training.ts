@@ -56,13 +56,17 @@ class TrainingModel {
     }
 
     /** Legacy or partial doc → ordered plan sources. */
-    static resolvePlanSources(training: Pick<TrainingDoc, 'planSources' | 'baseDocId' | 'sourceBranch' | 'targetBranch'>): TrainingPlanSource[] {
+    static resolvePlanSources(training: Pick<TrainingDoc, 'planSources'> & Partial<any>): TrainingPlanSource[] {
         if (training.planSources?.length) return training.planSources;
-        return [{
-            baseDocId: training.baseDocId,
-            sourceBranch: training.sourceBranch || 'main',
-            targetBranch: training.targetBranch || 'main',
-        }];
+        // Backward-compat fallback for legacy rows (if any exist).
+        if ((training as any).baseDocId) {
+            return [{
+                baseDocId: Number((training as any).baseDocId),
+                sourceBranch: String((training as any).sourceBranch || 'main'),
+                targetBranch: String((training as any).targetBranch || 'main'),
+            }];
+        }
+        return [];
     }
 
     /** Merge branch-diff sections from multiple bases (one subsection per diff chunk per source). */
@@ -121,22 +125,16 @@ class TrainingModel {
             planSources: TrainingPlanSource[];
             sections: TrainingSection[];
             dag?: TrainingDagNode[];
-            baseDocId?: number;
-            sourceBranch?: string;
-            targetBranch?: string;
+            docId?: ObjectId;
         },
     ): Promise<TrainingDoc> {
         const now = new Date();
-        const first = training.planSources[0];
         const payload: Partial<TrainingDoc> = {
             domainId: training.domainId,
             name: training.name,
             description: training.description,
             introQuote: training.introQuote,
             planSources: training.planSources,
-            baseDocId: training.baseDocId ?? first.baseDocId,
-            sourceBranch: training.sourceBranch ?? first.sourceBranch,
-            targetBranch: training.targetBranch ?? first.targetBranch,
             dag: training.dag,
             sections: training.sections,
             enrollCount: training.enrollCount ?? 0,
@@ -150,7 +148,7 @@ class TrainingModel {
             training.name,
             training.owner,
             document.TYPE_TRAINING,
-            null,
+            training.docId || null,
             null,
             null,
             payload,

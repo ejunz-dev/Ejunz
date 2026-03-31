@@ -73,6 +73,9 @@
     try { return JSON.parse(el.textContent); } catch (e) { return null; }
   }
 
+  var opts = jsonEl('tpe-options') || {};
+  var disableBranch = !!opts.disableBranch;
+
   var meta = jsonEl('tpe-meta') || [];
   var previewUrl = form.getAttribute('data-preview-url') || '';
   var planHidden = document.getElementById('tpe-plan-sources');
@@ -127,6 +130,7 @@
   }
 
   function fillBranchSelect(row, docId) {
+    if (disableBranch) return;
     var br = branchesFor(docId);
     var sel = row.querySelector('.tpe-row-branch');
     var sv = sel.value;
@@ -141,6 +145,8 @@
   function syncPlanHidden() {
     var rows = rowsEl.querySelectorAll('.tpe-src-row');
     var arr = [];
+    var nameEl = form.querySelector('input[name="name"]');
+    var trainingBranch = (nameEl && nameEl.value ? String(nameEl.value).trim() : '') || 'main';
     rows.forEach(function (row) {
       var b = row.querySelector('.tpe-row-base').value;
       if (!b) return;
@@ -148,10 +154,10 @@
         baseDocId: Number(b),
         // training plan generation defaults to main -> selectedBranch.
         sourceBranch: 'main',
-        targetBranch: row.querySelector('.tpe-row-branch').value,
+        targetBranch: disableBranch ? trainingBranch : row.querySelector('.tpe-row-branch').value,
       });
     });
-    planHidden.value = JSON.stringify(arr);
+    if (planHidden) planHidden.value = JSON.stringify(arr);
     return arr;
   }
 
@@ -163,21 +169,23 @@
     var sel = prefill.baseDocId != null ? String(prefill.baseDocId) : (meta[0] && meta[0].docId ? String(meta[0].docId) : '');
     row.innerHTML =
       '<label class="field"><span class="field__label">' + escHtml(I.baseLabel) + '</span><select class="select tpe-row-base" required>' + baseOptionsHtml(sel) + '</select></label>' +
-      '<label class="field"><span class="field__label">' + escHtml(I.branchLabel || '') + '</span><select class="select tpe-row-branch"></select></label>' +
+      (disableBranch ? '' : ('<label class="field"><span class="field__label">' + escHtml(I.branchLabel || '') + '</span><select class="select tpe-row-branch"></select></label>')) +
       '<button type="button" class="button tpe-row-remove">' + escHtml(I.removeRow) + '</button>';
     var bs = row.querySelector('.tpe-row-base');
     if (sel) bs.value = sel;
-    var initBranch = prefill.targetBranch || prefill.branch || prefill.sourceBranch || 'main';
-    fillBranchSelect(row, bs.value || (meta[0] && meta[0].docId));
-    var branchEl = row.querySelector('.tpe-row-branch');
-    if (initBranch) {
-      // If initBranch isn't in option list, fallback to first option.
-      var ok = false;
-      for (var oi = 0; oi < branchEl.options.length; oi++) {
-        if (String(branchEl.options[oi].value) === String(initBranch)) { ok = true; break; }
+    if (!disableBranch) {
+      var initBranch = prefill.targetBranch || prefill.branch || prefill.sourceBranch || 'main';
+      fillBranchSelect(row, bs.value || (meta[0] && meta[0].docId));
+      var branchEl = row.querySelector('.tpe-row-branch');
+      if (initBranch) {
+        // If initBranch isn't in option list, fallback to first option.
+        var ok = false;
+        for (var oi = 0; oi < branchEl.options.length; oi++) {
+          if (String(branchEl.options[oi].value) === String(initBranch)) { ok = true; break; }
+        }
+        if (ok) branchEl.value = initBranch;
+        else if (branchEl.options.length) branchEl.selectedIndex = 0;
       }
-      if (ok) branchEl.value = initBranch;
-      else if (branchEl.options.length) branchEl.selectedIndex = 0;
     }
     bs.addEventListener('change', function () {
       fillBranchSelect(row, bs.value);
@@ -187,7 +195,7 @@
       row.remove();
       syncPlanHidden();
     });
-    row.querySelector('.tpe-row-branch').addEventListener('change', syncPlanHidden);
+    if (!disableBranch) row.querySelector('.tpe-row-branch').addEventListener('change', syncPlanHidden);
     rowsEl.appendChild(row);
     syncPlanHidden();
   }
@@ -210,7 +218,8 @@
     });
   }
 
-  document.getElementById('tpe-add-src').addEventListener('click', function () { addSourceRow(); });
+  var addBtn = document.getElementById('tpe-add-src');
+  if (addBtn) addBtn.addEventListener('click', function () { addSourceRow(); });
 
   var initialPlan = jsonEl('tpe-initial-plan');
   if (initialPlan && initialPlan.length) {
@@ -485,7 +494,8 @@
     dagHidden.value = JSON.stringify(buildDag());
   }
 
-  document.getElementById('tpe-load-preview').addEventListener('click', function () {
+  var loadPreviewBtn = document.getElementById('tpe-load-preview');
+  if (loadPreviewBtn) loadPreviewBtn.addEventListener('click', function () {
     var arr = syncPlanHidden();
     if (!arr.length) { alert(I.alertNeedBase || ''); return; }
     var u = previewUrl + '?sources=' + encodeURIComponent(JSON.stringify(arr));
@@ -502,7 +512,8 @@
     }).catch(function () { alert(I.alertLoadFailed || ''); });
   });
 
-  document.getElementById('tpe-add-section').addEventListener('click', function () {
+  var addSectionBtn = document.getElementById('tpe-add-section');
+  if (addSectionBtn) addSectionBtn.addEventListener('click', function () {
     state.sections.push({ title: I.newChapter || '', problems: [] });
     renderSections();
   });
