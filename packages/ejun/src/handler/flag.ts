@@ -367,18 +367,11 @@ class FlagHandler extends Handler {
             throw new ValidationError('Invalid daily goal');
         }
 
+        if (dailyGoal > 0 && dailyGoal > FLAG_DAILY_GOAL_MAX) {
+            throw new ValidationError('Invalid daily goal');
+        }
         if (dailyGoal > 0) {
-            if (dailyGoal > FLAG_DAILY_GOAL_MAX) {
-                throw new ValidationError('Invalid daily goal');
-            }
-            const base = await requireSelectedLearnBase(finalDomainId, this.user._id, this.user.priv);
-            const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-            const branch = (dudoc as any)?.learnBranch || 'main';
-            const branchData = getBranchData(base, branch);
-            const nodes = branchData.nodes || [];
-            if (nodes.length === 0) {
-                throw new ValidationError(this.translate('Base has no nodes') || '知识库暂无节点');
-            }
+            await requireSelectedLearnBase(finalDomainId, this.user._id, this.user.priv);
         }
 
         await learn.setUserLearnState(finalDomainId, this.user._id, { flagDailyGoal: dailyGoal });
@@ -446,17 +439,7 @@ class FlagHandler extends Handler {
         const branch = 'main';
         const branchData = getBranchData(base, branch);
         const nodes = branchData.nodes || [];
-        if (nodes.length === 0) {
-            this.response.template = 'flag.html';
-            this.response.body = {
-                ...emptyBody,
-                baseDocId: base.docId.toString(),
-                learnBases: bases.map((item) => ({ docId: item.docId, title: item.title, bid: item.bid || '' })),
-                selectedLearnBaseDocId: Number(base.docId),
-                requireBaseSelection: false,
-            };
-            return;
-        }
+        // Flag 模式允许空 nodes；页面仍可展示并引导进入编辑器创建节点。
 
         const dudoc = (await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv })) as any;
         const dailyGoal = getModeDailyGoal(dudoc as any, 'flag');
