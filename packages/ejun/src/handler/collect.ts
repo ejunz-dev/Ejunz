@@ -16,6 +16,7 @@ import { updateDomainRanking } from './domain';
 import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../lib/checkin';
 import { getModeBaseDocId, getModeDailyGoal } from '../lib/learnModePrefs';
 import { loadBaseEditorUiPrefs } from '../lib/baseEditorUiPrefs';
+import { getTodayUserDomainContribution } from '../lib/homepageRanking';
 
 function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edges: BaseEdge[] } {
     const branchName = branch || 'main';
@@ -208,15 +209,10 @@ async function loadCollectHomeExtras(
 }> {
     const dudoc = await learn.getUserLearnState(finalDomainId, { _id: uid, priv });
     const dailyGoal = getModeDailyGoal(dudoc as any, 'collect');
-    const todayKeyProgress = collectUtcDayKey();
-    const collectProgressDate = (dudoc as any)?.collectProgressDate;
-    const collectProgressCardIds = (dudoc as any)?.collectProgressCardIds;
-    const todayCompletedCount =
-        collectProgressDate === todayKeyProgress && Array.isArray(collectProgressCardIds)
-            ? collectProgressCardIds.filter(
-                  (x: unknown) => String(x || '').trim() && !String(x).startsWith('temp-card-'),
-              ).length
-            : 0;
+    // Use the same source as homepage "This domain today" contribution.cards.
+    const todayKey = moment.utc().format('YYYY-MM-DD');
+    const contribution = await getTodayUserDomainContribution(finalDomainId, uid, todayKey);
+    const todayCompletedCount = contribution.cards;
     const collectActivityDates: string[] = Array.isArray((dudoc as any)?.collectActivityDates)
         ? (dudoc as any).collectActivityDates.map((x: unknown) => String(x))
         : [];
@@ -224,10 +220,10 @@ async function loadCollectHomeExtras(
     const consecutiveDays = countConsecutiveCheckinDays(collectActivityDates);
 
     const allResults = await learn.getResults(finalDomainId, uid);
-    const todayStart = moment.utc().startOf('day').toDate();
-    const todayEnd = moment.utc().add(1, 'day').startOf('day').toDate();
+    const todayStart2 = moment.utc().startOf('day').toDate();
+    const todayEnd2 = moment.utc().add(1, 'day').startOf('day').toDate();
     const todayResults = allResults.filter(
-        (r: any) => r.createdAt && r.createdAt >= todayStart && r.createdAt < todayEnd && r.cardId,
+        (r: any) => r.createdAt && r.createdAt >= todayStart2 && r.createdAt < todayEnd2 && r.cardId,
     );
     const latestByCardId = new Map<string, { createdAt: Date; resultId: string }>();
     for (const r of todayResults) {
