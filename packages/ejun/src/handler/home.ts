@@ -107,36 +107,21 @@ export class HomeHandler extends Handler {
         const flagSet = new Set(flagDates);
 
         const todayKey = moment.utc().format('YYYY-MM-DD');
-        const todayStart = moment.utc().startOf('day').toDate();
-        const todayEndInclusive = moment.utc().endOf('day').toDate();
         const learnDailyGoal = getModeDailyGoal(dudoc as any, 'learn');
         const collectDailyGoal = getModeDailyGoal(dudoc as any, 'collect');
         const flagDailyGoal = getModeDailyGoal(dudoc as any, 'flag');
 
-        const todayLearnResults = await learn.getResults(domainId, this.user._id, {
-            createdAt: { $gte: todayStart, $lte: todayEndInclusive },
-        });
-        const learnCardsToday = new Set<string>();
-        for (const r of todayLearnResults) {
-            if (r.cardId) learnCardsToday.add(String(r.cardId));
-        }
-        const learnTodayCompleted = learnCardsToday.size;
-
-        const collectIdsRaw =
-            (dudoc as any)?.collectProgressDate === todayKey && Array.isArray((dudoc as any)?.collectProgressCardIds)
-                ? ((dudoc as any).collectProgressCardIds as unknown[])
-                : [];
-        const collectTodayCompleted = collectIdsRaw.filter(
-            (x) => String(x || '').trim() && !String(x).startsWith('temp-card-'),
-        ).length;
-
-        const flagIdsRaw =
-            (dudoc as any)?.flagProgressDate === todayKey && Array.isArray((dudoc as any)?.flagProgressNodeIds)
-                ? ((dudoc as any).flagProgressNodeIds as unknown[])
-                : [];
-        const flagTodayCompleted = flagIdsRaw.filter(
-            (x) => String(x || '').trim() && !String(x).startsWith('temp-node-'),
-        ).length;
+        // Use the same source as "This domain today" widget:
+        // - contribution.nodes -> flag
+        // - contribution.cards -> collect
+        // - consumption.cards -> learn
+        const [contribution, consumption] = await Promise.all([
+            getTodayUserDomainContribution(domainId, this.user._id, todayKey),
+            getTodayUserDomainConsumption(this.ctx.db.db, domainId, this.user._id, todayKey),
+        ]);
+        const flagTodayCompleted = contribution.nodes;
+        const collectTodayCompleted = contribution.cards;
+        const learnTodayCompleted = consumption.cards;
 
         const modeDone = (goal: number, completed: number) => (goal > 0 ? completed >= goal : completed > 0);
         const modeRemaining = (goal: number, completed: number) => {

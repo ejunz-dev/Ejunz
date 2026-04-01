@@ -10,10 +10,23 @@ import { PERM } from '../model/builtin';
 import { BaseModel, CardModel } from '../model/base';
 import TrainingModel, { listBranchesForBase } from '../model/training';
 import UserModel from '../model/user';
+import moment from 'moment-timezone';
+import { getTodayUserDomainContribution } from '../lib/homepageRanking';
 import type {
     BaseDoc, TrainingDagNode, TrainingPlanSource, TrainingSection, TrainingDoc, CardDoc, BaseNode, BaseEdge,
 } from '../interface';
 const logger = new Logger('training');
+
+async function computeTrainingTodayContribution(
+    domainId: string,
+    uid: number,
+    training: TrainingDoc,
+    mergedNodes: BaseNode[],
+): Promise<{ nodes: number; cards: number; problems: number; nodeChars: number; cardChars: number; problemChars: number }> {
+    const todayKey = moment.utc().format('YYYY-MM-DD');
+    const t = await getTodayUserDomainContribution(domainId, uid, todayKey);
+    return { ...t, nodeChars: 0, cardChars: 0, problemChars: 0 };
+}
 
 function normalizeDomainId(domainId: any, args: any): string {
     if (typeof domainId === 'string' && domainId) return domainId;
@@ -71,12 +84,30 @@ export class TrainingConnectionHandler extends ConnectionHandler {
 
         logger.info('Training WebSocket connected: docId=%s', finalDocId);
 
-        this.send({ type: 'init' });
+        try {
+            const { nodes } = await loadTrainingMergedGraph(finalDomainId, training);
+            const todayContribution = await computeTrainingTodayContribution(finalDomainId, this.user._id, training as any, nodes);
+            this.send({ type: 'init', todayContribution, todayContributionAllDomains: todayContribution, contributions: [], contributionDetails: {} });
+        } catch {
+            this.send({ type: 'init' });
+        }
 
         const dispose = (this.ctx.on as any)('base/update', async (...args: any[]) => {
             const [baseDocId, _userId, branch] = args;
             const key = `${Number(baseDocId)}::${String(branch || 'main')}`;
-            if (targetPairs.has(key)) this.send({ type: 'update' });
+            if (!targetPairs.has(key)) return;
+            try {
+                const fresh = await TrainingModel.get(finalDomainId, tid);
+                if (!fresh) {
+                    this.send({ type: 'update' });
+                    return;
+                }
+                const { nodes } = await loadTrainingMergedGraph(finalDomainId, fresh);
+                const todayContribution = await computeTrainingTodayContribution(finalDomainId, this.user._id, fresh as any, nodes);
+                this.send({ type: 'update', todayContribution, todayContributionAllDomains: todayContribution, contributions: [], contributionDetails: {} });
+            } catch {
+                this.send({ type: 'update' });
+            }
         });
         this.subscriptions.push({ dispose });
     }
@@ -417,6 +448,7 @@ export class TrainingEditorHandler extends Handler<Context> {
         }
 
         const { nodes, edges, nodeCardsMap } = await loadTrainingMergedGraph(did, training);
+        const todayContribution = await computeTrainingTodayContribution(did, this.user._id, training as any, nodes);
         this.response.template = 'training_editor.html';
         this.response.body = {
             base: {
@@ -433,6 +465,10 @@ export class TrainingEditorHandler extends Handler<Context> {
             domainId: did,
             editorMode: 'training',
             trainingDocId: String(training.docId),
+            todayContribution,
+            todayContributionAllDomains: todayContribution,
+            contributions: [],
+            contributionDetails: {},
             githubRepo: '',
             userGithubTokenConfigured: false,
         };
@@ -449,6 +485,7 @@ export class TrainingDataHandler extends Handler<Context> {
         const training = await TrainingModel.get(did, tid);
         if (!training) throw new NotFoundError('training');
         const { nodes, edges, nodeCardsMap } = await loadTrainingMergedGraph(did, training);
+        const todayContribution = await computeTrainingTodayContribution(did, this.user._id, training as any, nodes);
         this.response.body = {
             docId: String(training.docId),
             title: training.name,
@@ -456,6 +493,8 @@ export class TrainingDataHandler extends Handler<Context> {
             edges,
             currentBranch: 'main',
             nodeCardsMap,
+            todayContribution,
+            todayContributionAllDomains: todayContribution,
         };
     }
 }
@@ -529,6 +568,9 @@ export class TrainingSaveHandler extends Handler<Context> {
             (this.ctx.emit as any)('base/update', baseDocId, null, bucket.branch);
         }
 
+        // Bump training updatedAt so editor can reflect today's contribution.
+        await TrainingModel.update(did, tid, {});
+
         this.response.body = { success: true };
     }
 }
@@ -568,6 +610,10 @@ export class TrainingCardHandler extends Handler<Context> {
             order,
             branch,
         );
+        // Bump training updatedAt so editor can reflect today's contribution.
+        await TrainingModel.update(did, tid, {});
+        // Trigger editor refresh + contribution update for this base/branch.
+        (this.ctx.emit as any)('base/update', parsed.baseDocId, this.user._id, branch);
         this.response.body = { cardId };
     }
 }
