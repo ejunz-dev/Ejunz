@@ -22,6 +22,7 @@ import moment from 'moment-timezone';
 import UserModel from '../model/user';
 import { loadBaseEditorUiPrefs, sanitizeBaseEditorUiPrefs } from '../lib/baseEditorUiPrefs';
 import { computeMaxNodeLayers, countMainLevelChildNodes, loadCardStatsByBaseDocId } from '../lib/baseListStats';
+import { getTodayUserDomainContribution } from '../lib/homepageRanking';
 
 const exec = promisify(execCb);
 const execFile = promisify(execFileCb);
@@ -1066,7 +1067,11 @@ export class BaseEditorHandler extends Handler {
             buildContributionDataForDomain(domainId, uid, domainName, baseForContrib),
             buildTodayContributionAllDomains(uid),
         ]);
-        const { todayContribution, contributions, contributionDetails } = contrib;
+        const { contributions, contributionDetails } = contrib;
+        // Keep "This domain today" consistent with homepage stats (single source of truth).
+        const todayKey = moment.utc().format('YYYY-MM-DD');
+        const t = await getTodayUserDomainContribution(domainId, uid, todayKey);
+        const todayContribution = { ...t, nodeChars: 0, cardChars: 0, problemChars: 0 };
 
         let baseExpandState: string[] = [];
         try {

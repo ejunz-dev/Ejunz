@@ -15,6 +15,7 @@ import bus from '../service/bus';
 import { updateDomainRanking } from './domain';
 import { getModeBaseDocId, getModeDailyGoal } from '../lib/learnModePrefs';
 import { loadBaseEditorUiPrefs } from '../lib/baseEditorUiPrefs';
+import { getTodayUserDomainContribution } from '../lib/homepageRanking';
 
 function getBranchData(base: BaseDoc, branch: string): { nodes: BaseNode[]; edges: BaseEdge[] } {
     const branchName = branch || 'main';
@@ -443,11 +444,10 @@ class FlagHandler extends Handler {
 
         const dudoc = (await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv })) as any;
         const dailyGoal = getModeDailyGoal(dudoc as any, 'flag');
-        const today = flagUtcDayKey();
-        const flagProgressDate = dudoc?.flagProgressDate;
-        const flagProgressNodeIds = dudoc?.flagProgressNodeIds;
-        const todayCompletedCount =
-            flagProgressDate === today && Array.isArray(flagProgressNodeIds) ? flagProgressNodeIds.length : 0;
+        // Use the same source as homepage "This domain today" contribution.nodes.
+        const todayKey = moment.utc().format('YYYY-MM-DD');
+        const contribution = await getTodayUserDomainContribution(finalDomainId, this.user._id, todayKey);
+        const todayCompletedCount = contribution.nodes;
         const activityDates: string[] = Array.isArray(dudoc?.flagActivityDates) ? dudoc.flagActivityDates.map(String) : [];
         const totalCheckinDays = new Set(activityDates).size;
         const consecutiveDays = countConsecutiveFlagDays(activityDates);
