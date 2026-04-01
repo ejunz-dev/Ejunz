@@ -337,6 +337,7 @@ __langname: English
 'Remote Repository': Remote Repository
 'Request failed': Request failed
 'Response Time': Response Time
+'Root node cannot be deleted': 'Root node cannot be deleted'
 'Save Agent Configuration': Save Agent Configuration
 'Save all changes': Save all changes
 'Save ASR Configuration': Save ASR Configuration
