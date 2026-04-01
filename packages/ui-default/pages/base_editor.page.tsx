@@ -4755,6 +4755,8 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     if (!clipboard || clipboard.items.length === 0) return;
 
     const nodeCardsMap = (window as any).UiContext?.nodeCardsMap || {};
+    const isTraining = basePath === 'training';
+    if (!targetNodeId) return;
 
     
     for (const item of clipboard.items) {
@@ -4803,10 +4805,15 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         nodesToCopy.push(newNode);
 
         
-        const childEdges = base.edges.filter(e => e.source === nodeId);
-        childEdges.forEach(edge => {
-          collectNodes(edge.target);
-        });
+        if (isTraining) {
+          const children = base.nodes.filter((n: any) => String(n?.parentId || '') === String(nodeId));
+          children.forEach((ch) => collectNodes(String((ch as any).id)));
+        } else {
+          const childEdges = base.edges.filter(e => e.source === nodeId);
+          childEdges.forEach(edge => {
+            collectNodes(edge.target);
+          });
+        }
       };
 
       collectNodes(sourceNodeId);
@@ -4833,6 +4840,20 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       
       const rootNewId = nodeIdMap.get(sourceNodeId);
       if (rootNewId) {
+        if (isTraining) {
+          // Training tree relies on parentId; copy subtree keeping parentId relationships.
+          const rootNode = nodesToCopy.find((n: any) => String((n as any).id) === String(rootNewId));
+          if (rootNode) (rootNode as any).parentId = targetNodeId;
+          for (const n of nodesToCopy) {
+            if (String((n as any).id) === String(rootNewId)) continue;
+            const oldNodeId = Array.from(nodeIdMap.entries()).find(([_, newId]) => newId === (n as any).id)?.[0];
+            const old = oldNodeId ? base.nodes.find((x: any) => String((x as any).id) === String(oldNodeId)) : null;
+            const oldParentId = old?.parentId ? String((old as any).parentId) : '';
+            const mappedParent = oldParentId && nodeIdMap.has(oldParentId) ? nodeIdMap.get(oldParentId) : rootNewId;
+            (n as any).parentId = String(mappedParent || rootNewId);
+          }
+        }
+        
         
         const edgeExists = updatedEdges.some(e => e.source === targetNodeId && e.target === rootNewId);
         if (!edgeExists) {
@@ -4957,22 +4978,19 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           
           if (!pendingCreatesRef.current.has(newNode.id)) {
             
-            const originalParentEdge = base.edges.find(e => e.target === oldNodeId);
-            let parentNodeId: string;
-            
-            if (originalParentEdge) {
-              
-              const newParentId = nodeIdMap.get(originalParentEdge.source);
-              if (newParentId) {
-                
-                parentNodeId = newParentId;
+            let parentNodeId: string = targetNodeId;
+            if (isTraining) {
+              const old = base.nodes.find((x: any) => String((x as any).id) === String(oldNodeId)) as any;
+              const oldParentId = old?.parentId ? String(old.parentId) : '';
+              if (oldParentId) parentNodeId = nodeIdMap.get(oldParentId) || targetNodeId;
+            } else {
+              const originalParentEdge = base.edges.find(e => e.target === oldNodeId);
+              if (originalParentEdge) {
+                const newParentId = nodeIdMap.get(originalParentEdge.source);
+                parentNodeId = newParentId || targetNodeId;
               } else {
-                
                 parentNodeId = targetNodeId;
               }
-            } else {
-              
-              parentNodeId = targetNodeId;
             }
             
             pendingCreatesRef.current.set(newNode.id, {
@@ -5044,11 +5062,12 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       }
 
       const newCardId = `temp-card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const targetNodeEdges = base.edges.filter((e: BaseEdge) => e.source === targetNodeId);
-      const targetChildNodeIds = targetNodeEdges.map((e: BaseEdge) => e.target);
-      const targetChildNodes = targetChildNodeIds
-        .map((id: string) => base.nodes.find((n: BaseNode) => n.id === id))
-        .filter(Boolean) as BaseNode[];
+      const targetChildNodes = isTraining
+        ? (base.nodes.filter((n: any) => String(n?.parentId || '') === String(targetNodeId)) as any)
+        : (base.edges
+          .filter((e: BaseEdge) => e.source === targetNodeId)
+          .map((e: BaseEdge) => base.nodes.find((n: BaseNode) => n.id === e.target))
+          .filter(Boolean) as BaseNode[]);
       const maxCardOrder = nodeCardsMap[targetNodeId]?.length > 0
         ? Math.max(...nodeCardsMap[targetNodeId].map((c: Card) => c.order || 0))
         : 0;
