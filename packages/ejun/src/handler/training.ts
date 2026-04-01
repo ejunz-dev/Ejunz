@@ -56,6 +56,15 @@ function stripTrainingPrefix(baseDocId: number, s: string): string {
     return v.startsWith(prefix) ? v.slice(prefix.length) : v;
 }
 
+function getRootNodeIdLocal(nodes: BaseNode[] = [], edges: BaseEdge[] = []): string | null {
+    if (!nodes.length) return null;
+    const levelRoot = nodes.find((n: any) => Number((n as any).level || 0) === 0);
+    if (levelRoot) return String((levelRoot as any).id);
+    const incoming = new Set((edges || []).map((e: any) => String((e as any).target)));
+    const noIncoming = nodes.find((n: any) => !incoming.has(String((n as any).id)));
+    return noIncoming ? String((noIncoming as any).id) : String((nodes[0] as any).id);
+}
+
 export class TrainingConnectionHandler extends ConnectionHandler {
     private trainingDocId?: string;
     private subscriptions: Array<{ dispose: () => void }> = [];
@@ -562,6 +571,15 @@ export class TrainingSaveHandler extends Handler<Context> {
             if (!bucket.nodes.length && !bucket.edges.length) continue;
             const base = await BaseModel.get(did, baseDocId);
             if (!base) continue;
+            // Protect base root node: never allow deleting it from training editor payload.
+            const currentBranchData: any = (base as any).branchData?.[bucket.branch];
+            const curNodes: BaseNode[] = (currentBranchData?.nodes || (bucket.branch === 'main' ? (base as any).nodes : [])) || [];
+            const curEdges: BaseEdge[] = (currentBranchData?.edges || (bucket.branch === 'main' ? (base as any).edges : [])) || [];
+            const rootNodeId = getRootNodeIdLocal(curNodes, curEdges);
+            if (rootNodeId && !bucket.nodes.find((n: any) => String((n as any).id) === rootNodeId)) {
+                const rootNode = curNodes.find((n: any) => String((n as any).id) === rootNodeId);
+                if (rootNode) bucket.nodes.unshift(rootNode as any);
+            }
             (base as any).branchData = (base as any).branchData || {};
             (base as any).branchData[bucket.branch] = { nodes: bucket.nodes, edges: bucket.edges };
             await BaseModel.updateFull(did, baseDocId, { branchData: (base as any).branchData } as any);
@@ -636,6 +654,21 @@ export class TrainingBatchSaveHandler extends Handler<Context> {
         const branchByBase = new Map<number, string>();
         for (const s of sources) branchByBase.set(s.baseDocId, s.targetBranch || 'main');
 
+        // Root delete protection: capture root nodeId per base/branch so UI can't delete it via batch-save.
+        const rootByBase = new Map<number, string>();
+        for (const s of sources) {
+            const baseDocId = Number(s.baseDocId);
+            if (!Number.isFinite(baseDocId) || baseDocId <= 0) continue;
+            const branch = String(s.targetBranch || 'main') || 'main';
+            const base = await BaseModel.get(did, baseDocId);
+            if (!base) continue;
+            const branchData: any = (base as any).branchData?.[branch];
+            const nodes: BaseNode[] = (branchData?.nodes || (branch === 'main' ? (base as any).nodes : [])) || [];
+            const edges: BaseEdge[] = (branchData?.edges || (branch === 'main' ? (base as any).edges : [])) || [];
+            const rootId = getRootNodeIdLocal(nodes, edges);
+            if (rootId) rootByBase.set(baseDocId, rootId);
+        }
+
         const {
             nodeCreates = [],
             nodeUpdates = [],
@@ -650,6 +683,7 @@ export class TrainingBatchSaveHandler extends Handler<Context> {
         const errors: string[] = [];
         const nodeIdMap = new Map<string, string>();
         const cardIdMap = new Map<string, string>();
+        const pendingCardCreatesWithTempNode: any[] = [];
 
         const grouped = new Map<number, any>();
         const ensureGroup = (baseDocId: number) => {
@@ -691,6 +725,8 @@ export class TrainingBatchSaveHandler extends Handler<Context> {
         for (const d of (nodeDeletes || [])) {
             const parsed = parseTrainingNodeId(String(d || ''));
             if (!parsed) continue;
+            const protectedRoot = rootByBase.get(parsed.baseDocId);
+            if (protectedRoot && String(parsed.nodeId) === String(protectedRoot)) continue;
             const g = ensureGroup(parsed.baseDocId);
             if (!g) continue;
             g.nodeDeletes.push(parsed.nodeId);
@@ -723,6 +759,10 @@ export class TrainingBatchSaveHandler extends Handler<Context> {
 
         for (const c of (cardCreates || [])) {
             const nodeId = String(c.nodeId || '');
+            if (nodeId.startsWith('temp-node-')) {
+                pendingCardCreatesWithTempNode.push(c);
+                continue;
+            }
             const parsed = parseTrainingNodeId(nodeId);
             if (!parsed) continue;
             const g = ensureGroup(parsed.baseDocId);
@@ -819,6 +859,30 @@ export class TrainingBatchSaveHandler extends Handler<Context> {
                     ...remainingNodeCreates.filter((nc: any) => !processedNodeCreates.has(nc.tempId)),
                 );
                 if (remainingNodeCreates.length === beforeCount) break;
+            }
+
+            // Resolve card creates whose nodeId points to a temp node created in this same batch.
+            if (pendingCardCreatesWithTempNode.length > 0) {
+                const stillPending: any[] = [];
+                for (const cc of pendingCardCreatesWithTempNode) {
+                    const tempNodeId = String(cc.nodeId || '');
+                    if (!tempNodeId || !tempNodeId.startsWith('temp-node-')) {
+                        stillPending.push(cc);
+                        continue;
+                    }
+                    const mapped = nodeIdMap.get(tempNodeId);
+                    if (!mapped) {
+                        stillPending.push(cc);
+                        continue;
+                    }
+                    const parsed = parseTrainingNodeId(mapped);
+                    if (!parsed || parsed.baseDocId !== baseDocId) {
+                        stillPending.push(cc);
+                        continue;
+                    }
+                    g.cardCreates.push({ ...cc, nodeId: parsed.nodeId });
+                }
+                pendingCardCreatesWithTempNode.splice(0, pendingCardCreatesWithTempNode.length, ...stillPending);
             }
 
             for (const nodeUpdate of (g.nodeUpdates || [])) {

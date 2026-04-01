@@ -1865,13 +1865,23 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       nodeMap.set(node.id, { node, children: [] });
     });
 
-    
-    base.edges.forEach((edge) => {
-      const parent = nodeMap.get(edge.source);
-      if (parent) {
-        parent.children.push(edge.target);
-      }
-    });
+    if (basePath === 'training') {
+      // Training merged graph uses node.parentId for tree structure.
+      base.nodes.forEach((node: any) => {
+        const pid = node?.parentId ? String(node.parentId) : '';
+        if (!pid) return;
+        const parent = nodeMap.get(pid);
+        if (parent) parent.children.push(String(node.id));
+      });
+    } else {
+      // Base/collect/flag: keep legacy behavior (edges as a hierarchy hint).
+      base.edges.forEach((edge) => {
+        const parent = nodeMap.get(edge.source);
+        if (parent) {
+          parent.children.push(edge.target);
+        }
+      });
+    }
     
     
     nodeMap.forEach((nodeData) => {
@@ -1884,11 +1894,14 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       });
     });
 
-    
-    base.nodes.forEach((node) => {
-      const hasParent = base.edges.some((edge) => edge.target === node.id);
-      if (!hasParent) {
-        rootNodes.push(node.id);
+    base.nodes.forEach((node: any) => {
+      if (basePath === 'training') {
+        const pid = node?.parentId ? String(node.parentId) : '';
+        const hasParent = !!(pid && nodeMap.has(pid));
+        if (!hasParent) rootNodes.push(String(node.id));
+      } else {
+        const hasParent = base.edges.some((edge) => edge.target === node.id);
+        if (!hasParent) rootNodes.push(node.id);
       }
     });
 
@@ -3052,9 +3065,25 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         });
         
         
-        const realNodeDeletes = nodeDeletes.filter(del => 
-          del.id && !String(del.id).startsWith('temp-node-')
-        );
+        const trainingRootId =
+          basePath === 'training'
+            ? String((base.nodes || []).find((n: any) => String((n as any).id || '').startsWith('training_root_'))?.id || '')
+            : '';
+        const isProtectedTrainingBaseRoot = (nodeId: string) => {
+          if (basePath !== 'training') return false;
+          if (!trainingRootId) return false;
+          const n = (base.nodes || []).find((x: any) => String((x as any).id) === String(nodeId));
+          return !!(n && String((n as any).parentId || '') === trainingRootId);
+        };
+
+        const realNodeDeletes = nodeDeletes
+          .filter(del => del.id && !String(del.id).startsWith('temp-node-'))
+          .filter(del => {
+            const id = String(del.id || '');
+            if (!id) return false;
+            if (isProtectedTrainingBaseRoot(id)) return false;
+            return true;
+          });
         
         if (realNodeDeletes.length > 0) {
           
@@ -3076,6 +3105,17 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
           realNodeDeletes.forEach(del => {
             batchSaveData.nodeDeletes.push(del.id);
           });
+        }
+
+        // Notify if user tried deleting training base root nodes
+        if (basePath === 'training' && trainingRootId) {
+          const attempted = nodeDeletes
+            .filter(del => del.id && !String(del.id).startsWith('temp-node-'))
+            .map(del => String(del.id || ''))
+            .filter(id => id && isProtectedTrainingBaseRoot(id));
+          if (attempted.length > 0) {
+            Notification.error(i18n('Root node cannot be deleted'));
+          }
         }
       }
 
@@ -3987,6 +4027,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       id: tempId,
       text: i18n('New node'),
       order: maxOrder + 1,
+      ...(basePath === 'training' ? { parentId: parentNodeId } : {}),
     };
     
     
@@ -4029,6 +4070,16 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
 
   const handleNewRootNode = useCallback(() => {
     const tempId = `temp-node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // In training editor, treat "root node" creation as creating a child under training root.
+    if (basePath === 'training') {
+      const trainingRootId = String((base.nodes || []).find((n: any) => String((n as any).id || '').startsWith('training_root_'))?.id || '');
+      if (trainingRootId) {
+        handleNewChildNode(trainingRootId);
+        setEmptyAreaContextMenu(null);
+        return;
+      }
+    }
     
     
     const rootNodes = base.nodes.filter(node => 
@@ -4073,7 +4124,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
     });
     
     setEmptyAreaContextMenu(null);
-  }, [base.nodes, base.edges]);
+  }, [base.nodes, base.edges, basePath, handleNewChildNode]);
 
   const handleNewSiblingNodePlacement = useCallback((
     referenceNodeId: string,
@@ -4161,6 +4212,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
         id: tempId,
         text: i18n('New node'),
         order: newOrder,
+        ...(basePath === 'training' ? { parentId } : {}),
       };
       const newEdge: BaseEdge = {
         id: `temp-edge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -4314,6 +4366,7 @@ export function BaseEditorMode({ docId, initialData, basePath = 'base' }: { docI
       id: tempId,
       text: i18n('New node'),
       order: newOrder,
+      ...(basePath === 'training' ? { parentId: parentNodeId } : {}),
     };
     const newEdge: BaseEdge = {
       id: `temp-edge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -5965,6 +6018,7 @@ ${editorShellPath}
           const tempNode: BaseNode = {
             id: tempId,
             text: op.text || i18n('New node'),
+            ...(basePath === 'training' && op.parentId ? { parentId: String(op.parentId) } : {}),
           };
           
           setBase(prev => ({
