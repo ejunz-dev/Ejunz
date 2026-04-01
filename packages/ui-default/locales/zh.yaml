@@ -363,6 +363,7 @@ __langname: 简体中文
 'Request failed': 请求失败
 'Response Time': 响应时间
 'Role {1} already exists in domain {0}.': '域 {0} 中已存在角色 {1}。'
+'Root node cannot be deleted': 根节点不可删除
 'Save Agent Configuration': 保存 Agent 配置
 'Save all changes': 保存所有更改
 'Save ASR Configuration': 保存 ASR 配置
