@@ -133,7 +133,7 @@ const page = new NamedPage('room_chat', async () => {
           const msg = JSON.parse(data);
           console.log('[RoomChat] WebSocket message:', msg);
           
-          if (msg.type === 'record_update' && msg.rid) {
+          if (msg.type === 'round_update' && msg.rid) {
             handleRecordUpdate(msg);
           } else if (msg.type === 'error') {
             console.error('[RoomChat] WebSocket error:', msg.error);
@@ -497,9 +497,9 @@ const page = new NamedPage('room_chat', async () => {
       
       const responseData = await response.json();
       console.log('[RoomChat] Message sent:', responseData);
-      const taskRecordId = responseData.taskRecordId;
+      const taskRoundId = responseData.taskRoundId;
       
-      if (!taskRecordId) {
+      if (!taskRoundId) {
         console.error('[RoomChat] Task created but record ID missing', responseData);
         // 移除临时用户消息
         tempElement.remove();
@@ -511,9 +511,9 @@ const page = new NamedPage('room_chat', async () => {
       }
       
       // 记录临时消息ID，等待WebSocket返回真实record时替换
-      pendingUserMessages.set(taskRecordId, tempMsgId);
+      pendingUserMessages.set(taskRoundId, tempMsgId);
       
-      // 消息已发送，等待WebSocket更新（通过record_update消息）
+      // 消息已发送，等待WebSocket更新（通过round_update消息）
       // setLoading会在任务完成时通过handleRecordUpdate设置为false
     } catch (error: any) {
       console.error('[RoomChat] Error sending message:', error);

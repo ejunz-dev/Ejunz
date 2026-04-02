@@ -171,13 +171,13 @@ const page = new NamedPage('agent_chat', async () => {
                 timestamp: new Date().toISOString(),
               });
               handleBubbleStream(msg);
-            } else if (msg.type === 'record_update') {
-              console.log('[AgentChat] WebSocket: received record_update', {
+            } else if (msg.type === 'round_update') {
+              console.log('[AgentChat] WebSocket: received round_update', {
                 rid: msg.rid,
                 timestamp: new Date().toISOString(),
-                recordKeys: msg.record ? Object.keys(msg.record) : [],
+                recordKeys: msg.round ? Object.keys(msg.round) : [],
               });
-              handleRecordUpdate(msg);
+              handleRoundUpdate(msg);
             } else if (msg.type === 'error') {
               console.error('[AgentChat] Session error:', msg.error);
               // If we haven't received room_connected yet, this is a connection error
@@ -230,7 +230,7 @@ const page = new NamedPage('agent_chat', async () => {
     return roomConnectPromise;
   };
   
-  let currentRecordId: string | null = null;
+  let currentRoundId: string | null = null;
   
   // Frontend bubble state (UI state, independent from backend)
   enum FrontendBubbleState {
@@ -414,7 +414,7 @@ const page = new NamedPage('agent_chat', async () => {
       updateBackendState(bubbleId, BackendBubbleState.COMPLETED, 'backend_bubble_complete', { rid });
       
       // CRITICAL: When backend completes, check if we can immediately mark as completed
-      // This prevents subsequent record_update events from triggering unnecessary processing
+      // This prevents subsequent round_update events from triggering unnecessary processing
       const stateInfo = bubbleStates.get(bubbleId);
       if (stateInfo) {
         const timeSinceLastUpdate = Date.now() - stateInfo.lastContentUpdateTime;
@@ -438,8 +438,8 @@ const page = new NamedPage('agent_chat', async () => {
   const INACTIVE_TIMEOUT_MS = 3000; // If no update for 3 seconds during streaming, enter pending_complete
   const UPDATE_THRESHOLD_MS = 500;  // If no update for 500ms, consider it stable
   
-  // Track last processed record state to skip duplicate record_update events
-  const lastRecordState = new Map<string, { contentHash: string; messageCount: number; status: number; lastUpdateTime: number }>(); // rid -> state
+  // Track last processed record state to skip duplicate round_update events
+  const lastRoundState = new Map<string, { contentHash: string; messageCount: number; status: number; lastUpdateTime: number }>(); // rid -> state
   
   // Track message lifecycle: messages that have started and completed (for backward compatibility)
   const activebubbleIds = new Set<string>(); // Messages currently being streamed
@@ -710,7 +710,7 @@ const page = new NamedPage('agent_chat', async () => {
       }
       
       const timeSinceLastUpdate = Date.now() - currentStateInfo.lastContentUpdateTime;
-      const lastState = lastRecordState.get(currentRecordId || '');
+      const lastState = lastRoundState.get(currentRoundId || '');
       const timeSinceLastRecordUpdate = (lastState && 'lastUpdateTime' in lastState && lastState.lastUpdateTime) ? Date.now() - lastState.lastUpdateTime : Infinity;
       
       console.log('[AgentChat] setupInactiveTimeout: timeout fired', {
@@ -724,12 +724,12 @@ const page = new NamedPage('agent_chat', async () => {
       });
       
       // Only transition if still streaming and backend is still streaming
-      // CRITICAL: Also check if we've received any record_update events recently
+      // CRITICAL: Also check if we've received any round_update events recently
       // If backend is still sending updates (even if content unchanged), don't timeout
       if (currentStateInfo.frontendState === FrontendBubbleState.STREAMING &&
           currentStateInfo.backendState === BackendBubbleState.STREAMING) {
         // Only enter pending_complete if no update for INACTIVE_TIMEOUT_MS
-        // AND no recent record_update events (check if lastRecordState was updated recently)
+        // AND no recent round_update events (check if lastRoundState was updated recently)
         if (timeSinceLastUpdate >= INACTIVE_TIMEOUT_MS && timeSinceLastRecordUpdate >= INACTIVE_TIMEOUT_MS) {
           console.log('[AgentChat] setupInactiveTimeout: entering PENDING_COMPLETE due to inactivity', {
             bubbleId,
@@ -1163,7 +1163,7 @@ const page = new NamedPage('agent_chat', async () => {
       }
       
       const data = await response.json();
-      const recordHistory = data.recordHistory || [];
+      const roundHistory = data.roundHistory || [];
       
       const newUrl = `/d/${domainId}/agent/${urlAid}/chat?sid=${targetRoomId}`;
       window.history.pushState({ mode: 'chat', roomId: targetRoomId }, '', newUrl);
@@ -1177,9 +1177,9 @@ const page = new NamedPage('agent_chat', async () => {
       setLoadingState(false);
       
       // Load history records
-      if (recordHistory && Array.isArray(recordHistory) && recordHistory.length > 0) {
+      if (roundHistory && Array.isArray(roundHistory) && roundHistory.length > 0) {
         // Group messages: merge tool calls with results, separate before/after messages
-        const groupedMessages = groupMessages(recordHistory);
+        const groupedMessages = groupMessages(roundHistory);
         
         // Render all messages sequentially to ensure proper order
         for (const processedMsg of groupedMessages) {
@@ -1296,11 +1296,11 @@ const page = new NamedPage('agent_chat', async () => {
         const itemRoomId = room._id;
         const isActive = itemRoomId === currentRoomId;
         const title = room.title || `Room ${itemRoomId.substring(0, 8)}`;
-        const recordCount = (room.recordIds || []).length;
+        const roundCount = (room.roundIds || []).length;
         
         let lastMsgPreview = '';
-        if (room.lastRecord && room.lastRecord.agentMessages) {
-          const lastMsg = room.lastRecord.agentMessages[room.lastRecord.agentMessages.length - 1];
+        if (room.lastRound && room.lastRound.agentMessages) {
+          const lastMsg = room.lastRound.agentMessages[room.lastRound.agentMessages.length - 1];
           if (lastMsg && lastMsg.content) {
             const content = typeof lastMsg.content === 'string' ? lastMsg.content : JSON.stringify(lastMsg.content);
             lastMsgPreview = content.length > 60 ? content.substring(0, 60) + '...' : content;
@@ -1322,7 +1322,7 @@ const page = new NamedPage('agent_chat', async () => {
               <h4 style="margin: 0 0 5px 0; font-size: 0.95em; font-weight: 600;">${title}</h4>
               ${lastMsgPreview ? `<p style="margin: 5px 0; color: #666; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${lastMsgPreview}</p>` : ''}
               <div style="font-size: 0.8em; color: #999; margin-top: 5px;">
-                <span>${recordCount} records</span>
+                <span>${roundCount} records</span>
                 <span style="margin-left: 8px;">${updatedAtStr}</span>
               </div>
             </div>
@@ -1489,37 +1489,37 @@ const page = new NamedPage('agent_chat', async () => {
     }
   };
   
-  const handleRecordUpdate = async (msg: any) => {
+  const handleRoundUpdate = async (msg: any) => {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) {
-      console.warn('[AgentChat] handleRecordUpdate: chatMessages not found');
+      console.warn('[AgentChat] handleRoundUpdate: chatMessages not found');
       return;
     }
     
     if (!msg.rid) {
-      console.warn('[AgentChat] handleRecordUpdate: Invalid record update message: missing rid', msg);
+      console.warn('[AgentChat] handleRoundUpdate: Invalid record update message: missing rid', msg);
       return;
     }
     
-    console.log('[AgentChat] handleRecordUpdate: received', {
+    console.log('[AgentChat] handleRoundUpdate: received', {
       rid: msg.rid,
       timestamp: new Date().toISOString(),
-      recordKeys: msg.record ? Object.keys(msg.record) : [],
-      agentMessagesCount: msg.record?.agentMessages?.length || 0,
+      recordKeys: msg.round ? Object.keys(msg.round) : [],
+      agentMessagesCount: msg.round?.agentMessages?.length || 0,
     });
     
-    const record = msg.record || {};
+    const record = msg.round || {};
     const rid = msg.rid;
     
-    if (currentRecordId !== rid) {
-      console.log('[AgentChat] handleRecordUpdate: currentRecordId changed', {
-        oldRecordId: currentRecordId,
-        newRecordId: rid,
+    if (currentRoundId !== rid) {
+      console.log('[AgentChat] handleRoundUpdate: currentRoundId changed', {
+        oldRoundId: currentRoundId,
+        newRoundId: rid,
       });
-      currentRecordId = rid;
+      currentRoundId = rid;
     }
     
-    // EARLY EXIT: Check if this record_update is a duplicate (same content hash and message count)
+    // EARLY EXIT: Check if this round_update is a duplicate (same content hash and message count)
     if (record.agentMessages && Array.isArray(record.agentMessages)) {
       const messageCount = record.agentMessages.length;
       const status = record.status;
@@ -1531,18 +1531,18 @@ const page = new NamedPage('agent_chat', async () => {
         .join('|');
       const recordContentHash = allContentHashes ? contentHash(allContentHashes) : '';
       
-      const lastState = lastRecordState.get(rid);
+      const lastState = lastRoundState.get(rid);
       if (lastState && 
           lastState.contentHash === recordContentHash && 
           lastState.messageCount === messageCount &&
           lastState.status === status) {
         // Record content unchanged, skip processing to prevent duplicate markdown rendering
-        console.log('[AgentChat] Skipping duplicate record_update:', { rid, contentHash: recordContentHash, messageCount });
+        console.log('[AgentChat] Skipping duplicate round_update:', { rid, contentHash: recordContentHash, messageCount });
         return;
       }
       
       // Update last processed state (including timestamp to track when we last received an update)
-      lastRecordState.set(rid, { contentHash: recordContentHash, messageCount, status, lastUpdateTime: Date.now() });
+      lastRoundState.set(rid, { contentHash: recordContentHash, messageCount, status, lastUpdateTime: Date.now() });
     }
     
     // Check if task is streaming (before processing messages)
@@ -1946,7 +1946,7 @@ const page = new NamedPage('agent_chat', async () => {
               const toolCalls = msgData.tool_calls;
             
             // CRITICAL: If task is completed, only update existing messages, never create new ones
-            // This prevents duplicates when multiple record_update events arrive after completion
+            // This prevents duplicates when multiple round_update events arrive after completion
             if (isCompleted && !displayedbubbleIds.has(bubbleId)) {
               // Task is completed and message not in displayedbubbleIds, check DOM first
               const existingInDOM = Array.from(chatMessages.children).find(
@@ -1970,7 +1970,7 @@ const page = new NamedPage('agent_chat', async () => {
             }
             
             // CRITICAL: If backend is completed and task is completed, skip if content hasn't changed
-            // This prevents duplicate processing of repeated record_update events after completion
+            // This prevents duplicate processing of repeated round_update events after completion
             if (isCompleted && backendStateCheck === BackendBubbleState.COMPLETED) {
               // Check if content actually changed
               const existingMsg = Array.from(chatMessages.children).find(
@@ -2002,7 +2002,7 @@ const page = new NamedPage('agent_chat', async () => {
             if (isCompleted) {
               // Task is completed, mark backend state as COMPLETED
               if (currentBackendState !== BackendBubbleState.COMPLETED) {
-                updateBackendState(bubbleId, BackendBubbleState.COMPLETED, 'record_update_completed', {
+                updateBackendState(bubbleId, BackendBubbleState.COMPLETED, 'round_update_completed', {
                   content: content,
                   messageState: messageState,
                   isCompleted: isCompleted,
@@ -2013,7 +2013,7 @@ const page = new NamedPage('agent_chat', async () => {
             } else if (messageState === 'completed') {
               // Message is explicitly marked as completed (even if task is not completed yet)
               if (currentBackendState !== BackendBubbleState.COMPLETED) {
-                updateBackendState(bubbleId, BackendBubbleState.COMPLETED, 'record_update_completed', {
+                updateBackendState(bubbleId, BackendBubbleState.COMPLETED, 'round_update_completed', {
                   content: content,
                   messageState: messageState,
                   isCompleted: isCompleted,
@@ -2022,11 +2022,11 @@ const page = new NamedPage('agent_chat', async () => {
               }
             } else if (messageState === 'streaming' || (isStreaming && messageState !== 'completed')) {
               // Message is streaming, update backend state to STREAMING
-              // This handles the case where record_update arrives before message_start event
+              // This handles the case where round_update arrives before message_start event
               if (currentBackendState === BackendBubbleState.UNKNOWN || currentBackendState === BackendBubbleState.COMPLETED) {
                 // Only update if unknown, or if we're receiving streaming content after completion (shouldn't happen, but handle it)
                 if (currentBackendState === BackendBubbleState.UNKNOWN) {
-                  updateBackendState(bubbleId, BackendBubbleState.STREAMING, 'record_update_streaming', {
+                  updateBackendState(bubbleId, BackendBubbleState.STREAMING, 'round_update_streaming', {
                     content: content,
                     isStreaming: isStreaming,
                     messageState: messageState,
@@ -2037,7 +2037,7 @@ const page = new NamedPage('agent_chat', async () => {
             
             // Mark bubble as receiving content update (reset pending_complete if needed, reset inactive timeout)
             // CRITICAL: Only mark update if content actually changed or we're streaming
-            // This prevents unnecessary processing of duplicate record_update events
+            // This prevents unnecessary processing of duplicate round_update events
             if (content && content.trim()) {
               // Check if content actually changed before marking as update
               const existingMsg = Array.from(chatMessages.children).find(
@@ -2334,7 +2334,7 @@ const page = new NamedPage('agent_chat', async () => {
                 
                 // During streaming, do not overwrite content; handleBubbleStream updates incrementally
                 // For pending_complete or completed, update content if changed
-                // CRITICAL: Never overwrite non-empty bubble content with empty - prevents "清空全部气泡" from malformed record_update
+                // CRITICAL: Never overwrite non-empty bubble content with empty - prevents "清空全部气泡" from malformed round_update
                 if (isStreaming) {
                   markBubbleContentUpdate(bubbleId);
                 } else if (isPendingComplete) {
@@ -2347,7 +2347,7 @@ const page = new NamedPage('agent_chat', async () => {
                   }
                 } else if (content && isCompletedState) {
                   // Task and bubble are completed, only update if content actually changed
-                  // CRITICAL: This prevents duplicate markdown rendering from repeated record_update events
+                  // CRITICAL: This prevents duplicate markdown rendering from repeated round_update events
                   if (contentChanged) {
                     if (contentDiv && contentDiv instanceof HTMLElement) {
                       await renderMarkdownWithTracking(bubbleId, content, contentDiv);
@@ -2421,7 +2421,7 @@ const page = new NamedPage('agent_chat', async () => {
             }
             
             // Check 1.2: If message exists in DOM (created by bubble_stream), skip creating new one
-            // This prevents duplicate bubbles when both bubble_stream and record_update events arrive
+            // This prevents duplicate bubbles when both bubble_stream and round_update events arrive
             // Note: The update logic above (lines 1991-2070) should handle updating existing messages
             // This check is just to prevent duplicate creation
             const existingInDOMForCreation = Array.from(chatMessages.children).find(
@@ -2686,7 +2686,7 @@ const page = new NamedPage('agent_chat', async () => {
     if (record.status !== undefined) {
       if (isTerminalTaskStatus(record.status)) {
         setLoading(false);
-        currentRecordId = null;
+        currentRoundId = null;
         
         // When task is complete, render markdown for the last assistant message
         const lastAssistantMessage = Array.from(chatMessages.children)
@@ -3190,7 +3190,7 @@ const page = new NamedPage('agent_chat', async () => {
           bubbleId: userbubbleId,
           assistantbubbleId: assistantBubbleId, // Send assistant bubbleId to backend (lowercase to match backend)
           history: [],
-          createTaskRecord: true,
+          createTaskRound: true,
           // If currentRoomId is null, don't pass sessionId, let backend create new session
           ...(currentRoomId ? { roomId: currentRoomId } : {}),
         }),
@@ -3204,10 +3204,10 @@ const page = new NamedPage('agent_chat', async () => {
       }
 
       const responseData = await response.json();
-      const taskRecordId = responseData.taskRecordId;
+      const taskRoundId = responseData.taskRoundId;
       const newRoomId = responseData.roomId ?? responseData.sessionId;
       
-      if (!taskRecordId) {
+      if (!taskRoundId) {
         console.error('[AgentChat] Task created but record ID missing', responseData);
         addMessage('error', 'Task created but record ID missing: ' + JSON.stringify(responseData));
         setLoading(false);
@@ -3238,8 +3238,8 @@ const page = new NamedPage('agent_chat', async () => {
         
         // Subscribe to new record via session
         roomWebSocket.send(JSON.stringify({
-          type: 'subscribe_record',
-          rid: taskRecordId,
+          type: 'subscribe_round',
+          rid: taskRoundId,
         }));
       } catch (error: any) {
         console.error('[AgentChat] Failed to connect to room or subscribe:', error);
@@ -3369,10 +3369,10 @@ const page = new NamedPage('agent_chat', async () => {
   }
 
   // Load history records (if any)
-  const recordHistory = UiContext?.recordHistory || [];
-  if (recordHistory && Array.isArray(recordHistory) && recordHistory.length > 0) {
+  const roundHistory = UiContext?.roundHistory || [];
+  if (roundHistory && Array.isArray(roundHistory) && roundHistory.length > 0) {
     // Group messages: merge tool calls with results, separate before/after messages
-    const groupedMessages = groupMessages(recordHistory);
+    const groupedMessages = groupMessages(roundHistory);
     
     // Render all messages sequentially to ensure proper order
     for (const processedMsg of groupedMessages) {

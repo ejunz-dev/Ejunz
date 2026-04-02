@@ -69,7 +69,7 @@ export const AuthOperationError = Err('AuthOperationError', BadRequestError, '{0
 
 export const UserNotFoundError = Err('UserNotFoundError', NotFoundError, 'User {0} not found.');
 export const NoProblemError = Err('NoProblemError', NotFoundError, 'No problem.');
-export const RecordNotFoundError = Err('RecordNotFoundError', NotFoundError, 'Record {0} not found.');
+export const RoundNotFoundError = Err('RoundNotFoundError', NotFoundError, 'Round {0} not found.');
 export const ProblemDataNotFoundError = Err('ProblemDataNotFoundError', NotFoundError, 'Data of problem {0} not found.');
 export const MessageNotFoundError = Err('MessageNotFoundError', NotFoundError, 'Message {0} not found.');
 export const DocumentNotFoundError = Err('DocumentNotFoundError', NotFoundError, 'Document {2} not found.');

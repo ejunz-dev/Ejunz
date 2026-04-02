@@ -1,4 +1,4 @@
-{% import "components/record.html" as record_component with context %}
+{% import "components/round.html" as record_component with context %}
 {% import "components/user.html" as user with context %}
 {% import "components/agent.html" as agent with context %}
 <tr data-sid="{{ room._id.toString() }}">
@@ -55,7 +55,7 @@
             {% endif %}
           {% endif %}
           <a 
-            href="{{ url('record_detail', domainId=room.domainId, rid=record._id) }}"
+            href="{{ url('round_detail', domainId=room.domainId, rid=record._id) }}"
             class="session-record-block"
             style="background-color: {{ record_color }}"
             title="Record {{ record._id.toString().substring(0, 8) }} - Score: {{ record_score }} - Status: {{ model.builtin.STATUS_TEXTS[record.status] if record.status is defined else 'Unknown' }}"

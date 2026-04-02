@@ -8,7 +8,7 @@ import {
     FileLimitExceededError, HackFailedError, NoProblemError, NotFoundError,
     PermissionError, ProblemAlreadyExistError, ProblemAlreadyUsedByContestError, ProblemConfigError,
     ProblemIsReferencedError, ProblemNotAllowLanguageError, ProblemNotAllowPretestError, ProblemNotFoundError,
-    RecordNotFoundError, SolutionNotFoundError, ValidationError,DiscussionNotFoundError
+    RoundNotFoundError, SolutionNotFoundError, ValidationError,DiscussionNotFoundError
 } from '../error';
 import {
     Handler, ConnectionHandler, param, post, query, route, Types, subscribe,
@@ -35,9 +35,9 @@ import * as document from '../model/document';
 import NodeModel from '../model/node';
 import { callToolViaWorker } from './worker';
 import { getDomainMarketToolsForAgent } from './tool';
-import record from '../model/record';
+import round from '../model/round';
 import RoomModel from '../model/room';
-import { RecordDoc } from '../interface';
+import { RoundDoc } from '../interface';
 
 const AgentLogger = new Logger('agent');
 export const parseCategory = (value: string) => value.replace(/，/g, ',').split(',').map((e) => e.trim());
@@ -49,14 +49,14 @@ async function callToolWithFallback(
     domainId: string,
     agentId?: string,
     uid?: number,
-    taskRecordId?: ObjectId,
+    taskRoundId?: ObjectId,
     useWorker: boolean = true,
 ): Promise<any> {
     if (useWorker) {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
             if (ctx) {
-                return await callToolViaWorker(ctx, toolName, args, domainId, agentId, uid, taskRecordId);
+                return await callToolViaWorker(ctx, toolName, args, domainId, agentId, uid, taskRoundId);
             }
         } catch (e) {
             AgentLogger.warn(`Worker tool call failed, falling back to direct call: ${toolName}`, e);
@@ -431,7 +431,7 @@ export interface AgentChatEventCallbacks {
     onToolResult?: (tool: string, result: any) => void;
     onDone?: (message: string, history: string) => void;
     onError?: (error: string) => void;
-    taskRecordId?: ObjectId; // 可选的 task record ID，用于跟踪任务
+    taskRoundId?: ObjectId; // 可选的 task record ID，用于跟踪任务
 }
 
 export async function processAgentChatInternal(
@@ -440,7 +440,7 @@ export async function processAgentChatInternal(
     history: ChatMessage[] | string,
     callbacks: AgentChatEventCallbacks,
 ): Promise<void> {
-    const taskRecordId = callbacks.taskRecordId;
+    const taskRoundId = callbacks.taskRoundId;
     let toolCallCount = 0;
     let accumulatedContent = '';
     
@@ -450,10 +450,10 @@ export async function processAgentChatInternal(
     
     try {
         // 不再更新record，所有record更新都由worker处理
-        // 如果taskRecordId存在，说明这是Client Handler的特殊情况，但即使如此也不应该更新record
-        if (taskRecordId) {
-            AgentLogger.info('processAgentChatInternal: taskRecordId provided, but record updates are handled by worker', {
-                recordId: taskRecordId.toString(),
+        // 如果taskRoundId存在，说明这是Client Handler的特殊情况，但即使如此也不应该更新record
+        if (taskRoundId) {
+            AgentLogger.info('processAgentChatInternal: taskRoundId provided, but record updates are handled by worker', {
+                roundId: taskRoundId.toString(),
             });
         }
         const domainInfo = await domain.get(adoc.domainId);
@@ -840,7 +840,7 @@ export async function processAgentChatInternal(
                                                 AgentLogger.debug('processAgentChatInternal: tool call detected', {
                                                     toolName: firstToolName,
                                                     toolCallCount,
-                                                    recordId: taskRecordId?.toString(),
+                                                    roundId: taskRoundId?.toString(),
                                                 });
 
                                                 let toolResult: any;
@@ -850,7 +850,7 @@ export async function processAgentChatInternal(
                                                         : parsedArgs;
                                                     const agentId = (adoc as any).aid || (adoc as any)._id?.toString();
                                                     const uid = (adoc as any).uid || (adoc as any).owner;
-                                                    toolResult = await callToolWithFallback(firstToolName, toolArgs, adoc.domainId, agentId, uid, callbacks.taskRecordId);
+                                                    toolResult = await callToolWithFallback(firstToolName, toolArgs, adoc.domainId, agentId, uid, callbacks.taskRoundId);
                                                     AgentLogger.info(`Tool ${firstToolName} returned (internal)`, { resultLength: JSON.stringify(toolResult).length });
                                                 } catch (toolError: any) {
                                                     AgentLogger.error(`Tool ${firstToolName} failed (internal):`, toolError);
@@ -863,7 +863,7 @@ export async function processAgentChatInternal(
                                                     AgentLogger.error('processAgentChatInternal: tool call failed', {
                                                         toolName: firstToolName,
                                                         error: toolError.message || String(toolError),
-                                                        recordId: taskRecordId?.toString(),
+                                                        roundId: taskRoundId?.toString(),
                                                     });
                                                 }
 
@@ -872,7 +872,7 @@ export async function processAgentChatInternal(
                                                 // 不再更新record，所有record更新都由worker处理
                                                 AgentLogger.debug('processAgentChatInternal: tool result received', {
                                                     toolName: firstToolName,
-                                                    recordId: taskRecordId?.toString(),
+                                                    roundId: taskRoundId?.toString(),
                                                 });
 
                                                 const toolMsg = { role: 'tool', content: JSON.stringify(toolResult), tool_call_id: firstToolCall.id };
@@ -1331,22 +1331,22 @@ export class AgentChatHandler extends Handler {
         
         // 聊天模式：新建或指定 session（默认进入聊天模式，不再显示列表模式）
         let currentRoomId: ObjectId | undefined = sid;
-        let recordHistory: any[] = [];
+        let roundHistory: any[] = [];
         
         if (sid) {
             const sdoc = await RoomModel.get(domainId, sid);
             if (sdoc && sdoc.agentId === (adoc.aid || adoc.docId?.toString() || adoc.aid) && sdoc.uid === this.user._id) {
-                if (sdoc.recordIds && sdoc.recordIds.length > 0) {
+                if (sdoc.roundIds && sdoc.roundIds.length > 0) {
                     try {
-                        const records = await record.getList(domainId, sdoc.recordIds);
-                        const recordsList = sdoc.recordIds.map((rid: ObjectId) => records[rid.toString()]).filter(Boolean);
-                        for (const rdoc of recordsList) {
+                        const roundsMap = await round.getList(domainId, sdoc.roundIds);
+                        const roundsList = sdoc.roundIds.map((rid: ObjectId) => roundsMap[rid.toString()]).filter(Boolean);
+                        for (const rdoc of roundsList) {
                             if (rdoc) {
                                 const r = rdoc as any;
                                 if (r.agentMessages && Array.isArray(r.agentMessages)) {
                                     for (const msg of r.agentMessages) {
                                         if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool') {
-                                            recordHistory.push({
+                                            roundHistory.push({
                                                 role: msg.role,
                                                 content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
                                                 tool_calls: msg.tool_calls,
@@ -1377,16 +1377,16 @@ export class AgentChatHandler extends Handler {
             limit: 50,
         }).toArray();
         
-        const recordIds = rooms.flatMap(s => s.recordIds || []);
-        const records = recordIds.length > 0 
-            ? await record.getList(domainId, recordIds)
+        const allRoundIds = rooms.flatMap(s => s.roundIds || []);
+        const roundsMap = allRoundIds.length > 0
+            ? await round.getList(domainId, allRoundIds)
             : {};
         
-        const roomsWithRecords = rooms.map(s => ({
+        const roomsWithRounds = rooms.map(s => ({
             ...s,
-            records: (s.recordIds || []).map(rid => records[rid.toString()]).filter(Boolean),
-            lastRecord: (s.recordIds || []).length > 0 
-                ? records[(s.recordIds || [])[s.recordIds.length - 1].toString()]
+            rounds: (s.roundIds || []).map(rid => roundsMap[rid.toString()]).filter(Boolean),
+            lastRound: (s.roundIds || []).length > 0 
+                ? roundsMap[(s.roundIds || [])[s.roundIds.length - 1].toString()]
                 : null,
         }));
 
@@ -1447,8 +1447,8 @@ export class AgentChatHandler extends Handler {
             edgesWithTools,
             mode: 'chat', // 聊天模式
             roomId: currentRoomId?.toString(),
-            recordHistory,
-            rooms: roomsWithRecords,
+            roundHistory,
+            rooms: roomsWithRounds,
         };
     }
 
@@ -1458,7 +1458,7 @@ export class AgentChatHandler extends Handler {
             domainId, 
             aid, 
             hasMessage: !!this.request.body?.message,
-            createTaskRecord: this.request.body?.createTaskRecord !== false,
+            createTaskRound: this.request.body?.createTaskRound !== false,
             NODE_APP_INSTANCE: process.env.NODE_APP_INSTANCE 
         });
         this.response.template = null;
@@ -1477,13 +1477,13 @@ export class AgentChatHandler extends Handler {
         const history = this.request.body?.history || '[]';
         const stream = this.request.query?.stream === 'true' || this.request.body?.stream === true;
         // 强制所有请求都创建task，必须通过worker处理
-        const createTaskRecord = true;
+        const createTaskRound = true;
         
         AgentLogger.info('POST /agent/:aid/chat: parameters parsed', { 
             domainId, 
             aid, 
             messageLength: message?.length || 0,
-            createTaskRecord,
+            createTaskRound,
             stream,
             NODE_APP_INSTANCE: process.env.NODE_APP_INSTANCE 
         });
@@ -1546,12 +1546,12 @@ export class AgentChatHandler extends Handler {
         const sdoc = await RoomModel.get(domainId, roomId);
         let sessionContext = sdoc?.context || {};
         
-        let taskRecordId: ObjectId | undefined;
+        let taskRoundId: ObjectId | undefined;
         AgentLogger.info('POST chat: checking task creation', { 
-            createTaskRecord, 
+            createTaskRound, 
             chatHistoryLength: chatHistory?.length || 0,
         });
-        if (createTaskRecord) {
+        if (createTaskRound) {
             if (!roomId) {
                 roomId = await RoomModel.add(
                     domainId,
@@ -1565,7 +1565,7 @@ export class AgentChatHandler extends Handler {
             }
             
             AgentLogger.info('POST chat: creating task record');
-            taskRecordId = await record.addTask(
+            taskRoundId = await round.addTask(
                 domainId,
                 adoc.aid || adoc.docId.toString(),
                 this.user._id,
@@ -1574,9 +1574,9 @@ export class AgentChatHandler extends Handler {
                 bubbleId,
             );
             
-            await RoomModel.addRecord(domainId, roomId, taskRecordId);
+            await RoomModel.addRound(domainId, roomId, taskRoundId);
             
-            AgentLogger.info('POST chat: task record created', { taskRecordId: taskRecordId?.toString(), roomId: roomId.toString() });
+            AgentLogger.info('POST chat: task record created', { taskRoundId: taskRoundId?.toString(), roomId: roomId.toString() });
             
             // 收集完整的上下文信息，供 worker 使用
             const domainInfo = await domain.get(domainId);
@@ -1689,7 +1689,7 @@ export class AgentChatHandler extends Handler {
             // 创建 task 任务，包含完整的上下文信息
             const taskModel = require('../model/task').default;
             AgentLogger.info('POST chat: calling TaskModel.add', { 
-                recordId: taskRecordId.toString(), 
+                roundId: taskRoundId.toString(), 
                 roomId: roomId.toString(),
                 agentId: adoc.aid || adoc.docId.toString(),
                 assistantbubbleId,
@@ -1697,7 +1697,7 @@ export class AgentChatHandler extends Handler {
             });
             const taskId = await taskModel.add({
                 type: 'task',
-                recordId: taskRecordId,
+                roundId: taskRoundId,
                 roomId,
                 domainId,
                 agentId: adoc.aid || adoc.docId.toString(),
@@ -1712,7 +1712,7 @@ export class AgentChatHandler extends Handler {
             });
             AgentLogger.info('POST chat: TaskModel.add completed', { 
                 taskId: taskId.toString(), 
-                recordId: taskRecordId.toString(),
+                roundId: taskRoundId.toString(),
                 NODE_APP_INSTANCE: process.env.NODE_APP_INSTANCE 
             });
             
@@ -1722,17 +1722,17 @@ export class AgentChatHandler extends Handler {
             
             // 任务已创建，返回任务 ID，由 worker 处理
             const responseBody = {
-                taskRecordId: taskRecordId.toString(),
+                taskRoundId: taskRoundId.toString(),
                 roomId: roomId.toString(),
                 message: 'Task created, processing by worker',
             };
-            AgentLogger.info('POST chat: returning taskRecordId', responseBody);
+            AgentLogger.info('POST chat: returning taskRoundId', responseBody);
             this.response.body = responseBody;
             return;
         }
 
         // 所有请求都必须创建task并通过worker处理，不再支持直接处理模式
-        AgentLogger.error('POST chat: createTaskRecord must be true, all requests must go through worker');
+        AgentLogger.error('POST chat: createTaskRound must be true, all requests must go through worker');
         this.response.body = { error: 'All requests must create task and be processed by worker' };
         return;
     }
@@ -1760,37 +1760,37 @@ export class AgentChatRoomsListHandler extends Handler {
             limit: 50,
         }).toArray();
         
-        const recordIds = rooms.flatMap(s => s.recordIds || []);
-        const records = recordIds.length > 0 
-            ? await record.getList(domainId, recordIds)
+        const allRoundIds = rooms.flatMap(s => s.roundIds || []);
+        const roundsMap = allRoundIds.length > 0
+            ? await round.getList(domainId, allRoundIds)
             : {};
         
-        const roomsWithRecords = rooms.map(s => ({
+        const roomsWithRounds = rooms.map(s => ({
             ...s,
             _id: s._id.toString(),
-            records: (s.recordIds || []).map(rid => {
-                const r = records[rid.toString()];
+            rounds: (s.roundIds || []).map(rid => {
+                const r = roundsMap[rid.toString()];
                 return r ? {
                     ...r,
                     _id: (r as any)._id ? (r as any)._id.toString() : rid.toString(),
                 } : null;
             }).filter(Boolean),
-            lastRecord: (s.recordIds || []).length > 0 
+            lastRound: (s.roundIds || []).length > 0 
                 ? (() => {
-                    const lastRid = s.recordIds[s.recordIds.length - 1];
-                    const r = records[lastRid.toString()] as any;
+                    const lastRid = s.roundIds[s.roundIds.length - 1];
+                    const r = roundsMap[lastRid.toString()] as any;
                     return r ? {
                         ...r,
                         _id: r._id ? r._id.toString() : lastRid.toString(),
                     } : null;
                 })()
                 : null,
-            recordIds: (s.recordIds || []).map(rid => rid.toString()),
+            roundIds: (s.roundIds || []).map(rid => rid.toString()),
         }));
 
         this.response.template = null;
         this.response.body = {
-            rooms: roomsWithRecords,
+            rooms: roomsWithRounds,
         };
     }
 }
@@ -1812,20 +1812,19 @@ export class AgentChatRoomHistoryHandler extends Handler {
             throw new NotFoundError('Room not found or access denied');
         }
 
-        const recordHistory: any[] = [];
-        if (sdoc.recordIds && sdoc.recordIds.length > 0) {
-            // 按顺序获取所有 records
-            const records = await record.getList(domainId, sdoc.recordIds);
-            const recordsList = sdoc.recordIds.map(rid => records[rid.toString()]).filter(Boolean);
+        const roundHistory: any[] = [];
+        if (sdoc.roundIds && sdoc.roundIds.length > 0) {
+            const roundsMap = await round.getList(domainId, sdoc.roundIds);
+            const roundsList = sdoc.roundIds.map(rid => roundsMap[rid.toString()]).filter(Boolean);
             
             // 提取所有消息并按时间排序
-            for (const rdoc of recordsList) {
+            for (const rdoc of roundsList) {
                 if (rdoc) {
                     const r = rdoc as any;
                     if (r.agentMessages && Array.isArray(r.agentMessages)) {
                         for (const msg of r.agentMessages) {
                             if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool') {
-                                recordHistory.push({
+                                roundHistory.push({
                                     role: msg.role,
                                     content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
                                     tool_calls: msg.tool_calls,
@@ -1843,13 +1842,13 @@ export class AgentChatRoomHistoryHandler extends Handler {
         this.response.template = null;
         this.response.body = {
             roomId: sid.toString(),
-            recordHistory,
+            roundHistory,
         };
     }
 }
 
 export class AgentChatRoomConnectionHandler extends ConnectionHandler {
-    private lastSentRecordHash?: Map<string, string>; // Track last sent record hash per rid to avoid duplicates
+    private lastSentRoundHash?: Map<string, string>; // Track last sent record hash per rid to avoid duplicates
     private subscribedRids: Set<string> = new Set();
     private subscriptions: Array<{ dispose: () => void; rid: string }> = [];
     private domainId: string = '';
@@ -1908,10 +1907,10 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
                 return;
             }
             
-            if (msg.type === 'subscribe_record' && msg.rid) {
-                await this.subscribeRecord(msg.rid);
-            } else if (msg.type === 'unsubscribe_record' && msg.rid) {
-                this.unsubscribeRecord(msg.rid);
+            if (msg.type === 'subscribe_round' && msg.rid) {
+                await this.subscribeRound(msg.rid);
+            } else if (msg.type === 'unsubscribe_round' && msg.rid) {
+                this.unsubscribeRound(msg.rid);
             } else {
                 AgentLogger.warn('Unknown message type:', msg.type);
                 this.send({ type: 'error', error: `Unknown message type: ${msg.type}` });
@@ -1923,7 +1922,7 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
         }
     }
 
-    private async subscribeRecord(rid: string) {
+    private async subscribeRound(rid: string) {
         if (this.subscribedRids.has(rid)) {
             AgentLogger.debug('Record already subscribed:', { rid });
             return;
@@ -1957,7 +1956,7 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
             
             AgentLogger.debug('Subscribing to record', { rid, domainId: this.domainId, aid: this.aid });
             
-            const rdoc = await record.get(this.domainId, new ObjectId(rid));
+            const rdoc = await round.get(this.domainId, new ObjectId(rid));
             if (!rdoc) {
                 AgentLogger.warn('Record not found', { rid, domainId: this.domainId });
                 this.send({ type: 'error', error: `Record not found: ${rid}` });
@@ -1981,8 +1980,7 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
                 user.getById(this.domainId, r.uid),
             ]);
             
-            // 手动构建 record 对象，只包含需要的字段，避免序列化问题
-            const recordData: any = {
+            const roundData: any = {
                 _id: r._id?.toString(),
                 domainId: r.domainId,
                 uid: r.uid,
@@ -2000,16 +1998,16 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
                 updatedAt: r.updatedAt,
             };
             
-            AgentLogger.debug('Sending initial record update', { 
+            AgentLogger.debug('Sending initial round update', { 
                 rid, 
-                recordKeys: Object.keys(recordData),
-                agentMessagesCount: (recordData.agentMessages || []).length 
+                roundKeys: Object.keys(roundData),
+                agentMessagesCount: (roundData.agentMessages || []).length 
             });
             
             this.send({
-                type: 'record_update',
+                type: 'round_update',
                 rid,
-                record: recordData,
+                round: roundData,
                 adoc,
                 udoc,
             });
@@ -2029,12 +2027,12 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
             };
             
             // Get initial status
-            const initialRecord = await record.get(this.domainId, new ObjectId(rid));
-            if (initialRecord) {
-                previousStatus = (initialRecord as any).status;
+            const initialRound = await round.get(this.domainId, new ObjectId(rid));
+            if (initialRound) {
+                previousStatus = (initialRound as any).status;
             }
             
-            const dispose = this.ctx.on('record/change' as any, async (rdoc: any) => {
+            const dispose = this.ctx.on('round/change' as any, async (rdoc: any) => {
                 const r = rdoc as any;
                 AgentLogger.debug('Record change event received in session', {
                     rid: r._id?.toString(),
@@ -2047,14 +2045,13 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
                 if (r._id.toString() === rid && r.agentId === this.aid) {
                     // 重新从数据库获取完整的 record，确保所有字段都存在
                     try {
-                        const fullRecord = await record.get(this.domainId, new ObjectId(rid));
-                        if (!fullRecord) {
-                            AgentLogger.warn('Record not found when sending update', { rid });
+                        const fullRound = await round.get(this.domainId, new ObjectId(rid));
+                        if (!fullRound) {
+                            AgentLogger.warn('Round not found when sending update', { rid });
                             return;
                         }
                         
-                        // 手动构建 record 对象，只包含需要的字段，避免序列化问题
-                        const r = fullRecord as any;
+                        const r = fullRound as any;
                         const currentStatus = r.status;
                         
                         // Detect status changes for message lifecycle events
@@ -2100,24 +2097,22 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
                                 return `${m.role}:${m.bubbleId || ''}:${contentHash}:${m.bubbleState || ''}`;
                             })
                             .join('|');
-                        const recordContentHash = createHash('md5').update(`${messagesHash}:${r.status}:${r.agentToolCallCount || 0}`).digest('hex').substring(0, 16);
+                        const roundContentHash = createHash('md5').update(`${messagesHash}:${r.status}:${r.agentToolCallCount || 0}`).digest('hex').substring(0, 16);
                         
-                        // Track last sent record hash to avoid duplicate sends
-                        if (!this.lastSentRecordHash) {
-                            this.lastSentRecordHash = new Map<string, string>();
+                        if (!this.lastSentRoundHash) {
+                            this.lastSentRoundHash = new Map<string, string>();
                         }
-                        const lastHash = this.lastSentRecordHash.get(rid);
-                        if (lastHash === recordContentHash) {
-                            // Record content unchanged, skip sending duplicate update
-                            AgentLogger.debug('Skipping duplicate record update (content unchanged)', { 
+                        const lastHash = this.lastSentRoundHash.get(rid);
+                        if (lastHash === roundContentHash) {
+                            AgentLogger.debug('Skipping duplicate round update (content unchanged)', { 
                                 rid, 
-                                contentHash: recordContentHash 
+                                contentHash: roundContentHash 
                             });
                             return;
                         }
-                        this.lastSentRecordHash.set(rid, recordContentHash);
+                        this.lastSentRoundHash.set(rid, roundContentHash);
                         
-                        const recordData: any = {
+                        const roundData: any = {
                             _id: r._id?.toString(),
                             domainId: r.domainId,
                             uid: r.uid,
@@ -2135,11 +2130,11 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
                             updatedAt: r.updatedAt,
                         };
                         
-                        AgentLogger.debug('Sending record update to client', { 
+                        AgentLogger.debug('Sending round update to client', { 
                             rid, 
-                            recordKeys: Object.keys(recordData),
-                            agentMessagesCount: (recordData.agentMessages || []).length,
-                            contentHash: recordContentHash
+                            roundKeys: Object.keys(roundData),
+                            agentMessagesCount: (roundData.agentMessages || []).length,
+                            contentHash: roundContentHash
                         });
                         
                         const [adoc, udoc] = await Promise.all([
@@ -2148,15 +2143,15 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
                         ]);
                         
                         this.send({
-                            type: 'record_update',
+                            type: 'round_update',
                             rid,
-                            record: recordData,
+                            round: roundData,
                             adoc,
                             udoc,
                         });
-                        AgentLogger.debug('Record update sent to client', { rid });
+                        AgentLogger.debug('Round update sent to client', { rid });
                     } catch (error: any) {
-                        AgentLogger.error('Error sending record update:', error);
+                        AgentLogger.error('Error sending round update:', error);
                     }
                 }
             });
@@ -2170,7 +2165,7 @@ export class AgentChatRoomConnectionHandler extends ConnectionHandler {
         }
     }
 
-    private unsubscribeRecord(rid: string) {
+    private unsubscribeRound(rid: string) {
         if (!this.subscribedRids.has(rid)) {
             return;
         }

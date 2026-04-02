@@ -10,8 +10,8 @@ import {
 } from '../service/server';
 import { PERM, PRIV, STATUS } from '../model/builtin';
 import RoomModel from '../model/room';
-import { RoomDoc, RecordDoc } from '../interface';
-import record from '../model/record';
+import { RoomDoc, RoundDoc } from '../interface';
+import round from '../model/round';
 import user from '../model/user';
 import Agent from '../model/agent';
 import domain from '../model/domain';
@@ -47,8 +47,8 @@ async function getRoomStatus(
     domainId: string,
     sdoc: RoomDoc,
 ): Promise<'working' | 'active' | 'detached'> {
-    if (sdoc.recordIds && sdoc.recordIds.length > 0) {
-        const records = await record.getList(domainId, sdoc.recordIds);
+    if (sdoc.roundIds && sdoc.roundIds.length > 0) {
+        const records = await round.getList(domainId, sdoc.roundIds);
         const hasWorkingTask = Object.values(records).some((r: any) => {
             return r.status === STATUS.STATUS_TASK_PROCESSING || 
                    r.status === STATUS.STATUS_TASK_PENDING;
@@ -143,13 +143,13 @@ export class RoomDomainHandler extends Handler {
             RoomModel.count(domainId, query),
         ]);
         
-        const recordIds = rooms.flatMap(s => s.recordIds || []);
-        const records = recordIds.length > 0 
-            ? await record.getList(domainId, recordIds)
+        const roundIds = rooms.flatMap(s => s.roundIds || []);
+        const records = roundIds.length > 0 
+            ? await round.getList(domainId, roundIds)
             : {};
         
         const roomsWithRecords = await Promise.all(rooms.map(async (s) => {
-            const roomRecords = (s.recordIds || []).map(rid => records[rid.toString()]).filter(Boolean);
+            const roomRecords = (s.roundIds || []).map(rid => records[rid.toString()]).filter(Boolean);
             const roomStatus = await getRoomStatus(domainId, s);
             return {
                 ...s,
@@ -214,8 +214,8 @@ export class RoomDetailHandler extends Handler {
             this.checkPerm(PERM.PERM_VIEW_RECORD);
         }
         
-        const records = sdoc.recordIds && sdoc.recordIds.length > 0
-            ? await record.getList(domainId, sdoc.recordIds)
+        const records = sdoc.roundIds && sdoc.roundIds.length > 0
+            ? await round.getList(domainId, sdoc.roundIds)
             : {};
         
         const recordsList = Object.values(records).sort((a: any, b: any) => 
@@ -336,12 +336,12 @@ class RoomDomainConnectionHandler extends ConnectionHandler {
                     const sdoc = await RoomModel.get(finalDomainId, this.sid);
                     if (sdoc) {
                         // 发送初始的record更新
-                        const recordIds = sdoc.recordIds || [];
-                        for (const recordId of recordIds) {
+                        const roundIds = sdoc.roundIds || [];
+                        for (const roundId of roundIds) {
                             try {
-                                const rdoc = await record.get(finalDomainId, recordId);
+                                const rdoc = await round.get(finalDomainId, roundId);
                                 if (rdoc) {
-                                    await this.sendRecordUpdate(sdoc, rdoc);
+                                    await this.sendRoundUpdate(sdoc, rdoc);
                                 }
                             } catch (e) {
                                 // ignore
@@ -356,12 +356,12 @@ class RoomDomainConnectionHandler extends ConnectionHandler {
                 const sdoc = await RoomModel.get(finalDomainId, sid);
                 if (sdoc) {
                     // 发送初始的record更新
-                    const recordIds = sdoc.recordIds || [];
-                    for (const recordId of recordIds) {
+                    const roundIds = sdoc.roundIds || [];
+                    for (const roundId of roundIds) {
                         try {
-                            const rdoc = await record.get(finalDomainId, recordId);
+                            const rdoc = await round.get(finalDomainId, roundId);
                             if (rdoc) {
-                                await this.sendRecordUpdate(sdoc, rdoc);
+                                await this.sendRoundUpdate(sdoc, rdoc);
                             }
                         } catch (e) {
                             // ignore
@@ -399,8 +399,8 @@ class RoomDomainConnectionHandler extends ConnectionHandler {
         await this.sendRoomUpdate(sdoc);
     }
 
-    @subscribe('record/change')
-    async onRecordChange(rdoc: RecordDoc) {
+    @subscribe('round/change')
+    async onRoundChange(rdoc: RoundDoc) {
         const r = rdoc as any;
         if (!r.agentId) return;
         if (r.domainId !== this.args.domainId) return;
@@ -409,8 +409,11 @@ class RoomDomainConnectionHandler extends ConnectionHandler {
         if (this.aid && r.agentId !== this.aid) return;
 
         const sdocs = await RoomModel.getMulti(this.args.domainId, {
-            recordIds: { $in: [r._id] },
-        }).toArray();
+            $or: [
+                { roundIds: r._id },
+                { recordIds: r._id },
+            ],
+        } as any).toArray();
 
         for (const sdoc of sdocs) {
             // 如果指定了 uid，只处理该用户的 session；否则处理所有 session
@@ -421,7 +424,7 @@ class RoomDomainConnectionHandler extends ConnectionHandler {
             if (this.sid) {
                 // 如果指定了sid，只发送该session的record更新
                 if (sdoc._id.equals(this.sid)) {
-                    await this.sendRecordUpdate(sdoc, r);
+                    await this.sendRoundUpdate(sdoc, r);
                 }
             } else {
                 // 否则发送session更新（用于列表页面）
@@ -430,27 +433,27 @@ class RoomDomainConnectionHandler extends ConnectionHandler {
         }
     }
     
-    async sendRecordUpdate(sdoc: RoomDoc, rdoc: RecordDoc) {
+    async sendRoundUpdate(sdoc: RoomDoc, rdoc: RoundDoc) {
         const r = rdoc as any;
         // 获取完整的record信息（包括agentMessages）
-        const fullRecord = await record.get(this.args.domainId, r._id);
+        const fullRecord = await round.get(this.args.domainId, r._id);
         
         this.send({
-            type: 'record_update',
+            type: 'round_update',
             rid: r._id.toString(),
-            record: fullRecord,
+            round: fullRecord,
         });
     }
 
     async sendRoomUpdate(sdoc: RoomDoc) {
-        const recordIds = sdoc.recordIds || [];
-        const records = recordIds.length > 0 
-            ? await record.getList(this.args.domainId, recordIds, [
+        const roundIds = sdoc.roundIds || [];
+        const records = roundIds.length > 0 
+            ? await round.getList(this.args.domainId, roundIds, [
                 '_id', 'status', 'score', 'domainId', 'uid', 'agentId',
             ] as any)
             : {};
         
-        const sessionRecords = recordIds.map(rid => {
+        const sessionRecords = roundIds.map(rid => {
             const r = records[rid.toString()];
             if (r) {
                 const recordWithId = r as any;
@@ -521,8 +524,8 @@ export class RoomChatHandler extends Handler {
             throw new PermissionError('Only client-type rooms can be accessed via chat interface');
         }
         
-        const records = sdoc.recordIds && sdoc.recordIds.length > 0
-            ? await record.getList(domainId, sdoc.recordIds)
+        const records = sdoc.roundIds && sdoc.roundIds.length > 0
+            ? await round.getList(domainId, sdoc.roundIds)
             : {};
         
         const recordsList = Object.values(records).sort((a: any, b: any) => 
@@ -589,8 +592,8 @@ export class RoomChatHandler extends Handler {
         }
         
         // 构建history（从session的records中提取）
-        const records = sdoc.recordIds && sdoc.recordIds.length > 0
-            ? await record.getList(domainId, sdoc.recordIds)
+        const records = sdoc.roundIds && sdoc.roundIds.length > 0
+            ? await round.getList(domainId, sdoc.roundIds)
             : {};
         
         const recordsList = Object.values(records).sort((a: any, b: any) => 
@@ -619,8 +622,7 @@ export class RoomChatHandler extends Handler {
             return;
         }
         
-        // 创建任务记录（走task/record流程）
-        const taskRecordId = await record.addTask(
+        const taskRoundId = await round.addTask(
             domainId,
             adoc.aid || adoc.docId.toString(),
             this.user._id,
@@ -628,8 +630,7 @@ export class RoomChatHandler extends Handler {
             sid, // 使用现有的session
         );
         
-        // 将record添加到session
-        await RoomModel.addRecord(domainId, sid, taskRecordId);
+        await RoomModel.addRound(domainId, sid, taskRoundId);
         
         // 更新session的最后活动时间
         await RoomModel.update(domainId, sid, {
@@ -696,7 +697,7 @@ export class RoomChatHandler extends Handler {
         const taskModel = require('../model/task').default;
         await taskModel.add({
             type: 'task',
-            recordId: taskRecordId,
+            roundId: taskRoundId,
             roomId: sid,
             domainId,
             agentId: adoc.aid || adoc.docId.toString(),
@@ -708,7 +709,7 @@ export class RoomChatHandler extends Handler {
         });
         
         this.response.body = {
-            taskRecordId: taskRecordId.toString(),
+            taskRoundId: taskRoundId.toString(),
             roomId: sid.toString(),
             message: 'Task created, processing by worker',
         };

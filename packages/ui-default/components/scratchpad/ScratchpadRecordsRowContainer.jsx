@@ -4,7 +4,7 @@ import moment from 'moment';
 import React from 'react';
 import { connect } from 'react-redux';
 import TimeAgo from 'timeago-react';
-import * as recordEnum from 'vj/constant/record';
+import * as recordEnum from 'vj/constant/round';
 import {
   emulateAnchorClick, i18n, mongoId, substitute,
 } from 'vj/utils';

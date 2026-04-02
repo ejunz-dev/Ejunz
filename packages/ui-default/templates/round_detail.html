@@ -4,15 +4,15 @@
 {% set isTaskRecord = r.agentId %}
 {% if typeof(rdoc['status']) === 'number' and not rev %}
   {% if isTaskRecord %}
-    {{ set(UiContext, 'socketUrl', "task-record-detail-conn?domainId=" + rdoc.domainId + "&rid=" + rdoc._id) }}
+    {{ set(UiContext, 'socketUrl', "task-round-detail-conn?domainId=" + rdoc.domainId + "&rid=" + rdoc._id) }}
   {% else %}
-  {{ set(UiContext, 'socketUrl', "record-detail-conn?domainId=" + rdoc.domainId + "&rid=" + rdoc._id) }}
+  {{ set(UiContext, 'socketUrl', "round-detail-conn?domainId=" + rdoc.domainId + "&rid=" + rdoc._id) }}
   {% endif %}
 {% endif %}
 <div class="row">
   <div class="medium-9 columns collapsed">
     {% if typeof(rdoc['status']) === 'number' %}
-      {% include 'record_detail_status.html' %}
+      {% include 'round_detail_status.html' %}
     {% endif %}
     
     {% if isTaskRecord and r.agentError %}
@@ -37,11 +37,11 @@
         <h1 class="section__title">{{ _('Chat History') }}</h1>
         <div class="section__tools">
           {% if adoc %}
-          <a href="{{ url('agent_chat', domainId=r.domainId, aid=adoc.aid, query={'recordId': r._id.toString()}) }}" class="button">
+          <a href="{{ url('agent_chat', domainId=r.domainId, aid=adoc.aid, query={'roundId': r._id.toString()}) }}" class="button">
             <span class="icon icon-comment"></span> {{ _('Continue Chat') }}
           </a>
           {% endif %}
-          <a href="{{ url('record_main', domainId=r.domainId) }}" class="button">
+          <a href="{{ url('round_main', domainId=r.domainId) }}" class="button">
             <span class="icon icon-back"></span> {{ _('Back to Records') }}
           </a>
         </div>
@@ -169,7 +169,7 @@
           {% endif %}
         </dl>
         {% if typeof(rdoc['status']) === 'number' %}
-          {% include 'record_detail_summary.html' %}
+          {% include 'round_detail_summary.html' %}
         {% endif %}
       </div>
     </div>

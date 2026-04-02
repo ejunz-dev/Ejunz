@@ -12,7 +12,7 @@ import { EdgeServerConnectionHandler } from './edge';
 import AgentModel, { McpClient } from '../model/agent';
 import type { EdgeBridgeEnvelope } from '../service/bus';
 import RoomModel from '../model/room';
-import record from '../model/record';
+import round from '../model/round';
 import domain from '../model/domain';
 import * as document from '../model/document';
 import { PRIV, STATUS } from '../model/builtin';
@@ -1190,9 +1190,9 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
     private currentTtsAudioBuffers: Buffer[] = [];
     private currentConversationId: number | null = null;
     private currentRoomId: ObjectId | null = null;
-    private subscribedRecordIds: Set<string> = new Set();
-    private pendingAgentDoneRecords: Map<string, { taskRecordId: string; message: string }> = new Map();
-    private sentContentRecordIds: Set<string> = new Set(); // 跟踪已经发送过内容的记录ID，防止重复发送
+    private subscribedRoundIds: Set<string> = new Set();
+    private pendingAgentDoneRounds: Map<string, { taskRoundId: string; message: string }> = new Map();
+    private sentContentRoundIds: Set<string> = new Set(); // 跟踪已经发送过内容的记录ID，防止重复发送
     // Promise resolver for waiting TTS playback completion before tool calls
     private ttsPlaybackWaitPromise: { resolve: () => void; reject: (error: Error) => void } | null = null;
     private outboundBridgeDisposer: (() => void) | null = null;
@@ -2556,19 +2556,19 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                                 addClientLog(this.clientId, 'info', 'All TTS audio generation completed');
                                 
                                 // TTS generation finished, release all pending agent/done events
-                                for (const [recordId, recordInfo] of this.pendingAgentDoneRecords.entries()) {
+                                for (const [recordId, recordInfo] of this.pendingAgentDoneRounds.entries()) {
                                     logger.info('Sending agent/done after TTS completion: clientId=%d, rid=%s', 
                                         this.clientId, recordId);
                                     this.sendEvent('agent/done', [{
-                                        taskRecordId: recordInfo.taskRecordId,
+                                        taskRoundId: recordInfo.taskRoundId,
                                         message: recordInfo.message,
                                     }]);
                                     this.sendEvent('client/agent/done', [{
-                                        taskRecordId: recordInfo.taskRecordId,
+                                        taskRoundId: recordInfo.taskRoundId,
                                         message: recordInfo.message,
                                     }]);
                                 }
-                                this.pendingAgentDoneRecords.clear();
+                                this.pendingAgentDoneRounds.clear();
                             }
                         } else if (message.type === 'error') {
                             const errorMsg = message.error?.message || 'TTS task failed';
@@ -2684,7 +2684,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         await this.handleAgentChat({
             message,
             history: msg.history || [],
-            createTaskRecord: msg.createTaskRecord !== false,
+            createTaskRound: msg.createTaskRound !== false,
             isSystemMessage,
         });
     }
@@ -3021,7 +3021,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         const message = msg.message;
         const history = msg.history || [];
         // 强制所有请求都创建task，必须通过worker处理
-        const createTaskRecord = true;
+        const createTaskRound = true;
 
         if (!message || typeof message !== 'string') {
             logger.warn('handleAgentChat: Invalid message: clientId=%d, message=%o', this.clientId, message);
@@ -3030,7 +3030,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             return;
         }
 
-        if (createTaskRecord) {
+        if (createTaskRound) {
             // 所有请求都必须通过worker处理，创建task让worker处理
             const recordUid = this.client.owner; // Use cached owner, don't query
             
@@ -3048,29 +3048,30 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 this.currentRoomId = roomId;
             }
             
-            const taskRecordId = await record.addTask(
+            const taskRoundId = await round.addTask(
                 this.domain._id,
                 agentConfig.agentId,
                 recordUid,
                 message,
                 roomId,
             );
+            await RoomModel.addRound(this.domain._id, roomId, taskRoundId);
             
             // 不再设置状态为PROCESSING，让worker处理
             // 不再直接调用processAgentChatInternal，worker会处理所有逻辑
             
             // Subscribe to record immediately to receive updates from worker
-            this.subscribeRecord(taskRecordId.toString(), agentConfig.agentId);
+            this.subscribeRound(taskRoundId.toString(), agentConfig.agentId);
             
             // Send task_created event immediately (stage 1 response)
             this.sendEvent('agent/task_created', [{
-                taskRecordId: taskRecordId.toString(),
+                taskRoundId: taskRoundId.toString(),
                 roomId: roomId.toString(),
                 message: 'Task created, processing by worker',
             }]);
             
-            logger.info('Task created for client, worker will handle: clientId=%d, taskRecordId=%s', 
-                this.clientId, taskRecordId.toString());
+            logger.info('Task created for client, worker will handle: clientId=%d, taskRoundId=%s', 
+                this.clientId, taskRoundId.toString());
             
             // Load agent info and create task asynchronously (don't block response)
             (async () => {
@@ -3130,7 +3131,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                     const taskModel = require('../model/task').default;
                     await taskModel.add({
                         type: 'task',
-                        recordId: taskRecordId,
+                        roundId: taskRoundId,
                         roomId,
                         domainId: this.domain._id,
                         agentId: agentConfig.agentId,
@@ -3141,8 +3142,8 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                         priority: 0,
                     });
                     
-                    logger.info('Task created for worker: clientId=%d, taskRecordId=%s', 
-                        this.clientId, taskRecordId.toString());
+                    logger.info('Task created for worker: clientId=%d, taskRoundId=%s', 
+                        this.clientId, taskRoundId.toString());
                 } catch (error: any) {
                     logger.error('Failed to create task: %s', error.message);
                     this.sendEvent('agent/error', [{ message: error.message }]);
@@ -3158,7 +3159,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                         lastActivityAt: new Date(),
                     });
                     
-                    await RoomModel.addRecord(this.tokenDomainId, roomId, taskRecordId);
+                    await RoomModel.addRound(this.tokenDomainId, roomId, taskRoundId);
                 } catch (error: any) {
                     logger.error('Failed to update room: %s', error.message);
                 }
@@ -3168,20 +3169,20 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         }
 
         // 所有请求都必须创建task并通过worker处理，不再支持直接处理模式
-        logger.error('handleAgentChat: createTaskRecord must be true, all requests must go through worker: clientId=%d', this.clientId);
+        logger.error('handleAgentChat: createTaskRound must be true, all requests must go through worker: clientId=%d', this.clientId);
         this.sendEvent('agent/error', [{ message: 'All requests must create task and be processed by worker' }]);
         return;
     }
 
-    private subscribeRecord(rid: string, agentId: string) {
-        if (this.subscribedRecordIds.has(rid)) {
+    private subscribeRound(rid: string, agentId: string) {
+        if (this.subscribedRoundIds.has(rid)) {
             logger.debug('Record already subscribed: clientId=%d, rid=%s', this.clientId, rid);
             return;
         }
         
-        this.subscribedRecordIds.add(rid);
+        this.subscribedRoundIds.add(rid);
         
-        const dispose = this.ctx.on('record/change' as any, async (rdoc: any) => {
+        const dispose = this.ctx.on('round/change' as any, async (rdoc: any) => {
             const r = rdoc as any;
             if (!r || !r._id) return;
             
@@ -3196,7 +3197,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             }
             
             try {
-                const fullRecord = await record.get(this.domain._id, new ObjectId(rid));
+                const fullRecord = await round.get(this.domain._id, new ObjectId(rid));
                 if (!fullRecord) {
                     logger.warn('Record not found when processing update: clientId=%d, rid=%s', this.clientId, rid);
                     return;
@@ -3209,7 +3210,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 
                 if (recordData.status === STATUS.STATUS_TASK_DELIVERED && assistantMessages.length > 0) {
                     // 检查是否已经发送过内容，防止重复发送
-                    if (this.sentContentRecordIds.has(rid)) {
+                    if (this.sentContentRoundIds.has(rid)) {
                         logger.debug('Content already sent for record, skipping: clientId=%d, rid=%s', this.clientId, rid);
                         return;
                     }
@@ -3219,7 +3220,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                     
                     if (content) {
                         // 标记为已发送，防止重复
-                        this.sentContentRecordIds.add(rid);
+                        this.sentContentRoundIds.add(rid);
                         
                         logger.info('Sending agent reply to client: clientId=%d, rid=%s, content length=%d', 
                             this.clientId, rid, content.length);
@@ -3227,30 +3228,30 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                         this.sendEvent('agent/content', [content]);
                         
                         if (this.client?.settings?.tts) {
-                            this.pendingAgentDoneRecords.set(rid, {
-                                taskRecordId: rid,
+                            this.pendingAgentDoneRounds.set(rid, {
+                                taskRoundId: rid,
                                 message: content,
                             });
                             
                             await this.addTtsText(content).catch((error: any) => {
                                 logger.warn('Failed to generate TTS for agent reply: %s', error.message);
-                                this.pendingAgentDoneRecords.delete(rid);
+                                this.pendingAgentDoneRounds.delete(rid);
                                 this.sendEvent('agent/done', [{
-                                    taskRecordId: rid,
+                                    taskRoundId: rid,
                                     message: content,
                                 }]);
                                 this.sendEvent('client/agent/done', [{
-                                    taskRecordId: rid,
+                                    taskRoundId: rid,
                                     message: content,
                                 }]);
                             });
                         } else {
                             this.sendEvent('agent/done', [{
-                                taskRecordId: rid,
+                                taskRoundId: rid,
                                 message: content,
                             }]);
                             this.sendEvent('client/agent/done', [{
-                                taskRecordId: rid,
+                                taskRoundId: rid,
                                 message: content,
                             }]);
                         }
@@ -3371,9 +3372,9 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         this.subscriptions = [];
         
         // Clear record tracking sets
-        this.subscribedRecordIds.clear();
-        this.sentContentRecordIds.clear();
-        this.pendingAgentDoneRecords.clear();
+        this.subscribedRoundIds.clear();
+        this.sentContentRoundIds.clear();
+        this.pendingAgentDoneRounds.clear();
         
         if (this.clientId && this.accepted) {
             ClientConnectionHandler.active.delete(this.clientId);
@@ -3848,7 +3849,7 @@ export async function apply(ctx: Context) {
                 msg = {
                     message: JSON.stringify(msg),
                     history: msg.history || [],
-                    createTaskRecord: msg.createTaskRecord !== false,
+                    createTaskRound: msg.createTaskRound !== false,
                 };
             }
             
