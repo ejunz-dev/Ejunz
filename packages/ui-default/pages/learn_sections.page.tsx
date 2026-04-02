@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { NamedPage } from 'vj/misc/Page';
-import { i18n } from 'vj/utils';
+import { i18n, request } from 'vj/utils';
 
 interface CardProblem {
   pid: string;
@@ -183,20 +183,24 @@ function LearnSectionsTree({ sections, dag, domainId, currentSectionId, currentL
     return `/d/${domainId}/learn/lesson?cardId=${cardId}`;
   }, [domainId]);
 
-  const getNodeLessonUrl = useCallback((nodeId: string) => {
-    return `/d/${domainId}/learn/lesson?nodeId=${encodeURIComponent(nodeId)}`;
-  }, [domainId]);
-
   const openSingleNodeModal = useCallback((node: LearnDAGNode) => {
     setSingleNodeModal({ nodeId: node._id, title: node.title || i18n('Unnamed Node') });
   }, []);
 
-  const confirmSingleNodeMode = useCallback(() => {
+  const confirmSingleNodeMode = useCallback(async () => {
     if (!singleNodeModal) return;
-    const url = getNodeLessonUrl(singleNodeModal.nodeId);
-    window.open(url, '_blank', 'noopener,noreferrer');
+    try {
+      const res: any = await request.post(`/d/${domainId}/learn/lesson/start`, {
+        mode: 'node',
+        nodeId: singleNodeModal.nodeId,
+      });
+      const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
+      window.open(redir || `/d/${domainId}/learn/lesson`, '_blank', 'noopener,noreferrer');
+    } catch {
+      window.open(`/d/${domainId}/learn/lesson`, '_blank', 'noopener,noreferrer');
+    }
     setSingleNodeModal(null);
-  }, [singleNodeModal, getNodeLessonUrl]);
+  }, [singleNodeModal, domainId]);
 
   const openSingleCardModal = useCallback((card: LearnCard) => {
     setSingleCardModal({ cardId: String(card.cardId), title: card.title || i18n('Unnamed Card') });

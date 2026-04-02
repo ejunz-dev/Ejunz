@@ -220,8 +220,19 @@ function LearnPage() {
     accentGlow: theme === 'dark' ? 'rgba(56, 189, 248, 0.25)' : 'rgba(14, 165, 233, 0.2)',
   };
 
-  const handleStart = useCallback(() => {
-    window.location.href = `/d/${domainId}/learn/lesson?today=1`;
+  const handleStart = useCallback(async () => {
+    if (!domainId) return;
+    try {
+      const res: any = await request.post(`/d/${domainId}/learn/lesson/start`, { mode: 'today' });
+      const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
+      if (redir) {
+        window.location.href = redir;
+        return;
+      }
+    } catch {
+      /* fall through */
+    }
+    window.location.href = `/d/${domainId}/learn/lesson`;
   }, [domainId]);
 
   const handleSaveGoal = useCallback(async () => {

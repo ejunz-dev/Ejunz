@@ -14,7 +14,7 @@ import { Logger } from '../logger';
 const logger = new Logger('model/room');
 
 export default class RoomModel {
-    static coll = db.collection('session' as any);
+    static coll = db.collection('room');
     
     static PROJECTION_LIST: (keyof RoomDoc)[] = [
         '_id', 'domainId', 'agentId', 'uid', 'recordIds', 'type', 'title', 'context',

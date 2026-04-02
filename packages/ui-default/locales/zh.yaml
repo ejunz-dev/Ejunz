@@ -1078,7 +1078,15 @@ Send Problem: 发送题枝
 Send Verification Email: 发送验证邮件
 Send: 发送
 Service Status: 服务状态
-session_domain: 会话
+session_domain: 学习实况
+session_learn_list_title: 学习会话（实时）
+session_learn_empty: 当前域内暂无近期学习活动。
+session_learn_empty_filter: 没有符合条件的会话。
+session_active_minutes: 列出最近 N 分钟内有活动的用户
+session_col_branch: 分支
+session_col_position: 卡片 / 节点
+session_col_route: 页面
+session_last_activity: 最近活动
 room_domain: 房间
 Rooms: 房间
 Back to Rooms: 返回房间列表

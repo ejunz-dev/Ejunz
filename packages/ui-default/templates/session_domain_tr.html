@@ -1,0 +1,57 @@
+{% import "components/user.html" as user with context %}
+<tr data-uid="{{ session.uid }}">
+  <td class="col--status session-status--border session-status--{{ session.status }}">
+    <div class="col--status__text">
+      <span class="icon session-status--icon session-status--icon-{{ session.status }}"></span>
+      <a
+        href="{{ url('learn_lesson', domainId=session.domainId) }}{% if session.cardId %}?cardId={{ session.cardId | urlencode }}{% elif session.nodeId %}?nodeId={{ session.nodeId | urlencode }}{% endif %}"
+        class="session-status--text session-status--{{ session.status }}"
+      >
+        {% if session.status == 'active' %}
+          {{ _('Active') }}
+        {% else %}
+          {{ _('Detached') }}
+        {% endif %}
+      </a>
+    </div>
+  </td>
+  <td class="col--user">
+    {% if udoc %}
+      {{ user.render_inline(udoc, avatar=false, badge=false) }}
+    {% else %}
+      <span class="text-gray">-</span>
+    {% endif %}
+  </td>
+  <td class="col--branch">
+    {% if session.branch %}
+      <span>{{ session.branch }}</span>
+    {% else %}
+      <span class="text-gray">-</span>
+    {% endif %}
+  </td>
+  <td class="col--position">
+    {% if session.cardId %}
+      <code class="text-sm">{{ session.cardId }}</code>
+    {% elif session.nodeId %}
+      <code class="text-sm">{{ session.nodeId }}</code>
+    {% elif session.cardIndex is defined and session.cardIndex is not none %}
+      #{{ session.cardIndex }}
+    {% else %}
+      <span class="text-gray">-</span>
+    {% endif %}
+  </td>
+  <td class="col--route">
+    {% if session.route %}
+      {{ session.route }}
+    {% else %}
+      <span class="text-gray">-</span>
+    {% endif %}
+  </td>
+  <td class="col--submit-at">
+    {% if session.lastActivityAt %}
+      {{ datetimeSpan(session.lastActivityAt, false)|safe }}
+    {% else %}
+      -
+    {% endif %}
+  </td>
+</tr>

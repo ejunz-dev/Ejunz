@@ -1018,6 +1018,10 @@ declare module './service/db' {
         'learn_progress': any;
         'learn_result': any;
         'learn_consumption_stats': any;
+        /** Per-domain user lesson/live progress (Learn/Collect/Flag). */
+        'session': import('./model/session').SessionDoc;
+        /** Agent chat / client conversation room. */
+        'room': RoomDoc;
         'rating': any;
     }
 }
@@ -1050,6 +1054,7 @@ export interface Model {
     workflowTimer: typeof import('./model/workflow_timer').default,
     training: typeof import('./model/training').default,
     learn: typeof import('./model/learn').default,
+    session: typeof import('./model/session').default,
     rating: typeof import('./model/rating').default,
     scene: typeof import('./model/scene').default,
     sceneEvent: typeof import('./model/scene').SceneEventModel,
@@ -1101,8 +1106,9 @@ export interface EjunzGlobal {
     locales: Record<string, Record<string, string> & Record<symbol, Record<string, string>>>;
 }
 
+export type { SessionDoc } from './model/session';
 
-// Room (agent chat / client conversation room; stored in Mongo collection `session`)
+// Room (agent chat / client conversation room; stored in Mongo collection `room`)
 export interface RoomDoc {
     _id: ObjectId;
     domainId: string;

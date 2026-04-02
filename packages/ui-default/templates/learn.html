@@ -3,6 +3,7 @@
 {% block content %}
 <script>
   {{ set(UiContext, 'domainId', domainId) }}
+  {{ set(UiContext, 'lessonSessionId', lessonSessionId or '') }}
   {{ set(UiContext, 'currentProgress', currentProgress) }}
   {{ set(UiContext, 'totalProgress', totalProgress) }}
   {{ set(UiContext, 'totalCards', totalCards) }}
