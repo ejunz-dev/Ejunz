@@ -333,9 +333,8 @@ export class WorkflowExecutor {
             systemMessage = systemMessage + toolsInfo;
         }
 
-        // 创建 session
-        const SessionModel = require('./session').default;
-        const sessionId = await SessionModel.add(
+        const RoomModel = require('./room').default;
+        const roomId = await RoomModel.add(
             context.domainId,
             agentId,
             0, // workflow 执行使用系统用户
@@ -344,17 +343,15 @@ export class WorkflowExecutor {
             undefined,
         );
 
-        // 创建任务记录
         const recordModel = require('./record').default;
         const taskRecordId = await recordModel.addTask(
             context.domainId,
             agentId,
             0, // workflow 执行使用系统用户
             prompt,
-            sessionId,
+            roomId,
         );
 
-        // 更新 session context
         const contextData = {
             apiKey: (domainInfo as any)['apiKey'] || '',
             model: (domainInfo as any)['model'] || 'deepseek-chat',
@@ -371,7 +368,7 @@ export class WorkflowExecutor {
             systemMessage,
         };
 
-        await SessionModel.update(context.domainId, sessionId, {
+        await RoomModel.update(context.domainId, roomId, {
             context: contextData,
         });
 
@@ -380,7 +377,7 @@ export class WorkflowExecutor {
         const taskData = {
             type: 'task',
             recordId: taskRecordId,
-            sessionId,
+            roomId,
             domainId: context.domainId,
             agentId: agentId,
             uid: 0, // workflow 执行使用系统用户

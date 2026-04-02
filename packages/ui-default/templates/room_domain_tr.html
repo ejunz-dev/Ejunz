@@ -1,17 +1,17 @@
 {% import "components/record.html" as record_component with context %}
 {% import "components/user.html" as user with context %}
 {% import "components/agent.html" as agent with context %}
-<tr data-sid="{{ session._id.toString() }}">
-  <td class="col--status session-status--border session-status--{{ session.status }}">
+<tr data-sid="{{ room._id.toString() }}">
+  <td class="col--status session-status--border session-status--{{ room.status }}">
     <div class="col--status__text">
-      <span class="icon session-status--icon session-status--icon-{{ session.status }}"></span>
+      <span class="icon session-status--icon session-status--icon-{{ room.status }}"></span>
       <a 
-        href="{{ url('session_detail', domainId=session.domainId, sid=session._id) }}"
-        class="session-status--text session-status--{{ session.status }}"
+        href="{{ url('room_detail', domainId=room.domainId, sid=room._id) }}"
+        class="session-status--text session-status--{{ room.status }}"
       >
-        {% if session.status == 'working' %}
+        {% if room.status == 'working' %}
           {{ _('Working') }}
-        {% elif session.status == 'active' %}
+        {% elif room.status == 'active' %}
           {{ _('Active') }}
         {% else %}
           {{ _('Detached') }}
@@ -21,9 +21,9 @@
   </td>
   <td class="col--agent">
     {% if adoc %}
-      <a href="{{ url('agent_detail', domainId=session.domainId, aid=adoc.aid) }}">{{ adoc.title or adoc.aid }}</a>
-    {% elif session.agentId %}
-      <a href="{{ url('agent_detail', domainId=session.domainId, aid=session.agentId) }}">{{ session.agentId }}</a>
+      <a href="{{ url('agent_detail', domainId=room.domainId, aid=adoc.aid) }}">{{ adoc.title or adoc.aid }}</a>
+    {% elif room.agentId %}
+      <a href="{{ url('agent_detail', domainId=room.domainId, aid=room.agentId) }}">{{ room.agentId }}</a>
     {% else %}
       <span class="text-gray">-</span>
     {% endif %}
@@ -37,8 +37,8 @@
   </td>
   <td class="col--records">
     <div class="session-records-blocks">
-      {% if session.records %}
-        {% for record in session.records %}
+      {% if room.records %}
+        {% for record in room.records %}
           {% set record_score = record.score|default(0) if record.score is defined else 0 %}
           {% set record_status_code = model.builtin.STATUS_CODES[record.status] if record.status is defined else 'pending' %}
           {% if record_score > 0 %}
@@ -55,7 +55,7 @@
             {% endif %}
           {% endif %}
           <a 
-            href="{{ url('record_detail', domainId=session.domainId, rid=record._id) }}"
+            href="{{ url('record_detail', domainId=room.domainId, rid=record._id) }}"
             class="session-record-block"
             style="background-color: {{ record_color }}"
             title="Record {{ record._id.toString().substring(0, 8) }} - Score: {{ record_score }} - Status: {{ model.builtin.STATUS_TEXTS[record.status] if record.status is defined else 'Unknown' }}"
@@ -65,7 +65,7 @@
     </div>
   </td>
   <td class="col--submit-at">
-    <a href="{{ url('session_detail', domainId=session.domainId, sid=session._id) }}">
+    <a href="{{ url('room_detail', domainId=room.domainId, sid=room._id) }}">
       {{ datetimeSpan(session['_id'])|safe }}
     </a>
   </td>

@@ -36,8 +36,7 @@ import NodeModel from '../model/node';
 import { callToolViaWorker } from './worker';
 import { getDomainMarketToolsForAgent } from './tool';
 import record from '../model/record';
-import SessionModel from '../model/session';
-import { SessionConnectionTracker } from './session';
+import RoomModel from '../model/room';
 import { RecordDoc } from '../interface';
 
 const AgentLogger = new Logger('agent');
@@ -1331,11 +1330,11 @@ export class AgentChatHandler extends Handler {
         const udoc = await user.getById(domainId, adoc.owner);
         
         // 聊天模式：新建或指定 session（默认进入聊天模式，不再显示列表模式）
-        let currentSessionId: ObjectId | undefined = sid;
+        let currentRoomId: ObjectId | undefined = sid;
         let recordHistory: any[] = [];
         
         if (sid) {
-            const sdoc = await SessionModel.get(domainId, sid);
+            const sdoc = await RoomModel.get(domainId, sid);
             if (sdoc && sdoc.agentId === (adoc.aid || adoc.docId?.toString() || adoc.aid) && sdoc.uid === this.user._id) {
                 if (sdoc.recordIds && sdoc.recordIds.length > 0) {
                     try {
@@ -1366,12 +1365,11 @@ export class AgentChatHandler extends Handler {
                 }
             } else {
                 // Session 无效，重置为新建模式
-                currentSessionId = undefined;
+                currentRoomId = undefined;
             }
         }
 
-        // 在聊天模式下也加载 sessions 列表（用于左侧边栏）
-        const sessions = await SessionModel.getMulti(domainId, {
+        const rooms = await RoomModel.getMulti(domainId, {
             agentId: adoc.aid || adoc.docId?.toString() || adoc.aid,
             uid: this.user._id,
         }, {
@@ -1379,14 +1377,12 @@ export class AgentChatHandler extends Handler {
             limit: 50,
         }).toArray();
         
-        // 获取每个 session 的 record 信息
-        const recordIds = sessions.flatMap(s => s.recordIds || []);
+        const recordIds = rooms.flatMap(s => s.recordIds || []);
         const records = recordIds.length > 0 
             ? await record.getList(domainId, recordIds)
             : {};
         
-        // 为每个 session 添加 record 详情
-        const sessionsWithRecords = sessions.map(s => ({
+        const roomsWithRecords = rooms.map(s => ({
             ...s,
             records: (s.recordIds || []).map(rid => records[rid.toString()]).filter(Boolean),
             lastRecord: (s.recordIds || []).length > 0 
@@ -1450,9 +1446,9 @@ export class AgentChatHandler extends Handler {
             apiUrl,
             edgesWithTools,
             mode: 'chat', // 聊天模式
-            sessionId: currentSessionId?.toString(),
+            roomId: currentRoomId?.toString(),
             recordHistory,
-            sessions: sessionsWithRecords, // 添加 sessions 列表用于左侧边栏
+            rooms: roomsWithRecords,
         };
     }
 
@@ -1519,60 +1515,53 @@ export class AgentChatHandler extends Handler {
             chatHistory = [];
         }
         
-        // 获取或创建 session
-        let sessionId: ObjectId | undefined;
-        const sessionIdParam = this.request.body?.sessionId;
-        if (sessionIdParam) {
-            // 使用现有 session
+        let roomId: ObjectId | undefined;
+        const roomIdParam = this.request.body?.roomId ?? this.request.body?.sessionId;
+        if (roomIdParam) {
             try {
-                sessionId = new ObjectId(sessionIdParam);
-                const sdoc = await SessionModel.get(domainId, sessionId);
+                roomId = new ObjectId(roomIdParam);
+                const sdoc = await RoomModel.get(domainId, roomId);
                 if (!sdoc || sdoc.agentId !== (adoc.aid || adoc.docId?.toString() || adoc.aid) || sdoc.uid !== this.user._id) {
-                    AgentLogger.warn('Invalid session ID or session does not belong to user/agent', { sessionId: sessionIdParam });
-                    sessionId = undefined; // 如果 session 无效，创建新的
+                    AgentLogger.warn('Invalid room ID or room does not belong to user/agent', { roomId: roomIdParam });
+                    roomId = undefined;
                 }
             } catch (e) {
-                AgentLogger.warn('Invalid session ID format', { sessionId: sessionIdParam, error: e });
-                sessionId = undefined;
+                AgentLogger.warn('Invalid room ID format', { roomId: roomIdParam, error: e });
+                roomId = undefined;
             }
         }
         
-        // 如果没有有效的 session，创建新 session
-        if (!sessionId) {
-            sessionId = await SessionModel.add(
+        if (!roomId) {
+            roomId = await RoomModel.add(
                 domainId,
                 adoc.aid || adoc.docId?.toString() || adoc.aid,
                 this.user._id,
-                'chat', // session 类型：chat
-                undefined, // title 可以后续更新
-                undefined, // context 会在创建 task 时设置
+                'chat',
+                undefined,
+                undefined,
             );
-            AgentLogger.info('Created new session', { sessionId: sessionId.toString(), domainId, agentId: adoc.aid, type: 'chat' });
+            AgentLogger.info('Created new room', { roomId: roomId.toString(), domainId, agentId: adoc.aid, type: 'chat' });
         }
         
-        // 获取 session 的 context（如果有）
-        const sdoc = await SessionModel.get(domainId, sessionId);
+        const sdoc = await RoomModel.get(domainId, roomId);
         let sessionContext = sdoc?.context || {};
         
-        // 创建任务记录（每次发送消息都创建新的任务记录）
-        // 如果没有 session，创建新 session（所有 record 都必须有 session）
         let taskRecordId: ObjectId | undefined;
         AgentLogger.info('POST chat: checking task creation', { 
             createTaskRecord, 
             chatHistoryLength: chatHistory?.length || 0,
         });
         if (createTaskRecord) {
-            // 确保有 session（如果没有，创建新 session）
-            if (!sessionId) {
-                sessionId = await SessionModel.add(
+            if (!roomId) {
+                roomId = await RoomModel.add(
                     domainId,
                     adoc.aid || adoc.docId?.toString() || adoc.aid,
                     this.user._id,
-                    'chat', // session 类型：chat
-                    undefined, // title 可以后续更新
-                    undefined, // context 会在创建 task 时设置
+                    'chat',
+                    undefined,
+                    undefined,
                 );
-                AgentLogger.info('Auto-created session for record: sessionId=%s, type=chat', sessionId.toString());
+                AgentLogger.info('Auto-created room for record: roomId=%s, type=chat', roomId.toString());
             }
             
             AgentLogger.info('POST chat: creating task record');
@@ -1581,14 +1570,13 @@ export class AgentChatHandler extends Handler {
                 adoc.aid || adoc.docId.toString(),
                 this.user._id,
                 message,
-                sessionId, // 关联到 session（必需）
-                bubbleId, // Pass bubbleId to addTask
+                roomId,
+                bubbleId,
             );
             
-            // 将 record 添加到 session
-            await SessionModel.addRecord(domainId, sessionId, taskRecordId);
+            await RoomModel.addRecord(domainId, roomId, taskRecordId);
             
-            AgentLogger.info('POST chat: task record created', { taskRecordId: taskRecordId?.toString(), sessionId: sessionId.toString() });
+            AgentLogger.info('POST chat: task record created', { taskRecordId: taskRecordId?.toString(), roomId: roomId.toString() });
             
             // 收集完整的上下文信息，供 worker 使用
             const domainInfo = await domain.get(domainId);
@@ -1694,7 +1682,7 @@ export class AgentChatHandler extends Handler {
             };
             
             // 更新 session 的 context（保存最新的上下文信息）
-            await SessionModel.update(domainId, sessionId, {
+            await RoomModel.update(domainId, roomId, {
                 context,
             });
             
@@ -1702,7 +1690,7 @@ export class AgentChatHandler extends Handler {
             const taskModel = require('../model/task').default;
             AgentLogger.info('POST chat: calling TaskModel.add', { 
                 recordId: taskRecordId.toString(), 
-                sessionId: sessionId.toString(),
+                roomId: roomId.toString(),
                 agentId: adoc.aid || adoc.docId.toString(),
                 assistantbubbleId,
                 NODE_APP_INSTANCE: process.env.NODE_APP_INSTANCE 
@@ -1710,7 +1698,7 @@ export class AgentChatHandler extends Handler {
             const taskId = await taskModel.add({
                 type: 'task',
                 recordId: taskRecordId,
-                sessionId, // 关联到 session
+                roomId,
                 domainId,
                 agentId: adoc.aid || adoc.docId.toString(),
                 uid: this.user._id,
@@ -1735,7 +1723,7 @@ export class AgentChatHandler extends Handler {
             // 任务已创建，返回任务 ID，由 worker 处理
             const responseBody = {
                 taskRecordId: taskRecordId.toString(),
-                sessionId: sessionId.toString(),
+                roomId: roomId.toString(),
                 message: 'Task created, processing by worker',
             };
             AgentLogger.info('POST chat: returning taskRecordId', responseBody);
@@ -1751,9 +1739,9 @@ export class AgentChatHandler extends Handler {
 }
 
 /**
- * Handler for fetching agent sessions list (JSON API)
+ * Handler for fetching agent rooms list (JSON API)
  */
-export class AgentChatSessionsListHandler extends Handler {
+export class AgentChatRoomsListHandler extends Handler {
     @param('aid', Types.String)
     async get(domainId: string, aid: string) {
         await this.checkPriv(PRIV.PRIV_USER_PROFILE);
@@ -1764,8 +1752,7 @@ export class AgentChatSessionsListHandler extends Handler {
             throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
         }
 
-        // 获取该 agent 下的所有 session
-        const sessions = await SessionModel.getMulti(domainId, {
+        const rooms = await RoomModel.getMulti(domainId, {
             agentId: adoc.aid || adoc.docId?.toString() || adoc.aid,
             uid: this.user._id,
         }, {
@@ -1773,14 +1760,12 @@ export class AgentChatSessionsListHandler extends Handler {
             limit: 50,
         }).toArray();
         
-        // 获取每个 session 的 record 信息
-        const recordIds = sessions.flatMap(s => s.recordIds || []);
+        const recordIds = rooms.flatMap(s => s.recordIds || []);
         const records = recordIds.length > 0 
             ? await record.getList(domainId, recordIds)
             : {};
         
-        // 为每个 session 添加 record 详情
-        const sessionsWithRecords = sessions.map(s => ({
+        const roomsWithRecords = rooms.map(s => ({
             ...s,
             _id: s._id.toString(),
             records: (s.recordIds || []).map(rid => {
@@ -1805,12 +1790,12 @@ export class AgentChatSessionsListHandler extends Handler {
 
         this.response.template = null;
         this.response.body = {
-            sessions: sessionsWithRecords,
+            rooms: roomsWithRecords,
         };
     }
 }
 
-export class AgentChatSessionHistoryHandler extends Handler {
+export class AgentChatRoomHistoryHandler extends Handler {
     @param('aid', Types.String)
     @param('sid', Types.ObjectId)
     async get(domainId: string, aid: string, sid: ObjectId) {
@@ -1822,13 +1807,11 @@ export class AgentChatSessionHistoryHandler extends Handler {
             throw new NotFoundError(`Agent not found for ${typeof normalizedId === 'number' ? 'docId' : 'aid'}: ${normalizedId}`);
         }
 
-        // 获取指定 session
-        const sdoc = await SessionModel.get(domainId, sid);
+        const sdoc = await RoomModel.get(domainId, sid);
         if (!sdoc || sdoc.agentId !== (adoc.aid || adoc.docId?.toString() || adoc.aid) || sdoc.uid !== this.user._id) {
-            throw new NotFoundError('Session not found or access denied');
+            throw new NotFoundError('Room not found or access denied');
         }
 
-        // 获取 session 的所有 record 历史记录
         const recordHistory: any[] = [];
         if (sdoc.recordIds && sdoc.recordIds.length > 0) {
             // 按顺序获取所有 records
@@ -1859,13 +1842,13 @@ export class AgentChatSessionHistoryHandler extends Handler {
 
         this.response.template = null;
         this.response.body = {
-            sessionId: sid.toString(),
+            roomId: sid.toString(),
             recordHistory,
         };
     }
 }
 
-export class AgentChatSessionConnectionHandler extends ConnectionHandler {
+export class AgentChatRoomConnectionHandler extends ConnectionHandler {
     private lastSentRecordHash?: Map<string, string>; // Track last sent record hash per rid to avoid duplicates
     private subscribedRids: Set<string> = new Set();
     private subscriptions: Array<{ dispose: () => void; rid: string }> = [];
@@ -1904,11 +1887,11 @@ export class AgentChatSessionConnectionHandler extends ConnectionHandler {
             
             this.adoc = adoc;
             
-            AgentLogger.info('Agent chat session connected', { domainId: finalDomainId, aid: finalAid, userId: this.user._id });
+            AgentLogger.info('Agent chat room connected', { domainId: finalDomainId, aid: finalAid, userId: this.user._id });
             
-            this.send({ type: 'session_connected', domainId: finalDomainId, aid: finalAid });
+            this.send({ type: 'room_connected', domainId: finalDomainId, aid: finalAid });
         } catch (error: any) {
-            AgentLogger.error('Agent chat session prepare error:', error);
+            AgentLogger.error('Agent chat room prepare error:', error);
             try {
                 this.close(4000, error.message || String(error));
             } catch (e) {
@@ -4291,10 +4274,10 @@ export async function apply(ctx: Context) {
     ctx.Route('agent_create', '/agent/create', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_detail', '/agent/:aid', AgentDetailHandler);
     ctx.Route('agent_edge_config', '/agent/:aid/edge-config', AgentEdgeConfigHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('agent_chat_sessions_list', '/agent/:aid/chat/sessions', AgentChatSessionsListHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('agent_chat_session_history', '/agent/:aid/chat/session/:sid/history', AgentChatSessionHistoryHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('agent_chat_rooms_list', '/agent/:aid/chat/rooms', AgentChatRoomsListHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('agent_chat_room_history', '/agent/:aid/chat/room/:sid/history', AgentChatRoomHistoryHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_chat', '/agent/:aid/chat', AgentChatHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Connection('agent_chat_session', '/agent-chat-session', AgentChatSessionConnectionHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Connection('agent_chat_room', '/agent-chat-room', AgentChatRoomConnectionHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_edit', '/agent/:aid/edit', AgentEditHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_mcp_status', '/agent/:aid/mcp-tools/status', AgentMcpStatusHandler);
     ctx.Route('agent_api', '/api/agent', AgentApiHandler);
