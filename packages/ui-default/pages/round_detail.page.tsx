@@ -4,7 +4,7 @@ import { InfoDialog } from 'vj/components/dialog';
 import { NamedPage } from 'vj/misc/Page';
 import { tpl, withTransitionCallback } from 'vj/utils';
 
-export default new NamedPage('record_detail,task_record_detail', async () => {
+export default new NamedPage('round_detail,task_round_detail', async () => {
   $(document).on('click', '.compiler-text', () => {
     withTransitionCallback(() => {
       $('.collapsed').removeClass('collapsed');

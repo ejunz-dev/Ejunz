@@ -1108,13 +1108,13 @@ export interface EjunzGlobal {
 
 export type { SessionDoc } from './model/session';
 
-// Room (agent chat / client conversation room; stored in Mongo collection `room`)
 export interface RoomDoc {
     _id: ObjectId;
     domainId: string;
     agentId: string;
     uid: number;
-    recordIds: ObjectId[];
+    roundIds: ObjectId[];
+    recordIds?: ObjectId[];
     type: 'client' | 'chat';
     title?: string;
     context?: any;
@@ -1124,9 +1124,8 @@ export interface RoomDoc {
     clientId?: number; 
 }
 
-// Extend RecordDoc to support agent tasks
 declare module '@ejunz/common/types' {
-    export interface RecordDoc {
+    export interface RoundDoc {
         // Task fields (when lang === 'task')
         agentId?: string;
         roomId?: ObjectId;

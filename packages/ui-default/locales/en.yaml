@@ -664,6 +664,8 @@ Problems: Problems
 Publish Statistics: Publish Statistics
 Rating: Rating
 record_main: Record
+round_main: Round
+rounds: rounds
 repo_config: Repo Config
 repo_create: Create Repo
 repo_detail: Repo Detail

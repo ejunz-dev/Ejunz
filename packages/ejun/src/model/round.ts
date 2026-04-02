@@ -4,7 +4,7 @@ import {
     ObjectId, OnlyFieldsOfType, PushOperator, UpdateFilter,
 } from 'mongodb';
 import { Context } from '../context';
-import { RecordDoc } from '../interface';
+import { RoundDoc } from '../interface';
 import db from '../service/db';
 import { MaybeArray, NumberKeys } from '../typeutils';
 import { ArgMethod, buildProjection, Time } from '../utils';
@@ -12,23 +12,24 @@ import { STATUS } from './builtin';
 import bus from '../service/bus';
 import { Logger } from '../logger';
 
-const logger = new Logger('model/record');
+const logger = new Logger('model/round');
 
-export default class RecordModel {
+export default class RoundModel {
     static coll = db.collection('record');
+    static collHistory = db.collection('record_history');
     
-    static PROJECTION_LIST: (keyof RecordDoc)[] = [
+    static PROJECTION_LIST: (keyof RoundDoc)[] = [
         '_id', 'status', 'score', 'time', 'domainId',
         'uid', 'agentId',
         'agentMessages', 'agentToolCallCount', 'agentTotalToolCalls', 'agentError',
     ];
 
-    static async get(_id: ObjectId): Promise<RecordDoc | null>;
-    static async get(domainId: string, _id: ObjectId): Promise<RecordDoc | null>;
+    static async get(_id: ObjectId): Promise<RoundDoc | null>;
+    static async get(domainId: string, _id: ObjectId): Promise<RoundDoc | null>;
     static async get(arg0: string | ObjectId, arg1?: any) {
         const _id = arg1 || arg0;
         const domainId = arg1 ? arg0 : null;
-        const res = await RecordModel.coll.findOne({ _id });
+        const res = await RoundModel.coll.findOne({ _id });
         if (!res) return null;
         if (res.domainId === (domainId || res.domainId)) return res;
         return null;
@@ -40,13 +41,13 @@ export default class RecordModel {
         // using .count() for a much better performace
         // @see https://www.mongodb.com/docs/manual/reference/command/count/
         const [d5min, d1h, day, week, month, year, total] = await Promise.all([
-            RecordModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-5, 'minutes')) }, ...domainId ? { domainId } : {} }).count(),
-            RecordModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'hour')) }, ...domainId ? { domainId } : {} }).count(),
-            RecordModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'day')) }, ...domainId ? { domainId } : {} }).count(),
-            RecordModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'week')) }, ...domainId ? { domainId } : {} }).count(),
-            RecordModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'month')) }, ...domainId ? { domainId } : {} }).count(),
-            RecordModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'year')) }, ...domainId ? { domainId } : {} }).count(),
-            RecordModel.coll.find(domainId ? { domainId } : {}).count(),
+            RoundModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-5, 'minutes')) }, ...domainId ? { domainId } : {} }).count(),
+            RoundModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'hour')) }, ...domainId ? { domainId } : {} }).count(),
+            RoundModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'day')) }, ...domainId ? { domainId } : {} }).count(),
+            RoundModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'week')) }, ...domainId ? { domainId } : {} }).count(),
+            RoundModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'month')) }, ...domainId ? { domainId } : {} }).count(),
+            RoundModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'year')) }, ...domainId ? { domainId } : {} }).count(),
+            RoundModel.coll.find(domainId ? { domainId } : {}).count(),
         ]);
         return {
             d5min, d1h, day, week, month, year, total,
@@ -61,7 +62,7 @@ export default class RecordModel {
         roomId: ObjectId,
         bubbleId?: string,
     ): Promise<ObjectId> {
-        const data: RecordDoc = {
+        const data: RoundDoc = {
             status: STATUS.STATUS_TASK_WAITING,
             _id: new ObjectId(),
             uid,
@@ -80,14 +81,14 @@ export default class RecordModel {
             agentToolCallCount: 0,
             agentTotalToolCalls: 0,
         } as any;
-        const res = await RecordModel.coll.insertOne(data);
-        bus.broadcast('record/change', data);
+        const res = await RoundModel.coll.insertOne(data);
+        bus.broadcast('round/change', data);
         return res.insertedId;
     }
 
     static async updateTask(
         domainId: string,
-        recordId: ObjectId,
+        roundId: ObjectId,
         update: {
             status?: number;
             score?: number;
@@ -107,19 +108,19 @@ export default class RecordModel {
                 contentHash?: string; // Content hash to detect changes and prevent duplicate processing
             }>;
         },
-    ): Promise<RecordDoc | null> {
+    ): Promise<RoundDoc | null> {
         const $set: any = {};
         if (update.status !== undefined) $set.status = update.status;
         if (update.score !== undefined) $set.score = update.score;
         if (update.time !== undefined) $set.time = update.time;
         if (update.agentToolCallCount !== undefined) $set.agentToolCallCount = update.agentToolCallCount;
         if (update.agentError !== undefined) $set.agentError = update.agentError;
-        let updated: RecordDoc | null = null;
+        let updated: RoundDoc | null = null;
         if (update.agentMessages) {
-            const existingRecord = await RecordModel.get(domainId, recordId);
-            if (existingRecord) {
+            const existingRound = await RoundModel.get(domainId, roundId);
+            if (existingRound) {
                 const { createHash } = require('crypto');
-                const existingMessages = (existingRecord as any).agentMessages || [];
+                const existingMessages = (existingRound as any).agentMessages || [];
                 const newMessages = update.agentMessages;
                 
                 const existingHash = existingMessages
@@ -144,45 +145,45 @@ export default class RecordModel {
                     lastExisting.bubbleId === firstNew.bubbleId &&
                     (lastExisting.contentHash || (lastExisting.content ? createHash('md5').update(lastExisting.content || '').digest('hex').substring(0, 16) : '')) === 
                      (firstNew.contentHash || (firstNew.content ? createHash('md5').update(firstNew.content || '').digest('hex').substring(0, 16) : ''))) {
-                    logger.debug('Skipping record update (content unchanged)', { 
-                        recordId: recordId.toString(), 
+                    logger.debug('Skipping round update (content unchanged)', { 
+                        roundId: roundId.toString(), 
                         bubbleId: firstNew.bubbleId 
                     });
-                    return existingRecord as RecordDoc;
+                    return existingRound as RoundDoc;
                 }
             }
             
-            updated = await RecordModel.update(domainId, recordId, $set, {
+            updated = await RoundModel.update(domainId, roundId, $set, {
                 agentMessages: { $each: update.agentMessages },
             } as any);
         } else {
-            updated = await RecordModel.update(domainId, recordId, $set);
+            updated = await RoundModel.update(domainId, roundId, $set);
         }
         if (updated) {
-            (bus as any).broadcast('record/change', updated);
+            (bus as any).broadcast('round/change', updated);
         }
         return updated;
     }
 
     static getMulti(domainId: string, query: any, options?: FindOptions) {
         if (domainId) query = { domainId, ...query };
-        return RecordModel.coll.find(query, options);
+        return RoundModel.coll.find(query, options);
     }
 
     static async update(
         domainId: string, _id: MaybeArray<ObjectId>,
-        $set?: MatchKeysAndValues<RecordDoc>,
-        $push?: PushOperator<RecordDoc>,
-        $unset?: OnlyFieldsOfType<RecordDoc, any, true | '' | 1>,
-        $inc?: Partial<Record<NumberKeys<RecordDoc>, number>>,
-    ): Promise<RecordDoc | null> {
-        const $update: UpdateFilter<RecordDoc> = {};
+        $set?: MatchKeysAndValues<RoundDoc>,
+        $push?: PushOperator<RoundDoc>,
+        $unset?: OnlyFieldsOfType<RoundDoc, any, true | '' | 1>,
+        $inc?: Partial<Record<NumberKeys<RoundDoc>, number>>,
+    ): Promise<RoundDoc | null> {
+        const $update: UpdateFilter<RoundDoc> = {};
         if ($set && Object.keys($set).length) $update.$set = $set;
         if ($push && Object.keys($push).length) $update.$push = $push;
         if ($unset && Object.keys($unset).length) $update.$unset = $unset;
         if ($inc && Object.keys($inc).length) $update.$inc = $inc;
         if (_id instanceof Array) {
-            await RecordModel.coll.updateMany({ _id: { $in: _id }, domainId }, $update);
+            await RoundModel.coll.updateMany({ _id: { $in: _id }, domainId }, $update);
             return null;
         }
         if (Object.keys($update).length) {
@@ -190,10 +191,10 @@ export default class RecordModel {
             const isUpdatingAgentMessages = ($set && Object.keys($set).some(k => k.startsWith('agentMessages')) || $push && ($push as any).agentMessages);
             
             if (isUpdatingAgentMessages) {
-                const existingRecord = await RecordModel.coll.findOne({ _id, domainId });
-                if (existingRecord) {
+                const existingRound = await RoundModel.coll.findOne({ _id, domainId });
+                if (existingRound) {
                     const { createHash } = require('crypto');
-                    const existingMessages = (existingRecord as any).agentMessages || [];
+                    const existingMessages = (existingRound as any).agentMessages || [];
                     
                     const agentMessageKeys = $set ? Object.keys($set).filter(k => k.startsWith('agentMessages.')) : [];
                     const hasToolCallsUpdate = agentMessageKeys.some((k: string) => k.includes('.tool_calls'));
@@ -210,8 +211,8 @@ export default class RecordModel {
                                 
                                 if (existingContentHash === newContentHash && existingContentHash) {
                                     shouldBroadcast = false;
-                                    logger.debug('Skipping record/change broadcast (content hash unchanged)', { 
-                                        recordId: _id.toString(), 
+                                    logger.debug('Skipping round/change broadcast (content hash unchanged)', { 
+                                        roundId: _id.toString(), 
                                         messageIndex: index 
                                     });
                                 }
@@ -221,59 +222,66 @@ export default class RecordModel {
                 }
             }
             
-            const updated = await RecordModel.coll.findOneAndUpdate(
+            const updated = await RoundModel.coll.findOneAndUpdate(
                 { _id, domainId },
                 $update,
                 { returnDocument: 'after' },
             );
             if (updated && shouldBroadcast && isUpdatingAgentMessages) {
-                (bus as any).broadcast('record/change', updated);
+                (bus as any).broadcast('round/change', updated);
             }
             return updated;
         }
-        return await RecordModel.coll.findOne({ _id }, { readPreference: 'primary' });
+        return await RoundModel.coll.findOne({ _id }, { readPreference: 'primary' });
     }
 
     static async updateMulti(
-        domainId: string, $match: Filter<RecordDoc>,
-        $set?: MatchKeysAndValues<RecordDoc>,
-        $push?: PushOperator<RecordDoc>,
-        $unset?: OnlyFieldsOfType<RecordDoc, any, true | '' | 1>,
+        domainId: string, $match: Filter<RoundDoc>,
+        $set?: MatchKeysAndValues<RoundDoc>,
+        $push?: PushOperator<RoundDoc>,
+        $unset?: OnlyFieldsOfType<RoundDoc, any, true | '' | 1>,
     ) {
-        const $update: UpdateFilter<RecordDoc> = {};
+        const $update: UpdateFilter<RoundDoc> = {};
         if ($set && Object.keys($set).length) $update.$set = $set;
         if ($push && Object.keys($push).length) $update.$push = $push;
         if ($unset && Object.keys($unset).length) $update.$unset = $unset;
-        const res = await RecordModel.coll.updateMany({ domainId, ...$match }, $update);
+        const res = await RoundModel.coll.updateMany({ domainId, ...$match }, $update);
         return res.modifiedCount;
     }
 
     static count(domainId: string, query: any) {
-        return RecordModel.coll.countDocuments({ domainId, ...query });
+        return RoundModel.coll.countDocuments({ domainId, ...query });
     }
 
     static async getList(
-        domainId: string, rids: ObjectId[], fields?: (keyof RecordDoc)[],
-    ): Promise<Record<string, Partial<RecordDoc>>> {
-        const r: Record<string, RecordDoc> = {};
+        domainId: string, rids: ObjectId[], fields?: (keyof RoundDoc)[],
+    ): Promise<Record<string, Partial<RoundDoc>>> {
+        const r: Record<string, RoundDoc> = {};
         rids = Array.from(new Set(rids));
-        let cursor = RecordModel.coll.find({ domainId, _id: { $in: rids } });
+        let cursor = RoundModel.coll.find({ domainId, _id: { $in: rids } });
         if (fields) cursor = cursor.project(buildProjection(fields));
         const rdocs = await cursor.toArray();
         for (const rdoc of rdocs) r[rdoc._id.toHexString()] = rdoc;
         return r;
     }
+
+    static async reset(domainId: string, rid: string | ObjectId, _full = false): Promise<RoundDoc | null> {
+        const _id = typeof rid === 'string' ? new ObjectId(rid) : rid;
+        return RoundModel.get(domainId, _id);
+    }
 }
 
 export async function apply(ctx: Context) {
-    ctx.on('domain/delete', (domainId) => RecordModel.coll.deleteMany({ domainId }));
+    ctx.on('domain/delete', (domainId) => RoundModel.coll.deleteMany({ domainId }));
     
-    ctx.on('task/agent-completed', async (payload: { recordId: string; domainId: string; taskId?: string }) => {
+    ctx.on('task/agent-completed', async (payload: { roundId?: string; recordId?: string; domainId: string; taskId?: string }) => {
         try {
-            const recordId = new ObjectId(payload.recordId);
-            const rdoc = await RecordModel.get(payload.domainId, recordId);
+            const rid = payload.roundId ?? payload.recordId;
+            if (!rid) return;
+            const roundOid = new ObjectId(rid);
+            const rdoc = await RoundModel.get(payload.domainId, roundOid);
             if (rdoc && rdoc.agentId) {
-                logger.info('Agent completed for record: %s', recordId.toString());
+                logger.info('Agent completed for round: %s', roundOid.toString());
             }
         } catch (e) {
             logger.error('Error handling task/agent-completed event:', e);
@@ -284,17 +292,20 @@ export async function apply(ctx: Context) {
     setInterval(async () => {
         try {
             const timeoutThreshold = new Date(Date.now() - TIMEOUT_MS);
-            const timeoutRecords = await RecordModel.coll.find({
+            const timeoutRounds = await RoundModel.coll.find({
                 status: { $in: [STATUS.STATUS_TASK_PROCESSING, STATUS.STATUS_TASK_PENDING] },
                 agentId: { $exists: true, $ne: null },
                 _id: { $lte: Time.getObjectID(timeoutThreshold) },
             }).toArray();
             
-            for (const rdoc of timeoutRecords) {
+            for (const rdoc of timeoutRounds) {
                 const TaskModel = require('./task').default;
-                const hasAssociatedTask = await TaskModel.count({ type: 'task', recordId: rdoc._id });
+                const hasAssociatedTask = await TaskModel.count({
+                    type: 'task',
+                    $or: [{ roundId: rdoc._id }, { recordId: rdoc._id }],
+                });
                 if (hasAssociatedTask > 0) {
-                    logger.debug('Skipping timeout check for record with associated task: recordId=%s', rdoc._id.toString());
+                    logger.debug('Skipping timeout check for round with associated task: roundId=%s', rdoc._id.toString());
                     continue;
                 }
                 
@@ -306,7 +317,7 @@ export async function apply(ctx: Context) {
                     errorStatus = STATUS.STATUS_TASK_ERROR_NETWORK;
                 }
                 
-                await RecordModel.updateTask(rdoc.domainId, rdoc._id, {
+                await RoundModel.updateTask(rdoc.domainId, rdoc._id, {
                     status: errorStatus,
                     score: 0,
                     time: elapsedTime,
@@ -316,7 +327,7 @@ export async function apply(ctx: Context) {
                     },
                 });
                 
-                logger.warn('Task timeout: recordId=%s, elapsedTime=%dms', rdoc._id.toString(), elapsedTime);
+                logger.warn('Task timeout: roundId=%s, elapsedTime=%dms', rdoc._id.toString(), elapsedTime);
             }
         } catch (e) {
             logger.error('Error in timeout check:', e);
@@ -325,7 +336,7 @@ export async function apply(ctx: Context) {
     
     await Promise.all([
         db.ensureIndexes(
-            RecordModel.coll,
+            RoundModel.coll,
             { key: { domainId: 1, _id: -1 }, name: 'basic' },
             { key: { domainId: 1, uid: 1, _id: -1 }, name: 'withUser' },
             { key: { domainId: 1, status: 1, _id: -1 }, name: 'withStatus' },
@@ -333,4 +344,4 @@ export async function apply(ctx: Context) {
         ),
     ]);
 }
-global.Ejunz.model.record = RecordModel;
+global.Ejunz.model.round = RoundModel;

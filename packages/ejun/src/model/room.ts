@@ -13,11 +13,17 @@ import { Logger } from '../logger';
 
 const logger = new Logger('model/room');
 
+function withRoundIds(doc: any): RoomDoc | null {
+    if (!doc) return null;
+    const roundIds = (doc.roundIds?.length ? doc.roundIds : doc.recordIds) || [];
+    return { ...doc, roundIds } as RoomDoc;
+}
+
 export default class RoomModel {
     static coll = db.collection('room');
     
     static PROJECTION_LIST: (keyof RoomDoc)[] = [
-        '_id', 'domainId', 'agentId', 'uid', 'recordIds', 'type', 'title', 'context',
+        '_id', 'domainId', 'agentId', 'uid', 'roundIds', 'recordIds', 'type', 'title', 'context',
         'createdAt', 'updatedAt',
     ];
 
@@ -28,7 +34,7 @@ export default class RoomModel {
         const domainId = arg1 ? arg0 : null;
         const res = await RoomModel.coll.findOne({ _id });
         if (!res) return null;
-        if (res.domainId === (domainId || res.domainId)) return res;
+        if (res.domainId === (domainId || res.domainId)) return withRoundIds(res);
         return null;
     }
 
@@ -63,7 +69,7 @@ export default class RoomModel {
             domainId,
             agentId,
             uid,
-            recordIds: [],
+            roundIds: [],
             type,
             title: title || `Room ${new Date().toLocaleString()}`,
             context: context || {},
@@ -77,17 +83,28 @@ export default class RoomModel {
         return res.insertedId;
     }
 
-    static async addRecord(
+    static async addRound(
         domainId: string,
         roomId: ObjectId,
-        recordId: ObjectId,
+        roundId: ObjectId,
     ): Promise<RoomDoc | null> {
-        const updated = await RoomModel.update(domainId, roomId, {
-            updatedAt: new Date(),
-        }, {
-            recordIds: recordId,
-        } as any);
-        return updated;
+        const cur = await RoomModel.coll.findOne({ _id: roomId, domainId });
+        const prev = [
+            ...((cur as any)?.roundIds || []),
+            ...((cur as any)?.recordIds || []),
+        ];
+        const seen = new Set(prev.map((x: ObjectId) => x.toString()));
+        if (!seen.has(roundId.toString())) prev.push(roundId);
+        const updated = await RoomModel.coll.findOneAndUpdate(
+            { _id: roomId, domainId },
+            {
+                $set: { roundIds: prev, updatedAt: new Date() },
+                $unset: { recordIds: '' },
+            },
+            { returnDocument: 'after' },
+        );
+        if (updated) (bus as any).broadcast('room/change', withRoundIds(updated));
+        return withRoundIds(updated);
     }
 
     static getMulti(domainId: string, query: any, options?: FindOptions) {
@@ -118,11 +135,11 @@ export default class RoomModel {
                 { returnDocument: 'after' },
             );
             if (updated) {
-                (bus as any).broadcast('room/change', updated);
+                (bus as any).broadcast('room/change', withRoundIds(updated));
             }
-            return updated;
+            return withRoundIds(updated);
         }
-        return await RoomModel.coll.findOne({ _id }, { readPreference: 'primary' });
+        return withRoundIds(await RoomModel.coll.findOne({ _id }, { readPreference: 'primary' }));
     }
 
     static async updateMulti(
@@ -151,7 +168,7 @@ export default class RoomModel {
         let cursor = RoomModel.coll.find({ domainId, _id: { $in: sids } });
         if (fields) cursor = cursor.project(buildProjection(fields));
         const sdocs = await cursor.toArray();
-        for (const sdoc of sdocs) r[sdoc._id.toHexString()] = sdoc;
+        for (const sdoc of sdocs) r[sdoc._id.toHexString()] = withRoundIds(sdoc)!;
         return r;
     }
 

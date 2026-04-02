@@ -29,7 +29,7 @@
     {% endif %}
   </td>
   <td class="col--submit-at">
-    <a href="{{ url('record_detail', domainId=r.domainId|default(handler.args.domainId), rid=r._id) }}">
+    <a href="{{ url('round_detail', domainId=r.domainId|default(handler.args.domainId), rid=r._id) }}">
       {{ datetimeSpan(r['_id'])|safe }}
     </a>
   </td>
