@@ -4,29 +4,29 @@ import {
     ObjectId, OnlyFieldsOfType, PushOperator, UpdateFilter,
 } from 'mongodb';
 import { Context } from '../context';
-import { SessionDoc } from '../interface';
+import { RoomDoc } from '../interface';
 import db from '../service/db';
 import { MaybeArray, NumberKeys } from '../typeutils';
 import { ArgMethod, buildProjection, Time } from '../utils';
 import bus from '../service/bus';
 import { Logger } from '../logger';
 
-const logger = new Logger('model/session');
+const logger = new Logger('model/room');
 
-export default class SessionModel {
+export default class RoomModel {
     static coll = db.collection('session' as any);
     
-    static PROJECTION_LIST: (keyof SessionDoc)[] = [
+    static PROJECTION_LIST: (keyof RoomDoc)[] = [
         '_id', 'domainId', 'agentId', 'uid', 'recordIds', 'type', 'title', 'context',
         'createdAt', 'updatedAt',
     ];
 
-    static async get(_id: ObjectId): Promise<SessionDoc | null>;
-    static async get(domainId: string, _id: ObjectId): Promise<SessionDoc | null>;
+    static async get(_id: ObjectId): Promise<RoomDoc | null>;
+    static async get(domainId: string, _id: ObjectId): Promise<RoomDoc | null>;
     static async get(arg0: string | ObjectId, arg1?: any) {
         const _id = arg1 || arg0;
         const domainId = arg1 ? arg0 : null;
-        const res = await SessionModel.coll.findOne({ _id });
+        const res = await RoomModel.coll.findOne({ _id });
         if (!res) return null;
         if (res.domainId === (domainId || res.domainId)) return res;
         return null;
@@ -35,13 +35,13 @@ export default class SessionModel {
     @ArgMethod
     static async stat(domainId?: string) {
         const [d5min, d1h, day, week, month, year, total] = await Promise.all([
-            SessionModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-5, 'minutes')) }, ...domainId ? { domainId } : {} }).count(),
-            SessionModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'hour')) }, ...domainId ? { domainId } : {} }).count(),
-            SessionModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'day')) }, ...domainId ? { domainId } : {} }).count(),
-            SessionModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'week')) }, ...domainId ? { domainId } : {} }).count(),
-            SessionModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'month')) }, ...domainId ? { domainId } : {} }).count(),
-            SessionModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'year')) }, ...domainId ? { domainId } : {} }).count(),
-            SessionModel.coll.find(domainId ? { domainId } : {}).count(),
+            RoomModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-5, 'minutes')) }, ...domainId ? { domainId } : {} }).count(),
+            RoomModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'hour')) }, ...domainId ? { domainId } : {} }).count(),
+            RoomModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'day')) }, ...domainId ? { domainId } : {} }).count(),
+            RoomModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'week')) }, ...domainId ? { domainId } : {} }).count(),
+            RoomModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'month')) }, ...domainId ? { domainId } : {} }).count(),
+            RoomModel.coll.find({ _id: { $gte: Time.getObjectID(moment().add(-1, 'year')) }, ...domainId ? { domainId } : {} }).count(),
+            RoomModel.coll.find(domainId ? { domainId } : {}).count(),
         ]);
         return {
             d5min, d1h, day, week, month, year, total,
@@ -58,31 +58,31 @@ export default class SessionModel {
         clientId?: number,
     ): Promise<ObjectId> {
         const now = new Date();
-        const data: SessionDoc = {
+        const data: RoomDoc = {
             _id: new ObjectId(),
             domainId,
             agentId,
             uid,
             recordIds: [],
             type,
-            title: title || `Session ${new Date().toLocaleString()}`,
+            title: title || `Room ${new Date().toLocaleString()}`,
             context: context || {},
             createdAt: now,
             updatedAt: now,
             lastActivityAt: now,
             ...(clientId !== undefined ? { clientId } : {}),
         };
-        const res = await SessionModel.coll.insertOne(data);
-        (bus as any).broadcast('session/change', data);
+        const res = await RoomModel.coll.insertOne(data);
+        (bus as any).broadcast('room/change', data);
         return res.insertedId;
     }
 
     static async addRecord(
         domainId: string,
-        sessionId: ObjectId,
+        roomId: ObjectId,
         recordId: ObjectId,
-    ): Promise<SessionDoc | null> {
-        const updated = await SessionModel.update(domainId, sessionId, {
+    ): Promise<RoomDoc | null> {
+        const updated = await RoomModel.update(domainId, roomId, {
             updatedAt: new Date(),
         }, {
             recordIds: recordId,
@@ -92,63 +92,63 @@ export default class SessionModel {
 
     static getMulti(domainId: string, query: any, options?: FindOptions) {
         if (domainId) query = { domainId, ...query };
-        return SessionModel.coll.find(query, options);
+        return RoomModel.coll.find(query, options);
     }
 
     static async update(
         domainId: string, _id: MaybeArray<ObjectId>,
-        $set?: MatchKeysAndValues<SessionDoc>,
-        $push?: PushOperator<SessionDoc>,
-        $unset?: OnlyFieldsOfType<SessionDoc, any, true | '' | 1>,
-        $inc?: Partial<Record<NumberKeys<SessionDoc>, number>>,
-    ): Promise<SessionDoc | null> {
-        const $update: UpdateFilter<SessionDoc> = {};
+        $set?: MatchKeysAndValues<RoomDoc>,
+        $push?: PushOperator<RoomDoc>,
+        $unset?: OnlyFieldsOfType<RoomDoc, any, true | '' | 1>,
+        $inc?: Partial<Record<NumberKeys<RoomDoc>, number>>,
+    ): Promise<RoomDoc | null> {
+        const $update: UpdateFilter<RoomDoc> = {};
         if ($set && Object.keys($set).length) $update.$set = $set;
         if ($push && Object.keys($push).length) $update.$push = $push;
         if ($unset && Object.keys($unset).length) $update.$unset = $unset;
         if ($inc && Object.keys($inc).length) $update.$inc = $inc;
         if (_id instanceof Array) {
-            await SessionModel.coll.updateMany({ _id: { $in: _id }, domainId }, $update);
+            await RoomModel.coll.updateMany({ _id: { $in: _id }, domainId }, $update);
             return null;
         }
         if (Object.keys($update).length) {
-            const updated = await SessionModel.coll.findOneAndUpdate(
+            const updated = await RoomModel.coll.findOneAndUpdate(
                 { _id, domainId },
                 $update,
                 { returnDocument: 'after' },
             );
             if (updated) {
-                (bus as any).broadcast('session/change', updated);
+                (bus as any).broadcast('room/change', updated);
             }
             return updated;
         }
-        return await SessionModel.coll.findOne({ _id }, { readPreference: 'primary' });
+        return await RoomModel.coll.findOne({ _id }, { readPreference: 'primary' });
     }
 
     static async updateMulti(
-        domainId: string, $match: Filter<SessionDoc>,
-        $set?: MatchKeysAndValues<SessionDoc>,
-        $push?: PushOperator<SessionDoc>,
-        $unset?: OnlyFieldsOfType<SessionDoc, any, true | '' | 1>,
+        domainId: string, $match: Filter<RoomDoc>,
+        $set?: MatchKeysAndValues<RoomDoc>,
+        $push?: PushOperator<RoomDoc>,
+        $unset?: OnlyFieldsOfType<RoomDoc, any, true | '' | 1>,
     ) {
-        const $update: UpdateFilter<SessionDoc> = {};
+        const $update: UpdateFilter<RoomDoc> = {};
         if ($set && Object.keys($set).length) $update.$set = $set;
         if ($push && Object.keys($push).length) $update.$push = $push;
         if ($unset && Object.keys($unset).length) $update.$unset = $unset;
-        const res = await SessionModel.coll.updateMany({ domainId, ...$match }, $update);
+        const res = await RoomModel.coll.updateMany({ domainId, ...$match }, $update);
         return res.modifiedCount;
     }
 
     static count(domainId: string, query: any) {
-        return SessionModel.coll.countDocuments({ domainId, ...query });
+        return RoomModel.coll.countDocuments({ domainId, ...query });
     }
 
     static async getList(
-        domainId: string, sids: ObjectId[], fields?: (keyof SessionDoc)[],
-    ): Promise<Record<string, Partial<SessionDoc>>> {
-        const r: Record<string, SessionDoc> = {};
+        domainId: string, sids: ObjectId[], fields?: (keyof RoomDoc)[],
+    ): Promise<Record<string, Partial<RoomDoc>>> {
+        const r: Record<string, RoomDoc> = {};
         sids = Array.from(new Set(sids));
-        let cursor = SessionModel.coll.find({ domainId, _id: { $in: sids } });
+        let cursor = RoomModel.coll.find({ domainId, _id: { $in: sids } });
         if (fields) cursor = cursor.project(buildProjection(fields));
         const sdocs = await cursor.toArray();
         for (const sdoc of sdocs) r[sdoc._id.toHexString()] = sdoc;
@@ -156,15 +156,15 @@ export default class SessionModel {
     }
 
     static async delete(domainId: string, _id: ObjectId) {
-        return SessionModel.coll.deleteOne({ _id, domainId });
+        return RoomModel.coll.deleteOne({ _id, domainId });
     }
 }
 
 export async function apply(ctx: Context) {
-    ctx.on('domain/delete', (domainId) => SessionModel.coll.deleteMany({ domainId }));
+    ctx.on('domain/delete', (domainId) => RoomModel.coll.deleteMany({ domainId }));
     
     await db.ensureIndexes(
-        SessionModel.coll,
+        RoomModel.coll,
         { key: { domainId: 1, _id: -1 }, name: 'basic' },
         { key: { domainId: 1, uid: 1, _id: -1 }, name: 'withUser' },
         { key: { domainId: 1, agentId: 1, _id: -1 }, name: 'withAgent' },
@@ -178,7 +178,7 @@ export async function apply(ctx: Context) {
         try {
             const timeoutThreshold = new Date(Date.now() - TIMEOUT_MS);
             // 查找超时的client类型session（断开连接超过5分钟）
-            const timeoutSessions = await SessionModel.coll.find({
+            const timeoutSessions = await RoomModel.coll.find({
                 type: 'client',
                 lastActivityAt: { $lt: timeoutThreshold },
             }).toArray();
@@ -194,5 +194,5 @@ export async function apply(ctx: Context) {
     }, 30000); // 每30秒检查一次
 }
 
-(global.Ejunz.model as any).session = SessionModel;
+(global.Ejunz.model as any).room = RoomModel;
 

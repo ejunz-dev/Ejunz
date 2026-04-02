@@ -1,16 +1,16 @@
 import { NamedPage } from 'vj/misc/Page';
 
-let sessionWebSocket: any = null;
-let sessionConnected = false;
-let sessionConnectPromise: Promise<void> | null = null;
-let currentSessionId: string | null = null;
+let roomWebSocket: any = null;
+let roomSocketConnected = false;
+let roomConnectPromise: Promise<void> | null = null;
+let currentRoomId: string | null = null;
 
 const page = new NamedPage('agent_chat', async () => {
   try {
   const UiContext = (window as any).UiContext;
   const domainId = UiContext?.domainId;
   const mode = UiContext?.mode || 'list';
-  const sessionId = UiContext?.sessionId || '';
+  const roomId = UiContext?.roomId || UiContext?.sessionId || '';
   const aid = UiContext?.aid;
   
   if (!domainId || !aid) {
@@ -54,43 +54,43 @@ const page = new NamedPage('agent_chat', async () => {
     }
   };
 
-  // Shared function definitions for connectToSession, sendMessage, etc. (must be defined before list mode)
-  const connectToSession = async (): Promise<void> => {
-    if (sessionConnected && sessionWebSocket) {
+  // Shared function definitions for connectToRoom, sendMessage, etc. (must be defined before list mode)
+  const connectToRoom = async (): Promise<void> => {
+    if (roomSocketConnected && roomWebSocket) {
       return;
     }
     
-    if (sessionConnectPromise) {
-      return sessionConnectPromise;
+    if (roomConnectPromise) {
+      return roomConnectPromise;
     }
     
-    sessionConnectPromise = new Promise<void>((resolve, reject) => {
-      const wsUrl = `agent-chat-session?domainId=${domainId}&aid=${urlAid}`;
+    roomConnectPromise = new Promise<void>((resolve, reject) => {
+      const wsUrl = `agent-chat-room?domainId=${domainId}&aid=${urlAid}`;
       
       let connectionTimeout: NodeJS.Timeout | null = null;
-      let sessionConnectedReceived = false;
+      let roomConnectedReceived = false;
       let wsOpened = false;
       
-      // Set timeout for receiving session_connected message (30 seconds after WebSocket opens)
-      const setSessionTimeout = () => {
+      // Set timeout for receiving room_connected message (30 seconds after WebSocket opens)
+      const setRoomTimeout = () => {
         if (connectionTimeout) {
           clearTimeout(connectionTimeout);
           connectionTimeout = null;
         }
         connectionTimeout = setTimeout(() => {
-          if (!sessionConnectedReceived) {
-            console.error('[AgentChat] Timeout waiting for session_connected message');
-            if (sessionWebSocket) {
+          if (!roomConnectedReceived) {
+            console.error('[AgentChat] Timeout waiting for room_connected message');
+            if (roomWebSocket) {
               try {
-                sessionWebSocket.close();
+                roomWebSocket.close();
               } catch (e) {
                 // ignore
               }
             }
-            sessionWebSocket = null;
-            sessionConnected = false;
-            sessionConnectPromise = null;
-            reject(new Error('Timeout waiting for session_connected message (30s)'));
+            roomWebSocket = null;
+            roomSocketConnected = false;
+            roomConnectPromise = null;
+            reject(new Error('Timeout waiting for room_connected message (30s)'));
           }
         }, 30000); // 30 seconds after WebSocket opens
       };
@@ -102,14 +102,14 @@ const page = new NamedPage('agent_chat', async () => {
           maxReconnectionDelay: 10000,
           maxRetries: 100,
         });
-        sessionWebSocket = sock;
-        sessionConnected = false;
+        roomWebSocket = sock;
+        roomSocketConnected = false;
         
         sock.onopen = () => {
           wsOpened = true;
-          console.log('[AgentChat] WebSocket opened, waiting for session_connected...');
+          console.log('[AgentChat] WebSocket opened, waiting for room_connected...');
           // Start timeout after WebSocket opens (not before)
-          setSessionTimeout();
+          setRoomTimeout();
         };
         
         sock.onmessage = (_, data: string) => {
@@ -144,13 +144,13 @@ const page = new NamedPage('agent_chat', async () => {
               timestamp: new Date().toISOString(),
             });
             
-            if (msg.type === 'session_connected') {
+            if (msg.type === 'room_connected') {
               if (connectionTimeout) {
                 clearTimeout(connectionTimeout);
                 connectionTimeout = null;
               }
-              sessionConnected = true;
-              sessionConnectedReceived = true;
+              roomSocketConnected = true;
+              roomConnectedReceived = true;
               console.log('[AgentChat] Session connected message received, connection ready');
               resolve();
             } else if (msg.type === 'message_start') {
@@ -180,15 +180,15 @@ const page = new NamedPage('agent_chat', async () => {
               handleRecordUpdate(msg);
             } else if (msg.type === 'error') {
               console.error('[AgentChat] Session error:', msg.error);
-              // If we haven't received session_connected yet, this is a connection error
-              if (!sessionConnectedReceived) {
+              // If we haven't received room_connected yet, this is a connection error
+              if (!roomConnectedReceived) {
                 if (connectionTimeout) {
                   clearTimeout(connectionTimeout);
                   connectionTimeout = null;
                 }
-                sessionWebSocket = null;
-                sessionConnected = false;
-                sessionConnectPromise = null;
+                roomWebSocket = null;
+                roomSocketConnected = false;
+                roomConnectPromise = null;
                 reject(new Error('Session error: ' + (msg.error || 'Unknown error')));
               }
             }
@@ -203,13 +203,13 @@ const page = new NamedPage('agent_chat', async () => {
             connectionTimeout = null;
           }
           console.log('[AgentChat] WebSocket session closed:', code, reason);
-          sessionWebSocket = null;
-          sessionConnected = false;
-          sessionConnectPromise = null;
+          roomWebSocket = null;
+          roomSocketConnected = false;
+          roomConnectPromise = null;
           
-          // If connection was closed before receiving session_connected, reject the promise
+          // If connection was closed before receiving room_connected, reject the promise
           // Code >= 4000 indicates an error (see socket component)
-          if (!sessionConnectedReceived) {
+          if (!roomConnectedReceived) {
             const errorMsg = code && code >= 4000 
               ? `WebSocket connection error: code=${code}, reason=${reason || 'unknown'}`
               : `WebSocket closed before session connected: code=${code}, reason=${reason || 'unknown'}`;
@@ -221,13 +221,13 @@ const page = new NamedPage('agent_chat', async () => {
           clearTimeout(connectionTimeout);
           connectionTimeout = null;
         }
-        sessionConnectPromise = null;
+        roomConnectPromise = null;
         console.error('[AgentChat] Failed to import WebSocket:', error);
         reject(error);
       });
     });
     
-    return sessionConnectPromise;
+    return roomConnectPromise;
   };
   
   let currentRecordId: string | null = null;
@@ -1075,11 +1075,11 @@ const page = new NamedPage('agent_chat', async () => {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
     
-    let loadingIndicator = document.getElementById('sessionLoadingIndicator');
+    let loadingIndicator = document.getElementById('roomLoadingIndicator');
     if (loading) {
       if (!loadingIndicator) {
         loadingIndicator = document.createElement('div');
-        loadingIndicator.id = 'sessionLoadingIndicator';
+        loadingIndicator.id = 'roomLoadingIndicator';
         loadingIndicator.style.cssText = 'text-align: center; padding: 20px; color: #666;';
         loadingIndicator.innerHTML = `
           <div style="display: inline-block;">
@@ -1103,14 +1103,14 @@ const page = new NamedPage('agent_chat', async () => {
   }
   
   // Update session list highlight state (immediate update, no API wait)
-  function updateSessionHighlight(sessionId: string | null) {
+  function updateRoomHighlight(activeRoomId: string | null) {
     const sessionListSidebar = document.getElementById('sessionListSidebar');
     if (!sessionListSidebar) return;
     
     const sessionItems = sessionListSidebar.querySelectorAll('.session-item-sidebar');
     sessionItems.forEach(item => {
-      const sid = item.getAttribute('data-session-id');
-      const isActive = sid === sessionId;
+      const sid = item.getAttribute('data-room-id');
+      const isActive = sid === activeRoomId;
       const element = item as HTMLElement;
       
       // Only set border highlight, don't change background color
@@ -1125,22 +1125,18 @@ const page = new NamedPage('agent_chat', async () => {
   }
   
   // Switch to specified session (no page refresh)
-  async function switchToSession(sessionId: string) {
+  async function switchToRoom(targetRoomId: string) {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
     
-    // If already the current session, do nothing
-    if (currentSessionId === sessionId) {
+    if (currentRoomId === targetRoomId) {
       return;
     }
     
-    // Immediately update highlight state (before loading, instant feedback)
-    updateSessionHighlight(sessionId);
+    updateRoomHighlight(targetRoomId);
     
-    // Save previous sessionId (for error recovery)
-    const previousSessionId = currentSessionId;
-    // Update currentSessionId (update early to avoid duplicate clicks)
-    currentSessionId = sessionId;
+    const previousRoomId = currentRoomId;
+    currentRoomId = targetRoomId;
     
     try {
       // Show loading state
@@ -1151,7 +1147,7 @@ const page = new NamedPage('agent_chat', async () => {
       setLoadingState(true, '正在加载会话历史...');
       
       // Fetch history records for this session
-      const response = await fetch(`/d/${domainId}/agent/${urlAid}/chat/session/${sessionId}/history`, {
+      const response = await fetch(`/d/${domainId}/agent/${urlAid}/chat/room/${targetRoomId}/history`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -1162,20 +1158,19 @@ const page = new NamedPage('agent_chat', async () => {
         console.error('[AgentChat] Failed to load session history:', response.status);
         setLoadingState(false);
         // If failed, fall back to page navigation
-        window.location.href = `/d/${domainId}/agent/${urlAid}/chat?sid=${sessionId}`;
+        window.location.href = `/d/${domainId}/agent/${urlAid}/chat?sid=${targetRoomId}`;
         return;
       }
       
       const data = await response.json();
       const recordHistory = data.recordHistory || [];
       
-      // Update URL (no page refresh)
-      const newUrl = `/d/${domainId}/agent/${urlAid}/chat?sid=${sessionId}`;
-      window.history.pushState({ mode: 'chat', sessionId: sessionId }, '', newUrl);
+      const newUrl = `/d/${domainId}/agent/${urlAid}/chat?sid=${targetRoomId}`;
+      window.history.pushState({ mode: 'chat', roomId: targetRoomId }, '', newUrl);
       
-      // Update sessionId in UiContext
       if (UiContext) {
-        UiContext.sessionId = sessionId;
+        UiContext.roomId = targetRoomId;
+        UiContext.sessionId = targetRoomId;
       }
       
       // Hide loading state
@@ -1250,36 +1245,33 @@ const page = new NamedPage('agent_chat', async () => {
       }
       
       // Update left sidebar session list (maintain highlight state)
-      await updateSessionListSidebar();
-      // Ensure highlight state is correct (updateSessionListSidebar regenerates HTML)
-      updateSessionHighlight(sessionId);
+      await updateRoomListSidebar();
+      updateRoomHighlight(targetRoomId);
       
       // Reconnect WebSocket (if needed)
-      if (sessionWebSocket) {
-        sessionWebSocket.close();
-        sessionConnected = false;
+      if (roomWebSocket) {
+        roomWebSocket.close();
+        roomSocketConnected = false;
       }
-      await connectToSession();
+      await connectToRoom();
       
     } catch (error: any) {
-      console.error('[AgentChat] Error switching session:', error);
+      console.error('[AgentChat] Error switching room:', error);
       setLoadingState(false);
-      // If error occurred, restore previous highlight state
-      currentSessionId = previousSessionId;
-      updateSessionHighlight(previousSessionId);
-      // If error occurred, fall back to page navigation
-      window.location.href = `/d/${domainId}/agent/${urlAid}/chat?sid=${sessionId}`;
+      currentRoomId = previousRoomId;
+      updateRoomHighlight(previousRoomId);
+      window.location.href = `/d/${domainId}/agent/${urlAid}/chat?sid=${targetRoomId}`;
     }
   }
   
   // Function to update session list sidebar (must be defined before sendMessage)
-  async function updateSessionListSidebar() {
+  async function updateRoomListSidebar() {
     const sessionListSidebar = document.getElementById('sessionListSidebar');
     if (!sessionListSidebar) return;
     
     try {
       // Fetch latest session list (JSON API)
-      const response = await fetch(`/d/${domainId}/agent/${urlAid}/chat/sessions`, {
+      const response = await fetch(`/d/${domainId}/agent/${urlAid}/chat/rooms`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -1292,31 +1284,30 @@ const page = new NamedPage('agent_chat', async () => {
       }
       
       const data = await response.json();
-      const sessions = data.sessions || [];
+      const rooms = data.rooms || data.sessions || [];
       
-      if (sessions.length === 0) {
-        sessionListSidebar.innerHTML = '<div class="typo"><p class="text-gray" style="font-size: 0.9em;">No sessions yet.</p></div>';
+      if (rooms.length === 0) {
+        sessionListSidebar.innerHTML = '<div class="typo"><p class="text-gray" style="font-size: 0.9em;">No rooms yet.</p></div>';
         return;
       }
       
-      // Build session list HTML
       let html = '<div class="session-list">';
-      for (const session of sessions) {
-        const sessionId = session._id;
-        const isActive = sessionId === currentSessionId;
-        const title = session.title || `Session ${sessionId.substring(0, 8)}`;
-        const recordCount = (session.recordIds || []).length;
+      for (const room of rooms) {
+        const itemRoomId = room._id;
+        const isActive = itemRoomId === currentRoomId;
+        const title = room.title || `Room ${itemRoomId.substring(0, 8)}`;
+        const recordCount = (room.recordIds || []).length;
         
         let lastMsgPreview = '';
-        if (session.lastRecord && session.lastRecord.agentMessages) {
-          const lastMsg = session.lastRecord.agentMessages[session.lastRecord.agentMessages.length - 1];
+        if (room.lastRecord && room.lastRecord.agentMessages) {
+          const lastMsg = room.lastRecord.agentMessages[room.lastRecord.agentMessages.length - 1];
           if (lastMsg && lastMsg.content) {
             const content = typeof lastMsg.content === 'string' ? lastMsg.content : JSON.stringify(lastMsg.content);
             lastMsgPreview = content.length > 60 ? content.substring(0, 60) + '...' : content;
           }
         }
         
-        const updatedAt = session.updatedAt || session._id;
+        const updatedAt = room.updatedAt || room._id;
         const updatedAtStr = new Date(updatedAt).toLocaleString('zh-CN', { 
           month: 'short', 
           day: 'numeric', 
@@ -1325,7 +1316,7 @@ const page = new NamedPage('agent_chat', async () => {
         });
         
         html += `
-          <div class="session-item-sidebar" data-session-id="${sessionId}" 
+          <div class="session-item-sidebar" data-room-id="${itemRoomId}" 
                style="border: 1px solid #ddd; border-radius: 4px; padding: 12px; margin-bottom: 8px; cursor: pointer; ${isActive ? 'border-color: #007bff; border-width: 2px;' : ''}">
             <div style="flex: 1;">
               <h4 style="margin: 0 0 5px 0; font-size: 0.95em; font-weight: 600;">${title}</h4>
@@ -1345,16 +1336,16 @@ const page = new NamedPage('agent_chat', async () => {
       // Rebind click events (no refresh switching)
       const sessionItems = sessionListSidebar.querySelectorAll('.session-item-sidebar');
       sessionItems.forEach(item => {
-        const sid = item.getAttribute('data-session-id');
+        const sid = item.getAttribute('data-room-id');
         if (sid) {
           item.addEventListener('click', async () => {
-            await switchToSession(sid);
+            await switchToRoom(sid);
             document.body.classList.remove('agent-chat-sidebar-open'); // close mobile drawer after select
           });
         }
       });
     } catch (error: any) {
-      console.error('[AgentChat] Error updating session list:', error);
+      console.error('[AgentChat] Error updating room list:', error);
     }
   }
   
@@ -3200,8 +3191,8 @@ const page = new NamedPage('agent_chat', async () => {
           assistantbubbleId: assistantBubbleId, // Send assistant bubbleId to backend (lowercase to match backend)
           history: [],
           createTaskRecord: true,
-          // If currentSessionId is null, don't pass sessionId, let backend create new session
-          ...(currentSessionId ? { sessionId: currentSessionId } : {}),
+          // If currentRoomId is null, don't pass sessionId, let backend create new session
+          ...(currentRoomId ? { roomId: currentRoomId } : {}),
         }),
       });
 
@@ -3214,7 +3205,7 @@ const page = new NamedPage('agent_chat', async () => {
 
       const responseData = await response.json();
       const taskRecordId = responseData.taskRecordId;
-      const newSessionId = responseData.sessionId;
+      const newRoomId = responseData.roomId ?? responseData.sessionId;
       
       if (!taskRecordId) {
         console.error('[AgentChat] Task created but record ID missing', responseData);
@@ -3223,38 +3214,36 @@ const page = new NamedPage('agent_chat', async () => {
         return;
       }
 
-      // If new sessionId is returned (auto-created on first message), update URL and sidebar
-      if (newSessionId && newSessionId !== currentSessionId) {
-        currentSessionId = newSessionId;
-        const newUrl = `/d/${domainId}/agent/${urlAid}/chat?sid=${newSessionId}`;
-        // Use pushState to update URL without page refresh (similar to DeepSeek behavior)
-        window.history.pushState({ mode: 'chat', sessionId: newSessionId }, '', newUrl);
-        // Update sessionId in UiContext
+      if (newRoomId && newRoomId !== currentRoomId) {
+        currentRoomId = newRoomId;
+        const newUrl = `/d/${domainId}/agent/${urlAid}/chat?sid=${newRoomId}`;
+        window.history.pushState({ mode: 'chat', roomId: newRoomId }, '', newUrl);
         if (UiContext) {
-          UiContext.sessionId = newSessionId;
+          UiContext.roomId = newRoomId;
+          UiContext.sessionId = newRoomId;
         }
         
         // Update left sidebar session list
-        await updateSessionListSidebar();
+        await updateRoomListSidebar();
       }
 
 
       // Ensure session is connected
       try {
-        await connectToSession();
+        await connectToRoom();
         
-        if (!sessionConnected || !sessionWebSocket) {
-          throw new Error('Session connection failed');
+        if (!roomSocketConnected || !roomWebSocket) {
+          throw new Error('Room connection failed');
         }
         
         // Subscribe to new record via session
-        sessionWebSocket.send(JSON.stringify({
+        roomWebSocket.send(JSON.stringify({
           type: 'subscribe_record',
           rid: taskRecordId,
         }));
       } catch (error: any) {
-        console.error('[AgentChat] Failed to connect to session or subscribe:', error);
-        addMessage('error', 'Failed to connect to session: ' + (error.message || String(error)));
+        console.error('[AgentChat] Failed to connect to room or subscribe:', error);
+        addMessage('error', 'Failed to connect to room: ' + (error.message || String(error)));
         setLoading(false);
       }
 
@@ -3286,7 +3275,7 @@ const page = new NamedPage('agent_chat', async () => {
         if (chatMode) {
           chatMode.style.display = 'block';
           // Reset sessionId, indicating this is a new session
-          currentSessionId = null;
+          currentRoomId = null;
           // Clear chat messages
           const chatMessages = document.getElementById('chatMessages');
           if (chatMessages) {
@@ -3307,7 +3296,7 @@ const page = new NamedPage('agent_chat', async () => {
     // Click session item: navigate to corresponding session URL
     sessionItems.forEach(item => {
       item.addEventListener('click', () => {
-        const sid = item.getAttribute('data-session-id');
+        const sid = item.getAttribute('data-room-id');
         if (sid) {
           window.location.href = `/d/${domainId}/agent/${urlAid}/chat?sid=${sid}`;
         }
@@ -3329,7 +3318,7 @@ const page = new NamedPage('agent_chat', async () => {
     }
     
     // Connect to session WebSocket
-    connectToSession().then(() => {
+    connectToRoom().then(() => {
     });
     
     // Set send button event (use one-time event to avoid duplicate binding)
@@ -3357,7 +3346,7 @@ const page = new NamedPage('agent_chat', async () => {
   
   // Show chat mode
   chatMode.style.display = 'block';
-  currentSessionId = sessionId || null;
+  currentRoomId = roomId || null;
   
   // Left sidebar plus button: clear chat box and create new session
   const newChatBtnSidebar = document.getElementById('newChatBtnSidebar');
@@ -3366,16 +3355,16 @@ const page = new NamedPage('agent_chat', async () => {
       // Clear chat messages
       chatMessages.innerHTML = '';
       // Reset sessionId, indicating this is a new session
-      currentSessionId = null;
+      currentRoomId = null;
       // Update URL, remove sid parameter
       const newUrl = `/d/${domainId}/agent/${urlAid}/chat`;
-      window.history.pushState({ mode: 'chat', sessionId: null }, '', newUrl);
-      // Update sessionId in UiContext
+      window.history.pushState({ mode: 'chat', roomId: null }, '', newUrl);
       if (UiContext) {
+        UiContext.roomId = '';
         UiContext.sessionId = '';
       }
       // Update left sidebar session list (remove current session highlight)
-      updateSessionListSidebar();
+      updateRoomListSidebar();
     });
   }
 
@@ -3434,9 +3423,9 @@ const page = new NamedPage('agent_chat', async () => {
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
-  // Use shared connectToSession function (already defined in list mode)
+  // Use shared connectToRoom function (already defined in list mode)
   try {
-  await connectToSession();
+  await connectToRoom();
   } catch (error: any) {
     console.error('[AgentChat] Failed to connect to session during initialization:', error);
     // Don't block page loading if connection fails
@@ -3454,12 +3443,12 @@ const page = new NamedPage('agent_chat', async () => {
   // Bind click events for initially rendered session items (if in template)
   const initialSessionItems = document.querySelectorAll('.session-item-sidebar');
   initialSessionItems.forEach(item => {
-    const sid = item.getAttribute('data-session-id');
+    const sid = item.getAttribute('data-room-id');
     if (sid) {
       item.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        await switchToSession(sid);
+        await switchToRoom(sid);
         closeMobileSidebar(); // on mobile, close drawer after selecting session
       });
     }
@@ -3469,16 +3458,17 @@ const page = new NamedPage('agent_chat', async () => {
   window.addEventListener('popstate', async (event) => {
     const urlParams = new URLSearchParams(window.location.search);
     const sid = urlParams.get('sid');
-    if (sid && sid !== currentSessionId) {
-      await switchToSession(sid);
-    } else if (!sid && currentSessionId) {
+    if (sid && sid !== currentRoomId) {
+      await switchToRoom(sid);
+    } else if (!sid && currentRoomId) {
       // If no sid in URL, clear chat box
-      currentSessionId = null;
+      currentRoomId = null;
       chatMessages.innerHTML = '';
       if (UiContext) {
+        UiContext.roomId = '';
         UiContext.sessionId = '';
       }
-      await updateSessionListSidebar();
+      await updateRoomListSidebar();
     }
   });
 

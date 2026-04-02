@@ -6,10 +6,10 @@
   <div class="medium-9 columns collapsed">
     <div class="section">
       <div class="section__header">
-        <h1 class="section__title">{{ session.title or ('Session ' + session._id.toString().substring(0, 8)) }}</h1>
+        <h1 class="section__title">{{ room.title or ('Room ' + room._id.toString().substring(0, 8)) }}</h1>
         <div class="section__tools">
-          <a href="{{ url('session_domain', domainId=session.domainId) }}" class="button">
-            <span class="icon icon-back"></span> {{ _('Back to Sessions') }}
+          <a href="{{ url('room_domain', domainId=room.domainId) }}" class="button">
+            <span class="icon icon-back"></span> {{ _('Back to Rooms') }}
           </a>
         </div>
       </div>
@@ -102,7 +102,7 @@
           </div>
         {% else %}
           <div class="typo">
-            <p class="text-gray">{{ _('No records in this session.') }}</p>
+            <p class="text-gray">{{ _('No records in this room.') }}</p>
           </div>
         {% endif %}
       </div>
@@ -115,13 +115,13 @@
       </div>
       <div class="section__body typo no-media">
         <dl class="large horizontal">
-          <dt>{{ _('Session ID') }}</dt>
-          <dd><code>{{ session._id.toString() }}</code></dd>
+          <dt>{{ _('Room ID') }}</dt>
+          <dd><code>{{ room._id.toString() }}</code></dd>
           <dt>{{ _('Agent') }}</dt>
           <dd>
-            {% if session.agentId %}
-              <a href="{{ url('agent_detail', domainId=session.domainId, aid=session.agentId) }}">
-                {{ session.agentId }}
+            {% if room.agentId %}
+              <a href="{{ url('agent_detail', domainId=room.domainId, aid=room.agentId) }}">
+                {{ room.agentId }}
               </a>
             {% else %}
               <span class="text-gray">-</span>
@@ -129,45 +129,45 @@
           </dd>
           <dt>{{ _('Records') }}</dt>
           <dd>
-            <span class="badge">{{ (session.recordIds|length) if session.recordIds else 0 }}</span>
+            <span class="badge">{{ (room.recordIds|length) if room.recordIds else 0 }}</span>
           </dd>
           <dt>{{ _('Created At') }}</dt>
-          <dd>{{ datetimeSpan(session.createdAt, false)|safe if session.createdAt else datetimeSpan(session._id, false)|safe }}</dd>
+          <dd>{{ datetimeSpan(room.createdAt, false)|safe if room.createdAt else datetimeSpan(room._id, false)|safe }}</dd>
           <dt>{{ _('Updated At') }}</dt>
-          <dd>{{ datetimeSpan(session.updatedAt, false)|safe if session.updatedAt else '-' }}</dd>
+          <dd>{{ datetimeSpan(room.updatedAt, false)|safe if room.updatedAt else '-' }}</dd>
         </dl>
       </div>
     </div>
-    {% if session.type == 'client' and session.status == 'active' %}
+    {% if room.type == 'client' and room.status == 'active' %}
       <div class="section side">
         <div class="section__header">
           <h1 class="section__title">{{ _('Actions') }}</h1>
         </div>
         <div class="section__body">
-          <a href="{{ url('session_chat', domainId=session.domainId, sid=session._id) }}" class="button primary" style="width: 100%; text-align: center;">
+          <a href="{{ url('room_chat', domainId=room.domainId, sid=room._id) }}" class="button primary" style="width: 100%; text-align: center;">
             <span class="icon icon-comment"></span> {{ _('Enter Chat') }}
           </a>
         </div>
       </div>
     {% endif %}
-    {% if session.uid == handler.user._id %}
+    {% if room.uid == handler.user._id %}
       <div class="section side">
         <div class="section__header">
           <h1 class="section__title">{{ _('Actions') }}</h1>
         </div>
         <div class="section__body">
-          <form method="post" action="{{ url('session_detail', domainId=session.domainId, sid=session._id) }}">
+          <form method="post" action="{{ url('room_detail', domainId=room.domainId, sid=room._id) }}">
             <div class="form__group">
               <label>
                 {{ _('Title') }}
-                <input name="title" type="text" class="textbox" value="{{ session.title or '' }}" placeholder="{{ _('Session title') }}">
+                <input name="title" type="text" class="textbox" value="{{ room.title or '' }}" placeholder="{{ _('Room title') }}">
               </label>
             </div>
             <button type="submit" class="button primary">{{ _('Update Title') }}</button>
           </form>
-          <form method="post" action="{{ url('session_detail', domainId=session.domainId, sid=session._id) }}" style="margin-top: 15px;" onsubmit="return confirm('{{ _('Are you sure you want to delete this session?') }}');">
+          <form method="post" action="{{ url('room_detail', domainId=room.domainId, sid=room._id) }}" style="margin-top: 15px;" onsubmit="return confirm('{{ _('Are you sure you want to delete this room?') }}');">
             <input type="hidden" name="operation" value="delete">
-            <button type="submit" name="operation" value="delete" class="button danger">{{ _('Delete Session') }}</button>
+            <button type="submit" name="operation" value="delete" class="button danger">{{ _('Delete Room') }}</button>
           </form>
         </div>
       </div>

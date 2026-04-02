@@ -1079,6 +1079,14 @@ Send Verification Email: 发送验证邮件
 Send: 发送
 Service Status: 服务状态
 session_domain: 会话
+room_domain: 房间
+Rooms: 房间
+Back to Rooms: 返回房间列表
+Back to Room: 返回房间
+Room ID: 房间 ID
+Room title: 房间标题
+Delete Room: 删除房间
+Client Room Chat: 客户端房间对话
 session_main: 会话
 Set Role: 设置角色
 Set Roles for Selected User: 设置所选用户的角色

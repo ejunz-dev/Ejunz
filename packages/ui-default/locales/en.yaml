@@ -674,6 +674,14 @@ scene_create: Create Scene
 scene_detail: Scene Detail
 scene_domain: Scene
 session_domain: Session
+room_domain: Rooms
+Rooms: Rooms
+Back to Rooms: Back to Rooms
+Back to Room: Back to Room
+Room ID: Room ID
+Room title: Room title
+Delete Room: Delete Room
+Client Room Chat: Client Room Chat
 session_main: Session
 setting_customize: Customize
 setting_display: Display Preference
