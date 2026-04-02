@@ -102,8 +102,23 @@ function UserLearnPage() {
   };
 
   const entryDomainId = domainId || (domainTasks[0]?.domainId ?? '');
-  const startLearnUrl = entryDomainId ? `/d/${entryDomainId}/learn/lesson?allDomains=1` : '#';
   const taskPageUrl = uid != null && entryDomainId ? `/d/${entryDomainId}/user/${uid}/task` : '#';
+
+  const handleStartAllDomains = useCallback(async (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!entryDomainId) return;
+    try {
+      const res: any = await request.post(`/d/${entryDomainId}/learn/lesson/start`, {
+        mode: 'allDomains',
+        entryDomainId,
+      });
+      const redir = res?.redirect ?? res?.body?.redirect ?? res?.data?.redirect;
+      window.location.href = redir || `/d/${entryDomainId}/learn/lesson`;
+    } catch (err) {
+      console.error(err);
+      Notification.error(i18n('Failed to start') || '启动失败');
+    }
+  }, [entryDomainId]);
 
   const progressPct = summary.totalDailyGoal > 0
     ? Math.min(100, Math.round((summary.totalTodayCompleted / summary.totalDailyGoal) * 100))
@@ -331,7 +346,8 @@ function UserLearnPage() {
             </div>
           ) : (
             <a
-              href={startLearnUrl}
+              href="#"
+              onClick={handleStartAllDomains}
               style={{
                 display: 'flex',
                 alignItems: 'center',

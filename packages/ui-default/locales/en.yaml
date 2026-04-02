@@ -673,7 +673,15 @@ Role: Role
 scene_create: Create Scene
 scene_detail: Scene Detail
 scene_domain: Scene
-session_domain: Session
+session_domain: Learn live
+session_learn_list_title: Learn sessions (live)
+session_learn_empty: No recent learn activity in this domain.
+session_learn_empty_filter: No sessions match the filter.
+session_active_minutes: List users active within the last N minutes
+session_col_branch: Branch
+session_col_position: Card / node
+session_col_route: Route
+session_last_activity: Last activity
 room_domain: Rooms
 Rooms: Rooms
 Back to Rooms: Back to Rooms

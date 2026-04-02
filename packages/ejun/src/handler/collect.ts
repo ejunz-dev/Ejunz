@@ -5,6 +5,8 @@ import type { BaseDoc, BaseNode, BaseEdge, CardDoc } from '../interface';
 import * as document from '../model/document';
 import domain from '../model/domain';
 import learn, { type LearnDAGNode } from '../model/learn';
+import SessionModel from '../model/session';
+import { mergeDomainLessonState, touchLessonSession } from '../lib/lessonSession';
 import { PERM, PRIV } from '../model/builtin';
 import { BadRequestError, NotFoundError, ValidationError } from '../error';
 import { MethodNotAllowedError } from '@ejunz/framework';
@@ -661,6 +663,10 @@ class CollectLessonHandler extends Handler {
             throw new NotFoundError('Base not found for this domain');
         }
 
+        const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+        const sdocLesson = await SessionModel.get(finalDomainId, this.user._id);
+        const L = mergeDomainLessonState(dudoc, sdocLesson);
+
         const queryCardId = this.request.query?.cardId;
         const queryNodeId = this.request.query?.nodeId as string | undefined;
         const queryToday = this.request.query?.today === '1' || this.request.query?.today === 'true';
@@ -671,10 +677,9 @@ class CollectLessonHandler extends Handler {
         }
 
         if (!queryCardId && !queryNodeId && !queryToday) {
-            const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-            const lessonMode = dudoc?.lessonMode;
-            const lessonCardIndex = typeof dudoc?.lessonCardIndex === 'number' ? dudoc.lessonCardIndex : 0;
-            const lessonNodeId = dudoc?.lessonNodeId as string | undefined;
+            const lessonMode = L.lessonMode;
+            const lessonCardIndex = L.lessonCardIndex;
+            const lessonNodeId = L.lessonNodeId;
             if (lessonMode === 'allDomains') {
                 this.response.redirect = `/d/${finalDomainId}/collect/lesson?allDomains=1&cardIndex=${Math.max(0, lessonCardIndex)}`;
                 return;
@@ -711,16 +716,15 @@ class CollectLessonHandler extends Handler {
             }
 
             const queryReviewCardId = (this.request.query?.reviewCardId as string) || '';
-            await learn.setUserLearnState(finalDomainId, this.user._id, {
+            const lessonReviewCardIds = [...L.lessonReviewCardIds];
+            const lessonCardTimesMs = [...L.lessonCardTimesMs];
+            await touchLessonSession(finalDomainId, this.user._id, {
+                appRoute: 'collect',
+                route: 'collect',
                 lessonMode: null,
-                lessonNodeId: null,
-                lessonCardIndex: 0,
-                lessonUpdatedAt: new Date(),
-            });
-
-            const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-            const lessonReviewCardIds = Array.isArray(dudoc?.lessonReviewCardIds) ? dudoc.lessonReviewCardIds : [];
-            const lessonCardTimesMs = Array.isArray(dudoc?.lessonCardTimesMs) ? dudoc.lessonCardTimesMs : [];
+                nodeId: null,
+                cardIndex: null,
+            }, { silent: true });
 
             const nodeForResponse = node || { id: card.nodeId || '', title: '', text: '' };
             const cards = node
@@ -813,9 +817,8 @@ class CollectLessonHandler extends Handler {
             const cardIndexParam = this.request.query?.cardIndex;
             let currentCardIndex = typeof cardIndexParam === 'string' ? parseInt(cardIndexParam, 10) : NaN;
             if (Number.isNaN(currentCardIndex) || currentCardIndex < 0) {
-                const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-                if (dudoc?.lessonMode === 'node' && dudoc?.lessonNodeId === queryNodeId && typeof dudoc?.lessonCardIndex === 'number') {
-                    currentCardIndex = Math.max(0, dudoc.lessonCardIndex);
+                if (L.lessonMode === 'node' && L.lessonNodeId === queryNodeId) {
+                    currentCardIndex = Math.max(0, L.lessonCardIndex);
                 } else {
                     currentCardIndex = 0;
                 }
@@ -836,21 +839,21 @@ class CollectLessonHandler extends Handler {
                     currentItem = fromReview;
                     currentCardIndex = flatCards.findIndex(c => c.cardId === reviewCardId);
                     const dudocReview = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-                    const reviewIds: string[] = Array.isArray(dudocReview?.lessonReviewCardIds) ? dudocReview.lessonReviewCardIds : [];
+                    const sReview = await SessionModel.get(finalDomainId, this.user._id);
+                    const Rv = mergeDomainLessonState(dudocReview, sReview);
+                    const reviewIds: string[] = [...Rv.lessonReviewCardIds];
                     lessonReviewCardIds = reviewIds.filter(id => id !== reviewCardId);
-                    lessonCardTimesMs = Array.isArray(dudocReview?.lessonCardTimesMs) ? dudocReview.lessonCardTimesMs : [];
-                    await learn.setUserLearnState(finalDomainId, this.user._id, { lessonReviewCardIds, lessonUpdatedAt: new Date() });
+                    lessonCardTimesMs = [...Rv.lessonCardTimesMs];
+                    await touchLessonSession(finalDomainId, this.user._id, { appRoute: 'collect', lessonReviewCardIds, lessonCardTimesMs }, { silent: true });
                 } else {
                     currentItem = flatCards[currentCardIndex];
-                    const dudocReview = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-                    lessonReviewCardIds = Array.isArray(dudocReview?.lessonReviewCardIds) ? dudocReview.lessonReviewCardIds : [];
-                    lessonCardTimesMs = Array.isArray(dudocReview?.lessonCardTimesMs) ? dudocReview.lessonCardTimesMs : [];
+                    lessonReviewCardIds = [...L.lessonReviewCardIds];
+                    lessonCardTimesMs = [...L.lessonCardTimesMs];
                 }
             } else {
                 currentItem = flatCards[currentCardIndex];
-                const dudocReview = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-                lessonReviewCardIds = Array.isArray(dudocReview?.lessonReviewCardIds) ? dudocReview.lessonReviewCardIds : [];
-                lessonCardTimesMs = Array.isArray(dudocReview?.lessonCardTimesMs) ? dudocReview.lessonCardTimesMs : [];
+                lessonReviewCardIds = [...L.lessonReviewCardIds];
+                lessonCardTimesMs = [...L.lessonCardTimesMs];
             }
 
             const currentCard = await CardModel.get(finalDomainId, new ObjectId(currentItem.cardId));
@@ -860,12 +863,15 @@ class CollectLessonHandler extends Handler {
             const currentCardList = await CardModel.getByNodeId(finalDomainId, base.docId, currentItem.nodeId);
             const currentIndexInNode = currentCardList.findIndex(c => c.docId.toString() === currentItem.cardId);
 
-            await learn.setUserLearnState(finalDomainId, this.user._id, {
+            await touchLessonSession(finalDomainId, this.user._id, {
+                appRoute: 'collect',
+                route: 'collect',
                 lessonMode: 'node',
-                lessonNodeId: queryNodeId,
-                lessonCardIndex: currentCardIndex,
-                lessonUpdatedAt: new Date(),
-            });
+                nodeId: queryNodeId,
+                cardIndex: currentCardIndex,
+                baseDocId: base.docId,
+                branch: 'main',
+            }, { silent: true });
 
             this.response.template = 'collect_lesson.html';
             this.response.body = {
@@ -917,10 +923,12 @@ class CollectLessonHandler extends Handler {
                 allDagNodes = existingDAG!.dag || [];
             }
 
-            const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv });
-            const savedSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
-            const savedSectionId = (dudoc as any)?.currentLearnSectionId;
-            const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
+            const dudocToday = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv });
+            const sToday = await SessionModel.get(finalDomainId, this.user._id);
+            const LT = mergeDomainLessonState(dudocToday as any, sToday);
+            const savedSectionIndex = LT.currentLearnSectionIndex;
+            const savedSectionId = LT.currentLearnSectionId;
+            const learnSectionOrder = (dudocToday as any)?.learnSectionOrder;
             sections = applyUserSectionOrder(sections, learnSectionOrder);
 
             let finalSectionId: string | null = null;
@@ -981,7 +989,7 @@ class CollectLessonHandler extends Handler {
                     cardsWithProblems.push(item);
                 }
             }
-            const dailyGoalToday = Math.max(0, getModeDailyGoal(dudoc as any, 'collect'));
+            const dailyGoalToday = Math.max(0, getModeDailyGoal(dudocToday as any, 'collect'));
             const cardsForToday = dailyGoalToday > 0 ? cycleList(cardsWithProblems, dailyGoalToday) : cardsWithProblems;
 
             if (cardsForToday.length === 0) {
@@ -989,20 +997,27 @@ class CollectLessonHandler extends Handler {
                     await learn.setUserLearnState(finalDomainId, this.user._id, {
                         currentLearnSectionIndex: currentSectionIndex + 1,
                         currentLearnSectionId: sections[currentSectionIndex + 1]._id,
-                        lessonMode: 'today',
-                        lessonNodeId: null,
-                        lessonCardIndex: 0,
                         lessonUpdatedAt: new Date(),
                     });
+                    await touchLessonSession(finalDomainId, this.user._id, {
+                        appRoute: 'collect',
+                        currentLearnSectionIndex: currentSectionIndex + 1,
+                        currentLearnSectionId: sections[currentSectionIndex + 1]._id,
+                        lessonMode: 'today',
+                        nodeId: null,
+                        cardIndex: 0,
+                        baseDocId: base.docId,
+                        branch: 'main',
+                    }, { silent: true });
                     this.response.redirect = `/d/${finalDomainId}/collect/lesson?today=1`;
                     return;
                 }
-                await learn.setUserLearnState(finalDomainId, this.user._id, {
+                await touchLessonSession(finalDomainId, this.user._id, {
+                    appRoute: 'collect',
                     lessonMode: null,
-                    lessonNodeId: null,
-                    lessonCardIndex: 0,
-                    lessonUpdatedAt: new Date(),
-                });
+                    nodeId: null,
+                    cardIndex: null,
+                }, { silent: true });
                 this.response.redirect = this.url('collect', { domainId: finalDomainId });
                 return;
             }
@@ -1010,8 +1025,8 @@ class CollectLessonHandler extends Handler {
             const cardIndexParam = this.request.query?.cardIndex;
             let currentCardIndex = typeof cardIndexParam === 'string' ? parseInt(cardIndexParam, 10) : NaN;
             if (Number.isNaN(currentCardIndex) || currentCardIndex < 0) {
-                if ((dudoc as any)?.lessonMode === 'today' && typeof (dudoc as any)?.lessonCardIndex === 'number') {
-                    currentCardIndex = Math.max(0, (dudoc as any).lessonCardIndex);
+                if (LT.lessonMode === 'today') {
+                    currentCardIndex = Math.max(0, LT.lessonCardIndex);
                 } else {
                     currentCardIndex = 0;
                 }
@@ -1028,12 +1043,15 @@ class CollectLessonHandler extends Handler {
             const currentCardList = await CardModel.getByNodeId(finalDomainId, base.docId, currentItem.nodeId);
             const currentIndexInNode = currentCardList.findIndex(c => c.docId.toString() === currentItem.cardId);
 
-            await learn.setUserLearnState(finalDomainId, this.user._id, {
+            await touchLessonSession(finalDomainId, this.user._id, {
+                appRoute: 'collect',
+                route: 'collect',
                 lessonMode: 'today',
-                lessonNodeId: null,
-                lessonCardIndex: currentCardIndex,
-                lessonUpdatedAt: new Date(),
-            });
+                nodeId: null,
+                cardIndex: currentCardIndex,
+                baseDocId: base.docId,
+                branch: 'main',
+            }, { silent: true });
 
             const todayNodeTree = [{
                 type: 'node' as const,
@@ -1097,10 +1115,12 @@ class CollectLessonHandler extends Handler {
             allDagNodes = existingDAG.dag || [];
         }
 
-        const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv });
-        const savedSectionIndex = (dudoc as any)?.currentLearnSectionIndex;
-        const savedSectionId = (dudoc as any)?.currentLearnSectionId;
-        const learnSectionOrder = (dudoc as any)?.learnSectionOrder;
+        const dudocMain = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv });
+        const sdocMain = await SessionModel.get(finalDomainId, this.user._id);
+        const Lm = mergeDomainLessonState(dudocMain as any, sdocMain);
+        const savedSectionIndex = Lm.currentLearnSectionIndex;
+        const savedSectionId = Lm.currentLearnSectionId;
+        const learnSectionOrder = (dudocMain as any)?.learnSectionOrder;
         sections = applyUserSectionOrder(sections, learnSectionOrder);
         
         let finalSectionId: string | null = null;
@@ -1113,10 +1133,20 @@ class CollectLessonHandler extends Handler {
             finalSectionId = savedSectionId;
             currentSectionIndex = idx >= 0 ? idx : 0;
             await learn.setUserLearnState(finalDomainId, this.user._id, { currentLearnSectionIndex: currentSectionIndex });
+            await touchLessonSession(finalDomainId, this.user._id, {
+                appRoute: 'collect',
+                currentLearnSectionIndex: currentSectionIndex,
+                currentLearnSectionId: savedSectionId ?? undefined,
+            }, { silent: true });
         } else if (sections.length > 0) {
             finalSectionId = sections[0]._id;
             currentSectionIndex = 0;
             await learn.setUserLearnState(finalDomainId, this.user._id, { currentLearnSectionId: finalSectionId, currentLearnSectionIndex: 0 });
+            await touchLessonSession(finalDomainId, this.user._id, {
+                appRoute: 'collect',
+                currentLearnSectionIndex: 0,
+                currentLearnSectionId: finalSectionId,
+            }, { silent: true });
         }
 
         let dag: LearnDAGNode[] = [];
@@ -1175,6 +1205,11 @@ class CollectLessonHandler extends Handler {
                 const nextIndex = currentSectionIndex + 1;
                 const nextSectionId = sections[nextIndex]._id;
                 await learn.setUserLearnState(finalDomainId, this.user._id, { currentLearnSectionIndex: nextIndex, currentLearnSectionId: nextSectionId });
+                await touchLessonSession(finalDomainId, this.user._id, {
+                    appRoute: 'collect',
+                    currentLearnSectionIndex: nextIndex,
+                    currentLearnSectionId: nextSectionId,
+                }, { silent: true });
                 this.response.redirect = this.url('collect', { domainId: finalDomainId });
                 return;
             }
@@ -1347,14 +1382,21 @@ class CollectLessonHandler extends Handler {
         let currentCardIndex = typeof cardIndexParam === 'string' ? parseInt(cardIndexParam, 10) : NaN;
         if (Number.isNaN(currentCardIndex) || currentCardIndex < 0) {
             const dudocEntry = await learn.getUserLearnState(entryDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-            if ((dudocEntry as any)?.lessonMode === 'allDomains' && typeof (dudocEntry as any)?.lessonCardIndex === 'number') {
-                currentCardIndex = Math.max(0, (dudocEntry as any).lessonCardIndex);
+            const sEntry = await SessionModel.get(entryDomainId, this.user._id);
+            const Le = mergeDomainLessonState(dudocEntry, sEntry);
+            if (Le.lessonMode === 'allDomains') {
+                currentCardIndex = Math.max(0, Le.lessonCardIndex);
             } else {
                 currentCardIndex = 0;
             }
         }
         if (allDomainsFlatCards.length === 0) {
-            await learn.setUserLearnState(entryDomainId, this.user._id, { lessonMode: null, lessonCardIndex: 0, lessonUpdatedAt: new Date() });
+            await touchLessonSession(entryDomainId, this.user._id, {
+                appRoute: 'collect',
+                lessonMode: null,
+                cardIndex: null,
+                allDomainsEntryDomainId: null,
+            }, { silent: true });
             this.response.redirect = this.url('user_learn', { uid: this.user._id });
             return;
         }
@@ -1378,12 +1420,14 @@ class CollectLessonHandler extends Handler {
         const currentCardList = await CardModel.getByNodeId(currentDomainId, baseCurrent.docId, currentItem.nodeId);
         const currentIndexInNode = currentCardList.findIndex((c: any) => c.docId.toString() === currentItem.cardId);
 
-        await learn.setUserLearnState(entryDomainId, this.user._id, {
+        await touchLessonSession(entryDomainId, this.user._id, {
+            appRoute: 'collect',
+            route: 'collect',
             lessonMode: 'allDomains',
-            lessonNodeId: null,
-            lessonCardIndex: currentCardIndex,
-            lessonUpdatedAt: new Date(),
-        });
+            nodeId: null,
+            cardIndex: currentCardIndex,
+            allDomainsEntryDomainId: entryDomainId,
+        }, { silent: true });
 
         const allDomainsNodeTree = domainTasks.map((d) => {
             const domainCards = allDomainsFlatCards.filter((c) => c.domainId === d.domainId);
@@ -1404,8 +1448,10 @@ class CollectLessonHandler extends Handler {
         }));
 
         const dudocCurrent = await learn.getUserLearnState(currentDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-        const lessonReviewCardIds = Array.isArray(dudocCurrent?.lessonReviewCardIds) ? dudocCurrent.lessonReviewCardIds : [];
-        const lessonCardTimesMs = Array.isArray(dudocCurrent?.lessonCardTimesMs) ? dudocCurrent.lessonCardTimesMs : [];
+        const sCurrent = await SessionModel.get(currentDomainId, this.user._id);
+        const Lcur = mergeDomainLessonState(dudocCurrent, sCurrent);
+        const lessonReviewCardIds = [...Lcur.lessonReviewCardIds];
+        const lessonCardTimesMs = [...Lcur.lessonCardTimesMs];
 
         this.response.template = 'collect_lesson.html';
         this.response.body = {
@@ -1462,9 +1508,11 @@ class CollectLessonHandler extends Handler {
 
         if (noImpression) {
             const dudocPass = await learn.getUserLearnState(currentCardDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-            const reviewIds: string[] = Array.isArray(dudocPass?.lessonReviewCardIds) ? [...dudocPass.lessonReviewCardIds] : [];
+            const sPass = await SessionModel.get(currentCardDomainId, this.user._id);
+            const Lp = mergeDomainLessonState(dudocPass, sPass);
+            const reviewIds: string[] = [...Lp.lessonReviewCardIds];
             if (!reviewIds.includes(currentCardId.toString())) reviewIds.push(currentCardId.toString());
-            await learn.setUserLearnState(currentCardDomainId, this.user._id, { lessonReviewCardIds: reviewIds, lessonUpdatedAt: new Date() });
+            await touchLessonSession(currentCardDomainId, this.user._id, { appRoute: 'collect', lessonReviewCardIds: reviewIds }, { silent: true });
         } else {
             await learn.setCardPassed(currentCardDomainId, this.user._id, currentCardId, currentCardNodeId);
             const score = answerHistory.length * 5;
@@ -1653,17 +1701,19 @@ class CollectLessonHandler extends Handler {
             const currentCardNodeId = card.nodeId;
             const totalTimeMs = (typeof totalTime === 'number' && totalTime >= 0) ? totalTime : 0;
             const dudocPass = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-            const timesMs: number[] = Array.isArray(dudocPass?.lessonCardTimesMs) ? [...dudocPass.lessonCardTimesMs] : [];
-            const isReviewCard = Array.isArray(dudocPass?.lessonReviewCardIds) && dudocPass.lessonReviewCardIds.includes(currentCardId.toString());
+            const sPassN = await SessionModel.get(finalDomainId, this.user._id);
+            const Lpn = mergeDomainLessonState(dudocPass, sPassN);
+            const timesMs: number[] = [...Lpn.lessonCardTimesMs];
+            const isReviewCard = Lpn.lessonReviewCardIds.includes(currentCardId.toString());
             if (isReviewCard && cardIndexFromBody >= 0 && cardIndexFromBody < timesMs.length) {
                 timesMs[cardIndexFromBody] = (timesMs[cardIndexFromBody] ?? 0) + totalTimeMs;
             } else {
                 timesMs.push(totalTimeMs);
             }
             if (noImpression) {
-                const reviewIds: string[] = Array.isArray(dudocPass?.lessonReviewCardIds) ? [...dudocPass.lessonReviewCardIds] : [];
+                const reviewIds: string[] = [...Lpn.lessonReviewCardIds];
                 if (!reviewIds.includes(currentCardId.toString())) reviewIds.push(currentCardId.toString());
-                await learn.setUserLearnState(finalDomainId, this.user._id, { lessonReviewCardIds: reviewIds, lessonCardTimesMs: timesMs, lessonUpdatedAt: new Date() });
+                await touchLessonSession(finalDomainId, this.user._id, { appRoute: 'collect', lessonReviewCardIds: reviewIds, lessonCardTimesMs: timesMs }, { silent: true });
             } else if (answerHistory.length > 0) {
                 await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId);
                 const score = answerHistory.length * 5;
@@ -1685,9 +1735,8 @@ class CollectLessonHandler extends Handler {
                 }
                 const timeToAdd = (totalTime && typeof totalTime === 'number' && totalTime > 0) ? totalTime : 0;
                 await learn.incConsumptionStats(finalDomainId, this.user._id, today, { nodes: 1, cards: 1, problems: problemCount, practices: 1, ...(timeToAdd > 0 ? { totalTime: timeToAdd } : {}) });
-                const reviewIdsPass: string[] = Array.isArray(dudocPass?.lessonReviewCardIds) ? dudocPass.lessonReviewCardIds : [];
-                const nextReviewIds = reviewIdsPass.filter(id => id !== currentCardId.toString());
-                await learn.setUserLearnState(finalDomainId, this.user._id, { lessonReviewCardIds: nextReviewIds, lessonCardTimesMs: timesMs, lessonUpdatedAt: new Date() });
+                const nextReviewIds = Lpn.lessonReviewCardIds.filter(id => id !== currentCardId.toString());
+                await touchLessonSession(finalDomainId, this.user._id, { appRoute: 'collect', lessonReviewCardIds: nextReviewIds, lessonCardTimesMs: timesMs }, { silent: true });
             } else {
                 // 卡片 view「Know it」：无题目时当作判断题通过，记 pass 并写入 result（不跳 result 页，走下方下一张 / node-result）
                 await learn.setCardPassed(finalDomainId, this.user._id, currentCardId, currentCardNodeId);
@@ -1705,27 +1754,28 @@ class CollectLessonHandler extends Handler {
                 await appendUserCheckinDay(finalDomainId, this.user._id, this.user.priv, 'collectActivityDates');
                 const timeToAdd = (totalTime && typeof totalTime === 'number' && totalTime > 0) ? totalTime : 0;
                 await learn.incConsumptionStats(finalDomainId, this.user._id, moment.utc().format('YYYY-MM-DD'), { nodes: 1, cards: 1, problems: 1, practices: 1, ...(timeToAdd > 0 ? { totalTime: timeToAdd } : {}) });
-                const reviewIdsKnow: string[] = Array.isArray(dudocPass?.lessonReviewCardIds) ? dudocPass.lessonReviewCardIds : [];
-                const nextReviewIdsKnow = reviewIdsKnow.filter(id => id !== currentCardId.toString());
-                await learn.setUserLearnState(finalDomainId, this.user._id, { lessonReviewCardIds: nextReviewIdsKnow, lessonCardTimesMs: timesMs, lessonUpdatedAt: new Date() });
+                const nextReviewIdsKnow = Lpn.lessonReviewCardIds.filter(id => id !== currentCardId.toString());
+                await touchLessonSession(finalDomainId, this.user._id, { appRoute: 'collect', lessonReviewCardIds: nextReviewIdsKnow, lessonCardTimesMs: timesMs }, { silent: true });
             }
             const nextIndex = cardIndexFromBody + 1;
             if (nextIndex < flatCardsRaw.length) {
                 this.response.body = { success: true, redirect: `/d/${finalDomainId}/collect/lesson?nodeId=${encodeURIComponent(nodeIdFromBody)}&cardIndex=${nextIndex}` };
                 return;
             }
-            const dudoc2 = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-            const reviewIds2: string[] = Array.isArray(dudoc2?.lessonReviewCardIds) ? dudoc2.lessonReviewCardIds : [];
+            const dudoc2n = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+            const s2n = await SessionModel.get(finalDomainId, this.user._id);
+            const L2n = mergeDomainLessonState(dudoc2n, s2n);
+            const reviewIds2: string[] = [...L2n.lessonReviewCardIds];
             if (reviewIds2.length > 0) {
                 this.response.body = { success: true, redirect: `/d/${finalDomainId}/collect/lesson?nodeId=${encodeURIComponent(nodeIdFromBody)}&reviewCardId=${encodeURIComponent(reviewIds2[0])}` };
             } else {
-                await learn.setUserLearnState(finalDomainId, this.user._id, {
+                await touchLessonSession(finalDomainId, this.user._id, {
+                    appRoute: 'collect',
                     lessonMode: null,
-                    lessonNodeId: null,
-                    lessonCardIndex: 0,
+                    nodeId: null,
+                    cardIndex: null,
                     lessonCardTimesMs: [],
-                    lessonUpdatedAt: new Date(),
-                });
+                }, { silent: true });
                 this.response.body = { success: true, redirect: `/d/${finalDomainId}/collect/lesson/node-result?nodeId=${encodeURIComponent(nodeIdFromBody)}` };
             }
             return;
@@ -1767,8 +1817,10 @@ class CollectLessonHandler extends Handler {
             allDagNodes = existingDAG.dag || [];
         }
 
-        const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv });
-        const savedSectionId = (dudoc as any)?.currentLearnSectionId;
+        const dudocPost = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv });
+        const sPost = await SessionModel.get(finalDomainId, this.user._id);
+        const Lpost = mergeDomainLessonState(dudocPost as any, sPost);
+        const savedSectionId = Lpost.currentLearnSectionId;
         
         let finalSectionId: string | null = null;
         if (savedSectionId && sections.find(s => s._id === savedSectionId)) {
@@ -1862,12 +1914,14 @@ class CollectLessonHandler extends Handler {
 
         // 单卡片「不认识」：与 node 一致——不记 result、加入复习列表，并重定向回同一张卡（复习滚动）
         if (isBrowseOnly && noImpressionBody) {
-            const dudoc = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-            const reviewIds: string[] = Array.isArray(dudoc?.lessonReviewCardIds) ? [...dudoc.lessonReviewCardIds] : [];
+            const dudocBrowse = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
+            const sBrowse = await SessionModel.get(finalDomainId, this.user._id);
+            const Lb = mergeDomainLessonState(dudocBrowse, sBrowse);
+            const reviewIds: string[] = [...Lb.lessonReviewCardIds];
             if (!reviewIds.includes(currentCardId!.toString())) reviewIds.push(currentCardId!.toString());
-            const timesMs: number[] = Array.isArray(dudoc?.lessonCardTimesMs) ? [...dudoc.lessonCardTimesMs] : [];
+            const timesMs: number[] = [...Lb.lessonCardTimesMs];
             timesMs.push(typeof totalTime === 'number' && totalTime >= 0 ? totalTime : 0);
-            await learn.setUserLearnState(finalDomainId, this.user._id, { lessonReviewCardIds: reviewIds, lessonCardTimesMs: timesMs, lessonUpdatedAt: new Date() });
+            await touchLessonSession(finalDomainId, this.user._id, { appRoute: 'collect', lessonReviewCardIds: reviewIds, lessonCardTimesMs: timesMs }, { silent: true });
             const cardIdStr = currentCardId!.toString();
             this.response.body = { success: true, redirect: `/d/${finalDomainId}/collect/lesson?cardId=${cardIdStr}&reviewCardId=${encodeURIComponent(cardIdStr)}` };
             return;
@@ -1918,10 +1972,12 @@ class CollectLessonHandler extends Handler {
         // 单卡片「认识」后：若该卡在复习列表中则移除（与 node 一致）
         if (isAlonePractice) {
             const dudocAfter = await learn.getUserLearnState(finalDomainId, { _id: this.user._id, priv: this.user.priv }) as any;
-            const reviewIdsAfter: string[] = Array.isArray(dudocAfter?.lessonReviewCardIds) ? dudocAfter.lessonReviewCardIds : [];
+            const sAfter = await SessionModel.get(finalDomainId, this.user._id);
+            const Lafter = mergeDomainLessonState(dudocAfter, sAfter);
+            const reviewIdsAfter: string[] = [...Lafter.lessonReviewCardIds];
             const nextReviewIds = reviewIdsAfter.filter(id => id !== currentCardId!.toString());
             if (nextReviewIds.length !== reviewIdsAfter.length) {
-                await learn.setUserLearnState(finalDomainId, this.user._id, { lessonReviewCardIds: nextReviewIds, lessonUpdatedAt: new Date() });
+                await touchLessonSession(finalDomainId, this.user._id, { appRoute: 'collect', lessonReviewCardIds: nextReviewIds }, { silent: true });
             }
         }
 
