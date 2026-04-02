@@ -7,8 +7,8 @@
   {{ set(UiContext, 'mode', mode|default('list')) }}
   {{ set(UiContext, 'roomId', roomId|default('')) }}
   {{ set(UiContext, 'sessionId', roomId|default('')) }}
-  {% if recordHistory is defined %}
-  {{ set(UiContext, 'recordHistory', recordHistory) }}
+  {% if roundHistory is defined %}
+  {{ set(UiContext, 'roundHistory', roundHistory) }}
   {% endif %}
 </script>
 
@@ -41,14 +41,14 @@
                 <h4 style="margin: 0 0 5px 0; font-size: 0.95em; font-weight: 600;">
                   {{ room.title or ('Room ' + room._id.toString().substring(0, 8)) }}
                 </h4>
-                {% if room.lastRecord and room.lastRecord.agentMessages %}
-                  {% set lastMsg = room.lastRecord.agentMessages[room.lastRecord.agentMessages.length - 1] %}
+                {% if room.lastRound and room.lastRound.agentMessages %}
+                  {% set lastMsg = room.lastRound.agentMessages[room.lastRound.agentMessages.length - 1] %}
                   <p style="margin: 5px 0; color: #666; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                     {{ lastMsg.content|truncate(60) }}
                   </p>
                 {% endif %}
                 <div style="font-size: 0.8em; color: #999; margin-top: 5px;">
-                  <span>{{ (room.recordIds|length) if room.recordIds else 0 }} {{ _('records') }}</span>
+                  <span>{{ (room.roundIds|length) if room.roundIds else 0 }} {{ _('rounds') }}</span>
                   <span style="margin-left: 8px;">{{ datetimeSpan(room.updatedAt, false)|safe if room.updatedAt else datetimeSpan(room._id, false)|safe }}</span>
                 </div>
               </div>
@@ -107,14 +107,14 @@
                   <h3 style="margin: 0 0 5px 0; font-size: 1.1em;">
                     {{ room.title or ('Room ' + room._id.toString().substring(0, 8)) }}
                   </h3>
-                  {% if room.lastRecord and room.lastRecord.agentMessages %}
-                    {% set lastMsg = room.lastRecord.agentMessages[room.lastRecord.agentMessages.length - 1] %}
+                  {% if room.lastRound and room.lastRound.agentMessages %}
+                    {% set lastMsg = room.lastRound.agentMessages[room.lastRound.agentMessages.length - 1] %}
                     <p style="margin: 5px 0; color: #666; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                       {{ lastMsg.content|truncate(100) }}
                     </p>
                   {% endif %}
                   <div style="font-size: 0.85em; color: #999; margin-top: 5px;">
-                    <span>{{ (room.recordIds|length) if room.recordIds else 0 }} {{ _('records') }}</span>
+                    <span>{{ (room.roundIds|length) if room.roundIds else 0 }} {{ _('rounds') }}</span>
                     <span style="margin-left: 10px;">{{ datetimeSpan(room.updatedAt, false)|safe if room.updatedAt else datetimeSpan(room._id, false)|safe }}</span>
                   </div>
                 </div>

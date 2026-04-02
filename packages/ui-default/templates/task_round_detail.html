@@ -2,9 +2,9 @@
 {% import "components/agent.html" as agent with context %}
 {% extends "layout/basic.html" %}
 {% block content %}
-{% set r = record %}
+{% set r = round %}
 {% if typeof(r['status']) === 'number' and r.status in [STATUS.STATUS_TASK_WAITING, STATUS.STATUS_TASK_FETCHED, STATUS.STATUS_TASK_PROCESSING, STATUS.STATUS_TASK_PENDING] %}
-  {{ set(UiContext, 'socketUrl', "task-record-detail-conn?domainId=" + r.domainId + "&rid=" + r._id) }}
+  {{ set(UiContext, 'socketUrl', "task-round-detail-conn?domainId=" + r.domainId + "&rid=" + r._id) }}
 {% endif %}
 <div class="row">
   <div class="medium-9 columns collapsed">
@@ -13,11 +13,11 @@
         <h1 class="section__title">{{ _('Agent Task Record') }}</h1>
         <div class="section__tools">
           {% if adoc %}
-          <a href="{{ url('agent_chat', domainId=r.domainId, aid=adoc.aid, query={'recordId': r._id.toString()}) }}" class="button">
+          <a href="{{ url('agent_chat', domainId=r.domainId, aid=adoc.aid, query={'roundId': r._id.toString()}) }}" class="button">
             <span class="icon icon-comment"></span> {{ _('Continue Chat') }}
           </a>
           {% endif %}
-          <a href="{{ url('task_record_main', domainId=r.domainId) }}" class="button">
+          <a href="{{ url('task_round_main', domainId=r.domainId) }}" class="button">
             <span class="icon icon-back"></span> {{ _('Back to Records') }}
           </a>
         </div>

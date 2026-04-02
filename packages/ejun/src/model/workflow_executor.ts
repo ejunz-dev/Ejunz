@@ -343,14 +343,15 @@ export class WorkflowExecutor {
             undefined,
         );
 
-        const recordModel = require('./record').default;
-        const taskRecordId = await recordModel.addTask(
+        const roundModel = require('./round').default;
+        const taskRoundId = await roundModel.addTask(
             context.domainId,
             agentId,
             0, // workflow 执行使用系统用户
             prompt,
             roomId,
         );
+        await RoomModel.addRound(context.domainId, roomId, taskRoundId);
 
         const contextData = {
             apiKey: (domainInfo as any)['apiKey'] || '',
@@ -376,7 +377,7 @@ export class WorkflowExecutor {
         const taskModel = require('./task').default;
         const taskData = {
             type: 'task',
-            recordId: taskRecordId,
+            roundId: taskRoundId,
             roomId,
             domainId: context.domainId,
             agentId: agentId,
@@ -396,13 +397,13 @@ export class WorkflowExecutor {
         };
         logger.info(`Creating task for workflow:`, {
             type: taskData.type,
-            recordId: taskRecordId.toString(),
+            roundId: taskRoundId.toString(),
             agentId,
             domainId: context.domainId,
             workflowConfig: taskData.workflowConfig,
         });
         const taskId = await taskModel.add(taskData);
-        logger.info(`Task created successfully: taskId=${taskId.toString()}, recordId=${taskRecordId.toString()}, agentId=${agentId}`);
+        logger.info(`Task created successfully: taskId=${taskId.toString()}, roundId=${taskRoundId.toString()}, agentId=${agentId}`);
 
         // 等待任务完成
         return new Promise((resolve, reject) => {
@@ -416,14 +417,13 @@ export class WorkflowExecutor {
             let resolved = false;
 
             const STATUS = require('./builtin').STATUS;
-            const recordModel = require('./record').default;
 
             // 检查任务是否完成的函数
             const checkTaskComplete = async (rdoc: any) => {
                 if (resolved) return;
                 
                 const status = rdoc.status;
-                logger.info(`Checking task status: ${status} for record ${rdoc._id.toString()}`);
+                logger.info(`Checking task status: ${status} for round ${rdoc._id.toString()}`);
                 
                 // 只检查最终状态：DELIVERED 或错误状态
                 const isComplete = status === STATUS.STATUS_TASK_DELIVERED 
@@ -442,17 +442,16 @@ export class WorkflowExecutor {
                     dispose();
                     clearInterval(pollInterval);
 
-                    // 重新从数据库获取完整的 record，确保所有字段都存在
-                    const fullRecord = await recordModel.get(context.domainId, taskRecordId);
-                    if (!fullRecord) {
-                        logger.error(`Record ${taskRecordId.toString()} not found`);
-                        reject(new Error(`Record not found: ${taskRecordId.toString()}`));
+                    const fullRound = await roundModel.get(context.domainId, taskRoundId);
+                    if (!fullRound) {
+                        logger.error(`Round ${taskRoundId.toString()} not found`);
+                        reject(new Error(`Round not found: ${taskRoundId.toString()}`));
                         return;
                     }
 
                     // 获取最终消息
-                    if (fullRecord.agentMessages && fullRecord.agentMessages.length > 0) {
-                        const assistantMessages = fullRecord.agentMessages.filter((m: any) => m.role === 'assistant');
+                    if (fullRound.agentMessages && fullRound.agentMessages.length > 0) {
+                        const assistantMessages = fullRound.agentMessages.filter((m: any) => m.role === 'assistant');
                         if (assistantMessages.length > 0) {
                             finalContent = assistantMessages[assistantMessages.length - 1].content || '';
                         }
@@ -492,8 +491,8 @@ export class WorkflowExecutor {
 
             // 监听任务完成事件
             const handler = async (rdoc: any) => {
-                if (rdoc._id.toString() === taskRecordId.toString()) {
-                    logger.info(`Record change event received for task ${taskRecordId.toString()}, status: ${rdoc.status}`);
+                if (rdoc._id.toString() === taskRoundId.toString()) {
+                    logger.info(`Round change event received for task ${taskRoundId.toString()}, status: ${rdoc.status}`);
                     await checkTaskComplete(rdoc);
                 }
             };
@@ -505,7 +504,7 @@ export class WorkflowExecutor {
                     return;
                 }
                 try {
-                    const rdoc = await recordModel.get(context.domainId, taskRecordId);
+                    const rdoc = await roundModel.get(context.domainId, taskRoundId);
                     if (rdoc) {
                         await checkTaskComplete(rdoc);
                     }
@@ -515,10 +514,10 @@ export class WorkflowExecutor {
             }, 2000);
 
             // 使用 ctx.on 来监听事件，它会返回一个 dispose 函数
-            const dispose = this.ctx.on('record/change' as any, handler);
+            const dispose = this.ctx.on('round/change' as any, handler);
             
             // 立即检查一次当前状态
-            recordModel.get(context.domainId, taskRecordId).then(rdoc => {
+            roundModel.get(context.domainId, taskRoundId).then(rdoc => {
                 if (rdoc) {
                     checkTaskComplete(rdoc);
                 }

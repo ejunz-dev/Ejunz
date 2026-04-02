@@ -2,7 +2,7 @@
 {% block content %}
 {{ set(
   UiContext, 'socketUrl',
-  "task-record-conn?domainId=" + handler.args.domainId
+  "task-round-conn?domainId=" + handler.args.domainId
   + (("&aid=" + filterAid) if filterAid else "")
   + (("&uidOrName=" + filterUidOrName) if filterUidOrName else "")
   + (("&status=" + filterStatus) if filterStatus else "")
@@ -16,7 +16,7 @@
           <h1 class="section__title">{{ _('Filter') }}</h1>
           <div class="section__tools">
             <button type="submit" class="primary button"><span class="icon icon-filter"></span> {{ _('Filter') }}</button>
-            <a href="{{ url('task_record_main') }}" class="button">{{ _('Reset') }}</a>
+            <a href="{{ url('task_round_main') }}" class="button">{{ _('Reset') }}</a>
           </div>
         </div>
         <div class="section__body">
@@ -84,7 +84,7 @@
           {%- for record in records -%}
             {% set udoc = udict[record['uid']] %}
             {% set adoc = adict[record['agentId']] if record['agentId'] else null %}
-            {% include 'task_record_main_tr.html' %}
+            {% include 'task_round_main_tr.html' %}
           {%- endfor -%}
           </tbody>
         </table>

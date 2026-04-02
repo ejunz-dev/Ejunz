@@ -2,7 +2,6 @@ import { Context } from '../context';
 import { PRIV } from '../model/builtin';
 import * as DocumentModel from '../model/document';
 import DomainModel from '../model/domain';
-import RecordModel from '../model/record';
 import * as SettingModel from '../model/setting';
 import UserModel from '../model/user';
 import db from '../service/db';

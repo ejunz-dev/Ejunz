@@ -22,7 +22,7 @@
               <div class="section" style="margin-bottom: 20px; border: 1px solid #ddd; border-radius: 4px; padding: 15px;">
                 <div class="section__header">
                   <h3 class="section__title">
-                    <a href="{{ url('task_record_detail', domainId=r.domainId, rid=r._id) }}">
+                    <a href="{{ url('task_round_detail', domainId=r.domainId, rid=r._id) }}">
                       {{ _('Record') }} #{{ loop.index }}
                     </a>
                     {% if r.status == STATUS.STATUS_TASK_WAITING %}
@@ -42,7 +42,7 @@
                     {% endif %}
                   </h3>
                   <div class="section__tools">
-                    <a href="{{ url('task_record_detail', domainId=r.domainId, rid=r._id) }}" class="button compact">
+                    <a href="{{ url('task_round_detail', domainId=r.domainId, rid=r._id) }}" class="button compact">
                       <span class="icon icon-eye"></span> {{ _('View Details') }}
                     </a>
                   </div>
@@ -129,7 +129,7 @@
           </dd>
           <dt>{{ _('Records') }}</dt>
           <dd>
-            <span class="badge">{{ (room.recordIds|length) if room.recordIds else 0 }}</span>
+            <span class="badge">{{ (room.roundIds|length) if room.roundIds else 0 }}</span>
           </dd>
           <dt>{{ _('Created At') }}</dt>
           <dd>{{ datetimeSpan(room.createdAt, false)|safe if room.createdAt else datetimeSpan(room._id, false)|safe }}</dd>

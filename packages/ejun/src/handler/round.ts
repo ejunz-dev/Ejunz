@@ -4,11 +4,11 @@ import {
 import { Filter, ObjectId } from 'mongodb';
 import {
     PermissionError,
-    RecordNotFoundError, UserNotFoundError, NotFoundError,
+    RoundNotFoundError, UserNotFoundError, NotFoundError,
 } from '../error';
-import { RecordDoc } from '../interface';
+import { RoundDoc } from '../interface';
 import { PERM, PRIV, STATUS } from '../model/builtin';
-import record from '../model/record';
+import round from '../model/round';
 import system from '../model/system';
 import TaskModel from '../model/task';
 import user from '../model/user';
@@ -18,7 +18,7 @@ import {
 } from '../service/server';
 import { buildProjection } from '../utils';
 
-class RecordListHandler extends Handler {
+class RoundListHandler extends Handler {
     @param('page', Types.PositiveInt, true)
     @param('uidOrName', Types.UidOrName, true)
     @param('status', Types.String, true)
@@ -32,8 +32,8 @@ class RecordListHandler extends Handler {
         full = false,
         all = false, allDomain = false,
     ) {
-        this.response.template = 'record_main.html';
-        const q: Filter<RecordDoc> = {};
+        this.response.template = 'round_main.html';
+        const q: Filter<RoundDoc> = {};
         // 只查询 task record（通过 agentId 存在来识别）
         (q as any).agentId = { $exists: true, $ne: null };
         
@@ -90,8 +90,8 @@ class RecordListHandler extends Handler {
         if (allDomain) {
             this.checkPerm(PERM.PERM_VIEW_RECORD);
         }
-        let cursor = record.getMulti(allDomain ? '' : domainId, q).sort('_id', -1);
-        if (!full) cursor = cursor.project(buildProjection(record.PROJECTION_LIST));
+        let cursor = round.getMulti(allDomain ? '' : domainId, q).sort('_id', -1);
+        if (!full) cursor = cursor.project(buildProjection(round.PROJECTION_LIST));
         const limit = full ? 10 : system.get('pagination.record');
         const rdocs = await cursor.skip((page - 1) * limit).limit(limit).toArray();
         
@@ -130,18 +130,18 @@ class RecordListHandler extends Handler {
     }
 }
 
-class RecordDetailHandler extends Handler {
-    rdoc: RecordDoc;
+class RoundDetailHandler extends Handler {
+    rdoc: RoundDoc;
 
     @param('rid', Types.ObjectId)
     async prepare(domainId: string, rid: ObjectId) {
         // 验证 rid 是有效的 ObjectId 格式（24 个十六进制字符），避免匹配静态资源文件
         const ridStr = rid.toString();
         if (!/^[0-9a-fA-F]{24}$/.test(ridStr)) {
-            throw new RecordNotFoundError(rid);
+            throw new RoundNotFoundError(rid);
         }
-        this.rdoc = await record.get(domainId, rid);
-        if (!this.rdoc) throw new RecordNotFoundError(rid);
+        this.rdoc = await round.get(domainId, rid);
+        if (!this.rdoc) throw new RoundNotFoundError(rid);
         if (this.rdoc.uid !== this.user._id) this.checkPerm(PERM.PERM_VIEW_RECORD);
     }
 
@@ -167,7 +167,7 @@ class RecordDetailHandler extends Handler {
             }
         }
         
-        this.response.template = 'record_detail.html';
+        this.response.template = 'round_detail.html';
         this.response.body = {
             udoc, rdoc, rev, allRevs, adoc,
         };
@@ -175,7 +175,7 @@ class RecordDetailHandler extends Handler {
 
 }
 
-class RecordMainConnectionHandler extends ConnectionHandler {
+class RoundMainConnectionHandler extends ConnectionHandler {
     all = false;
     allDomain = false;
     uid: number;
@@ -289,13 +289,13 @@ class RecordMainConnectionHandler extends ConnectionHandler {
     async message(msg: { rids: string[] }) {
         if (!(msg.rids instanceof Array)) return;
         const rids = msg.rids.map((id) => new ObjectId(id));
-        const rdocs = await record.getMulti(this.args.domainId, { _id: { $in: rids } })
-            .project<RecordDoc>(buildProjection(record.PROJECTION_LIST)).toArray();
-        for (const rdoc of rdocs) this.onRecordChange(rdoc);
+        const rdocs = await round.getMulti(this.args.domainId, { _id: { $in: rids } })
+            .project<RoundDoc>(buildProjection(round.PROJECTION_LIST)).toArray();
+        for (const rdoc of rdocs) this.onRoundChange(rdoc);
     }
 
-    @subscribe('record/change')
-    async onRecordChange(rdoc: RecordDoc) {
+    @subscribe('round/change')
+    async onRoundChange(rdoc: RoundDoc) {
         const r = rdoc as any;
         
         // 只处理 task 记录（通过 agentId 存在来识别）
@@ -326,7 +326,7 @@ class RecordMainConnectionHandler extends ConnectionHandler {
             this.queueSend(r._id.toHexString(), async () => ({ rdoc }));
         } else {
             this.queueSend(r._id.toHexString(), async () => ({
-                html: await this.renderHTML('task_record_main_tr.html', {
+                html: await this.renderHTML('task_round_main_tr.html', {
                     rdoc, udoc, adoc, r, allDomain: this.allDomain,
                 }),
             }));
@@ -348,7 +348,7 @@ class RecordMainConnectionHandler extends ConnectionHandler {
     }
 }
 
-class RecordDetailConnectionHandler extends ConnectionHandler {
+class RoundDetailConnectionHandler extends ConnectionHandler {
     rid: string = '';
     disconnectTimeout: NodeJS.Timeout;
     throttleSend: any;
@@ -357,29 +357,29 @@ class RecordDetailConnectionHandler extends ConnectionHandler {
     @param('rid', Types.ObjectId)
     @param('noTemplate', Types.Boolean, true)
     async prepare(domainId: string, rid: ObjectId, noTemplate = false) {
-        const rdoc = await record.get(domainId, rid);
+        const rdoc = await round.get(domainId, rid);
         if (!rdoc) return;
         this.noTemplate = noTemplate;
         this.throttleSend = throttle(this.sendUpdate, 1000, { trailing: true });
         this.rid = rid.toString();
-        this.onRecordChange(rdoc);
+        this.onRoundChange(rdoc);
     }
 
-    async sendUpdate(rdoc: RecordDoc) {
+    async sendUpdate(rdoc: RoundDoc) {
         if (this.noTemplate) {
             this.send({ rdoc });
         } else {
             this.send({
                 status: rdoc.status,
-                status_html: await this.renderHTML('record_detail_status.html', { rdoc }),
-                summary_html: await this.renderHTML('record_detail_summary.html', { rdoc }),
+                status_html: await this.renderHTML('round_detail_status.html', { rdoc }),
+                summary_html: await this.renderHTML('round_detail_summary.html', { rdoc }),
             });
         }
     }
 
-    @subscribe('record/change')
+    @subscribe('round/change')
     // eslint-disable-next-line
-    async onRecordChange(rdoc: RecordDoc, $set?: any, $push?: any) {
+    async onRoundChange(rdoc: RoundDoc, $set?: any, $push?: any) {
         if (rdoc._id.toString() !== this.rid) return;
         if (this.disconnectTimeout) {
             clearTimeout(this.disconnectTimeout);
@@ -393,7 +393,7 @@ class RecordDetailConnectionHandler extends ConnectionHandler {
 }
 
 // Task record handlers
-class TaskRecordListHandler extends Handler {
+class TaskRoundListHandler extends Handler {
     @param('page', Types.PositiveInt, true)
     @param('aid', Types.String, true)
     @param('uidOrName', Types.UidOrName, true)
@@ -405,8 +405,8 @@ class TaskRecordListHandler extends Handler {
         uidOrName?: string,
         status?: string,
     ) {
-        this.response.template = 'task_record_main.html';
-        const q: Filter<RecordDoc> = {
+        this.response.template = 'task_round_main.html';
+        const q: Filter<RoundDoc> = {
             agentId: { $exists: true, $ne: null },
         } as any;
         
@@ -458,9 +458,9 @@ class TaskRecordListHandler extends Handler {
         }
         
         const limit = system.get('pagination.record');
-        const cursor = record.getMulti(domainId, q)
+        const cursor = round.getMulti(domainId, q)
             .sort('_id', -1)
-            .project(buildProjection(record.PROJECTION_LIST));
+            .project(buildProjection(round.PROJECTION_LIST));
         
         const records = await cursor.skip((page - 1) * limit).limit(limit).toArray();
         
@@ -490,17 +490,17 @@ class TaskRecordListHandler extends Handler {
     }
 }
 
-class TaskRecordDetailHandler extends Handler {
-    record: RecordDoc;
+class TaskRoundDetailHandler extends Handler {
+    round: RoundDoc;
 
     @param('rid', Types.ObjectId)
     async prepare(domainId: string, rid: ObjectId) {
-        this.record = await record.get(domainId, rid);
-        if (!this.record) throw new NotFoundError('Task record not found');
-        const rdoc = this.record as any;
+        this.round = await round.get(domainId, rid);
+        if (!this.round) throw new NotFoundError('Task round not found');
+        const rdoc = this.round as any;
         // 通过 agentId 存在来识别 task 记录
         if (!rdoc.agentId) {
-            throw new NotFoundError('Task record not found');
+            throw new NotFoundError('Task round not found');
         }
         if (rdoc.uid !== this.user._id) {
             this.checkPerm(PERM.PERM_VIEW_RECORD);
@@ -509,23 +509,23 @@ class TaskRecordDetailHandler extends Handler {
 
     @param('rid', Types.ObjectId)
     async get(domainId: string, rid: ObjectId) {
-        const rdoc = this.record as any;
+        const rdoc = this.round as any;
         const agentId = rdoc.agentId;
         const [adoc, udoc] = await Promise.all([
             agentId ? Agent.get(domainId, agentId).catch(() => null) : Promise.resolve(null),
             user.getById(domainId, rdoc.uid),
         ]);
         
-        this.response.template = 'task_record_detail.html';
+        this.response.template = 'task_round_detail.html';
         this.response.body = {
-            record: this.record,
+            round: this.round,
             adoc,
             udoc,
         };
     }
 }
 
-class TaskRecordMainConnectionHandler extends ConnectionHandler {
+class TaskRoundMainConnectionHandler extends ConnectionHandler {
     aid?: string;
     uid?: number;
     status?: string;
@@ -587,16 +587,16 @@ class TaskRecordMainConnectionHandler extends ConnectionHandler {
     async message(msg: { rids: string[] }) {
         if (!(msg.rids instanceof Array)) return;
         const rids = msg.rids.map((id) => new ObjectId(id));
-        const rdocs = await record.getMulti(this.args.domainId, { 
+        const rdocs = await round.getMulti(this.args.domainId, { 
             _id: { $in: rids },
             agentId: { $exists: true, $ne: null },
         })
-            .project<RecordDoc>(buildProjection(record.PROJECTION_LIST)).toArray();
-        for (const rdoc of rdocs) this.onRecordChange(rdoc);
+            .project<RoundDoc>(buildProjection(round.PROJECTION_LIST)).toArray();
+        for (const rdoc of rdocs) this.onRoundChange(rdoc);
     }
 
-    @subscribe('record/change')
-    async onRecordChange(rdoc: RecordDoc) {
+    @subscribe('round/change')
+    async onRoundChange(rdoc: RoundDoc) {
         const r = rdoc as any;
         if (r.domainId !== this.args.domainId) return;
         if (!r.agentId) return;
@@ -637,7 +637,7 @@ class TaskRecordMainConnectionHandler extends ConnectionHandler {
                     agentId ? Agent.get(this.args.domainId, agentId).catch(() => null) : Promise.resolve(null),
                 ]);
                 return {
-                    html: await this.renderHTML('task_record_main_tr.html', {
+                    html: await this.renderHTML('task_round_main_tr.html', {
                         r, udoc, adoc,
                     }),
                 };
@@ -660,12 +660,12 @@ class TaskRecordMainConnectionHandler extends ConnectionHandler {
     }
 }
 
-class TaskRecordDetailConnectionHandler extends ConnectionHandler {
+class TaskRoundDetailConnectionHandler extends ConnectionHandler {
     rid: string = '';
 
     @param('rid', Types.ObjectId)
     async prepare(domainId: string, rid: ObjectId) {
-        const rdoc = await record.get(domainId, rid);
+        const rdoc = await round.get(domainId, rid);
         if (!rdoc) return;
         const r = rdoc as any;
         // 通过 agentId 存在来识别 task 记录
@@ -674,11 +674,11 @@ class TaskRecordDetailConnectionHandler extends ConnectionHandler {
             this.checkPerm(PERM.PERM_VIEW_RECORD);
         }
         this.rid = rid.toString();
-        this.onRecordChange(rdoc);
+        this.onRoundChange(rdoc);
     }
 
-    @subscribe('record/change')
-    async onRecordChange(rdoc: RecordDoc) {
+    @subscribe('round/change')
+    async onRoundChange(rdoc: RoundDoc) {
         const r = rdoc as any;
         if (r._id.toString() !== this.rid) return;
         // 通过 agentId 存在来识别 task 记录
@@ -691,7 +691,7 @@ class TaskRecordDetailConnectionHandler extends ConnectionHandler {
         ]);
 
         this.send({
-            record: rdoc,
+            round: rdoc,
             adoc,
             udoc,
         });
@@ -699,12 +699,12 @@ class TaskRecordDetailConnectionHandler extends ConnectionHandler {
 }
 
 export async function apply(ctx) {
-    ctx.Route('record_main', '/record', RecordListHandler);
-    ctx.Route('record_detail', '/record/:rid', RecordDetailHandler);
-    ctx.Connection('record_conn', '/record-conn', RecordMainConnectionHandler);
-    ctx.Connection('record_detail_conn', '/record-detail-conn', RecordDetailConnectionHandler);
-    ctx.Route('task_record_main', '/task-record', RecordListHandler);
-    ctx.Route('task_record_detail', '/task-record/:rid', RecordDetailHandler);
-    ctx.Connection('task_record_conn', '/task-record-conn', TaskRecordMainConnectionHandler);
-    ctx.Connection('task_record_detail_conn', '/task-record-detail-conn', TaskRecordDetailConnectionHandler);
+    ctx.Route('round_main', '/round', RoundListHandler);
+    ctx.Route('round_detail', '/round/:rid', RoundDetailHandler);
+    ctx.Connection('round_conn', '/round-conn', RoundMainConnectionHandler);
+    ctx.Connection('round_detail_conn', '/round-detail-conn', RoundDetailConnectionHandler);
+    ctx.Route('task_round_main', '/task-round', TaskRoundListHandler);
+    ctx.Route('task_round_detail', '/task-round/:rid', TaskRoundDetailHandler);
+    ctx.Connection('task_round_conn', '/task-round-conn', TaskRoundMainConnectionHandler);
+    ctx.Connection('task_round_detail_conn', '/task-round-detail-conn', TaskRoundDetailConnectionHandler);
 }

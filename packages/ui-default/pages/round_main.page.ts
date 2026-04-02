@@ -6,7 +6,7 @@ import { getAvailableLangs, request, tpl } from 'vj/utils';
 
 let globalSock: any = null;
 
-const page = new NamedPage(['record_main', 'task_record_main'], async () => {
+const page = new NamedPage(['round_main', 'task_round_main'], async () => {
   const cleanupOldConnection = () => {
     if (globalSock) {
       try {
