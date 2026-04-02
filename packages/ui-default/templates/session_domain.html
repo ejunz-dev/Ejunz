@@ -1,0 +1,101 @@
+{% set page_name = "session_domain" %}
+{% extends "layout/basic.html" %}
+{% block content %}
+{{ set(
+  UiContext, 'socketUrl',
+  "session-conn?domainId=" + handler.args.domainId
+  + (("&uidOrName=" + sessionConnUidOrName) if sessionConnUidOrName else "")
+  + (("&minutes=" + (filterMinutes|string)) if filterMinutes else "")
+) }}
+{{ set(UiContext, 'sessionUids', sessions.map(eval("s=>s.uid"))) }}
+<div class="row">
+  <div class="medium-12 columns">
+    <form method="get">
+      <div class="section">
+        <div class="section__header">
+          <h1 class="section__title">{{ _('Filter') }}</h1>
+          <div class="section__tools">
+            <button type="submit" class="primary button"><span class="icon icon-filter"></span> {{ _('Filter') }}</button>
+            <a href="{{ url('session_domain') }}" class="button">{{ _('Reset') }}</a>
+          </div>
+        </div>
+        <div class="section__body">
+          <div class="row">
+            <div class="medium-4 columns">
+              <label class="filter-user">
+                {{ _('By Username / UID') }}
+                <input name="uidOrName" type="text" class="textbox" value="{{ filterUidOrName }}" autocomplete="off">
+              </label>
+            </div>
+            <div class="medium-4 columns">
+              <label>
+                {{ _('session_active_minutes') }}
+                <input name="minutes" type="number" min="1" max="10080" class="textbox" value="{{ filterMinutes }}" autocomplete="off" data-autofocus>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('session_learn_list_title') }}</h1>
+      </div>
+      <div class="section__body no-padding">
+      {% if not sessions.length %}
+        {% if not filterUidOrName %}
+        {{ nothing.render(_('session_learn_empty')) }}
+        {% else %}
+        {{ nothing.render(_('session_learn_empty_filter')) }}
+        {% endif %}
+      {% else %}
+        <table class="data-table session_domain__table">
+          <colgroup>
+            <col class="col--status">
+            <col class="col--user">
+            <col class="col--branch">
+            <col class="col--position">
+            <col class="col--route">
+            <col class="col--submit-at">
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="col--status record-status--border">{{ _('Status') }}</th>
+              <th class="col--user">{{ _('User') }}</th>
+              <th class="col--branch">{{ _('session_col_branch') }}</th>
+              <th class="col--position">{{ _('session_col_position') }}</th>
+              <th class="col--route">{{ _('session_col_route') }}</th>
+              <th class="col--submit-at">{{ _('session_last_activity') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+          {%- for session in sessions -%}
+            {% set udoc = udict[session['uid']] %}
+            {% include 'session_domain_tr.html' %}
+          {%- endfor -%}
+          </tbody>
+        </table>
+        {% if pageCount > 1 %}
+        <ul class="pager">
+          {% if page > 1 %}
+          <li>
+            <a class="pager__item prev link" href="?page={{ page - 1 }}{{
+              (('&uidOrName=' + filterUidOrName) if filterUidOrName else '')
+              + (('&minutes=' + (filterMinutes|string)) if filterMinutes else '') }}">{{ _('pager_prev') }}</a>
+          </li>
+          {% endif %}
+          {% if page < pageCount %}
+          <li>
+            <a class="pager__item next link" href="?page={{ page + 1 }}{{
+              (('&uidOrName=' + filterUidOrName) if filterUidOrName else '')
+              + (('&minutes=' + (filterMinutes|string)) if filterMinutes else '') }}">{{ _('pager_next') }}</a>
+          </li>
+          {% endif %}
+        </ul>
+        {% endif %}
+      {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

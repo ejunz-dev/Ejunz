@@ -75,7 +75,7 @@ inject('Nav', 'base_domain', { prefix: 'base' });
 inject('Nav', 'agent_domain', { prefix: 'agent' });
 // inject('Nav', 'edge_domain', { prefix: 'edge' });
 // inject('Nav', 'tool_domain', { prefix: 'tool' });
-// inject('Nav', 'session_domain', { prefix: 'session' });
+inject('Nav', 'session_domain', { prefix: 'session' }, PERM.PERM_VIEW_RECORD);
 // inject('Nav', 'record_main', { prefix: 'record' });
 inject('Nav', 'discussion_main', { prefix: 'discussion' });
 inject('Nav', 'training_domain', { prefix: 'training' });

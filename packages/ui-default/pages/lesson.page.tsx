@@ -31,34 +31,134 @@ interface Node {
   text: string;
 }
 
-function LessonPage() {
-  const card = (window.UiContext?.card || {}) as Card;
-  const node = (window.UiContext?.node || {}) as Node;
-  const cards = (window.UiContext?.cards || []) as Card[];
-  const currentIndex = (window.UiContext?.currentIndex || 0) as number;
-  const domainId = (window.UiContext?.domainId || '') as string;
-  const baseDocId = (window.UiContext?.baseDocId || '') as string;
-  const isAlonePractice = (window.UiContext?.isAlonePractice || false) as boolean;
-  const isSingleNodeMode = (window.UiContext?.isSingleNodeMode || false) as boolean;
-  const isTodayMode = (window.UiContext?.isTodayMode || false) as boolean;
-  const isAllDomainsMode = (window.UiContext?.isAllDomainsMode || false) as boolean;
-  const hasProblems = (window.UiContext?.hasProblems ?? false) as boolean;
-  const rootNodeId = (window.UiContext?.rootNodeId || '') as string;
-  const rootNodeTitle = (window.UiContext?.rootNodeTitle || '') as string;
-  const allDomainsEntryDomainId = (window.UiContext?.allDomainsEntryDomainId || '') as string;
-  const domainProgress = ((window.UiContext?.domainProgress || []) as Array<{ domainId: string; domainName: string; dailyGoal: number; todayCompleted: number; cardCount: number }>);
-  const excludedDomains = ((window.UiContext?.excludedDomains || []) as Array<{ domainId: string; domainName: string; reason: 'no_daily_goal' | 'no_cards' }>);
-  const flatCards = ((window.UiContext?.flatCards || []) as Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string; domainId?: string }>);
-  const nodeTree = ((window.UiContext?.nodeTree || []) as Array<{
-    type: 'node';
-    id: string;
-    title: string;
-    children: Array<{ type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }>;
-  }>);
-  const currentCardIndex = (window.UiContext?.currentCardIndex ?? 0) as number;
-  const lessonReviewCardIds = ((window.UiContext?.lessonReviewCardIds || []) as string[]);
-  const reviewCardId = (window.UiContext?.reviewCardId || '') as string;
+type LessonNodeTreeItem = {
+  type: 'node';
+  id: string;
+  title: string;
+  children: Array<{ type: 'card'; id: string; title: string } | { type: 'node'; id: string; title: string; children: unknown[] }>;
+};
 
+type LessonUiState = {
+  card: Card;
+  node: Node;
+  cards: Card[];
+  currentIndex: number;
+  domainId: string;
+  baseDocId: string;
+  lessonSessionId: string;
+  isAlonePractice: boolean;
+  isSingleNodeMode: boolean;
+  isTodayMode: boolean;
+  isAllDomainsMode: boolean;
+  hasProblems: boolean;
+  rootNodeId: string;
+  rootNodeTitle: string;
+  allDomainsEntryDomainId: string;
+  domainProgress: Array<{ domainId: string; domainName: string; dailyGoal: number; todayCompleted: number; cardCount: number }>;
+  excludedDomains: Array<{ domainId: string; domainName: string; reason: 'no_daily_goal' | 'no_cards' }>;
+  flatCards: Array<{ nodeId: string; cardId: string; nodeTitle: string; cardTitle: string; domainId?: string }>;
+  nodeTree: LessonNodeTreeItem[];
+  currentCardIndex: number;
+  lessonReviewCardIds: string[];
+  reviewCardId: string;
+};
+
+function normalizeCardFromServer(raw: unknown): Card {
+  if (!raw || typeof raw !== 'object') return {} as Card;
+  const c = raw as Record<string, unknown>;
+  return {
+    ...(c as unknown as Card),
+    docId: c.docId != null ? String(c.docId) : '',
+  };
+}
+
+/** 与 jQuery.ajax JSON 解析结果兼容，并兼容框架在 body 里带 url 的跳转字段 */
+function unwrapLearnPassResponse(raw: unknown) {
+  const r = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const b = (r.body && typeof r.body === 'object' && !Array.isArray(r.body)) ? (r.body as Record<string, unknown>) : null;
+  const d = (r.data && typeof r.data === 'object' && !Array.isArray(r.data)) ? (r.data as Record<string, unknown>) : null;
+  const pick = (k: string) => r[k] ?? b?.[k] ?? d?.[k];
+  return {
+    lesson: pick('lesson'),
+    spaNext: pick('spaNext'),
+    redirect: pick('redirect') ?? pick('url'),
+  };
+}
+
+function lessonPayloadLooksValid(lesson: unknown): lesson is Record<string, unknown> {
+  if (!lesson || typeof lesson !== 'object' || Array.isArray(lesson)) return false;
+  const card = (lesson as Record<string, unknown>).card;
+  return typeof card === 'object' && card !== null;
+}
+
+function initLessonUiState(): LessonUiState {
+  const U = (window as any).UiContext || {};
+  const nodeRaw = U.node || {};
+  const nodeObj = typeof nodeRaw === 'object' && nodeRaw !== null ? nodeRaw as Record<string, unknown> : {};
+  return {
+    card: normalizeCardFromServer(U.card),
+    node: {
+      id: String(nodeObj.id ?? ''),
+      text: String(nodeObj.text ?? nodeObj.title ?? ''),
+    },
+    cards: (Array.isArray(U.cards) ? U.cards : []).map(normalizeCardFromServer),
+    currentIndex: Number(U.currentIndex) || 0,
+    domainId: String(U.domainId || ''),
+    baseDocId: String(U.baseDocId || ''),
+    lessonSessionId: String(U.lessonSessionId || '').trim(),
+    isAlonePractice: !!U.isAlonePractice,
+    isSingleNodeMode: !!U.isSingleNodeMode,
+    isTodayMode: !!U.isTodayMode,
+    isAllDomainsMode: !!U.isAllDomainsMode,
+    hasProblems: !!U.hasProblems,
+    rootNodeId: String(U.rootNodeId || ''),
+    rootNodeTitle: String(U.rootNodeTitle || ''),
+    allDomainsEntryDomainId: String(U.allDomainsEntryDomainId || ''),
+    domainProgress: Array.isArray(U.domainProgress) ? U.domainProgress : [],
+    excludedDomains: Array.isArray(U.excludedDomains) ? U.excludedDomains : [],
+    flatCards: Array.isArray(U.flatCards) ? U.flatCards : [],
+    nodeTree: Array.isArray(U.nodeTree) ? U.nodeTree : [],
+    currentCardIndex: typeof U.currentCardIndex === 'number' ? U.currentCardIndex : 0,
+    lessonReviewCardIds: Array.isArray(U.lessonReviewCardIds) ? U.lessonReviewCardIds.map(String) : [],
+    reviewCardId: String(U.reviewCardId || ''),
+  };
+}
+
+function LessonPage() {
+  const [lessonUi, setLessonUi] = useState<LessonUiState>(initLessonUiState);
+  const {
+    card,
+    node,
+    cards,
+    currentIndex,
+    domainId,
+    baseDocId,
+    lessonSessionId,
+    isAlonePractice,
+    isSingleNodeMode,
+    isTodayMode,
+    isAllDomainsMode,
+    hasProblems,
+    rootNodeId,
+    rootNodeTitle,
+    allDomainsEntryDomainId,
+    domainProgress,
+    excludedDomains,
+    flatCards,
+    nodeTree,
+    currentCardIndex,
+    lessonReviewCardIds,
+    reviewCardId,
+  } = lessonUi;
+
+  const passSession = lessonSessionId ? { session: lessonSessionId } : {};
+  /** 全域课时 session 行挂在入口域；API 路径必须用该域，否则 resolveLessonSessionDoc 对不上 _id。 */
+  const lessonApiDomainId = isAllDomainsMode && allDomainsEntryDomainId
+    ? allDomainsEntryDomainId
+    : domainId;
+
+  const [liveLessonSession, setLiveLessonSession] = useState<Record<string, unknown> | null>(null);
+  const [nextCardFromPassedLoading, setNextCardFromPassedLoading] = useState(false);
   const cardIdToFlatIndex = useMemo(() => {
     const m: Record<string, number> = {};
     flatCards.forEach((item, idx) => {
@@ -66,6 +166,42 @@ function LessonPage() {
     });
     return m;
   }, [flatCards]);
+
+  useEffect(() => {
+    const sockPath = String((window as any).UiContext?.sessionMeSocketQuery || '').trim();
+    const wsPrefix = String((window as any).UiContext?.ws_prefix || '').trim();
+    if (!sockPath || !wsPrefix) return;
+    let sock: { close: () => void } | null = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { default: WebSocketCtor } = await import('../components/socket');
+        if (cancelled) return;
+        const ws: any = new WebSocketCtor(wsPrefix + sockPath, false, true);
+        sock = ws;
+        ws.onmessage = (_ev: unknown, raw: string) => {
+          try {
+            const data = JSON.parse(String(raw || '{}'));
+            if (data?.type === 'learnSession' && data?.session && typeof data.session === 'object') {
+              setLiveLessonSession(data.session as Record<string, unknown>);
+            }
+          } catch {
+            /* ignore non-JSON */
+          }
+        };
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+      try {
+        sock?.close();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, []);
 
   const [renderedContent, setRenderedContent] = useState<string>('');
   const [renderedCardFace, setRenderedCardFace] = useState<string>('');
@@ -257,6 +393,68 @@ function LessonPage() {
   const [browseNoImpression, setBrowseNoImpression] = useState(false);
   const [browseSubmitting, setBrowseSubmitting] = useState(false);
 
+  const applySpaLesson = useCallback((payload: Record<string, unknown>) => {
+    const normalizeNodeFromPayload = (raw: unknown): Node => {
+      if (!raw || typeof raw !== 'object') return { id: '', text: '' };
+      const n = raw as Record<string, unknown>;
+      return {
+        id: String(n.id ?? ''),
+        text: String(n.text ?? n.title ?? ''),
+      };
+    };
+    setLessonUi((prev) => ({
+      ...prev,
+      card: payload.card != null ? normalizeCardFromServer(payload.card) : prev.card,
+      node: payload.node != null ? normalizeNodeFromPayload(payload.node) : prev.node,
+      cards: Array.isArray(payload.cards) ? (payload.cards as unknown[]).map(normalizeCardFromServer) : prev.cards,
+      currentIndex: typeof payload.currentIndex === 'number' ? payload.currentIndex : prev.currentIndex,
+      domainId: typeof payload.domainId === 'string' ? payload.domainId : prev.domainId,
+      baseDocId: typeof payload.baseDocId === 'string' ? payload.baseDocId : prev.baseDocId,
+      lessonSessionId: typeof payload.lessonSessionId === 'string' ? String(payload.lessonSessionId).trim() : prev.lessonSessionId,
+      currentCardIndex: typeof payload.currentCardIndex === 'number' ? payload.currentCardIndex : prev.currentCardIndex,
+      flatCards: Array.isArray(payload.flatCards) ? (payload.flatCards as LessonUiState['flatCards']) : prev.flatCards,
+      nodeTree: Array.isArray(payload.nodeTree) ? (payload.nodeTree as LessonNodeTreeItem[]) : prev.nodeTree,
+      hasProblems: typeof payload.hasProblems === 'boolean' ? payload.hasProblems : prev.hasProblems,
+      lessonReviewCardIds: Array.isArray(payload.lessonReviewCardIds)
+        ? (payload.lessonReviewCardIds as unknown[]).map(String)
+        : prev.lessonReviewCardIds,
+      reviewCardId: payload.reviewCardId != null ? String(payload.reviewCardId) : prev.reviewCardId,
+      domainProgress: Array.isArray(payload.domainProgress) ? payload.domainProgress as LessonUiState['domainProgress'] : prev.domainProgress,
+      excludedDomains: Array.isArray(payload.excludedDomains) ? payload.excludedDomains as LessonUiState['excludedDomains'] : prev.excludedDomains,
+      isSingleNodeMode: typeof payload.isSingleNodeMode === 'boolean' ? payload.isSingleNodeMode : prev.isSingleNodeMode,
+      isTodayMode: typeof payload.isTodayMode === 'boolean' ? payload.isTodayMode : prev.isTodayMode,
+      isAllDomainsMode: typeof payload.isAllDomainsMode === 'boolean' ? payload.isAllDomainsMode : prev.isAllDomainsMode,
+      isAlonePractice: typeof payload.isAlonePractice === 'boolean' ? payload.isAlonePractice : prev.isAlonePractice,
+      rootNodeId: typeof payload.rootNodeId === 'string' ? payload.rootNodeId : prev.rootNodeId,
+      rootNodeTitle: typeof payload.rootNodeTitle === 'string' ? payload.rootNodeTitle : prev.rootNodeTitle,
+      allDomainsEntryDomainId: typeof payload.allDomainsEntryDomainId === 'string' ? payload.allDomainsEntryDomainId : prev.allDomainsEntryDomainId,
+    }));
+    const nextCard = payload.card != null ? normalizeCardFromServer(payload.card) : null;
+    const probs = (nextCard?.problems || []).map(p => ({ ...p, cardId: nextCard!.docId }));
+    setProblemQueue(probs);
+    setCurrentProblemIndex(0);
+    setSelectedAnswer(null);
+    setIsAnswered(false);
+    setShowAnalysis(false);
+    setIsPassed(false);
+    hasCalledPassRef.current = false;
+    sessionStartTimeRef.current = Date.now();
+    setProblemStartTime(Date.now());
+    setAnswerHistory([]);
+    setProblemAttempts({});
+    setPeekCount({});
+    setCorrectNeeded({});
+    setOptionOrder([]);
+    setShowPeekCard(false);
+    setBrowseFlipped(false);
+    setBrowseNoImpression(false);
+    setShuffleTrigger((x) => x + 1);
+    setElapsedMs(0);
+    if (Array.isArray(payload.lessonCardTimesMs)) {
+      setCardTimesMs(payload.lessonCardTimesMs as number[]);
+    }
+  }, []);
+
   const MOBILE_BREAKPOINT = 768;
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -383,10 +581,13 @@ function LessonPage() {
         </>
       );
       if (isAllDomainsMode && allDomainsEntryDomainId && typeof idx === 'number') {
+        const sidAd = lessonSessionId
+          ? `?session=${encodeURIComponent(lessonSessionId)}`
+          : '';
         return (
           <a
             key={`card-${item.id}`}
-            href={`/d/${allDomainsEntryDomainId}/learn/lesson?allDomains=1&cardIndex=${idx}`}
+            href={`/d/${allDomainsEntryDomainId}/learn/lesson${sidAd}`}
             style={{ ...cardStyle, textDecoration: 'none', cursor: 'pointer' }}
           >
             {content}
@@ -515,7 +716,9 @@ function LessonPage() {
           sessionStorage.setItem(cardTimesStorageKey, JSON.stringify(nextTimes));
         } catch (_) {}
       }
-      const result = await request.post(`/d/${domainId}/learn/lesson/pass`, {
+      const canSpaNextCard = isSingleNodeMode || isTodayMode || isAllDomainsMode;
+      const result = await request.post(`/d/${lessonApiDomainId}/learn/lesson/pass`, {
+        ...passSession,
         answerHistory: answerHistory.map(h => ({
           problemId: h.problem.pid,
           selected: h.selected,
@@ -532,12 +735,20 @@ function LessonPage() {
         allDomainsEntryDomainId: isAllDomainsMode ? allDomainsEntryDomainId : undefined,
         domainId: isAllDomainsMode ? domainId : undefined,
         nodeId: isSingleNodeMode ? rootNodeId : undefined,
-        cardIndex: (isSingleNodeMode || isTodayMode || isAllDomainsMode) ? currentCardIndex : undefined,
+        spaNext: canSpaNextCard ? true : undefined,
       });
+      const { lesson: spaLessonPayload, spaNext: spaNextFlag, redirect: passRedirect } = unwrapLearnPassResponse(result);
+      const spaOk = spaNextFlag === true || spaNextFlag === 'true' || spaNextFlag === 1;
+      if (canSpaNextCard && lessonPayloadLooksValid(spaLessonPayload) && (spaOk || spaNextFlag === undefined)) {
+        applySpaLesson(spaLessonPayload);
+        const hasServerTimes = Array.isArray(spaLessonPayload.lessonCardTimesMs);
+        if (nextTimes && !hasServerTimes) setCardTimesMs(nextTimes);
+        return;
+      }
       setIsPassed(true);
       if (nextTimes) setCardTimesMs(nextTimes);
-      const redirect = result?.redirect ?? result?.body?.redirect;
-      if (redirect && (!isAlonePractice || isSingleNodeMode || isTodayMode || isAllDomainsMode)) {
+      const redirect = typeof passRedirect === 'string' ? passRedirect : '';
+      if (redirect) {
         window.location.href = redirect;
         return;
       }
@@ -569,7 +780,9 @@ function LessonPage() {
           sessionStorage.setItem(cardTimesStorageKey, JSON.stringify(nextTimes));
         } catch (_) {}
       }
-      const result = await request.post(`/d/${domainId}/learn/lesson/pass`, {
+      const canSpaNextBrowse = isSingleNodeMode || isTodayMode || isAllDomainsMode;
+      const result = await request.post(`/d/${lessonApiDomainId}/learn/lesson/pass`, {
+        ...passSession,
         answerHistory: [],
         totalTime: totalTimeMs,
         isAlonePractice: isAlonePractice && !isSingleNodeMode && !isTodayMode && !isAllDomainsMode,
@@ -580,11 +793,23 @@ function LessonPage() {
         allDomainsEntryDomainId: isAllDomainsMode ? allDomainsEntryDomainId : undefined,
         domainId: isAllDomainsMode ? domainId : undefined,
         nodeId: (isSingleNodeMode || isTodayMode) && rootNodeId ? rootNodeId : undefined,
-        cardIndex: (isSingleNodeMode || isTodayMode || isAllDomainsMode) ? currentCardIndex : undefined,
         noImpression: (isSingleNodeMode || isAlonePractice || isAllDomainsMode) ? noImpression : undefined,
+        spaNext: canSpaNextBrowse ? true : undefined,
       });
+      const { lesson: spaBrowseLesson, spaNext: spaBrowseNext, redirect: browseRedirect } = unwrapLearnPassResponse(result);
+      const browseSpaOk = spaBrowseNext === true || spaBrowseNext === 'true' || spaBrowseNext === 1;
+      if (
+        canSpaNextBrowse
+        && lessonPayloadLooksValid(spaBrowseLesson)
+        && (browseSpaOk || spaBrowseNext === undefined)
+      ) {
+        applySpaLesson(spaBrowseLesson);
+        const hasServerTimes = Array.isArray(spaBrowseLesson.lessonCardTimesMs);
+        if (nextTimes && !hasServerTimes) setCardTimesMs(nextTimes);
+        return;
+      }
       if (nextTimes) setCardTimesMs(nextTimes);
-      const redirect = result?.redirect ?? result?.body?.redirect;
+      const redirect = typeof browseRedirect === 'string' ? browseRedirect : '';
       if (redirect) {
         window.location.href = redirect;
         return;
@@ -886,8 +1111,33 @@ function LessonPage() {
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
             {!isAlonePractice && (
               <button
-                onClick={() => {
-                  window.location.href = `/d/${domainId}/learn/lesson`;
+                type="button"
+                disabled={nextCardFromPassedLoading}
+                onClick={async () => {
+                  const canSpa = isSingleNodeMode || isTodayMode || isAllDomainsMode;
+                  if (!canSpa) {
+                    const sid = lessonSessionId ? `?session=${encodeURIComponent(lessonSessionId)}` : '';
+                    window.location.href = `/d/${domainId}/learn/lesson${sid}`;
+                    return;
+                  }
+                  setNextCardFromPassedLoading(true);
+                  try {
+                    const qs: Record<string, string> = { format: 'json' };
+                    if (lessonSessionId) qs.session = lessonSessionId;
+                    const res = await request.get(`/d/${lessonApiDomainId}/learn/lesson`, qs);
+                    const { lesson: spaL, spaNext: spaOkRaw } = unwrapLearnPassResponse(res);
+                    const spaOk = spaOkRaw === true || spaOkRaw === 'true' || spaOkRaw === 1;
+                    if (lessonPayloadLooksValid(spaL) && (spaOk || spaOkRaw === undefined)) {
+                      applySpaLesson(spaL);
+                      return;
+                    }
+                  } catch (e) {
+                    console.error('Failed to load next lesson snapshot:', e);
+                  } finally {
+                    setNextCardFromPassedLoading(false);
+                  }
+                  const sid = lessonSessionId ? `?session=${encodeURIComponent(lessonSessionId)}` : '';
+                  window.location.href = `/d/${lessonApiDomainId}/learn/lesson${sid}`;
                 }}
                 style={{
                   padding: '12px 32px',
@@ -895,17 +1145,18 @@ function LessonPage() {
                   borderRadius: '6px',
                   backgroundColor: '#2196f3',
                   color: '#fff',
-                  cursor: 'pointer',
+                  cursor: nextCardFromPassedLoading ? 'not-allowed' : 'pointer',
                   fontSize: '16px',
                   fontWeight: 'bold',
                 }}
               >
-                {i18n('Next Card')}
+                {nextCardFromPassedLoading ? i18n('Loading') : i18n('Next Card')}
               </button>
             )}
             <button
+              type="button"
               onClick={() => {
-                window.location.href = `/d/${domainId}/learn`;
+                window.location.href = `/d/${lessonApiDomainId}/learn`;
               }}
               style={{
                 padding: '12px 32px',
@@ -1076,6 +1327,11 @@ function LessonPage() {
       </div>
       <div style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
         {currentCardIndex + 1} / {flatCards.length} {i18n('cards')}
+        {liveLessonSession && Array.isArray(liveLessonSession.lessonCardQueue) && (
+          <span style={{ display: 'block', fontSize: '11px', color: '#2e7d32', marginTop: '4px' }}>
+            {i18n('Live session') || '会话已同步'} · {(liveLessonSession.lessonCardQueue as unknown[]).length} {i18n('cards')}
+          </span>
+        )}
       </div>
       <div style={{ fontSize: '12px', color: '#333', marginBottom: '12px', fontWeight: 600 }}>
         {i18n('Cumulative')}: {(cumulativeMs / 1000).toFixed(1)}s
