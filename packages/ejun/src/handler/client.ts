@@ -11,7 +11,7 @@ import EdgeTokenModel from '../model/edge_token';
 import { EdgeServerConnectionHandler } from './edge';
 import AgentModel, { McpClient } from '../model/agent';
 import type { EdgeBridgeEnvelope } from '../service/bus';
-import SessionModel from '../model/session';
+import RoomModel from '../model/room';
 import record from '../model/record';
 import domain from '../model/domain';
 import * as document from '../model/document';
@@ -1189,7 +1189,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
     private currentAsrAudioBuffers: Buffer[] = [];
     private currentTtsAudioBuffers: Buffer[] = [];
     private currentConversationId: number | null = null;
-    private currentSessionId: ObjectId | null = null;
+    private currentRoomId: ObjectId | null = null;
     private subscribedRecordIds: Set<string> = new Set();
     private pendingAgentDoneRecords: Map<string, { taskRecordId: string; message: string }> = new Map();
     private sentContentRecordIds: Set<string> = new Set(); // 跟踪已经发送过内容的记录ID，防止重复发送
@@ -1389,16 +1389,16 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         }
         
         // 如果已经有session，检查是否有效
-        if (this.currentSessionId && this.tokenDomainId) {
+        if (this.currentRoomId && this.tokenDomainId) {
             try {
-                const sdoc = await SessionModel.get(this.tokenDomainId, this.currentSessionId);
+                const sdoc = await RoomModel.get(this.tokenDomainId, this.currentRoomId);
                 if (sdoc && sdoc.type === 'client' && sdoc.clientId === this.clientId) {
                     // 更新最后活动时间
-                    await SessionModel.update(this.tokenDomainId, this.currentSessionId, {
+                    await RoomModel.update(this.tokenDomainId, this.currentRoomId, {
                         lastActivityAt: new Date(),
                     });
-                    logger.info('Client session already exists, updated lastActivityAt: clientId=%d, sessionId=%s', 
-                        this.clientId, this.currentSessionId.toString());
+                    logger.info('Client room already exists, updated lastActivityAt: clientId=%d, roomId=%s', 
+                        this.clientId, this.currentRoomId.toString());
                     return;
                 }
             } catch (error: any) {
@@ -1413,7 +1413,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             return;
         }
         try {
-            const existingSessions = await SessionModel.getMulti(this.tokenDomainId, {
+            const existingSessions = await RoomModel.getMulti(this.tokenDomainId, {
                 type: 'client',
                 clientId: this.clientId,
                 lastActivityAt: { $gte: fiveMinutesAgo },
@@ -1424,12 +1424,12 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             
             if (existingSessions.length > 0) {
                 const sdoc = existingSessions[0];
-                this.currentSessionId = sdoc._id;
+                this.currentRoomId = sdoc._id;
                 // 更新最后活动时间
-                await SessionModel.update(this.tokenDomainId!, sdoc._id, {
+                await RoomModel.update(this.tokenDomainId!, sdoc._id, {
                     lastActivityAt: new Date(),
                 });
-                logger.info('Reused existing client session: clientId=%d, sessionId=%s', 
+                logger.info('Reused existing client room: clientId=%d, roomId=%s', 
                     this.clientId, sdoc._id.toString());
                 return;
             }
@@ -1445,18 +1445,18 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         }
         
         const recordUid = this.client.owner;
-        const sessionId = await SessionModel.add(
+        const roomId = await RoomModel.add(
             this.tokenDomainId!,
             agentId,
             recordUid,
             'client',
-            `Client ${this.clientId} Session`,
+            `Client ${this.clientId} Room`,
             undefined,
             this.clientId,
         );
-        this.currentSessionId = sessionId;
-        logger.info('Created new client session: clientId=%d, sessionId=%s', 
-            this.clientId, sessionId.toString());
+        this.currentRoomId = roomId;
+        logger.info('Created new client room: clientId=%d, roomId=%s', 
+            this.clientId, roomId.toString());
     }
 
     async message(msg: any) {
@@ -3034,29 +3034,26 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             // 所有请求都必须通过worker处理，创建task让worker处理
             const recordUid = this.client.owner; // Use cached owner, don't query
             
-            // Get or create session (use cached if available)
-            let sessionId = this.currentSessionId;
-            if (!sessionId) {
-                // Only create session if we don't have one cached
-                sessionId = await SessionModel.add(
+            let roomId = this.currentRoomId;
+            if (!roomId) {
+                roomId = await RoomModel.add(
                     this.domain._id,
                     agentConfig.agentId,
                     recordUid,
                     'client',
-                    `Client ${this.clientId} Session`,
+                    `Client ${this.clientId} Room`,
                     undefined,
                     this.clientId,
                 );
-                this.currentSessionId = sessionId;
+                this.currentRoomId = roomId;
             }
             
-            // Create task record immediately (minimal blocking operation)
             const taskRecordId = await record.addTask(
                 this.domain._id,
                 agentConfig.agentId,
                 recordUid,
                 message,
-                sessionId,
+                roomId,
             );
             
             // 不再设置状态为PROCESSING，让worker处理
@@ -3068,7 +3065,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
             // Send task_created event immediately (stage 1 response)
             this.sendEvent('agent/task_created', [{
                 taskRecordId: taskRecordId.toString(),
-                sessionId: sessionId.toString(),
+                roomId: roomId.toString(),
                 message: 'Task created, processing by worker',
             }]);
             
@@ -3134,7 +3131,7 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                     await taskModel.add({
                         type: 'task',
                         recordId: taskRecordId,
-                        sessionId,
+                        roomId,
                         domainId: this.domain._id,
                         agentId: agentConfig.agentId,
                         uid: recordUid,
@@ -3157,14 +3154,13 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
                 try {
                     if (!this.tokenDomainId) return;
                     // Update session last activity
-                    await SessionModel.update(this.tokenDomainId, sessionId, {
+                    await RoomModel.update(this.tokenDomainId, roomId, {
                         lastActivityAt: new Date(),
                     });
                     
-                    // Add record to session
-                    await SessionModel.addRecord(this.tokenDomainId, sessionId, taskRecordId);
+                    await RoomModel.addRecord(this.tokenDomainId, roomId, taskRecordId);
                 } catch (error: any) {
-                    logger.error('Failed to update session: %s', error.message);
+                    logger.error('Failed to update room: %s', error.message);
                 }
             })();
             
@@ -3407,13 +3403,13 @@ export class ClientConnectionHandler extends ConnectionHandler<Context> {
         }
         
         // 更新session的最后活动时间（断开连接时）
-        if (this.currentSessionId && this.clientId && this.tokenDomainId) {
+        if (this.currentRoomId && this.clientId && this.tokenDomainId) {
             try {
-                await SessionModel.update(this.tokenDomainId, this.currentSessionId, {
+                await RoomModel.update(this.tokenDomainId, this.currentRoomId, {
                     lastActivityAt: new Date(),
                 });
-                logger.info('Updated session lastActivityAt on disconnect: clientId=%d, sessionId=%s', 
-                    this.clientId, this.currentSessionId.toString());
+                logger.info('Updated room lastActivityAt on disconnect: clientId=%d, roomId=%s', 
+                    this.clientId, this.currentRoomId.toString());
             } catch (error: any) {
                 logger.warn('Failed to update session lastActivityAt on disconnect: %s', error.message);
             }

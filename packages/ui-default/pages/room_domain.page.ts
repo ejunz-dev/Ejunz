@@ -1,11 +1,11 @@
 import $ from 'jquery';
 import UserSelectAutoComplete from 'vj/components/autocomplete/UserSelectAutoComplete';
 import { NamedPage } from 'vj/misc/Page';
-import 'vj/components/session/session.page.styl';
+import 'vj/components/room/room.page.styl';
 
 let globalSock: any = null;
 
-const page = new NamedPage('session_domain', async () => {
+const page = new NamedPage('room_domain', async () => {
   const cleanupOldConnection = () => {
     if (globalSock) {
       try {
@@ -45,7 +45,7 @@ const page = new NamedPage('session_domain', async () => {
     sock.onopen = () => {
       const sids = (UiContext.sids && UiContext.sids.length) 
         ? UiContext.sids 
-        : Array.from($('.session_domain__table tbody tr[data-sid]')).map((tr) => 
+        : Array.from($('.room_domain__table tbody tr[data-sid]')).map((tr) => 
             $(tr).attr('data-sid')
           ).filter(Boolean);
       if (sids.length) {
@@ -67,7 +67,7 @@ const page = new NamedPage('session_domain', async () => {
         if (!$newTr.length) return;
         const sid = $newTr.attr('data-sid');
         if (!sid) return;
-        const $tbody = $('.session_domain__table tbody');
+        const $tbody = $('.room_domain__table tbody');
         const $oldTr = $tbody.find(`tr[data-sid="${sid}"]`);
         if ($oldTr.length) {
           $oldTr.trigger('vjContentRemove');

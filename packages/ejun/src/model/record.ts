@@ -58,7 +58,7 @@ export default class RecordModel {
         agentId: string,
         uid: number,
         initialMessage: string,
-        sessionId: ObjectId,
+        roomId: ObjectId,
         bubbleId?: string,
     ): Promise<ObjectId> {
         const data: RecordDoc = {
@@ -68,7 +68,7 @@ export default class RecordModel {
             code: initialMessage,
             domainId,
             agentId,
-            sessionId,
+            roomId,
             score: 100,
             time: 0,
             agentMessages: [{
