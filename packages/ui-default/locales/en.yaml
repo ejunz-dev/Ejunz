@@ -542,6 +542,7 @@ lesson_history_col_time: Time spent
 lesson_session_history_back: Back to Learn
 lesson_session_history_detail_title: Answers by card
 lesson_session_history_hint: This daily session has timed out. Answer records from that run are listed below.
+lesson_session_history_hint_finished: This session has finished. Answer records from that run are listed below.
 lesson_session_history_title: Learn session (history)
 main: Home
 manage_config: System Configurations

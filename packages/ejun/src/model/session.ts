@@ -3,7 +3,7 @@ import type { Context } from '../context';
 import db from '../service/db';
 import bus from '../service/bus';
 
-export type LessonMode = 'today' | 'node' | null;
+export type LessonMode = 'today' | 'node' | 'card' | null;
 
 /** Frozen lesson order for the current session (base/training changes do not mutate until a new queue is started). */
 export interface LessonCardQueueItem {
