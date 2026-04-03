@@ -1,0 +1,213 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('lesson_session_history_title') }}</h1>
+        <div class="section__tools">
+          <a href="{{ learnHomeUrl }}" class="button primary">{{ _('lesson_session_history_back') }}</a>
+          <a href="{{ url('session_domain', domainId=domainId) }}" class="button">{{ _('session_learn_list_title') }}</a>
+        </div>
+      </div>
+      <div class="section__body">
+        <p class="typo">{{ _('lesson_session_history_hint') }}</p>
+        <table class="data-table session_domain__table">
+          <colgroup>
+            <col class="col--status">
+            <col class="col--branch">
+            <col class="col--record-type">
+            <col class="col--records">
+            <col class="col--started-at">
+            <col class="col--submit-at">
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="col--status record-status--border">{{ _('Status') }}</th>
+              <th class="col--branch">{{ _('session_col_branch') }}</th>
+              <th class="col--record-type">{{ _('session_col_record_type') }}</th>
+              <th class="col--records">{{ _('record_col_short') }}</th>
+              <th class="col--started-at">{{ _('session_col_started_at') }}</th>
+              <th class="col--submit-at">{{ _('session_last_activity') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col--status session-status--border session-status--{{ session.status }}">
+                <div class="col--status__text">
+                  <span class="icon session-status--icon session-status--icon-{{ session.status }}"></span>
+                  <span class="session-status--text session-status--{{ session.status }}">{{ session.statusLabel }}</span>
+                </div>
+              </td>
+              <td class="col--branch">
+                {% if session.branch %}
+                  <span>{{ session.branch }}</span>
+                {% else %}
+                  <span class="text-gray">-</span>
+                {% endif %}
+              </td>
+              <td class="col--record-type">
+                <span class="typo">{{ session.recordTypeLabel }}</span>
+              </td>
+              <td class="col--records">
+                <div class="record-blocks">
+                  {% if session.recordSummaries and session.recordSummaries.length %}
+                    {% for rec in session.recordSummaries %}
+                      <a
+                        href="{{ url('record_detail', domainId=domainId, rid=rec._id) }}"
+                        class="record-block"
+                        style="background-color: {{ rec.color }}"
+                        title="{{ rec.cardId }} — {{ rec.label }}"
+                      ></a>
+                    {% endfor %}
+                  {% endif %}
+                </div>
+              </td>
+              <td class="col--started-at">
+                {% if session.createdAt %}
+                  {{ datetimeSpan(session.createdAt, false)|safe }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td class="col--submit-at">
+                {% if session.lastActivityAt %}
+                  {{ datetimeSpan(session.lastActivityAt, false)|safe }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {% if recordHistoryRows and recordHistoryRows.length %}
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('lesson_session_history_detail_title') }}</h1>
+      </div>
+      {% for h in recordHistoryRows %}
+      <div class="section section--nested">
+        <div class="section__header">
+          <h2 class="section__title typo">
+            {% if h.recordDisp.cardUrl and h.recordDisp.cardUrl != '#' %}
+              <a href="{{ h.recordDisp.cardUrl }}">{{ h.recordDisp.cardTitle }}</a>
+            {% else %}
+              {{ h.recordDisp.cardTitle }}
+            {% endif %}
+            <span class="text-gray text-sm font-mono"> · {{ h.rdoc.cardId }}</span>
+          </h2>
+          <div class="section__tools">
+            <a href="{{ url('record_detail', domainId=domainId, rid=h.rdoc._id) }}" class="button text-sm">{{ _('record_page_title') }}</a>
+          </div>
+        </div>
+        <div class="section__body typo no-media">
+          <p class="text-sm text-gray">
+            {{ _('session_col_branch') }}: {{ h.rdoc.branch or '-' }}
+            · {{ _('lesson_history_col_node') }}: {{ h.nodeTitle }}
+            {% if h.rdoc.lastActivityAt %}
+              · {{ _('session_last_activity') }}: {{ datetimeSpan(h.rdoc.lastActivityAt, false)|safe }}
+            {% endif %}
+          </p>
+          <table class="data-table record_detail__table lesson_session_history__problems">
+            <colgroup>
+              <col class="col--case">
+              <col class="col--status">
+              <col class="col--selected">
+              <col class="col--answer">
+              <col class="col--attempts">
+              <col class="col--time">
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="col--case record-status--border">{{ _('lesson_history_col_stem') }}</th>
+                <th class="col--status">{{ _('Status') }}</th>
+                <th class="col--selected">{{ _('lesson_history_col_selected') }}</th>
+                <th class="col--answer">{{ _('lesson_history_col_correct') }}</th>
+                <th class="col--attempts">{{ _('lesson_history_col_attempts') }}</th>
+                <th class="col--time">{{ _('lesson_history_col_time') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+            {% for p in h.problems %}
+              <tr>
+                <td class="col--case record-status--border">
+                  <div class="typo">{{ p.stemPreview }}</div>
+                  <code class="text-sm text-gray">{{ p.pid }}</code>
+                </td>
+                <td class="col--status">
+                  {% if p.status == 'correct' %}
+                    <span class="icon record-status--icon pass"></span>
+                    <span class="record-status--text pass">{{ _('record_status_correct') }}</span>
+                  {% elif p.status == 'wrong' %}
+                    <span class="icon record-status--icon fail"></span>
+                    <span class="record-status--text fail">{{ _('record_status_wrong') }}</span>
+                  {% elif p.status == 'skipped' %}
+                    <span class="icon record-status--icon unknown"></span>
+                    <span class="record-status--text unknown">{{ _('record_status_skipped') }}</span>
+                  {% else %}
+                    <span class="icon record-status--icon progress"></span>
+                    <span class="record-status--text progress">{{ _('record_status_pending') }}</span>
+                  {% endif %}
+                </td>
+                <td class="col--selected typo">
+                  {% if p.selectedText %}
+                    {{ p.selectedText }}
+                    {% if p.selectedIndex is defined %}
+                      <span class="text-gray text-sm">(#{{ p.selectedIndex }})</span>
+                    {% endif %}
+                  {% elif p.selectedIndex is defined %}
+                    #{{ p.selectedIndex }}
+                  {% else %}
+                    <span class="text-gray">-</span>
+                  {% endif %}
+                </td>
+                <td class="col--answer typo">
+                  {% if p.correctOptionText %}
+                    {{ p.correctOptionText }}
+                    {% if p.correctOptionIndex is defined %}
+                      <span class="text-gray text-sm">(#{{ p.correctOptionIndex }})</span>
+                    {% endif %}
+                  {% elif p.correctOptionIndex is defined %}
+                    #{{ p.correctOptionIndex }}
+                  {% else %}
+                    <span class="text-gray">-</span>
+                  {% endif %}
+                </td>
+                <td class="col--attempts">
+                  {% if p.attempts is defined and p.attempts > 0 %}
+                    ×{{ p.attempts }}
+                  {% else %}
+                    <span class="text-gray">-</span>
+                  {% endif %}
+                </td>
+                <td class="col--time text-sm">
+                  {% if p.timeSpentMs is defined and p.timeSpentMs > 0 %}
+                    {% if p.timeSpentMs >= 1000 %}
+                      {{ (p.timeSpentMs / 1000) | round(1) }}s
+                    {% else %}
+                      {{ p.timeSpentMs }}ms
+                    {% endif %}
+                  {% else %}
+                    <span class="text-gray">-</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+            {% if not h.problems or h.problems.length == 0 %}
+              <tr>
+                <td colspan="6" class="text-gray">{{ _('record_no_problems') }}</td>
+              </tr>
+            {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -16,7 +16,7 @@ import { updateDomainRanking } from './domain';
 import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../lib/checkin';
 import { getModeBaseDocId, getModeDailyGoal } from '../lib/learnModePrefs';
 import TrainingModel from '../model/training';
-import SessionModel, { type LessonCardQueueItem } from '../model/session';
+import SessionModel, { type LessonCardQueueItem, type SessionDoc } from '../model/session';
 import {
     appendLessonSessionToUrl,
     lessonSessionIdFromDoc,
@@ -24,7 +24,14 @@ import {
     resolveLessonSessionDoc,
     touchLessonSession,
 } from '../lib/lessonSession';
+import { deriveSessionLearnStatus, deriveSessionRecordType } from '../lib/sessionListDisplay';
 import RecordModel, { type RecordDoc } from '../model/record';
+import {
+    buildSessionRecordHistoryRows,
+    lessonHistoryRowsToWire,
+    summarizeRecordDoc,
+} from './record';
+import { sessionDocToWire } from './session';
 
 function utcLessonQueueDayString(): string {
     return moment.utc().format('YYYY-MM-DD');
@@ -1473,9 +1480,39 @@ class LessonHandler extends Handler {
         
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const qLessonSession = typeof this.request.query?.session === 'string' ? this.request.query.session.trim() : '';
+        const queryCardId = this.request.query?.cardId;
 
         if (String(this.request.query?.format || '') === 'json') {
             this.response.template = null;
+            if (qLessonSession && ObjectId.isValid(qLessonSession)) {
+                const sJson = await resolveLessonSessionDoc(finalDomainId, this.user._id, qLessonSession);
+                if (sJson && deriveSessionLearnStatus(sJson as SessionDoc) === 'timed_out') {
+                    const recordHistoryRows = await buildSessionRecordHistoryRows(
+                        finalDomainId,
+                        sJson.recordIds,
+                        (name, kwargs) => this.url(name, kwargs as any),
+                    );
+                    const recordSummaries = recordHistoryRows.map((row) => {
+                        const s = summarizeRecordDoc(row.rdoc);
+                        return {
+                            _id: row.rdoc._id,
+                            cardId: row.rdoc.cardId,
+                            color: s.color,
+                            label: s.label,
+                            code: s.code,
+                        };
+                    });
+                    this.response.body = {
+                        success: false,
+                        spaNext: false,
+                        error: 'session_timed_out',
+                        session: sessionDocToWire(sJson as SessionDoc),
+                        recordSummaries,
+                        recordHistoryRows: lessonHistoryRowsToWire(recordHistoryRows),
+                    };
+                    return;
+                }
+            }
             const snap = await tryLessonSpaSnapshotForHandler(
                 this,
                 finalDomainId,
@@ -1499,6 +1536,44 @@ class LessonHandler extends Handler {
             return;
         }
 
+        if (qLessonSession && ObjectId.isValid(qLessonSession) && !queryCardId) {
+            const sExpired = await resolveLessonSessionDoc(finalDomainId, this.user._id, qLessonSession);
+            if (sExpired && deriveSessionLearnStatus(sExpired as SessionDoc) === 'timed_out') {
+                const recordHistoryRows = await buildSessionRecordHistoryRows(
+                    finalDomainId,
+                    sExpired.recordIds,
+                    (name, kwargs) => this.url(name, kwargs as any),
+                );
+                const recordSummaries = recordHistoryRows.map((row) => {
+                    const s = summarizeRecordDoc(row.rdoc);
+                    return {
+                        _id: row.rdoc._id,
+                        cardId: row.rdoc.cardId,
+                        color: s.color,
+                        label: s.label,
+                        code: s.code,
+                    };
+                });
+                const rt = deriveSessionRecordType(sExpired as SessionDoc);
+                this.response.template = 'lesson_session_history.html';
+                this.response.body = {
+                    domainId: finalDomainId,
+                    page_name: 'learn_lesson',
+                    session: {
+                        ...(sExpired as SessionDoc),
+                        status: 'timed_out' as const,
+                        statusLabel: this.translate('session_status_timed_out'),
+                        recordType: rt,
+                        recordTypeLabel: this.translate(`session_record_type_${rt}`),
+                        recordSummaries,
+                    },
+                    recordHistoryRows,
+                    learnHomeUrl: this.url('learn', { domainId: finalDomainId }),
+                };
+                return;
+            }
+        }
+
         const base = await requireSelectedLearnBase(finalDomainId, this.user._id, this.user.priv);
         if (!base) {
             throw new NotFoundError('Base not found for this domain');
@@ -1508,8 +1583,6 @@ class LessonHandler extends Handler {
         const branch = (dudoc as any)?.learnBranch || 'main';
         const sdocLesson = await resolveLessonSessionDoc(finalDomainId, this.user._id, qLessonSession || undefined);
         const L = mergeDomainLessonState(dudoc, sdocLesson);
-
-        const queryCardId = this.request.query?.cardId;
         // Lesson mode and position live in Mongo session (+ optional ?session=).
         if ((L.lessonMode as string) === 'allDomains') {
             await touchLessonSession(finalDomainId, this.user._id, {

@@ -725,6 +725,16 @@ session_status_finished: Finished
 session_status_in_progress: In progress
 session_status_paused: Paused
 session_status_timed_out: Timed out
+lesson_session_history_title: Learn session (history)
+lesson_session_history_hint: This daily session has timed out. Answer records from that run are listed below.
+lesson_session_history_back: Back to Learn
+lesson_session_history_detail_title: Answers by card
+lesson_history_col_node: Node
+lesson_history_col_stem: Problem
+lesson_history_col_selected: Your choice
+lesson_history_col_correct: Correct answer
+lesson_history_col_attempts: Attempts
+lesson_history_col_time: Time spent
 setting_customize: Customize
 setting_display: Display Preference
 setting_function: Function
