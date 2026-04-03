@@ -14,9 +14,13 @@ import { PERM, PRIV } from '../model/builtin';
 import type { BaseDoc, BaseNode, CardDoc } from '../interface';
 import { BaseModel, CardModel } from '../model/base';
 import RecordModel, { type RecordDoc, type RecordProblemState } from '../model/record';
-import SessionModel from '../model/session';
+import SessionModel, { type SessionDoc } from '../model/session';
 import TrainingModel from '../model/training';
 import user from '../model/user';
+import {
+    deriveSessionRecordType,
+    formatRecordProgressInSession,
+} from '../lib/sessionListDisplay';
 
 export function summarizeRecordDoc(r: RecordDoc): { code: string; color: string; label: string } {
     const probs = r.problems || [];
@@ -50,6 +54,61 @@ function recordCardOutlineUrl(
     if (!pathUrl || pathUrl === '#') return '#';
     const sep = pathUrl.includes('?') ? '&' : '?';
     return `${pathUrl}${sep}cardId=${encodeURIComponent(cardIdHex)}`;
+}
+
+async function loadSessionDocForRecord(rd: RecordDoc): Promise<SessionDoc | null> {
+    try {
+        const doc = await SessionModel.coll.findOne({
+            _id: rd.sessionId,
+            domainId: rd.domainId,
+            uid: rd.uid,
+        });
+        return doc as SessionDoc | null;
+    } catch {
+        return null;
+    }
+}
+
+async function buildRecordMainListRow(
+    rd: RecordDoc,
+    buildUrl: (name: string, kwargs: Record<string, unknown>) => string,
+    translate: (k: string) => string,
+) {
+    const s = summarizeRecordDoc(rd);
+    const disp = await enrichRecordRowDisplay(rd, buildUrl);
+    const sess = await loadSessionDocForRecord(rd);
+    const sessionIdHex = rd.sessionId ? rd.sessionId.toHexString() : '';
+    let sessionResumeUrl = '#';
+    let sessionTypeLabel: string | null = null;
+    let recordSessionProgress: string | null = null;
+    let sessionDisplayId = '';
+    if (sessionIdHex) {
+        sessionDisplayId = sessionIdHex.length > 8 ? `…${sessionIdHex.slice(-8)}` : sessionIdHex;
+        const base = buildUrl('learn_lesson', { domainId: rd.domainId });
+        const sep = base.includes('?') ? '&' : '?';
+        sessionResumeUrl = `${base}${sep}session=${encodeURIComponent(sessionIdHex)}`;
+    }
+    if (sess) {
+        const rt = deriveSessionRecordType(sess);
+        sessionTypeLabel = translate(`session_record_type_${rt}`);
+        recordSessionProgress = formatRecordProgressInSession(rd, sess);
+    }
+
+    return {
+        ...rd,
+        summaryLabel: s.label,
+        summaryCode: s.code,
+        summaryColor: s.color,
+        cardTitle: disp.cardTitle,
+        cardUrl: disp.cardUrl,
+        trainingTitle: disp.trainingTitle,
+        trainingUrl: disp.trainingUrl,
+        sessionIdHex,
+        sessionDisplayId,
+        sessionResumeUrl,
+        sessionTypeLabel,
+        recordSessionProgress,
+    };
 }
 
 async function resolveRecordTrainingDocId(rd: RecordDoc): Promise<string | null> {
@@ -273,21 +332,11 @@ class RecordMainHandler extends Handler {
             coll.find(filter).sort({ lastActivityAt: -1 }).skip((page - 1) * pageSize).limit(pageSize).toArray(),
             coll.countDocuments(filter),
         ]);
-        const records = await Promise.all(rawRows.map(async (r) => {
-            const rd = r as RecordDoc;
-            const s = summarizeRecordDoc(rd);
-            const disp = await enrichRecordRowDisplay(rd, (name, kwargs) => this.url(name, kwargs as any));
-            return {
-                ...rd,
-                summaryLabel: s.label,
-                summaryCode: s.code,
-                summaryColor: s.color,
-                cardTitle: disp.cardTitle,
-                cardUrl: disp.cardUrl,
-                trainingTitle: disp.trainingTitle,
-                trainingUrl: disp.trainingUrl,
-            };
-        }));
+        const records = await Promise.all(rawRows.map(async (r) => buildRecordMainListRow(
+            r as RecordDoc,
+            (name, kwargs) => this.url(name, kwargs as any),
+            (k) => this.translate(k),
+        )));
         const userIds = [...new Set(records.map((r) => r.uid))];
         const udict = await user.getList(domainId, userIds);
 
@@ -372,18 +421,11 @@ class RecordListConnectionHandler extends ConnectionHandler {
 
     async sendRecordRow(rdoc: RecordDoc) {
         const udoc = await user.getById(this.args.domainId, rdoc.uid);
-        const s = summarizeRecordDoc(rdoc);
-        const disp = await enrichRecordRowDisplay(rdoc, (name, kwargs) => this.url(name, kwargs as any));
-        const record = {
-            ...rdoc,
-            summaryLabel: s.label,
-            summaryCode: s.code,
-            summaryColor: s.color,
-            cardTitle: disp.cardTitle,
-            cardUrl: disp.cardUrl,
-            trainingTitle: disp.trainingTitle,
-            trainingUrl: disp.trainingUrl,
-        };
+        const record = await buildRecordMainListRow(
+            rdoc,
+            (name, kwargs) => this.url(name, kwargs as any),
+            (k) => this.translate(k),
+        );
         const key = rdoc._id.toHexString();
         this.queue.set(key, async () => ({
             html: await this.renderHTML('record_main_tr.html', { record, udoc }),
