@@ -1112,6 +1112,7 @@ session_active_minutes: 列出最近 N 分钟内有活动的用户
 session_col_branch: 分支
 session_col_position: 卡片 / 节点
 session_col_record_type: 练习类型
+session_col_card_progress: 卡片进度
 session_col_route: 页面
 session_col_started_at: 开始时间
 session_domain: 会话

@@ -79,6 +79,14 @@ function stripPatch(patch: SessionPatch): Record<string, unknown> {
     return out;
 }
 
+function unwrapFindOneSession(updated: unknown): SessionDoc | null {
+    if (updated == null) return null;
+    if (typeof updated === 'object' && updated !== null && 'value' in updated) {
+        return (updated as { value: SessionDoc | null }).value ?? null;
+    }
+    return updated as SessionDoc;
+}
+
 export default class SessionModel {
     static coll = db.collection('session');
 
@@ -95,12 +103,61 @@ export default class SessionModel {
         return q;
     }
 
+    /** Most recently active row for this user in the domain (may be one of several session documents). */
     static async get(domainId: string, uid: number): Promise<SessionDoc | null> {
-        return this.coll.findOne({ domainId, uid });
+        return this.coll.findOne({ domainId, uid }, { sort: { lastActivityAt: -1 } });
+    }
+
+    /** New session row (does not merge into an existing domain+uid document). */
+    static async insertSession(
+        domainId: string,
+        uid: number,
+        patch: SessionPatch = {},
+        opts?: { silent?: boolean },
+    ): Promise<SessionDoc> {
+        const now = new Date();
+        const doc = {
+            _id: new ObjectId(),
+            domainId,
+            uid,
+            createdAt: now,
+            updatedAt: now,
+            lastActivityAt: now,
+            state: 'active' as const,
+            ...stripPatch(patch),
+        } as SessionDoc;
+        await this.coll.insertOne(doc as any);
+        if (!opts?.silent) bus.broadcast('session/change', doc);
+        return doc;
+    }
+
+    /** Update a specific session by id (must belong to domain + uid). */
+    static async touchById(
+        domainId: string,
+        uid: number,
+        sessionId: ObjectId,
+        patch: SessionPatch = {},
+        opts?: { silent?: boolean },
+    ): Promise<SessionDoc | null> {
+        const now = new Date();
+        const $set = {
+            ...stripPatch(patch),
+            updatedAt: now,
+            lastActivityAt: now,
+        };
+        const updated = await this.coll.findOneAndUpdate(
+            { _id: sessionId, domainId, uid },
+            { $set: $set as any },
+            { returnDocument: 'after' },
+        );
+        const doc = unwrapFindOneSession(updated);
+        if (doc && !opts?.silent) bus.broadcast('session/change', doc);
+        return doc;
     }
 
     /**
-     * Upsert progress and bump lastActivityAt.
+     * Upsert progress on the latest session row for (domainId, uid), bump lastActivityAt.
+     * Uses findOneAndUpdate + sort so multiple rows per user do not pick an arbitrary document.
      * @param opts.silent — skip bus broadcast (high-frequency lesson steps).
      */
     static async touch(
@@ -122,12 +179,12 @@ export default class SessionModel {
             createdAt: now,
             state: 'active',
         };
-        await this.coll.updateOne(
+        const updated = await this.coll.findOneAndUpdate(
             { domainId, uid },
             { $set: $set as any, $setOnInsert: $setOnInsert as any },
-            { upsert: true },
+            { sort: { lastActivityAt: -1 }, upsert: true, returnDocument: 'after' } as any,
         );
-        const doc = await this.get(domainId, uid);
+        const doc = unwrapFindOneSession(updated);
         if (doc && !opts?.silent) bus.broadcast('session/change', doc);
         return doc;
     }
@@ -161,29 +218,26 @@ export default class SessionModel {
     }
 
     static async deleteForUser(domainId: string, uid: number) {
-        await this.coll.deleteOne({ domainId, uid });
+        await this.coll.deleteMany({ domainId, uid });
     }
 
-    static async addRecord(domainId: string, uid: number, recordId: ObjectId): Promise<SessionDoc | null> {
+    static async addRecord(
+        domainId: string,
+        uid: number,
+        sessionObjectId: ObjectId,
+        recordId: ObjectId,
+    ): Promise<SessionDoc | null> {
         const now = new Date();
         await this.coll.updateOne(
-            { domainId, uid },
+            { _id: sessionObjectId, domainId, uid },
             {
                 $addToSet: { recordIds: recordId },
                 $set: { updatedAt: now, lastActivityAt: now },
-                $setOnInsert: {
-                    _id: new ObjectId(),
-                    domainId,
-                    uid,
-                    createdAt: now,
-                    state: 'active',
-                },
             },
-            { upsert: true },
         );
-        const doc = await this.get(domainId, uid);
+        const doc = await this.coll.findOne({ _id: sessionObjectId, domainId, uid });
         if (doc) bus.broadcast('session/change', doc);
-        return doc;
+        return doc as SessionDoc | null;
     }
 }
 
@@ -191,7 +245,7 @@ export async function apply(ctx: Context) {
     ctx.on('domain/delete', (domainId) => SessionModel.coll.deleteMany({ domainId }));
     await db.ensureIndexes(
         SessionModel.coll,
-        { key: { domainId: 1, uid: 1 }, name: 'domain_uid', unique: true },
+        { key: { domainId: 1, uid: 1, lastActivityAt: -1 }, name: 'domain_uid' },
         { key: { domainId: 1, lastActivityAt: -1 }, name: 'domain_activity' },
     );
     (global.Ejunz.model as any).session = SessionModel;

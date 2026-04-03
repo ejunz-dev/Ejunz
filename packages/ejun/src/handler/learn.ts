@@ -16,15 +16,16 @@ import { updateDomainRanking } from './domain';
 import { appendUserCheckinDay, countConsecutiveCheckinDays } from '../lib/checkin';
 import { getModeBaseDocId, getModeDailyGoal } from '../lib/learnModePrefs';
 import TrainingModel from '../model/training';
-import SessionModel, { type LessonCardQueueItem, type SessionDoc } from '../model/session';
+import SessionModel, { type LessonCardQueueItem, type SessionDoc, type SessionPatch } from '../model/session';
 import {
     appendLessonSessionToUrl,
+    findResumableDailyLearnSession,
     lessonSessionIdFromDoc,
     mergeDomainLessonState,
     resolveLessonSessionDoc,
     touchLessonSession,
 } from '../lib/lessonSession';
-import { deriveSessionLearnStatus, deriveSessionRecordType } from '../lib/sessionListDisplay';
+import { deriveSessionLearnStatus, deriveSessionRecordType, formatSessionCardProgress } from '../lib/sessionListDisplay';
 import RecordModel, { type RecordDoc } from '../model/record';
 import {
     buildSessionRecordHistoryRows,
@@ -1566,6 +1567,7 @@ class LessonHandler extends Handler {
                         recordType: rt,
                         recordTypeLabel: this.translate(`session_record_type_${rt}`),
                         recordSummaries,
+                        cardProgressText: formatSessionCardProgress(sExpired as SessionDoc),
                     },
                     recordHistoryRows,
                     learnHomeUrl: this.url('learn', { domainId: finalDomainId }),
@@ -2088,8 +2090,9 @@ class LessonHandler extends Handler {
         const nodeIdStart = typeof body.nodeId === 'string' ? body.nodeId : '';
         if (mode === 'node' && !nodeIdStart) throw new ValidationError('nodeId required for node mode');
 
+        let sid: string;
         if (mode === 'node') {
-            await touchLessonSession(finalDomainId, this.user._id, {
+            const doc = await SessionModel.insertSession(finalDomainId, this.user._id, {
                 appRoute: 'learn',
                 route: 'learn',
                 lessonMode: 'node',
@@ -2098,20 +2101,33 @@ class LessonHandler extends Handler {
                 lessonCardQueue: [],
                 lessonQueueAnchorNodeId: null,
                 lessonQueueDay: null,
-            }, { silent: false });
+            } as SessionPatch, { silent: false });
+            sid = doc._id.toString();
         } else {
-            await touchLessonSession(finalDomainId, this.user._id, {
-                appRoute: 'learn',
-                route: 'learn',
-                lessonMode: 'today',
-                nodeId: null,
-                cardIndex: 0,
-                lessonCardQueue: [],
-                lessonQueueAnchorNodeId: null,
-                lessonQueueDay: null,
-            }, { silent: false });
+            const resumable = await findResumableDailyLearnSession(finalDomainId, this.user._id);
+            if (resumable) {
+                const bumped = await SessionModel.touchById(
+                    finalDomainId,
+                    this.user._id,
+                    resumable._id,
+                    { appRoute: 'learn', route: 'learn' },
+                    { silent: false },
+                );
+                sid = (bumped ?? resumable)._id.toString();
+            } else {
+                const doc = await SessionModel.insertSession(finalDomainId, this.user._id, {
+                    appRoute: 'learn',
+                    route: 'learn',
+                    lessonMode: 'today',
+                    nodeId: null,
+                    cardIndex: 0,
+                    lessonCardQueue: [],
+                    lessonQueueAnchorNodeId: null,
+                    lessonQueueDay: null,
+                } as SessionPatch, { silent: false });
+                sid = doc._id.toString();
+            }
         }
-        const sid = lessonSessionIdFromDoc(await SessionModel.get(finalDomainId, this.user._id));
         this.response.body = {
             success: true,
             redirect: appendLessonSessionToUrl(`/d/${finalDomainId}/learn/lesson`, sid),
@@ -2224,7 +2240,13 @@ class LessonHandler extends Handler {
             const nextIndex = idx + 1;
             const sidLesson = lessonSessionIdFromDoc(sBr);
             if (nextIndex < queue.length) {
-                await touchLessonSession(finalDomainId, this.user._id, { cardIndex: nextIndex, lessonMode: 'today' }, { silent: false });
+                await SessionModel.touchById(
+                    finalDomainId,
+                    this.user._id,
+                    sBr._id,
+                    { cardIndex: nextIndex, lessonMode: 'today' },
+                    { silent: false },
+                );
                 if (spaNext) {
                     const snap = await buildSpaLessonSnapshotToday(
                         (k) => this.translate(k),
@@ -2247,12 +2269,19 @@ class LessonHandler extends Handler {
                     redirect: appendLessonSessionToUrl(`/d/${finalDomainId}/learn/lesson`, sidLesson),
                 };
             } else {
-                await touchLessonSession(finalDomainId, this.user._id, {
-                    lessonMode: null,
-                    cardIndex: null,
-                    lessonCardQueue: [],
-                    lessonQueueDay: null,
-                }, { silent: false });
+                // Keep queue and set index past last card so list shows finished (deriveSessionLearnStatus: idx >= qLen).
+                await SessionModel.touchById(
+                    finalDomainId,
+                    this.user._id,
+                    sBr._id,
+                    {
+                        appRoute: 'learn',
+                        route: 'learn',
+                        lessonMode: 'today',
+                        cardIndex: queue.length,
+                    },
+                    { silent: false },
+                );
                 this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn` };
             }
             return;
@@ -2364,7 +2393,13 @@ class LessonHandler extends Handler {
             const nextIndex = idxNode + 1;
             const sidNode = lessonSessionIdFromDoc(sNodePass);
             if (nextIndex < flatCardsRaw.length) {
-                await touchLessonSession(finalDomainId, this.user._id, { cardIndex: nextIndex, lessonMode: 'node', nodeId: nodeIdFromBody }, { silent: false });
+                await SessionModel.touchById(
+                    finalDomainId,
+                    this.user._id,
+                    sNodePass._id,
+                    { cardIndex: nextIndex, lessonMode: 'node', nodeId: nodeIdFromBody },
+                    { silent: false },
+                );
                 if (spaNext && nodeIdFromBody) {
                     const snap = await buildSpaLessonSnapshotNode(
                         (k) => this.translate(k),
@@ -2401,15 +2436,21 @@ class LessonHandler extends Handler {
                     redirect: `${baseNodeLesson}${qsep}reviewCardId=${encodeURIComponent(reviewIds2[0])}`,
                 };
             } else {
-                await touchLessonSession(finalDomainId, this.user._id, {
-                    appRoute: 'learn',
-                    lessonMode: null,
-                    nodeId: null,
-                    cardIndex: null,
-                    lessonCardTimesMs: [],
-                    lessonCardQueue: [],
-                    lessonQueueDay: null,
-                }, { silent: false });
+                await SessionModel.touchById(
+                    finalDomainId,
+                    this.user._id,
+                    sNodePass._id,
+                    {
+                        appRoute: 'learn',
+                        route: 'learn',
+                        lessonMode: 'node',
+                        nodeId: nodeIdFromBody,
+                        cardIndex: flatCardsRaw.length,
+                        lessonCardTimesMs: [],
+                        lessonReviewCardIds: [],
+                    },
+                    { silent: false },
+                );
                 this.response.body = { success: true, redirect: `/d/${finalDomainId}/learn/lesson/node-result?nodeId=${encodeURIComponent(nodeIdFromBody)}` };
             }
             return;

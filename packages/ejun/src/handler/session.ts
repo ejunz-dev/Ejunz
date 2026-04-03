@@ -1,6 +1,7 @@
 import { throttle } from 'lodash';
 import type { Context } from '../context';
 import { ValidationError } from '../error';
+import { ObjectId } from 'mongodb';
 import {
     ConnectionHandler,
     Handler,
@@ -16,6 +17,7 @@ import user from '../model/user';
 import {
     deriveSessionLearnStatus,
     deriveSessionRecordType,
+    formatSessionCardProgress,
     isLearnSessionRow,
 } from '../lib/sessionListDisplay';
 import { recordSummariesForSessionRow } from './record';
@@ -48,12 +50,14 @@ function buildSessionListRow(
     }
     return {
         ...doc,
+        sessionId: doc._id.toString(),
         status,
         recordType,
         statusLabel: self.translate(`session_status_${status}`),
         recordTypeLabel: self.translate(`session_record_type_${recordType}`),
         resumeUrl,
         recordSummaries,
+        cardProgressText: formatSessionCardProgress(doc),
     };
 }
 
@@ -217,12 +221,21 @@ class SessionConnectionHandler extends ConnectionHandler {
         }
     }
 
-    async message(msg: { uids: string[] }) {
+    async message(msg: { uids?: string[]; sids?: string[] }) {
+        const domainId = this.args.domainId;
+        if (msg.sids instanceof Array && msg.sids.length) {
+            for (const sid of msg.sids) {
+                if (!ObjectId.isValid(sid)) continue;
+                const doc = await SessionModel.coll.findOne({ _id: new ObjectId(sid), domainId });
+                if (doc) await this.sendSessionUpdate(doc as SessionDoc);
+            }
+            return;
+        }
         if (!(msg.uids instanceof Array)) return;
         const uids = msg.uids.map((id) => Number(id)).filter((n) => Number.isFinite(n));
         for (const uid of uids) {
-            const doc = await SessionModel.get(this.args.domainId, uid);
-            if (doc) await this.sendSessionUpdate(doc);
+            const docs = await SessionModel.coll.find({ domainId, uid }).toArray();
+            for (const doc of docs) await this.sendSessionUpdate(doc as SessionDoc);
         }
     }
 
@@ -251,7 +264,7 @@ class SessionConnectionHandler extends ConnectionHandler {
         const udoc = await user.getById(this.args.domainId, sdoc.uid);
         const recordSummaries = await recordSummariesForSessionRow(this.args.domainId, sdoc.recordIds);
         const session = buildSessionListRow(this, sdoc, recordSummaries);
-        const key = String(sdoc.uid);
+        const key = sdoc._id.toString();
         this.queue.set(key, async () => ({
             html: await this.renderHTML('session_domain_tr.html', { session, udoc }),
         }));
