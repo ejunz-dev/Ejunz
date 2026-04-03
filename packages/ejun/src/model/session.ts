@@ -142,12 +142,12 @@ export default class SessionModel {
 
     static async listPage(
         domainId: string,
-        minutes: number,
         uid: number | undefined,
         page: number,
         pageSize: number,
     ) {
-        const filter = SessionModel.activeQuery(domainId, minutes, uid);
+        const filter: Record<string, unknown> = { domainId };
+        if (uid != null) (filter as any).uid = uid;
         const [rows, count] = await Promise.all([
             this.coll
                 .find(filter)

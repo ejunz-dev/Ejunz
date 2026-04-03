@@ -929,7 +929,7 @@ page.training.domain.edit: 编辑
 page.training.domain.first_group_line: 首组 docId {0} · {1} → {2}
 page.training.domain.multi_plan_sources: '{0} 组知识库；'
 page.training.domain.new_plan: 新建训练计划
-page.training.domain.title: 训练计划
+page.training.domain.title: 训练
 page.training.domain.view: 查看
 page.training.edit.advanced_json: 高级：直接编辑 JSON
 page.training.edit.confirm_delete: 确定删除该训练计划？
@@ -1112,7 +1112,7 @@ session_active_minutes: 列出最近 N 分钟内有活动的用户
 session_col_branch: 分支
 session_col_position: 卡片 / 节点
 session_col_route: 页面
-session_domain: 学习实况
+session_domain: 会话
 session_last_activity: 最近活动
 session_learn_empty_filter: 没有符合条件的会话。
 session_learn_empty: 当前域内暂无近期学习活动。
@@ -1205,7 +1205,7 @@ tool_market: 工具市场
 Total: 总计
 training_create: 新建训练计划
 training_detail: 训练计划详情
-training_domain: 训练计划
+training_domain: 训练
 training_edit: 编辑训练计划
 training_list_empty: 暂无训练计划
 Type: 类型
