@@ -215,8 +215,7 @@ class SessionMeHandler extends Handler {
 export class SessionDomainHandler extends Handler {
     @query('page', Types.PositiveInt, true)
     @query('uidOrName', Types.UidOrName, true)
-    @query('minutes', Types.PositiveInt, true)
-    async get(domainId: string, page = 1, uidOrName?: string, minutes = 120) {
+    async get(domainId: string, page = 1, uidOrName?: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         let filterUid: number | undefined;
         /** Only pass a user filter to `/session-conn` when it resolved; invalid strings (e.g. domain id) would close the socket with 4000. */
@@ -238,7 +237,6 @@ export class SessionDomainHandler extends Handler {
         const pageSize = 20;
         const { rows, count } = await SessionModel.listPage(
             domainId,
-            minutes,
             filterUid,
             page,
             pageSize,
@@ -260,7 +258,6 @@ export class SessionDomainHandler extends Handler {
             pageCount: Math.ceil(count / pageSize) || 1,
             filterUidOrName: uidOrName,
             sessionConnUidOrName,
-            filterMinutes: minutes,
             udict,
         };
     }
@@ -269,8 +266,7 @@ export class SessionDomainHandler extends Handler {
 class RecordMainHandler extends Handler {
     @query('page', Types.PositiveInt, true)
     @query('uidOrName', Types.UidOrName, true)
-    @query('minutes', Types.PositiveInt, true)
-    async get(domainId: string, page = 1, uidOrName?: string, minutes = 120) {
+    async get(domainId: string, page = 1, uidOrName?: string) {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         let filterUid: number | undefined;
         let recordConnUidOrName: string | undefined;
@@ -289,11 +285,7 @@ class RecordMainHandler extends Handler {
             this.checkPerm(PERM.PERM_VIEW_RECORD);
         }
         const pageSize = 20;
-        const cutoff = SessionModel.activeCutoff(minutes);
-        const filter: Record<string, unknown> = {
-            domainId,
-            lastActivityAt: { $gte: cutoff },
-        };
+        const filter: Record<string, unknown> = { domainId };
         if (filterUid != null) (filter as any).uid = filterUid;
 
         const coll = RecordModel.coll;
@@ -328,7 +320,6 @@ class RecordMainHandler extends Handler {
             pageCount: Math.ceil(count / pageSize) || 1,
             filterUidOrName: uidOrName,
             recordConnUidOrName,
-            filterMinutes: minutes,
             udict,
         };
     }
