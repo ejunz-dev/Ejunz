@@ -11,13 +11,14 @@ import {
     Types,
 } from '../service/server';
 import { PERM, PRIV } from '../model/builtin';
-import { CardModel } from '../model/base';
-import RecordModel, { type RecordDoc } from '../model/record';
+import type { BaseDoc, BaseNode, CardDoc } from '../interface';
+import { BaseModel, CardModel } from '../model/base';
+import RecordModel, { type RecordDoc, type RecordProblemState } from '../model/record';
 import SessionModel from '../model/session';
 import TrainingModel from '../model/training';
 import user from '../model/user';
 
-function summarizeRecordDoc(r: RecordDoc): { code: string; color: string; label: string } {
+export function summarizeRecordDoc(r: RecordDoc): { code: string; color: string; label: string } {
     const probs = r.problems || [];
     if (!probs.length) return { code: 'pending', color: '#9fa0a0', label: 'Pending' };
     if (probs.some(p => p.status === 'wrong')) return { code: 'fail', color: '#fb5555', label: 'Wrong' };
@@ -106,6 +107,123 @@ async function enrichRecordRowDisplay(
     }
 
     return { cardTitle, cardUrl, trainingTitle, trainingUrl };
+}
+
+function nodesOnBranch(base: BaseDoc, branch: string): BaseNode[] {
+    const branchName = branch || 'main';
+    if (base.branchData?.[branchName]?.nodes) return base.branchData[branchName].nodes;
+    if (branchName === 'main') return base.nodes || [];
+    return [];
+}
+
+async function nodeTitleForRecord(rd: RecordDoc): Promise<string> {
+    const bid = typeof rd.baseDocId === 'number' && rd.baseDocId > 0 ? rd.baseDocId : 0;
+    if (!bid || !rd.nodeId) return rd.nodeId || '';
+    const base = await BaseModel.get(rd.domainId, bid);
+    if (!base) return rd.nodeId;
+    const br = rd.branch && rd.branch.length ? rd.branch : 'main';
+    const nodes = nodesOnBranch(base, br);
+    const n = nodes.find((x) => x.id === rd.nodeId);
+    const t = (n as { title?: string } | undefined)?.title ?? n?.text;
+    return t ? String(t) : rd.nodeId;
+}
+
+function stripHtmlOneLine(s: string, maxLen: number): string {
+    const t = String(s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    return t.length <= maxLen ? t : `${t.slice(0, maxLen)}…`;
+}
+
+export type LessonHistoryProblemRow = {
+    pid: string;
+    stemPreview: string;
+    status: RecordProblemState['status'];
+    selectedIndex?: number;
+    selectedText?: string;
+    correctOptionIndex?: number;
+    correctOptionText?: string;
+    attempts?: number;
+    timeSpentMs?: number;
+};
+
+export type LessonHistoryRecordRow = {
+    rdoc: RecordDoc;
+    recordDisp: RecordRowDisplay;
+    nodeTitle: string;
+    problems: LessonHistoryProblemRow[];
+};
+
+async function problemRowsForRecord(rd: RecordDoc): Promise<LessonHistoryProblemRow[]> {
+    let card: CardDoc | null = null;
+    if (ObjectId.isValid(rd.cardId)) {
+        try {
+            card = await CardModel.get(rd.domainId, new ObjectId(rd.cardId));
+        } catch {
+            /* ignore */
+        }
+    }
+    const byPid = new Map((card?.problems || []).map((pr) => [pr.pid, pr]));
+    return (rd.problems || []).map((p) => {
+        const pr = byPid.get(p.pid);
+        const stemPreview = pr ? stripHtmlOneLine(pr.stem || '', 160) : p.pid;
+        let selectedText: string | undefined;
+        if (typeof p.selected === 'number' && pr?.options && p.selected >= 0 && p.selected < pr.options.length) {
+            selectedText = stripHtmlOneLine(String(pr.options[p.selected]), 120);
+        } else if (typeof p.selected === 'number') {
+            selectedText = `#${p.selected}`;
+        }
+        let correctOptionText: string | undefined;
+        const ans = pr?.answer;
+        if (typeof ans === 'number' && pr?.options && ans >= 0 && ans < pr.options.length) {
+            correctOptionText = stripHtmlOneLine(String(pr.options[ans]), 120);
+        }
+        return {
+            pid: p.pid,
+            stemPreview,
+            status: p.status,
+            selectedIndex: p.selected,
+            selectedText,
+            correctOptionIndex: typeof ans === 'number' ? ans : undefined,
+            correctOptionText,
+            attempts: p.attempts,
+            timeSpentMs: p.timeSpentMs,
+        };
+    });
+}
+
+/** Ordered rows for a learn session history page (full problem state + card/node labels). */
+export async function buildSessionRecordHistoryRows(
+    domainId: string,
+    recordIds: ObjectId[] | null | undefined,
+    buildUrl: (name: string, kwargs: Record<string, unknown>) => string,
+): Promise<LessonHistoryRecordRow[]> {
+    const ridList = recordIds || [];
+    if (!ridList.length) return [];
+    const recordsMap = await RecordModel.getList(domainId, ridList);
+    const out: LessonHistoryRecordRow[] = [];
+    for (const oid of ridList) {
+        const r = recordsMap[oid.toHexString()] as RecordDoc | undefined;
+        if (!r) continue;
+        const recordDisp = await enrichRecordRowDisplay(r, buildUrl);
+        const nodeTitle = await nodeTitleForRecord(r);
+        const problems = await problemRowsForRecord(r);
+        out.push({ rdoc: r, recordDisp, nodeTitle, problems });
+    }
+    return out;
+}
+
+export function lessonHistoryRowsToWire(rows: LessonHistoryRecordRow[]): Record<string, unknown>[] {
+    return rows.map((row) => ({
+        recordId: row.rdoc._id.toHexString(),
+        cardId: row.rdoc.cardId,
+        nodeId: row.rdoc.nodeId,
+        nodeTitle: row.nodeTitle,
+        branch: row.rdoc.branch,
+        recordDisp: row.recordDisp,
+        lastActivityAt: row.rdoc.lastActivityAt instanceof Date
+            ? row.rdoc.lastActivityAt.toISOString()
+            : row.rdoc.lastActivityAt,
+        problems: row.problems,
+    }));
 }
 
 export async function recordSummariesForSessionRow(
